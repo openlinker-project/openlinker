@@ -46,6 +46,7 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 │  │  - ProductSyncService                                    │   │
 │  │  - InventorySyncService                                  │   │
 │  │  - OrderSyncService                                      │   │
+│  │  - OfferSyncService                                      │   │
 │  │  - MappingServices                                       │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
@@ -55,6 +56,11 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 │  │   │   Products   │  │  Inventory   │  │    Orders    │   │   │
 │  │   │   Domain     │  │    Domain    │  │    Domain    │   │   │
 │  │   └──────────────┘  └──────────────┘  └──────────────┘   │   │
+│  │                                                          │   │
+│  │   ┌──────────────┐                                       │   │
+│  │   │   Listings  │                                       │   │
+│  │   │   Domain    │                                       │   │
+│  │   └──────────────┘                                       │   │
 │  │                                                          │   │
 │  │  ┌────────────────────────────────────────────────────┐  │   │
 │  │  │         Capability Ports (Interfaces)              │  │   │
@@ -127,22 +133,34 @@ The system is organized into the following core bounded contexts:
 - **Location**: `libs/core/src/orders/`
 - **Capability**: Uses `OrderProcessorManagerPort` abstraction
 
-### 5. Sync Manager
+### 5. Listings (Offers)
+- **Responsibility**: Marketplace offer/listing management, offer lifecycle, offer-to-product mapping
+- **Key Entities**: Offer, Listing, OfferMapping, OfferStatus
+- **Location**: `libs/core/src/listings/`
+- **Capability**: Uses `IMarketplaceIntegration` abstraction for offer operations
+- **Key Features**:
+  - Creating and updating offers on marketplaces
+  - Managing offer quantities based on inventory
+  - Offer-to-product mapping
+  - Offer status synchronization
+  - Price management for marketplace offers
+
+### 6. Sync Manager
 - **Responsibility**: Job scheduling, retry logic, sync orchestration
 - **Key Services**: SyncJobService, RetryService, SchedulerService
 - **Location**: `libs/core/src/sync/` or `apps/api/src/sync/`
 
-### 6. Event Bus / Messaging
+### 7. Event Bus / Messaging
 - **Responsibility**: Event-driven communication between modules
 - **Technology**: Redis Streams (initial), RabbitMQ/Kafka (future)
 - **Location**: `libs/core/src/events/`
 
-### 7. Plugin Manager / Integrations
+### 8. Plugin Manager / Integrations
 - **Responsibility**: Adapter registry, capability assignment, plugin lifecycle
 - **Key Services**: IntegrationsService, PluginRegistryService
 - **Location**: `apps/api/src/integrations/` or `libs/core/src/integrations/`
 
-### 8. Logging & Monitoring
+### 9. Logging & Monitoring
 - **Responsibility**: Structured logging, metrics, tracing
 - **Technology**: NestJS Logger, OpenTelemetry (future)
 - **Location**: `libs/shared/src/logging/`
@@ -435,6 +453,7 @@ openlinker/
 │   │   │   ├── products/
 │   │   │   ├── inventory/
 │   │   │   ├── orders/
+│   │   │   ├── listings/
 │   │   │   ├── sync/
 │   │   │   └── events/
 │   │   └── package.json
@@ -540,23 +559,69 @@ export class InventorySyncService {
 
 ### 1. Order Synchronization Flow (Marketplace → Shop)
 
+#### Polling Flow
+
 ```
-Allegro API
+Scheduled Job / Controller
     │
-    │ (Polling/Webhook)
+    │ @Cron('*/5 * * * *') or HTTP endpoint
+    │ Initiates order synchronization process
     ▼
-AllegroAdapter
+OrderSyncService.syncOrdersFromMarketplace()
+    │
+    │ Gets marketplace adapter(s) dynamically
+    │ Gets OrderProcessorManagerPort adapter
+    ▼
+MarketplaceAdapter (AllegroAdapter)
+    │
+    │ getOrders(filters) - fetches new/updated orders
+    ▼
+Marketplace API (Allegro API)
+    │
+    │ Returns orders
+    ▼
+OrderSyncService
+    │
+    │ For each order:
+    │   - Maps to unified Order schema
+    │   - Uses ProductMappingService
+    │   - Uses StatusMappingService
+    │   - Gets OrderProcessorManagerPort adapter
+    ▼
+OrderProcessorManagerPort (PrestashopOrderProcessorAdapter)
+    │
+    │ Maps unified Order → PrestaShop format
+    │ createOrder(orderCreate)
+    ▼
+PrestaShop API
+    │
+    │ Returns created order
+    ▼
+OrderSyncService
+    │
+    │ Saves OrderMapping
+    │ Updates sync status
+```
+
+#### Real-Time Flow
+
+```
+Marketplace API
+    │
+    │ (Webhook)
+    ▼
+MarketplaceAdapter
     │
     │ Maps to unified Order schema
     ▼
-Event: 'allegro.order.received'
+Event: 'marketplace.order.received'
     │
     ▼
 OrderSyncListener
     │
     │ Gets OrderProcessorManagerPort adapter
     ▼
-OrderSyncService
+OrderSyncService.syncOrderFromEvent()
     │
     │ Uses ProductMappingService
     │ Uses StatusMappingService
