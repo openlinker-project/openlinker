@@ -59,20 +59,25 @@ All TypeScript projects must use strict mode:
 - **Value Objects**: `*.vo.ts` (e.g., `money.vo.ts`)
 - **Domain Services**: `*.domain-service.ts` (e.g., `product-mapping.domain-service.ts`)
 - **Domain Events**: `*.event.ts` (e.g., `product-created.event.ts`)
-- **Ports**: `*.port.ts` (e.g., `inventory-master.port.ts`)
+- **Ports (Interfaces)**: `*.port.ts` (e.g., `inventory-master.port.ts`) - interface definition only
+- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions only
 
 #### Application Layer Files
 
 - **Use Cases**: `*.use-case.ts` (e.g., `sync-product.use-case.ts`)
-- **Application Services**: `*.service.ts` (e.g., `product-sync.service.ts`)
+- **Service Interfaces**: `*.service.interface.ts` (e.g., `product-sync.service.interface.ts`)
+- **Application Services**: `*.service.ts` (e.g., `product-sync.service.ts`) - implements interface from `*.service.interface.ts`
 - **DTOs**: `*.dto.ts` (e.g., `product-sync.dto.ts`)
+- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions only
 
 #### Infrastructure Layer Files
 
 - **ORM Entities**: `*.orm-entity.ts` (e.g., `product.orm-entity.ts`)
 - **Repositories**: `*.repository.ts` (e.g., `product.repository.ts`)
-- **Adapters**: `*-adapter.ts` (e.g., `prestashop-inventory-master.adapter.ts`)
+- **Adapter Interfaces**: `*-adapter.interface.ts` (e.g., `prestashop-inventory-master.adapter.interface.ts`) - interface definition only (if needed)
+- **Adapters**: `*-adapter.ts` (e.g., `prestashop-inventory-master.adapter.ts`) - implements port interface
 - **Mappers**: `*.mapper.ts` (e.g., `product.mapper.ts`)
+- **Types**: `*.types.ts` (e.g., `adapter.types.ts`) - type definitions only
 
 #### Interface Layer Files
 
@@ -116,10 +121,12 @@ All TypeScript projects must use strict mode:
 #### Services
 
 - Pattern: `{Purpose}Service` (PascalCase)
+- **Requirement**: Services must always implement an interface
+- Interface pattern: `I{Purpose}Service` (e.g., `IProductSyncService`)
 - Examples:
-  - `ProductSyncService`
-  - `InventorySyncService`
-  - `OrderSyncService`
+  - `ProductSyncService` implements `IProductSyncService`
+  - `InventorySyncService` implements `IInventorySyncService`
+  - `OrderSyncService` implements `IOrderSyncService`
 
 #### Controllers
 
@@ -138,8 +145,10 @@ All TypeScript projects must use strict mode:
 
 ### Interfaces and Types
 
-- **Interfaces**: `PascalCase` (e.g., `Product`, `OrderCreate`)
+- **Interfaces**: `PascalCase` (e.g., `Product`, `OrderCreate`, `IProductSyncService`)
 - **Types**: `PascalCase` (e.g., `OrderStatus`, `ProductFilter`)
+- **Requirement**: Types must be defined in separate files (`*.types.ts`)
+- **Requirement**: Interface definitions and implementations must be in separate files
 
 ---
 
@@ -258,6 +267,170 @@ export class ProductSyncService {
   async syncProduct(productId: string) {
     const adapter = new PrestashopAdapter(); // Direct instantiation
     const inventory = await adapter.getInventory(productId);
+  }
+}
+```
+
+### Service Interface Implementation
+
+**Services must always implement an interface** to ensure testability and loose coupling. **Interface and implementation must be in separate files.**
+
+✅ **Good**:
+```typescript
+// application/interfaces/product-sync.service.interface.ts
+export interface IProductSyncService {
+  syncProduct(productId: string): Promise<void>;
+}
+
+// application/services/product-sync.service.ts
+import { IProductSyncService } from '../interfaces/product-sync.service.interface';
+
+@Injectable()
+export class ProductSyncService implements IProductSyncService {
+  constructor(
+    private readonly inventoryMaster: InventoryMasterPort,
+    private readonly logger: Logger,
+  ) {}
+
+  async syncProduct(productId: string): Promise<void> {
+    const inventory = await this.inventoryMaster.getInventory(productId);
+    // ...
+  }
+}
+```
+
+❌ **Bad**:
+```typescript
+@Injectable()
+export class ProductSyncService {
+  // ❌ No interface implementation
+  async syncProduct(productId: string) {
+    // ...
+  }
+}
+```
+
+### Type Definitions in Separate Files
+
+**All types must be defined in separate files** (`*.types.ts`). Types should not be defined inline in service, entity, or other implementation files.
+
+✅ **Good**:
+```typescript
+// application/types/product-sync.types.ts
+export type ProductSyncStatus = 'pending' | 'syncing' | 'completed' | 'failed';
+
+export interface ProductSyncOptions {
+  forceUpdate: boolean;
+  skipMapping: boolean;
+}
+
+// application/services/product-sync.service.ts
+import { ProductSyncStatus, ProductSyncOptions } from '../types/product-sync.types';
+
+@Injectable()
+export class ProductSyncService implements IProductSyncService {
+  async syncProduct(productId: string, options?: ProductSyncOptions): Promise<ProductSyncStatus> {
+    // ...
+  }
+}
+```
+
+❌ **Bad**:
+```typescript
+// application/services/product-sync.service.ts
+@Injectable()
+export class ProductSyncService implements IProductSyncService {
+  // ❌ Types defined inline
+  type ProductSyncStatus = 'pending' | 'syncing' | 'completed' | 'failed';
+  
+  async syncProduct(productId: string): Promise<ProductSyncStatus> {
+    // ...
+  }
+}
+```
+
+### Interface and Implementation Separation
+
+**Interface definitions and implementations must be in separate files.** This applies to:
+- Service interfaces and implementations
+- Port interfaces (ports are interfaces themselves, adapters are implementations)
+- Adapter interfaces (if needed) and adapter implementations
+
+#### Service Interfaces and Implementations
+
+✅ **Good**:
+```typescript
+// application/interfaces/product-sync.service.interface.ts
+export interface IProductSyncService {
+  syncProduct(productId: string): Promise<void>;
+}
+
+// application/services/product-sync.service.ts
+import { IProductSyncService } from '../interfaces/product-sync.service.interface';
+
+@Injectable()
+export class ProductSyncService implements IProductSyncService {
+  async syncProduct(productId: string): Promise<void> {
+    // Implementation
+  }
+}
+```
+
+❌ **Bad**:
+```typescript
+// application/services/product-sync.service.ts
+// ❌ Interface and implementation in the same file
+export interface IProductSyncService {
+  syncProduct(productId: string): Promise<void>;
+}
+
+@Injectable()
+export class ProductSyncService implements IProductSyncService {
+  async syncProduct(productId: string): Promise<void> {
+    // Implementation
+  }
+}
+```
+
+#### Port Interfaces and Adapter Implementations
+
+✅ **Good**:
+```typescript
+// domain/ports/inventory-master.port.ts
+// Port is an interface - contains only interface definition
+export interface InventoryMasterPort {
+  getInventory(productId: string): Promise<Inventory>;
+  adjustInventory(adjustment: InventoryAdjustment): Promise<Inventory>;
+}
+
+// infrastructure/adapters/prestashop-inventory-master.adapter.ts
+// Adapter implements the port - contains only implementation
+import { InventoryMasterPort } from '../../domain/ports/inventory-master.port';
+
+@Injectable()
+export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
+  async getInventory(productId: string): Promise<Inventory> {
+    // Implementation
+  }
+  
+  async adjustInventory(adjustment: InventoryAdjustment): Promise<Inventory> {
+    // Implementation
+  }
+}
+```
+
+❌ **Bad**:
+```typescript
+// infrastructure/adapters/prestashop-inventory-master.adapter.ts
+// ❌ Port interface defined in adapter file
+export interface InventoryMasterPort {
+  getInventory(productId: string): Promise<Inventory>;
+}
+
+@Injectable()
+export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
+  async getInventory(productId: string): Promise<Inventory> {
+    // Implementation
   }
 }
 ```
