@@ -48,6 +48,11 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 │  │  - OrderSyncService                                      │   │
 │  │  - OfferSyncService                                      │   │
 │  │  - MappingServices                                       │   │
+│  │                                                          │   │
+│  │  ┌────────────────────────────────────────────────────┐  │   │
+│  │  │    Infrastructure Services                         │  │   │
+│  │  │  - IdentifierMappingService                         │  │   │
+│  │  └────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐   │
@@ -155,12 +160,23 @@ The system is organized into the following core bounded contexts:
 - **Technology**: Redis Streams (initial), RabbitMQ/Kafka (future)
 - **Location**: `libs/core/src/events/`
 
-### 8. Plugin Manager / Integrations
+### 8. Identifier Mapping Service
+- **Responsibility**: Centralized identifier mapping between external platform IDs and internal OpenLinker IDs
+- **Key Services**: IdentifierMappingService
+- **Location**: `libs/core/src/identifier-mapping/`
+- **Key Features**:
+  - Generates unique internal identifiers for all entities (single seed across entire system)
+  - Maps external platform identifiers to internal OpenLinker identifiers
+  - Context-aware mapping (entity type, platform, etc.)
+  - Used by adapters to replace external IDs with internal IDs during data transformation
+- **Architecture**: Core infrastructure service used by all adapters
+
+### 9. Plugin Manager / Integrations
 - **Responsibility**: Adapter registry, capability assignment, plugin lifecycle
 - **Key Services**: IntegrationsService, PluginRegistryService
 - **Location**: `apps/api/src/integrations/` or `libs/core/src/integrations/`
 
-### 9. Logging & Monitoring
+### 10. Logging & Monitoring
 - **Responsibility**: Structured logging, metrics, tracing
 - **Technology**: NestJS Logger, OpenTelemetry (future)
 - **Location**: `libs/shared/src/logging/`
@@ -353,6 +369,244 @@ interface OrderProcessorManagerPort {
 
 ---
 
+## Identifier Mapping Service
+
+### Overview
+
+The **IdentifierMappingService** is a core infrastructure service responsible for managing the mapping between external platform identifiers (e.g., PrestaShop product ID, Allegro order ID) and internal OpenLinker identifiers. It ensures that all entities in the system have unique internal identifiers from a single unified seed, regardless of their origin platform.
+
+### Key Responsibilities
+
+1. **Generate Internal Identifiers**: Creates new unique internal IDs for entities when they are first encountered from external platforms
+2. **Map External to Internal**: Provides mapping from external platform IDs to internal OpenLinker IDs
+3. **Context-Aware Mapping**: Handles mapping based on entity type (Product, Order, Offer, etc.), platform, and context
+4. **Maintain Mapping Registry**: Stores and retrieves mappings between external and internal identifiers
+
+### Interface
+
+```typescript
+interface IdentifierMappingService {
+  /**
+   * Get or create internal identifier for an external entity
+   * If mapping exists, returns existing internal ID
+   * If not, generates new internal ID and creates mapping
+   */
+  getOrCreateInternalId(
+    entityType: 'Product' | 'Order' | 'Offer' | 'Inventory' | 'Customer' | string,
+    externalId: string,
+    platformId: string,
+    context?: MappingContext
+  ): Promise<string>;
+
+  /**
+   * Get internal identifier for an external entity
+   * Returns null if mapping doesn't exist
+   */
+  getInternalId(
+    entityType: string,
+    externalId: string,
+    platformId: string
+  ): Promise<string | null>;
+
+  /**
+   * Get external identifier(s) for an internal ID
+   * Returns all platform-specific external IDs mapped to this internal ID
+   */
+  getExternalIds(
+    entityType: string,
+    internalId: string
+  ): Promise<ExternalIdMapping[]>;
+
+  /**
+   * Create explicit mapping between external and internal identifiers
+   * Used for manual mapping or when internal ID already exists
+   */
+  createMapping(
+    entityType: string,
+    externalId: string,
+    platformId: string,
+    internalId: string
+  ): Promise<void>;
+
+  /**
+   * Batch get or create internal identifiers
+   * Optimized for processing multiple entities at once
+   */
+  batchGetOrCreateInternalIds(
+    requests: IdentifierMappingRequest[]
+  ): Promise<Map<string, string>>; // externalId -> internalId
+}
+
+interface MappingContext {
+  parentEntityType?: string;
+  parentInternalId?: string;
+  metadata?: Record<string, any>;
+}
+
+interface IdentifierMappingRequest {
+  entityType: string;
+  externalId: string;
+  platformId: string;
+  context?: MappingContext;
+}
+
+interface ExternalIdMapping {
+  externalId: string;
+  platformId: string;
+  entityType: string;
+}
+```
+
+### Internal Identifier Format
+
+Internal identifiers are generated from a **single unified seed** across all entity types:
+- Format: `ol_{entityType}_{uuid}` or `ol_{sequentialId}` (implementation choice)
+- Examples: `ol_product_abc123`, `ol_order_xyz789`, `ol_offer_def456`
+- Uniqueness: Guaranteed across all entities in the system
+
+### Usage by Adapters
+
+**Adapters are responsible for**:
+1. Fetching data from external platforms
+2. Transforming data to OpenLinker unified schema
+3. **Replacing external identifiers with internal identifiers** using `IdentifierMappingService`
+
+**Example: PrestaShop Product Adapter**
+
+```typescript
+@Injectable()
+export class PrestashopProductAdapter implements ProductMasterPort {
+  constructor(
+    private readonly identifierMapping: IdentifierMappingService,
+    private readonly httpService: HttpService,
+  ) {}
+
+  async getProduct(productId: string): Promise<Product> {
+    // 1. Fetch product from PrestaShop API
+    const prestashopProduct = await this.httpService.get(
+      `/products/${productId}`
+    );
+
+    // 2. Transform to OpenLinker schema
+    const product: Product = {
+      // ... map PrestaShop fields to OpenLinker schema
+      name: prestashopProduct.name,
+      sku: prestashopProduct.reference,
+      // ...
+    };
+
+    // 3. Replace external ID with internal ID
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      'Product',
+      productId, // PrestaShop product ID
+      'prestashop'
+    );
+
+    // 4. Use internal ID in the returned product
+    return {
+      ...product,
+      id: internalId, // Internal OpenLinker ID
+      externalIds: {
+        prestashop: productId, // Keep external ID for reference
+      },
+    };
+  }
+}
+```
+
+**Example: Allegro Order Adapter**
+
+```typescript
+@Injectable()
+export class AllegroOrderAdapter implements IMarketplaceIntegration {
+  constructor(
+    private readonly identifierMapping: IdentifierMappingService,
+  ) {}
+
+  async getOrder(orderId: string): Promise<Order> {
+    // 1. Fetch order from Allegro API
+    const allegroOrder = await this.fetchFromAllegro(orderId);
+
+    // 2. Transform to OpenLinker schema
+    const order: Order = {
+      // ... map Allegro order to OpenLinker schema
+      items: allegroOrder.lineItems.map(item => ({
+        // Map each item
+        productId: await this.identifierMapping.getOrCreateInternalId(
+          'Product',
+          item.offerId, // Allegro offer ID
+          'allegro',
+          { parentEntityType: 'Order', parentInternalId: internalOrderId }
+        ),
+        quantity: item.quantity,
+        // ...
+      })),
+    };
+
+    // 3. Replace order ID
+    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+      'Order',
+      orderId, // Allegro order ID
+      'allegro'
+    );
+
+    return {
+      ...order,
+      id: internalOrderId,
+      externalIds: {
+        allegro: orderId,
+      },
+    };
+  }
+}
+```
+
+### Storage
+
+Mappings are stored in PostgreSQL:
+
+```typescript
+@Entity('identifier_mappings')
+class IdentifierMapping {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  entityType: string; // 'Product', 'Order', 'Offer', etc.
+
+  @Column()
+  internalId: string; // OpenLinker internal ID
+
+  @Column()
+  externalId: string; // External platform ID
+
+  @Column()
+  platformId: string; // 'prestashop', 'allegro', etc.
+
+  @Column({ type: 'jsonb', nullable: true })
+  context: MappingContext;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @Index(['entityType', 'externalId', 'platformId'], { unique: true })
+  @Index(['entityType', 'internalId'])
+}
+```
+
+### Benefits
+
+1. **Unified Identity**: All entities have consistent internal identifiers regardless of source
+2. **Platform Agnostic**: Core domain logic works with internal IDs only
+3. **Traceability**: Can always find external IDs from internal IDs and vice versa
+4. **Adapter Responsibility**: Adapters handle ID translation, keeping core domain clean
+5. **Single Source of Truth**: One service manages all identifier mappings
+
+---
+
 ## Hexagonal Architecture Structure
 
 Each domain module follows a standardized hexagonal structure:
@@ -454,6 +708,7 @@ openlinker/
 │   │   │   ├── inventory/
 │   │   │   ├── orders/
 │   │   │   ├── listings/
+│   │   │   ├── identifier-mapping/
 │   │   │   ├── sync/
 │   │   │   └── events/
 │   │   └── package.json
@@ -578,20 +833,32 @@ MarketplaceAdapter (AllegroAdapter)
     ▼
 Marketplace API (Allegro API)
     │
-    │ Returns orders
+    │ Returns orders (with external IDs)
+    ▼
+MarketplaceAdapter (AllegroAdapter)
+    │
+    │ 1. Maps to unified Order schema
+    │ 2. Uses IdentifierMappingService to replace external IDs with internal IDs
+    │    - Order ID: external → internal
+    │    - Product IDs in items: external → internal
+    │    - Customer ID: external → internal
     ▼
 OrderSyncService
     │
+    │ Receives orders with internal IDs only
+    │
     │ For each order:
-    │   - Maps to unified Order schema
     │   - Uses ProductMappingService
     │   - Uses StatusMappingService
     │   - Gets OrderProcessorManagerPort adapter
     ▼
 OrderProcessorManagerPort (PrestashopOrderProcessorAdapter)
     │
-    │ Maps unified Order → PrestaShop format
-    │ createOrder(orderCreate)
+    │ 1. Maps unified Order → PrestaShop format
+    │ 2. Uses IdentifierMappingService.getExternalIds() to get PrestaShop IDs
+    │    - Product IDs: internal → PrestaShop external IDs
+    │    - Customer ID: internal → PrestaShop external ID
+    │ 3. createOrder(orderCreate) with PrestaShop external IDs
     ▼
 PrestaShop API
     │
@@ -612,10 +879,14 @@ Marketplace API
     ▼
 MarketplaceAdapter
     │
-    │ Maps to unified Order schema
+    │ 1. Maps to unified Order schema
+    │ 2. Uses IdentifierMappingService to replace external IDs with internal IDs
+    │    - Order ID: external → internal
+    │    - Product IDs: external → internal
     ▼
 Event: 'marketplace.order.received'
     │
+    │ Payload contains order with internal IDs
     ▼
 OrderSyncListener
     │
@@ -623,12 +894,17 @@ OrderSyncListener
     ▼
 OrderSyncService.syncOrderFromEvent()
     │
-    │ Uses ProductMappingService
-    │ Uses StatusMappingService
+    │ Uses ProductMappingService (for product references)
+    │ Uses StatusMappingService (for status mapping)
+    │ Order already has internal IDs from adapter
     ▼
 OrderProcessorManagerPort (PrestashopOrderProcessorAdapter)
     │
-    │ Maps unified Order → PrestaShop format
+    │ 1. Uses IdentifierMappingService.getExternalIds() to get PrestaShop IDs
+    │    - Product IDs: internal → PrestaShop external IDs
+    │    - Customer ID: internal → PrestaShop external ID
+    │ 2. Maps unified Order → PrestaShop format
+    │ 3. createOrder(orderCreate) with PrestaShop external IDs
     ▼
 PrestaShop API
 ```
