@@ -10,7 +10,7 @@
     "start:dev": "pnpm -w run start:dev:api",
     "start:debug": "pnpm -w run start:dev:api -- --debug",
     "start:prod": "pnpm -w run start:prod:api",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
