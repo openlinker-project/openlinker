@@ -1,0 +1,51 @@
+FROM node:20-alpine AS base
+
+# Install pnpm
+RUN npm install -g pnpm@8
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY libs/core/package.json ./libs/core/
+COPY libs/shared/package.json ./libs/shared/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build application
+RUN pnpm build
+
+# Production stage
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY libs/core/package.json ./libs/core/
+COPY libs/shared/package.json ./libs/shared/
+
+# Install production dependencies only
+RUN npm install -g pnpm@8 && \
+    pnpm install --frozen-lockfile --prod
+
+# Copy built application
+COPY --from=base /app/dist ./dist
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=base /app/libs/core/node_modules ./libs/core/node_modules
+COPY --from=base /app/libs/shared/node_modules ./libs/shared/node_modules
+
+# Expose port
+EXPOSE 3000
+
+# Start application
+CMD ["node", "apps/api/dist/main.js"]
+

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "."
+  },
+  "references": [
+    { "path": "./apps/api" },
+    { "path": "./libs/core" },
+    { "path": "./libs/shared" }
+  ],
+  "files": []
+}
+

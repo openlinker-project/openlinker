@@ -1,0 +1,91 @@
+/**
+ * Identifier Mapping Repository
+ *
+ * Repository implementation for identifier mapping persistence operations.
+ * Provides data access methods for finding and creating identifier mappings,
+ * with conversion between domain entities and ORM entities.
+ *
+ * @module libs/core/src/identifier-mapping/infrastructure/persistence/repositories
+ * @see {@link IdentifierMappingOrmEntity} for the database entity
+ */
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-entity';
+import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
+import { EntityType, MappingContext } from '../../../domain/types/identifier-mapping.types';
+
+@Injectable()
+export class IdentifierMappingRepository {
+  constructor(
+    @InjectRepository(IdentifierMappingOrmEntity)
+    private readonly repository: Repository<IdentifierMappingOrmEntity>,
+  ) {}
+
+  async findByExternalId(
+    entityType: EntityType,
+    externalId: string,
+    platformId: string,
+  ): Promise<IdentifierMapping | null> {
+    const entity = await this.repository.findOne({
+      where: {
+        entityType,
+        externalId,
+        platformId,
+      },
+    });
+
+    if (!entity) {
+      return null;
+    }
+
+    return this.toDomain(entity);
+  }
+
+  async findByInternalId(
+    entityType: EntityType,
+    internalId: string,
+  ): Promise<IdentifierMapping[]> {
+    const entities = await this.repository.find({
+      where: {
+        entityType,
+        internalId,
+      },
+    });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async create(mapping: IdentifierMapping): Promise<IdentifierMapping> {
+    const entity = this.toOrmEntity(mapping);
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
+  }
+
+  private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
+    return new IdentifierMapping(
+      entity.id,
+      entity.entityType,
+      entity.internalId,
+      entity.externalId,
+      entity.platformId,
+      entity.context as MappingContext | null,
+      entity.createdAt,
+      entity.updatedAt,
+    );
+  }
+
+  private toOrmEntity(mapping: IdentifierMapping): IdentifierMappingOrmEntity {
+    const entity = new IdentifierMappingOrmEntity();
+    entity.id = mapping.id;
+    entity.entityType = mapping.entityType;
+    entity.internalId = mapping.internalId;
+    entity.externalId = mapping.externalId;
+    entity.platformId = mapping.platformId;
+    entity.context = mapping.context as Record<string, unknown> | null;
+    entity.createdAt = mapping.createdAt;
+    entity.updatedAt = mapping.updatedAt;
+    return entity;
+  }
+}
+

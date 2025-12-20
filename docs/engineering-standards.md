@@ -241,6 +241,98 @@ export class DomainModule {}
 
 ## Coding Standards
 
+### File Headers
+
+**All source files must include a header comment** describing the purpose and context of the file.
+
+✅ **Good**:
+```typescript
+/**
+ * Identifier Mapping Service
+ *
+ * Provides centralized identifier mapping between external platform identifiers
+ * (e.g., PrestaShop product ID, Allegro order ID) and internal OpenLinker identifiers.
+ * Ensures all entities in the system have unique internal identifiers from a single
+ * unified seed, regardless of their origin platform.
+ *
+ * @module application/services
+ * @see {@link IdentifierMappingPort} for the port interface
+ * @see {@link IdentifierMappingRepository} for persistence implementation
+ */
+```
+
+**Header Requirements**:
+- **Purpose**: Brief description of what the file does
+- **Context**: Additional context about the file's role in the system
+- **Module path** (optional): `@module` tag indicating the module path
+- **Related files** (optional): `@see` tags linking to related interfaces, implementations, or documentation
+
+**Header Format**:
+```typescript
+/**
+ * {File Purpose}
+ *
+ * {Detailed description of the file's purpose and context.}
+ * {Additional context if needed.}
+ *
+ * @module {module/path} (optional)
+ * @see {@link RelatedClass} for related functionality (optional)
+ */
+```
+
+**Examples by Layer**:
+
+**Domain Entity**:
+```typescript
+/**
+ * Identifier Mapping Domain Entity
+ *
+ * Represents a mapping between an external platform identifier and an internal
+ * OpenLinker identifier. This is a core domain entity used across all adapters
+ * to maintain consistent identity across platforms.
+ *
+ * @module domain/entities
+ */
+```
+
+**Port Interface**:
+```typescript
+/**
+ * Identifier Mapping Port
+ *
+ * Defines the contract for identifier mapping operations. Implemented by
+ * IdentifierMappingService to provide identifier translation capabilities.
+ *
+ * @module domain/ports
+ */
+```
+
+**Service Implementation**:
+```typescript
+/**
+ * Identifier Mapping Service
+ *
+ * Implements identifier mapping operations, providing get-or-create semantics
+ * for internal identifiers and bidirectional mapping between external and
+ * internal identifiers.
+ *
+ * @module application/services
+ * @implements {IIdentifierMappingService}
+ */
+```
+
+**Controller**:
+```typescript
+/**
+ * Product Controller
+ *
+ * HTTP REST API endpoints for product operations. Handles request validation,
+ * delegates to application services, and formats responses.
+ *
+ * @module interfaces/http
+ */
+```
+
 ### Dependency Injection
 
 **Always use dependency injection** instead of static calls or direct instantiation.
