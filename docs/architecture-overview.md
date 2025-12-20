@@ -382,6 +382,28 @@ The **IdentifierMappingService** is a core infrastructure service responsible fo
 3. **Context-Aware Mapping**: Handles mapping based on entity type (Product, Order, Offer, etc.), platform, and context
 4. **Maintain Mapping Registry**: Stores and retrieves mappings between external and internal identifiers
 
+### Connection Entity
+
+The system supports **multiple integrations of the same platform** (e.g., two PrestaShop stores). Each integration is represented by a `Connection` entity:
+
+```typescript
+interface Connection {
+  id: string;                    // Unique connection ID
+  platformType: string;          // 'prestashop', 'allegro', etc.
+  name: string;                  // Human-readable name
+  status: 'active' | 'disabled' | 'error';
+  config: Record<string, any>;   // Connection-specific configuration
+  credentialsRef: string;        // Reference to credentials storage
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+**Why connections?**
+- Support multiple instances of the same platform (e.g., multiple PrestaShop stores)
+- Each connection has its own configuration and credentials
+- Mappings are connection-scoped, not platform-scoped
+
 ### Interface
 
 ```typescript
@@ -394,7 +416,7 @@ interface IdentifierMappingService {
   getOrCreateInternalId(
     entityType: 'Product' | 'Order' | 'Offer' | 'Inventory' | 'Customer' | string,
     externalId: string,
-    platformId: string,
+    connectionId: string,  // ✅ Connection ID (not platform ID)
     context?: MappingContext
   ): Promise<string>;
 
@@ -405,12 +427,12 @@ interface IdentifierMappingService {
   getInternalId(
     entityType: string,
     externalId: string,
-    platformId: string
+    connectionId: string  // ✅ Connection ID
   ): Promise<string | null>;
 
   /**
    * Get external identifier(s) for an internal ID
-   * Returns all platform-specific external IDs mapped to this internal ID
+   * Returns all connection-specific external IDs mapped to this internal ID
    */
   getExternalIds(
     entityType: string,
@@ -424,7 +446,7 @@ interface IdentifierMappingService {
   createMapping(
     entityType: string,
     externalId: string,
-    platformId: string,
+    connectionId: string,  // ✅ Connection ID
     internalId: string
   ): Promise<void>;
 
@@ -446,13 +468,14 @@ interface MappingContext {
 interface IdentifierMappingRequest {
   entityType: string;
   externalId: string;
-  platformId: string;
+  connectionId: string;  // ✅ Connection ID
   context?: MappingContext;
 }
 
 interface ExternalIdMapping {
   externalId: string;
-  platformId: string;
+  platformType: string;  // Denormalized from Connection
+  connectionId: string;   // ✅ Connection ID
   entityType: string;
 }
 ```
@@ -479,6 +502,7 @@ export class PrestashopProductAdapter implements ProductMasterPort {
   constructor(
     private readonly identifierMapping: IdentifierMappingService,
     private readonly httpService: HttpService,
+    private readonly connectionId: string, // ✅ Connection ID for this PrestaShop instance
   ) {}
 
   async getProduct(productId: string): Promise<Product> {
@@ -495,11 +519,11 @@ export class PrestashopProductAdapter implements ProductMasterPort {
       // ...
     };
 
-    // 3. Replace external ID with internal ID
+    // 3. Replace external ID with internal ID (using connectionId)
     const internalId = await this.identifierMapping.getOrCreateInternalId(
       'Product',
       productId, // PrestaShop product ID
-      'prestashop'
+      this.connectionId // ✅ Connection ID (not platform type)
     );
 
     // 4. Use internal ID in the returned product
@@ -521,6 +545,7 @@ export class PrestashopProductAdapter implements ProductMasterPort {
 export class AllegroOrderAdapter implements IMarketplaceIntegration {
   constructor(
     private readonly identifierMapping: IdentifierMappingService,
+    private readonly connectionId: string, // ✅ Connection ID for this Allegro instance
   ) {}
 
   async getOrder(orderId: string): Promise<Order> {
@@ -535,7 +560,7 @@ export class AllegroOrderAdapter implements IMarketplaceIntegration {
         productId: await this.identifierMapping.getOrCreateInternalId(
           'Product',
           item.offerId, // Allegro offer ID
-          'allegro',
+          this.connectionId, // ✅ Connection ID
           { parentEntityType: 'Order', parentInternalId: internalOrderId }
         ),
         quantity: item.quantity,
@@ -547,7 +572,7 @@ export class AllegroOrderAdapter implements IMarketplaceIntegration {
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
       'Order',
       orderId, // Allegro order ID
-      'allegro'
+      this.connectionId // ✅ Connection ID
     );
 
     return {
@@ -566,6 +591,35 @@ export class AllegroOrderAdapter implements IMarketplaceIntegration {
 Mappings are stored in PostgreSQL:
 
 ```typescript
+// Connection entity
+@Entity('connections')
+class Connection {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  platformType: string; // 'prestashop', 'allegro', etc.
+
+  @Column()
+  name: string;
+
+  @Column()
+  status: string; // 'active', 'disabled', 'error'
+
+  @Column({ type: 'jsonb', nullable: true })
+  config: Record<string, any>;
+
+  @Column({ nullable: true })
+  credentialsRef: string | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+// Identifier mapping entity
 @Entity('identifier_mappings')
 class IdentifierMapping {
   @PrimaryGeneratedColumn('uuid')
@@ -581,7 +635,10 @@ class IdentifierMapping {
   externalId: string; // External platform ID
 
   @Column()
-  platformId: string; // 'prestashop', 'allegro', etc.
+  platformType: string; // ✅ Denormalized from Connection (for query performance)
+
+  @Column()
+  connectionId: string; // ✅ References connections.id
 
   @Column({ type: 'jsonb', nullable: true })
   context: MappingContext;
@@ -592,10 +649,16 @@ class IdentifierMapping {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Index(['entityType', 'externalId', 'platformId'], { unique: true })
-  @Index(['entityType', 'internalId'])
+  // ✅ Unique constraint: entityType + platformType + connectionId + externalId
+  @Index(['entityType', 'platformType', 'connectionId', 'externalId'], { unique: true })
+  @Index(['entityType', 'internalId']) // Reverse lookup
 }
 ```
+
+**Why denormalize `platformType`?**
+- **Query performance**: Avoids JOINs for common queries
+- **Index efficiency**: Unique constraint includes `platformType` for faster lookups
+- **Data integrity**: `platformType` is immutable on Connection, safe to denormalize
 
 ### Benefits
 
@@ -627,7 +690,9 @@ libs/core/src/{domain}/
 │   └── ports/                       # Ports (Interfaces)
 │       ├── product-master.port.ts
 │       ├── inventory-master.port.ts
-│       └── order-processor-manager.port.ts
+│       ├── order-processor-manager.port.ts
+│       ├── product-repository.port.ts      # Repository ports (persistence contracts)
+│       └── connection.port.ts
 │
 ├── application/                     # Application Layer (Use Cases)
 │   ├── use-cases/                   # Use Case Implementations
@@ -674,9 +739,152 @@ infrastructure → domain
 **Rules**:
 - **Domain** has **NO** dependencies on NestJS, TypeORM, or any framework code
 - **Domain** depends only on **ports** (interfaces)
-- **Application** depends on **domain** and **ports**
+- **Application** depends on **domain** and **ports** (never on infrastructure)
 - **Infrastructure** implements **ports** and depends on **domain**
 - **Interfaces** depend on **application** and **infrastructure**
+
+### Repository Ports Pattern
+
+**Application services must never depend on concrete infrastructure repositories.** Instead, they depend on repository ports (interfaces) defined in the domain layer.
+
+**Why:**
+- Maintains proper dependency direction (application → domain, not application → infrastructure)
+- Enables easy testing (mock the port interface)
+- Allows swapping implementations (e.g., in-memory repository for tests)
+- Follows Dependency Inversion Principle
+
+**Pattern:**
+
+1. **Define repository port in domain layer:**
+   ```typescript
+   // domain/ports/product-repository.port.ts
+   export interface ProductRepositoryPort {
+     findById(id: string): Promise<Product | null>;
+     save(product: Product): Promise<Product>;
+     // ... only methods needed by application services
+   }
+   ```
+
+2. **Implement port in infrastructure layer:**
+   ```typescript
+   // infrastructure/persistence/repositories/product.repository.ts
+   @Injectable()
+   export class ProductRepository implements ProductRepositoryPort {
+     // Implementation using TypeORM
+   }
+   ```
+
+3. **Inject port (not concrete class) in application service:**
+   ```typescript
+   // application/services/product.service.ts
+   @Injectable()
+   export class ProductService {
+     constructor(
+       @Inject(PRODUCT_REPOSITORY_TOKEN)
+       private readonly repository: ProductRepositoryPort, // ✅ Port interface
+     ) {}
+   }
+   ```
+
+4. **Bind in module with token:**
+   ```typescript
+   // product.module.ts
+   export const PRODUCT_REPOSITORY_TOKEN = Symbol('ProductRepositoryPort');
+   
+   providers: [
+     ProductRepository,
+     {
+       provide: PRODUCT_REPOSITORY_TOKEN,
+       useExisting: ProductRepository,
+     },
+   ]
+   ```
+
+**ORM ↔ Domain Mapping:**
+
+- **Mapping lives in infrastructure persistence layer** (repository or dedicated mapper)
+- Application services work **only with domain entities**, never ORM entities
+- Mapping methods (`toDomain`, `toOrm`) are **private** in repository (or extracted to mapper if reused)
+
+✅ **Good:**
+```typescript
+// Repository handles mapping internally
+@Injectable()
+export class ProductRepository implements ProductRepositoryPort {
+  async findById(id: string): Promise<Product | null> {
+    const entity = await this.ormRepository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null; // Private mapping method
+  }
+  
+  private toDomain(entity: ProductOrmEntity): Product { ... }
+  private toOrm(product: Product): ProductOrmEntity { ... }
+}
+```
+
+❌ **Bad:**
+```typescript
+// Service imports infrastructure repository directly
+import { ProductRepository } from '../infrastructure/persistence/repositories/product.repository';
+
+// Service works with ORM entities
+const ormEntity = await this.repository.findOrmEntity(id); // ❌
+```
+
+**Repository Error Handling:**
+
+- **Repositories must throw domain errors, not infrastructure errors**
+- Catch infrastructure-specific errors (TypeORM, database) and convert to domain exceptions
+- Application services handle domain errors, not infrastructure errors
+
+✅ **Good:**
+```typescript
+// Repository throws domain error
+@Injectable()
+export class ProductRepository implements ProductRepositoryPort {
+  async insertMapping(mapping: IdentifierMapping): Promise<IdentifierMapping> {
+    try {
+      const saved = await this.ormRepository.save(this.toOrm(mapping));
+      return this.toDomain(saved);
+    } catch (error) {
+      // Convert infrastructure error to domain error
+      if (error instanceof QueryFailedError && error.message.includes('duplicate key')) {
+        throw new DuplicateIdentifierMappingError(...); // ✅ Domain error
+      }
+      throw error;
+    }
+  }
+}
+
+// Service handles domain error
+@Injectable()
+export class ProductService {
+  async createMapping(...) {
+    try {
+      await this.repository.insertMapping(mapping);
+    } catch (error) {
+      if (error instanceof DuplicateIdentifierMappingError) {
+        // Handle domain error - no infrastructure awareness
+      }
+    }
+  }
+}
+```
+
+❌ **Bad:**
+```typescript
+// Repository port exposes infrastructure-specific error checking
+export interface ProductRepositoryPort {
+  insertMapping(...): Promise<...>;
+  isUniqueViolationError(error: unknown): boolean; // ❌ Infrastructure-specific
+}
+
+// Service depends on infrastructure error types
+catch (error) {
+  if (error instanceof QueryFailedError) { // ❌ Infrastructure awareness
+    // ...
+  }
+}
+```
 
 ---
 

@@ -25,7 +25,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         entities: [__dirname + '/../**/*.orm-entity{.ts,.js}'],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') === 'development',
-        migrations: [__dirname + '/../../migrations/**/*{.ts,.js}'],
+        migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
         migrationsRun: false,
       }),
       inject: [ConfigService],

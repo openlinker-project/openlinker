@@ -17,13 +17,14 @@ export interface MappingContext {
 export interface IdentifierMappingRequest {
   entityType: EntityType;
   externalId: string;
-  platformId: string;
+  connectionId: string;
   context?: MappingContext;
 }
 
 export interface ExternalIdMapping {
   externalId: string;
-  platformId: string;
+  platformType: string;
+  connectionId: string;
   entityType: string;
 }
 
