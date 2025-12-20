@@ -2,111 +2,436 @@
  * Identifier Mapping Service Unit Tests
  *
  * Unit tests for IdentifierMappingService, verifying identifier mapping
- * operations including get-or-create semantics and bidirectional mapping.
+ * operations including get-or-create semantics, Connection resolution,
+ * concurrency safety, and bidirectional mapping.
  *
  * @module libs/core/src/identifier-mapping/application/services
  */
+import { Test, TestingModule } from '@nestjs/testing';
 import { IdentifierMappingService } from './identifier-mapping.service';
-import { IdentifierMappingRepository } from '@openlinker/core/identifier-mapping/infrastructure/persistence/repositories/identifier-mapping.repository';
+import { IdentifierMappingRepositoryPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping-repository.port';
+import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
+import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
+import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
 
 describe('IdentifierMappingService', () => {
   let service: IdentifierMappingService;
-  let repository: jest.Mocked<IdentifierMappingRepository>;
+  let repository: jest.Mocked<IdentifierMappingRepositoryPort>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const mockRepository = {
-      findByExternalId: jest.fn(),
+      findByExternalKey: jest.fn(),
       findByInternalId: jest.fn(),
       create: jest.fn(),
-    } as unknown as jest.Mocked<IdentifierMappingRepository>;
+      insertMapping: jest.fn(),
+    } as unknown as jest.Mocked<IdentifierMappingRepositoryPort>;
 
-    service = new IdentifierMappingService(mockRepository);
-    repository = mockRepository;
+    const mockConnectionPort = {
+      get: jest.fn(),
+    } as unknown as jest.Mocked<ConnectionPort>;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IdentifierMappingService,
+        {
+          provide: IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
+          useValue: mockRepository,
+        },
+        {
+          provide: CONNECTION_PORT_TOKEN,
+          useValue: mockConnectionPort,
+        },
+      ],
+    }).compile();
+
+    service = module.get<IdentifierMappingService>(IdentifierMappingService);
+    repository = module.get(IDENTIFIER_MAPPING_REPOSITORY_TOKEN);
+    connectionPort = module.get(CONNECTION_PORT_TOKEN);
   });
 
   describe('getOrCreateInternalId', () => {
+    const connectionId = 'connection-123';
+    const platformType = 'prestashop';
+    const connection = new Connection(
+      connectionId,
+      platformType,
+      'Test Connection',
+      'active',
+      {},
+      'credentials-ref',
+      new Date(),
+      new Date(),
+    );
+
+    beforeEach(() => {
+      connectionPort.get.mockResolvedValue(connection);
+    });
+
     it('should return existing internal ID if mapping exists', async () => {
       const existingMapping = new IdentifierMapping(
         'id-1',
         'Product',
         'ol_product_abc123',
         'external-123',
-        'prestashop',
+        platformType,
+        connectionId,
         null,
         new Date(),
         new Date(),
       );
 
-      repository.findByExternalId.mockResolvedValue(existingMapping);
+      repository.findByExternalKey.mockResolvedValue(existingMapping);
 
       const result = await service.getOrCreateInternalId(
         'Product',
         'external-123',
-        'prestashop',
+        connectionId,
       );
 
       expect(result).toBe('ol_product_abc123');
-      expect(repository.findByExternalId).toHaveBeenCalledWith(
+      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
+      expect(repository.findByExternalKey).toHaveBeenCalledWith(
         'Product',
+        platformType,
+        connectionId,
         'external-123',
-        'prestashop',
       );
-      expect(repository.create).not.toHaveBeenCalled();
+      expect(repository.insertMapping).not.toHaveBeenCalled();
     });
 
     it('should create new mapping if it does not exist', async () => {
-      repository.findByExternalId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(
+      repository.findByExternalKey.mockResolvedValue(null);
+      const newMapping = new IdentifierMapping(
+        'id-1',
+        'Product',
+        'ol_product_new123',
+        'external-123',
+        platformType,
+        connectionId,
+        null,
+        new Date(),
+        new Date(),
+      );
+      repository.insertMapping.mockResolvedValue(newMapping);
+
+      const result = await service.getOrCreateInternalId(
+        'Product',
+        'external-123',
+        connectionId,
+      );
+
+      expect(result).toMatch(/^ol_product_/);
+      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
+      expect(repository.insertMapping).toHaveBeenCalled();
+    });
+
+    it('should handle concurrency: return existing mapping on unique violation', async () => {
+      repository.findByExternalKey
+        .mockResolvedValueOnce(null) // First call: no mapping exists
+        .mockResolvedValueOnce({
+          // Second call: mapping was created by concurrent request
+          id: 'id-1',
+          entityType: 'Product',
+          internalId: 'ol_product_concurrent123',
+          externalId: 'external-123',
+          platformType,
+          connectionId,
+          context: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as IdentifierMapping);
+
+      const duplicateError = new DuplicateIdentifierMappingError(
+        'Product',
+        'external-123',
+        platformType,
+        connectionId,
+      );
+      repository.insertMapping.mockRejectedValue(duplicateError);
+
+      const result = await service.getOrCreateInternalId(
+        'Product',
+        'external-123',
+        connectionId,
+      );
+
+      expect(result).toBe('ol_product_concurrent123');
+      expect(repository.insertMapping).toHaveBeenCalled();
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(2);
+    });
+
+    it('should resolve platformType from Connection', async () => {
+      repository.findByExternalKey.mockResolvedValue(null);
+      repository.insertMapping.mockResolvedValue(
         new IdentifierMapping(
           'id-1',
           'Product',
           'ol_product_new123',
           'external-123',
-          'prestashop',
+          platformType,
+          connectionId,
           null,
           new Date(),
           new Date(),
         ),
       );
 
-      const result = await service.getOrCreateInternalId(
-        'Product',
-        'external-123',
-        'prestashop',
-      );
+      await service.getOrCreateInternalId('Product', 'external-123', connectionId);
 
-      expect(result).toMatch(/^ol_product_/);
-      expect(repository.create).toHaveBeenCalled();
+      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
+      expect(repository.findByExternalKey).toHaveBeenCalledWith(
+        'Product',
+        platformType,
+        connectionId,
+        'external-123',
+      );
     });
   });
 
   describe('getInternalId', () => {
+    const connectionId = 'connection-123';
+    const platformType = 'prestashop';
+    const connection = new Connection(
+      connectionId,
+      platformType,
+      'Test Connection',
+      'active',
+      {},
+      'credentials-ref',
+      new Date(),
+      new Date(),
+    );
+
+    beforeEach(() => {
+      connectionPort.get.mockResolvedValue(connection);
+    });
+
     it('should return internal ID if mapping exists', async () => {
       const mapping = new IdentifierMapping(
         'id-1',
         'Product',
         'ol_product_abc123',
         'external-123',
-        'prestashop',
+        platformType,
+        connectionId,
         null,
         new Date(),
         new Date(),
       );
 
-      repository.findByExternalId.mockResolvedValue(mapping);
+      repository.findByExternalKey.mockResolvedValue(mapping);
 
-      const result = await service.getInternalId('Product', 'external-123', 'prestashop');
+      const result = await service.getInternalId('Product', 'external-123', connectionId);
 
       expect(result).toBe('ol_product_abc123');
+      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
     });
 
     it('should return null if mapping does not exist', async () => {
-      repository.findByExternalId.mockResolvedValue(null);
+      repository.findByExternalKey.mockResolvedValue(null);
 
-      const result = await service.getInternalId('Product', 'external-123', 'prestashop');
+      const result = await service.getInternalId('Product', 'external-123', connectionId);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getExternalIds', () => {
+    it('should return all external IDs mapped to internal ID', async () => {
+      const mappings = [
+        new IdentifierMapping(
+          'id-1',
+          'Product',
+          'ol_product_abc123',
+          'external-1',
+          'prestashop',
+          'connection-1',
+          null,
+          new Date(),
+          new Date(),
+        ),
+        new IdentifierMapping(
+          'id-2',
+          'Product',
+          'ol_product_abc123',
+          'external-2',
+          'allegro',
+          'connection-2',
+          null,
+          new Date(),
+          new Date(),
+        ),
+      ];
+
+      repository.findByInternalId.mockResolvedValue(mappings);
+
+      const result = await service.getExternalIds('Product', 'ol_product_abc123');
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        externalId: 'external-1',
+        platformType: 'prestashop',
+        connectionId: 'connection-1',
+        entityType: 'Product',
+      });
+      expect(result[1]).toEqual({
+        externalId: 'external-2',
+        platformType: 'allegro',
+        connectionId: 'connection-2',
+        entityType: 'Product',
+      });
+    });
+  });
+
+  describe('createMapping', () => {
+    const connectionId = 'connection-123';
+    const platformType = 'prestashop';
+    const connection = new Connection(
+      connectionId,
+      platformType,
+      'Test Connection',
+      'active',
+      {},
+      'credentials-ref',
+      new Date(),
+      new Date(),
+    );
+
+    beforeEach(() => {
+      connectionPort.get.mockResolvedValue(connection);
+    });
+
+    it('should create mapping when it does not exist', async () => {
+      repository.findByExternalKey.mockResolvedValue(null);
+      const newMapping = new IdentifierMapping(
+        'id-1',
+        'Product',
+        'ol_product_abc123',
+        'external-123',
+        platformType,
+        connectionId,
+        null,
+        new Date(),
+        new Date(),
+      );
+      repository.create.mockResolvedValue(newMapping);
+
+      await service.createMapping(
+        'Product',
+        'external-123',
+        connectionId,
+        'ol_product_abc123',
+      );
+
+      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
+      expect(repository.create).toHaveBeenCalled();
+    });
+
+    it('should throw error if mapping already exists', async () => {
+      const existingMapping = new IdentifierMapping(
+        'id-1',
+        'Product',
+        'ol_product_existing',
+        'external-123',
+        platformType,
+        connectionId,
+        null,
+        new Date(),
+        new Date(),
+      );
+      repository.findByExternalKey.mockResolvedValue(existingMapping);
+
+      await expect(
+        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new'),
+      ).rejects.toThrow('Mapping already exists');
+    });
+  });
+
+  describe('batchGetOrCreateInternalIds', () => {
+    it('should batch process multiple requests and return composite key map', async () => {
+      const connection1 = new Connection(
+        'connection-1',
+        'prestashop',
+        'Connection 1',
+        'active',
+        {},
+        'credentials-ref',
+        new Date(),
+        new Date(),
+      );
+      const connection2 = new Connection(
+        'connection-2',
+        'allegro',
+        'Connection 2',
+        'active',
+        {},
+        'credentials-ref',
+        new Date(),
+        new Date(),
+      );
+
+      connectionPort.get
+        .mockResolvedValueOnce(connection1)
+        .mockResolvedValueOnce(connection2)
+        .mockResolvedValueOnce(connection1)
+        .mockResolvedValueOnce(connection2);
+
+      repository.findByExternalKey.mockResolvedValue(null);
+      repository.insertMapping
+        .mockResolvedValueOnce(
+          new IdentifierMapping(
+            'id-1',
+            'Product',
+            'ol_product_1',
+            'external-1',
+            'prestashop',
+            'connection-1',
+            null,
+            new Date(),
+            new Date(),
+          ),
+        )
+        .mockResolvedValueOnce(
+          new IdentifierMapping(
+            'id-2',
+            'Product',
+            'ol_product_2',
+            'external-2',
+            'allegro',
+            'connection-2',
+            null,
+            new Date(),
+            new Date(),
+          ),
+        );
+
+      const requests = [
+        {
+          entityType: 'Product' as const,
+          externalId: 'external-1',
+          connectionId: 'connection-1',
+        },
+        {
+          entityType: 'Product' as const,
+          externalId: 'external-2',
+          connectionId: 'connection-2',
+        },
+      ];
+
+      const result = await service.batchGetOrCreateInternalIds(requests);
+
+      expect(result.size).toBe(2);
+      // Verify that internal IDs are generated and match the expected pattern
+      const id1 = result.get('external-1:connection-1');
+      const id2 = result.get('external-2:connection-2');
+      expect(id1).toBeDefined();
+      expect(id2).toBeDefined();
+      expect(id1).toMatch(/^ol_product_[a-f0-9]{32}$/);
+      expect(id2).toMatch(/^ol_product_[a-f0-9]{32}$/);
+      expect(id1).not.toBe(id2); // Ensure they are different
     });
   });
 });

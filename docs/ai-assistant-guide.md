@@ -18,6 +18,9 @@ Before generating or modifying code, always consult:
 2. **[Engineering Standards](./engineering-standards.md)**  
    Coding conventions, naming, error handling, testing, and quality rules.
 
+3. **[Database Migrations](./migrations.md)**  
+   Database migration workflow, generation, and execution guidelines.
+
 These documents take precedence over any AI-generated suggestions.
 
 ---

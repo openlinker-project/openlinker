@@ -5,6 +5,10 @@
  * Stores mappings between external platform identifiers and internal OpenLinker
  * identifiers. Includes indexes for efficient lookups by external ID and internal ID.
  *
+ * The entity includes both `platformType` (denormalized for performance) and
+ * `connectionId` (references connections.id) to support multiple integrations
+ * of the same platform type.
+ *
  * @module libs/core/src/identifier-mapping/infrastructure/persistence/entities
  */
 import {
@@ -17,8 +21,10 @@ import {
 } from 'typeorm';
 
 @Entity('identifier_mappings')
-@Index(['entityType', 'externalId', 'platformId'], { unique: true })
-@Index(['entityType', 'internalId'])
+@Index(['entityType', 'platformType', 'connectionId', 'externalId'], {
+  unique: true,
+})
+@Index(['entityType', 'internalId'], { unique: true })
 export class IdentifierMappingOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -33,7 +39,10 @@ export class IdentifierMappingOrmEntity {
   externalId!: string;
 
   @Column()
-  platformId!: string;
+  platformType!: string;
+
+  @Column('uuid')
+  connectionId!: string;
 
   @Column({ type: 'jsonb', nullable: true })
   context!: Record<string, unknown> | null;

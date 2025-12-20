@@ -557,6 +557,201 @@ export class InventorySyncService {
 }
 ```
 
+### Repository Ports Pattern
+
+**Application services must never depend on concrete infrastructure repositories.** They must depend on repository ports (interfaces) defined in the domain layer.
+
+**Why:**
+- Maintains proper dependency direction (application → domain, not application → infrastructure)
+- Enables easy testing (mock the port interface)
+- Allows swapping implementations (e.g., in-memory repository for tests)
+- Follows Dependency Inversion Principle
+
+**Pattern:**
+
+1. **Define repository port in domain layer:**
+   ```typescript
+   // domain/ports/product-repository.port.ts
+   import { Product } from '../entities/product.entity';
+   
+   export interface ProductRepositoryPort {
+     findById(id: string): Promise<Product | null>;
+     save(product: Product): Promise<Product>;
+     // ... only methods needed by application services
+     // Do NOT mirror TypeORM Repository<T> API - keep it minimal
+   }
+   ```
+
+2. **Implement port in infrastructure layer:**
+   ```typescript
+   // infrastructure/persistence/repositories/product.repository.ts
+   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   
+   @Injectable()
+   export class ProductRepository implements ProductRepositoryPort {
+     constructor(
+       @InjectRepository(ProductOrmEntity)
+       private readonly ormRepository: Repository<ProductOrmEntity>,
+     ) {}
+     
+     async findById(id: string): Promise<Product | null> {
+       const entity = await this.ormRepository.findOne({ where: { id } });
+       return entity ? this.toDomain(entity) : null;
+     }
+     
+     // Private mapping methods
+     private toDomain(entity: ProductOrmEntity): Product { ... }
+     private toOrm(product: Product): ProductOrmEntity { ... }
+   }
+   ```
+
+3. **Inject port (not concrete class) in application service:**
+   ```typescript
+   // application/services/product.service.ts
+   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   
+   @Injectable()
+   export class ProductService {
+     constructor(
+       @Inject(PRODUCT_REPOSITORY_TOKEN)
+       private readonly repository: ProductRepositoryPort, // ✅ Port interface
+     ) {}
+   }
+   ```
+
+4. **Bind in module with symbol token:**
+   ```typescript
+   // product.module.ts
+   export const PRODUCT_REPOSITORY_TOKEN = Symbol('ProductRepositoryPort');
+   
+   @Module({
+     providers: [
+       ProductRepository,
+       {
+         provide: PRODUCT_REPOSITORY_TOKEN,
+         useExisting: ProductRepository,
+       },
+     ],
+   })
+   ```
+   
+   **Why Symbol tokens?**
+   - **Type-safe**: TypeScript can track token usage
+   - **Refactor-safe**: Renaming Symbol constant updates all usages
+   - **Collision-resistant**: Symbols are unique, preventing accidental token collisions
+   - **Exported**: Token is exported from module for use in tests and other modules
+   
+   ❌ **Avoid string tokens:**
+   ```typescript
+   // ❌ Fragile: string literals can collide and are hard to refactor
+   @Inject('ProductRepositoryPort')
+   ```
+
+✅ **Good:**
+```typescript
+// Service depends on port interface
+import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+
+@Injectable()
+export class ProductService {
+  constructor(
+    @Inject(PRODUCT_REPOSITORY_TOKEN)
+    private readonly repository: ProductRepositoryPort, // ✅ Port
+  ) {}
+}
+```
+
+❌ **Bad:**
+```typescript
+// Service imports concrete infrastructure repository
+import { ProductRepository } from '../infrastructure/persistence/repositories/product.repository';
+
+@Injectable()
+export class ProductService {
+  constructor(
+    private readonly repository: ProductRepository, // ❌ Concrete class
+  ) {}
+}
+```
+
+### ORM ↔ Domain Mapping
+
+**Mapping between ORM entities and domain entities must live in the infrastructure persistence layer.** Application services work only with domain entities, never ORM entities.
+
+**Rules:**
+1. **Mapping is private in repository** (default approach)
+2. **Extract to mapper module** only if mapping is reused in multiple places
+3. **Application services never touch ORM entities**
+
+**Option A (Default): Keep mapping private in repository**
+
+```typescript
+// infrastructure/persistence/repositories/product.repository.ts
+@Injectable()
+export class ProductRepository implements ProductRepositoryPort {
+  async findById(id: string): Promise<Product | null> {
+    const entity = await this.ormRepository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null;
+  }
+  
+  // Private mapping methods
+  private toDomain(entity: ProductOrmEntity): Product {
+    return new Product(
+      entity.id,
+      entity.name,
+      entity.sku,
+      // ... map all fields
+    );
+  }
+  
+  private toOrm(product: Product): ProductOrmEntity {
+    const entity = new ProductOrmEntity();
+    entity.id = product.id;
+    entity.name = product.name;
+    // ... map all fields
+    return entity;
+  }
+}
+```
+
+**Option B (Only if reused): Extract to mapper module**
+
+```typescript
+// infrastructure/persistence/mappers/product.mapper.ts
+export const ProductMapper = {
+  toDomain(entity: ProductOrmEntity): Product {
+    return new Product(
+      entity.id,
+      entity.name,
+      entity.sku,
+    );
+  },
+  
+  toOrm(product: Product): ProductOrmEntity {
+    const entity = new ProductOrmEntity();
+    entity.id = product.id;
+    entity.name = product.name;
+    return entity;
+  },
+};
+```
+
+✅ **Good:**
+```typescript
+// Repository handles mapping internally
+async findById(id: string): Promise<Product | null> {
+  const entity = await this.ormRepository.findOne({ where: { id } });
+  return entity ? this.toDomain(entity) : null; // Returns domain entity
+}
+```
+
+❌ **Bad:**
+```typescript
+// Service works with ORM entities
+const ormEntity = await this.repository.findOrmEntity(id); // ❌
+const product = this.mapToDomain(ormEntity); // ❌ Mapping in service
+```
+
 ### Domain Layer Independence
 
 **Domain layer must NOT depend on NestJS or any framework code.**
@@ -589,18 +784,65 @@ export class Product {
 
 **Use custom exceptions** for domain errors, standard exceptions for infrastructure errors.
 
+**Domain exceptions** should be defined in `domain/exceptions/` directory:
+
 ```typescript
 // domain/exceptions/product-not-found.exception.ts
 export class ProductNotFoundException extends Error {
   constructor(productId: string) {
     super(`Product not found: ${productId}`);
     this.name = 'ProductNotFoundException';
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
 // Usage
 if (!product) {
   throw new ProductNotFoundException(productId);
+}
+```
+
+**Repository error handling pattern:**
+
+Repositories must **convert infrastructure errors to domain errors**. Never expose infrastructure-specific error types (TypeORM, database) through ports.
+
+✅ **Good:**
+```typescript
+// Repository catches infrastructure error and throws domain error
+@Injectable()
+export class ProductRepository implements ProductRepositoryPort {
+  async insertMapping(mapping: IdentifierMapping): Promise<IdentifierMapping> {
+    try {
+      const saved = await this.ormRepository.save(this.toOrm(mapping));
+      return this.toDomain(saved);
+    } catch (error) {
+      // Convert infrastructure error to domain error
+      if (error instanceof QueryFailedError && error.message.includes('duplicate key')) {
+        throw new DuplicateIdentifierMappingError(
+          mapping.entityType,
+          mapping.externalId,
+          mapping.platformType,
+          mapping.connectionId,
+        );
+      }
+      throw error;
+    }
+  }
+}
+```
+
+❌ **Bad:**
+```typescript
+// Repository port exposes infrastructure-specific error checking
+export interface ProductRepositoryPort {
+  isUniqueViolationError(error: unknown): boolean; // ❌ Infrastructure-specific
+}
+
+// Repository throws infrastructure error
+catch (error) {
+  if (error instanceof QueryFailedError) {
+    throw error; // ❌ Infrastructure error leaks to application
+  }
 }
 ```
 
@@ -618,6 +860,30 @@ export class ProductService {
       }
       this.logger.error('Failed to get product', error);
       throw new InternalServerErrorException('Failed to retrieve product');
+    }
+  }
+}
+```
+
+**Error handling in concurrent operations:**
+
+For concurrency-safe operations (e.g., get-or-create), catch domain errors and retry:
+
+```typescript
+@Injectable()
+export class IdentifierMappingService {
+  async getOrCreateInternalId(...): Promise<string> {
+    try {
+      await this.repository.insertMapping(mapping);
+      return internalId;
+    } catch (error) {
+      // Handle domain error (not infrastructure error)
+      if (error instanceof DuplicateIdentifierMappingError) {
+        // Retry: select and return winner
+        const winner = await this.repository.findByExternalKey(...);
+        return winner.internalId;
+      }
+      throw error;
     }
   }
 }
@@ -742,6 +1008,93 @@ function processData(data: unknown): void {
   }
 }
 ```
+
+### Import Aliases
+
+**Use aliases for cross-boundary imports, relative imports for local/neighbor files.**
+
+**Available aliases** (configured in `tsconfig.base.json`):
+- `@openlinker/core/*` - Core library modules
+- `@openlinker/shared/*` - Shared utilities
+- `@openlinker/api/*` - API application modules
+
+**Rules**:
+
+1. **Local/neighbor files**: Use relative imports (`./`, `../`)
+   - Same folder / same feature slice
+   - Helper modules right next to the file
+   - Short paths (up to `../..`)
+
+2. **Cross-boundary imports**: Use aliases (`@openlinker/core/*`, `@openlinker/shared/*`)
+   - Across packages (monorepo): `apps/api` → `libs/core`, `libs/shared` → `libs/core`
+   - Across layers within a package: `application` → `domain`, `infrastructure` → `domain`
+   - Any time you'd write `../../../` or deeper
+
+3. **External packages**: Use package names directly (`@nestjs/common`, `typeorm`)
+
+4. **Ban deep relative imports**: Avoid `../../../` or deeper (usually indicates boundary crossing)
+
+✅ **Good**:
+```typescript
+// Local files - use relative imports
+import { IIdentifierMappingService } from './identifier-mapping.service.interface';
+import { IdentifierMappingDto } from '../dto/identifier-mapping.dto';
+import { mapIdentifier } from './mappers/identifier.mapper';
+
+// Cross-boundary - use aliases
+// application → domain (cross-layer)
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
+import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+
+// Cross-package - use aliases
+import { Logger } from '@openlinker/shared/logging';
+import { Product } from '@openlinker/core/products/domain/entities/product.entity';
+
+// External packages - use package names
+import { Injectable } from '@nestjs/common';
+import { Repository } from 'typeorm';
+```
+
+❌ **Bad**:
+```typescript
+// Don't use aliases for local files
+import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping/application/services/identifier-mapping.service.interface';
+
+// Don't use deep relative imports (indicates boundary crossing)
+import { IdentifierMappingPort } from '../../../domain/ports/identifier-mapping.port';
+
+// Don't use relative imports for cross-package
+import { Logger } from '../../../shared/logging';
+```
+
+**Why this approach**:
+- **Local imports**: Keeps code readable and scannable, refactors safely within feature boundaries
+- **Cross-boundary aliases**: Provides stability and architectural clarity, prevents breakage during refactors
+- **Enforceable**: Clear rules that prevent "import style drift"
+
+**Import Order**:
+1. External packages (NestJS, TypeORM, etc.)
+2. Cross-boundary imports (using aliases)
+3. Local imports (relative paths)
+
+```typescript
+// 1. External packages
+import { Injectable } from '@nestjs/common';
+import { Repository } from 'typeorm';
+
+// 2. Cross-boundary imports (aliases)
+import { Logger } from '@openlinker/shared/logging';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
+
+// 3. Local imports (relative)
+import { IIdentifierMappingService } from './identifier-mapping.service.interface';
+import { IdentifierMappingDto } from '../dto/identifier-mapping.dto';
+```
+
+**ESLint Recommendation**:
+- Allow relative imports up to `../..`
+- Require aliases for `../../../` or deeper
+- Require aliases for cross-package imports
 
 ---
 
@@ -978,4 +1331,5 @@ Fixes #456
 
 - [Architecture Overview](./architecture-overview.md) - System architecture
 - [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants
+- [Database Migrations](./migrations.md) - Database migration workflow and best practices
 
