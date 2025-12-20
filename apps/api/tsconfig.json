@@ -25,9 +25,14 @@
     "alwaysStrict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitReturns": true
+    "noImplicitReturns": true,
+    "paths": {
+      "@openlinker/api/*": ["./src/*"],
+      "@openlinker/core/*": ["../../libs/core/src/*"],
+      "@openlinker/shared/*": ["../../libs/shared/src/*"]
+    }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "exclude": ["node_modules", "dist", "test", "../../libs/**/*"]
 }
 

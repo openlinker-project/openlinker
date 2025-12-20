@@ -26,7 +26,10 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "paths": {
+      "@openlinker/api/*": ["apps/api/src/*"],
+      "@openlinker/core": ["libs/core/src/index.ts"],
       "@openlinker/core/*": ["libs/core/src/*"],
+      "@openlinker/shared": ["libs/shared/src/index.ts"],
       "@openlinker/shared/*": ["libs/shared/src/*"]
     }
   }

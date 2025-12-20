@@ -12,8 +12,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-entity';
-import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
-import { EntityType, MappingContext } from '../../../domain/types/identifier-mapping.types';
+import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
+import { EntityType, MappingContext } from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
 
 @Injectable()
 export class IdentifierMappingRepository {
@@ -53,7 +53,7 @@ export class IdentifierMappingRepository {
       },
     });
 
-    return entities.map((entity) => this.toDomain(entity));
+    return entities.map((entity: IdentifierMappingOrmEntity) => this.toDomain(entity));
   }
 
   async create(mapping: IdentifierMapping): Promise<IdentifierMapping> {

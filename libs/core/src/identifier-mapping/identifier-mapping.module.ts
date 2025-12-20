@@ -12,22 +12,39 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingOrmEntity } from './infrastructure/persistence/entities/identifier-mapping.orm-entity';
 import { IdentifierMappingRepository } from './infrastructure/persistence/repositories/identifier-mapping.repository';
 import { IdentifierMappingService } from './application/services/identifier-mapping.service';
-import { IIdentifierMappingService } from './application/services/identifier-mapping.service.interface';
+
+// Token for dependency injection (interfaces can't be used as values)
+export const IDENTIFIER_MAPPING_SERVICE_TOKEN = Symbol('IIdentifierMappingService');
+export const IDENTIFIER_MAPPING_PORT_TOKEN = Symbol('IdentifierMappingPort');
 
 @Module({
   imports: [TypeOrmModule.forFeature([IdentifierMappingOrmEntity])],
   providers: [
     IdentifierMappingRepository,
     {
-      provide: IIdentifierMappingService,
+      provide: IDENTIFIER_MAPPING_SERVICE_TOKEN,
       useClass: IdentifierMappingService,
     },
     {
+      provide: IDENTIFIER_MAPPING_PORT_TOKEN,
+      useExisting: IDENTIFIER_MAPPING_SERVICE_TOKEN,
+    },
+    // Also provide as string tokens for convenience
+    {
+      provide: 'IIdentifierMappingService',
+      useExisting: IDENTIFIER_MAPPING_SERVICE_TOKEN,
+    },
+    {
       provide: 'IdentifierMappingPort',
-      useExisting: IIdentifierMappingService,
+      useExisting: IDENTIFIER_MAPPING_SERVICE_TOKEN,
     },
   ],
-  exports: [IIdentifierMappingService, 'IdentifierMappingPort'],
+  exports: [
+    IDENTIFIER_MAPPING_SERVICE_TOKEN,
+    IDENTIFIER_MAPPING_PORT_TOKEN,
+    'IIdentifierMappingService',
+    'IdentifierMappingPort',
+  ],
 })
 export class IdentifierMappingModule {}
 

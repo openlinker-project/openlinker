@@ -15,14 +15,15 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';
-import { IdentifierMappingPort } from '../../domain/ports/identifier-mapping.port';
-import { IdentifierMappingRepository } from '../../infrastructure/persistence/repositories/identifier-mapping.repository';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
+import { IdentifierMappingRepository } from '@openlinker/core/identifier-mapping/infrastructure/persistence/repositories/identifier-mapping.repository';
+import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
 import {
   EntityType,
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
-} from '../../domain/types/identifier-mapping.types';
+} from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

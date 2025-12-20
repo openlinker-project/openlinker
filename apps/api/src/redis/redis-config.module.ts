@@ -7,25 +7,33 @@
  *
  * @module apps/api/src/redis
  */
-import { Module } from '@nestjs/common';
-import { RedisModule } from '@nestjs/redis';
+import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { createClient, RedisClientType } from 'redis';
 
+@Global()
 @Module({
-  imports: [
-    RedisModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        config: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
+  imports: [ConfigModule],
+  providers: [
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
+        const client = createClient({
+          socket: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: configService.get<number>('REDIS_PORT', 6379),
+          },
           password: configService.get<string>('REDIS_PASSWORD'),
-          db: configService.get<number>('REDIS_DB', 0),
-        },
-      }),
+          database: configService.get<number>('REDIS_DB', 0),
+        });
+
+        await client.connect();
+        return client as RedisClientType;
+      },
       inject: [ConfigService],
-    }),
+    },
   ],
+  exports: ['REDIS_CLIENT'],
 })
 export class RedisConfigModule {}
 

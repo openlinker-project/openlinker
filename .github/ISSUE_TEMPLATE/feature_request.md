@@ -51,3 +51,4 @@ How does this feature fit into the hexagonal architecture?
 - [ ] Criterion 2
 - [ ] Criterion 3
 
+

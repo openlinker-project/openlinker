@@ -14,7 +14,7 @@ export class AuthService {
   constructor(private readonly jwtService: JwtService) {}
 
   // TODO: Implement authentication logic
-  async validateUser(username: string, password: string): Promise<unknown> {
+  async validateUser(_username: string, _password: string): Promise<unknown> {
     // Placeholder implementation
     return null;
   }
@@ -26,4 +26,3 @@ export class AuthService {
     };
   }
 }
-

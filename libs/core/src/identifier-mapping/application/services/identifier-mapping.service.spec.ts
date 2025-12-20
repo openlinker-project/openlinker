@@ -7,8 +7,8 @@
  * @module libs/core/src/identifier-mapping/application/services
  */
 import { IdentifierMappingService } from './identifier-mapping.service';
-import { IdentifierMappingRepository } from '../../infrastructure/persistence/repositories/identifier-mapping.repository';
-import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
+import { IdentifierMappingRepository } from '@openlinker/core/identifier-mapping/infrastructure/persistence/repositories/identifier-mapping.repository';
+import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
 
 describe('IdentifierMappingService', () => {
   let service: IdentifierMappingService;

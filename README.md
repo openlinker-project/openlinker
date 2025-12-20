@@ -25,7 +25,7 @@ OpenLinker is designed to synchronize and orchestrate e-commerce operations acro
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/openlinker.git
+   git clone https://github.com/SilkSoftwareHouse/openlinker.git
    cd openlinker
    ```
 
