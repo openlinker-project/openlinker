@@ -1,0 +1,20 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+
+jobs:
+  # Placeholder for future deployment
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    if: false # Disabled until deployment is configured
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deployment placeholder
+        run: echo 'Deployment configuration coming soon'
+
+

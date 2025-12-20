@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# Production
+dist/
+build/
+*.tsbuildinfo
+
+# Compiled JavaScript files in source directories (should only be in dist/)
+libs/**/*.js
+libs/**/*.js.map
+!libs/**/dist/**/*.js
+!libs/**/dist/**/*.js.map
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Husky
+.husky/_
+
+# Docker
+.dockerignore
+
