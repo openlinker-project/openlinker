@@ -1,7 +1,7 @@
 FROM node:20-alpine AS base
 
 # Install pnpm
-RUN npm install -g pnpm@8
+RUN npm install -g pnpm@9
 
 # Set working directory
 WORKDIR /app
@@ -38,7 +38,7 @@ COPY libs/shared/package.json ./libs/shared/
 
 # Install production dependencies only
 # Skip prepare scripts to avoid husky installation in Docker
-RUN npm install -g pnpm@8 && \
+RUN npm install -g pnpm@9 && \
     pnpm install --prod --ignore-scripts
 
 # Copy built application and dependencies
