@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
-export type EntityType = 'Product' | 'Order' | 'Offer' | 'Inventory' | 'Customer' | string;
+export type EntityType = 'Product' | 'Order' | 'Offer' | 'Inventory' | 'Customer';
 
 export interface MappingContext {
   parentEntityType?: string;

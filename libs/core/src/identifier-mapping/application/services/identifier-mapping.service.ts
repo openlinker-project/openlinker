@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 /**
  * Identifier Mapping Service
  *
@@ -15,7 +16,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
 import { IdentifierMappingRepository } from '@openlinker/core/identifier-mapping/infrastructure/persistence/repositories/identifier-mapping.repository';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
 import {
@@ -146,4 +146,5 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     return `ol_${entityType.toLowerCase()}_${uuid}`;
   }
 }
+/* eslint-enable @typescript-eslint/unbound-method */
 

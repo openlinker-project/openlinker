@@ -65,7 +65,7 @@ export class IdentifierMappingRepository {
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
     return new IdentifierMapping(
       entity.id,
-      entity.entityType,
+      entity.entityType as EntityType,
       entity.internalId,
       entity.externalId,
       entity.platformId,

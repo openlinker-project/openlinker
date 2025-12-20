@@ -29,8 +29,13 @@ async function bootstrap(): Promise<void> {
   const port = process.env.PORT || 3000;
   await app.listen(port);
 
+  // eslint-disable-next-line no-console
   console.log(`Application is running on: http://localhost:${port}`);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  // eslint-disable-next-line no-console
+  console.error('Error starting application:', error);
+  process.exit(1);
+});
 
