@@ -29,6 +29,53 @@ services:
       timeout: 5s
       retries: 5
 
+  mysql:
+    image: mysql:8.4.7
+    container_name: openlinker-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: prestashop
+      MYSQL_USER: prestashop
+      MYSQL_PASSWORD: prestashop
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prestashop:
+    image: prestashop/prestashop:9.0.2-2.0-classic-8.4
+    container_name: openlinker-prestashop
+    environment:
+      PS_DOMAIN: localhost:8080
+      PS_FOLDER_ADMIN: admin
+      PS_COUNTRY: US
+      PS_LANGUAGE: en
+      PS_DB_SERVER: mysql
+      PS_DB_NAME: prestashop
+      PS_DB_USER: prestashop
+      PS_DB_PASSWD: prestashop
+      PS_DB_PREFIX: ps_
+      PS_ENABLE_SSL: 0
+      PS_DEMO_MODE: 1
+    ports:
+      - '8080:80'
+    volumes:
+      - prestashop_data:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'php -r "exit(@file_get_contents(\"http://localhost:80\") ? 0 : 1);"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   api:
     build:
       context: .
@@ -61,4 +108,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  mysql_data:
+  prestashop_data:
 

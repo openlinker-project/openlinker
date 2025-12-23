@@ -42,8 +42,10 @@ OpenLinker is designed to synchronize and orchestrate e-commerce operations acro
 
 4. **Start services with Docker Compose**
    ```bash
-   docker-compose up -d postgres redis
+   pnpm dev:stack:up
    ```
+   
+   This starts PostgreSQL, Redis, MySQL, and PrestaShop. For detailed setup instructions, see [Development Environment Guide](./docs/dev-environment.md).
 
 5. **Start the development server**
    ```bash
@@ -131,23 +133,28 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern. Fo
 - [Architecture Overview](./docs/architecture-overview.md)
 - [Engineering Standards](./docs/engineering-standards.md)
 - [AI Assistant Guide](./docs/ai-assistant-guide.md)
+- [Development Environment](./docs/dev-environment.md)
 
 ## Docker
 
 ### Development
 
-```bash
-# Start all services (PostgreSQL, Redis, API)
-docker-compose up
+The development stack includes PostgreSQL, Redis, MySQL, and PrestaShop. For detailed setup and usage instructions, see [Development Environment Guide](./docs/dev-environment.md).
 
-# Start services in background
-docker-compose up -d
+**Quick commands:**
+
+```bash
+# Start all services (PostgreSQL, Redis, MySQL, PrestaShop)
+pnpm dev:stack:up
 
 # Stop services
-docker-compose down
+pnpm dev:stack:down
 
 # View logs
-docker-compose logs -f api
+pnpm dev:stack:logs
+
+# Check health status
+pnpm dev:health
 ```
 
 ### Production
@@ -181,3 +188,4 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of cond
 - [Architecture Overview](./docs/architecture-overview.md)
 - [Engineering Standards](./docs/engineering-standards.md)
 - [AI Assistant Guide](./docs/ai-assistant-guide.md)
+- [Development Environment](./docs/dev-environment.md)
