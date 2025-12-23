@@ -6,12 +6,22 @@
  *
  * @module apps/api/src
  */
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { AppService } from './app.service';
+import { IDevStackHealthService } from './health/dev-stack-health.service.interface';
+import {
+  InternalHealthResponse,
+  DevStackHealthResponse,
+} from './health/dev-stack-health.types';
+import { DEV_STACK_HEALTH_SERVICE_TOKEN } from './health/health.module';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    @Inject(DEV_STACK_HEALTH_SERVICE_TOKEN)
+    private readonly devStackHealthService: IDevStackHealthService,
+  ) {}
 
   @Get()
   getHello(): string {
@@ -19,8 +29,13 @@ export class AppController {
   }
 
   @Get('health')
-  getHealth(): { status: string } {
-    return { status: 'ok' };
+  async getHealth(): Promise<InternalHealthResponse> {
+    return this.devStackHealthService.checkInternalHealth();
+  }
+
+  @Get('health/dev-stack')
+  async getDevStackHealth(): Promise<DevStackHealthResponse> {
+    return this.devStackHealthService.checkDevStackHealth();
   }
 }
 

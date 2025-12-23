@@ -16,3 +16,5 @@ done
 # Run TypeORM CLI with filtered arguments
 exec node_modules/.bin/typeorm migration:generate -d src/database/data-source.ts "${args[@]}"
 
+
+

@@ -14,6 +14,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { RedisConfigModule } from './redis/redis-config.module';
+import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 
 @Module({
@@ -25,6 +26,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
     ScheduleModule.forRoot(),
     DatabaseModule,
     RedisConfigModule,
+    HealthModule,
     IdentifierMappingModule,
   ],
   controllers: [AppController],
