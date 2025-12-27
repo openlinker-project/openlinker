@@ -13,7 +13,7 @@ import {
   AdapterMetadata,
   AdapterInstance,
   Capability,
-} from '../../domain/types/adapter.types';
+} from '@openlinker/core/integrations/domain/types/adapter.types';
 
 export interface IIntegrationsService {
   /**

@@ -8,7 +8,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { ConnectionRepository } from './connection.repository';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
@@ -94,10 +94,8 @@ describe('ConnectionRepository', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([mockOrmEntity]),
-      };
-      ormRepository.createQueryBuilder.mockReturnValue(
-        queryBuilder as any,
-      );
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
 
       const result = await repository.list();
 
@@ -110,10 +108,8 @@ describe('ConnectionRepository', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([mockOrmEntity]),
-      };
-      ormRepository.createQueryBuilder.mockReturnValue(
-        queryBuilder as any,
-      );
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
 
       const filters: ConnectionFilters = { platformType: 'prestashop' };
       await repository.list(filters);
@@ -128,10 +124,8 @@ describe('ConnectionRepository', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([mockOrmEntity]),
-      };
-      ormRepository.createQueryBuilder.mockReturnValue(
-        queryBuilder as any,
-      );
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
 
       const filters: ConnectionFilters = { status: 'active' };
       await repository.list(filters);
@@ -146,10 +140,8 @@ describe('ConnectionRepository', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([mockOrmEntity]),
-      };
-      ormRepository.createQueryBuilder.mockReturnValue(
-        queryBuilder as any,
-      );
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
 
       const filters: ConnectionFilters = {
         platformType: 'prestashop',

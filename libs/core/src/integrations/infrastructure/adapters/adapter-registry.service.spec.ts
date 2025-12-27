@@ -8,7 +8,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdapterRegistryService } from './adapter-registry.service';
-import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
 
 describe('AdapterRegistryService', () => {
   let service: AdapterRegistryService;
@@ -55,7 +55,7 @@ describe('AdapterRegistryService', () => {
       const adapter = await service.getAdapter('prestashop.webservice.v1');
 
       expect(adapter).toBeDefined();
-      expect((adapter as any).adapterKey).toBe('prestashop.webservice.v1');
+      expect((adapter as { adapterKey: string }).adapterKey).toBe('prestashop.webservice.v1');
     });
 
     it('should throw AdapterNotFoundException for unknown adapter', async () => {

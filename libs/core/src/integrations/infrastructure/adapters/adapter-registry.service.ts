@@ -11,13 +11,13 @@
  * @see {@link AdapterRegistryPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
+import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
 import {
   AdapterMetadata,
   AdapterInstance,
   Capability,
-} from '../../domain/types/adapter.types';
-import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+} from '@openlinker/core/integrations/domain/types/adapter.types';
+import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
 
 @Injectable()
 export class AdapterRegistryService implements AdapterRegistryPort {
@@ -51,16 +51,16 @@ export class AdapterRegistryService implements AdapterRegistryPort {
     return { adapterKey: metadata.adapterKey } as AdapterInstance;
   }
 
-  async getAdapterMetadata(adapterKey: string): Promise<AdapterMetadata> {
+  getAdapterMetadata(adapterKey: string): Promise<AdapterMetadata> {
     const metadata = this.registry.get(adapterKey);
     if (!metadata) {
-      throw new AdapterNotFoundException(adapterKey);
+      return Promise.reject(new AdapterNotFoundException(adapterKey));
     }
-    return metadata;
+    return Promise.resolve(metadata);
   }
 
-  async listAdapters(): Promise<AdapterMetadata[]> {
-    return Array.from(this.registry.values());
+  listAdapters(): Promise<AdapterMetadata[]> {
+    return Promise.resolve(Array.from(this.registry.values()));
   }
 }
 

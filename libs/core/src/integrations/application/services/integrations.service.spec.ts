@@ -9,18 +9,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { IntegrationsService } from './integrations.service';
 import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
+import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { ADAPTER_REGISTRY_TOKEN } from '../../integrations.tokens';
+import { ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
 import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-disabled.exception';
-import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
-import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
+import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
+import { CapabilityNotSupportedException } from '@openlinker/core/integrations/domain/exceptions/capability-not-supported.exception';
 import {
   AdapterMetadata,
   AdapterInstance,
-} from '../../domain/types/adapter.types';
+} from '@openlinker/core/integrations/domain/types/adapter.types';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
@@ -169,7 +169,7 @@ describe('IntegrationsService', () => {
       adapterRegistry.getAdapter.mockResolvedValue(mockAdapter);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
 
-      const result = await service.getCapabilityAdapter<any>(
+      const result = await service.getCapabilityAdapter<unknown>(
         'connection-123',
         'ProductMaster',
       );
@@ -190,7 +190,7 @@ describe('IntegrationsService', () => {
       );
 
       await expect(
-        service.getCapabilityAdapter<any>('connection-123', 'ProductMaster'),
+        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster'),
       ).rejects.toThrow(CapabilityNotSupportedException);
     });
   });
@@ -244,7 +244,7 @@ describe('IntegrationsService', () => {
         .mockResolvedValueOnce({ adapterKey: 'prestashop.webservice.v1' } as AdapterInstance)
         .mockResolvedValueOnce({ adapterKey: 'allegro.publicapi.v1' } as AdapterInstance);
 
-      const result = await service.listCapabilityAdapters<any>({
+      const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderProcessorManager',
       });
 
@@ -277,7 +277,7 @@ describe('IntegrationsService', () => {
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
 
-      const result = await service.listCapabilityAdapters<any>({
+      const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderProcessorManager',
         platformType: 'prestashop',
       });
@@ -316,7 +316,7 @@ describe('IntegrationsService', () => {
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
 
-      const result = await service.listCapabilityAdapters<any>({
+      const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderProcessorManager',
       });
 
@@ -367,7 +367,7 @@ describe('IntegrationsService', () => {
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
 
-      const result = await service.listCapabilityAdapters<any>({
+      const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderProcessorManager',
       });
 
