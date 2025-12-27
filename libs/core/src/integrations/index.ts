@@ -1,0 +1,37 @@
+/**
+ * Integrations Module Exports
+ *
+ * Public API for the integrations module. Exports services, ports, types,
+ * and tokens for use by other modules.
+ *
+ * @module libs/core/src/integrations
+ */
+
+// Services
+export { IntegrationsService } from './application/services/integrations.service';
+export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
+
+// Ports
+export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
+
+// Types
+export {
+  Capability,
+  CapabilityValues,
+  AdapterMetadata,
+  AdapterInstance,
+} from './domain/types/adapter.types';
+
+// Exceptions
+export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';
+export { CapabilityNotSupportedException } from './domain/exceptions/capability-not-supported.exception';
+
+// Tokens
+export {
+  ADAPTER_REGISTRY_TOKEN,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from './integrations.tokens';
+
+// Module
+export { IntegrationsModule } from './integrations.module';
+

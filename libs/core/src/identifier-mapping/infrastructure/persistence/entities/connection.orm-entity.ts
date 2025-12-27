@@ -4,7 +4,7 @@
  * TypeORM entity representing the connections table in PostgreSQL.
  * Stores configured integration instances (e.g., specific PrestaShop stores,
  * specific Allegro accounts). Includes indexes for efficient lookups by
- * platform type and status.
+ * platform type, status, and adapter key.
  *
  * @module libs/core/src/identifier-mapping/infrastructure/persistence/entities
  */
@@ -20,6 +20,7 @@ import {
 @Entity('connections')
 @Index(['platformType'])
 @Index(['status'])
+@Index(['adapterKey'])
 export class ConnectionOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -38,6 +39,9 @@ export class ConnectionOrmEntity {
 
   @Column()
   credentialsRef!: string;
+
+  @Column({ nullable: true })
+  adapterKey?: string;
 
   @CreateDateColumn()
   createdAt!: Date;

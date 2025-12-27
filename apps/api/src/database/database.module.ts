@@ -10,6 +10,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/infrastructure/persistence/entities/connection.orm-entity';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/infrastructure/persistence/entities/identifier-mapping.orm-entity';
 
 @Module({
   imports: [
@@ -22,7 +24,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         username: configService.get<string>('DB_USERNAME', 'postgres'),
         password: configService.get<string>('DB_PASSWORD', 'postgres'),
         database: configService.get<string>('DB_DATABASE', 'openlinker'),
-        entities: [__dirname + '/../**/*.orm-entity{.ts,.js}'],
+        entities: [
+          ConnectionOrmEntity,
+          IdentifierMappingOrmEntity,
+          // Also include any entities from apps/api if they exist
+          __dirname + '/../**/*.orm-entity{.ts,.js}',
+        ],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') === 'development',
         migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
