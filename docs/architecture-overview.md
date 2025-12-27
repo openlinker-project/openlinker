@@ -172,9 +172,9 @@ The system is organized into the following core bounded contexts:
 - **Architecture**: Core infrastructure service used by all adapters
 
 ### 9. Plugin Manager / Integrations
-- **Responsibility**: Adapter registry, capability assignment, plugin lifecycle
-- **Key Services**: IntegrationsService, PluginRegistryService
-- **Location**: `apps/api/src/integrations/` or `libs/core/src/integrations/`
+- **Responsibility**: Adapter registry, per-connection adapter resolution, capability validation
+- **Key Services**: IntegrationsService, AdapterRegistryService, ConnectionService
+- **Location**: `apps/api/src/integrations/` (API layer), `libs/core/src/integrations/` (core domain)
 
 ### 10. Logging & Monitoring
 - **Responsibility**: Structured logging, metrics, tracing
@@ -939,58 +939,65 @@ openlinker/
 └── package.json
 ```
 
-### Capability Assignment
+### Capability Assignment (Implicit Capabilities)
 
-Capability assignment is configured globally in the database (single instance). Multi-tenancy support will be added in the future.
+OpenLinker uses **implicit capabilities**: capabilities are declared in code via adapter metadata, not stored in a database. Adapters are resolved per-connection at runtime.
 
-**Configuration Table** (`capability_assignments`):
+**Key Principles**:
+- ✅ **Per-Connection Resolution**: Each connection resolves its adapter independently
+- ✅ **Code-Driven Capabilities**: Adapters declare supported capabilities in code (via Adapter Registry)
+- ✅ **Multiple Connections Per Capability**: Multiple connections can support the same capability (e.g., multiple `OrderProcessorManager` connections)
+- ✅ **Runtime Validation**: Capability support is validated at runtime when requested
+
+**Connection Entity**:
 ```typescript
+// Connection represents a configured integration instance
 {
-  capability: 'ProductMaster' | 'InventoryMaster' | 'OrderProcessorManager' | 'PricingAuthority';
-  adapterId: string;  // e.g., 'prestashop', 'openlinker'
-  adapterType: string; // e.g., 'IShopIntegration'
-  isActive: boolean;
-  config: Record<string, any>; // Adapter-specific config
+  id: string;                    // UUID
+  platformType: string;          // 'prestashop', 'allegro', etc.
+  name: string;                  // Human-readable name
+  status: 'active' | 'disabled' | 'error';
+  config: Record<string, any>;   // Platform-specific config
+  credentialsRef: string;        // Reference to stored credentials
+  adapterKey?: string;           // Optional explicit adapter key
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
-**Example Configuration**:
+**Adapter Registry** (Code-Level):
 ```typescript
-// PrestaShop as ProductMaster, InventoryMaster and OrderProcessorManager
+// Adapters declare their capabilities in code
 {
-  capability: 'ProductMaster',
-  adapterId: 'prestashop',
-  adapterType: 'IShopIntegration',
-  isActive: true
+  adapterKey: 'prestashop.webservice.v1',
+  platformType: 'prestashop',
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  displayName: 'PrestaShop WebService v1',
+  version: '1.0.0'
 }
 
 {
-  capability: 'InventoryMaster',
-  adapterId: 'prestashop',
-  adapterType: 'IShopIntegration',
-  isActive: true
-}
-
-{
-  capability: 'OrderProcessorManager',
-  adapterId: 'prestashop',
-  adapterType: 'IShopIntegration',
-  isActive: true
+  adapterKey: 'allegro.publicapi.v1',
+  platformType: 'allegro',
+  supportedCapabilities: ['Marketplace', 'OrderProcessorManager'],
+  displayName: 'Allegro Public API v1',
+  version: '1.0.0'
 }
 ```
 
-**Service Usage**:
+**Service Usage** (Per-Connection):
 ```typescript
 @Injectable()
 export class ProductSyncService {
   constructor(
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private integrationsService: IntegrationsService,
   ) {}
 
-  async syncProduct(productId: string) {
-    // Get adapter assigned to ProductMaster role
+  async syncProduct(connectionId: string, productId: string) {
+    // Get ProductMaster adapter for specific connection
     const productMaster = await this.integrationsService
-      .getCapabilityAdapter<ProductMasterPort>('ProductMaster');
+      .getCapabilityAdapter<ProductMasterPort>(connectionId, 'ProductMaster');
     
     // Use abstraction, not concrete implementation
     const product = await productMaster.getProduct(productId);
@@ -1001,20 +1008,52 @@ export class ProductSyncService {
 @Injectable()
 export class InventorySyncService {
   constructor(
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private integrationsService: IntegrationsService,
   ) {}
 
-  async syncInventory(productId: string) {
-    // Get adapter assigned to InventoryMaster role
+  async syncInventory(connectionId: string, productId: string) {
+    // Get InventoryMaster adapter for specific connection
     const inventoryMaster = await this.integrationsService
-      .getCapabilityAdapter<InventoryMasterPort>('InventoryMaster');
+      .getCapabilityAdapter<InventoryMasterPort>(connectionId, 'InventoryMaster');
     
     // Use abstraction, not concrete implementation
     const inventory = await inventoryMaster.getInventory(productId);
     // ... sync logic
   }
 }
+
+@Injectable()
+export class OrderSyncService {
+  constructor(
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private integrationsService: IntegrationsService,
+  ) {}
+
+  async syncOrders() {
+    // Get ALL OrderProcessorManager adapters (multiple connections)
+    const orderProcessors = await this.integrationsService
+      .listCapabilityAdapters<OrderProcessorManagerPort>({
+        capability: 'OrderProcessorManager',
+      });
+
+    // Process orders from all sources
+    for (const { connectionId, connection, adapter } of orderProcessors) {
+      const orders = await adapter.getPendingOrders();
+      // ... process orders from each connection
+    }
+  }
+}
 ```
+
+**Benefits**:
+- ✅ **Multiple Connections**: Create multiple connections per platform type
+- ✅ **Multiple Adapters Per Capability**: Support multiple `OrderProcessorManager` connections (e.g., PrestaShop + Allegro)
+- ✅ **No Database Config**: Capabilities declared in code (type-safe, refactorable)
+- ✅ **Runtime Validation**: Fail fast if capability unsupported
+- ✅ **Per-Connection Configuration**: Each connection has its own config and credentials
+
+**See Also**: [Connections & Adapter Resolution](./connections-and-adapter-resolution.md) for detailed documentation.
 
 ---
 

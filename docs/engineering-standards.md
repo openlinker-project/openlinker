@@ -409,7 +409,8 @@ export class ProductSyncService {
 ✅ **Good**:
 ```typescript
 // application/types/product-sync.types.ts
-export type ProductSyncStatus = 'pending' | 'syncing' | 'completed' | 'failed';
+export const ProductSyncStatusValues = ['pending', 'syncing', 'completed', 'failed'] as const;
+export type ProductSyncStatus = (typeof ProductSyncStatusValues)[number];
 
 export interface ProductSyncOptions {
   forceUpdate: boolean;
@@ -439,6 +440,109 @@ export class ProductSyncService implements IProductSyncService {
     // ...
   }
 }
+```
+
+### Union Types: `as const` Pattern (Default)
+
+**For domain constants, status values, and enumerated types, use the `as const` + union type pattern instead of TypeScript enums.**
+
+**Why:**
+- **No runtime artifact**: Unions don't emit JavaScript, reducing bundle size
+- **Clean wire format**: APIs/events/DB store strings → unions map cleanly
+- **Easier across boundaries**: Importing a union type doesn't pull in runtime objects
+- **Avoid enum quirks**: No numeric enum reverse-mapping, nominal typing issues, or special runtime behavior
+- **Modern default**: Industry standard in 2025 for domain constants that cross API/event/DB boundaries
+
+**Pattern:**
+```typescript
+// domain/types/capability.types.ts
+
+/**
+ * Capability values
+ * 
+ * Runtime array of all valid capability values. Used for validation,
+ * Swagger documentation, and UI dropdowns.
+ */
+export const CapabilityValues = [
+  'ProductMaster',
+  'InventoryMaster',
+  'OrderProcessorManager',
+  'Marketplace',
+] as const;
+
+/**
+ * Capability type
+ * 
+ * Derived union type from CapabilityValues. Provides type safety
+ * without runtime overhead.
+ */
+export type Capability = (typeof CapabilityValues)[number];
+```
+
+**Usage:**
+```typescript
+// Type checking
+function processCapability(capability: Capability): void {
+  // TypeScript knows capability is one of the valid values
+}
+
+// Runtime validation
+function isValidCapability(value: string): value is Capability {
+  return CapabilityValues.includes(value as Capability);
+}
+
+// Swagger/API documentation
+@ApiProperty({ enum: CapabilityValues })
+capability: Capability;
+```
+
+✅ **Good**:
+```typescript
+// domain/types/connection-status.types.ts
+export const ConnectionStatusValues = ['active', 'disabled', 'error'] as const;
+export type ConnectionStatus = (typeof ConnectionStatusValues)[number];
+
+// domain/types/job-status.types.ts
+export const JobStatusValues = ['queued', 'running', 'succeeded', 'failed'] as const;
+export type JobStatus = (typeof JobStatusValues)[number];
+```
+
+❌ **Bad**:
+```typescript
+// ❌ TypeScript enum (avoid for domain constants)
+export enum ConnectionStatus {
+  Active = 'active',
+  Disabled = 'disabled',
+  Error = 'error',
+}
+
+// ❌ Inline union without runtime array
+export type ConnectionStatus = 'active' | 'disabled' | 'error';
+// Missing: No runtime array for validation/Swagger
+```
+
+**When to use enums (exception):**
+- Only when it materially reduces friction (e.g., heavy NestJS Swagger usage)
+- Must be documented with a short comment explaining why enum was chosen
+- Never use numeric enums
+- Never use `const enum` (unless fully controlling the build pipeline and explicitly opting in)
+
+**ESLint Recommendation** (optional enforcement):
+```javascript
+// eslint.config.mjs
+export default [
+  {
+    rules: {
+      "no-restricted-syntax": [
+        "warn", // Start with warn, upgrade to error later
+        { 
+          selector: "TSEnumDeclaration", 
+          message: "Avoid TS enums; use `as const` + union types per engineering standards." 
+        }
+      ]
+    }
+  }
+];
 ```
 
 ### Interface and Implementation Separation

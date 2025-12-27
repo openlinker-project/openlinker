@@ -16,6 +16,7 @@ import { DatabaseModule } from './database/database.module';
 import { RedisConfigModule } from './redis/redis-config.module';
 import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
     RedisConfigModule,
     HealthModule,
     IdentifierMappingModule,
+    IntegrationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

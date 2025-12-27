@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
@@ -9,8 +11,8 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@openlinker/core/(.*)$': '<rootDir>/../../libs/core/src/$1',
-    '^@openlinker/shared/(.*)$': '<rootDir>/../../libs/shared/src/$1',
+    '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),
+    '^@openlinker/shared/(.*)$': path.resolve(__dirname, '../../libs/shared/src/$1'),
   },
 };
 

@@ -7,4 +7,5 @@
  * @module libs/core/src
  */
 export * from './identifier-mapping';
+export * from './integrations';
 
