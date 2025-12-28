@@ -94,7 +94,6 @@ describe('PrestashopInventoryMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getInventory(productId)).rejects.toThrow(
         PrestashopResourceNotFoundException,
       );
@@ -116,7 +115,6 @@ describe('PrestashopInventoryMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getInventory(productId)).rejects.toThrow(
         PrestashopResourceNotFoundException,
       );
@@ -204,19 +202,16 @@ describe('PrestashopInventoryMasterAdapter', () => {
           quantity: 10,
           reason: 'test',
         }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       ).rejects.toThrow(PrestashopNotSupportedException);
     });
 
     it('should throw PrestashopNotSupportedException for reserveInventory', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.reserveInventory('product-id', 5, 'order-id')).rejects.toThrow(
         PrestashopNotSupportedException,
       );
     });
 
     it('should throw PrestashopNotSupportedException for releaseInventory', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.releaseInventory('product-id', 5, 'order-id')).rejects.toThrow(
         PrestashopNotSupportedException,
       );

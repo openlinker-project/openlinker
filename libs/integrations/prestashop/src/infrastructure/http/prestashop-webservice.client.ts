@@ -62,12 +62,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.apiKey = credentials.webserviceApiKey;
     this.config = {
-      timeoutMs: 30000,
-      pageSize: 100,
-      langId: 1,
-      responseFormat: 'auto',
       ...config,
-    } as PrestashopConnectionConfig;
+      baseUrl: this.baseUrl, // Override with normalized baseUrl
+      timeoutMs: config.timeoutMs ?? 30000,
+      pageSize: config.pageSize ?? 100,
+      langId: config.langId ?? 1,
+      responseFormat: config.responseFormat ?? 'auto',
+    };
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
 

@@ -41,6 +41,9 @@ module.exports = {
       files: ['**/*.spec.ts', '**/*.test.ts'],
       rules: {
         '@typescript-eslint/unbound-method': 'off',
+        // Allow unsafe arguments in toThrow() calls - Jest's type definitions are strict
+        // Exception classes extending Error should be valid, but TypeScript infers them as 'any'
+        '@typescript-eslint/no-unsafe-argument': 'off',
       },
     },
   ],

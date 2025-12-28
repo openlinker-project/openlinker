@@ -63,7 +63,7 @@ export class PrestashopQueryBuilder {
     params.push('display=full');
 
     // Multi-store support: add id_shop if shopId is configured
-    if (config !== undefined && config.shopId !== undefined && typeof config.shopId === 'number' && config.shopId > 0) {
+    if (config?.shopId !== undefined && typeof config.shopId === 'number' && config.shopId > 0) {
       params.push(`id_shop=${config.shopId}`);
     }
 

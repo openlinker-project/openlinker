@@ -17,21 +17,17 @@ import { PrestashopParseException } from '@openlinker/integrations-prestashop';
  * and normalization of PrestaShop quirks.
  */
 export class PrestashopResponseParser {
-  private static readonly xmlParser = new XMLParser(
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-    {
-      ignoreAttributes: false,
-      attributeNamePrefix: '@_',
-      textNodeName: '#text',
-      parseAttributeValue: true,
-      parseTagValue: true,
-      trimValues: true,
-      stopNodes: [], // Don't stop parsing on any nodes
-      // Note: arrayMode is not available in fast-xml-parser v4
-      // We'll handle array normalization in normalizePrestashopData instead
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any,
-  );
+  private static readonly xmlParser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    textNodeName: '#text',
+    parseAttributeValue: true,
+    parseTagValue: true,
+    trimValues: true,
+    stopNodes: [], // Don't stop parsing on any nodes
+    // Note: arrayMode is not available in fast-xml-parser v4
+    // We'll handle array normalization in normalizePrestashopData instead
+  });
 
   /**
    * Parse response based on content type
@@ -128,9 +124,8 @@ export class PrestashopResponseParser {
    * @returns Parsed object
    */
   private static parseJson(responseBody: string): unknown {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const parsed = JSON.parse(responseBody);
-    return this.normalizePrestashopData(parsed as unknown);
+    const parsed: unknown = JSON.parse(responseBody);
+    return this.normalizePrestashopData(parsed);
   }
 
   /**
@@ -140,9 +135,8 @@ export class PrestashopResponseParser {
    * @returns Parsed object (normalized)
    */
   private static parseXml(responseBody: string): unknown {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
-    const parsed = this.xmlParser.parse(responseBody);
-    return this.normalizePrestashopData(parsed as unknown);
+    const parsed: unknown = this.xmlParser.parse(responseBody);
+    return this.normalizePrestashopData(parsed);
   }
 
   /**

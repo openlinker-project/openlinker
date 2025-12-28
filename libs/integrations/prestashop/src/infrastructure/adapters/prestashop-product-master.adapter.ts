@@ -15,6 +15,7 @@ import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } fr
 import {
   PrestashopNotSupportedException,
   PrestashopResourceNotFoundException,
+  PrestashopConnectionConfig,
 } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -56,8 +57,8 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     // Map to OpenLinker schema
-    const config = this.connection.config as { langId?: number };
-    const langId = config.langId || 1;
+    const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    const langId = config.langId ?? 1;
     const mapped = this.productMapper.mapProduct(prestashopProduct, langId);
 
     // Return with internal ID
@@ -95,7 +96,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(mappingRequests);
 
     // Map products with internal IDs
-    const config = this.connection.config as { langId?: number };
+    const config = this.connection.config as unknown as PrestashopConnectionConfig;
     const langId = config.langId || 1;
 
     return prestashopProducts.map((prestashopProduct) => {
