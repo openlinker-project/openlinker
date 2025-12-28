@@ -64,7 +64,7 @@ export class PrestashopQueryBuilder {
 
     // Multi-store support: add id_shop if shopId is configured
     if (config !== undefined) {
-      const typedConfig = config as PrestashopConnectionConfig;
+      const typedConfig = config;
       const shopId: number | undefined = typedConfig.shopId;
       if (shopId !== undefined && typeof shopId === 'number' && shopId > 0) {
         params.push(`id_shop=${shopId}`);

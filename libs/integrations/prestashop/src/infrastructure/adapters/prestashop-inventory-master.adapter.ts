@@ -47,7 +47,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
         'Product',
         productId,
         this.connection.id,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw error;
     }
 
@@ -69,7 +69,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
         'Inventory',
         productId,
         this.connection.id,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw error;
     }
 
@@ -108,7 +108,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       'Inventory adjustment is not supported in MVP. PrestaShop WebService API does not support stock updates in MVP scope.',
       'adjustInventory',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -118,7 +118,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       'Inventory reservation is not supported in MVP. PrestaShop WebService API does not support reservation operations.',
       'reserveInventory',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -128,7 +128,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       'Inventory release is not supported in MVP. PrestaShop WebService API does not support release operations.',
       'releaseInventory',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 }

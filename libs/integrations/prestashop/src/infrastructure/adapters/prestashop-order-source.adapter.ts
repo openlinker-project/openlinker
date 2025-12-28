@@ -136,7 +136,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         'Order',
         orderId,
         this.connection.id,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw error;
     }
 

@@ -69,7 +69,7 @@ export class PrestashopResponseParser {
                 responseBody.substring(0, 500),
                 'auto',
                 error instanceof Error ? error : undefined,
-              ) as PrestashopParseException;
+              );
               throw parseError;
             }
           }
@@ -80,7 +80,7 @@ export class PrestashopResponseParser {
             responseBody.substring(0, 500),
             'json',
             error instanceof Error ? error : undefined,
-          ) as PrestashopParseException;
+          );
           throw parseError;
         }
       }
@@ -98,7 +98,7 @@ export class PrestashopResponseParser {
           responseBody.substring(0, 500),
           'xml',
           error instanceof Error ? error : undefined,
-        ) as PrestashopParseException;
+        );
         throw parseError;
       }
     }
@@ -115,7 +115,7 @@ export class PrestashopResponseParser {
           responseBody.substring(0, 500),
           'auto',
           error instanceof Error ? error : undefined,
-        ) as PrestashopParseException;
+        );
         throw parseError;
       }
     }
@@ -125,7 +125,7 @@ export class PrestashopResponseParser {
       'Unable to determine response format (not JSON or XML)',
       responseBody.substring(0, 500),
       'auto',
-    ) as PrestashopParseException;
+    );
     throw parseError;
   }
 

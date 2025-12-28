@@ -240,7 +240,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           `Request timeout after ${timeoutMs}ms: ${url}`,
           undefined,
           undefined,
-        ) as PrestashopApiException;
+        );
         throw timeoutError;
       }
       if (
@@ -256,7 +256,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         `Network error: ${errorMessage}`,
         undefined,
         undefined,
-      ) as PrestashopApiException;
+      );
       throw networkError;
     } finally {
       clearTimeout(timeoutId);
@@ -273,7 +273,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         `Authentication failed: Invalid API key for ${url}`,
         undefined,
         this.baseUrl,
-      ) as PrestashopAuthenticationException;
+      );
       throw authError;
     }
 
@@ -283,7 +283,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         `Resource not found: ${url}`,
         undefined,
         undefined,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw notFoundError;
     }
 
@@ -293,7 +293,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
         body.substring(0, 500),
-      ) as PrestashopApiException;
+      );
       throw serverError;
     }
 
@@ -302,7 +302,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,
       body.substring(0, 500),
-    ) as PrestashopApiException;
+    );
     throw apiError;
   }
 

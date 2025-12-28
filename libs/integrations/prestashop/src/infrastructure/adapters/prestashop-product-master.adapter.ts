@@ -48,7 +48,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         'Product',
         productId,
         this.connection.id,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw error;
     }
 
@@ -134,7 +134,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         'Product',
         productId,
         this.connection.id,
-      ) as PrestashopResourceNotFoundException;
+      );
       throw error;
     }
 
@@ -197,7 +197,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Product creation is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'createProduct',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -207,7 +207,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Product update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'updateProduct',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -217,7 +217,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Product deletion is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'deleteProduct',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -227,7 +227,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Variant creation/update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'upsertProductVariant',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -237,7 +237,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Get product categories is not implemented in MVP.',
       'getProductCategories',
       'Future implementation',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
@@ -247,7 +247,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'Category assignment is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'assignCategories',
       'PrestaShop admin interface',
-    ) as PrestashopNotSupportedException;
+    );
     return Promise.reject(error);
   }
 
