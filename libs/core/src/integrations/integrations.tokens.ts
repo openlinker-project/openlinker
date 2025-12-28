@@ -11,4 +11,6 @@
 // Token for dependency injection (interfaces can't be used as values)
 export const ADAPTER_REGISTRY_TOKEN = Symbol('AdapterRegistryPort');
 export const INTEGRATIONS_SERVICE_TOKEN = Symbol('IIntegrationsService');
+export const CREDENTIALS_RESOLVER_TOKEN = Symbol('CredentialsResolverPort');
+export const ADAPTER_FACTORY_RESOLVER_TOKEN = Symbol('AdapterFactoryResolverService');
 

@@ -1430,9 +1430,51 @@ Fixes #456
 ```
 
 ---
+## Testing
+
+OpenLinker uses a comprehensive testing approach with unit tests and integration tests. For detailed information about testing, including Testcontainers, see the [Testing Guide](./testing-guide.md).
+
+### Quick Test Commands
+
+```bash
+# Run unit tests (fast, no Docker required)
+pnpm test
+
+# Run integration tests (requires Docker, uses Testcontainers)
+pnpm test:integration
+
+# Run both test suites
+pnpm test && pnpm test:integration
+```
+
+### Testcontainers vs Development Stack
+
+**Important**: Integration tests use **Testcontainers** to spin up **ephemeral** PostgreSQL and Redis containers. These are **separate** from the development stack containers managed by `docker-compose.yml`:
+
+| Purpose | Technology | Containers | Lifecycle |
+|---------|------------|------------|-----------|
+| **Development Stack** | Docker Compose | `postgres`, `redis`, `mysql`, `prestashop` | Persistent (survive restarts) |
+| **Integration Tests** | Testcontainers | Ephemeral PostgreSQL + Redis | Auto-created/destroyed per test run |
+
+**Why Separate?**
+- ✅ **Isolation**: Tests don't interfere with development data
+- ✅ **Clean State**: Each test run starts with a fresh database
+- ✅ **No Conflicts**: Tests can run while dev stack is running
+- ✅ **CI/CD Ready**: Works identically in local and CI environments
+
+See [Testing Guide](./testing-guide.md) for detailed explanation of Testcontainers and test organization.
+
+## Next Steps
+
+After setting up the development environment:
+
+1. **Configure PrestaShop Webservice API** (see PrestaShop Setup above)
+2. **Review Architecture**: Read [Architecture Overview](./architecture-overview.md)
+3. **Start Development**: Begin implementing adapters or features
+4. **Run Tests**: See [Testing Guide](./testing-guide.md) for comprehensive testing documentation
 
 ## Related Documentation
-
+- [Testing Guide](./testing-guide.md) - **Comprehensive testing documentation** (unit tests, integration tests, Testcontainers)
 - [Architecture Overview](./architecture-overview.md) - System architecture
 - [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants
 - [Database Migrations](./migrations.md) - Database migration workflow and best practices
