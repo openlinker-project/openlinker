@@ -2,7 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["jest", "node"],
-    "module": "CommonJS"
+    "module": "Node16",
+    "moduleResolution": "Node16"
   },
   "include": ["src/**/*.ts"]
 }
