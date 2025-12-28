@@ -19,8 +19,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build type definitions
+        run: |
+          # Build packages that provide types needed for type-aware linting
+          # This ensures TypeScript can resolve types across workspace packages
+          # and prevents 'any' type inference that triggers unsafe-* lint errors
+          pnpm --filter @openlinker/shared build
+          pnpm --filter @openlinker/core build
+          pnpm --filter @openlinker/integrations-prestashop build
+      - name: Run lint
+        run: pnpm lint
 
   type-check:
     name: Type Check
