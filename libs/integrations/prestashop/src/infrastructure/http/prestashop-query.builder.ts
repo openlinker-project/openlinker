@@ -63,8 +63,11 @@ export class PrestashopQueryBuilder {
     params.push('display=full');
 
     // Multi-store support: add id_shop if shopId is configured
-    if (config?.shopId !== undefined && typeof config.shopId === 'number' && config.shopId > 0) {
-      params.push(`id_shop=${config.shopId}`);
+    if (config !== undefined) {
+      const shopId = config.shopId;
+      if (shopId !== undefined && typeof shopId === 'number' && shopId > 0) {
+        params.push(`id_shop=${shopId}`);
+      }
     }
 
     // Date filtering: PrestaShop requires date=1 to enable date filters

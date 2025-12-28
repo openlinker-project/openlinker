@@ -41,12 +41,13 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     const prestashopProductId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
 
     if (!prestashopProductId) {
-      throw new PrestashopResourceNotFoundException(
+      const error: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
         this.connection.id,
       );
+      throw error;
     }
 
     // Fetch stock_available for product (id_product_attribute = 0 for product stock)
@@ -61,12 +62,13 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     );
 
     if (stockRecords.length === 0) {
-      throw new PrestashopResourceNotFoundException(
+      const error: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
         `Inventory not found for product: ${productId}`,
         'Inventory',
         productId,
         this.connection.id,
       );
+      throw error;
     }
 
     // Use first stock record (should be only one for product stock)
@@ -99,27 +101,30 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
 
   // Write operations - not supported in MVP
   adjustInventory(_adjustment: import('@openlinker/core/inventory').InventoryAdjustment): Promise<Inventory> {
-    return Promise.reject(new PrestashopNotSupportedException(
+    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
       'Inventory adjustment is not supported in MVP. PrestaShop WebService API does not support stock updates in MVP scope.',
       'adjustInventory',
       'PrestaShop admin interface',
-    ));
+    );
+    return Promise.reject(error);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
-    return Promise.reject(new PrestashopNotSupportedException(
+    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
       'Inventory reservation is not supported in MVP. PrestaShop WebService API does not support reservation operations.',
       'reserveInventory',
       'PrestaShop admin interface',
-    ));
+    );
+    return Promise.reject(error);
   }
 
   releaseInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
-    return Promise.reject(new PrestashopNotSupportedException(
+    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
       'Inventory release is not supported in MVP. PrestaShop WebService API does not support release operations.',
       'releaseInventory',
       'PrestaShop admin interface',
-    ));
+    );
+    return Promise.reject(error);
   }
 }
 

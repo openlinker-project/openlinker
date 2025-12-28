@@ -130,12 +130,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const prestashopOrderId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
 
     if (!prestashopOrderId) {
-      throw new PrestashopResourceNotFoundException(
+      const error: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
         `Order not found: ${orderId} (no external ID mapping for connection ${this.connection.id})`,
         'Order',
         orderId,
         this.connection.id,
       );
+      throw error;
     }
 
     // Fetch order from PrestaShop

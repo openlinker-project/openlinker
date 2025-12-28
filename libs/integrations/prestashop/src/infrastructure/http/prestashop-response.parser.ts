@@ -54,22 +54,24 @@ export class PrestashopResponseParser {
       if (isJson || (!isXml && this.looksLikeJson(responseBody))) {
         try {
           return this.parseJson(responseBody);
-        } catch (error) {
+        } catch (error: unknown) {
           // If JSON parsing fails and format is auto, try XML fallback
           if (normalizedFormat === undefined) {
             try {
               return this.parseXml(responseBody);
-            } catch (xmlError) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
+            } catch (xmlError: unknown) {
+              const xmlErrorMessage = xmlError instanceof Error ? xmlError.message : String(xmlError);
+              const jsonErrorMessage = error instanceof Error ? error.message : String(error);
+              const combinedMessage = `Failed to parse response as JSON or XML: JSON error: ${jsonErrorMessage}, XML error: ${xmlErrorMessage}`;
               throw new PrestashopParseException(
-                `Failed to parse response as JSON or XML: ${errorMessage}`,
+                combinedMessage,
                 responseBody.substring(0, 500),
                 'auto',
                 error instanceof Error ? error : undefined,
               );
             }
           }
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage: string = error instanceof Error ? error.message : String(error);
           throw new PrestashopParseException(
             `Failed to parse JSON response: ${errorMessage}`,
             responseBody.substring(0, 500),
@@ -84,8 +86,8 @@ export class PrestashopResponseParser {
     if (normalizedFormat === undefined || normalizedFormat === 'xml' || isXml) {
       try {
         return this.parseXml(responseBody);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage: string = error instanceof Error ? error.message : String(error);
         throw new PrestashopParseException(
           `Failed to parse XML response: ${errorMessage}`,
           responseBody.substring(0, 500),
@@ -99,8 +101,8 @@ export class PrestashopResponseParser {
     if (this.looksLikeJson(responseBody)) {
       try {
         return this.parseJson(responseBody);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage: string = error instanceof Error ? error.message : String(error);
         throw new PrestashopParseException(
           `Failed to parse response: ${errorMessage}`,
           responseBody.substring(0, 500),

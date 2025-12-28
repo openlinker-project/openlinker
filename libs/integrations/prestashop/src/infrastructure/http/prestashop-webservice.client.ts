@@ -61,13 +61,18 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.apiKey = credentials.webserviceApiKey;
+    const normalizedBaseUrl = this.baseUrl;
+    const timeoutMs = config.timeoutMs ?? 30000;
+    const pageSize = config.pageSize ?? 100;
+    const langId = config.langId ?? 1;
+    const responseFormat = config.responseFormat ?? 'auto';
     this.config = {
       ...config,
-      baseUrl: this.baseUrl, // Override with normalized baseUrl
-      timeoutMs: config.timeoutMs ?? 30000,
-      pageSize: config.pageSize ?? 100,
-      langId: config.langId ?? 1,
-      responseFormat: config.responseFormat ?? 'auto',
+      baseUrl: normalizedBaseUrl, // Override with normalized baseUrl
+      timeoutMs,
+      pageSize,
+      langId,
+      responseFormat,
     };
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
@@ -82,10 +87,11 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       method: 'GET',
     });
 
+    const responseFormat: 'auto' | 'json' | 'xml' = this.config.responseFormat ?? 'auto';
     const parsed = PrestashopResponseParser.parse(
       response.body,
       response.contentType,
-      this.config.responseFormat ?? 'auto',
+      responseFormat,
     ) as T;
 
     return parsed;
@@ -98,25 +104,27 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     offset?: number,
   ): Promise<T[]> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource);
+    const pageSize = this.config.pageSize ?? 100;
     const query = PrestashopQueryBuilder.buildQueryWithPagination(
       resource,
       filters,
       this.config,
-      limit ?? (this.config.pageSize ?? 100),
+      limit ?? pageSize,
       offset,
     );
     const url = `${this.baseUrl}${path}?${query}`;
 
-    this.logger.debug(`Listing resources: ${resource} (limit: ${limit ?? (this.config.pageSize ?? 100)}, offset: ${offset ?? 0})`);
+    this.logger.debug(`Listing resources: ${resource} (limit: ${limit ?? pageSize}, offset: ${offset ?? 0})`);
 
     const response = await this.requestWithRetry(url, {
       method: 'GET',
     });
 
+    const responseFormat: 'auto' | 'json' | 'xml' = this.config.responseFormat ?? 'auto';
     const parsed = PrestashopResponseParser.parse(
       response.body,
       response.contentType,
-      this.config.responseFormat ?? 'auto',
+      responseFormat,
     );
 
     // PrestaShop returns collections in different formats
@@ -192,7 +200,8 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
     // Create AbortController for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 30000);
+    const timeoutMs = this.config.timeoutMs ?? 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, {
@@ -215,11 +224,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       return { body, contentType };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new PrestashopApiException(
-          `Request timeout after ${this.config.timeoutMs ?? 30000}ms: ${url}`,
+        const timeoutMs = this.config.timeoutMs ?? 30000;
+        const timeoutError: PrestashopApiException = new PrestashopApiException(
+          `Request timeout after ${timeoutMs}ms: ${url}`,
           undefined,
           undefined,
         );
+        throw timeoutError;
       }
       if (
         error instanceof PrestashopApiException ||
@@ -228,12 +239,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       ) {
         throw error;
       }
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new PrestashopApiException(
+      const errorMessage: string = error instanceof Error ? error.message : String(error);
+      const networkError: PrestashopApiException = new PrestashopApiException(
         `Network error: ${errorMessage}`,
         undefined,
         undefined,
       );
+      throw networkError;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -244,34 +256,38 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
    */
   private handleError(statusCode: number, body: string, url: string): never {
     if (statusCode === 401) {
-      throw new PrestashopAuthenticationException(
+      const authError: PrestashopAuthenticationException = new PrestashopAuthenticationException(
         `Authentication failed: Invalid API key for ${url}`,
         undefined,
         this.baseUrl,
       );
+      throw authError;
     }
 
     if (statusCode === 404) {
-      throw new PrestashopResourceNotFoundException(
+      const notFoundError: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
         `Resource not found: ${url}`,
         undefined,
         undefined,
       );
+      throw notFoundError;
     }
 
     if (statusCode >= 500) {
-      throw new PrestashopApiException(
+      const serverError: PrestashopApiException = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
         body.substring(0, 500),
       );
+      throw serverError;
     }
 
-    throw new PrestashopApiException(
+    const apiError: PrestashopApiException = new PrestashopApiException(
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,
       body.substring(0, 500),
     );
+    throw apiError;
   }
 
   /**
