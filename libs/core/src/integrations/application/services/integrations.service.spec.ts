@@ -10,11 +10,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { IntegrationsService } from './integrations.service';
 import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
 import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { AdapterFactoryResolverService } from '@openlinker/core/integrations/infrastructure/adapters/adapter-factory-resolver.service';
-import { CONNECTION_PORT_TOKEN, IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { ADAPTER_REGISTRY_TOKEN, ADAPTER_FACTORY_RESOLVER_TOKEN, CREDENTIALS_RESOLVER_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
+import { ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
 import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-disabled.exception';
@@ -29,7 +26,6 @@ describe('IntegrationsService', () => {
   let service: IntegrationsService;
   let connectionPort: jest.Mocked<ConnectionPort>;
   let adapterRegistry: jest.Mocked<AdapterRegistryPort>;
-  let factoryResolver: jest.Mocked<AdapterFactoryResolverService>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -45,7 +41,7 @@ describe('IntegrationsService', () => {
   const mockAdapterMetadata: AdapterMetadata = {
     adapterKey: 'prestashop.webservice.v1',
     platformType: 'prestashop',
-    supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+    supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
     displayName: 'PrestaShop WebService v1',
     version: '1.0.0',
   };
@@ -66,23 +62,6 @@ describe('IntegrationsService', () => {
       listAdapters: jest.fn(),
     } as unknown as jest.Mocked<AdapterRegistryPort>;
 
-    const mockFactoryResolver = {
-      createCapabilityAdapter: jest.fn(),
-      registerFactory: jest.fn(),
-      getFactory: jest.fn(),
-      hasFactory: jest.fn().mockReturnValue(false), // Default: no factory, use registry placeholder
-    } as unknown as jest.Mocked<AdapterFactoryResolverService>;
-
-    const mockIdentifierMapping = {
-      getExternalIds: jest.fn(),
-      getOrCreateInternalId: jest.fn(),
-      batchGetOrCreateInternalIds: jest.fn(),
-    } as unknown as jest.Mocked<IdentifierMappingPort>;
-
-    const mockCredentialsResolver = {
-      get: jest.fn(),
-    } as unknown as jest.Mocked<CredentialsResolverPort>;
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IntegrationsService,
@@ -94,25 +73,12 @@ describe('IntegrationsService', () => {
           provide: ADAPTER_REGISTRY_TOKEN,
           useValue: mockAdapterRegistry,
         },
-        {
-          provide: ADAPTER_FACTORY_RESOLVER_TOKEN,
-          useValue: mockFactoryResolver,
-        },
-        {
-          provide: IDENTIFIER_MAPPING_PORT_TOKEN,
-          useValue: mockIdentifierMapping,
-        },
-        {
-          provide: CREDENTIALS_RESOLVER_TOKEN,
-          useValue: mockCredentialsResolver,
-        },
       ],
     }).compile();
 
     service = module.get<IntegrationsService>(IntegrationsService);
     connectionPort = module.get(CONNECTION_PORT_TOKEN);
     adapterRegistry = module.get(ADAPTER_REGISTRY_TOKEN);
-    factoryResolver = module.get(ADAPTER_FACTORY_RESOLVER_TOKEN);
   });
 
   describe('getAdapter', () => {
@@ -253,19 +219,16 @@ describe('IntegrationsService', () => {
         new Date(),
       );
 
-      // Mock both adapters to support the same capability for testing purposes
-      // In reality, they support different capabilities, but this test verifies
-      // that multiple adapters supporting the same capability are all returned
       const prestashopMetadata: AdapterMetadata = {
         adapterKey: 'prestashop.webservice.v1',
         platformType: 'prestashop',
-        supportedCapabilities: ['ProductMaster', 'OrderSource'],
+        supportedCapabilities: ['OrderProcessorManager'],
       };
 
       const allegroMetadata: AdapterMetadata = {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['ProductMaster', 'OrderProcessorManager'],
+        supportedCapabilities: ['OrderProcessorManager'],
       };
 
       connectionPort.list.mockResolvedValue([
@@ -281,11 +244,8 @@ describe('IntegrationsService', () => {
         .mockResolvedValueOnce({ adapterKey: 'prestashop.webservice.v1' } as AdapterInstance)
         .mockResolvedValueOnce({ adapterKey: 'allegro.publicapi.v1' } as AdapterInstance);
 
-      factoryResolver.hasFactory.mockReturnValue(false); // Use registry placeholders
-
-      // Use ProductMaster which both adapters support in this test
       const result = await service.listCapabilityAdapters<unknown>({
-        capability: 'ProductMaster',
+        capability: 'OrderProcessorManager',
       });
 
       expect(result).toHaveLength(2);
@@ -308,7 +268,7 @@ describe('IntegrationsService', () => {
       const prestashopMetadata: AdapterMetadata = {
         adapterKey: 'prestashop.webservice.v1',
         platformType: 'prestashop',
-        supportedCapabilities: ['OrderSource'],
+        supportedCapabilities: ['OrderProcessorManager'],
       };
 
       connectionPort.list.mockResolvedValue([prestashopConnection]);
@@ -316,10 +276,9 @@ describe('IntegrationsService', () => {
       adapterRegistry.getAdapter.mockResolvedValue({
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
 
       const result = await service.listCapabilityAdapters<unknown>({
-        capability: 'OrderSource',
+        capability: 'OrderProcessorManager',
         platformType: 'prestashop',
       });
 
@@ -349,17 +308,16 @@ describe('IntegrationsService', () => {
       const metadata: AdapterMetadata = {
         adapterKey: 'prestashop.webservice.v1',
         platformType: 'prestashop',
-        supportedCapabilities: ['OrderSource'],
+        supportedCapabilities: ['OrderProcessorManager'],
       };
 
       adapterRegistry.getAdapterMetadata.mockResolvedValue(metadata);
       adapterRegistry.getAdapter.mockResolvedValue({
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
 
       const result = await service.listCapabilityAdapters<unknown>({
-        capability: 'OrderSource',
+        capability: 'OrderProcessorManager',
       });
 
       // Only active connection should be returned (disabled ones are filtered by connectionPort.list)
@@ -396,7 +354,7 @@ describe('IntegrationsService', () => {
       const metadata: AdapterMetadata = {
         adapterKey: 'prestashop.webservice.v1',
         platformType: 'prestashop',
-        supportedCapabilities: ['OrderSource'],
+        supportedCapabilities: ['OrderProcessorManager'],
       };
 
       adapterRegistry.getAdapterMetadata
@@ -408,10 +366,9 @@ describe('IntegrationsService', () => {
       adapterRegistry.getAdapter.mockResolvedValue({
         adapterKey: 'prestashop.webservice.v1',
       } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
 
       const result = await service.listCapabilityAdapters<unknown>({
-        capability: 'OrderSource',
+        capability: 'OrderProcessorManager',
       });
 
       // Only valid connection should be returned

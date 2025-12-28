@@ -382,9 +382,17 @@ If you encounter issues not covered here:
 4. Check [Engineering Standards](./engineering-standards.md)
 5. Open an issue on GitHub
 
+## Next Steps
+
+After setting up the development environment:
+
+1. **Configure PrestaShop Webservice API** (see PrestaShop Setup above)
+2. **Review Architecture**: Read [Architecture Overview](./architecture-overview.md)
+3. **Start Development**: Begin implementing adapters or features
+4. **Run Tests**: `pnpm test`
+
 ## Related Documentation
 
-- [Testing Guide](./testing-guide.md) - **Comprehensive testing documentation** (unit tests, integration tests, Testcontainers)
 - [Architecture Overview](./architecture-overview.md) - System architecture
 - [Engineering Standards](./engineering-standards.md) - Coding standards
 - [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants

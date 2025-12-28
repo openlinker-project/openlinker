@@ -13,7 +13,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, QueryFailedError } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
@@ -35,29 +35,15 @@ export class ConnectionRepository implements ConnectionPort {
   ) {}
 
   async get(connectionId: string): Promise<Connection> {
-    try {
-      const entity = await this.repository.findOne({
-        where: { id: connectionId },
-      });
+    const entity = await this.repository.findOne({
+      where: { id: connectionId },
+    });
 
-      if (!entity) {
-        throw new ConnectionNotFoundException(connectionId);
-      }
-
-      return this.toDomain(entity);
-    } catch (error) {
-      // Handle invalid UUID format - PostgreSQL throws QueryFailedError
-      // when trying to query with a non-UUID string
-      if (
-        error instanceof QueryFailedError &&
-        'code' in error &&
-        error.code === '22P02' // PostgreSQL invalid input syntax error code
-      ) {
-        throw new ConnectionNotFoundException(connectionId);
-      }
-      // Re-throw other errors (including ConnectionNotFoundException)
-      throw error;
+    if (!entity) {
+      throw new ConnectionNotFoundException(connectionId);
     }
+
+    return this.toDomain(entity);
   }
 
   async list(filters?: ConnectionFilters): Promise<Connection[]> {
@@ -92,15 +78,14 @@ export class ConnectionRepository implements ConnectionPort {
     connectionId: string,
     patch: ConnectionUpdate,
   ): Promise<Connection> {
-    try {
-      // Load existing entity
-      const existing = await this.repository.findOne({
-        where: { id: connectionId },
-      });
+    // Load existing entity
+    const existing = await this.repository.findOne({
+      where: { id: connectionId },
+    });
 
-      if (!existing) {
-        throw new ConnectionNotFoundException(connectionId);
-      }
+    if (!existing) {
+      throw new ConnectionNotFoundException(connectionId);
+    }
 
     // Apply patch
     if (patch.name !== undefined) {
@@ -116,22 +101,9 @@ export class ConnectionRepository implements ConnectionPort {
       existing.adapterKey = patch.adapterKey;
     }
 
-      // Save updated entity
-      const saved = await this.repository.save(existing);
-      return this.toDomain(saved);
-    } catch (error) {
-      // Handle invalid UUID format - PostgreSQL throws QueryFailedError
-      // when trying to query with a non-UUID string
-      if (
-        error instanceof QueryFailedError &&
-        'code' in error &&
-        error.code === '22P02' // PostgreSQL invalid input syntax error code
-      ) {
-        throw new ConnectionNotFoundException(connectionId);
-      }
-      // Re-throw other errors (including ConnectionNotFoundException)
-      throw error;
-    }
+    // Save updated entity
+    const saved = await this.repository.save(existing);
+    return this.toDomain(saved);
   }
 
   async disable(connectionId: string): Promise<Connection> {

@@ -4,8 +4,7 @@
   "description": "Open-source, modular, API-first e-commerce orchestration platform",
   "private": true,
   "scripts": {
-    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-prestashop build && pnpm --filter @openlinker/api build",
-    "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
+    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/api build",
     "build:api": "nest build",
     "test": "pnpm -r test",
     "test:watch": "pnpm -r test:watch",
@@ -48,7 +47,6 @@
     "pnpm": ">=9.0.0"
   },
   "dependencies": {
-    "@nestjs/swagger": "^11.2.3",
-    "fast-xml-parser": "^5.3.3"
+    "@nestjs/swagger": "^11.2.3"
   }
 }

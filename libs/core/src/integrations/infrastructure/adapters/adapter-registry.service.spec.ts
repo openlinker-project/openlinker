@@ -30,7 +30,7 @@ describe('AdapterRegistryService', () => {
       expect(metadata.platformType).toBe('prestashop');
       expect(metadata.supportedCapabilities).toContain('ProductMaster');
       expect(metadata.supportedCapabilities).toContain('InventoryMaster');
-      expect(metadata.supportedCapabilities).toContain('OrderSource');
+      expect(metadata.supportedCapabilities).toContain('OrderProcessorManager');
     });
 
     it('should return metadata for allegro adapter', async () => {
@@ -99,11 +99,11 @@ describe('AdapterRegistryService', () => {
       expect(metadata.supportedCapabilities).toContain('Marketplace');
     });
 
-    it('should verify prestashop supports OrderSource and allegro supports OrderProcessorManager', async () => {
+    it('should verify both adapters support OrderProcessorManager', async () => {
       const prestashop = await service.getAdapterMetadata('prestashop.webservice.v1');
       const allegro = await service.getAdapterMetadata('allegro.publicapi.v1');
 
-      expect(prestashop.supportedCapabilities).toContain('OrderSource');
+      expect(prestashop.supportedCapabilities).toContain('OrderProcessorManager');
       expect(allegro.supportedCapabilities).toContain('OrderProcessorManager');
     });
   });

@@ -24,17 +24,11 @@ import {
 import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
 import {
   ADAPTER_REGISTRY_TOKEN,
-  ADAPTER_FACTORY_RESOLVER_TOKEN,
-  CREDENTIALS_RESOLVER_TOKEN,
 } from '@openlinker/core/integrations/integrations.tokens';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-disabled.exception';
 import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations/domain/exceptions/capability-not-supported.exception';
-import { AdapterFactoryResolverService } from '@openlinker/core/integrations/infrastructure/adapters/adapter-factory-resolver.service';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -46,12 +40,6 @@ export class IntegrationsService implements IIntegrationsService {
     private readonly connectionPort: ConnectionPort,
     @Inject(ADAPTER_REGISTRY_TOKEN)
     private readonly adapterRegistry: AdapterRegistryPort,
-    @Inject(ADAPTER_FACTORY_RESOLVER_TOKEN)
-    private readonly factoryResolver: AdapterFactoryResolverService,
-    @Inject(IDENTIFIER_MAPPING_PORT_TOKEN)
-    private readonly identifierMapping: IdentifierMappingPort,
-    @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort,
   ) {}
 
   async getAdapter(connectionId: string): Promise<{
@@ -99,7 +87,7 @@ export class IntegrationsService implements IIntegrationsService {
   ): Promise<T> {
     this.logger.debug(`Resolving ${capability} adapter for connection: ${connectionId}`);
 
-    const { connection, metadata } = await this.getAdapter(connectionId);
+    const { adapter, metadata } = await this.getAdapter(connectionId);
 
     // Validate capability support
     if (!metadata.supportedCapabilities.includes(capability)) {
@@ -109,32 +97,11 @@ export class IntegrationsService implements IIntegrationsService {
       throw new CapabilityNotSupportedException(metadata.adapterKey, capability);
     }
 
-    // Try to create adapter using factory resolver
-    // If factory is not registered, fall back to placeholder from registry
-    if (this.factoryResolver.hasFactory(metadata.adapterKey)) {
-      this.logger.debug(`Using factory to create ${capability} adapter for ${metadata.adapterKey}`);
-      try {
-        return await this.factoryResolver.createCapabilityAdapter<T>(
-          metadata.adapterKey,
-          connection,
-          capability,
-          this.identifierMapping,
-          this.credentialsResolver,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Failed to create adapter using factory: ${(error as Error).message}. Falling back to registry placeholder.`,
-        );
-        // Fall through to registry placeholder
-      }
-    }
-
-    // Fallback: return placeholder from registry (for adapters without factories)
-    const { adapter } = await this.getAdapter(connectionId);
     this.logger.log(
-      `Capability adapter resolved: ${capability} for connection ${connectionId} (adapter: ${metadata.adapterKey}, using placeholder)`,
+      `Capability adapter resolved: ${capability} for connection ${connectionId} (adapter: ${metadata.adapterKey})`,
     );
 
+    // Return typed adapter instance
     return adapter as T;
   }
 

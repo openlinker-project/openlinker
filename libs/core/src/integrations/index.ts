@@ -13,8 +13,6 @@ export { IIntegrationsService } from './application/interfaces/integrations.serv
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
-export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
-export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 
 // Types
 export {
@@ -32,8 +30,6 @@ export { CapabilityNotSupportedException } from './domain/exceptions/capability-
 export {
   ADAPTER_REGISTRY_TOKEN,
   INTEGRATIONS_SERVICE_TOKEN,
-  CREDENTIALS_RESOLVER_TOKEN,
-  ADAPTER_FACTORY_RESOLVER_TOKEN,
 } from './integrations.tokens';
 
 // Module

@@ -30,7 +30,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
         supportedCapabilities: [
           'ProductMaster',
           'InventoryMaster',
-          'OrderSource',
+          'OrderProcessorManager',
         ] as Capability[],
         displayName: 'PrestaShop WebService v1',
         version: '1.0.0',
