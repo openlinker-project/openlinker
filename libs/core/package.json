@@ -3,8 +3,44 @@
   "version": "0.1.0",
   "description": "OpenLinker Core Bounded Contexts",
   "private": true,
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    },
+    "./integrations": {
+      "types": "./dist/integrations/index.d.ts",
+      "require": "./dist/integrations/index.js"
+    },
+    "./integrations/*": {
+      "types": "./dist/integrations/*.d.ts",
+      "require": "./dist/integrations/*.js"
+    },
+    "./identifier-mapping": {
+      "types": "./dist/identifier-mapping/index.d.ts",
+      "require": "./dist/identifier-mapping/index.js"
+    },
+    "./identifier-mapping/*": {
+      "types": "./dist/identifier-mapping/*.d.ts",
+      "require": "./dist/identifier-mapping/*.js"
+    },
+    "./orders": {
+      "types": "./dist/orders/index.d.ts",
+      "require": "./dist/orders/index.js"
+    },
+    "./products": {
+      "types": "./dist/products/index.d.ts",
+      "require": "./dist/products/index.js"
+    },
+    "./inventory": {
+      "types": "./dist/inventory/index.d.ts",
+      "require": "./dist/inventory/index.js"
+    }
+  },
+  "files": ["dist"],
   "scripts": {
     "build": "tsc",
     "test": "jest",

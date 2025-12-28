@@ -10,12 +10,17 @@
 import { Module } from '@nestjs/common';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
 import { ConnectionService } from './application/services/connection.service';
 
 @Module({
-  imports: [CoreIntegrationsModule, IdentifierMappingModule],
+  imports: [
+    CoreIntegrationsModule,
+    IdentifierMappingModule,
+    PrestashopIntegrationModule, // Register PrestaShop adapter factory
+  ],
   controllers: [ConnectionController, AdapterController],
   providers: [ConnectionService],
 })

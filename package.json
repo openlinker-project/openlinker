@@ -4,15 +4,17 @@
   "description": "Open-source, modular, API-first e-commerce orchestration platform",
   "private": true,
   "scripts": {
-    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/api build",
+    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-prestashop build && pnpm --filter @openlinker/api build",
+    "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
     "build:api": "nest build",
     "test": "pnpm -r test",
+    "test:ci": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "test:cov": "pnpm -r test:cov",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
-    "type-check": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm -r type-check",
+    "type-check": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-prestashop build && pnpm -r type-check",
     "start:dev": "pnpm --filter api start:dev",
     "start:dev:api": "nest start --watch",
     "start:prod": "pnpm --filter api start:prod",
@@ -47,6 +49,7 @@
     "pnpm": ">=9.0.0"
   },
   "dependencies": {
-    "@nestjs/swagger": "^11.2.3"
+    "@nestjs/swagger": "^11.2.3",
+    "fast-xml-parser": "^5.3.3"
   }
 }

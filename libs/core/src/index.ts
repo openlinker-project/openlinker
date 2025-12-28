@@ -8,4 +8,7 @@
  */
 export * from './identifier-mapping';
 export * from './integrations';
+export * from './orders';
+export * from './products';
+export * from './inventory';
 
