@@ -63,21 +63,25 @@ export class PrestashopResponseParser {
               const xmlErrorMessage = xmlError instanceof Error ? xmlError.message : String(xmlError);
               const jsonErrorMessage = error instanceof Error ? error.message : String(error);
               const combinedMessage = `Failed to parse response as JSON or XML: JSON error: ${jsonErrorMessage}, XML error: ${xmlErrorMessage}`;
-              throw new PrestashopParseException(
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+              const parseError = new PrestashopParseException(
                 combinedMessage,
                 responseBody.substring(0, 500),
                 'auto',
                 error instanceof Error ? error : undefined,
-              );
+              ) as PrestashopParseException;
+              throw parseError;
             }
           }
           const errorMessage: string = error instanceof Error ? error.message : String(error);
-          throw new PrestashopParseException(
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+          const parseError = new PrestashopParseException(
             `Failed to parse JSON response: ${errorMessage}`,
             responseBody.substring(0, 500),
             'json',
             error instanceof Error ? error : undefined,
-          );
+          ) as PrestashopParseException;
+          throw parseError;
         }
       }
     }
@@ -88,12 +92,14 @@ export class PrestashopResponseParser {
         return this.parseXml(responseBody);
       } catch (error: unknown) {
         const errorMessage: string = error instanceof Error ? error.message : String(error);
-        throw new PrestashopParseException(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        const parseError = new PrestashopParseException(
           `Failed to parse XML response: ${errorMessage}`,
           responseBody.substring(0, 500),
           'xml',
           error instanceof Error ? error : undefined,
-        );
+        ) as PrestashopParseException;
+        throw parseError;
       }
     }
 
@@ -103,20 +109,24 @@ export class PrestashopResponseParser {
         return this.parseJson(responseBody);
       } catch (error: unknown) {
         const errorMessage: string = error instanceof Error ? error.message : String(error);
-        throw new PrestashopParseException(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        const parseError = new PrestashopParseException(
           `Failed to parse response: ${errorMessage}`,
           responseBody.substring(0, 500),
           'auto',
           error instanceof Error ? error : undefined,
-        );
+        ) as PrestashopParseException;
+        throw parseError;
       }
     }
 
-    throw new PrestashopParseException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    const parseError = new PrestashopParseException(
       'Unable to determine response format (not JSON or XML)',
       responseBody.substring(0, 500),
       'auto',
-    );
+    ) as PrestashopParseException;
+    throw parseError;
   }
 
   /**

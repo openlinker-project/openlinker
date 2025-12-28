@@ -42,12 +42,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const prestashopId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
 
     if (!prestashopId) {
-      const error: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
         this.connection.id,
-      );
+      ) as PrestashopResourceNotFoundException;
       throw error;
     }
 
@@ -59,7 +60,8 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Map to OpenLinker schema
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
-    const langIdValue: number = config.langId ?? 1;
+    const configLangId: number | undefined = config.langId;
+    const langIdValue: number = configLangId ?? 1;
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
     // Return with internal ID
@@ -98,7 +100,8 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Map products with internal IDs
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
-    const langIdValue: number = config.langId ?? 1;
+    const configLangId: number | undefined = config.langId;
+    const langIdValue: number = configLangId ?? 1;
 
     return prestashopProducts.map((prestashopProduct) => {
       const externalId = String(prestashopProduct.id);
@@ -125,12 +128,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const prestashopProductId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
 
     if (!prestashopProductId) {
-      const error: PrestashopResourceNotFoundException = new PrestashopResourceNotFoundException(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
         this.connection.id,
-      );
+      ) as PrestashopResourceNotFoundException;
       throw error;
     }
 
@@ -188,56 +192,62 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
   // Write operations - not supported in MVP
   createProduct(_product: ProductCreate): Promise<Product> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Product creation is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'createProduct',
       'PrestaShop admin interface',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
   updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Product update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'updateProduct',
       'PrestaShop admin interface',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
   deleteProduct(_productId: string): Promise<void> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Product deletion is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'deleteProduct',
       'PrestaShop admin interface',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
   upsertProductVariant(_productId: string, _variant: ProductVariantCreate): Promise<ProductVariant> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Variant creation/update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'upsertProductVariant',
       'PrestaShop admin interface',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
   getProductCategories(_productId: string): Promise<Category[]> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Get product categories is not implemented in MVP.',
       'getProductCategories',
       'Future implementation',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
   assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
-    const error: PrestashopNotSupportedException = new PrestashopNotSupportedException(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const error = new PrestashopNotSupportedException(
       'Category assignment is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'assignCategories',
       'PrestaShop admin interface',
-    );
+    ) as PrestashopNotSupportedException;
     return Promise.reject(error);
   }
 
