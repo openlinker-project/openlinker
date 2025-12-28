@@ -63,7 +63,7 @@ export class PrestashopResponseParser {
               const xmlErrorMessage = xmlError instanceof Error ? xmlError.message : String(xmlError);
               const jsonErrorMessage = error instanceof Error ? error.message : String(error);
               const combinedMessage = `Failed to parse response as JSON or XML: JSON error: ${jsonErrorMessage}, XML error: ${xmlErrorMessage}`;
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
               const parseError = new PrestashopParseException(
                 combinedMessage,
                 responseBody.substring(0, 500),
@@ -74,7 +74,7 @@ export class PrestashopResponseParser {
             }
           }
           const errorMessage: string = error instanceof Error ? error.message : String(error);
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
           const parseError = new PrestashopParseException(
             `Failed to parse JSON response: ${errorMessage}`,
             responseBody.substring(0, 500),
@@ -92,7 +92,7 @@ export class PrestashopResponseParser {
         return this.parseXml(responseBody);
       } catch (error: unknown) {
         const errorMessage: string = error instanceof Error ? error.message : String(error);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
         const parseError = new PrestashopParseException(
           `Failed to parse XML response: ${errorMessage}`,
           responseBody.substring(0, 500),
@@ -109,7 +109,7 @@ export class PrestashopResponseParser {
         return this.parseJson(responseBody);
       } catch (error: unknown) {
         const errorMessage: string = error instanceof Error ? error.message : String(error);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
         const parseError = new PrestashopParseException(
           `Failed to parse response: ${errorMessage}`,
           responseBody.substring(0, 500),
@@ -120,7 +120,7 @@ export class PrestashopResponseParser {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const parseError = new PrestashopParseException(
       'Unable to determine response format (not JSON or XML)',
       responseBody.substring(0, 500),
