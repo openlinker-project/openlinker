@@ -11,6 +11,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
+import * as express from 'express';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
 import { AppModule } from '../../src/app.module';
@@ -65,7 +66,28 @@ export class IntegrationTestHarness {
     }).compile();
 
     // 5. Create Nest application
-    this.app = this.moduleRef.createNestApplication();
+    // Disable Nest's default body parser to match production setup
+    // This ensures webhook routes capture raw body before JSON parsing
+    this.app = this.moduleRef.createNestApplication({
+      bodyParser: false,
+    });
+
+    // 1) Webhooks: JSON parser with verify hook to capture raw bytes for signature verification
+    // This MUST run before any other body parser to ensure verify hook fires
+    this.app.use(
+      '/webhooks',
+      express.json({
+        limit: '256kb',
+        verify: (req: express.Request & { rawBody?: Buffer }, _res, buf: Buffer) => {
+          // Capture raw body bytes before JSON parsing
+          req.rawBody = buf;
+        },
+      }),
+    );
+
+    // 2) Everything else: normal JSON parser (no raw capture needed)
+    this.app.use(express.json({ limit: '1mb' }));
+    this.app.use(express.urlencoded({ extended: true }));
 
     // Apply global validation pipe (matching main.ts)
     this.app.useGlobalPipes(

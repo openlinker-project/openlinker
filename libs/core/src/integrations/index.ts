@@ -15,6 +15,7 @@ export { IIntegrationsService } from './application/interfaces/integrations.serv
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
 export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
+export { WebhookSecretProviderPort } from './domain/ports/webhook-secret-provider.port';
 
 // Types
 export {
@@ -34,6 +35,7 @@ export {
   INTEGRATIONS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
+  WEBHOOK_SECRET_PROVIDER_TOKEN,
 } from './integrations.tokens';
 
 // Module
