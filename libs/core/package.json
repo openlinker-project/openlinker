@@ -38,6 +38,22 @@
     "./inventory": {
       "types": "./dist/inventory/index.d.ts",
       "require": "./dist/inventory/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "require": "./dist/events/index.js"
+    },
+    "./events/*": {
+      "types": "./dist/events/*.d.ts",
+      "require": "./dist/events/*.js"
+    },
+    "./sync": {
+      "types": "./dist/sync/index.d.ts",
+      "require": "./dist/sync/index.js"
+    },
+    "./sync/*": {
+      "types": "./dist/sync/*.d.ts",
+      "require": "./dist/sync/*.js"
     }
   },
   "files": ["dist"],

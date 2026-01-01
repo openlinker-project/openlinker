@@ -10,10 +10,32 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // Disable Nest's default body parser so we can control parser order
+  // This ensures webhook routes capture raw body before JSON parsing
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
+  });
+
+  // 1) Webhooks: JSON parser with verify hook to capture raw bytes for signature verification
+  // This MUST run before any other body parser to ensure verify hook fires
+  app.use(
+    '/webhooks',
+    express.json({
+      limit: '256kb',
+      verify: (req: express.Request & { rawBody?: Buffer }, _res, buf: Buffer) => {
+        // Capture raw body bytes before JSON parsing
+        req.rawBody = buf;
+      },
+    }),
+  );
+
+  // 2) Everything else: normal JSON parser (no raw capture needed)
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true }));
 
   // Enable CORS
   app.enableCors();

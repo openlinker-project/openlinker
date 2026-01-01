@@ -1202,6 +1202,55 @@ Event Handlers
     └─> NotificationListener
 ```
 
+### 4. Webhook Ingestion Flow (Inbound → Event Bus → Sync Trigger)
+
+```
+External System (PrestaShop)
+    │
+    │ POST /webhooks/:provider/:connectionId
+    │ Headers: X-OpenLinker-Timestamp, X-OpenLinker-Signature
+    ▼
+WebhookController
+    │
+    │ 1. Validates signature (HMAC SHA256)
+    │ 2. Checks replay protection (timestamp window)
+    │ 3. Performs deduplication (two-phase: processing → done)
+    │ 4. Publishes to event bus
+    ▼
+Redis Streams: events.inbound.webhooks
+    │
+    │ EventEnvelope with InboundWebhookEvent
+    ▼
+WebhookToJobHandler (Consumer Group: webhook-handler)
+    │
+    │ 1. Consumes events from stream
+    │ 2. Maps webhook event to sync job
+    │ 3. Enqueues job with idempotency key
+    │ 4. ACKs message after successful enqueue
+    ▼
+Redis Streams: jobs.sync
+    │
+    │ SyncJob (e.g., prestashop.product.syncByExternalId)
+    ▼
+Future: Worker processes jobs
+    │
+    │ Triggers "pull" sync via adapter APIs
+    │ (Webhook payload is not source of truth)
+```
+
+**Key Design Principles**:
+- **Fast webhook processing**: Validate → enqueue → ACK (target: <100ms)
+- **At-least-once delivery**: Two-phase deduplication prevents lost events
+- **Idempotent job enqueue**: Job-level deduplication prevents duplicate sync jobs
+- **Webhook payload is not source of truth**: Triggers "pull" jobs that fetch full data via adapters
+
+**Security**:
+- HMAC SHA256 signature verification using raw body bytes
+- Replay protection via timestamp validation (±5 minute window)
+- Connection validation (exists, active, provider match)
+
+**Location**: `apps/api/src/webhooks/` (Infrastructure / Inbound Adapters)
+
 ---
 
 ## Technology Stack

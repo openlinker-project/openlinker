@@ -1,0 +1,46 @@
+/**
+ * Webhooks Module
+ *
+ * NestJS module for webhook ingestion functionality. Configures webhook controller,
+ * services, middleware, and dependency injection. Imports core modules for events,
+ * integrations, and connections.
+ *
+ * @module apps/api/src/webhooks
+ */
+import { Module } from '@nestjs/common';
+import { EventsModule } from '@openlinker/core/events';
+import { IntegrationsModule } from '@openlinker/core/integrations';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SyncModule } from '@openlinker/core/sync';
+import { WebhookController } from './http/webhook.controller';
+import { WebhookService } from './application/services/webhook.service';
+import { WebhookAuthService } from './application/services/webhook-auth.service';
+import { WebhookDedupService } from './application/services/webhook-dedup.service';
+import { WebhookEventPublisher } from './application/services/webhook-event-publisher.service';
+import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handler';
+
+/**
+ * Webhooks Module
+ *
+ * Note: Raw body capture for webhook signature verification is handled at the
+ * application level in main.ts using express.json() with verify hook for /webhooks routes.
+ * This ensures the verify hook fires before any other body parsing.
+ */
+@Module({
+  imports: [
+    EventsModule, // For EventPublisherPort
+    IntegrationsModule, // For WebhookSecretProviderPort
+    IdentifierMappingModule, // For ConnectionPort
+    SyncModule, // For JobEnqueuePort
+  ],
+  controllers: [WebhookController],
+  providers: [
+    WebhookService,
+    WebhookAuthService,
+    WebhookDedupService,
+    WebhookEventPublisher,
+    WebhookToJobHandler,
+  ],
+})
+export class WebhooksModule {}
+
