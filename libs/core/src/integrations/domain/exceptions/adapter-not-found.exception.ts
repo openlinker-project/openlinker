@@ -15,3 +15,5 @@ export class AdapterNotFoundException extends Error {
   }
 }
 
+
+

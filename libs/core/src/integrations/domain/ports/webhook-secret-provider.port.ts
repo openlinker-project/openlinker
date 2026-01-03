@@ -22,3 +22,5 @@ export interface WebhookSecretProviderPort {
   getSecret(provider: string, connectionId: string): Promise<string>;
 }
 
+
+

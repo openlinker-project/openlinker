@@ -18,3 +18,5 @@ export class PrestashopAuthenticationException extends Error {
   }
 }
 
+
+

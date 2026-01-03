@@ -32,3 +32,5 @@ export interface AdapterRegistryPort {
   listAdapters(): Promise<AdapterMetadata[]>;
 }
 
+
+

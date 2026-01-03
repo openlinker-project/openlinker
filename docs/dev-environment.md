@@ -31,6 +31,7 @@ This guide explains how to set up and use the local development environment for 
 | PostgreSQL | `localhost:5432` | Main database for OpenLinker |
 | Redis | `localhost:6379` | Event bus and caching |
 | MySQL | `localhost:3306` | Database for PrestaShop |
+| phpMyAdmin | `http://localhost:8081` | Web-based MySQL administration tool |
 | PrestaShop | `http://localhost:8080` | E-commerce platform (external dependency) |
 | API | `http://localhost:3000` | OpenLinker API |
 
@@ -62,16 +63,23 @@ This guide explains how to set up and use the local development environment for 
 - **Username**: `prestashop`
 - **Password**: `prestashop`
 
+### phpMyAdmin
+- **URL**: `http://localhost:8081`
+- **Server**: `mysql` (or use `localhost:3306` from host)
+- **Username**: `root` (or `prestashop`)
+- **Password**: `root` (or `prestashop`)
+- **Note**: Pre-configured to connect to the MySQL service in the Docker network
+
 ## Running the Stack
 
 ### Start Services
 
 ```bash
-# Start all services (PostgreSQL, Redis, MySQL, PrestaShop)
+# Start all services (PostgreSQL, Redis, MySQL, phpMyAdmin, PrestaShop)
 pnpm dev:stack:up
 
 # Or using docker compose directly
-docker compose up -d postgres redis mysql prestashop
+docker compose up -d postgres redis mysql phpmyadmin prestashop
 ```
 
 ### Stop Services
@@ -93,6 +101,7 @@ pnpm dev:stack:logs
 # View logs for specific service
 docker compose logs -f prestashop
 docker compose logs -f mysql
+docker compose logs -f phpmyadmin
 docker compose logs -f postgres
 docker compose logs -f redis
 ```

@@ -96,3 +96,5 @@ export interface InventoryMasterPort {
   getAvailableQuantity(productId: string, locationId?: string): Promise<number>;
 }
 
+
+

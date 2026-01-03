@@ -176,3 +176,5 @@ export interface ProductMasterPort {
   searchProducts(query: string, filters?: ProductFilters): Promise<Product[]>;
 }
 
+
+

@@ -44,7 +44,18 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=your-secret-key
 
 **Note**: Replace `<CONNECTION_ID>` with your actual connection ID (uppercase, no dashes).
 
-### 3. Configure PrestaShop Webhook
+### 3. Install PrestaShop Webhook Module
+
+Install the OpenLinker Webhooks module in your PrestaShop instance:
+
+**For detailed installation instructions**, see: [PrestaShop Module README](../../apps/prestashop-module/openlinkerwebhooks/README.md)
+
+**Quick Start**:
+1. Upload module ZIP to PrestaShop (or use bind-mount for development)
+2. Install module via PrestaShop backoffice: **Modules → Module Manager**
+3. Configure module settings (see module README for details)
+
+### 4. Configure PrestaShop Webhook Module
 
 In your PrestaShop webhook module configuration:
 
@@ -208,6 +219,57 @@ headers['X-OpenLinker-Signature'] = `sha256=${signature}`;
    - Check Redis stream: `XREAD STREAMS events.inbound.webhooks 0`
    - Check job queue: `XREAD STREAMS jobs.sync 0`
 
+## Event Deduplication
+
+### Why Multiple Hook Fires Occur
+
+PrestaShop's `actionProductSave` hook (and other hooks) can fire **multiple times** during a single product save operation. This is expected PrestaShop behavior, not a bug.
+
+**Common scenarios**:
+- Product saved for multiple languages (2 languages = 2+ hook fires)
+- Product saved for multiple shops (multi-shop setup)
+- Product saved in multiple phases (main record, attributes, categories, stock, images, SEO)
+- Hook called from multiple places in PrestaShop core code
+
+**Example**: Saving a product with 2 languages can trigger the hook **6 times** within the same second, all for the same product ID.
+
+### How Deduplication Works
+
+The PrestaShop webhook module implements **automatic deduplication** to prevent duplicate events:
+
+1. **Deterministic Event IDs**: Event IDs are generated deterministically based on:
+   - Provider + Connection ID + Event Type + Object Type + External ID + **Time Window** (rounded to nearest minute)
+   
+2. **Database-Level Deduplication**: Uses `INSERT IGNORE` with a unique constraint on `event_id`:
+   - If the same event ID is inserted multiple times, only the first insert succeeds
+   - Subsequent inserts are silently ignored (no error, no duplicate)
+
+3. **Time Window**: Events within the same minute for the same object generate the same event ID, preventing duplicates from rapid hook fires.
+
+**Result**: Even if a hook fires 6 times in one second, only **1 event** is created and sent to OpenLinker.
+
+**Note**: Time windows use PrestaShop server timezone. Events created in different minutes are correctly treated as separate events (this is expected behavior for legitimate separate save operations).
+
+### Verification
+
+To verify deduplication is working:
+
+```sql
+-- Check for duplicate events (should return 0 rows)
+SELECT event_id, COUNT(*) as count
+FROM ps_openlinker_webhook_outbox
+GROUP BY event_id
+HAVING count > 1;
+
+-- Check events for a specific product (should see only 1 per minute)
+SELECT id, event_type, external_id, created_at
+FROM ps_openlinker_webhook_outbox
+WHERE external_id = '23' AND event_type = 'product.saved'
+ORDER BY created_at DESC;
+```
+
+**Expected**: One event per product save operation, even if the hook fired multiple times.
+
 ## Troubleshooting
 
 ### 401 Unauthorized
@@ -237,6 +299,18 @@ headers['X-OpenLinker-Signature'] = `sha256=${signature}`;
 
 **Solution**: Check application logs and Redis connectivity.
 
+### Duplicate Events in Database
+
+**Possible causes**:
+- Event ID generation changed (should be deterministic)
+- Time window logic issue
+- Database unique constraint missing
+
+**Solution**: 
+1. Verify `event_id` column has unique constraint: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
+2. Check event IDs are deterministic (same inputs = same ID)
+3. Verify `INSERT IGNORE` is being used in `OutboxRepository::enqueueEvent()`
+
 ## Best Practices
 
 1. **Use Connection-Specific Secrets**: Prefer connection-specific secrets over provider-level for better security isolation.
@@ -251,7 +325,7 @@ headers['X-OpenLinker-Signature'] = `sha256=${signature}`;
 
 ## Related Documentation
 
-- [Webhook Overview](./overview.md)
-- [Webhook Testing Guide](../webhook-testing-guide.md)
-- [Architecture Overview](../architecture-overview.md)
+- [Webhook Overview](./overview.md) - OpenLinker webhook ingestion system
+- [PrestaShop Module README](../../apps/prestashop-module/openlinkerwebhooks/README.md) - **Module installation and configuration guide**
+- [Architecture Overview](../architecture-overview.md) - System architecture
 

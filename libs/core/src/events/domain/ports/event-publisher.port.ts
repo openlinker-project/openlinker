@@ -29,3 +29,5 @@ export interface EventPublisherPort {
   publish(streamName: string, event: EventEnvelope): Promise<string>;
 }
 
+
+
