@@ -145,3 +145,5 @@ export interface IPrestashopOrderMapper {
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'>;
 }
 
+
+

@@ -18,3 +18,5 @@ exec node_modules/.bin/typeorm migration:generate -d src/database/data-source.ts
 
 
 
+
+

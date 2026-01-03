@@ -35,3 +35,5 @@ export interface AdapterFactoryPort {
   ): Promise<T>;
 }
 
+
+

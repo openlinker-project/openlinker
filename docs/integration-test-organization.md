@@ -204,3 +204,5 @@ The current setup is **correct and should not be changed**.
 - [Testing Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
 - [OpenLinker Integration Test Strategy](./integration-test-strategy.md)
 
+
+

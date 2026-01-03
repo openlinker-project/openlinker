@@ -22,3 +22,5 @@ export interface PrestashopCredentials {
   webserviceApiKey: string;
 }
 
+
+

@@ -182,6 +182,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    *
    * Parses the event envelope, maps it to a sync job, and enqueues the job.
    * ACKs the message only after successful job enqueue.
+   * Test events (eventType starting with 'test.') are skipped (no job created).
    */
   private async processMessage(messageId: string, fields: Record<string, string>): Promise<void> {
     try {
@@ -190,6 +191,16 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
 
       // Map to inbound webhook event
       const event = this.mapToInboundWebhookEvent(envelope);
+
+      // Skip test events (they're just for verification, no job needed)
+      if (event.eventType.startsWith('test.')) {
+        this.logger.debug(
+          `Skipping test event ${event.eventId} (eventType: ${event.eventType}) - no job created`,
+        );
+        // ACK test events immediately (they've served their purpose)
+        await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
+        return;
+      }
 
       // Map to sync job
       const job = this.mapToSyncJob(event);

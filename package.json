@@ -20,7 +20,7 @@
     "start:dev:api": "nest start --watch",
     "start:prod": "pnpm --filter api start:prod",
     "start:prod:api": "node apps/api/dist/apps/api/src/main",
-    "dev:stack:up": "docker compose up -d postgres redis mysql prestashop",
+    "dev:stack:up": "docker compose up -d postgres redis mysql phpmyadmin prestashop",
     "dev:stack:down": "docker compose down",
     "dev:stack:logs": "docker compose logs -f",
     "dev:health": "curl -s http://localhost:3000/health/dev-stack | jq . || curl -s http://localhost:3000/health/dev-stack",

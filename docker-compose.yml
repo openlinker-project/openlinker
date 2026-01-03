@@ -47,6 +47,27 @@ services:
       timeout: 5s
       retries: 5
 
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    platform: linux/amd64
+    container_name: openlinker-phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - '8081:80'
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'php -r "exit(@file_get_contents(\"http://localhost:80\") ? 0 : 1);"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
     container_name: openlinker-prestashop
@@ -61,11 +82,18 @@ services:
       PS_DB_PASSWD: prestashop
       PS_DB_PREFIX: ps_
       PS_ENABLE_SSL: 0
-      PS_DEMO_MODE: 1
+      PS_DEMO_MODE: 0
+      PS_DEV_MODE: 0
     ports:
       - '8080:80'
     volumes:
       - prestashop_data:/var/www/html
+      # Bind-mount module source for fast dev iteration
+      - ./apps/prestashop-module/openlinkerwebhooks:/var/www/html/modules/openlinkerwebhooks
+    extra_hosts:
+      # Enable host.docker.internal on Linux (macOS/Windows work out of the box)
+      # Allows PrestaShop container to reach OpenLinker API running on host
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy

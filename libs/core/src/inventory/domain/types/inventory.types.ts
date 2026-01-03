@@ -46,3 +46,5 @@ export interface InventoryAdjustment {
   metadata?: Record<string, unknown>;
 }
 
+
+

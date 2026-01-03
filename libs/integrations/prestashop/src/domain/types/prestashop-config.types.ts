@@ -52,3 +52,5 @@ export interface PrestashopConnectionConfig {
   responseFormat?: 'auto' | 'json' | 'xml';
 }
 
+
+

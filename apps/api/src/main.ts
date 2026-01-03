@@ -61,7 +61,8 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup('api', app, document);
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces (accessible from Docker)
+  await app.listen(port, host);
 
   // eslint-disable-next-line no-console
   console.log(`Application is running on: http://localhost:${port}`);
