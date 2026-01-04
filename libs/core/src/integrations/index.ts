@@ -10,6 +10,7 @@
 // Services
 export { IntegrationsService } from './application/services/integrations.service';
 export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
+export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';

@@ -6,10 +6,8 @@
  *
  * @module libs/integrations/prestashop/src
  */
-import { Module, OnModuleInit } from '@nestjs/common';
-import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN } from '@openlinker/core/integrations';
-import { Inject } from '@nestjs/common';
-import { AdapterFactoryResolverService } from '@openlinker/core/integrations/infrastructure/adapters/adapter-factory-resolver.service';
+import { Module, OnModuleInit, Inject } from '@nestjs/common';
+import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService } from '@openlinker/core/integrations';
 import { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
 import { Logger } from '@openlinker/shared/logging';
 

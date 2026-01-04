@@ -8,8 +8,7 @@
  * @implements {ProductMasterPort}
  */
 import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category } from '@openlinker/core/products';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from '../mappers/prestashop.mapper.interface';
 import {

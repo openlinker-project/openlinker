@@ -7,8 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/application/interfaces
  */
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations';
 // eslint-disable-next-line no-restricted-imports
 import { PrestashopProductMasterAdapter } from '../../infrastructure/adapters/prestashop-product-master.adapter';
