@@ -1,0 +1,64 @@
+/**
+ * Sync Job ORM Entity
+ *
+ * TypeORM entity representing the sync_jobs table in PostgreSQL.
+ * Stores persisted sync jobs for durable retries, observability, and idempotency.
+ *
+ * @module libs/core/src/sync/infrastructure/persistence/entities
+ */
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
+
+@Entity('sync_jobs')
+@Index(['status', 'nextRunAt'])
+@Index(['lockedAt'])
+export class SyncJobOrmEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'varchar' })
+  jobType!: string;
+
+  @Column('uuid')
+  connectionId!: string;
+
+  @Column({ type: 'jsonb' })
+  payloadJson!: Record<string, unknown>;
+
+  @Column({ type: 'varchar' })
+  status!: string; // 'queued' | 'running' | 'succeeded' | 'failed' | 'dead'
+
+  @Column({ type: 'varchar', unique: true })
+  idempotencyKey!: string;
+
+  @Column({ default: 0 })
+  attempts!: number;
+
+  @Column({ default: 10 })
+  maxAttempts!: number;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  nextRunAt!: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedAt!: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  lockedBy!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  lastError!: string | null;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
+

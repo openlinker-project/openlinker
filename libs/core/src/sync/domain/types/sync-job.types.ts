@@ -16,6 +16,7 @@
 export const JobTypeValues = [
   'prestashop.product.syncByExternalId',
   'prestashop.inventory.syncByExternalId',
+  'prestashop.products.reconcile',
   'prestashop.order.syncByExternalId',
 ] as const;
 
@@ -28,13 +29,35 @@ export const JobTypeValues = [
 export type JobType = (typeof JobTypeValues)[number];
 
 /**
- * Sync Job
+ * Job Status Values
+ *
+ * Runtime array of all valid job status values. Used for validation,
+ * Swagger documentation, and UI dropdowns.
+ */
+export const JobStatusValues = [
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'dead',
+] as const;
+
+/**
+ * Job Status
+ *
+ * Derived union type from JobStatusValues. Provides type safety
+ * without runtime overhead.
+ */
+export type JobStatus = (typeof JobStatusValues)[number];
+
+/**
+ * Sync Job Request
  *
  * Represents a sync job request to be enqueued. Jobs are published to
  * Redis Streams and consumed by workers that trigger synchronization
  * operations via adapters.
  */
-export interface SyncJob {
+export interface SyncJobRequest {
   /**
    * Job type identifier (e.g., 'prestashop.product.syncByExternalId')
    */
@@ -55,5 +78,63 @@ export interface SyncJob {
    * Format: {provider}:{connectionId}:{eventId}
    */
   idempotencyKey: string;
+}
+
+/**
+ * Sync Job (Persisted)
+ *
+ * Represents a persisted sync job in the database. Extends SyncJobRequest
+ * with persistence fields (id, status, attempts, etc.).
+ */
+export interface SyncJob extends SyncJobRequest {
+  /**
+   * Job ID (UUID)
+   */
+  id: string;
+
+  /**
+   * Job status
+   */
+  status: JobStatus;
+
+  /**
+   * Number of execution attempts
+   */
+  attempts: number;
+
+  /**
+   * Maximum number of attempts before marking as dead
+   */
+  maxAttempts: number;
+
+  /**
+   * Next run timestamp (for retries)
+   */
+  nextRunAt: Date | string;
+
+  /**
+   * Lock timestamp (when job was locked by worker)
+   */
+  lockedAt?: Date | string | null;
+
+  /**
+   * Worker instance ID that locked the job
+   */
+  lockedBy?: string | null;
+
+  /**
+   * Last error message (if job failed)
+   */
+  lastError?: string | null;
+
+  /**
+   * Creation timestamp
+   */
+  createdAt: Date | string;
+
+  /**
+   * Last update timestamp
+   */
+  updatedAt: Date | string;
 }
 

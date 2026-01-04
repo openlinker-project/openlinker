@@ -14,13 +14,14 @@ import { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { EventEnvelope } from '@openlinker/core/events/domain/types/event.types';
 import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
-import { SyncJob, JobType, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WebhookToJobHandler.name);
   private readonly STREAM_NAME = 'events.inbound.webhooks';
+  private readonly DLQ_STREAM_NAME = 'events.inbound.webhooks.dead';
   private readonly CONSUMER_GROUP = 'webhook-handler';
   private readonly CONSUMER_NAME = `webhook-handler-${process.pid}`;
   private readonly BLOCK_MS = 5000; // 5 seconds
@@ -183,6 +184,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    * Parses the event envelope, maps it to a sync job, and enqueues the job.
    * ACKs the message only after successful job enqueue.
    * Test events (eventType starting with 'test.') are skipped (no job created).
+   * Invalid/unmappable events are ACKed and sent to dead-letter queue.
    */
   private async processMessage(messageId: string, fields: Record<string, string>): Promise<void> {
     try {
@@ -202,8 +204,21 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Map to sync job
-      const job = this.mapToSyncJob(event);
+      // Map to sync job (may throw if unmappable)
+      let job: SyncJobRequest;
+      try {
+        job = this.mapToSyncJob(event);
+      } catch (mappingError) {
+        // Mapping failed (invalid job type, unmappable objectType, etc.)
+        // ACK the webhook message and send to DLQ to prevent infinite retries
+        const errorMessage = mappingError instanceof Error ? mappingError.message : String(mappingError);
+        this.logger.warn(
+          `Failed to map webhook event to job: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, error=${errorMessage}`,
+        );
+        await this.sendToDeadLetterQueue(event, errorMessage, fields);
+        await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
+        return;
+      }
 
       // Enqueue job (idempotency enforced at JobEnqueuePort level)
       await this.jobEnqueue.enqueueJob(job);
@@ -215,12 +230,13 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         `Processed webhook event ${event.eventId} and enqueued job ${job.jobType}`,
       );
     } catch (error) {
+      // Unexpected error (network, Redis, etc.) - don't ACK, allow retry
       this.logger.error(
         `Failed to process message ${messageId}`,
         error instanceof Error ? error.stack : String(error),
       );
       // Don't ACK - message will be re-delivered after timeout
-      // In production, you might want to implement retry limits and dead-letter queue
+      // This is for transient errors (network, Redis connection, etc.)
       throw error;
     }
   }
@@ -284,10 +300,25 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    * Map inbound webhook event to sync job
    *
    * Maps webhook events to sync job requests based on event type and provider.
+   * Acts as a translation layer: provider-specific terminology → canonical job types.
+   * Normalizes objectType to PascalCase to match EntityType enum values.
+   *
+   * @throws Error if job type cannot be constructed or validated
    */
-  private mapToSyncJob(event: InboundWebhookEvent): SyncJob {
-    // Build job type: {provider}.{objectType}.syncByExternalId
-    const jobTypeString = `${event.provider}.${event.objectType}.syncByExternalId`;
+  private mapToSyncJob(event: InboundWebhookEvent): SyncJobRequest {
+    // Map provider-specific objectType to canonical objectType for job type construction
+    // Example: PrestaShop uses "stock" but OpenLinker uses "inventory" in job types
+    const canonicalObjectType = this.mapObjectType(event.provider, event.objectType);
+
+    // Normalize canonical objectType to PascalCase for payload
+    // This ensures payload uses canonical terminology (e.g., "inventory" -> "Inventory")
+    // rather than provider-specific terminology (e.g., "stock" -> "Stock")
+    const normalizedCanonicalObjectType = this.normalizeObjectType(canonicalObjectType);
+
+    // Build job type: {provider}.{canonicalObjectType}.syncByExternalId
+    // Job types use lowercase provider and lowercase canonical objectType (e.g., "prestashop.inventory.syncByExternalId")
+    const normalizedProvider = event.provider.toLowerCase();
+    const jobTypeString = `${normalizedProvider}.${canonicalObjectType.toLowerCase()}.syncByExternalId`;
 
     // Validate that the constructed job type is a valid JobType
     // Type assertion is safe here because we validate against JobTypeValues
@@ -301,7 +332,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       connectionId: event.connectionId,
       payload: {
         externalId: event.externalId,
-        objectType: event.objectType,
+        objectType: normalizedCanonicalObjectType, // Use normalized canonical objectType (PascalCase) in payload
         eventType: event.eventType,
       },
       idempotencyKey,
@@ -309,10 +340,73 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Map provider-specific objectType to canonical objectType
+   *
+   * Acts as a translation layer between provider terminology and OpenLinker's canonical terminology.
+   * This allows providers to use their own terminology (e.g., PrestaShop uses "stock") while
+   * OpenLinker uses canonical terms in job types (e.g., "inventory").
+   *
+   * Structure is designed to be extensible: can be extracted to provider-specific mappers later.
+   *
+   * @param provider - Provider identifier (e.g., 'prestashop', 'shopify')
+   * @param objectType - Provider-specific object type (e.g., 'stock', 'product')
+   * @returns Canonical object type for job type construction (e.g., 'inventory', 'product')
+   */
+  private mapObjectType(provider: string, objectType: string): string {
+    const p = provider.toLowerCase();
+    const o = objectType.toLowerCase();
+
+    // Provider-specific objectType mappings
+    // Structure: { provider: { providerObjectType: canonicalObjectType } }
+    const mapping: Record<string, Record<string, string>> = {
+      prestashop: {
+        stock: 'inventory', // PrestaShop uses "stock", OpenLinker uses "inventory"
+        // product: 'product', // No mapping needed (pass-through)
+        // order: 'order', // No mapping needed (pass-through)
+      },
+      // Future providers can be added here:
+      // shopify: {
+      //   inventory_level: 'inventory',
+      //   product: 'product',
+      // },
+    };
+
+    // Return mapped value if exists, otherwise pass through unchanged
+    return mapping[p]?.[o] ?? o;
+  }
+
+  /**
+   * Normalize objectType to PascalCase
+   *
+   * Converts lowercase/snake_case object types to PascalCase to match EntityType enum.
+   * Examples:
+   * - "product" -> "Product"
+   * - "product_variant" -> "ProductVariant"
+   * - "Product" -> "Product" (already normalized)
+   * - "PRODUCT" -> "Product"
+   *
+   * @param objectType - Raw object type from webhook (any case)
+   * @returns Normalized object type in PascalCase
+   */
+  private normalizeObjectType(objectType: string): string {
+    if (!objectType) {
+      return objectType;
+    }
+
+    // Convert to lowercase first, then split by underscore
+    const parts = objectType.toLowerCase().split('_');
+
+    // Capitalize first letter of each part and join
+    return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+  }
+
+  /**
    * Validate and return a JobType
    *
    * Ensures the job type string is a valid JobType value.
    * Throws an error if the job type is not recognized.
+   *
+   * @throws Error if job type is not in JobTypeValues
    */
   private validateJobType(jobTypeString: string): JobType {
     // Type guard: check if jobTypeString is in the JobTypeValues array
@@ -327,6 +421,61 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     const errorMessage = `Invalid job type: ${jobTypeString}. Valid types: ${JobTypeValues.join(', ')}`;
     this.logger.error(errorMessage);
     throw new Error(errorMessage);
+  }
+
+  /**
+   * Send unmappable webhook event to dead-letter queue
+   *
+   * Publishes the event to a DLQ stream for observability and manual processing.
+   * Includes original event data, error reason, and metadata for debugging.
+   *
+   * @param event - The inbound webhook event that failed mapping
+   * @param errorReason - The error message explaining why mapping failed
+   * @param originalFields - Original stream fields for full context
+   */
+  private async sendToDeadLetterQueue(
+    event: InboundWebhookEvent,
+    errorReason: string,
+    originalFields: Record<string, string>,
+  ): Promise<void> {
+    try {
+      const dlqPayload = {
+        provider: event.provider,
+        connectionId: event.connectionId,
+        eventId: event.eventId,
+        eventType: event.eventType,
+        objectType: event.objectType, // Original provider objectType
+        externalId: event.externalId,
+        occurredAt: event.occurredAt,
+        receivedAt: event.receivedAt,
+        errorReason,
+        originalPayload: event.payload,
+        originalFields, // Full stream fields for debugging
+      };
+
+      await this.redisClient.xAdd(this.DLQ_STREAM_NAME, '*', {
+        provider: event.provider,
+        connectionId: event.connectionId,
+        eventId: event.eventId,
+        eventType: event.eventType,
+        objectType: event.objectType,
+        externalId: event.externalId,
+        errorReason,
+        payloadJson: JSON.stringify(dlqPayload),
+        occurredAt: event.occurredAt,
+        receivedAt: event.receivedAt,
+      });
+
+      this.logger.warn(
+        `Sent unmappable webhook event to DLQ: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, reason=${errorReason}`,
+      );
+    } catch (dlqError) {
+      // Non-fatal: log but don't fail the ACK
+      this.logger.error(
+        `Failed to send event to DLQ (non-fatal): eventId=${event.eventId}`,
+        dlqError instanceof Error ? dlqError.stack : String(dlqError),
+      );
+    }
   }
 }
 

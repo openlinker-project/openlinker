@@ -19,3 +19,7 @@ export * from './application/services/identifier-mapping.service';
 export * from './identifier-mapping.tokens';
 export * from './identifier-mapping.module';
 
+// ORM Entities (exported for testing and TypeORM CLI usage)
+export { IdentifierMappingOrmEntity } from './infrastructure/persistence/entities/identifier-mapping.orm-entity';
+export { ConnectionOrmEntity } from './infrastructure/persistence/entities/connection.orm-entity';
+

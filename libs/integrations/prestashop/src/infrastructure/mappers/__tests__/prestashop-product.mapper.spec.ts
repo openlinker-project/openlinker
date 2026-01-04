@@ -35,7 +35,7 @@ describe('PrestashopProductMapper', () => {
       expect(result.weight).toBe(0.5);
     });
 
-    it('should handle localized name field', () => {
+    it('should handle localized name field with array of languages', () => {
       const prestashopProduct: PrestashopProduct = {
         id: '1',
         name: {
@@ -50,6 +50,217 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.name).toBe('English Name');
+    });
+
+    it('should handle localized name field with single language object (not array)', () => {
+      const prestashopProduct = {
+        id: '1',
+        name: {
+          language: { '#text': 'Single Language Name', '@_id': '1' },
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      } as unknown as PrestashopProduct;
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.name).toBe('Single Language Name');
+    });
+
+    it('should select preferred language when multiple languages available', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [
+            { '#text': 'English Name', '@_id': '1' },
+            { '#text': 'French Name', '@_id': '2' },
+            { '#text': 'German Name', '@_id': '3' },
+          ],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      // Request language 2 (French)
+      const result = mapper.mapProduct(prestashopProduct, 2);
+      expect(result.name).toBe('French Name');
+    });
+
+    it('should fallback to first non-empty language if preferred not found', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [
+            { '#text': 'English Name', '@_id': '1' },
+            { '#text': 'French Name', '@_id': '2' },
+          ],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      // Request language 99 (not available), should fallback to first
+      const result = mapper.mapProduct(prestashopProduct, 99);
+      expect(result.name).toBe('English Name');
+    });
+
+    it('should handle language ID as string in XML parser output', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [
+            { '#text': 'English Name', '@_id': '1' }, // String ID, not number
+            { '#text': 'French Name', '@_id': '2' },
+          ],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      // Request language 1 (number), should match string '1'
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.name).toBe('English Name');
+    });
+
+    it('should handle CDATA variants (#text, __cdata, value, text)', () => {
+      // Test #text (fast-xml-parser default)
+      const product1: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [{ '#text': 'CDATA Text', '@_id': '1' }],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+      expect(mapper.mapProduct(product1, 1).name).toBe('CDATA Text');
+
+      // Test __cdata variant
+      const product2 = {
+        id: '2',
+        name: {
+          language: [{ __cdata: 'CDATA Variant', '@_id': '1' }],
+        },
+        reference: 'TEST-002',
+        price: '19.99',
+      } as unknown as PrestashopProduct;
+      expect(mapper.mapProduct(product2, 1).name).toBe('CDATA Variant');
+
+      // Test value (JSON format)
+      const product3 = {
+        id: '3',
+        name: {
+          language: [{ value: 'JSON Value', '@_id': '1' }],
+        },
+        reference: 'TEST-003',
+        price: '19.99',
+      } as unknown as PrestashopProduct;
+      expect(mapper.mapProduct(product3, 1).name).toBe('JSON Value');
+
+      // Test text key
+      const product4 = {
+        id: '4',
+        name: {
+          language: [{ text: 'Text Key', '@_id': '1' }],
+        },
+        reference: 'TEST-004',
+        price: '19.99',
+      } as unknown as PrestashopProduct;
+      expect(mapper.mapProduct(product4, 1).name).toBe('Text Key');
+    });
+
+    it('should trim whitespace from localized fields', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [{ '#text': '  Trimmed Name  ', '@_id': '1' }],
+        },
+        description: {
+          language: [{ '#text': '\n\nDescription with newlines\n\n', '@_id': '1' }],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.name).toBe('Trimmed Name');
+      expect(result.description).toBe('Description with newlines');
+    });
+
+    it('should return undefined for empty/whitespace-only localized fields', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [{ '#text': '   ', '@_id': '1' }], // Whitespace only
+        },
+        description: {
+          language: [{ '#text': '', '@_id': '1' }], // Empty string
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      // Empty string fallback in mapProduct will make it '', but getLocalizedField returns undefined
+      expect(result.name).toBe(''); // mapProduct uses || '' fallback
+      expect(result.description).toBeUndefined();
+    });
+
+    it('should handle description field with localized content', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: {
+          language: [{ '#text': 'Test Product', '@_id': '1' }],
+        },
+        description: {
+          language: [
+            {
+              '#text': '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>',
+              '@_id': '1',
+            },
+          ],
+        },
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.description).toBe('<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>');
+    });
+
+    it('should handle real PrestaShop XML structure (from API response)', () => {
+      // Simulates actual PrestaShop XML structure from the user's example
+      const prestashopProduct = {
+        id: '1',
+        name: {
+          language: [
+            {
+              '#text': 'Hummingbird printed t-shirt',
+              '@_id': '1',
+              '@_xlink:href': 'http://localhost:8080/api/languages/1',
+            } as Record<string, unknown>,
+            {
+              '#text': 'Hummingbird printed t-shirt',
+              '@_id': '2',
+              '@_xlink:href': 'http://localhost:8080/api/languages/2',
+            } as Record<string, unknown>,
+          ],
+        },
+        description: {
+          language: [
+            {
+              '#text': '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy. Studio Design\' PolyFaune collection features classic products with colorful patterns, inspired by the traditional japanese origamis. To wear with a chino or jeans. The sublimation textile printing process provides an exceptional color rendering and a color, guaranteed overtime.</p>',
+              '@_id': '1',
+            },
+          ],
+        },
+        reference: 'demo_1',
+        price: '23.900000',
+      } as unknown as PrestashopProduct;
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.name).toBe('Hummingbird printed t-shirt');
+      expect(result.description).toContain('Symbol of lightness and delicacy');
+      expect(result.sku).toBe('demo_1');
+      expect(result.price).toBe(23.9);
     });
 
     it('should handle direct string name', () => {

@@ -28,10 +28,22 @@ export interface PrestashopConnectionConfig {
   shopId?: number;
 
   /**
-   * Language ID for localized fields (optional, default: 1)
+   * Preferred language ID for localized fields (optional, default: 1)
    * Used when fetching localized product names, descriptions, etc.
+   * This is the primary language that will be used for canonical product fields.
+   * If the preferred language is not available, falls back to first non-empty language.
+   *
+   * @deprecated Use `preferredLanguageId` instead. `langId` is kept for backward compatibility.
    */
   langId?: number;
+
+  /**
+   * Preferred language ID for localized fields (optional, default: 1)
+   * Used when fetching localized product names, descriptions, etc.
+   * This is the primary language that will be used for canonical product fields.
+   * If the preferred language is not available, falls back to first non-empty language.
+   */
+  preferredLanguageId?: number;
 
   /**
    * Request timeout in milliseconds (optional, default: 30000)

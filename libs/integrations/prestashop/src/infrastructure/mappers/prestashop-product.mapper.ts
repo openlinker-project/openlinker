@@ -17,14 +17,19 @@ import { Product, ProductVariant } from '@openlinker/core/products';
  */
 export class PrestashopProductMapper implements IPrestashopProductMapper {
   mapProduct(prestashopProduct: PrestashopProduct, langId: number = 1): Omit<Product, 'id'> {
+    // Extract localized fields with fallback to empty string for name (required field)
+    const name = this.getLocalizedField(prestashopProduct.name, langId) || '';
+    const description = this.getLocalizedField(prestashopProduct.description, langId) ?? null;
+    const images = this.extractImages(prestashopProduct) ?? null;
+
     return {
-      name: this.getLocalizedField(prestashopProduct.name, langId) || '',
+      name,
       sku: this.getStringField(prestashopProduct.reference) || '',
-      description: this.getLocalizedField(prestashopProduct.description, langId),
+      description: description ?? undefined, // Convert null to undefined for port interface
       price: this.parseNumber(prestashopProduct.price) || 0,
       currency: 'EUR', // Default, can be configured
       weight: this.parseNumber(prestashopProduct.weight),
-      images: this.extractImages(prestashopProduct),
+      images: images ?? undefined, // Convert null to undefined for port interface
       categories: this.extractCategories(prestashopProduct),
       createdAt: this.parseDate(prestashopProduct.date_add),
       updatedAt: this.parseDate(prestashopProduct.date_upd),
@@ -59,55 +64,202 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   /**
    * Get localized field value
    *
-   * PrestaShop returns localized fields in format:
-   * - XML: { language: [{ '#text': 'value', '@_id': '1' }] }
+   * Robustly extracts localized field values from PrestaShop responses.
+   * Handles multiple XML/JSON shapes, CDATA variants, and language selection.
+   *
+   * PrestaShop returns localized fields in various formats:
+   * - XML: { language: [{ '#text': 'value', '@_id': '1' }] } or { language: { '#text': 'value', '@_id': '1' } }
    * - JSON: { language: [{ value: 'text', id: '1' }] } or direct string
+   * - CDATA variants: '#text', '__cdata', direct string
+   *
+   * @param field - Raw field value (string, object with language nodes, etc.)
+   * @param preferredLangId - Preferred language ID (defaults to 1)
+   * @returns Extracted text value (trimmed, or undefined if empty/whitespace)
    */
   private getLocalizedField(
     field: unknown,
-    langId: number,
+    preferredLangId: number = 1,
   ): string | undefined {
     if (!field) {
       return undefined;
     }
 
-    // Direct string value
+    // Direct string value (already localized or non-localized field)
     if (typeof field === 'string') {
-      return field;
+      const trimmed = field.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
     }
 
-    // Object with language array
+    // Handle JSON format: array of { id, value } objects
+    // PrestaShop JSON API returns: [{ id: 1, value: '...' }, { id: 2, value: '...' }]
+    if (Array.isArray(field)) {
+      const languageNodes = field.filter(
+        (node): node is Record<string, unknown> =>
+          node !== null && typeof node === 'object',
+      );
+
+      if (languageNodes.length === 0) {
+        return undefined;
+      }
+
+      // Try to find preferred language first
+      const preferredLang = languageNodes.find((node) => {
+        const nodeId = node.id;
+        return nodeId !== null && nodeId !== undefined && String(nodeId) === String(preferredLangId);
+      });
+
+      if (preferredLang) {
+        const text = preferredLang.value;
+        if (text !== null && text !== undefined) {
+          const textStr = String(text).trim();
+          if (textStr.length > 0) {
+            return textStr;
+          }
+        }
+      }
+
+      // Fallback: find first non-empty language node
+      for (const node of languageNodes) {
+        const text = node.value;
+        if (text !== null && text !== undefined) {
+          const textStr = String(text).trim();
+          if (textStr.length > 0) {
+            return textStr;
+          }
+        }
+      }
+
+      return undefined;
+    }
+
+    // Handle XML format: object with language nodes
+    // PrestaShop XML API returns: { language: [{ '#text': ..., '@_id': ... }] }
     if (field && typeof field === 'object') {
       const fieldObj = field as Record<string, unknown>;
       const language = fieldObj.language;
 
-      if (Array.isArray(language)) {
-        // Find matching language
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const langEntry = language.find((entry: unknown) => {
-          if (entry && typeof entry === 'object') {
-            const entryObj = entry as Record<string, unknown>;
-            const id = entryObj['@_id'] || entryObj.id;
-            return String(id) === String(langId);
-          }
-          return false;
-        }) as Record<string, unknown> | undefined;
-
-        if (langEntry && typeof langEntry === 'object') {
-          const langEntryObj = langEntry;
-          return (langEntryObj['#text'] || langEntryObj.value || langEntryObj.text) as string | undefined;
-        }
-
-        // Fallback to first entry
-        if (language.length > 0 && language[0] && typeof language[0] === 'object') {
-          const firstEntry = language[0] as Record<string, unknown>;
-          return (firstEntry['#text'] || firstEntry.value || firstEntry.text) as string | undefined;
-        }
-      } else if (language && typeof language === 'object') {
-        // Single language object
-        const langObj = language as Record<string, unknown>;
-        return (langObj['#text'] || langObj.value || langObj.text) as string | undefined;
+      // Normalize language to array (handles both single object and array)
+      const languageNodes = this.normalizeLanguageNodes(language);
+      if (languageNodes.length === 0) {
+        return undefined;
       }
+
+      // Try to find preferred language first
+      const preferredLang = languageNodes.find((node) => {
+        const nodeId = this.extractLanguageId(node);
+        return nodeId !== null && String(nodeId) === String(preferredLangId);
+      });
+
+      if (preferredLang) {
+        const text = this.extractTextFromLanguageNode(preferredLang);
+        if (text) {
+          return text;
+        }
+      }
+
+      // Fallback: find first non-empty language node
+      for (const node of languageNodes) {
+        const text = this.extractTextFromLanguageNode(node);
+        if (text) {
+          return text;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Normalize language nodes to array
+   *
+   * Handles both single language object and array of language objects.
+   *
+   * @param language - Language node(s) from parsed XML/JSON
+   * @returns Array of language node objects
+   */
+  private normalizeLanguageNodes(language: unknown): Array<Record<string, unknown>> {
+    if (!language) {
+      return [];
+    }
+
+    if (Array.isArray(language)) {
+      return language.filter(
+        (node): node is Record<string, unknown> =>
+          node !== null && typeof node === 'object',
+      );
+    }
+
+    if (typeof language === 'object' && language !== null) {
+      return [language as Record<string, unknown>];
+    }
+
+    return [];
+  }
+
+  /**
+   * Extract language ID from a language node
+   *
+   * Handles various attribute/key names: '@_id', 'id', '@id'
+   *
+   * @param node - Language node object
+   * @returns Language ID (as string or number) or null if not found
+   */
+  private extractLanguageId(node: Record<string, unknown>): string | number | null {
+    // Try common attribute names (XML parser variants)
+    const id = node['@_id'] ?? node['@id'] ?? node.id;
+    if (id !== null && id !== undefined) {
+      // Ensure id is a primitive (string or number), not an object
+      if (typeof id === 'string' || typeof id === 'number') {
+        return id;
+      }
+      // If it's an object, try to extract a value (shouldn't happen, but be defensive)
+      if (typeof id === 'object' && id !== null) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Extract text content from a language node
+   *
+   * Handles multiple CDATA/text extraction variants:
+   * - '#text' (fast-xml-parser default)
+   * - '__cdata' (some XML parser variants)
+   * - 'value' (JSON format)
+   * - 'text' (alternative key)
+   * - Direct string value
+   *
+   * @param node - Language node object
+   * @returns Extracted text (trimmed) or undefined if empty/whitespace
+   */
+  private extractTextFromLanguageNode(node: Record<string, unknown>): string | undefined {
+    // Try multiple text extraction keys (in order of likelihood)
+    const textKeys = ['#text', '__cdata', 'value', 'text'];
+    for (const key of textKeys) {
+      const content = node[key];
+      if (content !== null && content !== undefined) {
+        if (typeof content === 'string') {
+          const trimmed = content.trim();
+          if (trimmed.length > 0) {
+            return trimmed;
+          }
+        }
+        // If content is not a string, try converting (shouldn't happen, but be defensive)
+        if (content !== '') {
+          const asString = String(content).trim();
+          if (asString.length > 0) {
+            return asString;
+          }
+        }
+      }
+    }
+
+    // If node itself is a string (edge case) - this shouldn't happen with Record<string, unknown>
+    // but handle it defensively
+    if (typeof node === 'string') {
+      const trimmed = (node as string).trim();
+      return trimmed.length > 0 ? trimmed : undefined;
     }
 
     return undefined;

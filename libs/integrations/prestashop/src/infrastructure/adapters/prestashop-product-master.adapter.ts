@@ -60,9 +60,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Map to OpenLinker schema
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const configLangId: number | undefined = config.langId;
+    const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
+    
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
     // Return with internal ID
@@ -101,8 +103,9 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Map products with internal IDs
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const configLangId: number | undefined = config.langId;
+    const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
 
     return prestashopProducts.map((prestashopProduct) => {

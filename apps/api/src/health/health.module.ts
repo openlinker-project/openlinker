@@ -9,8 +9,8 @@
  */
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { DatabaseModule } from '../database/database.module';
-import { RedisConfigModule } from '../redis/redis-config.module';
+import { DatabaseModule } from '@openlinker/shared/database';
+import { RedisConfigModule } from '@openlinker/shared/redis';
 import { DevStackHealthService } from './dev-stack-health.service';
 
 export const DEV_STACK_HEALTH_SERVICE_TOKEN = Symbol('IDevStackHealthService');

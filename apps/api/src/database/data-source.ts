@@ -12,7 +12,7 @@
  * 3. CLI context doesn't have NestJS dependency injection
  *
  * @module apps/api/src/database
- * @see {@link DatabaseModule} for NestJS runtime configuration
+ * @see {@link DatabaseModule} from @openlinker/shared/database for NestJS runtime configuration
  */
 
 import { DataSource } from 'typeorm';
