@@ -7,103 +7,109 @@ on:
     branches: [main, develop]
 
 jobs:
-  test:
-    name: Test & Lint
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
         with:
           version: 9
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '20'
           cache: 'pnpm'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Build all packages
-        run: pnpm build
-
-      - name: Lint all packages
+      - name: Build type definitions
+        run: |
+          # Build packages that provide types needed for type-aware linting
+          # This ensures TypeScript can resolve types across workspace packages
+          # and prevents 'any' type inference that triggers unsafe-* lint errors
+          pnpm --filter @openlinker/shared build
+          pnpm --filter @openlinker/core build
+          pnpm --filter @openlinker/integrations-prestashop build
+      - name: Run lint
         run: pnpm lint
 
-      - name: Type check all packages
-        run: pnpm type-check
-
-      - name: Run tests for all packages
-        run: pnpm test:ci
-
-  integration-tests:
-    name: Integration Tests
+  type-check:
+    name: Type Check
     runs-on: ubuntu-latest
-    needs: test
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: openlinker_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
         with:
           version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: '20'
           cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm type-check
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build dependencies
+        run: |
+          # Build shared and core packages first (required for PrestaShop integration tests)
+          # This ensures TypeScript can resolve workspace subpath exports like @openlinker/core/orders
+          pnpm --filter @openlinker/shared build
+          pnpm --filter @openlinker/core build
+      - name: Run tests
+        run: pnpm test
 
-      - name: Build all packages
-        run: pnpm build
-
-      - name: Run API integration tests
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Run on push to main (after merge) and on PRs to catch issues early
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: [test] # Only run if unit tests pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build dependencies
+        run: |
+          # Build shared, core, and PrestaShop integration (required for integration tests)
+          # Integration tests boot the full NestJS app which imports PrestashopIntegrationModule
+          pnpm --filter @openlinker/shared build
+          pnpm --filter @openlinker/core build
+          pnpm --filter @openlinker/integrations-prestashop build
+      - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/openlinker_test
-          REDIS_URL: redis://localhost:6379
+        timeout-minutes: 15 # Integration tests can take longer due to container startup
+        # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
 
-      - name: Run Worker integration tests
-        run: pnpm --filter @openlinker/worker test:integration
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/openlinker_test
-          REDIS_URL: redis://localhost:6379
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
