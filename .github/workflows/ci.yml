@@ -96,6 +96,8 @@ jobs:
           pnpm --filter @openlinker/shared build
           pnpm --filter @openlinker/core build
           pnpm --filter @openlinker/integrations-prestashop build
+          # Verify core build output exists (catches missing dist files early)
+          test -f libs/core/dist/identifier-mapping/index.js || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing" && exit 1)
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
         timeout-minutes: 15 # Integration tests can take longer due to container startup

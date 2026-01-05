@@ -12,10 +12,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import * as express from 'express';
-import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { RedisContainer } from '@testcontainers/redis';
 import { AppModule } from '../../src/app.module';
 import { RedisClientType } from 'redis';
+import { startHarness } from './harness';
 
 /**
  * Integration Test Harness
@@ -23,10 +22,6 @@ import { RedisClientType } from 'redis';
  * Manages test infrastructure: containers, Nest app, database, Redis.
  */
 export class IntegrationTestHarness {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private postgresContainer?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private redisContainer?: any;
   private app?: INestApplication;
   private dataSource?: DataSource;
   private redisClient?: RedisClientType;
@@ -38,27 +33,10 @@ export class IntegrationTestHarness {
    * Starts containers, boots Nest app, runs migrations.
    */
   async setup(): Promise<void> {
-    // 1. Start Postgres container
-    this.postgresContainer = await new PostgreSqlContainer('postgres:16-alpine')
-      .withDatabase('openlinker_test')
-      .withUsername('postgres')
-      .withPassword('postgres')
-      .start();
+    // 1. Start containers (harness-only, no app imports)
+    await startHarness();
 
-    // 2. Start Redis container
-    this.redisContainer = await new RedisContainer('redis:7-alpine').start();
-
-    // 3. Override environment variables with container DSNs
-    process.env.DB_HOST = this.postgresContainer.getHost();
-    process.env.DB_PORT = String(this.postgresContainer.getPort());
-    process.env.DB_USERNAME = 'postgres';
-    process.env.DB_PASSWORD = 'postgres';
-    process.env.DB_DATABASE = 'openlinker_test';
-    process.env.REDIS_HOST = this.redisContainer.getHost();
-    process.env.REDIS_PORT = String(this.redisContainer.getPort());
-    process.env.REDIS_PASSWORD = '';
-    process.env.REDIS_DB = '0';
-    process.env.NODE_ENV = 'test';
+    // Note: Environment variables are set by startHarness()
 
     // 4. Create Nest testing module
     this.moduleRef = await Test.createTestingModule({
@@ -225,22 +203,8 @@ export class IntegrationTestHarness {
       }
     }
 
-    // Stop containers last
-    if (this.postgresContainer) {
-      try {
-        await this.postgresContainer.stop();
-      } catch (error) {
-        // Ignore errors during teardown
-      }
-    }
-
-    if (this.redisContainer) {
-      try {
-        await this.redisContainer.stop();
-      } catch (error) {
-        // Ignore errors during teardown
-      }
-    }
+    // Note: Containers are stopped by global teardown (harness.ts)
+    // We don't stop them here to avoid importing AppModule in teardown
   }
 }
 
