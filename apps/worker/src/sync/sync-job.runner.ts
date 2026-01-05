@@ -34,6 +34,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private isRunning = false;
   private stuckJobRecoveryInterval: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
+  private runnerLoopPromise: Promise<void> | null = null;
 
   constructor(
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
@@ -63,24 +64,33 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Start the runner loop
    */
   private startRunner(): void {
+    // Prevent multiple starts
+    if (this.runnerLoopPromise) {
+      return;
+    }
+
     this.abortController = new AbortController();
     this.isRunning = true;
 
     // Start runner loop in background (don't await)
-    this.runnerLoop().catch((error) => {
-      this.logger.error('Runner loop error', error instanceof Error ? error.stack : String(error));
-      // Restart loop after backoff (track timer for cleanup)
-      if (this.isRunning) {
-        this.restartTimer = setTimeout(() => {
-          this.restartTimer = null;
-          this.startRunner();
-        }, 5000);
-        // Don't keep process alive if only this timer is running
-        if (this.restartTimer && typeof this.restartTimer.unref === 'function') {
-          this.restartTimer.unref();
+    this.runnerLoopPromise = this.runnerLoop()
+      .catch((error) => {
+        this.logger.error('Runner loop error', error instanceof Error ? error.stack : String(error));
+        // Restart loop after backoff (track timer for cleanup)
+        if (this.isRunning) {
+          this.restartTimer = setTimeout(() => {
+            this.restartTimer = null;
+            this.startRunner();
+          }, 5000);
+          // Don't keep process alive if only this timer is running
+          if (this.restartTimer && typeof this.restartTimer.unref === 'function') {
+            this.restartTimer.unref();
+          }
         }
-      }
-    });
+      })
+      .finally(() => {
+        this.runnerLoopPromise = null;
+      });
   }
 
   /**
@@ -103,8 +113,14 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       this.stuckJobRecoveryInterval = null;
     }
 
-    // Wait a bit for in-flight jobs to complete
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Wait for runner loop to finish, but with a timeout to prevent hanging
+    const loopPromise = this.runnerLoopPromise;
+    if (loopPromise) {
+      await Promise.race([
+        loopPromise,
+        new Promise<void>((resolve) => setTimeout(resolve, 500)), // 500ms safety timeout
+      ]);
+    }
 
     this.logger.log('Sync job runner stopped');
   }
@@ -114,8 +130,16 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    *
    * Periodically checks for and requeues jobs stuck in 'running' status
    * longer than the lock timeout threshold.
+   *
+   * @param intervalMs - Optional interval in milliseconds (defaults to STUCK_JOB_RECOVERY_INTERVAL_MS)
    */
-  private startStuckJobRecovery(): void {
+  private startStuckJobRecovery(intervalMs?: number): void {
+    // Prevent multiple starts
+    if (this.stuckJobRecoveryInterval) {
+      return;
+    }
+
+    const interval = intervalMs ?? this.STUCK_JOB_RECOVERY_INTERVAL_MS;
     this.stuckJobRecoveryInterval = setInterval(() => {
       void (async (): Promise<void> => {
         try {
@@ -132,7 +156,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
           );
         }
       })();
-    }, this.STUCK_JOB_RECOVERY_INTERVAL_MS);
+    }, interval);
 
     // Don't keep process alive if only this interval is running
     if (this.stuckJobRecoveryInterval && typeof this.stuckJobRecoveryInterval.unref === 'function') {
@@ -140,7 +164,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(
-      `Started stuck job recovery (checking every ${this.STUCK_JOB_RECOVERY_INTERVAL_MS / 1000}s)`,
+      `Started stuck job recovery (checking every ${interval / 1000}s)`,
     );
   }
 
@@ -160,8 +184,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
         // Handle case where repository returns undefined (shouldn't happen, but defensive)
         if (!jobs || jobs.length === 0) {
-          // No jobs available, wait before next poll
-          await new Promise((resolve) => setTimeout(resolve, this.POLL_INTERVAL_MS));
+          // No jobs available, wait before next poll (abortable sleep)
+          await this.sleep(this.POLL_INTERVAL_MS, this.abortController?.signal);
           continue;
         }
 
@@ -185,8 +209,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
           error instanceof Error ? error.stack : String(error),
         );
 
-        // Backoff before retrying
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Backoff before retrying (abortable sleep)
+        await this.sleep(1000, this.abortController?.signal);
       }
     }
   }
@@ -307,6 +331,37 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return error.message;
     }
     return String(error);
+  }
+
+  /**
+   * Abortable sleep helper
+   *
+   * Sleeps for the specified duration, but can be cancelled via AbortSignal.
+   * If the signal is aborted, resolves immediately.
+   *
+   * @param ms - Milliseconds to sleep
+   * @param signal - Optional AbortSignal to cancel the sleep
+   * @returns Promise that resolves when sleep completes or is aborted
+   */
+  private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      // If already aborted, resolve immediately
+      if (signal?.aborted) {
+        resolve();
+        return;
+      }
+
+      const timeout = setTimeout(resolve, ms);
+
+      // If signal provided, listen for abort
+      if (signal) {
+        const onAbort = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
   }
 }
 

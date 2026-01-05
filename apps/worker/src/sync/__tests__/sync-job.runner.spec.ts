@@ -23,7 +23,7 @@ describe('SyncJobRunner', () => {
   let jobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let handlerRegistry: jest.Mocked<SyncJobHandlerRegistry>;
   let mockHandler: jest.Mocked<SyncJobHandler>;
-  let module: TestingModule;
+  let moduleRef: TestingModule;
 
   beforeEach(async () => {
     // Mock handler
@@ -47,7 +47,7 @@ describe('SyncJobRunner', () => {
       getRegisteredJobTypes: jest.fn(),
     } as unknown as jest.Mocked<SyncJobHandlerRegistry>;
 
-    module = await Test.createTestingModule({
+    moduleRef = await Test.createTestingModule({
       providers: [
         SyncJobRunner,
         {
@@ -70,9 +70,9 @@ describe('SyncJobRunner', () => {
       ],
     }).compile();
 
-    runner = module.get<SyncJobRunner>(SyncJobRunner);
-    jobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
-    handlerRegistry = module.get(SyncJobHandlerRegistry);
+    runner = moduleRef.get<SyncJobRunner>(SyncJobRunner);
+    jobRepository = moduleRef.get(SYNC_JOB_REPOSITORY_TOKEN);
+    handlerRegistry = moduleRef.get(SyncJobHandlerRegistry);
   });
 
   afterEach(async () => {
@@ -90,8 +90,8 @@ describe('SyncJobRunner', () => {
 
   afterAll(async () => {
     // Close the testing module to trigger OnModuleDestroy on all providers
-    if (module) {
-      await module.close();
+    if (moduleRef) {
+      await moduleRef.close();
     }
   });
 
@@ -573,7 +573,7 @@ describe('SyncJobRunner', () => {
   describe('onModuleInit', () => {
     it('should start runner and stuck job recovery', () => {
       // Override ConfigService to enable runner for this test
-      const configService = module.get<ConfigService>(ConfigService);
+      const configService = moduleRef.get<ConfigService>(ConfigService);
       jest.spyOn(configService, 'get').mockImplementation((key: string, defaultValue?: unknown) => {
         if (key === 'WORKER_RUNNER_ENABLED') {
           return 'true'; // Enable runner for this test
@@ -592,7 +592,7 @@ describe('SyncJobRunner', () => {
 
     it('should not start runner when WORKER_RUNNER_ENABLED=false', () => {
       // Override ConfigService to disable runner for this test
-      const configService = module.get<ConfigService>(ConfigService);
+      const configService = moduleRef.get<ConfigService>(ConfigService);
       jest.spyOn(configService, 'get').mockImplementation((key: string, defaultValue?: unknown) => {
         if (key === 'WORKER_RUNNER_ENABLED') {
           return 'false'; // Disable runner for this test
@@ -612,15 +612,19 @@ describe('SyncJobRunner', () => {
 
   describe('onModuleDestroy', () => {
     it('should stop runner and cleanup', async () => {
+      jest.useFakeTimers();
       jest.spyOn(runner as any, 'stopRunner');
 
-      // Initialize stuck job recovery interval
-      (runner as any).stuckJobRecoveryInterval = setInterval(() => {}, 1000);
+      // Initialize stuck job recovery interval using the method
+      (runner as any).startStuckJobRecovery(1000);
 
       await runner.onModuleDestroy();
 
       expect((runner as any).stopRunner).toHaveBeenCalled();
       expect((runner as any).stuckJobRecoveryInterval).toBeNull();
+      
+      jest.clearAllTimers();
+      jest.useRealTimers();
     });
   });
 
@@ -629,14 +633,25 @@ describe('SyncJobRunner', () => {
       jest.useFakeTimers();
     });
 
+    afterEach(async () => {
+      // Ensure no timers leak
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      
+      // Clean up any running intervals
+      if (runner) {
+        await runner.onModuleDestroy();
+      }
+    });
+
     it('should periodically check for stuck jobs', async () => {
       jobRepository.requeueStuckJobs.mockResolvedValue(0);
 
-      (runner as any).startStuckJobRecovery();
+      // Use a short interval for testing (1 second instead of 5 minutes)
+      (runner as any).startStuckJobRecovery(1000);
 
-      // Fast-forward past recovery interval (5 minutes)
-      jest.advanceTimersByTime(5 * 60 * 1000);
-
+      // Fast-forward past recovery interval
+      jest.advanceTimersByTime(1000);
       await Promise.resolve(); // Allow async operations to complete
 
       expect(jobRepository.requeueStuckJobs).toHaveBeenCalledWith(15); // STUCK_JOB_TIMEOUT_MINUTES
@@ -645,11 +660,11 @@ describe('SyncJobRunner', () => {
     it('should log warning when stuck jobs are requeued', async () => {
       jobRepository.requeueStuckJobs.mockResolvedValue(3);
 
-      (runner as any).startStuckJobRecovery();
+      // Use a short interval for testing
+      (runner as any).startStuckJobRecovery(1000);
 
       // Fast-forward past recovery interval
-      jest.advanceTimersByTime(5 * 60 * 1000);
-
+      jest.advanceTimersByTime(1000);
       await Promise.resolve();
 
       expect(jobRepository.requeueStuckJobs).toHaveBeenCalled();
@@ -659,11 +674,11 @@ describe('SyncJobRunner', () => {
       const error = new Error('Database error');
       jobRepository.requeueStuckJobs.mockRejectedValue(error);
 
-      (runner as any).startStuckJobRecovery();
+      // Use a short interval for testing
+      (runner as any).startStuckJobRecovery(1000);
 
       // Fast-forward past recovery interval
-      jest.advanceTimersByTime(5 * 60 * 1000);
-
+      jest.advanceTimersByTime(1000);
       await Promise.resolve();
 
       // Should not throw, error should be logged

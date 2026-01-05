@@ -15,13 +15,14 @@ describe('SyncJobHandlerRegistry', () => {
   let registry: SyncJobHandlerRegistry;
   let mockHandler1: jest.Mocked<SyncJobHandler>;
   let mockHandler2: jest.Mocked<SyncJobHandler>;
+  let moduleRef: TestingModule;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    moduleRef = await Test.createTestingModule({
       providers: [SyncJobHandlerRegistry],
     }).compile();
 
-    registry = module.get<SyncJobHandlerRegistry>(SyncJobHandlerRegistry);
+    registry = moduleRef.get<SyncJobHandlerRegistry>(SyncJobHandlerRegistry);
 
     // Create mock handlers
     mockHandler1 = {
@@ -39,8 +40,8 @@ describe('SyncJobHandlerRegistry', () => {
 
   afterAll(async () => {
     // Close the testing module to trigger OnModuleDestroy on all providers
-    if (module) {
-      await module.close();
+    if (moduleRef) {
+      await moduleRef.close();
     }
   });
 
