@@ -75,9 +75,24 @@ describe('SyncJobRunner', () => {
     handlerRegistry = module.get(SyncJobHandlerRegistry);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Stop runner if it was started
+    if (runner) {
+      try {
+        await runner.onModuleDestroy();
+      } catch {
+        // Ignore errors during cleanup
+      }
+    }
     jest.clearAllMocks();
     jest.useRealTimers();
+  });
+
+  afterAll(async () => {
+    // Close the testing module to trigger OnModuleDestroy on all providers
+    if (module) {
+      await module.close();
+    }
   });
 
   describe('processJob', () => {

@@ -33,6 +33,7 @@ describe('PrestashopInventorySyncHandler', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let inventoryService: jest.Mocked<IInventoryService>;
   let inventoryAdapter: jest.Mocked<InventoryMasterPort>;
+  let module: TestingModule;
 
   beforeEach(async () => {
     // Mock inventory adapter
@@ -64,7 +65,7 @@ describe('PrestashopInventorySyncHandler', () => {
       releaseInventory: jest.fn(),
     } as unknown as jest.Mocked<IInventoryService>;
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         PrestashopInventorySyncHandler,
         {
@@ -90,6 +91,13 @@ describe('PrestashopInventorySyncHandler', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterAll(async () => {
+    // Close the testing module to trigger OnModuleDestroy on all providers
+    if (module) {
+      await module.close();
+    }
   });
 
   const createMockJob = (overrides?: Partial<SyncJob>): SyncJob => {

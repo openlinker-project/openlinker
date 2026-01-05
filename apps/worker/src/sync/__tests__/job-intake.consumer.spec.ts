@@ -97,6 +97,13 @@ describe('JobIntakeConsumer', () => {
     jest.clearAllMocks();
   });
 
+  afterAll(async () => {
+    // Close the testing module to trigger OnModuleDestroy on all providers
+    if (module) {
+      await module.close();
+    }
+  });
+
   describe('processMessage', () => {
     const createValidFields = (): Record<string, string> => ({
       jobType: 'prestashop.product.syncByExternalId',

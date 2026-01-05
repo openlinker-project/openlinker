@@ -37,6 +37,13 @@ describe('SyncJobHandlerRegistry', () => {
     jest.clearAllMocks();
   });
 
+  afterAll(async () => {
+    // Close the testing module to trigger OnModuleDestroy on all providers
+    if (module) {
+      await module.close();
+    }
+  });
+
   describe('register', () => {
     it('should register handler for job type', () => {
       const jobType: JobType = 'prestashop.product.syncByExternalId';
