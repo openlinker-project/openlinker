@@ -63,10 +63,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build dependencies
         run: |
-          # Build shared and core packages first (required for PrestaShop integration tests)
+          # Build shared, core, and PrestaShop integration packages first
+          # Worker tests import types from @openlinker/integrations-prestashop, so it must be built
           # This ensures TypeScript can resolve workspace subpath exports like @openlinker/core/orders
           pnpm --filter @openlinker/shared build
           pnpm --filter @openlinker/core build
+          pnpm --filter @openlinker/integrations-prestashop build
       - name: Run tests
         run: pnpm test
 
@@ -94,6 +96,15 @@ jobs:
           pnpm --filter @openlinker/shared build
           pnpm --filter @openlinker/core build
           pnpm --filter @openlinker/integrations-prestashop build
+          # Debug: Show where files are actually being emitted
+          echo "Core dist tree (top 50 files):"
+          find libs/core/dist -maxdepth 4 -type f | sort | head -50 || true
+          echo ""
+          echo "Looking for identifier-mapping index.js anywhere:"
+          find libs/core/dist -type f -path "*identifier-mapping*index.js" -print || echo "No identifier-mapping index.js found"
+          echo ""
+          # Verify core build output exists (catches missing dist files early)
+          test -f libs/core/dist/identifier-mapping/index.js || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
         timeout-minutes: 15 # Integration tests can take longer due to container startup
@@ -113,5 +124,3 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-
-

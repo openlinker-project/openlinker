@@ -12,7 +12,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
 import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
-import { SyncJob } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -27,7 +27,7 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
     private readonly redisClient: RedisClientType,
   ) {}
 
-  async enqueueJob(job: SyncJob): Promise<string> {
+  async enqueueJob(job: SyncJobRequest): Promise<string> {
     const idempotencyKey = `${this.IDEMPOTENCY_KEY_PREFIX}${job.idempotencyKey}`;
 
     try {
@@ -60,10 +60,20 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
       };
 
       // Publish to Redis Stream using XADD
-      const messageId = await this.redisClient.xAdd(this.STREAM_NAME, '*', fields);
+      let messageId: string | null;
+      try {
+        messageId = await this.redisClient.xAdd(this.STREAM_NAME, '*', fields);
+      } catch (xaddError) {
+        // Clean up idempotency key if XADD fails
+        await this.redisClient.del(idempotencyKey).catch(() => {
+          // Ignore cleanup errors
+        });
+        // Throw consistent error message format
+        throw new Error(`Failed to enqueue job to stream: ${this.STREAM_NAME}`);
+      }
 
       if (!messageId) {
-        // Clean up idempotency key if publish failed
+        // Clean up idempotency key if publish failed (returned null)
         await this.redisClient.del(idempotencyKey);
         throw new Error(`Failed to enqueue job to stream: ${this.STREAM_NAME}`);
       }
@@ -84,6 +94,11 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
         `Failed to enqueue job ${job.jobType} for ${job.connectionId}`,
         error instanceof Error ? error.stack : String(error),
       );
+
+      // If error is already our custom error (from messageId check), re-throw as-is
+      if (error instanceof Error && error.message.includes(`Failed to enqueue job to stream: ${this.STREAM_NAME}`)) {
+        throw error;
+      }
 
       // Convert Redis errors to domain exceptions
       if (error instanceof Error) {

@@ -5,7 +5,9 @@
  * configuration using environment variables for Redis connection settings.
  * Used for distributed caching and Redis Streams-based event messaging.
  *
- * @module apps/api/src/redis
+ * This module is shared between apps/api and apps/worker to avoid cross-app dependencies.
+ *
+ * @module libs/shared/src/redis
  */
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';

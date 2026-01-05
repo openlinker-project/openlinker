@@ -7,11 +7,8 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {AdapterFactoryPort}
  */
-import { AdapterFactoryPort } from '@openlinker/core/integrations';
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
-import { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
+import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
+import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { PrestashopAdapterFactory } from '../../application/prestashop-adapter.factory';
 // Adapters are created by factory, no need to import here
 

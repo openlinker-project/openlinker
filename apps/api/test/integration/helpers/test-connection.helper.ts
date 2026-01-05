@@ -6,7 +6,7 @@
  * @module apps/api/test/integration/helpers
  */
 import { DataSource } from 'typeorm';
-import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/infrastructure/persistence/entities/connection.orm-entity';
+import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping';
 
 /**
  * Create a test connection in the database

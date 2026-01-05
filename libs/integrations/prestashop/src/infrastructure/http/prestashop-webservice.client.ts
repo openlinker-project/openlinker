@@ -106,9 +106,22 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       response.body,
       response.contentType,
       responseFormat,
-    ) as T;
+    );
 
-    return parsed;
+    // Unwrap single resource response
+    // PrestaShop JSON API returns: { product: { ... } } for single resources
+    // We need to unwrap it to return just the product object
+    const parsedObj = parsed as Record<string, unknown>;
+    const itemKey = resource.slice(0, -1); // e.g., 'product' (singular from 'products')
+
+    // Check if parsed object has the resource key (e.g., 'product')
+    if (parsedObj[itemKey] && typeof parsedObj[itemKey] === 'object') {
+      // Unwrap: return the inner object (e.g., parsed.product)
+      return parsedObj[itemKey] as T;
+    }
+
+    // If no unwrapping needed, return as-is
+    return parsed as T;
   }
 
   async listResources<T = unknown>(

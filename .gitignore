@@ -16,8 +16,12 @@ build/
 # Compiled JavaScript files in source directories (should only be in dist/)
 libs/**/*.js
 libs/**/*.js.map
+libs/**/*.d.ts
+libs/**/*.d.ts.map
 !libs/**/dist/**/*.js
 !libs/**/dist/**/*.js.map
+!libs/**/dist/**/*.d.ts
+!libs/**/dist/**/*.d.ts.map
 
 # Environment variables
 .env

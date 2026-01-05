@@ -1,21 +1,21 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "Running pre-commit checks..."
+echo "🔍 Running pre-commit checks..."
 
-# Lint check
-echo "Running linter..."
+# Lint check for all apps and libs
+echo "📝 Running linter for all packages..."
 pnpm lint || exit 1
 
-# Type check
-echo "Running type check..."
+# Type check for all apps and libs
+echo "🔎 Running type check for all packages..."
 pnpm type-check || exit 1
 
-# Tests
-echo "Running tests..."
+# Unit tests for all apps and libs
+echo "🧪 Running unit tests for all packages..."
 pnpm test || exit 1
 
-echo "Pre-commit checks passed!"
+echo "✅ Pre-commit checks passed!"
 
 
 

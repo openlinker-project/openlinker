@@ -26,11 +26,19 @@
     "./types": {
       "types": "./dist/types/index.d.ts",
       "require": "./dist/types/index.js"
+    },
+    "./database": {
+      "types": "./dist/database/index.d.ts",
+      "require": "./dist/database/index.js"
+    },
+    "./redis": {
+      "types": "./dist/redis/index.d.ts",
+      "require": "./dist/redis/index.js"
     }
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -38,7 +46,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@nestjs/common": "10.3.0"
+    "@nestjs/common": "10.3.0",
+    "@nestjs/config": "3.2.0",
+    "@nestjs/typeorm": "10.0.2",
+    "redis": "4.6.12"
   },
   "devDependencies": {
     "@types/jest": "29.5.12",

@@ -29,23 +29,39 @@ export class CredentialsResolverService implements CredentialsResolverPort {
     // Pattern: CREDENTIALS_{credentialsRef}
     // Example: credentialsRef='prestashop_123' → env var 'CREDENTIALS_prestashop_123'
     const envKey = `CREDENTIALS_${credentialsRef.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
-    const credentialsJson = process.env[envKey];
+    const credentialsValue = process.env[envKey];
 
-    if (!credentialsJson) {
+    if (!credentialsValue) {
       throw new Error(
         `Credentials not found for reference: ${credentialsRef} (looked for env var: ${envKey}). ` +
-          'Set the environment variable with JSON-encoded credentials.',
+          'Set the environment variable with JSON-encoded credentials or a plain string (for simple cases).',
       );
     }
 
+    // Try to parse as JSON first
     try {
-      const credentials = JSON.parse(credentialsJson) as T;
+      const credentials = JSON.parse(credentialsValue) as T;
       this.logger.debug(`Credentials resolved successfully for reference: ${credentialsRef}`);
       return Promise.resolve(credentials);
-    } catch (error) {
+    } catch (jsonError) {
+      // If JSON parsing fails, check if it's a plain string
+      // This allows simple credentials (like PrestaShop API key) to be set as plain strings
+      // If the value doesn't look like JSON (doesn't start with { or [), treat it as a plain string
+      if (!credentialsValue.trim().startsWith('{') && !credentialsValue.trim().startsWith('[')) {
+        // For PrestaShop, if it's a plain string, auto-wrap it as {webserviceApiKey: value}
+        // This provides backward compatibility and simpler UX for single-value credentials
+        this.logger.debug(
+          `Credentials value is not JSON, treating as plain string and auto-wrapping for PrestaShop compatibility`,
+        );
+        const wrappedCredentials = { webserviceApiKey: credentialsValue } as T;
+        this.logger.debug(`Credentials resolved successfully for reference: ${credentialsRef} (auto-wrapped)`);
+        return Promise.resolve(wrappedCredentials);
+      }
+
+      // If it looks like JSON but failed to parse, throw the original error
       throw new Error(
         `Failed to parse credentials for reference: ${credentialsRef}. ` +
-          `Invalid JSON in environment variable ${envKey}: ${(error as Error).message}`,
+          `Invalid JSON in environment variable ${envKey}: ${(jsonError as Error).message}`,
       );
     }
   }

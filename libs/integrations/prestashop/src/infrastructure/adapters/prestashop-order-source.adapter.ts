@@ -9,8 +9,7 @@
  * @implements {OrderSourcePort}
  */
 import { OrderSourcePort, Order, OrderItem, OrderFilters } from '@openlinker/core/orders';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopOrderMapper, PrestashopOrder, PrestashopOrderRow } from '../mappers/prestashop.mapper.interface';
 import { PrestashopResourceNotFoundException } from '@openlinker/integrations-prestashop';

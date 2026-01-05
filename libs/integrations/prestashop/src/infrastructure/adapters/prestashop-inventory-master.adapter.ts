@@ -8,8 +8,7 @@
  * @implements {InventoryMasterPort}
  */
 import { InventoryMasterPort, Inventory } from '@openlinker/core/inventory';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopInventoryMapper, PrestashopStockAvailable } from '../mappers/prestashop.mapper.interface';
 import {

@@ -3,26 +3,10 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "../../",
     "declaration": true,
     "declarationMap": true,
     "composite": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@openlinker/core": ["../../core/src/index.ts"],
-      "@openlinker/core/*": ["../../core/src/*"],
-      "@openlinker/core/orders": ["../../core/src/orders/index.ts"],
-      "@openlinker/core/inventory": ["../../core/src/inventory/index.ts"],
-      "@openlinker/core/products": ["../../core/src/products/index.ts"],
-      "@openlinker/core/identifier-mapping": ["../../core/src/identifier-mapping/index.ts"],
-      "@openlinker/core/identifier-mapping/*": ["../../core/src/identifier-mapping/*"],
-      "@openlinker/core/integrations": ["../../core/src/integrations/index.ts"],
-      "@openlinker/core/integrations/*": ["../../core/src/integrations/*"],
-      "@openlinker/shared": ["../../shared/src/index.ts"],
-      "@openlinker/shared/*": ["../../shared/src/*"],
-      "@openlinker/integrations-prestashop": ["./src/index.ts"],
-      "@openlinker/integrations-prestashop/*": ["./src/*"]
-    }
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],
