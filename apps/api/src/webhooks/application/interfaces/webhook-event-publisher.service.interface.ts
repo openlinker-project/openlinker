@@ -8,7 +8,7 @@
  * @module apps/api/src/webhooks/application/interfaces
  * @see {@link WebhookEventPublisher} for the implementation
  */
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
+import { InboundWebhookEvent } from '@openlinker/core/events';
 
 export interface IWebhookEventPublisher {
   /**
@@ -23,6 +23,8 @@ export interface IWebhookEventPublisher {
    */
   publishInboundWebhook(event: InboundWebhookEvent): Promise<string>;
 }
+
+
 
 
 

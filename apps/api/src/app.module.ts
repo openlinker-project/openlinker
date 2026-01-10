@@ -18,6 +18,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     IdentifierMappingModule,
     IntegrationsModule,
     WebhooksModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],

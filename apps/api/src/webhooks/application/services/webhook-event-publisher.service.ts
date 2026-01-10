@@ -12,8 +12,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { EventPublisherPort } from '@openlinker/core/events';
 import { EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
-import { EventEnvelope } from '@openlinker/core/events/domain/types/event.types';
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
+import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
 import { IWebhookEventPublisher } from '../interfaces/webhook-event-publisher.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 

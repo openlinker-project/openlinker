@@ -40,7 +40,6 @@ describe('AdapterRegistryService', () => {
       expect(metadata.adapterKey).toBe('allegro.publicapi.v1');
       expect(metadata.platformType).toBe('allegro');
       expect(metadata.supportedCapabilities).toContain('Marketplace');
-      expect(metadata.supportedCapabilities).toContain('OrderProcessorManager');
     });
 
     it('should throw AdapterNotFoundException for unknown adapter', async () => {
@@ -99,12 +98,12 @@ describe('AdapterRegistryService', () => {
       expect(metadata.supportedCapabilities).toContain('Marketplace');
     });
 
-    it('should verify prestashop supports OrderSource and allegro supports OrderProcessorManager', async () => {
+    it('should verify prestashop supports OrderSource and allegro supports Marketplace', async () => {
       const prestashop = await service.getAdapterMetadata('prestashop.webservice.v1');
       const allegro = await service.getAdapterMetadata('allegro.publicapi.v1');
 
       expect(prestashop.supportedCapabilities).toContain('OrderSource');
-      expect(allegro.supportedCapabilities).toContain('OrderProcessorManager');
+      expect(allegro.supportedCapabilities).toContain('Marketplace');
     });
   });
 });

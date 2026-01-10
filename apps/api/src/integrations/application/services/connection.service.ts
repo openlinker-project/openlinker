@@ -12,16 +12,16 @@
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { IConnectionService } from '../interfaces/connection.service.interface';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { Inject } from '@nestjs/common';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import {
+  ConnectionPort,
+  Connection,
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
-import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
+  CONNECTION_PORT_TOKEN,
+  ConnectionNotFoundException,
+} from '@openlinker/core/identifier-mapping';
+import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

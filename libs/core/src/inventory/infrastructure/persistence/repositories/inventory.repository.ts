@@ -18,8 +18,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
-import { InventoryRepositoryPort } from '@openlinker/core/inventory/domain/ports/inventory-repository.port';
-import { InventoryItem } from '@openlinker/core/inventory/domain/entities/inventory-item.entity';
+import { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
+import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {

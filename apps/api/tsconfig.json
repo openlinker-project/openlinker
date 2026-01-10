@@ -6,12 +6,15 @@
     "declaration": false,
     "target": "ES2022",
     "outDir": "./dist",
+    "rootDir": "./src",
     "baseUrl": "./",
     "allowJs": true,
     "paths": {
       "@openlinker/api/*": ["./src/*"],
       "@openlinker/core/*": ["../../libs/core/src/*"],
-      "@openlinker/shared/*": ["../../libs/shared/src/*"]
+      "@openlinker/shared/*": ["../../libs/shared/src/*"],
+      "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
+      "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"]
     }
   },
   "include": ["src/**/*"],

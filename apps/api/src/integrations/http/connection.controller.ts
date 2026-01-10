@@ -23,10 +23,7 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionService } from '../application/services/connection.service';
-import {
-  ConnectionUpdate,
-  ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
+import { ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 
 @ApiTags('connections')
 @Controller('connections')

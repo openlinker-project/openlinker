@@ -7,8 +7,8 @@
  * @module libs/core/src/products/application/services
  * @see {@link ProductsService} for the implementation
  */
-import { Product } from '@openlinker/core/products/domain/entities/product.entity';
-import { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import { Product } from '../../domain/entities/product.entity';
+import { ProductVariant } from '../../domain/entities/product-variant.entity';
 
 /**
  * Products Service Interface

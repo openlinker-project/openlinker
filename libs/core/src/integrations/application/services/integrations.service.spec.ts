@@ -265,7 +265,7 @@ describe('IntegrationsService', () => {
       const allegroMetadata: AdapterMetadata = {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['ProductMaster', 'OrderProcessorManager'],
+        supportedCapabilities: ['ProductMaster', 'Marketplace'],
       };
 
       connectionPort.list.mockResolvedValue([

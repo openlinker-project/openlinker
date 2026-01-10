@@ -9,15 +9,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ConnectionService } from './connection.service';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
 import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  Connection,
+  ConnectionNotFoundException,
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
+} from '@openlinker/core/identifier-mapping';
 
 describe('ConnectionService', () => {
   let service: ConnectionService;
@@ -180,6 +180,8 @@ describe('ConnectionService', () => {
     });
   });
 });
+
+
 
 
 

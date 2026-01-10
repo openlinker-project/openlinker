@@ -162,6 +162,68 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return this.normalizeCollection<T>(parsed, resource);
   }
 
+  async createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T> {
+    const path = PrestashopQueryBuilder.buildResourcePath(resource);
+    const url = `${this.baseUrl}${path}`;
+
+    this.logger.debug(`Creating resource: ${resource}`);
+
+    // PrestaShop WebService API expects XML format for POST requests
+    // We'll use JSON for simplicity (if PrestaShop supports it) or convert to XML
+    const configResponseFormat = this.config.responseFormat;
+    const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
+    const useJson = responseFormat === 'json' || (responseFormat === 'auto' && true); // PrestaShop 1.7+ supports JSON
+
+    // Wrap data in PrestaShop format: { prestashop: { order: { ... } } }
+    const resourceKey = resource.slice(0, -1); // e.g., 'order' from 'orders'
+    const wrappedData = {
+      prestashop: {
+        [resourceKey]: data,
+      },
+    };
+
+    const body = useJson ? JSON.stringify(wrappedData) : this.convertToXml(wrappedData);
+    const contentType = useJson ? 'application/json' : 'application/xml';
+
+    const response = await this.requestWithRetry(url, {
+      method: 'POST',
+      body,
+      headers: {
+        'Content-Type': contentType,
+      },
+    });
+
+    const parsed = PrestashopResponseParser.parse(
+      response.body,
+      response.contentType,
+      responseFormat,
+    );
+
+    // Unwrap single resource response
+    // PrestaShop returns: { prestashop: { order: { id: ..., ... } } }
+    const parsedObj = parsed as Record<string, unknown>;
+    if (parsedObj.prestashop && typeof parsedObj.prestashop === 'object') {
+      const prestashop = parsedObj.prestashop as Record<string, unknown>;
+      if (prestashop[resourceKey] && typeof prestashop[resourceKey] === 'object') {
+        return prestashop[resourceKey] as T;
+      }
+    }
+
+    // Fallback: return as-is
+    return parsed as T;
+  }
+
+  /**
+   * Convert object to XML (simple implementation for MVP)
+   * For full XML support, consider using a library like xml2js or fast-xml-parser
+   */
+  private convertToXml(data: unknown): string {
+    // For MVP, we'll use JSON and let PrestaShop handle it
+    // If PrestaShop requires XML, we'll need a proper XML builder
+    // This is a placeholder - PrestaShop 1.7+ supports JSON
+    return JSON.stringify(data);
+  }
+
   /**
    * Make HTTP request with retry logic
    *

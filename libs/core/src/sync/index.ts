@@ -11,6 +11,7 @@
 export { JobEnqueuePort } from './domain/ports/job-enqueue.port';
 export { SyncJobRepositoryPort } from './domain/ports/sync-job-repository.port';
 export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
+export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
 
 // Domain Entities
 export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
@@ -18,6 +19,11 @@ export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 // Types
 export type { SyncJob, SyncJobRequest, JobType, JobStatus } from './domain/types/sync-job.types';
 export { JobTypeValues, JobStatusValues } from './domain/types/sync-job.types';
+export {
+  AllegroOrdersPollPayload,
+  AllegroOrderSyncByCheckoutFormIdPayload,
+  AllegroOfferQuantityUpdatePayload,
+} from './domain/types/allegro-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
@@ -27,10 +33,15 @@ export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-s
 
 // Module and tokens
 export { SyncModule } from './sync.module';
-export { JOB_ENQUEUE_TOKEN, SYNC_JOB_REPOSITORY_TOKEN } from './sync.tokens';
+export {
+  JOB_ENQUEUE_TOKEN,
+  SYNC_JOB_REPOSITORY_TOKEN,
+  CONNECTION_CURSOR_REPOSITORY_TOKEN,
+} from './sync.tokens';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)
 export { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
+export { ConnectionCursorOrmEntity } from './infrastructure/persistence/entities/connection-cursor.orm-entity';
 
 
 

@@ -5,7 +5,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/apps/worker/src/main.js",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "start:watch": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only src/main.ts",

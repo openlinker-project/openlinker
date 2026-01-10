@@ -10,19 +10,30 @@
 import { Module } from '@nestjs/common';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { ListingsModule } from '@openlinker/core/listings';
+import { SyncModule } from '@openlinker/core/sync';
 import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
+import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
+import { RedisConfigModule } from '@openlinker/shared/redis';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
+import { AllegroController } from './http/allegro.controller';
+import { OfferMappingController } from './http/offer-mapping.controller';
 import { ConnectionService } from './application/services/connection.service';
+import { AllegroOAuthService } from './application/services/allegro-oauth.service';
 
 @Module({
   imports: [
     CoreIntegrationsModule,
     IdentifierMappingModule,
+    ListingsModule, // Required for offer mapping service
+    SyncModule, // Required for cursor repository
+    RedisConfigModule, // Required for OAuth state storage
     PrestashopIntegrationModule, // Register PrestaShop adapter factory
+    AllegroIntegrationModule, // Register Allegro adapter factory
   ],
-  controllers: [ConnectionController, AdapterController],
-  providers: [ConnectionService],
+  controllers: [ConnectionController, AdapterController, AllegroController, OfferMappingController],
+  providers: [ConnectionService, AllegroOAuthService],
 })
 export class IntegrationsModule {}
 

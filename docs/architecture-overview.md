@@ -1269,7 +1269,9 @@ Future: Worker processes jobs
 
 ### Key Libraries
 
-- **HTTP Client**: Axios (`@nestjs/axios`)
+- **HTTP Client**: 
+  - **Adapter HTTP clients**: Axios (`@nestjs/axios`) - used for integration adapters requiring retries, rate limiting, and structured logging
+  - **Simple HTTP calls**: Native `fetch()` API (Node.js 18+) - acceptable for one-off calls like OAuth token exchange
 - **Scheduling**: `@nestjs/schedule` (Cron jobs)
 - **Events**: `@nestjs/event-emitter` (in-memory), Redis Streams (distributed)
 - **Authentication**: JWT (`@nestjs/jwt`, `@nestjs/passport`)

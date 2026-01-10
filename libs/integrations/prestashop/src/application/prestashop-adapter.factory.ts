@@ -20,6 +20,7 @@ import { PrestashopOrderMapper } from '../infrastructure/mappers/prestashop-orde
 import { PrestashopProductMasterAdapter } from '../infrastructure/adapters/prestashop-product-master.adapter';
 import { PrestashopInventoryMasterAdapter } from '../infrastructure/adapters/prestashop-inventory-master.adapter';
 import { PrestashopOrderSourceAdapter } from '../infrastructure/adapters/prestashop-order-source.adapter';
+import { PrestashopOrderProcessorManagerAdapter } from '../infrastructure/adapters/prestashop-order-processor-manager.adapter';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -77,12 +78,20 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection,
     );
 
+    const orderProcessorManager = new PrestashopOrderProcessorManagerAdapter(
+      httpClient,
+      identifierMapping,
+      orderMapper,
+      connection,
+    );
+
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
     return {
       productMaster,
       inventoryMaster,
       orderSource,
+      orderProcessorManager,
     };
   }
 

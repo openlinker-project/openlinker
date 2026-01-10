@@ -10,9 +10,13 @@
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import {
+  SyncJobRepositoryPort,
+  SYNC_JOB_REPOSITORY_TOKEN,
+  SyncJobRequest,
+  JobType,
+  JobTypeValues,
+} from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

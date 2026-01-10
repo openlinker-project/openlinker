@@ -9,7 +9,7 @@
  */
 import { Product, ProductVariant } from '@openlinker/core/products';
 import { Inventory } from '@openlinker/core/inventory';
-import { Order } from '@openlinker/core/orders';
+import { Order, OrderCreate } from '@openlinker/core/orders';
 
 /**
  * PrestaShop product data (from API response)
@@ -143,6 +143,22 @@ export interface IPrestashopOrderMapper {
    * @returns OpenLinker Order (without ID - ID mapping handled by adapter)
    */
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'>;
+
+  /**
+   * Map OpenLinker OrderCreate to PrestaShop order format
+   *
+   * @param orderCreate - OpenLinker order creation request
+   * @param externalCustomerId - PrestaShop customer ID (external)
+   * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
+   * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @returns PrestaShop order data ready for API submission
+   */
+  mapOrderCreate(
+    orderCreate: OrderCreate,
+    externalCustomerId: string | number,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>,
+  ): Record<string, unknown>;
 }
 
 

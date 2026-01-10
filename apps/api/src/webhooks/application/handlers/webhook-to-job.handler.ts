@@ -12,9 +12,8 @@ import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { RedisClientType } from 'redis';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { EventEnvelope } from '@openlinker/core/events/domain/types/event.types';
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
-import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
+import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

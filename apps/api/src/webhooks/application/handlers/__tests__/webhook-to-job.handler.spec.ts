@@ -9,8 +9,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
-import { JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { InboundWebhookEvent } from '@openlinker/core/events';
+import { JobTypeValues } from '@openlinker/core/sync';
 
 describe('WebhookToJobHandler', () => {
   let handler: WebhookToJobHandler;

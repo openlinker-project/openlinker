@@ -8,22 +8,27 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
-import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping/application/services/identifier-mapping.service.interface';
-import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { IProductsService } from '@openlinker/core/products/application/services/products.service.interface';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products/products.tokens';
 import {
+  SyncJobHandler,
+  SyncJob as SyncJobEntity,
+  SyncJobExecutionError,
+} from '@openlinker/core/sync';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
   ProductMasterPort,
   Product as ProductPortInterface,
   ProductVariant as ProductVariantPortInterface,
-} from '@openlinker/core/products/domain/ports/product-master.port';
-import { Product as ProductDomainEntity } from '@openlinker/core/products/domain/entities/product.entity';
-import { ProductVariant as ProductVariantDomainEntity } from '@openlinker/core/products/domain/entities/product-variant.entity';
+  ProductEntity as ProductDomainEntity,
+} from '@openlinker/core/products';
+
+type SyncJob = SyncJobEntity;
+import { ProductVariantEntity as ProductVariantDomainEntity } from '@openlinker/core/products';
 import {
   PrestashopResourceNotFoundException,
   PrestashopAuthenticationException,

@@ -66,6 +66,16 @@
       "types": "./dist/sync/*.d.ts",
       "require": "./dist/sync/*.js",
       "default": "./dist/sync/*.js"
+    },
+    "./listings": {
+      "types": "./dist/listings/index.d.ts",
+      "require": "./dist/listings/index.js",
+      "default": "./dist/listings/index.js"
+    },
+    "./listings/*": {
+      "types": "./dist/listings/*.d.ts",
+      "require": "./dist/listings/*.js",
+      "default": "./dist/listings/*.js"
     }
   },
   "files": ["dist"],

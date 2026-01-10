@@ -19,16 +19,16 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';
-import { IdentifierMappingRepositoryPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping-repository.port';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
+import { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
+import { ConnectionPort } from '../../domain/ports/connection.port';
+import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
+import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplicate-identifier-mapping.error';
 import {
   EntityType,
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
-} from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
+} from '../../domain/types/identifier-mapping.types';
 import { Logger } from '@openlinker/shared/logging';
 import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
 

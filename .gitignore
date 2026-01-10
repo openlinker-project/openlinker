@@ -18,10 +18,13 @@ libs/**/*.js
 libs/**/*.js.map
 libs/**/*.d.ts
 libs/**/*.d.ts.map
-!libs/**/dist/**/*.js
-!libs/**/dist/**/*.js.map
-!libs/**/dist/**/*.d.ts
-!libs/**/dist/**/*.d.ts.map
+
+apps/**/*.js
+apps/**/*.js.map
+apps/**/*.d.ts
+apps/**/*.d.ts.map
+!apps/**/jest.config.js
+!apps/**/.eslintrc.js
 
 # Environment variables
 .env

@@ -9,11 +9,13 @@
  */
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  SyncJobRepositoryPort,
+  SYNC_JOB_REPOSITORY_TOKEN,
+  SyncJobEntity,
+  SyncJobExecutionError,
+} from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -221,7 +223,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Executes the job handler and updates job status based on result.
    * Never throws - always marks job as succeeded, failed, or dead.
    */
-  private async processJob(job: SyncJob): Promise<void> {
+  private async processJob(job: SyncJobEntity): Promise<void> {
     this.logger.debug(
       `Processing job ${job.id} (${job.jobType}) for connection ${job.connectionId} (attempt ${job.attempts + 1}/${job.maxAttempts})`,
     );
@@ -258,7 +260,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Determines whether to retry (markFailed) or mark as dead (maxAttempts reached).
    * Calculates exponential backoff for retries.
    */
-  private async handleJobFailure(job: SyncJob, error: unknown): Promise<void> {
+  private async handleJobFailure(job: SyncJobEntity, error: unknown): Promise<void> {
     const errorMessage = this.extractErrorMessage(error);
     const nextAttempt = job.attempts + 1;
 
@@ -355,7 +357,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
       // If signal provided, listen for abort
       if (signal) {
-        const onAbort = () => {
+        const onAbort = (): void => {
           clearTimeout(timeout);
           resolve();
         };

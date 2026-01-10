@@ -55,6 +55,17 @@ export interface IPrestashopWebserviceClient {
     limit?: number,
     offset?: number,
   ): Promise<T[]>;
+
+  /**
+   * Create a new resource
+   *
+   * @param resource - Resource name (e.g., 'products', 'orders')
+   * @param data - Resource data to create
+   * @returns Created resource data with ID
+   * @throws PrestashopAuthenticationException if authentication fails
+   * @throws PrestashopApiException for other API errors
+   */
+  createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T>;
 }
 
 

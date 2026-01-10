@@ -13,28 +13,23 @@
  */
 import { Injectable } from '@nestjs/common';
 import { IIntegrationsService } from '../interfaces/integrations.service.interface';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
+import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection, ConnectionDisabledException, IdentifierMappingPort, IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Inject } from '@nestjs/common';
 import {
   AdapterMetadata,
   AdapterInstance,
   Capability,
-} from '@openlinker/core/integrations/domain/types/adapter.types';
-import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
+} from '../../domain/types/adapter.types';
+import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import {
   ADAPTER_REGISTRY_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
-} from '@openlinker/core/integrations/integrations.tokens';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-disabled.exception';
-import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
-import { CapabilityNotSupportedException } from '@openlinker/core/integrations/domain/exceptions/capability-not-supported.exception';
-import { AdapterFactoryResolverService } from '@openlinker/core/integrations/infrastructure/adapters/adapter-factory-resolver.service';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
+} from '../../integrations.tokens';
+import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
+import { AdapterFactoryResolverService } from '../../infrastructure/adapters/adapter-factory-resolver.service';
+import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -122,10 +117,20 @@ export class IntegrationsService implements IIntegrationsService {
           this.credentialsResolver,
         );
       } catch (error) {
-        this.logger.warn(
-          `Failed to create adapter using factory: ${(error as Error).message}. Falling back to registry placeholder.`,
-        );
-        // Fall through to registry placeholder
+        // Configuration errors should fail fast (don't fall back to placeholder)
+        // Only AdapterNotFoundException (factory not found) should fall back
+        if (error instanceof AdapterNotFoundException) {
+          this.logger.warn(
+            `Factory not found for adapter ${metadata.adapterKey}: ${(error as Error).message}. Falling back to registry placeholder.`,
+          );
+          // Fall through to registry placeholder
+        } else {
+          // Configuration errors, credential errors, etc. - fail fast
+          this.logger.error(
+            `Failed to create adapter using factory: ${(error as Error).message}. This is a configuration error and cannot fall back to placeholder.`,
+          );
+          throw error;
+        }
       }
     }
 
@@ -179,16 +184,58 @@ export class IntegrationsService implements IIntegrationsService {
 
         // Filter to only connections whose adapter supports the requested capability
         if (metadata.supportedCapabilities.includes(filters.capability)) {
-          const adapter = await this.adapterRegistry.getAdapter(adapterKey);
-          results.push({
-            connectionId: connection.id,
-            connection,
-            adapter: adapter as T,
-            metadata,
-          });
-          this.logger.debug(
-            `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`,
-          );
+          // Try to create adapter using factory resolver (mirrors getCapabilityAdapter logic)
+          // If factory is not registered, fall back to placeholder from registry
+          let adapter: T | null = null;
+          if (this.factoryResolver.hasFactory(adapterKey)) {
+            this.logger.debug(
+              `Using factory to create ${filters.capability} adapter for ${adapterKey} (connection: ${connection.id})`,
+            );
+            try {
+              adapter = await this.factoryResolver.createCapabilityAdapter<T>(
+                adapterKey,
+                connection,
+                filters.capability,
+                this.identifierMapping,
+                this.credentialsResolver,
+              );
+            } catch (error) {
+              // Configuration errors should fail fast (don't fall back to placeholder)
+              // Only AdapterNotFoundException (factory not found) should fall back
+              if (error instanceof AdapterNotFoundException) {
+                this.logger.warn(
+                  `Factory not found for adapter ${adapterKey} (connection: ${connection.id}): ${(error as Error).message}. Falling back to registry placeholder.`,
+                );
+                // Fall through to registry placeholder
+                const registryAdapter = await this.adapterRegistry.getAdapter(adapterKey);
+                adapter = registryAdapter as T;
+              } else {
+                // Configuration errors, credential errors, etc. - skip this connection
+                this.logger.error(
+                  `Failed to create adapter using factory for connection ${connection.id}: ${(error as Error).message}. This is a configuration error, skipping connection.`,
+                );
+                // Skip this connection (don't add to results)
+                adapter = null;
+              }
+            }
+          } else {
+            // Fallback: return placeholder from registry (for adapters without factories)
+            const registryAdapter = await this.adapterRegistry.getAdapter(adapterKey);
+            adapter = registryAdapter as T;
+          }
+
+          // Only add to results if adapter was successfully created
+          if (adapter !== null) {
+            results.push({
+              connectionId: connection.id,
+              connection,
+              adapter,
+              metadata,
+            });
+            this.logger.debug(
+              `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`,
+            );
+          }
         } else {
           this.logger.debug(
             `Connection ${connection.id} does not support ${filters.capability} (adapter: ${adapterKey}, supported: ${metadata.supportedCapabilities.join(', ')})`,
