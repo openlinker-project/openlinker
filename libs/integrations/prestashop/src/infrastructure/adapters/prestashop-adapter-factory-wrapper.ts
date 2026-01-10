@@ -41,10 +41,12 @@ export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
         return adapters.inventoryMaster as unknown as T;
       case 'OrderSource':
         return adapters.orderSource as unknown as T;
+      case 'OrderProcessorManager':
+        return adapters.orderProcessorManager as unknown as T;
       default:
         throw new Error(
           `PrestaShop adapter does not support capability: ${capability}. ` +
-            `Supported capabilities: ProductMaster, InventoryMaster, OrderSource`,
+            `Supported capabilities: ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager`,
         );
     }
   }

@@ -15,12 +15,12 @@ import { IIntegrationsService } from '@openlinker/core/integrations/application/
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping/application/services/identifier-mapping.service.interface';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { IInventoryService } from '@openlinker/core/inventory/application/services/inventory.service.interface';
-import { INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory/inventory.tokens';
 import {
+  IInventoryService,
+  INVENTORY_SERVICE_TOKEN,
   InventoryMasterPort,
   Inventory as InventoryPortInterface,
-} from '@openlinker/core/inventory/domain/ports/inventory-master.port';
+} from '@openlinker/core/inventory';
 import {
   PrestashopResourceNotFoundException,
   PrestashopAuthenticationException,

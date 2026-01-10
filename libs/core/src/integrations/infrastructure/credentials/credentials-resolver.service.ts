@@ -1,9 +1,9 @@
 /**
  * Credentials Resolver Service
  *
- * MVP implementation of CredentialsResolverPort using environment variables.
- * For development and testing, credentials are read from environment variables
- * using the pattern: CREDENTIALS_{credentialsRef}.
+ * Implementation of CredentialsResolverPort supporting multiple backends:
+ * - Database storage: `db:{ref}` format (e.g., `db:allegro_123`)
+ * - Environment variables: plain credentialsRef (e.g., `prestashop_123`)
  *
  * Future implementations can support:
  * - Encrypted local files
@@ -14,18 +14,72 @@
  * @module libs/core/src/integrations/infrastructure/credentials
  * @implements {CredentialsResolverPort}
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
 import { Logger } from '@openlinker/shared/logging';
+import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '../../integrations.tokens';
+import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 
 @Injectable()
 export class CredentialsResolverService implements CredentialsResolverPort {
   private readonly logger = new Logger(CredentialsResolverService.name);
 
-  get<T = unknown>(credentialsRef: string): Promise<T> {
+  constructor(
+    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
+    @Optional()
+    private readonly credentialRepository?: IntegrationCredentialRepositoryPort,
+  ) {}
+
+  async get<T = unknown>(credentialsRef: string): Promise<T> {
     this.logger.debug(`Resolving credentials for reference: ${credentialsRef}`);
 
-    // MVP: Read from environment variable
+    // Check if credentialsRef uses database backend format: db:{ref}
+    if (credentialsRef.startsWith('db:')) {
+      return this.getFromDatabase<T>(credentialsRef);
+    }
+
+    // Fall back to environment variable backend (MVP/dev)
+    return this.getFromEnvironment<T>(credentialsRef);
+  }
+
+  /**
+   * Get credentials from database
+   *
+   * Extracts the ref from `db:{ref}` format and queries the credential repository.
+   */
+  private async getFromDatabase<T = unknown>(credentialsRef: string): Promise<T> {
+    if (!this.credentialRepository) {
+      throw new Error(
+        `Database credential backend not available. Cannot resolve: ${credentialsRef}. ` +
+          'Ensure IntegrationCredentialRepository is registered in IntegrationsModule.',
+      );
+    }
+
+    // Extract ref from 'db:{ref}' format
+    const ref = credentialsRef.substring(3); // Remove 'db:' prefix
+    if (!ref) {
+      throw new Error(`Invalid database credentials reference format: ${credentialsRef}. Expected format: db:{ref}`);
+    }
+
+    try {
+      const credential = await this.credentialRepository.getByRef(ref);
+      this.logger.debug(`Credentials resolved from database for reference: ${credentialsRef}`);
+      return credential.credentialsJson as T;
+    } catch (error) {
+      this.logger.error(`Failed to resolve credentials from database: ${credentialsRef}`, error);
+      throw new Error(
+        `Credentials not found in database for reference: ${credentialsRef} (ref: ${ref}). ` +
+          `Error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Get credentials from environment variable
+   *
+   * MVP implementation for development and testing.
+   */
+  private async getFromEnvironment<T = unknown>(credentialsRef: string): Promise<T> {
     // Pattern: CREDENTIALS_{credentialsRef}
     // Example: credentialsRef='prestashop_123' → env var 'CREDENTIALS_prestashop_123'
     const envKey = `CREDENTIALS_${credentialsRef.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
@@ -34,14 +88,15 @@ export class CredentialsResolverService implements CredentialsResolverPort {
     if (!credentialsValue) {
       throw new Error(
         `Credentials not found for reference: ${credentialsRef} (looked for env var: ${envKey}). ` +
-          'Set the environment variable with JSON-encoded credentials or a plain string (for simple cases).',
+          'Set the environment variable with JSON-encoded credentials or a plain string (for simple cases). ' +
+          'For database storage, use format: db:{ref}',
       );
     }
 
     // Try to parse as JSON first
     try {
       const credentials = JSON.parse(credentialsValue) as T;
-      this.logger.debug(`Credentials resolved successfully for reference: ${credentialsRef}`);
+      this.logger.debug(`Credentials resolved from environment for reference: ${credentialsRef}`);
       return Promise.resolve(credentials);
     } catch (jsonError) {
       // If JSON parsing fails, check if it's a plain string

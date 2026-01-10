@@ -12,6 +12,7 @@ export function createMockHttpClient(overrides: Partial<IPrestashopWebserviceCli
   return {
     getResource: jest.fn(),
     listResources: jest.fn(),
+    createResource: jest.fn(),
     ...overrides,
   } as jest.Mocked<IPrestashopWebserviceClient>;
 }

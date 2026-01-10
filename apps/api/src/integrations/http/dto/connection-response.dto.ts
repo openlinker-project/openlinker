@@ -7,7 +7,7 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 
 export class ConnectionResponseDto {
   @ApiProperty({ description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })

@@ -17,8 +17,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductOrmEntity } from '../entities/product.orm-entity';
-import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
-import { Product } from '@openlinker/core/products/domain/entities/product.entity';
+import { ProductRepositoryPort } from '../../../domain/ports/product-repository.port';
+import { Product } from '../../../domain/entities/product.entity';
 
 @Injectable()
 export class ProductRepository implements ProductRepositoryPort {

@@ -15,15 +15,15 @@ import { IIntegrationsService } from '@openlinker/core/integrations/application/
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping/application/services/identifier-mapping.service.interface';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
-import { IProductsService } from '@openlinker/core/products/application/services/products.service.interface';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products/products.tokens';
-import { Product } from '@openlinker/core/products/domain/entities/product.entity';
-import { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
 import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  ProductEntity,
+  ProductVariantEntity,
   ProductMasterPort,
   Product as ProductPortInterface,
   ProductVariant as ProductVariantPortInterface,
-} from '@openlinker/core/products/domain/ports/product-master.port';
+} from '@openlinker/core/products';
 import {
   PrestashopResourceNotFoundException,
   PrestashopAuthenticationException,
@@ -307,7 +307,7 @@ describe('PrestashopProductSyncHandler', () => {
       const productPort = createMockProductPort();
       const domainProduct = (handler as any).toDomainProduct(productPort);
 
-      expect(domainProduct).toBeInstanceOf(Product);
+      expect(domainProduct).toBeInstanceOf(ProductEntity);
       expect(domainProduct.id).toBe(productPort.id);
       expect(domainProduct.name).toBe(productPort.name);
       expect(domainProduct.sku).toBe(productPort.sku);
@@ -363,7 +363,7 @@ describe('PrestashopProductSyncHandler', () => {
       const productId = `ol_product_${randomUUID()}`;
       const domainVariant = (handler as any).toDomainVariant(variantPort, productId);
 
-      expect(domainVariant).toBeInstanceOf(ProductVariant);
+      expect(domainVariant).toBeInstanceOf(ProductVariantEntity);
       expect(domainVariant.id).toBe(variantPort.id);
       expect(domainVariant.productId).toBe(productId);
       expect(domainVariant.sku).toBe(variantPort.sku);

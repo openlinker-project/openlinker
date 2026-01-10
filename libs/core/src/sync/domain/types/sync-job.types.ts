@@ -18,6 +18,10 @@ export const JobTypeValues = [
   'prestashop.inventory.syncByExternalId',
   'prestashop.products.reconcile',
   'prestashop.order.syncByExternalId',
+  'allegro.orders.poll',
+  'allegro.order.syncByCheckoutFormId',
+  'allegro.offerQuantity.update',
+  'inventory.propagateToMarketplaces',
 ] as const;
 
 /**

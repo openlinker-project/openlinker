@@ -39,7 +39,3 @@ export interface IWebhookService {
     headers: Record<string, string>,
   ): Promise<void>;
 }
-
-
-
-

@@ -8,7 +8,7 @@
  */
 import { IsString, IsOptional, IsObject, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ConnectionStatusValues } from '@openlinker/core/identifier-mapping/domain/types/connection.types';
+import { ConnectionStatusValues } from '@openlinker/core/identifier-mapping';
 
 export class UpdateConnectionDto {
   @ApiPropertyOptional({

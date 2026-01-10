@@ -12,8 +12,8 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { IInventoryService } from './inventory.service.interface';
-import { InventoryRepositoryPort } from '@openlinker/core/inventory/domain/ports/inventory-repository.port';
-import { InventoryItem } from '@openlinker/core/inventory/domain/entities/inventory-item.entity';
+import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
+import { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import { Logger } from '@openlinker/shared/logging';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 

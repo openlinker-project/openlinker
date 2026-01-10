@@ -17,8 +17,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
-import { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
+import { ProductVariant } from '../../../domain/entities/product-variant.entity';
 
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {

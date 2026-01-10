@@ -31,6 +31,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
           'ProductMaster',
           'InventoryMaster',
           'OrderSource',
+          'OrderProcessorManager',
         ] as Capability[],
         displayName: 'PrestaShop WebService v1',
         version: '1.0.0',
@@ -38,7 +39,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
       {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['Marketplace', 'OrderProcessorManager'] as Capability[],
+        supportedCapabilities: ['Marketplace'] as Capability[],
         displayName: 'Allegro Public API v1',
         version: '1.0.0',
       },

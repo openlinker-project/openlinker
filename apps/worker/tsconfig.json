@@ -11,6 +11,7 @@
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src",
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
@@ -20,10 +21,7 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@openlinker/core/*": ["../../libs/core/src/*"],
-      "@openlinker/shared/*": ["../../libs/shared/src/*"],
-      "@openlinker/integrations-prestashop/*": ["../../libs/integrations/prestashop/src/*"],
-      "@openlinker/api/*": ["../api/src/*"]
+      "@openlinker/worker/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],

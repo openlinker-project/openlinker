@@ -11,8 +11,8 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
-import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
+import { SyncJobRequest } from '../../domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

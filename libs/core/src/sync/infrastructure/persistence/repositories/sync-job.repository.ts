@@ -19,14 +19,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryFailedError, EntityManager } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
+import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import {
   JobStatus,
   JobStatusValues,
   JobType,
   JobTypeValues,
-} from '@openlinker/core/sync/domain/types/sync-job.types';
+} from '../../../domain/types/sync-job.types';
 
 @Injectable()
 export class SyncJobRepository implements SyncJobRepositoryPort {
