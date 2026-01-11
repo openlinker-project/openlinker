@@ -11,6 +11,8 @@
 import { IPrestashopOrderMapper, PrestashopOrder, PrestashopOrderRow } from './prestashop.mapper.interface';
 import { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import { OrderCreate } from '@openlinker/core/orders';
+import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
+import { Logger } from '@openlinker/shared/logging';
 
 /**
  * PrestaShop Order Mapper
@@ -18,6 +20,7 @@ import { OrderCreate } from '@openlinker/core/orders';
  * Transforms PrestaShop order data to OpenLinker Order schema.
  */
 export class PrestashopOrderMapper implements IPrestashopOrderMapper {
+  private readonly logger = new Logger(PrestashopOrderMapper.name);
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'> {
     // Map line items
     const items: OrderItem[] = orderRows.map((row, index) => {
@@ -143,6 +146,10 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalCustomerId: string | number,
     externalProductIds: Map<string, string | number>,
     externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
   ): Record<string, unknown> {
     // Map order status to PrestaShop status ID
     // PrestaShop uses numeric status IDs. For MVP, we'll use common defaults:
@@ -153,17 +160,32 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     const orderRows = orderCreate.items.map((item, index) => {
       const externalProductId = externalProductIds.get(item.productId);
       if (!externalProductId) {
-        throw new Error(`No external product ID found for internal product ID: ${item.productId}`);
+        // Log warning before throwing to help debug mapping issues
+        this.logger.warn(
+          `No external product ID found for internal product ID: ${item.productId}. ` +
+            `This may indicate a missing product mapping or sync issue.`,
+        );
+        throw new PrestashopProvisioningException(
+          `No external product ID found for internal product ID: ${item.productId}`,
+          undefined,
+          undefined,
+        );
       }
 
       // Map variant ID if present
-      let externalVariantId: string | number | undefined;
+      let externalVariantId: number;
       if (item.variantId) {
-        externalVariantId = externalVariantIds.get(item.variantId);
+        const variantId = externalVariantIds.get(item.variantId);
         // If variant mapping not found, use 0 (no variant) or throw error
-        if (externalVariantId === undefined) {
+        if (variantId === undefined) {
           // For MVP, we'll allow missing variant mappings and use 0
           externalVariantId = 0;
+        } else {
+          // Ensure variant ID is a number
+          externalVariantId = typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
+          if (Number.isNaN(externalVariantId)) {
+            externalVariantId = 0;
+          }
         }
       } else {
         externalVariantId = 0; // No variant
@@ -179,15 +201,80 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       };
     });
 
+    /**
+     * Calculate product totals for PrestaShop order
+     *
+     * PrestaShop requires separate fields for products with and without tax:
+     * - total_products: Subtotal without tax (products cost excluding tax)
+     * - total_products_wt: Subtotal with tax (products cost including tax)
+     *
+     * Formula: total_products_wt = total_products + tax
+     */
+    const totalProducts = orderCreate.totals.subtotal;
+    const totalProductsWt = orderCreate.totals.subtotal + orderCreate.totals.tax;
+
+    /**
+     * Calculate shipping totals for PrestaShop order
+     *
+     * PrestaShop requires separate fields for shipping with and without tax:
+     * - total_shipping_tax_excl: Shipping cost without tax
+     * - total_shipping_tax_incl: Shipping cost with tax
+     *
+     * Note: For now, we assume shipping tax is 0 (shipping tax is not provided in OrderCreate.totals).
+     * Future enhancement: Add shippingTax field to OrderTotals if needed.
+     */
+    const totalShippingTaxExcl = orderCreate.totals.shipping;
+    const totalShippingTaxIncl = orderCreate.totals.shipping; // Assuming no tax on shipping for now
+
+    /**
+     * Currency conversion rate
+     *
+     * PrestaShop uses conversion_rate to handle multi-currency orders.
+     * For now, we default to 1.0 (assuming same currency or 1:1 conversion).
+     * Future enhancement: Fetch actual conversion rate from PrestaShop if order currency
+     * differs from shop default currency.
+     */
+    const conversionRate = 1.0;
+
+    /**
+     * Default values for PrestaShop order creation
+     *
+     * These defaults are used when values are not provided:
+     * - id_currency: 1 (EUR - common default in PrestaShop)
+     * - id_lang: 1 (first language - common default in PrestaShop)
+     * - id_carrier: 1 (first carrier - common default in PrestaShop)
+     * - module: 'ps_checkpayment' (Check payment - common default payment module)
+     * - payment: 'Check payment' (Default payment method name)
+     *
+     * Future enhancement: Make these configurable via connection config or environment variables.
+     */
+    const DEFAULT_CURRENCY_ID = 1; // EUR
+    const DEFAULT_LANGUAGE_ID = 1; // First language
+    const DEFAULT_CARRIER_ID = 1; // First carrier
+    const DEFAULT_PAYMENT_MODULE = 'ps_checkpayment';
+    const DEFAULT_PAYMENT_METHOD = 'Check payment';
+
     // Build PrestaShop order structure
     const prestashopOrder: Record<string, unknown> = {
       id_customer: externalCustomerId,
+      id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
+      id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
+      id_carrier: DEFAULT_CARRIER_ID,
+      module: DEFAULT_PAYMENT_MODULE,
+      payment: DEFAULT_PAYMENT_METHOD,
       current_state: statusId,
       reference: orderCreate.orderNumber || undefined,
+      // Financial totals
       total_paid: orderCreate.totals.total.toFixed(2),
+      total_paid_real: orderCreate.totals.total.toFixed(2), // Actual amount paid (same as total_paid for new orders)
       total_paid_tax_incl: orderCreate.totals.total.toFixed(2),
       total_paid_tax_excl: orderCreate.totals.subtotal.toFixed(2),
+      total_products: totalProducts.toFixed(2), // Products total without tax
+      total_products_wt: totalProductsWt.toFixed(2), // Products total with tax
       total_shipping: orderCreate.totals.shipping.toFixed(2),
+      total_shipping_tax_incl: totalShippingTaxIncl.toFixed(2), // Shipping with tax
+      total_shipping_tax_excl: totalShippingTaxExcl.toFixed(2), // Shipping without tax
+      conversion_rate: conversionRate.toFixed(6), // Currency conversion rate (6 decimals)
       // PrestaShop requires associations for order_rows
       associations: {
         order_rows: {
@@ -196,11 +283,123 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       },
     };
 
-    // Add addresses if provided (PrestaShop requires address IDs, not full address objects)
-    // For MVP, we'll skip address mapping as it requires creating addresses first
-    // This can be enhanced in future iterations
+    // Add address IDs (PrestaShop requires both delivery and invoice addresses)
+    // Ensure at least one address is set, use it for both if only one provided
+    if (externalShippingAddressId && externalBillingAddressId) {
+      prestashopOrder.id_address_delivery = externalShippingAddressId;
+      prestashopOrder.id_address_invoice = externalBillingAddressId;
+    } else if (externalShippingAddressId) {
+      // Use shipping address for both if only shipping provided
+      prestashopOrder.id_address_delivery = externalShippingAddressId;
+      prestashopOrder.id_address_invoice = externalShippingAddressId;
+    } else if (externalBillingAddressId) {
+      // Use billing address for both if only billing provided
+      prestashopOrder.id_address_delivery = externalBillingAddressId;
+      prestashopOrder.id_address_invoice = externalBillingAddressId;
+    } else {
+      // This should not happen in practice, but throw error to make it explicit
+      throw new PrestashopProvisioningException(
+        'Both shipping and billing addresses are missing. At least one address is required for PrestaShop order creation.',
+      );
+    }
+
+    // Validate required fields (including address IDs that were just added)
+    this.validateOrderData(prestashopOrder);
 
     return prestashopOrder;
+  }
+
+  /**
+   * Map OrderCreate to PrestaShop cart format
+   *
+   * Creates a cart structure that can be used to create a cart in PrestaShop,
+   * which is then required to create an order.
+   */
+  mapCartCreate(
+    orderCreate: OrderCreate,
+    externalCustomerId: string | number,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
+  ): Record<string, unknown> {
+    // Map cart rows (products)
+    const cartRows = orderCreate.items.map((item, index) => {
+      const externalProductId = externalProductIds.get(item.productId);
+      if (!externalProductId) {
+        // Log warning before throwing to help debug mapping issues
+        this.logger.warn(
+          `No external product ID found for internal product ID: ${item.productId}. ` +
+            `This may indicate a missing product mapping or sync issue.`,
+        );
+        throw new PrestashopProvisioningException(
+          `No external product ID found for internal product ID: ${item.productId}`,
+          undefined,
+          undefined,
+        );
+      }
+
+      // Map variant ID if present
+      let externalVariantId: number;
+      if (item.variantId) {
+        const variantId = externalVariantIds.get(item.variantId);
+        if (variantId === undefined) {
+          externalVariantId = 0;
+        } else {
+          // Ensure variant ID is a number
+          externalVariantId = typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
+          if (Number.isNaN(externalVariantId)) {
+            externalVariantId = 0;
+          }
+        }
+      } else {
+        externalVariantId = 0; // No variant
+      }
+
+      return {
+        id: index + 1,
+        id_product: externalProductId,
+        id_product_attribute: externalVariantId,
+        quantity: item.quantity,
+      };
+    });
+
+    /**
+     * Default values for PrestaShop cart creation (same as order defaults)
+     */
+    const DEFAULT_CURRENCY_ID = 1; // EUR
+    const DEFAULT_LANGUAGE_ID = 1; // First language
+
+    // Build PrestaShop cart structure
+    const prestashopCart: Record<string, unknown> = {
+      id_customer: externalCustomerId,
+      id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
+      id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
+      associations: {
+        cart_rows: {
+          cart_row: cartRows,
+        },
+      },
+    };
+
+    // Add address IDs if provided
+    if (externalShippingAddressId) {
+      prestashopCart.id_address_delivery = externalShippingAddressId;
+    }
+    if (externalBillingAddressId) {
+      prestashopCart.id_address_invoice = externalBillingAddressId;
+    }
+    // If only one address provided, use it for both delivery and invoice
+    if (externalShippingAddressId && !externalBillingAddressId) {
+      prestashopCart.id_address_invoice = externalShippingAddressId;
+    }
+    if (externalBillingAddressId && !externalShippingAddressId) {
+      prestashopCart.id_address_delivery = externalBillingAddressId;
+    }
+
+    return prestashopCart;
   }
 
   /**
@@ -227,6 +426,68 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         return 7; // Refunded
       default:
         return 1; // Default to pending
+    }
+  }
+
+  /**
+   * Validate that all required PrestaShop order fields are present
+   *
+   * Throws PrestashopProvisioningException if any required field is missing.
+   * This ensures we catch missing fields before API submission.
+   *
+   * @param orderData - PrestaShop order data to validate
+   * @throws PrestashopProvisioningException if required field is missing
+   */
+  private validateOrderData(orderData: Record<string, unknown>): void {
+    const requiredFields = [
+      'id_customer',
+      'id_currency',
+      'id_lang',
+      'id_carrier',
+      'module',
+      'payment',
+      'current_state',
+      'id_address_delivery', // Required by PrestaShop
+      'id_address_invoice', // Required by PrestaShop
+      'total_paid',
+      'total_paid_real',
+      'total_paid_tax_incl',
+      'total_paid_tax_excl',
+      'total_products',
+      'total_products_wt',
+      'total_shipping',
+      'total_shipping_tax_incl',
+      'total_shipping_tax_excl',
+      'conversion_rate',
+      'associations',
+    ];
+
+    const missingFields: string[] = [];
+    for (const field of requiredFields) {
+      if (orderData[field] === undefined || orderData[field] === null) {
+        missingFields.push(field);
+      }
+    }
+
+    if (missingFields.length > 0) {
+      throw new PrestashopProvisioningException(
+        `Required fields are missing in order data: ${missingFields.join(', ')}`,
+      );
+    }
+
+    // Validate associations.order_rows exists and is not empty
+    const associations = orderData.associations as Record<string, unknown>;
+    if (!associations || !associations.order_rows) {
+      throw new PrestashopProvisioningException(
+        'Required field "associations.order_rows" is missing in order data',
+      );
+    }
+
+    const orderRows = (associations.order_rows as Record<string, unknown>).order_row;
+    if (!orderRows || (Array.isArray(orderRows) && orderRows.length === 0)) {
+      throw new PrestashopProvisioningException(
+        'Order must have at least one order row',
+      );
     }
   }
 }

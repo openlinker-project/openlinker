@@ -8,6 +8,7 @@
  */
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
 import { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
+import { OrderCreate } from '@openlinker/core/orders';
 
 describe('PrestashopOrderMapper', () => {
   let mapper: PrestashopOrderMapper;
@@ -246,6 +247,451 @@ describe('PrestashopOrderMapper', () => {
       const result = mapper.mapOrder(prestashopOrder, orderRows);
 
       expect(result.items[0].variantId).toBeUndefined();
+    });
+  });
+
+  describe('mapOrderCreate', () => {
+    const mockOrderCreate: OrderCreate = {
+      orderNumber: 'ORDER-001',
+      status: 'processing',
+      customerId: 'ol_customer_123',
+      items: [
+        {
+          id: 'item-1',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 2,
+          price: 19.99,
+          sku: 'PROD-001',
+        },
+        {
+          id: 'item-2',
+          productId: 'ol_product_2',
+          quantity: 1,
+          price: 29.99,
+          sku: 'PROD-002',
+        },
+      ],
+      totals: {
+        subtotal: 69.97,
+        tax: 13.99,
+        shipping: 5.0,
+        total: 88.96,
+        currency: 'EUR',
+      },
+      shippingAddress: {
+        firstName: 'John',
+        lastName: 'Doe',
+        address1: '123 Main St',
+        city: 'Warsaw',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+      billingAddress: {
+        firstName: 'John',
+        lastName: 'Doe',
+        address1: '123 Main St',
+        city: 'Warsaw',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+    };
+
+    it('should map order with all required fields', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([
+        ['ol_variant_1', '5'],
+      ]);
+
+      const result = mapper.mapOrderCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+        '1',
+        '1',
+      );
+
+      expect(result.id_customer).toBe('100');
+      expect(result.id_currency).toBe('1');
+      expect(result.id_lang).toBe('1');
+      expect(result.id_carrier).toBe(1);
+      expect(result.module).toBe('ps_checkpayment');
+      expect(result.payment).toBe('Check payment');
+      expect(result.current_state).toBe(2); // processing
+      expect(result.reference).toBe('ORDER-001');
+      expect(result.total_paid).toBe('88.96');
+      expect(result.total_paid_real).toBe('88.96');
+      expect(result.total_products).toBe('69.97');
+      expect(result.total_products_wt).toBe('83.96'); // 69.97 + 13.99
+      expect(result.total_shipping).toBe('5.00');
+      expect(result.conversion_rate).toBe('1.000000');
+      expect(result.id_address_delivery).toBe('200');
+      expect(result.id_address_invoice).toBe('201');
+      expect((result.associations as Record<string, unknown>).order_rows).toBeDefined();
+    });
+
+    it('should throw error when product ID mapping is missing', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        // Missing ol_product_2
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      expect(() => {
+        mapper.mapOrderCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+        );
+      }).toThrow('No external product ID found for internal product ID: ol_product_2');
+    });
+
+    it('should use shipping address for both delivery and invoice when only shipping provided', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapOrderCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200', // Only shipping
+        undefined, // No billing
+      );
+
+      expect(result.id_address_delivery).toBe('200');
+      expect(result.id_address_invoice).toBe('200');
+    });
+
+    it('should use billing address for both delivery and invoice when only billing provided', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapOrderCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        undefined, // No shipping
+        '201', // Only billing
+      );
+
+      expect(result.id_address_delivery).toBe('201');
+      expect(result.id_address_invoice).toBe('201');
+    });
+
+    it('should throw error when both addresses are missing', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      expect(() => {
+        mapper.mapOrderCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          undefined,
+          undefined,
+        );
+      }).toThrow('Both shipping and billing addresses are missing');
+    });
+
+    it('should default currency and language IDs to 1 when not provided', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapOrderCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+        undefined, // No currency
+        undefined, // No language
+      );
+
+      expect(result.id_currency).toBe(1);
+      expect(result.id_lang).toBe(1);
+    });
+
+    it('should include all required PrestaShop fields', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapOrderCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+        '1',
+        '1',
+      );
+
+      // Check all required fields are present
+      expect(result.id_customer).toBeDefined();
+      expect(result.id_currency).toBeDefined();
+      expect(result.id_lang).toBeDefined();
+      expect(result.id_carrier).toBeDefined();
+      expect(result.module).toBeDefined();
+      expect(result.payment).toBeDefined();
+      expect(result.current_state).toBeDefined();
+      expect(result.total_paid).toBeDefined();
+      expect(result.total_paid_real).toBeDefined();
+      expect(result.total_paid_tax_incl).toBeDefined();
+      expect(result.total_paid_tax_excl).toBeDefined();
+      expect(result.total_products).toBeDefined();
+      expect(result.total_products_wt).toBeDefined();
+      expect(result.total_shipping).toBeDefined();
+      expect(result.total_shipping_tax_incl).toBeDefined();
+      expect(result.total_shipping_tax_excl).toBeDefined();
+      expect(result.conversion_rate).toBeDefined();
+      expect(result.associations).toBeDefined();
+    });
+
+    it('should map variant ID correctly when present', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([
+        ['ol_variant_1', '5'],
+      ]);
+
+      const orderWithVariant: OrderCreate = {
+        ...mockOrderCreate,
+        items: [
+          {
+            id: 'item-1',
+            productId: 'ol_product_1',
+            variantId: 'ol_variant_1',
+            quantity: 2,
+            price: 19.99,
+            sku: 'PROD-001',
+          },
+        ],
+      };
+
+      const result = mapper.mapOrderCreate(
+        orderWithVariant,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+      );
+
+      const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
+        string,
+        unknown
+      >;
+      const orderRow = (orderRows.order_row as Array<Record<string, unknown>>)[0];
+      expect(orderRow.product_attribute_id).toBe(5);
+    });
+
+    it('should use 0 for variant ID when variant mapping is missing', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>(); // Empty - variant not found
+
+      const orderWithVariant: OrderCreate = {
+        ...mockOrderCreate,
+        items: [
+          {
+            id: 'item-1',
+            productId: 'ol_product_1',
+            variantId: 'ol_variant_1', // Variant ID provided but mapping missing
+            quantity: 2,
+            price: 19.99,
+            sku: 'PROD-001',
+          },
+        ],
+      };
+
+      const result = mapper.mapOrderCreate(
+        orderWithVariant,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+      );
+
+      const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
+        string,
+        unknown
+      >;
+      const orderRow = (orderRows.order_row as Array<Record<string, unknown>>)[0];
+      expect(orderRow.product_attribute_id).toBe(0);
+    });
+  });
+
+  describe('mapCartCreate', () => {
+    const mockOrderCreate: OrderCreate = {
+      orderNumber: 'ORDER-001',
+      status: 'processing',
+      customerId: 'ol_customer_123',
+      items: [
+        {
+          id: 'item-1',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 2,
+          price: 19.99,
+          sku: 'PROD-001',
+        },
+      ],
+      totals: {
+        subtotal: 39.98,
+        tax: 7.99,
+        shipping: 5.0,
+        total: 52.97,
+        currency: 'EUR',
+      },
+      shippingAddress: {
+        firstName: 'John',
+        lastName: 'Doe',
+        address1: '123 Main St',
+        city: 'Warsaw',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+    };
+
+    it('should map cart with all required fields', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([
+        ['ol_variant_1', '5'],
+      ]);
+
+      const result = mapper.mapCartCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+        '1',
+        '1',
+      );
+
+      expect(result.id_customer).toBe('100');
+      expect(result.id_currency).toBe('1');
+      expect(result.id_lang).toBe('1');
+      expect(result.id_address_delivery).toBe('200');
+      expect(result.id_address_invoice).toBe('201');
+      expect((result.associations as Record<string, unknown>).cart_rows).toBeDefined();
+    });
+
+    it('should throw error when product ID mapping is missing', () => {
+      const externalProductIds = new Map<string, string | number>(); // Empty
+      const externalVariantIds = new Map<string, string | number>();
+
+      expect(() => {
+        mapper.mapCartCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+        );
+      }).toThrow('No external product ID found for internal product ID: ol_product_1');
+    });
+
+    it('should include currency and language IDs', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapCartCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+        '2', // Currency ID 2
+        '3', // Language ID 3
+      );
+
+      expect(result.id_currency).toBe('2');
+      expect(result.id_lang).toBe('3');
+    });
+
+    it('should use shipping address for invoice when only shipping provided', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const result = mapper.mapCartCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200', // Only shipping
+        undefined, // No billing
+      );
+
+      expect(result.id_address_delivery).toBe('200');
+      expect(result.id_address_invoice).toBe('200');
+    });
+
+    it('should map cart rows correctly', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([
+        ['ol_variant_1', '5'],
+      ]);
+
+      const result = mapper.mapCartCreate(
+        mockOrderCreate,
+        '100',
+        externalProductIds,
+        externalVariantIds,
+        '200',
+        '201',
+      );
+
+      const cartRows = (result.associations as Record<string, unknown>).cart_rows as Record<
+        string,
+        unknown
+      >;
+      const cartRow = (cartRows.cart_row as Array<Record<string, unknown>>)[0];
+      expect(cartRow.id_product).toBe('10');
+      expect(cartRow.id_product_attribute).toBe(5);
+      expect(cartRow.quantity).toBe(2);
     });
   });
 });

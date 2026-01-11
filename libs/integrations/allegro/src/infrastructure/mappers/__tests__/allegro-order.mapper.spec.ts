@@ -9,10 +9,12 @@
 import { AllegroOrderMapper } from '../allegro-order.mapper';
 import { AllegroCheckoutForm, AllegroOrderEvent } from '../allegro-order.mapper';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 
 describe('AllegroOrderMapper', () => {
   let mapper: AllegroOrderMapper;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
+  let logger: Logger;
   const connectionId = 'connection-123';
 
   beforeEach(() => {
@@ -24,7 +26,9 @@ describe('AllegroOrderMapper', () => {
       batchGetOrCreateInternalIds: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingPort>;
 
-    mapper = new AllegroOrderMapper(connectionId, identifierMapping);
+    logger = new Logger('AllegroOrderMapperTest');
+
+    mapper = new AllegroOrderMapper(connectionId, identifierMapping, logger);
   });
 
   describe('toUnifiedOrder', () => {

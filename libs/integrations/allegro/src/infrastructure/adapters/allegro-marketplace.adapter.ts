@@ -17,6 +17,7 @@ import {
 } from '@openlinker/core/listings';
 import { Order } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroOrderMapper, AllegroCheckoutForm } from '../mappers/allegro-order.mapper';
 import {
@@ -39,6 +40,7 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
     private readonly httpClient: IAllegroHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     _connection: Connection,
+    private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
   ) {
     // Connection is stored for potential future use but not currently accessed
     void _connection;
@@ -71,19 +73,33 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
         queryParams,
       });
 
+      // Log raw response for debugging
+      this.logger.debug(
+        `Allegro /order/events raw response (connection: ${this.connectionId}): ${JSON.stringify(response.data)}`,
+      );
+
       const events = response.data.events || [];
-      const nextCursor = response.data.lastEventId || events[events.length - 1]?.id;
+      
+      // Determine nextCursor:
+      // 1. Use lastEventId from API if provided (most reliable)
+      // 2. Fall back to last event's ID if events exist
+      // 3. If no events and no lastEventId, keep the current cursor (return it as nextCursor)
+      //    This prevents the cursor from getting stuck when Allegro returns empty results
+      const nextCursor = response.data.lastEventId || 
+                        (events.length > 0 ? events[events.length - 1]?.id : params.cursor);
 
       this.logger.debug(
-        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor})`,
+        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'}, lastEventId from API: ${response.data.lastEventId || 'none'}, currentCursor: ${params.cursor || 'none'})`,
       );
 
       // Map events to marketplace feed items
-      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping);
+      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping, this.logger);
       const items = mapper.toMarketplaceFeedItems(events);
 
       return {
         items,
+        // Return the cursor (either new or current) to allow cursor advancement
+        // If there's no cursor at all (first poll), return empty string
         nextCursor: nextCursor || '',
       };
     } catch (error) {
@@ -112,9 +128,36 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
         `/order/checkout-forms/${checkoutFormId}`,
       );
 
+      // Resolve customer identity if resolver is available
+      let resolvedCustomerId: string | undefined;
+      if (this.customerIdentityResolver) {
+        if (response.data.buyer.email) {
+          try {
+            const identityResult = await this.customerIdentityResolver.resolveCustomerIdentity({
+              externalBuyerId: response.data.buyer.id,
+              email: response.data.buyer.email,
+              sourceConnectionId: this.connectionId,
+            });
+            resolvedCustomerId = identityResult.internalCustomerId;
+            this.logger.debug(
+              `Resolved customer identity: buyerId=${response.data.buyer.id}, internalCustomerId=${resolvedCustomerId}, usedEmailFallback=${identityResult.usedEmailFallback} (connection: ${this.connectionId})`,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `Failed to resolve customer identity for buyer ${response.data.buyer.id}, falling back to identifier mapping: ${(error as Error).message}`,
+            );
+            // Continue with identifier mapping fallback
+          }
+        } else {
+          this.logger.debug(
+            `Skipping customer identity resolution: email not available for buyer ${response.data.buyer.id} (connection: ${this.connectionId})`,
+          );
+        }
+      }
+
       // Map to unified Order schema with internal IDs
-      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping);
-      const order = await mapper.toUnifiedOrder(response.data);
+      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping, this.logger);
+      const order = await mapper.toUnifiedOrder(response.data, resolvedCustomerId);
 
       this.logger.debug(
         `Mapped Allegro order ${checkoutFormId} to unified order ${order.id} (connection: ${this.connectionId})`,

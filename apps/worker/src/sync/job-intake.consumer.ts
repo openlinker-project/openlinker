@@ -100,6 +100,8 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     this.abortController = new AbortController();
     this.isRunning = true;
 
+    this.logger.log(`Starting job intake consumer loop (stream: ${this.STREAM_NAME}, group: ${this.CONSUMER_GROUP}, consumer: ${this.CONSUMER_NAME})`);
+
     // Start consumption loop in background (don't await)
     this.consumeLoop().catch((error) => {
       this.logger.error('Consumption loop error', error instanceof Error ? error.stack : String(error));
@@ -147,6 +149,9 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * Uses blocking read with timeout to avoid busy-waiting.
    */
   private async consumeLoop(): Promise<void> {
+    let lastHeartbeat = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30000; // Log heartbeat every 30 seconds
+
     while (this.isRunning && !this.abortController?.signal.aborted) {
       try {
         // XREADGROUP GROUP group consumer COUNT count BLOCK milliseconds STREAMS stream >
@@ -165,6 +170,13 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
             BLOCK: this.BLOCK_MS,
           },
         );
+
+        // Log heartbeat periodically to show loop is alive
+        const now = Date.now();
+        if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+          this.logger.debug(`Job intake consumer is running (waiting for jobs in stream: ${this.STREAM_NAME})`);
+          lastHeartbeat = now;
+        }
 
         if (!messages || messages.length === 0) {
           // No messages, continue loop

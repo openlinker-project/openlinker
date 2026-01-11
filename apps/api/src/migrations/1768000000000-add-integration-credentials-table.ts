@@ -13,24 +13,29 @@ export class AddIntegrationCredentialsTable1768000000000 implements MigrationInt
   name = 'AddIntegrationCredentialsTable1768000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      CREATE TABLE "integration_credentials" (
-        "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "ref" character varying NOT NULL,
-        "platformType" character varying NOT NULL,
-        "credentialsJson" jsonb NOT NULL,
-        "encrypted" boolean NOT NULL DEFAULT false,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
-        CONSTRAINT "PK_integration_credentials" PRIMARY KEY ("id")
-      )
-    `);
-    await queryRunner.query(`
-      CREATE UNIQUE INDEX "IDX_integration_credentials_ref" ON "integration_credentials" ("ref")
-    `);
-    await queryRunner.query(`
-      CREATE INDEX "IDX_integration_credentials_platform" ON "integration_credentials" ("platformType")
-    `);
+    // Check if table already exists (might have been created manually or by a later migration)
+    const table = await queryRunner.getTable('integration_credentials');
+
+    if (!table) {
+      await queryRunner.query(`
+        CREATE TABLE "integration_credentials" (
+          "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+          "ref" character varying NOT NULL,
+          "platformType" character varying NOT NULL,
+          "credentialsJson" jsonb NOT NULL,
+          "encrypted" boolean NOT NULL DEFAULT false,
+          "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+          "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+          CONSTRAINT "PK_integration_credentials" PRIMARY KEY ("id")
+        )
+      `);
+      await queryRunner.query(`
+        CREATE UNIQUE INDEX "IDX_integration_credentials_ref" ON "integration_credentials" ("ref")
+      `);
+      await queryRunner.query(`
+        CREATE INDEX "IDX_integration_credentials_platform" ON "integration_credentials" ("platformType")
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

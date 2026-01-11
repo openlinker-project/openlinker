@@ -51,6 +51,7 @@ export class OrderSyncService implements IOrderSyncService {
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
+    this.logger.debug(`request: ${JSON.stringify(request)}`);
 
     this.logger.log(
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`,
@@ -100,6 +101,7 @@ export class OrderSyncService implements IOrderSyncService {
         sourceConnectionId,
         sourceEventId,
         syncedAt: new Date().toISOString(),
+        internalOrderId: order.id, // Include internal order ID for idempotency checks
       },
     };
 

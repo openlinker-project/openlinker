@@ -10,11 +10,13 @@
 import { IAllegroAdapterFactory, AllegroAdapters } from './interfaces/allegro-adapter.factory.interface';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations';
+import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroConnectionConfig, AllegroEnvironmentValues } from '../domain/types/allegro-config.types';
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
 import { AllegroMarketplaceAdapter } from '../infrastructure/adapters/allegro-marketplace.adapter';
+import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -24,6 +26,11 @@ import { Logger } from '@openlinker/shared/logging';
  */
 export class AllegroAdapterFactory implements IAllegroAdapterFactory {
   private readonly logger = new Logger(AllegroAdapterFactory.name);
+
+  constructor(
+    private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
+    private readonly tokenRefreshService?: AllegroTokenRefreshService,
+  ) {}
 
   async createAdapters(
     connection: Connection,
@@ -41,12 +48,26 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     // Determine API base URL
     const apiBaseUrl = config.apiBaseUrl || this.getDefaultApiBaseUrl(config.environment);
 
+    // Create token refresh callback if token refresh service is available
+    const tokenRefreshCallback = this.tokenRefreshService
+      ? async (_connectionId: string): Promise<string> => {
+          // Token refresh service uses the connection we have in scope
+          const refreshResponse = await this.tokenRefreshService!.refreshToken(
+            connection,
+            credentialsResolver,
+          );
+          return refreshResponse.accessToken;
+        }
+      : undefined;
+
     // Create HTTP client
     const httpClient = new AllegroHttpClient(
       connection.id,
       apiBaseUrl,
       credentials,
       config,
+      undefined, // retryConfig
+      tokenRefreshCallback,
     );
 
     // Create marketplace adapter
@@ -55,6 +76,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       httpClient,
       identifierMapping,
       connection,
+      this.customerIdentityResolver,
     );
 
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);

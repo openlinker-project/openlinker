@@ -22,12 +22,14 @@ import { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/ada
  * PrestaShop adapter instances
  *
  * Container for all capability adapters created from a Connection.
+ * orderProcessorManager is optional and only created when customer provisioning
+ * dependencies are provided.
  */
 export interface PrestashopAdapters {
   productMaster: PrestashopProductMasterAdapter;
   inventoryMaster: PrestashopInventoryMasterAdapter;
   orderSource: PrestashopOrderSourceAdapter;
-  orderProcessorManager: PrestashopOrderProcessorManagerAdapter;
+  orderProcessorManager?: PrestashopOrderProcessorManagerAdapter;
 }
 
 /**

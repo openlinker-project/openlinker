@@ -99,14 +99,23 @@ describe('AllegroOrdersPollHandler', () => {
         limit: 10,
       });
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
-      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+      expect(jobEnqueue.enqueueJob).toHaveBeenNthCalledWith(1, {
         jobType: 'allegro.order.syncByCheckoutFormId',
         connectionId,
         payload: {
           checkoutFormId: 'checkout-1',
           eventId: 'event-101',
         },
-        idempotencyKey: `allegro:${connectionId}:event-101`,
+        idempotencyKey: `allegro:${connectionId}:order:checkout-1`,
+      });
+      expect(jobEnqueue.enqueueJob).toHaveBeenNthCalledWith(2, {
+        jobType: 'allegro.order.syncByCheckoutFormId',
+        connectionId,
+        payload: {
+          checkoutFormId: 'checkout-2',
+          eventId: 'event-102',
+        },
+        idempotencyKey: `allegro:${connectionId}:order:checkout-2`,
       });
       expect(cursorRepository.set).toHaveBeenCalledWith(connectionId, 'allegro.orders.lastEventId', 'event-102');
     });

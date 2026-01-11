@@ -16,6 +16,7 @@ export * from './domain/types/connection.types';
 export * from './domain/exceptions/duplicate-identifier-mapping.error';
 export { ConnectionNotFoundException } from './domain/exceptions/connection-not-found.exception';
 export { ConnectionDisabledException } from './domain/exceptions/connection-disabled.exception';
+export { IdentifierMappingConflictException } from './domain/exceptions/identifier-mapping-conflict.exception';
 export * from './application/services/identifier-mapping.service.interface';
 export * from './application/services/identifier-mapping.service';
 export * from './identifier-mapping.tokens';

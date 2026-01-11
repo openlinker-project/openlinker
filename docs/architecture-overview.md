@@ -138,7 +138,23 @@ The system is organized into the following core bounded contexts:
 - **Location**: `libs/core/src/orders/`
 - **Capability**: Uses `OrderProcessorManagerPort` abstraction
 
-### 5. Listings (Offers)
+### 5. Customers
+- **Responsibility**: Customer identity resolution, customer projections, multi-origin identity management
+- **Key Entities**: CustomerProjection, CustomerAddressProjection, DestinationAddressMapping
+- **Location**: `libs/core/src/customers/`
+- **Key Features**:
+  - Customer identity resolution with email fallback mode
+  - Multi-origin customer identity (same email across platforms → same internal customer)
+  - Customer projections (Model C) for debugging and retry support
+  - Configurable PII storage (hash-only mode for privacy compliance)
+  - Address reuse tracking via destination address mappings
+- **Identity Modes**:
+  - `external_only`: Only use external buyer ID mapping (no email fallback)
+  - `email_fallback`: Use email hash fallback if external mapping not found (may merge customers with shared emails)
+- **Provisioning Model**: Destination-owned (Model A) - customers created in destination platform (e.g., PrestaShop)
+- **Projection Model**: Lightweight internal storage (Model C) - non-authoritative projections for debugging
+
+### 6. Listings (Offers)
 - **Responsibility**: Marketplace offer/listing management, offer lifecycle, offer-to-product mapping
 - **Key Entities**: Offer, Listing, OfferMapping, OfferStatus
 - **Location**: `libs/core/src/listings/`
@@ -670,6 +686,81 @@ class IdentifierMapping {
 3. **Traceability**: Can always find external IDs from internal IDs and vice versa
 4. **Adapter Responsibility**: Adapters handle ID translation, keeping core domain clean
 5. **Single Source of Truth**: One service manages all identifier mappings
+
+---
+
+## Customer Identity Resolution
+
+OpenLinker provides a **customer identity resolution service** that enables multi-origin customer identity management. This allows the same customer to be recognized across different platforms (e.g., Allegro, PrestaShop direct orders) based on email address.
+
+### Identity Resolution Modes
+
+**External-Only Mode** (`OL_CUSTOMER_IDENTITY_MODE=external_only`):
+- Only uses external buyer ID mapping (source connection scoped)
+- No email fallback
+- Each external buyer ID maps to a unique internal customer ID
+- **Use Case**: When email sharing is common (families, businesses) and you want to avoid incorrect customer merging
+
+**Email Fallback Mode** (`OL_CUSTOMER_IDENTITY_MODE=email_fallback`, default):
+- Primary: External buyer ID mapping
+- Fallback: Email hash lookup to link customers across origins
+- Same email → same internal customer ID (across different platforms)
+- **Use Case**: Better user experience, same customer recognized across platforms
+- **Risk**: Shared emails (families, businesses) may incorrectly merge customers
+- **Mitigation**: Collision policy creates new customer if >1 match (no merge)
+
+### Customer Provisioning Model (Model A)
+
+Customers are **destination-owned**: the destination platform (e.g., PrestaShop) is the source of truth for customer data. OpenLinker adapters are responsible for creating/updating customers in the external system.
+
+**Example**: When an Allegro order arrives for a customer that doesn't exist in PrestaShop:
+1. PrestaShop adapter provisions a guest customer (`is_guest=1`)
+2. Customer is created with valid password (5-72 chars, PrestaShop hashes internally)
+3. Customer ID is stored in identifier mappings for future reuse
+
+### Customer Projection Model (Model C)
+
+OpenLinker stores **lightweight, non-authoritative projections** of customer data for:
+- **Debugging**: Track customer history across orders
+- **Retry Support**: Enable order retry without re-fetching from source
+- **Future Routing**: Support for future customer routing features
+
+**Projection Storage**:
+- `customer_projections`: Customer email hash, optional PII (name, email)
+- `customer_address_projections`: Address hash, optional PII (address fields)
+- `destination_address_mappings`: Maps internal customer + address hash → destination address ID
+
+**PII Configuration** (`OL_STORE_PII`):
+- `true` (default): Store raw PII (email, names, addresses)
+- `false`: Store only hashes (emailHash, addressHash) - no raw PII
+- **Note**: `emailHash` is always persisted regardless of PII setting
+
+### Email Normalization
+
+OpenLinker normalizes emails before hashing to handle platform-specific email formats:
+
+**Allegro Masked Emails**:
+- Format: `fixedPart+transactionId@allegromail.*`
+- Normalization: Strip `+...` suffix before hashing
+- Example: `8awgqyk6a5+cub31c122@allegromail.pl` → `8awgqyk6a5@allegromail.pl`
+- **Why**: Transaction ID changes per order, but fixed part is stable per buyer
+
+### Address Reuse
+
+Addresses are reused across orders when identical (determined by hash):
+- **Hash Components**: `address1`, `address2`, `city`, `postcode`, `countryIso2`
+- **Reuse Priority**:
+  1. Primary: Query `destination_address_mappings` table (fast, deterministic)
+  2. Fallback: Query PrestaShop addresses and match by hash (recovery scenario)
+- **Address Alias**: Deterministic alias format: `OL-{type}-{hash-prefix}` (e.g., `OL-shipping-a1b2c3`)
+
+### Collision Handling
+
+When `emailHash` matches multiple customers (collision):
+- **Policy**: Create new internal customer (no merge)
+- **Logging**: Warning logged with emailHash and match count
+- **Result**: `collisionDetected=true` in resolution result
+- **Rationale**: Prevents incorrect customer merging (shared emails in families/businesses)
 
 ---
 

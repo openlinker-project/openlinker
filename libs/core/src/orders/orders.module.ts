@@ -7,8 +7,12 @@
  * @module libs/core/src/orders
  */
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderSyncService } from './application/services/order-sync.service';
-import { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
+import { OrderRecordService } from './application/services/order-record.service';
+import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
+import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
+import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 
 // Re-export tokens for convenience
@@ -16,25 +20,49 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([OrderRecordOrmEntity]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
   ],
   providers: [
-    // Provide class directly first
+    // Provide classes directly first
     OrderSyncService,
-    // Then provide token binding using useExisting
+    OrderRecordService,
+    OrderRecordRepository,
+    // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
       useExisting: OrderSyncService,
     },
-    // Also provide as string token for convenience
+    {
+      provide: ORDER_RECORD_REPOSITORY_TOKEN,
+      useExisting: OrderRecordRepository,
+    },
+    {
+      provide: ORDER_RECORD_SERVICE_TOKEN,
+      useExisting: OrderRecordService,
+    },
+    // Also provide as string tokens for convenience
     {
       provide: 'IOrderSyncService',
       useExisting: ORDER_SYNC_SERVICE_TOKEN,
     },
+    {
+      provide: 'OrderRecordRepositoryPort',
+      useExisting: ORDER_RECORD_REPOSITORY_TOKEN,
+    },
+    {
+      provide: 'IOrderRecordService',
+      useExisting: ORDER_RECORD_SERVICE_TOKEN,
+    },
   ],
   exports: [
+    OrderRecordService, // Export service class for direct injection
     ORDER_SYNC_SERVICE_TOKEN,
+    ORDER_RECORD_REPOSITORY_TOKEN,
+    ORDER_RECORD_SERVICE_TOKEN,
     'IOrderSyncService',
+    'OrderRecordRepositoryPort',
+    'IOrderRecordService',
   ],
 })
 export class OrdersModule {}

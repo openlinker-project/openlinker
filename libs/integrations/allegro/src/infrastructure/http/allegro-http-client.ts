@@ -39,6 +39,19 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
+ * Token refreshed error
+ *
+ * Internal error used to signal that token was refreshed and request should be retried.
+ * This is not a real error - it's a control flow mechanism.
+ */
+class TokenRefreshedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TokenRefreshedError';
+  }
+}
+
+/**
  * Allegro HTTP Client
  *
  * Implements HTTP client for Allegro Public API using native fetch.
@@ -46,9 +59,10 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 export class AllegroHttpClient implements IAllegroHttpClient {
   private readonly logger = new Logger(AllegroHttpClient.name);
   private readonly baseUrl: string;
-  private readonly accessToken: string;
+  private accessToken: string; // Mutable to support token refresh
   private readonly retryConfig: RetryConfig;
   private readonly connectionId: string;
+  private readonly tokenRefreshCallback?: (connectionId: string) => Promise<string>;
 
   constructor(
     connectionId: string,
@@ -56,12 +70,14 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     credentials: AllegroCredentials,
     _config: AllegroConnectionConfig,
     retryConfig?: Partial<RetryConfig>,
+    tokenRefreshCallback?: (connectionId: string) => Promise<string>,
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.accessToken = credentials.accessToken;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.tokenRefreshCallback = tokenRefreshCallback;
   }
 
   async get<T = unknown>(
@@ -111,7 +127,13 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // Don't retry on authentication errors (401)
+        // Handle token refresh - retry immediately with new token
+        if (error instanceof TokenRefreshedError) {
+          this.logger.debug(`Token refreshed, retrying request (attempt ${attempt + 1})`);
+          continue; // Retry immediately with new token
+        }
+
+        // Don't retry on authentication errors (401) unless token was refreshed
         if (error instanceof AllegroAuthenticationException) {
           throw error;
         }
@@ -233,7 +255,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
       // Handle errors
       if (!response.ok) {
-        this.handleError(response.status, responseBody, url.toString(), responseHeaders, traceId);
+        await this.handleError(response.status, responseBody, url.toString(), responseHeaders, traceId);
       }
 
       // Parse JSON response
@@ -285,14 +307,17 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
   /**
    * Handle HTTP error responses
+   *
+   * For 401 errors, attempts token refresh if a refresh callback is available.
+   * Otherwise, throws AllegroAuthenticationException.
    */
-  private handleError(
+  private async handleError(
     statusCode: number,
     body: string,
     url: string,
     headers: Record<string, string>,
     traceId: string,
-  ): never {
+  ): Promise<never> {
     if (statusCode === 401) {
       // Check if this is a token expiry (vs invalid token)
       const bodyLower = body.toLowerCase();
@@ -302,10 +327,32 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         bodyLower.includes('invalid_token') ||
         bodyLower.includes('access_token');
       
-      if (isTokenExpired) {
-        // TODO: In future phases, trigger token refresh flow via CredentialsResolver
+      if (isTokenExpired && this.tokenRefreshCallback) {
+        // Attempt token refresh
+        try {
+          this.logger.warn(
+            `[${traceId}] Access token expired, attempting refresh (connection: ${this.connectionId})`,
+          );
+          const newAccessToken = await this.tokenRefreshCallback(this.connectionId);
+          this.accessToken = newAccessToken;
+          this.logger.log(
+            `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`,
+          );
+          // Return a special error that indicates refresh succeeded (caller should retry)
+          throw new TokenRefreshedError('Token refreshed, retry request');
+        } catch (error) {
+          if (error instanceof TokenRefreshedError) {
+            // Re-throw to signal caller to retry
+            throw error;
+          }
+          // Refresh failed - log and fall through to throw authentication exception
+          this.logger.error(
+            `[${traceId}] Token refresh failed: ${(error as Error).message} (connection: ${this.connectionId})`,
+          );
+        }
+      } else if (isTokenExpired) {
         this.logger.warn(
-          `[${traceId}] Access token expired or invalid, refresh required (connection: ${this.connectionId})`,
+          `[${traceId}] Access token expired or invalid, refresh required but no refresh callback available (connection: ${this.connectionId})`,
         );
       }
       
