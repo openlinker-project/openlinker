@@ -84,10 +84,12 @@ export class AllegroOrdersPollHandler implements SyncJobHandler {
       });
 
       this.logger.debug(
-        `Fetched ${feedResponse.items.length} order events (nextCursor: ${feedResponse.nextCursor})`,
+        `Fetched ${feedResponse.items.length} order events (nextCursor: ${feedResponse.nextCursor || 'none'})`,
       );
 
       // Step 5: Enqueue order sync jobs for each event
+      // Note: Events are already deduplicated by checkoutFormId in the mapper,
+      // so we only process the latest event for each order
       const enqueuedJobs: string[] = [];
       for (const item of feedResponse.items) {
         try {
@@ -96,11 +98,14 @@ export class AllegroOrdersPollHandler implements SyncJobHandler {
             eventId: item.eventId,
           };
 
+          // Use checkoutFormId in idempotency key to prevent duplicate order creation
+          // Multiple events for the same order will result in the same idempotency key,
+          // ensuring only one order sync job is processed per order
           const orderSyncJob: SyncJobRequest = {
             jobType: 'allegro.order.syncByCheckoutFormId',
             connectionId: job.connectionId,
             payload: orderSyncPayload as unknown as Record<string, unknown>,
-            idempotencyKey: `allegro:${job.connectionId}:${item.eventId}`,
+            idempotencyKey: `allegro:${job.connectionId}:order:${item.checkoutFormId}`,
           };
 
           const jobId = await this.jobEnqueue.enqueueJob(orderSyncJob);
@@ -131,14 +136,26 @@ export class AllegroOrdersPollHandler implements SyncJobHandler {
       // Step 6: Update cursor only after all enqueues succeed (cursor safety)
       // Note: Update cursor even if items array is empty - this advances past processed events
       // and prevents infinite loops when Allegro returns empty results for a cursor position
-      if (feedResponse.nextCursor) {
+      if (feedResponse.nextCursor && feedResponse.nextCursor.trim() !== '') {
         await this.cursorRepository.set(job.connectionId, payload.cursorKey, feedResponse.nextCursor);
         this.logger.debug(`Updated cursor ${payload.cursorKey} to ${feedResponse.nextCursor}`);
       } else if (feedResponse.items.length === 0) {
-        // If no items and no nextCursor, log a warning (might indicate end of feed or API issue)
-        this.logger.warn(
-          `Empty feed response with no nextCursor - cursor not updated (connection: ${job.connectionId})`,
-        );
+        // If no items and no nextCursor, keep the current cursor to prevent getting stuck
+        // This can happen when:
+        // 1. There are genuinely no new orders (normal case)
+        // 2. The cursor is at the end of the feed
+        // 3. Allegro API didn't return lastEventId in the response
+        // By keeping the current cursor, we'll continue polling from the same position
+        // which is safe - if there are truly no new orders, we'll keep getting empty responses
+        if (cursor) {
+          this.logger.debug(
+            `Empty feed response with no nextCursor - keeping current cursor ${payload.cursorKey}=${cursor} (connection: ${job.connectionId})`,
+          );
+        } else {
+          this.logger.warn(
+            `Empty feed response with no nextCursor and no current cursor - cursor not updated (connection: ${job.connectionId})`,
+          );
+        }
       }
 
       this.logger.log(

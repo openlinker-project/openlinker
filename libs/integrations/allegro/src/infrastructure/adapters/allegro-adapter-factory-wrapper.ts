@@ -9,7 +9,9 @@
  */
 import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory';
+import { AllegroTokenRefreshService } from '../token-refresh/allegro-token-refresh.service';
 // Adapters are created by factory, no need to import here
 
 /**
@@ -18,7 +20,14 @@ import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory
  * Implements AdapterFactoryPort to integrate with AdapterFactoryResolverService.
  */
 export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
-  private readonly factory = new AllegroAdapterFactory();
+  private readonly factory: AllegroAdapterFactory;
+
+  constructor(
+    private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
+    private readonly tokenRefreshService?: AllegroTokenRefreshService,
+  ) {
+    this.factory = new AllegroAdapterFactory(this.customerIdentityResolver, this.tokenRefreshService);
+  }
 
   async createCapabilityAdapter<T>(
     connection: Connection,

@@ -10,7 +10,7 @@ import { Injectable, BadRequestException, InternalServerErrorException, Inject, 
 import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
 import { RedisClientType } from 'redis';
-import { AllegroConnectionConfig, AllegroEnvironmentValues, AllegroCredentials } from '@openlinker/integrations-allegro';
+import { AllegroConnectionConfig, AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
 import { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
 import {
@@ -318,12 +318,16 @@ export class AllegroOAuthService {
     const credentialRef = `allegro_${stateData.environment}_${timestamp}_${uuid}`;
 
     // Prepare credentials for storage
-    const credentials: AllegroCredentials = {
+    // Include clientId and clientSecret for token refresh capability
+    const credentials = {
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
       expiresAt: tokenResponse.expires_in
         ? new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString()
         : undefined,
+      // Store client credentials for token refresh
+      clientId: stateData.clientId,
+      clientSecret: stateData.clientSecret,
     };
 
     // Store credentials in database
@@ -361,6 +365,74 @@ export class AllegroOAuthService {
     );
 
     return connection;
+  }
+
+  /**
+   * Refresh access token using refresh token
+   *
+   * Exchanges a refresh token for a new access token and updates credentials
+   * in the database. This method is used when the access token expires.
+   *
+   * @param refreshToken - OAuth refresh token
+   * @param clientId - OAuth client ID
+   * @param clientSecret - OAuth client secret
+   * @param environment - Allegro environment (sandbox or production)
+   * @returns New token response with access token and refresh token
+   */
+  async refreshToken(
+    refreshToken: string,
+    clientId: string,
+    clientSecret: string,
+    environment: string = 'sandbox',
+  ): Promise<AllegroOAuthTokenResponse> {
+    const apiBaseUrl = this.getApiBaseUrl(environment);
+
+    // Build token endpoint URL
+    const tokenUrl = new URL('/auth/oauth/token', apiBaseUrl);
+
+    // Prepare token refresh request
+    const tokenRequest = {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    };
+
+    // Create Basic Auth header (client_id:client_secret)
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+    try {
+      this.logger.debug(`Refreshing access token (environment: ${environment})`);
+
+      const response = await fetch(tokenUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams(tokenRequest).toString(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to refresh token: ${response.status} ${response.statusText} - ${errorText}`,
+        );
+        throw new BadRequestException(
+          `Failed to refresh access token: ${response.statusText}. The refresh token may be invalid or expired.`,
+        );
+      }
+
+      const tokenData = (await response.json()) as AllegroOAuthTokenResponse;
+
+      this.logger.debug(`Successfully refreshed access token (token_type: ${tokenData.token_type})`);
+
+      return tokenData;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error(`Error refreshing token: ${(error as Error).message}`, error);
+      throw new InternalServerErrorException('Failed to refresh access token');
+    }
   }
 
   /**

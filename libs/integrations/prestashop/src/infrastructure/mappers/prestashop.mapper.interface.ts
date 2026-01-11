@@ -151,6 +151,8 @@ export interface IPrestashopOrderMapper {
    * @param externalCustomerId - PrestaShop customer ID (external)
    * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
    * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
+   * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
    * @returns PrestaShop order data ready for API submission
    */
   mapOrderCreate(
@@ -158,6 +160,35 @@ export interface IPrestashopOrderMapper {
     externalCustomerId: string | number,
     externalProductIds: Map<string, string | number>,
     externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
+  ): Record<string, unknown>;
+
+  /**
+   * Map OpenLinker OrderCreate to PrestaShop cart format
+   *
+   * Creates a cart structure that can be used to create a cart in PrestaShop,
+   * which is then required to create an order.
+   *
+   * @param orderCreate - OpenLinker order creation request
+   * @param externalCustomerId - PrestaShop customer ID (external)
+   * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
+   * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
+   * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
+   * @returns PrestaShop cart data ready for API submission
+   */
+  mapCartCreate(
+    orderCreate: OrderCreate,
+    externalCustomerId: string | number,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
   ): Record<string, unknown>;
 }
 

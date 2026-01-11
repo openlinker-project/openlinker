@@ -38,6 +38,10 @@ export { AllegroQuantityCommandRepositoryPort, AllegroQuantityCommandFilters } f
 // Tokens
 export { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
 
+// Token Refresh
+export { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
+export type { TokenRefreshResponse } from './infrastructure/token-refresh/allegro-token-refresh.service';
+
 // Module
 export { AllegroIntegrationModule } from './allegro-integration.module';
 

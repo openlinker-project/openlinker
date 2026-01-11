@@ -15,6 +15,7 @@ import {
   SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
+import { AllegroAuthenticationException } from '@openlinker/integrations-allegro';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -73,6 +74,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
     this.abortController = new AbortController();
     this.isRunning = true;
+
+    this.logger.log(`Starting sync job runner loop (worker: ${this.WORKER_ID}, batch size: ${this.BATCH_SIZE}, poll interval: ${this.POLL_INTERVAL_MS}ms)`);
 
     // Start runner loop in background (don't await)
     this.runnerLoopPromise = this.runnerLoop()
@@ -176,6 +179,9 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Continuously polls for due jobs, locks them, and executes them.
    */
   private async runnerLoop(): Promise<void> {
+    let lastHeartbeat = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 30000; // Log heartbeat every 30 seconds
+
     while (this.isRunning && !this.abortController?.signal.aborted) {
       try {
         // Find and lock due jobs (atomic operation)
@@ -183,6 +189,13 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
           this.BATCH_SIZE,
           this.WORKER_ID,
         );
+
+        // Log heartbeat periodically to show loop is alive
+        const now = Date.now();
+        if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+          this.logger.debug(`Sync job runner is running (polling for queued jobs every ${this.POLL_INTERVAL_MS}ms)`);
+          lastHeartbeat = now;
+        }
 
         // Handle case where repository returns undefined (shouldn't happen, but defensive)
         if (!jobs || jobs.length === 0) {
@@ -259,6 +272,9 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    *
    * Determines whether to retry (markFailed) or mark as dead (maxAttempts reached).
    * Calculates exponential backoff for retries.
+   *
+   * Authentication errors (401) are marked as dead immediately since they require
+   * manual intervention (token refresh) and won't resolve with retries.
    */
   private async handleJobFailure(job: SyncJobEntity, error: unknown): Promise<void> {
     const errorMessage = this.extractErrorMessage(error);
@@ -268,6 +284,15 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       `Job ${job.id} (${job.jobType}) failed on attempt ${nextAttempt}/${job.maxAttempts}: ${errorMessage}`,
       error instanceof Error ? error.stack : undefined,
     );
+
+    // Check for non-retryable errors (authentication failures)
+    if (this.isNonRetryableError(error)) {
+      await this.jobRepository.markDead(job.id, errorMessage);
+      this.logger.warn(
+        `Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error (authentication failure)`,
+      );
+      return;
+    }
 
     // Check if max attempts reached
     if (nextAttempt >= job.maxAttempts) {
@@ -288,6 +313,31 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(
       `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`,
     );
+  }
+
+  /**
+   * Check if error is non-retryable (requires manual intervention)
+   *
+   * Authentication errors (401) are non-retryable because they require
+   * token refresh, which won't happen automatically with retries.
+   *
+   * @param error - Error to check
+   * @returns True if error is non-retryable
+   */
+  private isNonRetryableError(error: unknown): boolean {
+    // Check if it's a SyncJobExecutionError with an AllegroAuthenticationException cause
+    if (error instanceof SyncJobExecutionError && error.cause) {
+      if (error.cause instanceof AllegroAuthenticationException) {
+        return true;
+      }
+    }
+
+    // Direct AllegroAuthenticationException (shouldn't happen, but handle it)
+    if (error instanceof AllegroAuthenticationException) {
+      return true;
+    }
+
+    return false;
   }
 
   /**

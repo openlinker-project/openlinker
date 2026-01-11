@@ -18,11 +18,15 @@ import {
   AllegroApiException,
 } from '@openlinker/integrations-allegro';
 import { Order, IOrderSyncService } from '@openlinker/core/orders';
+import { OrderCustomerProjectionUpdaterService } from '@openlinker/core/customers';
+import { OrderRecordService } from '@openlinker/core/orders';
 
 describe('AllegroOrderSyncHandler', () => {
   let handler: AllegroOrderSyncHandler;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
+  let projectionUpdater: jest.Mocked<OrderCustomerProjectionUpdaterService>;
+  let orderRecordService: jest.Mocked<OrderRecordService>;
   let marketplaceAdapter: jest.Mocked<MarketplaceIntegrationPort>;
 
   const connectionId = 'connection-123';
@@ -44,7 +48,21 @@ describe('AllegroOrderSyncHandler', () => {
       syncOrder: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderSyncService>;
 
-    handler = new AllegroOrderSyncHandler(integrationsService, orderSyncService);
+    projectionUpdater = {
+      updateFromOrder: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<OrderCustomerProjectionUpdaterService>;
+
+    orderRecordService = {
+      upsertOrderRecord: jest.fn().mockResolvedValue(undefined),
+      getOrderRecord: jest.fn(),
+    } as unknown as jest.Mocked<OrderRecordService>;
+
+    handler = new AllegroOrderSyncHandler(
+      integrationsService,
+      orderSyncService,
+      projectionUpdater,
+      orderRecordService,
+    );
   });
 
   describe('execute', () => {

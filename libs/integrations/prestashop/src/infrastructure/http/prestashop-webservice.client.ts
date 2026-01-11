@@ -19,6 +19,7 @@ import {
 import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
 import { Logger } from '@openlinker/shared/logging';
+import { XMLBuilder } from 'fast-xml-parser';
 
 /**
  * Retry configuration
@@ -51,6 +52,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private readonly apiKey: string;
   private readonly config: PrestashopConnectionConfig;
   private readonly retryConfig: RetryConfig;
+  private readonly xmlBuilder: XMLBuilder;
 
   constructor(
     baseUrl: string,
@@ -87,6 +89,14 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       shopId: configShopId,
     };
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    // Initialize XML builder for converting objects to XML (required for POST requests)
+    this.xmlBuilder = new XMLBuilder({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+      textNodeName: '#text',
+      format: true,
+      indentBy: '  ',
+    });
   }
 
   async getResource<T = unknown>(resource: string, id: string | number): Promise<T> {
@@ -168,22 +178,27 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
     this.logger.debug(`Creating resource: ${resource}`);
 
-    // PrestaShop WebService API expects XML format for POST requests
-    // We'll use JSON for simplicity (if PrestaShop supports it) or convert to XML
+    // PrestaShop WebService API requires XML format for POST requests (creating resources)
+    // Even though PrestaShop 1.7+ supports JSON for responses, POST requests must be XML
     const configResponseFormat = this.config.responseFormat;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
-    const useJson = responseFormat === 'json' || (responseFormat === 'auto' && true); // PrestaShop 1.7+ supports JSON
 
-    // Wrap data in PrestaShop format: { prestashop: { order: { ... } } }
-    const resourceKey = resource.slice(0, -1); // e.g., 'order' from 'orders'
+    // Wrap data in PrestaShop format: { prestashop: { customer: { ... } } }
+    // Handle special cases for resource singularization
+    // 'addresses' → 'address' (not 'addresse')
+    let resourceKey = resource.slice(0, -1); // e.g., 'customer' from 'customers'
+    if (resource === 'addresses') {
+      resourceKey = 'address'; // Special case: addresses → address
+    }
     const wrappedData = {
       prestashop: {
         [resourceKey]: data,
       },
     };
 
-    const body = useJson ? JSON.stringify(wrappedData) : this.convertToXml(wrappedData);
-    const contentType = useJson ? 'application/json' : 'application/xml';
+    // Always use XML for POST requests (PrestaShop requirement)
+    const body = this.convertToXml(wrappedData);
+    const contentType = 'application/xml';
 
     const response = await this.requestWithRetry(url, {
       method: 'POST',
@@ -200,28 +215,101 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     );
 
     // Unwrap single resource response
-    // PrestaShop returns: { prestashop: { order: { id: ..., ... } } }
+    // PrestaShop returns responses in different formats:
+    // 1. With prestashop wrapper: { prestashop: { customer: { id: ..., ... } } }
+    // 2. Without wrapper (direct): { customer: { id: ..., ... } }
+    // In XML format, IDs are often attributes: { customer: { '@_id': '123', ... } }
+    // Note: Some resources have irregular singular forms (e.g., 'addresses' → 'address', not 'addresse')
     const parsedObj = parsed as Record<string, unknown>;
+    
+    // Handle special cases for resource singularization
+    // 'addresses' → 'address' (not 'addresse')
+    const singularResourceKey = resource === 'addresses' ? 'address' : resourceKey;
+    
+    // Try with prestashop wrapper first
     if (parsedObj.prestashop && typeof parsedObj.prestashop === 'object') {
       const prestashop = parsedObj.prestashop as Record<string, unknown>;
+      // Try singular form first (correct for most resources)
+      if (prestashop[singularResourceKey] && typeof prestashop[singularResourceKey] === 'object') {
+        const resource = prestashop[singularResourceKey] as Record<string, unknown>;
+        // Normalize ID: PrestaShop XML returns IDs as attributes (@_id) or in <id> tag, convert to id property
+        if (resource['@_id'] !== undefined && resource.id === undefined) {
+          resource.id = resource['@_id'];
+        }
+        // Ensure ID is a string (handles both @_id attribute and <id> tag cases)
+        if (resource.id !== undefined) {
+          resource.id = String(resource.id);
+        }
+        return resource as T;
+      }
+      // Fallback: try original resourceKey (for edge cases)
       if (prestashop[resourceKey] && typeof prestashop[resourceKey] === 'object') {
-        return prestashop[resourceKey] as T;
+        const resource = prestashop[resourceKey] as Record<string, unknown>;
+        if (resource['@_id'] !== undefined && resource.id === undefined) {
+          resource.id = resource['@_id'];
+        }
+        if (resource.id !== undefined) {
+          resource.id = String(resource.id);
+        }
+        return resource as T;
       }
     }
+    
+    // Try without prestashop wrapper (direct resource key)
+    if (parsedObj[singularResourceKey] && typeof parsedObj[singularResourceKey] === 'object') {
+      const resource = parsedObj[singularResourceKey] as Record<string, unknown>;
+      if (resource['@_id'] !== undefined && resource.id === undefined) {
+        resource.id = resource['@_id'];
+      }
+      if (resource.id !== undefined) {
+        resource.id = String(resource.id);
+      }
+      return resource as T;
+    }
+    
+    // Fallback: try original resourceKey
+    if (parsedObj[resourceKey] && typeof parsedObj[resourceKey] === 'object') {
+      const resource = parsedObj[resourceKey] as Record<string, unknown>;
+      if (resource['@_id'] !== undefined && resource.id === undefined) {
+        resource.id = resource['@_id'];
+      }
+      if (resource.id !== undefined) {
+        resource.id = String(resource.id);
+      }
+      return resource as T;
+    }
 
-    // Fallback: return as-is
+    // Final fallback: return as-is and log warning
+    this.logger.warn(
+      `Could not extract resource from PrestaShop response. Resource: ${resource}, ResourceKey: ${resourceKey}, SingularKey: ${singularResourceKey}. Response structure: ${JSON.stringify(Object.keys(parsedObj))}`,
+    );
     return parsed as T;
   }
 
   /**
-   * Convert object to XML (simple implementation for MVP)
-   * For full XML support, consider using a library like xml2js or fast-xml-parser
+   * Convert object to XML using fast-xml-parser
+   *
+   * Converts JavaScript objects to PrestaShop-compatible XML format.
+   * Handles nested objects, arrays, and primitive values.
    */
   private convertToXml(data: unknown): string {
-    // For MVP, we'll use JSON and let PrestaShop handle it
-    // If PrestaShop requires XML, we'll need a proper XML builder
-    // This is a placeholder - PrestaShop 1.7+ supports JSON
-    return JSON.stringify(data);
+    try {
+      // XMLBuilder.build() returns a string, but TypeScript types it as any
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const xml = this.xmlBuilder.build(data) as string;
+      // Ensure XML declaration is present
+      if (!xml.startsWith('<?xml')) {
+        return `<?xml version="1.0" encoding="UTF-8"?>\n${xml}`;
+      }
+      return xml;
+    } catch (error) {
+      this.logger.error(`Failed to convert data to XML: ${error instanceof Error ? error.message : String(error)}`);
+      throw new PrestashopApiException(
+        `Failed to convert request data to XML format: ${error instanceof Error ? error.message : String(error)}`,
+        undefined,
+        undefined,
+      );
+    }
   }
 
   /**
@@ -289,7 +377,25 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // Build headers
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Basic ${this.getBasicAuth()}`);
-    headers.set('Output-Format', 'JSON'); // Prefer JSON
+    // Set Output-Format based on request method:
+    // - GET requests: prefer JSON (faster parsing)
+    // - POST requests: use XML (required by PrestaShop for creating resources)
+    const isPostRequest = options.method === 'POST';
+    headers.set('Output-Format', isPostRequest ? 'XML' : 'JSON');
+
+    // Log full request details
+    this.logger.debug(`=== HTTP Request ===`);
+    this.logger.debug(`Method: ${options.method || 'GET'}`);
+    this.logger.debug(`URL: ${url}`);
+    this.logger.debug(`Headers: ${JSON.stringify(Object.fromEntries(headers.entries()), null, 2)}`);
+    if (options.body) {
+      // Log full body for POST requests to help debug order creation issues
+      if (options.method === 'POST' && typeof options.body === 'string') {
+        this.logger.debug(`Body (full): ${options.body}`);
+      } else {
+        this.logger.debug(`Body: ${typeof options.body === 'string' ? options.body.substring(0, 500) : '[binary]'}`);
+      }
+    }
 
     // Create AbortController for timeout
     const controller = new AbortController();
@@ -306,10 +412,21 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       });
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Request completed: ${response.status} (${duration}ms)`);
-
       const contentType = response.headers.get('content-type') || undefined;
       const body = await response.text();
+      
+      // Log full response details
+      this.logger.debug(`=== HTTP Response ===`);
+      this.logger.debug(`Status: ${response.status} ${response.statusText}`);
+      this.logger.debug(`Duration: ${duration}ms`);
+      this.logger.debug(`Content-Type: ${contentType || 'unknown'}`);
+      // Log response body (show full for errors to help debug)
+      if (response.status >= 400) {
+        this.logger.debug(`Response body (full for error): ${body || '(empty)'}`);
+      } else {
+        const bodyPreview = body.length > 1000 ? `${body.substring(0, 1000)}... [truncated, total length: ${body.length}]` : body;
+        this.logger.debug(`Response body: ${bodyPreview}`);
+      }
 
       // Handle errors
       if (!response.ok) {
@@ -375,6 +492,10 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     }
 
     if (statusCode >= 500) {
+      // Log the full error response for debugging
+      this.logger.error(
+        `PrestaShop API server error (${statusCode}): ${url}. Response body: ${body.substring(0, 1000)}`,
+      );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const serverError = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,

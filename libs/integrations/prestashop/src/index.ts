@@ -29,6 +29,8 @@ export { PrestashopResourceNotFoundException } from './domain/exceptions/prestas
 export { PrestashopApiException } from './domain/exceptions/prestashop-api.exception';
 export { PrestashopNotSupportedException } from './domain/exceptions/prestashop-not-supported.exception';
 export { PrestashopParseException } from './domain/exceptions/prestashop-parse.exception';
+export { PrestashopCountryNotFoundException } from './domain/exceptions/prestashop-country-not-found.exception';
+export { PrestashopProvisioningException } from './domain/exceptions/prestashop-provisioning.exception';
 
 // Module
 export { PrestashopIntegrationModule } from './prestashop-integration.module';

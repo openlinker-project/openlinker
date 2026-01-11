@@ -16,12 +16,20 @@ import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.cl
 import { IPrestashopOrderMapper, PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { OrderCreate } from '@openlinker/core/orders';
+import { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
+import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
+import { PrestashopAddressProvisioner } from '../../provisioners/prestashop-address-provisioner';
 
 describe('PrestashopOrderProcessorManagerAdapter', () => {
   let adapter: PrestashopOrderProcessorManagerAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
   let mockIdentifierMapping: jest.Mocked<IdentifierMappingPort>;
   let mockOrderMapper: jest.Mocked<IPrestashopOrderMapper>;
+  let mockCurrencyResolver: jest.Mocked<PrestashopCurrencyResolver>;
+  let mockCustomerProjectionRepository: jest.Mocked<CustomerProjectionRepositoryPort>;
+  let mockCustomerProvisioner: jest.Mocked<PrestashopCustomerProvisioner>;
+  let mockAddressProvisioner: jest.Mocked<PrestashopAddressProvisioner>;
   let connection: ReturnType<typeof createTestConnection>;
 
   const createTestOrder = (overrides: Partial<OrderCreate> = {}): OrderCreate => ({
@@ -62,13 +70,46 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     mockOrderMapper = {
       mapOrder: jest.fn(),
       mapOrderCreate: jest.fn(),
+      mapCartCreate: jest.fn().mockReturnValue({
+        id_customer: '42',
+        id_currency: 1,
+        id_lang: 1,
+        associations: {
+          cart_rows: {
+            cart_row: [],
+          },
+        },
+      }),
     } as unknown as jest.Mocked<IPrestashopOrderMapper>;
+
+    mockCurrencyResolver = {
+      resolveCurrencyId: jest.fn().mockResolvedValue(1), // Default to ID 1
+      clearCache: jest.fn(),
+    } as unknown as jest.Mocked<PrestashopCurrencyResolver>;
+
+    mockCustomerProjectionRepository = {
+      findById: jest.fn(),
+      findByEmailHash: jest.fn(),
+      upsertProjection: jest.fn(),
+    } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
+
+    mockCustomerProvisioner = {
+      resolveOrCreateGuestCustomer: jest.fn(),
+    } as unknown as jest.Mocked<PrestashopCustomerProvisioner>;
+
+    mockAddressProvisioner = {
+      resolveOrCreateAddress: jest.fn(),
+    } as unknown as jest.Mocked<PrestashopAddressProvisioner>;
 
     adapter = new PrestashopOrderProcessorManagerAdapter(
       mockHttpClient,
       mockIdentifierMapping,
       mockOrderMapper,
       connection,
+      mockCustomerProvisioner,
+      mockAddressProvisioner,
+      mockCurrencyResolver,
+      mockCustomerProjectionRepository,
     );
   });
 
@@ -134,12 +175,16 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       };
       mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
-      // Mock order creation
+      // Mock cart and order creation
+      const createdCart = { id: '123' };
       const createdOrder: PrestashopOrder = {
         id: '999',
         reference: order.orderNumber,
       };
-      mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce(createdCart) // First call: cart creation
+        .mockResolvedValueOnce(createdOrder); // Second call: order creation
 
       // Mock identifier mapping creation
       const internalOrderId = 'internal-order-999';
@@ -151,12 +196,18 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-456');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-789');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-variant-789');
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalled();
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
         externalCustomerId,
         expect.any(Map),
         expect.any(Map),
+        undefined,
+        undefined,
+        1, // currencyId
+        1, // langId
       );
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
       expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         'Order',
@@ -184,9 +235,13 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     it('should throw error when customer ID not found in PrestaShop', async () => {
       const order = createTestOrder();
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
+      // When no external ID is found, code tries to provision customer, but projection is missing
+      mockCustomerProjectionRepository.findById = jest.fn().mockResolvedValue(null);
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
-      await expect(adapter.createOrder(order)).rejects.toThrow('Customer not found in PrestaShop');
+      await expect(adapter.createOrder(order)).rejects.toThrow(
+        'Cannot provision customer: customer projection not found or email missing',
+      );
     });
 
     it('should throw error when customer ID found for different connection', async () => {
@@ -198,9 +253,13 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           entityType: 'Customer',
         },
       ]);
+      // When no external ID is found for this connection, code tries to provision customer, but projection is missing
+      mockCustomerProjectionRepository.findById = jest.fn().mockResolvedValue(null);
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
-      await expect(adapter.createOrder(order)).rejects.toThrow('Customer not found in PrestaShop');
+      await expect(adapter.createOrder(order)).rejects.toThrow(
+        'Cannot provision customer: customer projection not found or email missing',
+      );
     });
 
     it('should throw error when product ID not found in PrestaShop', async () => {
@@ -348,8 +407,19 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       };
       mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
+      // Mock cart creation to succeed
+      const createdCart = { id: '123' };
+      // Mock order creation to fail
       const apiError = new PrestashopApiException('Order creation failed', 400, 'Invalid order data');
-      mockHttpClient.createResource = jest.fn().mockRejectedValue(apiError);
+      mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+        if (resource === 'carts') {
+          return Promise.resolve(createdCart);
+        }
+        if (resource === 'orders') {
+          return Promise.reject(apiError);
+        }
+        return Promise.reject(new Error(`Unexpected resource: ${resource}`));
+      });
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow('Order creation failed');

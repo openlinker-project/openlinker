@@ -67,17 +67,16 @@ describe('PrestashopAdapterFactoryWrapper', () => {
       expect(typeof adapter.getOrders).toBe('function');
     });
 
-    it('should create OrderProcessorManager adapter', async () => {
-      const adapter = await wrapper.createCapabilityAdapter(
-        connection,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
-        'OrderProcessorManager' as any,
-        mockIdentifierMapping,
-        mockCredentialsResolver,
-      );
-
-      expect(adapter).toBeDefined();
-      expect(typeof (adapter as { createOrder: unknown }).createOrder).toBe('function');
+    it('should throw error when creating OrderProcessorManager adapter without dependencies', async () => {
+      await expect(
+        wrapper.createCapabilityAdapter(
+          connection,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+          'OrderProcessorManager' as any,
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+        ),
+      ).rejects.toThrow('OrderProcessorManager adapter is not available');
     });
 
     it('should throw error for unknown capability', async () => {

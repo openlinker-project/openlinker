@@ -7,18 +7,28 @@
  *
  * @module libs/integrations/allegro/src
  */
-import { Module, OnModuleInit, Inject } from '@nestjs/common';
+import { Module, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService } from '@openlinker/core/integrations';
+import {
+  IntegrationsModule,
+  ADAPTER_FACTORY_RESOLVER_TOKEN,
+  AdapterFactoryResolverService,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  IntegrationCredentialRepositoryPort,
+} from '@openlinker/core/integrations';
+import { RedisClientType } from 'redis';
+import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';
 import { AllegroQuantityCommandOrmEntity } from './infrastructure/persistence/entities/allegro-quantity-command.orm-entity';
 import { AllegroQuantityCommandRepository } from './infrastructure/persistence/repositories/allegro-quantity-command.repository';
+import { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 import { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
 import { Logger } from '@openlinker/shared/logging';
 
 @Module({
   imports: [
     IntegrationsModule,
+    CustomersModule, // Import CustomersModule to access CustomerIdentityResolverPort
     TypeOrmModule.forFeature([AllegroQuantityCommandOrmEntity]),
   ],
   providers: [
@@ -34,6 +44,18 @@ import { Logger } from '@openlinker/shared/logging';
       provide: 'AllegroQuantityCommandRepositoryPort',
       useExisting: ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
     },
+    // Token refresh service (optional dependencies - works without Redis/credential repository)
+    // Note: Dependencies may be undefined if not available, which is handled by the service
+    {
+      provide: AllegroTokenRefreshService,
+      useFactory: (
+        redisClient?: RedisClientType,
+        credentialRepository?: IntegrationCredentialRepositoryPort,
+      ): AllegroTokenRefreshService => {
+        return new AllegroTokenRefreshService(redisClient, credentialRepository);
+      },
+      inject: ['REDIS_CLIENT', INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN],
+    },
   ],
   exports: [
     ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
@@ -46,11 +68,19 @@ export class AllegroIntegrationModule implements OnModuleInit {
   constructor(
     @Inject(ADAPTER_FACTORY_RESOLVER_TOKEN)
     private readonly factoryResolver: AdapterFactoryResolverService,
+    @Inject(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN)
+    private readonly customerIdentityResolver: CustomerIdentityResolverPort,
+    @Optional()
+    @Inject(AllegroTokenRefreshService)
+    private readonly tokenRefreshService?: AllegroTokenRefreshService,
   ) {}
 
   onModuleInit(): void {
     this.logger.log('Registering Allegro adapter factory...');
-    const factory = new AllegroAdapterFactoryWrapper();
+    const factory = new AllegroAdapterFactoryWrapper(
+      this.customerIdentityResolver,
+      this.tokenRefreshService,
+    );
     this.factoryResolver.registerFactory('allegro.publicapi.v1', factory);
     this.logger.log('Allegro adapter factory registered successfully');
   }

@@ -3,6 +3,7 @@
  *
  * Wraps PrestashopAdapterFactory to implement AdapterFactoryPort interface.
  * This allows the PrestaShop factory to be registered with AdapterFactoryResolverService.
+ * Injects NestJS dependencies (provisioner, customer projection repository) for customer provisioning.
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {AdapterFactoryPort}
@@ -10,15 +11,31 @@
 import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { PrestashopAdapterFactory } from '../../application/prestashop-adapter.factory';
+import { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
+import { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
+import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 // Adapters are created by factory, no need to import here
 
 /**
  * PrestaShop Adapter Factory Wrapper
  *
  * Implements AdapterFactoryPort to integrate with AdapterFactoryResolverService.
+ * Accepts optional dependencies for customer provisioning (injected via NestJS DI).
  */
 export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
-  private readonly factory = new PrestashopAdapterFactory();
+  private readonly factory: PrestashopAdapterFactory;
+
+  constructor(
+    private readonly _customerProvisioner?: PrestashopCustomerProvisioner,
+    private readonly _addressProvisioner?: PrestashopAddressProvisioner,
+    private readonly _customerProjectionRepository?: CustomerProjectionRepositoryPort,
+  ) {
+    this.factory = new PrestashopAdapterFactory(
+      this._customerProvisioner,
+      this._addressProvisioner,
+      this._customerProjectionRepository,
+    );
+  }
 
   async createCapabilityAdapter<T>(
     connection: Connection,
@@ -42,6 +59,12 @@ export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
       case 'OrderSource':
         return adapters.orderSource as unknown as T;
       case 'OrderProcessorManager':
+        if (!adapters.orderProcessorManager) {
+          throw new Error(
+            'OrderProcessorManager adapter is not available. ' +
+              'Customer provisioner and customer projection repository are required for order processing.',
+          );
+        }
         return adapters.orderProcessorManager as unknown as T;
       default:
         throw new Error(
