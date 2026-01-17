@@ -99,7 +99,7 @@ grep "Rate limit" logs/worker.log
 
 ### Solutions
 
-1. **Reduce Polling Frequency**: Increase the interval between `allegro.orders.poll` jobs
+1. **Reduce Polling Frequency**: Increase the interval between `marketplace.orders.poll` jobs
 2. **Respect Retry-After Header**: The integration automatically respects `Retry-After` headers
 3. **Batch Operations**: Reduce the number of API calls by batching operations
 4. **Contact Allegro Support**: If rate limits are consistently hit, consider requesting a higher limit
@@ -280,7 +280,7 @@ SELECT
   updated_at
 FROM sync_jobs
 WHERE connection_id = 'your-connection-id'
-  AND job_type IN ('allegro.orders.poll', 'allegro.order.syncByCheckoutFormId')
+  AND job_type IN ('marketplace.orders.poll', 'marketplace.order.sync')
   AND status = 'failed'
 ORDER BY updated_at DESC;
 ```
@@ -310,7 +310,7 @@ ORDER BY updated_at DESC;
 
 #### 2. Order Not Found
 
-**Symptom**: `allegro.order.syncByCheckoutFormId` jobs failing with "Order not found"
+**Symptom**: `marketplace.order.sync` jobs failing with "Order not found"
 
 **Solution**:
 1. Verify the checkout form ID is correct
@@ -341,14 +341,14 @@ ORDER BY updated_at DESC;
 
 ```bash
 # Get poll jobs
-curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=allegro.orders.poll
+curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=marketplace.orders.poll
 ```
 
 **Step 2: Check order sync jobs**
 
 ```bash
 # Get order sync jobs
-curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=allegro.order.syncByCheckoutFormId
+curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=marketplace.order.sync
 ```
 
 **Step 3: Check application logs**

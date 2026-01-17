@@ -8,18 +8,7 @@
  */
 
 // Ports
-export { MarketplaceIntegrationPort } from './domain/ports/marketplace-integration.port';
 export { OfferMappingRepositoryPort } from './domain/ports/offer-mapping-repository.port';
-
-// Types
-export {
-  MarketplaceOrderFeedItem,
-  MarketplaceOrderFeedResponse,
-  OfferQuantityUpdateStatusValues,
-  OfferQuantityUpdateStatus,
-  UpdateOfferQuantityRequest,
-  UpdateOfferQuantityResult,
-} from './domain/types/marketplace-integration.types';
 
 // Entities
 export { OfferMapping } from './domain/entities/offer-mapping.entity';

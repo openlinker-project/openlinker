@@ -38,13 +38,14 @@ describe('SyncController', () => {
 
   describe('enqueueJob', () => {
     const validDto: EnqueueSyncJobDto = {
-      jobType: 'allegro.orders.poll',
+      jobType: 'marketplace.orders.poll',
       connectionId: '123e4567-e89b-12d3-a456-426614174000',
       payload: {
+        schemaVersion: 1,
         cursorKey: 'allegro.orders.lastEventId',
         limit: 10,
       },
-      idempotencyKey: 'allegro:123e4567-e89b-12d3-a456-426614174000:poll-1',
+      idempotencyKey: 'marketplace:123e4567-e89b-12d3-a456-426614174000:orders:poll-1',
     };
 
     it('should enqueue a job successfully', async () => {
@@ -70,7 +71,7 @@ describe('SyncController', () => {
     });
 
     it('should detect existing job (idempotent)', async () => {
-      const existingJobId = 'existing:allegro:123e4567-e89b-12d3-a456-426614174000:poll-1';
+      const existingJobId = 'existing:marketplace:123e4567-e89b-12d3-a456-426614174000:orders:poll-1';
       jobEnqueue.enqueueJob.mockResolvedValue(existingJobId);
 
       const result = await controller.enqueueJob(validDto);
@@ -104,10 +105,10 @@ describe('SyncController', () => {
 
     it('should handle different job types', async () => {
       const jobTypes = [
-        'allegro.orders.poll',
-        'allegro.order.syncByCheckoutFormId',
-        'allegro.offerQuantity.update',
-        'prestashop.product.syncByExternalId',
+        'marketplace.orders.poll',
+        'marketplace.order.sync',
+        'marketplace.offerQuantity.update',
+        'master.product.syncByExternalId',
       ];
 
       for (const jobType of jobTypes) {

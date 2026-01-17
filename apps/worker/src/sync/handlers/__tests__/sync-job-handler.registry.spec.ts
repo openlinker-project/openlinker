@@ -47,7 +47,7 @@ describe('SyncJobHandlerRegistry', () => {
 
   describe('register', () => {
     it('should register handler for job type', () => {
-      const jobType: JobType = 'prestashop.product.syncByExternalId';
+      const jobType: JobType = 'master.product.syncByExternalId';
 
       registry.register(jobType, mockHandler1);
 
@@ -56,7 +56,7 @@ describe('SyncJobHandlerRegistry', () => {
     });
 
     it('should overwrite existing handler with warning', () => {
-      const jobType: JobType = 'prestashop.product.syncByExternalId';
+      const jobType: JobType = 'master.product.syncByExternalId';
 
       registry.register(jobType, mockHandler1);
       registry.register(jobType, mockHandler2);
@@ -67,8 +67,8 @@ describe('SyncJobHandlerRegistry', () => {
     });
 
     it('should register multiple handlers for different job types', () => {
-      const jobType1: JobType = 'prestashop.product.syncByExternalId';
-      const jobType2: JobType = 'prestashop.inventory.syncByExternalId';
+      const jobType1: JobType = 'master.product.syncByExternalId';
+      const jobType2: JobType = 'master.inventory.syncByExternalId';
 
       registry.register(jobType1, mockHandler1);
       registry.register(jobType2, mockHandler2);
@@ -80,7 +80,7 @@ describe('SyncJobHandlerRegistry', () => {
 
   describe('getHandler', () => {
     it('should return handler for registered job type', () => {
-      const jobType: JobType = 'prestashop.product.syncByExternalId';
+      const jobType: JobType = 'master.product.syncByExternalId';
 
       registry.register(jobType, mockHandler1);
 
@@ -89,7 +89,7 @@ describe('SyncJobHandlerRegistry', () => {
     });
 
     it('should return null for unregistered job type', () => {
-      const jobType: JobType = 'prestashop.product.syncByExternalId';
+      const jobType: JobType = 'master.product.syncByExternalId';
 
       const handler = registry.getHandler(jobType);
       expect(handler).toBeNull();
@@ -123,8 +123,8 @@ describe('SyncJobHandlerRegistry', () => {
     });
 
     it('should return array of registered job types', () => {
-      const jobType1: JobType = 'prestashop.product.syncByExternalId';
-      const jobType2: JobType = 'prestashop.inventory.syncByExternalId';
+      const jobType1: JobType = 'master.product.syncByExternalId';
+      const jobType2: JobType = 'master.inventory.syncByExternalId';
 
       registry.register(jobType1, mockHandler1);
       registry.register(jobType2, mockHandler2);
@@ -146,7 +146,7 @@ describe('SyncJobHandlerRegistry', () => {
     });
 
     it('should not include unregistered job types', () => {
-      const jobType: JobType = 'prestashop.product.syncByExternalId';
+      const jobType: JobType = 'master.product.syncByExternalId';
 
       registry.register(jobType, mockHandler1);
 

@@ -15,7 +15,6 @@ import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
-  AllegroOfferQuantityUpdatePayload,
 } from '@openlinker/core/sync';
 import { IOfferMappingService, OFFER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/listings';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
@@ -39,7 +38,7 @@ interface InventoryPropagateToMarketplacesPayload {
  * 1. Validate payload (productId, optional variantId)
  * 2. Get current inventory for product
  * 3. Find all offer mappings for product
- * 4. For each mapping, enqueue allegro.offerQuantity.update job
+ * 4. For each mapping, enqueue marketplace.offerQuantity.update job
  */
 @Injectable()
 export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
@@ -98,8 +97,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`,
       );
 
-      // Step 4: For each mapping, enqueue allegro.offerQuantity.update job
-      // Filter to only Allegro mappings for MVP
+      // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job
+      // Filter to only Allegro mappings for MVP (platformType === 'allegro')
       const allegroMappings = mappings.filter((m) => m.platformType === 'allegro');
 
       if (allegroMappings.length === 0) {
@@ -113,14 +112,15 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         // Generate idempotency key: inventory:connectionId:productId:variantId:quantity
         const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}`;
 
-        const updatePayload: AllegroOfferQuantityUpdatePayload = {
+        const updatePayload = {
+          schemaVersion: 1 as const,
           offerId: mapping.offerId,
           quantity: availableQuantity,
           idempotencyKey,
         };
 
         const updateJobRequest: SyncJobRequest = {
-          jobType: 'allegro.offerQuantity.update',
+          jobType: 'marketplace.offerQuantity.update',
           connectionId: mapping.connectionId,
           payload: updatePayload as unknown as Record<string, unknown>,
           idempotencyKey, // Use same idempotency key for job deduplication

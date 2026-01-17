@@ -22,7 +22,7 @@ export class EnqueueSyncJobResponseDto {
 
   @ApiProperty({
     description: 'Job type',
-    example: 'allegro.orders.poll',
+    example: 'marketplace.orders.poll',
   })
   jobType!: string;
 

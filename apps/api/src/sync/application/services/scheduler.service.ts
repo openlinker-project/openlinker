@@ -105,7 +105,7 @@ export class SchedulerService implements OnModuleInit {
    * Can be overridden or extended by calling registerTask().
    */
   private registerDefaultTasks(): void {
-    // Allegro orders poll task
+    // Marketplace orders poll task (for Allegro connections)
     const allegroPollEnabled = this.configService.get<string>(
       'ALLEGRO_POLL_SCHEDULER_ENABLED',
       'true',
@@ -119,15 +119,16 @@ export class SchedulerService implements OnModuleInit {
       this.registerTask({
         taskId: 'allegro-orders-poll',
         platformType: 'allegro',
-        jobType: 'allegro.orders.poll',
+        jobType: 'marketplace.orders.poll',
         cronExpression: allegroCronExpression,
         enabledEnvVar: 'ALLEGRO_POLL_SCHEDULER_ENABLED',
         generatePayload: () => ({
+          schemaVersion: 1,
           cursorKey: 'allegro.orders.lastEventId',
           limit: 100,
         }),
         generateIdempotencyKey: (connection, timestamp) =>
-          `allegro:${connection.id}:poll:${timestamp}`,
+          `marketplace:${connection.id}:orders:poll:${timestamp}`,
       });
     }
   }

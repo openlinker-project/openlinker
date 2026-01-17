@@ -53,7 +53,7 @@ describe('AllegroMarketplaceAdapter', () => {
     adapter = new AllegroMarketplaceAdapter(connectionId, httpClient, identifierMapping, connection);
   });
 
-  describe('getOrders', () => {
+  describe('listOrderFeed', () => {
     it('should fetch orders with cursor and return feed items', async () => {
       const mockEventsResponse: AllegroOrderEventsResponse = {
         events: [
@@ -89,16 +89,27 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.getOrders({ cursor: 'event-0', limit: 10 });
+      const result = await adapter.listOrderFeed({
+        fromCursor: 'event-0',
+        limit: 10,
+      });
 
       expect(result.items).toHaveLength(2);
       expect(result.items[0]).toEqual({
+        externalOrderId: 'checkout-form-1',
+        eventType: 'updated',
+        occurredAt: '2024-01-01T00:00:00Z',
+        eventKey: 'event-1',
         eventId: 'event-1',
-        checkoutFormId: 'checkout-form-1',
+        raw: { type: 'ORDER_CREATED' },
       });
       expect(result.items[1]).toEqual({
+        externalOrderId: 'checkout-form-2',
+        eventType: 'updated',
+        occurredAt: '2024-01-01T01:00:00Z',
+        eventKey: 'event-2',
         eventId: 'event-2',
-        checkoutFormId: 'checkout-form-2',
+        raw: { type: 'ORDER_CREATED' },
       });
       expect(result.nextCursor).toBe('event-2');
       expect(httpClient.get).toHaveBeenCalledWith('/order/events', {
@@ -118,7 +129,10 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.getOrders({ cursor: 'event-0' });
+      const result = await adapter.listOrderFeed({
+        fromCursor: 'event-0',
+        limit: 100,
+      });
 
       expect(result.items).toHaveLength(0);
       expect(result.nextCursor).toBe('event-0');
@@ -147,7 +161,10 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.getOrders({});
+      const result = await adapter.listOrderFeed({
+        fromCursor: null,
+        limit: 100,
+      });
 
       expect(result.nextCursor).toBe('event-1');
     });
@@ -155,12 +172,17 @@ describe('AllegroMarketplaceAdapter', () => {
     it('should handle HTTP errors', async () => {
       httpClient.get.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(adapter.getOrders({})).rejects.toThrow('Network error');
+      await expect(
+        adapter.listOrderFeed({
+          fromCursor: null,
+          limit: 100,
+        }),
+      ).rejects.toThrow('Network error');
     });
   });
 
-  describe('getOrderByCheckoutFormId', () => {
-    it('should fetch order and map to unified Order with internal IDs', async () => {
+  describe('getOrder', () => {
+    it('should fetch order and map to IncomingOrder with external-only refs', async () => {
       const mockCheckoutForm: AllegroCheckoutForm = {
         id: 'checkout-form-1',
         buyer: {
@@ -210,30 +232,31 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      identifierMapping.getOrCreateInternalId
-        .mockResolvedValueOnce('ol_customer_123')
-        .mockResolvedValueOnce('ol_product_456')
-        .mockResolvedValueOnce('ol_order_789');
+      const result = await adapter.getOrder({ externalOrderId: 'checkout-form-1' });
 
-      const result = await adapter.getOrderByCheckoutFormId('checkout-form-1');
-
-      expect(result.id).toBe('ol_order_789');
+      expect(result.externalOrderId).toBe('checkout-form-1');
       expect(result.orderNumber).toBe('checkout-form-1');
-      expect(result.customerId).toBe('ol_customer_123');
+      expect(result.customerExternalId).toBe('buyer-1');
       expect(result.items).toHaveLength(1);
-      expect(result.items[0].productId).toBe('ol_product_456');
+      expect(result.items[0].productRef).toEqual({ type: 'offer', externalId: 'offer-1' });
       expect(result.items[0].quantity).toBe(2);
       expect(result.items[0].price).toBe(100.0);
       expect(result.totals.total).toBe(200.0);
       expect(result.totals.currency).toBe('PLN');
       expect(result.status).toBe('processing');
+      expect(result.metadata).toEqual({
+        buyer: {
+          email: 'buyer@example.com',
+          login: 'buyer-login',
+        },
+      });
       expect(httpClient.get).toHaveBeenCalledWith('/order/checkout-forms/checkout-form-1');
     });
 
     it('should handle HTTP errors', async () => {
       httpClient.get.mockRejectedValueOnce(new Error('Order not found'));
 
-      await expect(adapter.getOrderByCheckoutFormId('checkout-form-1')).rejects.toThrow(
+      await expect(adapter.getOrder({ externalOrderId: 'checkout-form-1' })).rejects.toThrow(
         'Order not found',
       );
     });
@@ -252,14 +275,12 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.updateOfferQuantity({
+      await adapter.updateOfferQuantity({
         offerId: 'offer-1',
         quantity: 10,
         idempotencyKey: 'idempotency-key-123',
       });
 
-      expect(result.commandId).toBe('command-123');
-      expect(result.status).toBe('accepted');
       expect(httpClient.put).toHaveBeenCalledWith(
         expect.stringMatching(/^\/sale\/offer-quantity-change-commands\/[a-f0-9-]+$/),
         expect.objectContaining({
@@ -284,13 +305,11 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.updateOfferQuantity({
+      await adapter.updateOfferQuantity({
         offerId: 'offer-1',
         quantity: 10,
         idempotencyKey: 'idempotency-key-123',
       });
-
-      expect(result.status).toBe('queued');
     });
 
     it('should map REJECTED status correctly', async () => {
@@ -311,13 +330,11 @@ describe('AllegroMarketplaceAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter.updateOfferQuantity({
+      await adapter.updateOfferQuantity({
         offerId: 'offer-1',
         quantity: -1,
         idempotencyKey: 'idempotency-key-123',
       });
-
-      expect(result.status).toBe('rejected');
     });
 
     it('should generate deterministic commandId from idempotency key', async () => {

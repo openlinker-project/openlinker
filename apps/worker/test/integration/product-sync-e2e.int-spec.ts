@@ -13,16 +13,14 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { getSyncJobById, getSyncJobsByStatus } from './helpers/test-sync-job.helper';
+import { getSyncJobById } from './helpers/test-sync-job.helper';
 import { createMockPrestashopProductAdapter } from './helpers/mock-adapters.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
-import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products/products.tokens';
-import { IProductsService } from '@openlinker/core/products/application/services/products.service.interface';
 import { DataSource } from 'typeorm';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products';
 import { randomUUID } from 'crypto';
@@ -32,7 +30,6 @@ describe('Product Sync End-to-End Integration', () => {
   let jobRepository: SyncJobRepositoryPort;
   let jobEnqueue: JobEnqueuePort;
   let integrationsService: IIntegrationsService;
-  let productsService: IProductsService;
   let dataSource: DataSource;
   let mockProductAdapter: ReturnType<typeof createMockPrestashopProductAdapter>;
 
@@ -41,7 +38,6 @@ describe('Product Sync End-to-End Integration', () => {
     jobRepository = harness.get(SYNC_JOB_REPOSITORY_TOKEN);
     jobEnqueue = harness.get(JOB_ENQUEUE_TOKEN);
     integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
-    productsService = harness.get(PRODUCTS_SERVICE_TOKEN);
     dataSource = harness.getDataSource();
 
     // Set credentials environment variable for test connection
@@ -79,9 +75,10 @@ describe('Product Sync End-to-End Integration', () => {
 
       // 2. Enqueue job to Redis Stream
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0], // 'prestashop.product.syncByExternalId'
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           externalId: '1',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -108,8 +105,8 @@ describe('Product Sync End-to-End Integration', () => {
       // and SyncJobRunner. For now, we'll manually trigger the handler execution.
 
       // Get the handler from the app context
-      const { PrestashopProductSyncHandler } = require('../../src/sync/handlers/prestashop-product-sync.handler');
-      const handler = harness.get(PrestashopProductSyncHandler);
+      const { MasterProductSyncHandler } = require('../../src/sync/handlers/master-product-sync.handler');
+      const handler = harness.get(MasterProductSyncHandler);
 
       // Execute the handler
       await handler.execute(persistedJob);
@@ -126,8 +123,9 @@ describe('Product Sync End-to-End Integration', () => {
       const products = await productRepository.find();
       expect(products.length).toBeGreaterThan(0);
 
-      const syncedProduct = products.find((p) => p.id === persistedJob.payload.externalId || true);
+      const syncedProduct = products.find((p) => p.name === 'Test Product');
       expect(syncedProduct).toBeDefined();
+      expect(syncedProduct?.id).toMatch(/^ol_product_/);
       expect(syncedProduct?.name).toBe('Test Product');
       expect(syncedProduct?.sku).toBe('TEST-SKU-001');
       // PostgreSQL numeric type returns as string, convert to number for comparison
@@ -153,9 +151,10 @@ describe('Product Sync End-to-End Integration', () => {
       mockProductAdapter.getProductVariants = jest.fn().mockResolvedValue([]);
 
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0],
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           externalId: '2',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -171,7 +170,7 @@ describe('Product Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const handler = harness.get(require('../../src/sync/handlers/prestashop-product-sync.handler').PrestashopProductSyncHandler);
+      const handler = harness.get(require('../../src/sync/handlers/master-product-sync.handler').MasterProductSyncHandler);
       await handler.execute(persistedJob);
 
       // Verify product was created
@@ -198,9 +197,10 @@ describe('Product Sync End-to-End Integration', () => {
       );
 
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0],
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           externalId: '999',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -216,7 +216,7 @@ describe('Product Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const handler = harness.get(require('../../src/sync/handlers/prestashop-product-sync.handler').PrestashopProductSyncHandler);
+      const handler = harness.get(require('../../src/sync/handlers/master-product-sync.handler').MasterProductSyncHandler);
 
       // Execute should throw error
       await expect(handler.execute(persistedJob)).rejects.toThrow();
@@ -252,9 +252,10 @@ describe('Product Sync End-to-End Integration', () => {
       }));
 
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0],
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           externalId: '3',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -270,7 +271,7 @@ describe('Product Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const handler = harness.get(require('../../src/sync/handlers/prestashop-product-sync.handler').PrestashopProductSyncHandler);
+      const handler = harness.get(require('../../src/sync/handlers/master-product-sync.handler').MasterProductSyncHandler);
       await handler.execute(persistedJob);
 
       // Manually mark job as succeeded (handler doesn't update status, runner does)

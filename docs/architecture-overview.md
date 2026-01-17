@@ -167,9 +167,9 @@ The system is organized into the following core bounded contexts:
   - Price management for marketplace offers
 
 ### 6. Sync Manager
-- **Responsibility**: Job scheduling, retry logic, sync orchestration
+- **Responsibility**: Job scheduling and retry logic; workers execute jobs. **Sync orchestration policies live in core application services** (e.g., order ingestion, inventory propagation), not in worker handlers.
 - **Key Services**: SyncJobService, RetryService, SchedulerService
-- **Location**: `libs/core/src/sync/` or `apps/api/src/sync/`
+- **Location**: `libs/core/src/sync/` (core sync infrastructure), `apps/worker/src/sync/` (job runners/handlers)
 
 ### 7. Event Bus / Messaging
 - **Responsibility**: Event-driven communication between modules
@@ -1324,7 +1324,7 @@ WebhookToJobHandler (Consumer Group: webhook-handler)
     ▼
 Redis Streams: jobs.sync
     │
-    │ SyncJob (e.g., prestashop.product.syncByExternalId)
+    │ SyncJob (e.g., master.product.syncByExternalId)
     ▼
 Future: Worker processes jobs
     │

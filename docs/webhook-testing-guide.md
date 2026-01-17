@@ -120,7 +120,7 @@ curl -X POST http://localhost:3000/webhooks/prestashop/<CONNECTION_ID> \
 
 Look for log messages like:
 - `Published inbound webhook event test-event-123 to stream events.inbound.webhooks`
-- `Processed webhook event test-event-123 and enqueued job prestashop.product.syncByExternalId`
+- `Processed webhook event test-event-123 and enqueued job master.product.syncByExternalId`
 
 #### Check Redis Streams
 

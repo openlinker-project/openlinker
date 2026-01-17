@@ -17,6 +17,7 @@ export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
 export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { WebhookSecretProviderPort } from './domain/ports/webhook-secret-provider.port';
+export { MarketplacePort } from './domain/ports/marketplace.port';
 export {
   IntegrationCredentialRepositoryPort,
   CredentialCreate,
@@ -30,6 +31,19 @@ export {
   AdapterMetadata,
   AdapterInstance,
 } from './domain/types/adapter.types';
+export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
+export {
+  MarketplaceOrderEventTypeValues,
+  MarketplaceOrderEventType,
+  MarketplaceOrderFeedInput,
+  MarketplaceOrderFeedOutput,
+} from './domain/types/marketplace-order-feed.types';
+export {
+  UpdateOfferQuantityCommand,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+  UpdateOfferQuantitiesBatchFailure,
+} from './domain/types/marketplace-quantity-update.types';
 
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';

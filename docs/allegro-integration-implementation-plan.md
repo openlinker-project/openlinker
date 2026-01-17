@@ -134,9 +134,9 @@ Deliver an MVP Allegro integration aligned to OpenLinker's hexagonal architectur
 
 - **Define job types**
   - Extend `JobTypeValues` in `libs/core/src/sync/domain/types/sync-job.types.ts`:
-    - `allegro.orders.poll`
-    - `allegro.order.syncByCheckoutFormId`
-    - `allegro.offerQuantity.update`
+    - `marketplace.orders.poll`
+    - `marketplace.order.sync`
+    - `marketplace.offerQuantity.update`
     - (optional) `allegro.offerQuantity.refreshStatus`
 
 - **Job payload shapes** (types in `*.types.ts`)
@@ -197,12 +197,12 @@ Deliver an MVP Allegro integration aligned to OpenLinker's hexagonal architectur
 ### Phase 6: Worker Handlers (Poll → Enqueue Order Sync → Route into OrderProcessorManager)
 
 - **Add handlers in `apps/worker/src/sync/handlers/`**
-  - `AllegroOrdersPollHandler` handles `allegro.orders.poll`
+  - `MarketplaceOrdersPollHandler` handles `marketplace.orders.poll`
     - Resolves Allegro `MarketplacePort` adapter using `IntegrationsService.getCapabilityAdapter(connectionId, 'Marketplace')`.
     - Loads cursor (`allegro.orders.lastEventId`) from cursor store.
-    - Calls `getOrders`; for each `{ eventId, checkoutFormId }` enqueue `allegro.order.syncByCheckoutFormId` with idempotency key `allegro:{connectionId}:{eventId}` using `JobEnqueuePort` (or DB job create).
+    - Calls `listOrderFeed`; for each feed item enqueue `marketplace.order.sync` with dedupe key `marketplace:{connectionId}:order:{eventKey}`.
     - Updates cursor only after enqueue succeeds (cursor safety).
-  - `AllegroOrderSyncHandler` handles `allegro.order.syncByCheckoutFormId`
+  - `MarketplaceOrderSyncHandler` handles `marketplace.order.sync`
     - Fetches unified order via `MarketplacePort.getOrderByCheckoutFormId`.
     - Passes order into new core `OrderSyncService` to route to a destination processor.
 
@@ -237,7 +237,7 @@ Deliver an MVP Allegro integration aligned to OpenLinker's hexagonal architectur
 
 - **Inventory update flow**
   - Either:
-    - Extend existing inventory sync handler(s) to enqueue `allegro.offerQuantity.update` for mapped offers, or
+    - Extend existing inventory sync handler(s) to enqueue `marketplace.offerQuantity.update` for mapped offers, or
     - Create a dedicated worker handler that consumes an inventory job type and issues Allegro commands.
   - Track command status and persist last error for observability.
 

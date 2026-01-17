@@ -13,7 +13,6 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { getSyncJobById } from './helpers/test-sync-job.helper';
 import { createMockAllegroMarketplaceAdapter } from './helpers/mock-allegro-adapters.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
@@ -21,10 +20,6 @@ import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.p
 import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import {
-  AllegroQuantityCommandRepositoryPort,
-  ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
-} from '@openlinker/integrations-allegro';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -32,7 +27,6 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
   let harness: WorkerIntegrationTestHarness;
   let jobRepository: SyncJobRepositoryPort;
   let jobEnqueue: JobEnqueuePort;
-  let commandRepository: AllegroQuantityCommandRepositoryPort;
   let integrationsService: IIntegrationsService;
   let dataSource: DataSource;
   let mockMarketplaceAdapter: ReturnType<typeof createMockAllegroMarketplaceAdapter>;
@@ -41,7 +35,6 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
     harness = await getTestHarness();
     jobRepository = harness.get(SYNC_JOB_REPOSITORY_TOKEN);
     jobEnqueue = harness.get(JOB_ENQUEUE_TOKEN);
-    commandRepository = harness.get(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN);
     integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
     dataSource = harness.getDataSource();
 
@@ -85,9 +78,10 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
       const idempotencyKey = `test-offer-update-${randomUUID()}`;
 
       const updateJobRequest: SyncJobRequest = {
-        jobType: 'allegro.offerQuantity.update' as any,
+        jobType: 'marketplace.offerQuantity.update',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           offerId,
           quantity,
           idempotencyKey,
@@ -110,8 +104,8 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
       expect(persistedJob.status).toBe('queued');
 
       // 4. Execute offer quantity update handler
-      const { AllegroOfferQuantityUpdateHandler } = require('../../src/sync/handlers/allegro-offer-quantity-update.handler');
-      const handler = harness.get(AllegroOfferQuantityUpdateHandler);
+      const { MarketplaceOfferQuantityUpdateHandler } = require('../../src/sync/handlers/marketplace-offer-quantity-update.handler');
+      const handler = harness.get(MarketplaceOfferQuantityUpdateHandler);
       await handler.execute(persistedJob);
 
       // Mark job as succeeded
@@ -123,20 +117,6 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
         quantity,
         idempotencyKey,
       });
-
-      // 6. Verify command status was persisted
-      const updateCall = mockMarketplaceAdapter.updateOfferQuantity.mock.calls[0][0];
-      const commandId = (await mockMarketplaceAdapter.updateOfferQuantity(updateCall)).commandId;
-
-      // Wait a bit for async persistence (if any)
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const persistedCommand = await commandRepository.findByCommandId(commandId);
-      expect(persistedCommand).toBeDefined();
-      expect(persistedCommand?.offerId).toBe(offerId);
-      expect(persistedCommand?.quantity).toBe(quantity);
-      expect(persistedCommand?.connectionId).toBe(connection.id);
-      expect(persistedCommand?.status).toBe('queued');
     });
 
     it('should handle command rejection correctly', async () => {
@@ -147,20 +127,20 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
         adapterKey: 'allegro.publicapi.v1',
       });
 
-      // Mock adapter to return rejected status
-      mockMarketplaceAdapter.updateOfferQuantity = jest.fn().mockResolvedValue({
-        commandId: randomUUID(),
-        status: 'rejected' as const,
-      });
+      // Mock adapter to fail update (handler should surface it as job failure)
+      mockMarketplaceAdapter.updateOfferQuantity = jest.fn().mockRejectedValue(
+        new Error('rejected'),
+      );
 
       const offerId = 'offer-456';
       const quantity = 0; // Invalid quantity
       const idempotencyKey = `test-offer-reject-${randomUUID()}`;
 
       const updateJobRequest: SyncJobRequest = {
-        jobType: 'allegro.offerQuantity.update' as any,
+        jobType: 'marketplace.offerQuantity.update',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           offerId,
           quantity,
           idempotencyKey,
@@ -176,8 +156,8 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const { AllegroOfferQuantityUpdateHandler } = require('../../src/sync/handlers/allegro-offer-quantity-update.handler');
-      const handler = harness.get(AllegroOfferQuantityUpdateHandler);
+      const { MarketplaceOfferQuantityUpdateHandler } = require('../../src/sync/handlers/marketplace-offer-quantity-update.handler');
+      const handler = harness.get(MarketplaceOfferQuantityUpdateHandler);
 
       // Handler should throw error for rejected commands
       await expect(handler.execute(persistedJob)).rejects.toThrow();

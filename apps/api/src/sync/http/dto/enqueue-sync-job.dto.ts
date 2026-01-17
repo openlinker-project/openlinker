@@ -19,7 +19,7 @@ export class EnqueueSyncJobDto {
   @ApiProperty({
     description: 'Job type identifier',
     enum: JobTypeValues,
-    example: 'allegro.orders.poll',
+    example: 'marketplace.orders.poll',
   })
   @IsString()
   @IsNotEmpty()
@@ -37,7 +37,7 @@ export class EnqueueSyncJobDto {
 
   @ApiProperty({
     description: 'Job payload (provider-specific data)',
-    example: { cursorKey: 'allegro.orders.lastEventId', limit: 10 },
+    example: { schemaVersion: 1, cursorKey: 'allegro.orders.lastEventId', limit: 10 },
     type: 'object',
   })
   @IsObject({ message: 'payload must be an object' })
@@ -45,7 +45,7 @@ export class EnqueueSyncJobDto {
 
   @ApiProperty({
     description: 'Idempotency key for deduplication (format: {provider}:{connectionId}:{eventId})',
-    example: 'allegro:123e4567-e89b-12d3-a456-426614174000:poll-2024-01-01-12-00-00',
+    example: 'marketplace:123e4567-e89b-12d3-a456-426614174000:orders:poll-2024-01-01-12-00',
   })
   @IsString()
   @IsNotEmpty({ message: 'idempotencyKey is required' })

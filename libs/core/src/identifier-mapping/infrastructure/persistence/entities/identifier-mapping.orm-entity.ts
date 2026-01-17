@@ -24,7 +24,7 @@ import {
 @Index(['entityType', 'platformType', 'connectionId', 'externalId'], {
   unique: true,
 })
-@Index(['entityType', 'connectionId', 'internalId'], { unique: true })
+@Index(['entityType', 'connectionId', 'internalId'])
 export class IdentifierMappingOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

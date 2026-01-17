@@ -19,12 +19,12 @@ import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
-import { PrestashopProductSyncHandler } from './handlers/prestashop-product-sync.handler';
-import { PrestashopInventorySyncHandler } from './handlers/prestashop-inventory-sync.handler';
-import { AllegroOrdersPollHandler } from './handlers/allegro-orders-poll.handler';
-import { AllegroOrderSyncHandler } from './handlers/allegro-order-sync.handler';
-import { AllegroOfferQuantityUpdateHandler } from './handlers/allegro-offer-quantity-update.handler';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
+import { MarketplaceOrdersPollHandler } from './handlers/marketplace-orders-poll.handler';
+import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
+import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
+import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
+import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -43,12 +43,12 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     JobIntakeConsumer,
     SyncJobRunner,
     SyncJobHandlerRegistry,
-    PrestashopProductSyncHandler,
-    PrestashopInventorySyncHandler,
-    AllegroOrdersPollHandler,
-    AllegroOrderSyncHandler,
-    AllegroOfferQuantityUpdateHandler,
     InventoryPropagateToMarketplacesHandler,
+    MarketplaceOrdersPollHandler,
+    MarketplaceOrderSyncHandler,
+    MarketplaceOfferQuantityUpdateHandler,
+    MasterProductSyncHandler,
+    MasterInventorySyncHandler,
     HandlerRegistrationService,
   ],
 })

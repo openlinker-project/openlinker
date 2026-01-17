@@ -98,9 +98,10 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       expect(offerMappingService.findByProduct).toHaveBeenCalledWith('product-id');
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          jobType: 'allegro.offerQuantity.update',
+          jobType: 'marketplace.offerQuantity.update',
           connectionId: 'connection-id',
           payload: expect.objectContaining({
+            schemaVersion: 1,
             offerId: 'offer-id',
             quantity: 100,
           }),

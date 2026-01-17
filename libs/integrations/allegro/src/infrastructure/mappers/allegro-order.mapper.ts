@@ -9,7 +9,6 @@
  */
 import { Order, OrderItem, OrderTotals, Address } from '@openlinker/core/orders';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { Logger } from '@openlinker/shared/logging';
 
 /**
  * Allegro checkout form (from /order/checkout-forms/{id})
@@ -87,7 +86,6 @@ export class AllegroOrderMapper {
   constructor(
     private readonly connectionId: string,
     private readonly identifierMapping: IdentifierMappingPort,
-    private readonly logger: Logger,
   ) {}
 
   /**
@@ -134,9 +132,6 @@ export class AllegroOrderMapper {
         // Map product ID (external Allegro offer ID -> internal OpenLinker product ID)
         let productId: string;
         try {
-          this.logger.debug(`I'm here 6 xddddd`);
-          this.logger.debug(`lineItem.offer.id: ${lineItem.offer.id}`);
-          this.logger.debug(`this.connectionId: ${this.connectionId}`);
           productId = await this.identifierMapping.getOrCreateInternalId(
             'Product',
             lineItem.offer.id,

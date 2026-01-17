@@ -7,7 +7,7 @@
  */
 import { DataSource } from 'typeorm';
 import { SyncJobOrmEntity } from '@openlinker/core/sync';
-import { JobType, JobStatus } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { JobStatus } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { randomUUID } from 'crypto';
 
 /**
@@ -23,9 +23,9 @@ export async function createTestSyncJob(
 
   const job = repository.create({
     id: randomUUID(),
-    jobType: 'prestashop.product.syncByExternalId',
+    jobType: 'master.product.syncByExternalId',
     connectionId: randomUUID(),
-    payloadJson: { externalId: '1', objectType: 'Product' },
+    payloadJson: { schemaVersion: 1, externalId: '1', objectType: 'Product' },
     status: 'queued',
     idempotencyKey: `test-key-${randomUUID()}`,
     attempts: 0,

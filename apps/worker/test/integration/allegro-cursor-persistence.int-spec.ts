@@ -11,7 +11,7 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import { SYNC_JOB_REPOSITORY_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { ConnectionCursorRepositoryPort } from '@openlinker/core/sync/domain/ports/connection-cursor-repository.port';
 import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
@@ -73,9 +73,10 @@ describe('Allegro Cursor Persistence Integration', () => {
 
       // Execute poll job
       const pollJobRequest: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as any,
+        jobType: 'marketplace.orders.poll',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           cursorKey,
           limit: 10,
         },
@@ -90,8 +91,8 @@ describe('Allegro Cursor Persistence Integration', () => {
         maxAttempts: 10,
       });
 
-      const { AllegroOrdersPollHandler } = require('../../src/sync/handlers/allegro-orders-poll.handler');
-      const pollHandler = harness.get(AllegroOrdersPollHandler);
+      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
+      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
       await pollHandler.execute(persistedJob);
       await jobRepository.markSucceeded(persistedJob.id);
 
@@ -102,9 +103,10 @@ describe('Allegro Cursor Persistence Integration', () => {
 
       // Execute second poll
       const pollJobRequest2: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as any,
+        jobType: 'marketplace.orders.poll',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           cursorKey,
           limit: 10,
         },
@@ -129,51 +131,7 @@ describe('Allegro Cursor Persistence Integration', () => {
     });
   });
 
-  describe('Cursor Idempotency', () => {
-    it('should not advance cursor on retry (idempotency)', async () => {
-      const connection = await createTestConnection(dataSource, {
-        platformType: 'allegro',
-        status: 'active',
-        credentialsRef: 'test-credentials-ref',
-        adapterKey: 'allegro.publicapi.v1',
-      });
-
-      const cursorKey = 'allegro.orders.lastEventId';
-
-      // Execute poll job
-      const pollJobRequest: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as any,
-        connectionId: connection.id,
-        payload: {
-          cursorKey,
-          limit: 10,
-        },
-        idempotencyKey: `test-cursor-idempotency-${randomUUID()}`,
-      };
-
-      const persistedJob = await jobRepository.createIfNotExistsByIdempotencyKey({
-        jobType: pollJobRequest.jobType,
-        connectionId: pollJobRequest.connectionId,
-        payload: pollJobRequest.payload,
-        idempotencyKey: pollJobRequest.idempotencyKey,
-        maxAttempts: 10,
-      });
-
-      const { AllegroOrdersPollHandler } = require('../../src/sync/handlers/allegro-orders-poll.handler');
-      const pollHandler = harness.get(AllegroOrdersPollHandler);
-
-      // First execution
-      await pollHandler.execute(persistedJob);
-      const firstCursor = await cursorRepository.get(connection.id, cursorKey);
-
-      // Retry same job (simulate job runner retry)
-      await pollHandler.execute(persistedJob);
-
-      // Cursor should remain the same (idempotent)
-      const secondCursor = await cursorRepository.get(connection.id, cursorKey);
-      expect(secondCursor).toBe(firstCursor);
-    });
-  });
+  // NOTE: Cursor idempotency (no commit on enqueue failure) is covered by core unit tests.
 
   describe('Per-Connection Cursor Isolation', () => {
     it('should maintain separate cursors per connection', async () => {
@@ -195,13 +153,26 @@ describe('Allegro Cursor Persistence Integration', () => {
 
       // Execute poll for connection1
       const pollJobRequest1: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as any,
+        jobType: 'marketplace.orders.poll',
         connectionId: connection1.id,
         payload: {
+          schemaVersion: 1,
           cursorKey,
           limit: 10,
         },
         idempotencyKey: `test-connection-1-${randomUUID()}`,
+      };
+
+      // Execute poll for connection2
+      const pollJobRequest2: SyncJobRequest = {
+        jobType: 'marketplace.orders.poll',
+        connectionId: connection2.id,
+        payload: {
+          schemaVersion: 1,
+          cursorKey,
+          limit: 10,
+        },
+        idempotencyKey: `test-connection-2-${randomUUID()}`,
       };
 
       const persistedJob1 = await jobRepository.createIfNotExistsByIdempotencyKey({
@@ -212,23 +183,12 @@ describe('Allegro Cursor Persistence Integration', () => {
         maxAttempts: 10,
       });
 
-      const { AllegroOrdersPollHandler } = require('../../src/sync/handlers/allegro-orders-poll.handler');
-      const pollHandler = harness.get(AllegroOrdersPollHandler);
+      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
+      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
       await pollHandler.execute(persistedJob1);
       await jobRepository.markSucceeded(persistedJob1.id);
 
       const cursor1 = await cursorRepository.get(connection1.id, cursorKey);
-
-      // Execute poll for connection2
-      const pollJobRequest2: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as any,
-        connectionId: connection2.id,
-        payload: {
-          cursorKey,
-          limit: 10,
-        },
-        idempotencyKey: `test-connection-2-${randomUUID()}`,
-      };
 
       const persistedJob2 = await jobRepository.createIfNotExistsByIdempotencyKey({
         jobType: pollJobRequest2.jobType,

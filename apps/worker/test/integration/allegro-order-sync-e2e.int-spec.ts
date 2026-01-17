@@ -2,7 +2,7 @@
  * Allegro Order Sync End-to-End Integration Test
  *
  * Integration test for the complete Allegro order sync flow:
- * 1. Enqueue `allegro.orders.poll` job
+ * 1. Enqueue `marketplace.orders.poll` job
  * 2. Verify job persisted to database
  * 3. Execute poll handler (mock Allegro API)
  * 4. Verify order sync jobs enqueued
@@ -15,18 +15,16 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { getSyncJobById, getSyncJobsByStatus, getSyncJobByIdempotencyKey } from './helpers/test-sync-job.helper';
 import { createMockAllegroMarketplaceAdapter } from './helpers/mock-allegro-adapters.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
 import { ConnectionCursorRepositoryPort } from '@openlinker/core/sync/domain/ports/connection-cursor-repository.port';
-import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import { ORDER_SYNC_SERVICE_TOKEN } from '@openlinker/core/orders/orders.tokens';
-import { IOrderSyncService } from '@openlinker/core/orders/application/interfaces/order-sync.service.interface';
-import { OrderProcessorManagerPort } from '@openlinker/core/orders/domain/ports/order-processor-manager.port';
+import { OrderProcessorManagerPort } from '@openlinker/core/orders';
+import { IOfferMappingService, OFFER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/listings';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -36,10 +34,10 @@ describe('Allegro Order Sync End-to-End Integration', () => {
   let jobEnqueue: JobEnqueuePort;
   let cursorRepository: ConnectionCursorRepositoryPort;
   let integrationsService: IIntegrationsService;
-  let orderSyncService: IOrderSyncService;
   let dataSource: DataSource;
   let mockMarketplaceAdapter: ReturnType<typeof createMockAllegroMarketplaceAdapter>;
   let mockOrderProcessor: jest.Mocked<OrderProcessorManagerPort>;
+  let offerMappingService: IOfferMappingService;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -47,8 +45,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     jobEnqueue = harness.get(JOB_ENQUEUE_TOKEN);
     cursorRepository = harness.get(CONNECTION_CURSOR_REPOSITORY_TOKEN);
     integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
-    orderSyncService = harness.get(ORDER_SYNC_SERVICE_TOKEN);
     dataSource = harness.getDataSource();
+    offerMappingService = harness.get(OFFER_MAPPING_SERVICE_TOKEN);
 
     // Set credentials environment variable for test connection
     process.env.CREDENTIALS_TEST_CREDENTIALS_REF = '{"accessToken":"test-token","refreshToken":"test-refresh"}';
@@ -69,7 +67,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     } as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
     // Mock IntegrationsService to return our mock adapters
-    jest.spyOn(integrationsService, 'getCapabilityAdapter').mockImplementation(async (connectionId: string, capability: string) => {
+    jest.spyOn(integrationsService, 'getCapabilityAdapter').mockImplementation(async (_connectionId: string, capability: string) => {
       if (capability === 'Marketplace') {
         return mockMarketplaceAdapter as any;
       }
@@ -98,11 +96,21 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         adapterKey: 'allegro.publicapi.v1',
       });
 
+      // Seed offer mapping required by IncomingOrderItemRef(type='offer') resolution
+      await offerMappingService.create(
+        connection.id,
+        'allegro',
+        'offer-1',
+        'ol_product_test_1',
+        null,
+      );
+
       // 2. Enqueue poll job to Redis Stream
       const pollJobRequest: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as JobTypeValues[number],
+        jobType: 'marketplace.orders.poll',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           cursorKey: 'allegro.orders.lastEventId',
           limit: 10,
         },
@@ -123,27 +131,46 @@ describe('Allegro Order Sync End-to-End Integration', () => {
 
       expect(persistedPollJob.status).toBe('queued');
 
+      const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
+
       // 4. Execute poll handler
-      const { AllegroOrdersPollHandler } = require('../../src/sync/handlers/allegro-orders-poll.handler');
-      const pollHandler = harness.get(AllegroOrdersPollHandler);
+      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
+      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
       await pollHandler.execute(persistedPollJob);
 
       // Mark poll job as succeeded
       await jobRepository.markSucceeded(persistedPollJob.id);
 
-      // 5. Verify order sync jobs were enqueued
-      const allJobs = await jobRepository.find({ connectionId: connection.id });
-      const orderSyncJobs = allJobs.filter((job) => job.jobType === 'allegro.order.syncByCheckoutFormId');
-      expect(orderSyncJobs.length).toBeGreaterThan(0);
+      // 5. Verify order sync jobs were enqueued to the queue (published)
+      // Note: the poll handler enqueues via SyncJobQueueService -> JobEnqueuePort.
+      // We can't rely on JobIntakeConsumer persisting jobs in this test, so we assert publish calls.
+      expect(enqueueSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobType: 'marketplace.order.sync',
+          connectionId: connection.id,
+          payload: expect.objectContaining({ schemaVersion: 1 }),
+        }),
+      );
 
-      // 6. Execute order sync handler for first order
-      const orderSyncJob = orderSyncJobs[0];
-      const { AllegroOrderSyncHandler } = require('../../src/sync/handlers/allegro-order-sync.handler');
-      const orderSyncHandler = harness.get(AllegroOrderSyncHandler);
-      await orderSyncHandler.execute(orderSyncJob);
+      // 6. Execute order sync handler for one order
+      const orderSyncPersisted = await jobRepository.createIfNotExistsByIdempotencyKey({
+        jobType: 'marketplace.order.sync',
+        connectionId: connection.id,
+        payload: {
+          schemaVersion: 1,
+          externalOrderId: 'checkout-form-001',
+          sourceEventId: 'event-001',
+        },
+        idempotencyKey: `test-order-sync-${randomUUID()}`,
+        maxAttempts: 10,
+      });
+
+      const { MarketplaceOrderSyncHandler } = require('../../src/sync/handlers/marketplace-order-sync.handler');
+      const orderSyncHandler = harness.get(MarketplaceOrderSyncHandler);
+      await orderSyncHandler.execute(orderSyncPersisted);
 
       // Mark order sync job as succeeded
-      await jobRepository.markSucceeded(orderSyncJob.id);
+      await jobRepository.markSucceeded(orderSyncPersisted.id);
 
       // 7. Verify order was routed to OrderProcessorManager
       expect(mockOrderProcessor.createOrder).toHaveBeenCalled();
@@ -167,9 +194,10 @@ describe('Allegro Order Sync End-to-End Integration', () => {
 
       // Initial poll
       const pollJobRequest: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as JobTypeValues[number],
+        jobType: 'marketplace.orders.poll',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           cursorKey: 'allegro.orders.lastEventId',
           limit: 10,
         },
@@ -184,8 +212,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const { AllegroOrdersPollHandler } = require('../../src/sync/handlers/allegro-orders-poll.handler');
-      const pollHandler = harness.get(AllegroOrdersPollHandler);
+      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
+      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
       await pollHandler.execute(persistedPollJob);
       await jobRepository.markSucceeded(persistedPollJob.id);
 
@@ -195,9 +223,10 @@ describe('Allegro Order Sync End-to-End Integration', () => {
 
       // Second poll should use the cursor
       const pollJobRequest2: SyncJobRequest = {
-        jobType: 'allegro.orders.poll' as JobTypeValues[number],
+        jobType: 'marketplace.orders.poll',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           cursorKey: 'allegro.orders.lastEventId',
           limit: 10,
         },

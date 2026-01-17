@@ -1,6 +1,7 @@
 export default {
   testEnvironment: 'node',
   rootDir: '.',
+  testSequencer: '<rootDir>/test/openlinker.sequencer.cjs',
 
   // IMPORTANT: avoid running fixtures/mocks as "tests"
   testMatch: ['<rootDir>/src/**/*.spec.ts'],

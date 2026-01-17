@@ -86,7 +86,7 @@ Webhook events are published to Redis Streams as `InboundWebhookEvent` with:
 
 The webhook-to-job handler:
 - Consumes events from `events.inbound.webhooks` stream
-- Maps events to sync jobs (e.g., `prestashop.product.syncByExternalId`)
+- Maps events to sync jobs (e.g., `master.product.syncByExternalId`)
 - Enqueues jobs to `jobs.sync` stream with idempotency keys
 - Enforces job-level idempotency using Redis `SET NX` keys
 
@@ -171,7 +171,7 @@ Inbound webhook events stream. Messages contain:
 ### `jobs.sync`
 
 Sync job requests stream. Messages contain:
-- `jobType`: Job type (e.g., `prestashop.product.syncByExternalId`)
+- `jobType`: Job type (e.g., `master.product.syncByExternalId`)
 - `connectionId`: Connection identifier
 - `payloadJson`: Stringified JSON payload
 - `idempotencyKey`: Idempotency key for deduplication

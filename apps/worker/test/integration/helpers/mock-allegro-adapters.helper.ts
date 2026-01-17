@@ -1,36 +1,36 @@
 /**
  * Mock Allegro Adapter Helpers
  *
- * Utilities for creating mock Allegro adapters for integration tests.
+ * Utilities for creating mock Allegro marketplace adapters for integration tests.
  * These mocks return test data without making real API calls.
  *
  * @module apps/worker/test/integration/helpers
  */
-import { MarketplaceIntegrationPort, MarketplaceOrderFeedResponse, UpdateOfferQuantityResult } from '@openlinker/core/listings';
-import { Order } from '@openlinker/core/orders';
-import { randomUUID } from 'crypto';
+import { MarketplacePort, MarketplaceOrderFeedOutput } from '@openlinker/core/integrations';
+import { IncomingOrder } from '@openlinker/core/orders';
 
 /**
  * Create a mock Allegro Marketplace adapter
  *
  * Returns test order data without making real API calls.
  */
-export function createMockAllegroMarketplaceAdapter(): MarketplaceIntegrationPort {
+export function createMockAllegroMarketplaceAdapter(): MarketplacePort {
   let cursor = 'initial-cursor';
-  const orders: Map<string, Order> = new Map();
+  const orders: Map<string, IncomingOrder> = new Map();
 
   // Create a test order
-  const testOrder: Order = {
-    id: randomUUID(),
+  const testOrder: IncomingOrder = {
+    externalOrderId: 'checkout-form-001',
     orderNumber: 'ALLEGRO-ORDER-001',
     status: 'pending',
-    customerId: randomUUID(),
+    customerExternalId: 'buyer-001',
     items: [
       {
-        productId: randomUUID(),
+        id: 'item-1',
+        productRef: { type: 'offer', externalId: 'offer-1' },
         quantity: 2,
         price: 19.99,
-        name: 'Test Product',
+        sku: 'SKU-1',
       },
     ],
     totals: {
@@ -41,19 +41,19 @@ export function createMockAllegroMarketplaceAdapter(): MarketplaceIntegrationPor
       currency: 'PLN',
     },
     shippingAddress: {
-      street: 'Test Street 123',
+      address1: 'Test Street 123',
       city: 'Warsaw',
       postalCode: '00-001',
       country: 'PL',
     },
     billingAddress: {
-      street: 'Test Street 123',
+      address1: 'Test Street 123',
       city: 'Warsaw',
       postalCode: '00-001',
       country: 'PL',
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     metadata: {
       sourceEventId: 'event-001',
       sourceCheckoutFormId: 'checkout-form-001',
@@ -63,23 +63,27 @@ export function createMockAllegroMarketplaceAdapter(): MarketplaceIntegrationPor
   orders.set('checkout-form-001', testOrder);
 
   return {
-    getOrders: jest.fn().mockImplementation(async (params: { cursor?: string; limit?: number }): Promise<MarketplaceOrderFeedResponse> => {
-      const limit = params.limit || 10;
-      const currentCursor = params.cursor || cursor;
+    listOrderFeed: jest.fn().mockImplementation(async (input): Promise<MarketplaceOrderFeedOutput> => {
+      const limit = input.limit;
+      void input.fromCursor;
 
-      // Simulate pagination: return orders and advance cursor
-      const items = [
+      const items: MarketplaceOrderFeedOutput['items'] = [
         {
+          externalOrderId: 'checkout-form-001',
+          eventType: 'updated' as const,
+          occurredAt: '2024-01-01T00:00:00Z',
+          eventKey: 'event-001',
           eventId: 'event-001',
-          checkoutFormId: 'checkout-form-001',
         },
         {
+          externalOrderId: 'checkout-form-002',
+          eventType: 'updated' as const,
+          occurredAt: '2024-01-01T01:00:00Z',
+          eventKey: 'event-002',
           eventId: 'event-002',
-          checkoutFormId: 'checkout-form-002',
         },
       ].slice(0, limit);
 
-      // Advance cursor
       cursor = `cursor-${Date.now()}`;
 
       return {
@@ -88,62 +92,53 @@ export function createMockAllegroMarketplaceAdapter(): MarketplaceIntegrationPor
       };
     }),
 
-    getOrderByCheckoutFormId: jest.fn().mockImplementation(async (checkoutFormId: string): Promise<Order> => {
-      const order = orders.get(checkoutFormId);
-      if (!order) {
-        // Create a new order for unknown checkout form IDs
-        return {
-          id: randomUUID(),
-          orderNumber: `ALLEGRO-ORDER-${checkoutFormId}`,
-          status: 'pending',
-          customerId: randomUUID(),
-          items: [
-            {
-              productId: randomUUID(),
-              quantity: 1,
-              price: 29.99,
-              name: 'Test Product 2',
-            },
-          ],
-          totals: {
-            subtotal: 29.99,
-            shipping: 5.0,
-            tax: 0.0,
-            total: 34.99,
-            currency: 'PLN',
-          },
-          shippingAddress: {
-            street: 'Test Street 456',
-            city: 'Krakow',
-            postalCode: '30-001',
-            country: 'PL',
-          },
-          billingAddress: {
-            street: 'Test Street 456',
-            city: 'Krakow',
-            postalCode: '30-001',
-            country: 'PL',
-          },
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          metadata: {
-            sourceEventId: `event-${checkoutFormId}`,
-            sourceCheckoutFormId: checkoutFormId,
-          },
-        };
-      }
-      return order;
-    }),
+    getOrder: jest.fn().mockImplementation(async ({ externalOrderId }): Promise<IncomingOrder> => {
+      const order = orders.get(externalOrderId);
+      if (order) return order;
 
-    updateOfferQuantity: jest.fn().mockImplementation(async (request: { offerId: string; quantity: number; idempotencyKey: string }): Promise<UpdateOfferQuantityResult> => {
-      // Generate deterministic command ID from idempotency key
-      const commandId = randomUUID();
       return {
-        commandId,
-        status: 'queued' as const,
+        externalOrderId,
+        orderNumber: `ALLEGRO-ORDER-${externalOrderId}`,
+        status: 'pending',
+        customerExternalId: `buyer-${externalOrderId}`,
+        items: [
+          {
+            id: 'item-1',
+            productRef: { type: 'offer', externalId: 'offer-2' },
+            quantity: 1,
+            price: 29.99,
+            sku: 'SKU-2',
+          },
+        ],
+        totals: {
+          subtotal: 29.99,
+          shipping: 5.0,
+          tax: 0.0,
+          total: 34.99,
+          currency: 'PLN',
+        },
+        shippingAddress: {
+          address1: 'Test Street 456',
+          city: 'Krakow',
+          postalCode: '30-001',
+          country: 'PL',
+        },
+        billingAddress: {
+          address1: 'Test Street 456',
+          city: 'Krakow',
+          postalCode: '30-001',
+          country: 'PL',
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {
+          sourceEventId: `event-${externalOrderId}`,
+        },
       };
     }),
-  } as unknown as MarketplaceIntegrationPort;
+
+    updateOfferQuantity: jest.fn().mockResolvedValue(undefined),
+  } as unknown as MarketplacePort;
 }
 
 
