@@ -8,8 +8,72 @@
  * @module libs/integrations/allegro/src/domain/types
  */
 
-// eslint-disable-next-line no-restricted-imports
-import { AllegroOrderEvent } from '../../infrastructure/mappers/allegro-order.mapper';
+/**
+ * Allegro checkout form (from GET /order/checkout-forms/{id})
+ */
+export interface AllegroCheckoutForm {
+  id: string;
+  messageToSeller?: string;
+  buyer: {
+    id: string;
+    email?: string;
+    login?: string;
+    firstName?: string;
+    lastName?: string;
+    phoneNumber?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      zipCode?: string;
+      countryCode?: string;
+    };
+  };
+  payment: {
+    type: string;
+    provider?: string;
+    finishedAt?: string;
+    paidAmount?: {
+      amount: string;
+      currency: string;
+    };
+  };
+  lineItems: Array<{
+    id: string;
+    offer: {
+      id: string;
+      name: string;
+    };
+    quantity: number;
+    price: {
+      amount: string;
+      currency: string;
+    };
+    boughtAt?: string;
+  }>;
+  summary: {
+    totalToPay: {
+      amount: string;
+      currency: string;
+    };
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Allegro order event (from GET /order/events)
+ */
+export interface AllegroOrderEvent {
+  id: string;
+  order: {
+    id: string;
+    checkoutForm: {
+      id: string;
+    };
+  };
+  occurredAt: string;
+  type: string;
+}
 
 /**
  * Allegro order events API response

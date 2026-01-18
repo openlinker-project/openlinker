@@ -7,30 +7,28 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
-import { IOfferMappingService } from '@openlinker/core/listings';
+import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { IInventoryService } from '@openlinker/core/inventory';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { OfferMapping } from '@openlinker/core/listings/domain/entities/offer-mapping.entity';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
 import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
 
 describe('InventoryPropagateToMarketplacesHandler', () => {
   let handler: InventoryPropagateToMarketplacesHandler;
-  let offerMappingService: jest.Mocked<IOfferMappingService>;
+  let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let inventoryService: jest.Mocked<IInventoryService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
 
   beforeEach(() => {
-    offerMappingService = {
-      findById: jest.fn(),
-      findByConnectionAndOffer: jest.fn(),
-      findByProduct: jest.fn(),
-      findByConnection: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-    } as unknown as jest.Mocked<IOfferMappingService>;
+    identifierMapping = {
+      getOrCreateInternalId: jest.fn(),
+      getInternalId: jest.fn(),
+      getExternalIds: jest.fn(),
+      createMapping: jest.fn(),
+      batchGetOrCreateInternalIds: jest.fn(),
+      getOrCreateExactMapping: jest.fn(),
+    } as unknown as jest.Mocked<IIdentifierMappingService>;
 
     inventoryService = {
       setInventory: jest.fn(),
@@ -42,7 +40,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     } as unknown as jest.Mocked<JobEnqueuePort>;
 
     handler = new InventoryPropagateToMarketplacesHandler(
-      offerMappingService,
+      identifierMapping,
       inventoryService,
       jobEnqueue,
     );
@@ -77,25 +75,22 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         null,
         new Date(),
       );
-      const mapping = new OfferMapping(
-        'mapping-id',
-        'connection-id',
-        'allegro',
-        'offer-id',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([mapping]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
       jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
 
       await handler.execute(job);
 
       expect(inventoryService.getInventory).toHaveBeenCalledWith('product-id', null, null);
-      expect(offerMappingService.findByProduct).toHaveBeenCalledWith('product-id');
+      expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Offer', 'product-id');
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
           jobType: 'marketplace.offerQuantity.update',
@@ -115,7 +110,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       await handler.execute(job);
 
-      expect(offerMappingService.findByProduct).not.toHaveBeenCalled();
+      expect(identifierMapping.getExternalIds).not.toHaveBeenCalled();
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
@@ -132,7 +127,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([]);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
 
       await handler.execute(job);
 
@@ -150,29 +145,21 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         null,
         new Date(),
       );
-      const allegroMapping = new OfferMapping(
-        'allegro-mapping-id',
-        'connection-id',
-        'allegro',
-        'offer-id',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
-      const otherMapping = new OfferMapping(
-        'other-mapping-id',
-        'connection-id',
-        'amazon',
-        'offer-id',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
-
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([allegroMapping, otherMapping]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+        {
+          entityType: 'Offer',
+          platformType: 'amazon',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
       jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
 
       await handler.execute(job);
@@ -199,19 +186,16 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         null,
         new Date(),
       );
-      const mapping = new OfferMapping(
-        'mapping-id',
-        'connection-id',
-        'allegro',
-        'offer-id',
-        'product-id',
-        'variant-id',
-        new Date(),
-        new Date(),
-      );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([mapping]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
       jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
 
       await handler.execute(job);
@@ -237,19 +221,16 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         null,
         new Date(),
       );
-      const mapping = new OfferMapping(
-        'mapping-id',
-        'connection-id',
-        'allegro',
-        'offer-id',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([mapping]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
       jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
 
       await handler.execute(job);
@@ -286,29 +267,22 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         null,
         new Date(),
       );
-      const mapping1 = new OfferMapping(
-        'mapping-1',
-        'connection-1',
-        'allegro',
-        'offer-1',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
-      const mapping2 = new OfferMapping(
-        'mapping-2',
-        'connection-2',
-        'allegro',
-        'offer-2',
-        'product-id',
-        null,
-        new Date(),
-        new Date(),
-      );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
-      offerMappingService.findByProduct.mockResolvedValue([mapping1, mapping2]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-1',
+          externalId: 'offer-1',
+        },
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-2',
+          externalId: 'offer-2',
+        },
+      ]);
       jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
 
       await handler.execute(job);

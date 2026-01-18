@@ -24,7 +24,7 @@ import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.type
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import { OrderProcessorManagerPort } from '@openlinker/core/orders';
-import { IOfferMappingService, OFFER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/listings';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -37,7 +37,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
   let dataSource: DataSource;
   let mockMarketplaceAdapter: ReturnType<typeof createMockAllegroMarketplaceAdapter>;
   let mockOrderProcessor: jest.Mocked<OrderProcessorManagerPort>;
-  let offerMappingService: IOfferMappingService;
+  let identifierMapping: IIdentifierMappingService;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -46,7 +46,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     cursorRepository = harness.get(CONNECTION_CURSOR_REPOSITORY_TOKEN);
     integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
     dataSource = harness.getDataSource();
-    offerMappingService = harness.get(OFFER_MAPPING_SERVICE_TOKEN);
+    identifierMapping = harness.get(IDENTIFIER_MAPPING_SERVICE_TOKEN);
 
     // Set credentials environment variable for test connection
     process.env.CREDENTIALS_TEST_CREDENTIALS_REF = '{"accessToken":"test-token","refreshToken":"test-refresh"}';
@@ -97,13 +97,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       });
 
       // Seed offer mapping required by IncomingOrderItemRef(type='offer') resolution
-      await offerMappingService.create(
-        connection.id,
-        'allegro',
-        'offer-1',
-        'ol_product_test_1',
-        null,
-      );
+      await identifierMapping.createMapping('Offer', 'offer-1', connection.id, 'ol_product_test_1');
 
       // 2. Enqueue poll job to Redis Stream
       const pollJobRequest: SyncJobRequest = {

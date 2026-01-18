@@ -11,10 +11,10 @@ import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import {
+  AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
 } from '../../../domain/types/allegro-api.types';
-import { AllegroCheckoutForm } from '../../mappers/allegro-order.mapper';
 
 describe('AllegroMarketplaceAdapter', () => {
   let adapter: AllegroMarketplaceAdapter;

@@ -16,7 +16,11 @@ import {
   JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
 } from '@openlinker/core/sync';
-import { IOfferMappingService, OFFER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/listings';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 
 type SyncJob = SyncJobEntity;
@@ -45,8 +49,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
   private readonly logger = new Logger(InventoryPropagateToMarketplacesHandler.name);
 
   constructor(
-    @Inject(OFFER_MAPPING_SERVICE_TOKEN)
-    private readonly offerMappingService: IOfferMappingService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(JOB_ENQUEUE_TOKEN)
@@ -83,8 +87,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Current inventory for product ${payload.productId}: ${availableQuantity} available`,
       );
 
-      // Step 3: Find all offer mappings for product
-      const mappings = await this.offerMappingService.findByProduct(payload.productId);
+      // Step 3: Find all marketplace offers mapped to this internal product
+      // (Offer mappings are stored in identifier_mappings as entityType='Offer')
+      const mappings = await this.identifierMapping.getExternalIds('Offer', payload.productId);
 
       if (mappings.length === 0) {
         this.logger.debug(
@@ -99,7 +104,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
 
       // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job
       // Filter to only Allegro mappings for MVP (platformType === 'allegro')
-      const allegroMappings = mappings.filter((m) => m.platformType === 'allegro');
+      const allegroMappings = mappings.filter((m: ExternalIdMapping) => m.platformType === 'allegro');
 
       if (allegroMappings.length === 0) {
         this.logger.debug(
@@ -114,7 +119,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
 
         const updatePayload = {
           schemaVersion: 1 as const,
-          offerId: mapping.offerId,
+          offerId: mapping.externalId,
           quantity: availableQuantity,
           idempotencyKey,
         };
@@ -129,7 +134,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         await this.jobEnqueue.enqueueJob(updateJobRequest);
 
         this.logger.debug(
-          `Enqueued offer quantity update job for offer ${mapping.offerId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`,
+          `Enqueued offer quantity update job for offer ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`,
         );
       });
 

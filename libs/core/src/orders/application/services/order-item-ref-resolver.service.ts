@@ -10,16 +10,11 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import {
-  IOfferMappingService,
-  OFFER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/listings';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 export interface ResolvedOrderItemProduct {
   internalProductId: string;
-  variantId?: string | null;
 }
 
 @Injectable()
@@ -27,8 +22,6 @@ export class OrderItemRefResolverService {
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
-    @Inject(OFFER_MAPPING_SERVICE_TOKEN)
-    private readonly offerMapping: IOfferMappingService,
   ) {}
 
   async resolve(
@@ -37,17 +30,15 @@ export class OrderItemRefResolverService {
   ): Promise<ResolvedOrderItemProduct> {
     switch (productRef.type) {
       case 'offer': {
-        const mapping = await this.offerMapping.findByConnectionAndOffer(
-          connectionId,
+        const internalProductId = await this.identifierMapping.getInternalId(
+          'Offer',
           productRef.externalId,
+          connectionId,
         );
-        if (!mapping) {
-          throw new MissingOrderItemMappingError(connectionId, productRef, 'offer_mappings');
+        if (!internalProductId) {
+          throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Offer');
         }
-        return {
-          internalProductId: mapping.internalProductId,
-          variantId: mapping.variantId,
-        };
+        return { internalProductId };
       }
       case 'product': {
         const internalProductId = await this.identifierMapping.getInternalId(

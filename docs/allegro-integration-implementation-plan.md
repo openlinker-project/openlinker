@@ -227,13 +227,17 @@ Deliver an MVP Allegro integration aligned to OpenLinker's hexagonal architectur
 ### Phase 8: Offer↔Product Mapping + Inventory Sync to Allegro
 
 - **Mapping storage**
-  - Add a minimal **generic** mapping table: `offer_mappings` with:
-    - `(connectionId, platformType, offerId, internalProductId, variantId?)`
-  - Rationale: supports future marketplaces without per-platform schema churn.
-  - Provide repository + service in core (or API layer if MVP-only, but prefer core types and ports).
+  - Standardize on `identifier_mappings` for offer mapping:
+    - `entityType = 'Offer'`
+    - `externalId = offerId`
+    - `internalId = internalProductId` (canonical “sellable item” id)
+    - Scoped by `(platformType, connectionId)`
+  - Ensure DB correctness/perf:
+    - **UNIQUE** `(entityType, platformType, connectionId, externalId)`
+    - **INDEX** `(entityType, platformType, connectionId, internalId)` for reverse lookup
 
 - **API endpoints**
-  - CRUD endpoints under `apps/api/src/integrations/http/` (or a dedicated module) to manage mappings.
+  - (Optional) CRUD endpoints for creating mappings should create `identifier_mappings` entries with `entityType='Offer'`.
 
 - **Inventory update flow**
   - Either:

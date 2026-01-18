@@ -19,8 +19,8 @@ import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import { AllegroCheckoutForm } from '../mappers/allegro-order.mapper';
 import {
+  AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
 } from '../../domain/types/allegro-api.types';

@@ -22,7 +22,6 @@ import {
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
-import { ListingsModule } from '@openlinker/core/listings';
 import { SyncModule } from '@openlinker/core/sync';
 
 // Re-export tokens for convenience
@@ -33,7 +32,6 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TypeOrmModule.forFeature([OrderRecordOrmEntity]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
-    ListingsModule, // Required for OFFER_MAPPING_SERVICE_TOKEN (offer -> internal product mapping)
     SyncModule, // Required for cursor repository, job queue, and locks
   ],
   providers: [

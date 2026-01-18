@@ -345,8 +345,10 @@ DELETE FROM connections WHERE id = '{connectionId}';
 -- Delete test credentials
 DELETE FROM integration_credentials WHERE ref LIKE 'allegro_%';
 
--- Delete test offer mappings
-DELETE FROM offer_mappings WHERE connection_id = '{connectionId}';
+-- Delete test offer mappings (offers are stored in identifier_mappings)
+DELETE FROM identifier_mappings
+WHERE "connectionId" = '{connectionId}'
+  AND "entityType" = 'Offer';
 ```
 
 **Note**: Be careful with cleanup in shared environments!

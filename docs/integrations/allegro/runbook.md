@@ -246,19 +246,20 @@ curl -X DELETE http://localhost:3000/integrations/offer-mappings/{mappingId}
 ### Query Mappings in Database
 
 ```sql
--- Get all mappings for a connection
+-- Get all offer mappings for a connection (offers are stored in identifier_mappings)
 SELECT 
   id,
-  connection_id,
-  platform_type,
-  offer_id,
-  internal_product_id,
-  variant_id,
-  created_at,
-  updated_at
-FROM offer_mappings
-WHERE connection_id = 'your-connection-id'
-ORDER BY created_at DESC;
+  "connectionId",
+  "platformType",
+  "entityType",
+  "externalId" AS "offerId",
+  "internalId" AS "internalProductId",
+  "createdAt",
+  "updatedAt"
+FROM identifier_mappings
+WHERE "connectionId" = 'your-connection-id'
+  AND "entityType" = 'Offer'
+ORDER BY "createdAt" DESC;
 ```
 
 ## Troubleshoot Order Sync Failures

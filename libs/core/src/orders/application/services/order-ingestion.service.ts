@@ -173,7 +173,6 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     const incoming = await marketplace.getOrder({ externalOrderId });
     const order = await this.toUnifiedOrder(incoming, connectionId);
-
     return await this.orderSyncService.syncOrder({
       order,
       sourceConnectionId: connectionId,
@@ -205,7 +204,6 @@ export class OrderIngestionService implements IOrderIngestionService {
       items.push({
         id: item.id,
         productId: resolved.internalProductId,
-        variantId: resolved.variantId ?? undefined,
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
