@@ -15,6 +15,7 @@ import {
   SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
+import { MissingOrderItemMappingError } from '@openlinker/core/orders';
 import { AllegroAuthenticationException } from '@openlinker/integrations-allegro';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
@@ -330,10 +331,18 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       if (error.cause instanceof AllegroAuthenticationException) {
         return true;
       }
+      if (error.cause instanceof MissingOrderItemMappingError) {
+        return true;
+      }
     }
 
     // Direct AllegroAuthenticationException (shouldn't happen, but handle it)
     if (error instanceof AllegroAuthenticationException) {
+      return true;
+    }
+
+    // Direct missing-mapping error (shouldn't happen, but handle it)
+    if (error instanceof MissingOrderItemMappingError) {
       return true;
     }
 

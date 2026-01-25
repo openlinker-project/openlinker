@@ -59,7 +59,7 @@ Most of the Allegro MVP integration is complete (Phases 0-9). The following task
 
 **Completed**:
 - [x] End-to-end test: Allegro order sync flow
-  - Enqueue `allegro.orders.poll` job
+  - Enqueue `marketplace.orders.poll` job
   - Verify job persisted to database
   - Execute poll handler (mock Allegro API)
   - Verify order sync jobs enqueued
@@ -67,7 +67,7 @@ Most of the Allegro MVP integration is complete (Phases 0-9). The following task
   - Verify order routed to `OrderProcessorManager`
   - Verify cursor updated
 - [x] End-to-end test: Offer quantity update flow
-  - Enqueue `allegro.offerQuantity.update` job
+  - Enqueue `marketplace.offerQuantity.update` job
   - Execute offer quantity update handler (mock Allegro API)
   - Verify command status persisted
   - Query command status via repository

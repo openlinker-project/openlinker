@@ -14,11 +14,6 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '@openlinker/core/customers/customers.tokens';
 import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers/domain/ports/customer-projection-repository.port';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
@@ -26,14 +21,10 @@ import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN } from '@openlinker/core/customers/customers.tokens';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { DataSource } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { normalizeEmail, hashEmail } from '@openlinker/shared/config';
 
 describe('Allegro Masked Email Identity Integration', () => {
   let harness: WorkerIntegrationTestHarness;
-  let jobRepository: SyncJobRepositoryPort;
-  let jobEnqueue: JobEnqueuePort;
-  let integrationsService: IIntegrationsService;
   let customerProjectionRepository: CustomerProjectionRepositoryPort;
   let identifierMapping: IdentifierMappingPort;
   let customerIdentityResolver: CustomerIdentityResolverPort;
@@ -41,9 +32,6 @@ describe('Allegro Masked Email Identity Integration', () => {
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    jobRepository = harness.get(SYNC_JOB_REPOSITORY_TOKEN);
-    jobEnqueue = harness.get(JOB_ENQUEUE_TOKEN);
-    integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
     customerProjectionRepository = harness.get(CUSTOMER_PROJECTION_REPOSITORY_TOKEN);
     identifierMapping = harness.get(IDENTIFIER_MAPPING_PORT_TOKEN);
     customerIdentityResolver = harness.get(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN);

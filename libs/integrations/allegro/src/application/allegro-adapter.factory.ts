@@ -18,6 +18,7 @@ import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
 import { AllegroMarketplaceAdapter } from '../infrastructure/adapters/allegro-marketplace.adapter';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
+import { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
 
 /**
  * Allegro Adapter Factory
@@ -30,6 +31,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
   constructor(
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
+    private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
   ) {}
 
   async createAdapters(
@@ -77,6 +79,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       identifierMapping,
       connection,
       this.customerIdentityResolver,
+      this.commandRepository,
     );
 
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);

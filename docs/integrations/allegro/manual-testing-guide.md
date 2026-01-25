@@ -56,7 +56,7 @@ Enqueue a poll job (or wait for scheduled poll):
 curl -X POST http://localhost:3000/sync/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "jobType": "allegro.orders.poll",
+    "jobType": "marketplace.orders.poll",
     "connectionId": "{connectionId}",
     "payload": {
       "cursorKey": "allegro.orders.lastEventId",
@@ -76,7 +76,7 @@ Check job status in database:
 SELECT id, job_type, status, last_error, attempts
 FROM sync_jobs
 WHERE connection_id = '{connectionId}'
-  AND job_type = 'allegro.orders.poll'
+  AND job_type = 'marketplace.orders.poll'
 ORDER BY created_at DESC
 LIMIT 1;
 ```
@@ -89,7 +89,7 @@ LIMIT 1;
 SELECT id, job_type, status, payload_json
 FROM sync_jobs
 WHERE connection_id = '{connectionId}'
-  AND job_type = 'allegro.order.syncByCheckoutFormId'
+  AND job_type = 'marketplace.order.sync'
 ORDER BY created_at DESC;
 ```
 
@@ -156,7 +156,7 @@ curl -X POST http://localhost:3000/sync/jobs \
 SELECT id, job_type, status, payload_json
 FROM sync_jobs
 WHERE connection_id = '{connectionId}'
-  AND job_type = 'allegro.offerQuantity.update'
+  AND job_type = 'marketplace.offerQuantity.update'
 ORDER BY created_at DESC
 LIMIT 1;
 ```
@@ -345,8 +345,10 @@ DELETE FROM connections WHERE id = '{connectionId}';
 -- Delete test credentials
 DELETE FROM integration_credentials WHERE ref LIKE 'allegro_%';
 
--- Delete test offer mappings
-DELETE FROM offer_mappings WHERE connection_id = '{connectionId}';
+-- Delete test offer mappings (offers are stored in identifier_mappings)
+DELETE FROM identifier_mappings
+WHERE "connectionId" = '{connectionId}'
+  AND "entityType" = 'Offer';
 ```
 
 **Note**: Be careful with cleanup in shared environments!

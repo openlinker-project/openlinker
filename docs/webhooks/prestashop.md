@@ -89,7 +89,7 @@ Triggered when a product is created or updated.
 }
 ```
 
-**Result**: Triggers `prestashop.product.syncByExternalId` job to fetch full product data via PrestaShop WebService API.
+**Result**: Triggers `master.product.syncByExternalId` job to fetch full product data via PrestaShop WebService API.
 
 ### Inventory Events
 

@@ -12,6 +12,7 @@ import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-m
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory';
 import { AllegroTokenRefreshService } from '../token-refresh/allegro-token-refresh.service';
+import { AllegroQuantityCommandRepositoryPort } from '../../domain/ports/allegro-quantity-command-repository.port';
 // Adapters are created by factory, no need to import here
 
 /**
@@ -25,8 +26,13 @@ export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
   constructor(
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
+    private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
   ) {
-    this.factory = new AllegroAdapterFactory(this.customerIdentityResolver, this.tokenRefreshService);
+    this.factory = new AllegroAdapterFactory(
+      this.customerIdentityResolver,
+      this.tokenRefreshService,
+      this.commandRepository,
+    );
   }
 
   async createCapabilityAdapter<T>(

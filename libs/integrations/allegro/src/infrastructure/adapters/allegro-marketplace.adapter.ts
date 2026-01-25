@@ -1,38 +1,44 @@
 /**
  * Allegro Marketplace Adapter
  *
- * Adapter implementing MarketplaceIntegrationPort for Allegro. Handles order
+ * Adapter implementing the canonical MarketplacePort for Allegro. Handles order
  * ingestion from Allegro event journal and offer quantity updates via Allegro
  * command pattern.
  *
  * @module libs/integrations/allegro/src/infrastructure/adapters
- * @implements {MarketplaceIntegrationPort}
+ * @implements {MarketplacePort}
  */
-import { MarketplaceIntegrationPort } from '@openlinker/core/listings';
 import {
-  MarketplaceOrderFeedResponse,
-  UpdateOfferQuantityRequest,
-  UpdateOfferQuantityResult,
-  OfferQuantityUpdateStatusValues,
-} from '@openlinker/core/listings';
-import { Order } from '@openlinker/core/orders';
+  MarketplacePort,
+  MarketplaceOrderFeedInput,
+  MarketplaceOrderFeedOutput,
+  MarketplaceOrderEventType,
+  UpdateOfferQuantityCommand,
+} from '@openlinker/core/integrations';
+import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import { AllegroOrderMapper, AllegroCheckoutForm } from '../mappers/allegro-order.mapper';
 import {
+  AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
 } from '../../domain/types/allegro-api.types';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
+import {
+  AllegroQuantityCommandRepositoryPort,
+  AllegroQuantityCommand,
+} from '../../index';
+
+type MarketplaceOrderFeedItem = MarketplaceOrderFeedOutput['items'][number];
 
 /**
  * Allegro Marketplace Adapter
  *
  * Adapter for Allegro marketplace operations (order ingestion and offer quantity updates).
  */
-export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
+export class AllegroMarketplaceAdapter implements MarketplacePort {
   private readonly logger = new Logger(AllegroMarketplaceAdapter.name);
 
   constructor(
@@ -41,32 +47,33 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
     private readonly identifierMapping: IdentifierMappingPort,
     _connection: Connection,
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
+    private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
   ) {
     // Connection is stored for potential future use but not currently accessed
     void _connection;
+    // Keep deps in constructor for backward compatibility with factory, but do not use
+    // identifier mapping or identity resolution in IncomingOrder (external-only contract).
+    void this.identifierMapping;
+    void this.customerIdentityResolver;
   }
 
   /**
-   * Get incremental marketplace orders
+   * List incremental marketplace order feed items (event journal).
    *
    * Fetches order events from Allegro event journal using cursor-based pagination.
-   * Returns order references (eventId, checkoutFormId) that can be hydrated into
-   * full orders via getOrderByCheckoutFormId.
    */
-  async getOrders(params: { cursor?: string; limit?: number }): Promise<MarketplaceOrderFeedResponse> {
+  async listOrderFeed(input: MarketplaceOrderFeedInput): Promise<MarketplaceOrderFeedOutput> {
     this.logger.debug(
-      `Fetching Allegro orders (connection: ${this.connectionId}, cursor: ${params.cursor || 'none'}, limit: ${params.limit || 'default'})`,
+      `Listing Allegro order feed (connection: ${this.connectionId}, fromCursor: ${input.fromCursor || 'none'}, limit: ${input.limit})`,
     );
 
     try {
       // Build query parameters for /order/events endpoint
       const queryParams: Record<string, string | number> = {};
-      if (params.cursor) {
-        queryParams.from = params.cursor; // Allegro uses 'from' parameter for cursor
+      if (input.fromCursor) {
+        queryParams.from = input.fromCursor; // Allegro uses 'from' parameter for cursor
       }
-      if (params.limit) {
-        queryParams.limit = params.limit;
-      }
+      queryParams.limit = input.limit;
 
       // Fetch order events from Allegro
       const response = await this.httpClient.get<AllegroOrderEventsResponse>('/order/events', {
@@ -86,25 +93,46 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
       // 3. If no events and no lastEventId, keep the current cursor (return it as nextCursor)
       //    This prevents the cursor from getting stuck when Allegro returns empty results
       const nextCursor = response.data.lastEventId || 
-                        (events.length > 0 ? events[events.length - 1]?.id : params.cursor);
+                        (events.length > 0 ? events[events.length - 1]?.id : input.fromCursor || null);
 
       this.logger.debug(
-        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'}, lastEventId from API: ${response.data.lastEventId || 'none'}, currentCursor: ${params.cursor || 'none'})`,
+        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`,
       );
 
-      // Map events to marketplace feed items
-      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping, this.logger);
-      const items = mapper.toMarketplaceFeedItems(events);
+      // Deduplicate by checkoutFormId, keeping the latest event (highest ID)
+      const eventMap = new Map<string, (typeof events)[number]>();
+      for (const event of events) {
+        const checkoutFormId = event.order.checkoutForm.id;
+        const existing = eventMap.get(checkoutFormId);
+        if (!existing || event.id > existing.id) {
+          eventMap.set(checkoutFormId, event);
+        }
+      }
+
+      const items: MarketplaceOrderFeedItem[] = Array.from(eventMap.values())
+        .map((event) => {
+          const externalOrderId = event.order.checkoutForm.id;
+          const occurredAt = event.occurredAt;
+          const eventType = this.mapAllegroEventType(event.type);
+
+          return {
+            externalOrderId,
+            eventType,
+            occurredAt,
+            eventKey: event.id,
+            eventId: event.id,
+            raw: { type: event.type },
+          };
+        })
+        .filter((i) => !input.eventTypes || input.eventTypes.includes(i.eventType));
 
       return {
         items,
-        // Return the cursor (either new or current) to allow cursor advancement
-        // If there's no cursor at all (first poll), return empty string
-        nextCursor: nextCursor || '',
+        nextCursor,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to fetch Allegro orders (connection: ${this.connectionId}): ${(error as Error).message}`,
+        `Failed to list Allegro order feed (connection: ${this.connectionId}): ${(error as Error).message}`,
         error,
       );
       throw error;
@@ -112,12 +140,12 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
   }
 
   /**
-   * Get a full order by checkout form ID
+   * Get a full order by marketplace-native order id (Allegro checkout form id).
    *
-   * Fetches full order details from Allegro and maps to unified Order schema
-   * with internal OpenLinker IDs.
+   * Returns IncomingOrder DTO (integration-facing). Core maps it to canonical models.
    */
-  async getOrderByCheckoutFormId(checkoutFormId: string): Promise<Order> {
+  async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
+    const checkoutFormId = input.externalOrderId;
     this.logger.debug(
       `Fetching Allegro order by checkout form ID: ${checkoutFormId} (connection: ${this.connectionId})`,
     );
@@ -128,42 +156,52 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
         `/order/checkout-forms/${checkoutFormId}`,
       );
 
-      // Resolve customer identity if resolver is available
-      let resolvedCustomerId: string | undefined;
-      if (this.customerIdentityResolver) {
-        if (response.data.buyer.email) {
-          try {
-            const identityResult = await this.customerIdentityResolver.resolveCustomerIdentity({
-              externalBuyerId: response.data.buyer.id,
-              email: response.data.buyer.email,
-              sourceConnectionId: this.connectionId,
-            });
-            resolvedCustomerId = identityResult.internalCustomerId;
-            this.logger.debug(
-              `Resolved customer identity: buyerId=${response.data.buyer.id}, internalCustomerId=${resolvedCustomerId}, usedEmailFallback=${identityResult.usedEmailFallback} (connection: ${this.connectionId})`,
-            );
-          } catch (error) {
-            this.logger.warn(
-              `Failed to resolve customer identity for buyer ${response.data.buyer.id}, falling back to identifier mapping: ${(error as Error).message}`,
-            );
-            // Continue with identifier mapping fallback
-          }
-        } else {
-          this.logger.debug(
-            `Skipping customer identity resolution: email not available for buyer ${response.data.buyer.id} (connection: ${this.connectionId})`,
-          );
-        }
-      }
+      const checkoutForm = response.data;
 
-      // Map to unified Order schema with internal IDs
-      const mapper = new AllegroOrderMapper(this.connectionId, this.identifierMapping, this.logger);
-      const order = await mapper.toUnifiedOrder(response.data, resolvedCustomerId);
+      const status = checkoutForm.payment.finishedAt ? 'processing' : 'pending';
+      const createdAt = checkoutForm.createdAt ?? new Date().toISOString();
+      const updatedAt = checkoutForm.updatedAt ?? createdAt;
 
-      this.logger.debug(
-        `Mapped Allegro order ${checkoutFormId} to unified order ${order.id} (connection: ${this.connectionId})`,
-      );
-
-      return order;
+      return {
+        externalOrderId: checkoutFormId,
+        orderNumber: checkoutFormId,
+        status,
+        customerExternalId: checkoutForm.buyer.id,
+        items: checkoutForm.lineItems.map((lineItem) => ({
+          id: lineItem.id,
+          productRef: { type: 'offer', externalId: lineItem.offer.id },
+          quantity: lineItem.quantity,
+          price: Number.parseFloat(lineItem.price.amount),
+          sku: lineItem.offer.id,
+        })),
+        totals: {
+          subtotal: Number.parseFloat(checkoutForm.summary.totalToPay.amount),
+          tax: 0,
+          shipping: 0,
+          total: Number.parseFloat(checkoutForm.summary.totalToPay.amount),
+          currency: checkoutForm.summary.totalToPay.currency,
+        },
+        shippingAddress: checkoutForm.buyer.address
+          ? {
+              firstName: checkoutForm.buyer.firstName,
+              lastName: checkoutForm.buyer.lastName,
+              address1: checkoutForm.buyer.address.street ?? '',
+              city: checkoutForm.buyer.address.city ?? '',
+              postalCode: checkoutForm.buyer.address.zipCode ?? '',
+              country: checkoutForm.buyer.address.countryCode ?? '',
+              phone: checkoutForm.buyer.phoneNumber,
+            }
+          : undefined,
+        billingAddress: undefined,
+        createdAt,
+        updatedAt,
+        metadata: {
+          buyer: {
+            email: checkoutForm.buyer.email,
+            login: checkoutForm.buyer.login,
+          },
+        },
+      };
     } catch (error) {
       this.logger.error(
         `Failed to fetch Allegro order ${checkoutFormId} (connection: ${this.connectionId}): ${(error as Error).message}`,
@@ -174,27 +212,31 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
   }
 
   /**
-   * Update marketplace offer quantity
+   * Update marketplace offer quantity.
    *
    * Issues an Allegro offer quantity change command. Uses idempotency key
    * to derive a deterministic commandId for deduplication.
    */
-  async updateOfferQuantity(request: UpdateOfferQuantityRequest): Promise<UpdateOfferQuantityResult> {
+  async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
+    if (!cmd.idempotencyKey) {
+      throw new Error('idempotencyKey is required for Allegro offer quantity updates');
+    }
+
     this.logger.debug(
-      `Updating Allegro offer quantity: offerId=${request.offerId}, quantity=${request.quantity} (connection: ${this.connectionId}, idempotencyKey: ${request.idempotencyKey})`,
+      `Updating Allegro offer quantity: offerId=${cmd.offerId}, quantity=${cmd.quantity} (connection: ${this.connectionId}, idempotencyKey: ${cmd.idempotencyKey})`,
     );
 
     try {
       // Generate deterministic commandId from idempotency key (or use UUID if not provided)
       // Allegro requires commandId to be a UUID, so we'll generate one deterministically from idempotency key
-      const commandId = this.generateCommandIdFromIdempotencyKey(request.idempotencyKey);
+      const commandId = this.generateCommandIdFromIdempotencyKey(cmd.idempotencyKey);
 
       // Build command request body (convert to plain object for HTTP client)
       const commandBody: Record<string, unknown> = {
-        offerId: request.offerId,
+        offerId: cmd.offerId,
         quantityChange: {
           changeType: 'FIXED',
-          value: request.quantity,
+          value: cmd.quantity,
         },
       };
 
@@ -204,20 +246,32 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
         commandBody,
       );
 
-      // Map Allegro status to unified status
-      const status = this.mapAllegroCommandStatus(response.data.status);
+      // Persist command status for observability (optional)
+      try {
+        if (this.commandRepository) {
+          const status = this.mapAllegroCommandStatus(response.data.status);
+          const command = AllegroQuantityCommand.create(
+            response.data.id,
+            this.connectionId,
+            cmd.offerId,
+            cmd.quantity,
+            status,
+          );
+          await this.commandRepository.create(command);
+        }
+      } catch (persistError) {
+        // Observability persistence must not fail the update itself.
+        this.logger.warn(
+          `Failed to persist offer quantity command status (commandId: ${response.data.id}): ${(persistError as Error).message}`,
+        );
+      }
 
       this.logger.debug(
-        `Allegro offer quantity command submitted: commandId=${response.data.id}, status=${status} (connection: ${this.connectionId})`,
+        `Allegro offer quantity command submitted: commandId=${response.data.id} (connection: ${this.connectionId})`,
       );
-
-      return {
-        commandId: response.data.id,
-        status,
-      };
     } catch (error) {
       this.logger.error(
-        `Failed to update Allegro offer quantity (offerId: ${request.offerId}, connection: ${this.connectionId}): ${(error as Error).message}`,
+        `Failed to update Allegro offer quantity (offerId: ${cmd.offerId}, connection: ${this.connectionId}): ${(error as Error).message}`,
         error,
       );
       throw error;
@@ -241,7 +295,7 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
   /**
    * Map Allegro command status to unified status
    */
-  private mapAllegroCommandStatus(allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED'): (typeof OfferQuantityUpdateStatusValues)[number] {
+  private mapAllegroCommandStatus(allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED'): 'queued' | 'accepted' | 'rejected' {
     switch (allegroStatus) {
       case 'QUEUED':
         return 'queued';
@@ -255,6 +309,14 @@ export class AllegroMarketplaceAdapter implements MarketplaceIntegrationPort {
         this.logger.warn(`Unknown Allegro command status: ${status}, defaulting to 'queued'`);
         return 'queued';
     }
+  }
+
+  private mapAllegroEventType(type: string): MarketplaceOrderEventType {
+    const t = type.toUpperCase();
+    if (t.includes('CANCEL')) return 'cancelled';
+    if (t.includes('PAID')) return 'paid';
+    if (t.includes('BOUGHT')) return 'created';
+    return 'updated';
   }
 }
 

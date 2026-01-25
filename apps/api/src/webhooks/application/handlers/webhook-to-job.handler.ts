@@ -314,10 +314,23 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     // rather than provider-specific terminology (e.g., "stock" -> "Stock")
     const normalizedCanonicalObjectType = this.normalizeObjectType(canonicalObjectType);
 
-    // Build job type: {provider}.{canonicalObjectType}.syncByExternalId
-    // Job types use lowercase provider and lowercase canonical objectType (e.g., "prestashop.inventory.syncByExternalId")
+    // Build job type: master.{canonicalObjectType}.syncByExternalId for master systems (e.g., PrestaShop)
+    // (Option B: job taxonomy is integration-agnostic.)
     const normalizedProvider = event.provider.toLowerCase();
-    const jobTypeString = `${normalizedProvider}.${canonicalObjectType.toLowerCase()}.syncByExternalId`;
+    const isMasterProvider = normalizedProvider === 'prestashop';
+
+    if (isMasterProvider) {
+      const supported = ['product', 'inventory'];
+      if (!supported.includes(canonicalObjectType.toLowerCase())) {
+        throw new Error(
+          `Unsupported master objectType: ${canonicalObjectType}. Supported: ${supported.join(', ')}`,
+        );
+      }
+    }
+
+    const jobTypeString = isMasterProvider
+      ? `master.${canonicalObjectType.toLowerCase()}.syncByExternalId`
+      : `${normalizedProvider}.${canonicalObjectType.toLowerCase()}.syncByExternalId`;
 
     // Validate that the constructed job type is a valid JobType
     // Type assertion is safe here because we validate against JobTypeValues
@@ -330,6 +343,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       jobType,
       connectionId: event.connectionId,
       payload: {
+        schemaVersion: 1,
         externalId: event.externalId,
         objectType: normalizedCanonicalObjectType, // Use normalized canonical objectType (PascalCase) in payload
         eventType: event.eventType,

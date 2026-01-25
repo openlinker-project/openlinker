@@ -15,9 +15,12 @@ import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
-  AllegroOfferQuantityUpdatePayload,
 } from '@openlinker/core/sync';
-import { IOfferMappingService, OFFER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/listings';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 
 type SyncJob = SyncJobEntity;
@@ -39,15 +42,15 @@ interface InventoryPropagateToMarketplacesPayload {
  * 1. Validate payload (productId, optional variantId)
  * 2. Get current inventory for product
  * 3. Find all offer mappings for product
- * 4. For each mapping, enqueue allegro.offerQuantity.update job
+ * 4. For each mapping, enqueue marketplace.offerQuantity.update job
  */
 @Injectable()
 export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
   private readonly logger = new Logger(InventoryPropagateToMarketplacesHandler.name);
 
   constructor(
-    @Inject(OFFER_MAPPING_SERVICE_TOKEN)
-    private readonly offerMappingService: IOfferMappingService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(JOB_ENQUEUE_TOKEN)
@@ -84,8 +87,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Current inventory for product ${payload.productId}: ${availableQuantity} available`,
       );
 
-      // Step 3: Find all offer mappings for product
-      const mappings = await this.offerMappingService.findByProduct(payload.productId);
+      // Step 3: Find all marketplace offers mapped to this internal product
+      // (Offer mappings are stored in identifier_mappings as entityType='Offer')
+      const mappings = await this.identifierMapping.getExternalIds('Offer', payload.productId);
 
       if (mappings.length === 0) {
         this.logger.debug(
@@ -98,9 +102,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`,
       );
 
-      // Step 4: For each mapping, enqueue allegro.offerQuantity.update job
-      // Filter to only Allegro mappings for MVP
-      const allegroMappings = mappings.filter((m) => m.platformType === 'allegro');
+      // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job
+      // Filter to only Allegro mappings for MVP (platformType === 'allegro')
+      const allegroMappings = mappings.filter((m: ExternalIdMapping) => m.platformType === 'allegro');
 
       if (allegroMappings.length === 0) {
         this.logger.debug(
@@ -113,14 +117,15 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         // Generate idempotency key: inventory:connectionId:productId:variantId:quantity
         const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}`;
 
-        const updatePayload: AllegroOfferQuantityUpdatePayload = {
-          offerId: mapping.offerId,
+        const updatePayload = {
+          schemaVersion: 1 as const,
+          offerId: mapping.externalId,
           quantity: availableQuantity,
           idempotencyKey,
         };
 
         const updateJobRequest: SyncJobRequest = {
-          jobType: 'allegro.offerQuantity.update',
+          jobType: 'marketplace.offerQuantity.update',
           connectionId: mapping.connectionId,
           payload: updatePayload as unknown as Record<string, unknown>,
           idempotencyKey, // Use same idempotency key for job deduplication
@@ -129,7 +134,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         await this.jobEnqueue.enqueueJob(updateJobRequest);
 
         this.logger.debug(
-          `Enqueued offer quantity update job for offer ${mapping.offerId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`,
+          `Enqueued offer quantity update job for offer ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`,
         );
       });
 

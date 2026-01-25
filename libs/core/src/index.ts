@@ -10,7 +10,6 @@ export * from './customers';
 export * from './events';
 export * from './identifier-mapping';
 export * from './integrations';
-export * from './listings';
 export * from './orders';
 export * from './customers';
 export * from './products';

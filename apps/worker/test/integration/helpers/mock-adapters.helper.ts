@@ -6,8 +6,8 @@
  *
  * @module apps/worker/test/integration/helpers
  */
-import { ProductMasterPort, Product, ProductVariant } from '@openlinker/core/products/domain/ports/product-master.port';
-import { InventoryMasterPort, Inventory } from '@openlinker/core/inventory/domain/ports/inventory-master.port';
+import { ProductMasterPort, Product, ProductVariant } from '@openlinker/core/products';
+import { InventoryMasterPort, Inventory } from '@openlinker/core/inventory';
 import { randomUUID } from 'crypto';
 
 /**

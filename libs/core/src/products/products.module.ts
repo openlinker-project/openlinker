@@ -14,28 +14,36 @@ import { ProductVariantOrmEntity } from './infrastructure/persistence/entities/p
 import { ProductRepository } from './infrastructure/persistence/repositories/product.repository';
 import { ProductVariantRepository } from './infrastructure/persistence/repositories/product-variant.repository';
 import { ProductsService } from './application/services/products.service';
+import { MasterProductSyncService } from './application/services/master-product-sync.service';
 import {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
+  MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
 } from './products.tokens';
+import { IntegrationsModule } from '@openlinker/core/integrations';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 
 // Re-export tokens for convenience
 export {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
+  MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
 } from './products.tokens';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity]),
+    IntegrationsModule,
+    IdentifierMappingModule,
   ],
   providers: [
     // Provide classes directly first
     ProductRepository,
     ProductVariantRepository,
     ProductsService,
+    MasterProductSyncService,
     // Then provide token bindings using useExisting
     {
       provide: PRODUCT_REPOSITORY_TOKEN,
@@ -48,6 +56,10 @@ export {
     {
       provide: PRODUCTS_SERVICE_TOKEN,
       useExisting: ProductsService,
+    },
+    {
+      provide: MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
+      useExisting: MasterProductSyncService,
     },
     // Also provide as string tokens for convenience
     {
@@ -62,14 +74,20 @@ export {
       provide: 'IProductsService',
       useExisting: PRODUCTS_SERVICE_TOKEN,
     },
+    {
+      provide: 'IMasterProductSyncService',
+      useExisting: MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
+    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
     PRODUCT_VARIANT_REPOSITORY_TOKEN,
     PRODUCTS_SERVICE_TOKEN,
+    MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
     'ProductRepositoryPort',
     'ProductVariantRepositoryPort',
     'IProductsService',
+    'IMasterProductSyncService',
   ],
 })
 export class ProductsModule {}

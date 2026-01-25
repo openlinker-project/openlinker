@@ -15,6 +15,7 @@ export {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
+  MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
 } from './products.tokens';
 
 // Ports
@@ -34,6 +35,8 @@ export { ProductVariant as ProductVariantEntity } from './domain/entities/produc
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';
 export { ProductsService } from './application/services/products.service';
+export { IMasterProductSyncService, MasterProductSyncResult } from './application/services/master-product-sync.service.interface';
+export { MasterProductSyncService } from './application/services/master-product-sync.service';
 
 // Types
 export {

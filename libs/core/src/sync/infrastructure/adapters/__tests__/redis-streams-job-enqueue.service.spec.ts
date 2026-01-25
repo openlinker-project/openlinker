@@ -43,9 +43,9 @@ describe('RedisStreamsJobEnqueueService', () => {
 
   describe('enqueueJob', () => {
     const createJobRequest = (overrides?: Partial<SyncJobRequest>): SyncJobRequest => ({
-      jobType: 'prestashop.product.syncByExternalId',
+      jobType: 'master.product.syncByExternalId',
       connectionId: randomUUID(),
-      payload: { externalId: '1', objectType: 'Product' },
+      payload: { schemaVersion: 1, externalId: '1', objectType: 'Product' },
       idempotencyKey: `test-key-${randomUUID()}`,
       ...overrides,
     });

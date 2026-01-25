@@ -16,10 +16,7 @@ type Harness = {
   redis: StartedTestContainer;
 };
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __OL_HARNESS__: Harness | undefined;
-}
+let harness: Harness | undefined;
 
 /**
  * Start test infrastructure (containers only)
@@ -28,7 +25,7 @@ declare global {
  * for tests to use. Does NOT boot Nest application context.
  */
 export async function startHarness(): Promise<void> {
-  if (globalThis.__OL_HARNESS__) {
+  if (harness) {
     return; // Already started
   }
 
@@ -54,7 +51,7 @@ export async function startHarness(): Promise<void> {
   process.env.REDIS_DB = '0';
   process.env.NODE_ENV = 'test';
 
-  globalThis.__OL_HARNESS__ = { postgres, redis };
+  harness = { postgres, redis };
 }
 
 /**
@@ -63,7 +60,7 @@ export async function startHarness(): Promise<void> {
  * Stops Postgres and Redis containers. Does NOT close Nest application context.
  */
 export async function stopHarness(): Promise<void> {
-  const h = globalThis.__OL_HARNESS__;
+  const h = harness;
   if (!h) {
     return; // Already stopped or never started
   }
@@ -71,7 +68,7 @@ export async function stopHarness(): Promise<void> {
   // Stop containers in parallel
   await Promise.allSettled([h.redis.stop(), h.postgres.stop()]);
 
-  // Clear global reference
-  globalThis.__OL_HARNESS__ = undefined;
+  // Clear reference
+  harness = undefined;
 }
 

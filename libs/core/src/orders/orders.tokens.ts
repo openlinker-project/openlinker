@@ -10,6 +10,7 @@
 
 // Token for dependency injection (interfaces can't be used as values)
 export const ORDER_SYNC_SERVICE_TOKEN = Symbol('IOrderSyncService');
+export const ORDER_INGESTION_SERVICE_TOKEN = Symbol('IOrderIngestionService');
 export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort');
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 

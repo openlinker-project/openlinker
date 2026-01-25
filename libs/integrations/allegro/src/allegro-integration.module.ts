@@ -24,6 +24,7 @@ import { AllegroQuantityCommandRepository } from './infrastructure/persistence/r
 import { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 import { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
 import { Logger } from '@openlinker/shared/logging';
+import { AllegroQuantityCommandRepositoryPort } from './domain/ports/allegro-quantity-command-repository.port';
 
 @Module({
   imports: [
@@ -73,6 +74,9 @@ export class AllegroIntegrationModule implements OnModuleInit {
     @Optional()
     @Inject(AllegroTokenRefreshService)
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
+    @Optional()
+    @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
+    private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
   ) {}
 
   onModuleInit(): void {
@@ -80,6 +84,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
     const factory = new AllegroAdapterFactoryWrapper(
       this.customerIdentityResolver,
       this.tokenRefreshService,
+      this.commandRepository,
     );
     this.factoryResolver.registerFactory('allegro.publicapi.v1', factory);
     this.logger.log('Allegro adapter factory registered successfully');

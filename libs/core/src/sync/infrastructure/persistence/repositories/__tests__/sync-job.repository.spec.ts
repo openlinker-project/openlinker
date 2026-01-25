@@ -73,9 +73,9 @@ describe('SyncJobRepository', () => {
 
   describe('createIfNotExistsByIdempotencyKey', () => {
     const jobRequest = {
-      jobType: 'prestashop.product.syncByExternalId' as JobType,
+      jobType: 'master.product.syncByExternalId' as JobType,
       connectionId: randomUUID(),
-      payload: { externalId: '1', objectType: 'Product' },
+      payload: { schemaVersion: 1, externalId: '1', objectType: 'Product' },
       idempotencyKey: 'test-idempotency-key-1',
       maxAttempts: 10,
     };
@@ -531,7 +531,7 @@ describe('SyncJobRepository', () => {
     it('should convert ORM entity to domain entity', () => {
       const ormEntity = createMockOrmEntity({
         id: randomUUID(),
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: { externalId: '1' },
         status: 'queued',
@@ -572,7 +572,7 @@ describe('SyncJobRepository', () => {
 
     it('should throw error for invalid job status', () => {
       const ormEntity = createMockOrmEntity({
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
         status: 'invalid-status' as any,
       });
@@ -592,7 +592,7 @@ function createMockOrmEntity(
   const now = new Date();
   return {
     id: randomUUID(),
-    jobType: 'prestashop.product.syncByExternalId',
+    jobType: 'master.product.syncByExternalId',
     connectionId: randomUUID(),
     payloadJson: {},
     status: 'queued',

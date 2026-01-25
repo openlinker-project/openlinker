@@ -14,6 +14,8 @@ export { InventoryModule } from './inventory.module';
 export {
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
+  INVENTORY_SYNC_SERVICE_TOKEN,
+  MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 // Ports
@@ -26,6 +28,10 @@ export { InventoryItem as InventoryItemEntity } from './domain/entities/inventor
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
 export { InventoryService } from './application/services/inventory.service';
+export { IInventorySyncService } from './application/services/inventory-sync.service.interface';
+export { InventorySyncService } from './application/services/inventory-sync.service';
+export { IMasterInventorySyncService, MasterInventorySyncResult } from './application/services/master-inventory-sync.service.interface';
+export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 
 // Types
 export { InventoryAdjustment } from './domain/types/inventory.types';
