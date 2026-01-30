@@ -204,6 +204,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       items.push({
         id: item.id,
         productId: resolved.internalProductId,
+        variantId: resolved.internalVariantId,
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,

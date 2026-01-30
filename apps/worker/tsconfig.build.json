@@ -7,7 +7,13 @@
     "emitDeclarationOnly": false,
     "incremental": false,
     "paths": {
-      "@openlinker/worker/*": ["./src/*"]
+      "@openlinker/worker/*": ["./src/*"],
+      "@openlinker/core": ["../../libs/core/src/index.ts"],
+      "@openlinker/core/*": ["../../libs/core/src/*"],
+      "@openlinker/shared": ["../../libs/shared/src/index.ts"],
+      "@openlinker/shared/*": ["../../libs/shared/src/*"],
+      "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
+      "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -131,6 +131,36 @@ export class SchedulerService implements OnModuleInit {
           `marketplace:${connection.id}:orders:poll:${timestamp}`,
       });
     }
+
+    // Marketplace offers sync task (for Allegro connections)
+    const allegroOffersSyncEnabled = this.configService.get<string>(
+      'ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
+      'true',
+    );
+    if (allegroOffersSyncEnabled !== 'false') {
+      const offersCronExpression = this.configService.get<string>(
+        'ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
+        '*/30 * * * *', // Every 30 minutes
+      );
+      const pageLimit = Number(
+        this.configService.get<string>('ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
+      );
+
+      this.registerTask({
+        taskId: 'allegro-offers-sync',
+        platformType: 'allegro',
+        jobType: 'marketplace.offers.sync',
+        cronExpression: offersCronExpression,
+        enabledEnvVar: 'ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
+        generatePayload: () => ({
+          schemaVersion: 1,
+          limit: Number.isFinite(pageLimit) && pageLimit > 0 ? pageLimit : 100,
+          cursor: null,
+        }),
+        generateIdempotencyKey: (connection, timestamp) =>
+          `marketplace:${connection.id}:offers:sync:${timestamp}`,
+      });
+    }
   }
 
   /**

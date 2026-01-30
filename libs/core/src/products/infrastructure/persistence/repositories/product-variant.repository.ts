@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
 import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
 import { ProductVariant } from '../../../domain/entities/product-variant.entity';
@@ -43,6 +43,44 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     const entities = await this.repository.find({
       where: { productId },
     });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findBySku(sku: string): Promise<ProductVariant | null> {
+    const entity = await this.repository.findOne({
+      where: { sku },
+    });
+
+    if (!entity) {
+      return null;
+    }
+
+    return this.toDomain(entity);
+  }
+
+  async findBySkuIn(skus: string[]): Promise<ProductVariant[]> {
+    if (skus.length === 0) {
+      return [];
+    }
+
+    const entities = await this.repository.find({
+      where: { sku: In(skus) },
+    });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findByEanOrGtinIn(values: string[]): Promise<ProductVariant[]> {
+    if (values.length === 0) {
+      return [];
+    }
+
+    const entities = await this.repository
+      .createQueryBuilder('variant')
+      .where(`variant.attributes ->> 'ean' IN (:...values)`, { values })
+      .orWhere(`variant.attributes ->> 'gtin' IN (:...values)`, { values })
+      .getMany();
 
     return entities.map((entity) => this.toDomain(entity));
   }

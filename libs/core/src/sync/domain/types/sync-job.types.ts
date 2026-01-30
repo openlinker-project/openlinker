@@ -17,6 +17,7 @@ export const JobTypeValues = [
   // Generic (Option B)
   'marketplace.orders.poll',
   'marketplace.order.sync',
+  'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'master.product.syncByExternalId',
   'master.inventory.syncByExternalId',

@@ -39,6 +39,11 @@ export {
   MarketplaceOrderFeedOutput,
 } from './domain/types/marketplace-order-feed.types';
 export {
+  MarketplaceOfferFeedInput,
+  MarketplaceOfferFeedItem,
+  MarketplaceOfferFeedOutput,
+} from './domain/types/marketplace-offer-feed.types';
+export {
   UpdateOfferQuantityCommand,
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,

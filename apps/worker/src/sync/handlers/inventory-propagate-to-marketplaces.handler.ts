@@ -89,7 +89,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
 
       // Step 3: Find all marketplace offers mapped to this internal product
       // (Offer mappings are stored in identifier_mappings as entityType='Offer')
-      const mappings = await this.identifierMapping.getExternalIds('Offer', payload.productId);
+      const mappingTargetId = payload.variantId || payload.productId;
+      const mappings = await this.identifierMapping.getExternalIds('Offer', mappingTargetId);
 
       if (mappings.length === 0) {
         this.logger.debug(

@@ -112,5 +112,67 @@ export interface AllegroOfferQuantityChangeCommandResponse {
   }>;
 }
 
+/**
+ * Allegro offers list item (from GET /sale/offers)
+ */
+export interface AllegroOfferListItem {
+  id: string;
+  category?: {
+    id: string;
+  };
+  external?: {
+    id?: string | null;
+  };
+}
+
+/**
+ * Allegro offers list response
+ */
+export interface AllegroOffersResponse {
+  offers: AllegroOfferListItem[];
+  count: number;
+  totalCount: number;
+}
+
+/**
+ * Allegro offer parameter entry (from GET /sale/product-offers/{offerId})
+ */
+export interface AllegroOfferParameter {
+  id: string;
+  name?: string;
+  values?: string[];
+  valuesIds?: string[];
+}
+
+/**
+ * Allegro product offer (from GET /sale/product-offers/{offerId})
+ */
+export interface AllegroProductOffer {
+  id: string;
+  name?: string;
+  category?: {
+    id: string;
+  };
+  parameters?: AllegroOfferParameter[];
+  productSet?: Array<{
+    product?: {
+      parameters?: AllegroOfferParameter[];
+    };
+  }>;
+  external?: {
+    id?: string | null;
+  };
+}
+
+/**
+ * Allegro category parameters response (from GET /sale/categories/{categoryId}/parameters)
+ */
+export interface AllegroCategoryParametersResponse {
+  parameters: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
 
 

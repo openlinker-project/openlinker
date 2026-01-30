@@ -14,6 +14,10 @@ import {
   MarketplaceOrderFeedOutput,
 } from '../types/marketplace-order-feed.types';
 import {
+  MarketplaceOfferFeedInput,
+  MarketplaceOfferFeedOutput,
+} from '../types/marketplace-offer-feed.types';
+import {
   UpdateOfferQuantityCommand,
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
@@ -29,6 +33,11 @@ export interface MarketplacePort {
    * Fetch a full order by marketplace-native id.
    */
   getOrder(input: { externalOrderId: string }): Promise<IncomingOrder>;
+
+  /**
+   * List marketplace offers (optional).
+   */
+  listOffers?(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput>;
 
   /**
    * Update a single offer quantity.

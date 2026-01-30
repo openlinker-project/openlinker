@@ -201,6 +201,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       await handler.execute(job);
 
       expect(inventoryService.getInventory).toHaveBeenCalledWith('product-id', 'variant-id', null);
+      expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Offer', 'variant-id');
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
           payload: expect.objectContaining({

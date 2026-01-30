@@ -13,6 +13,8 @@ import {
   MarketplaceOrderFeedInput,
   MarketplaceOrderFeedOutput,
   MarketplaceOrderEventType,
+  MarketplaceOfferFeedInput,
+  MarketplaceOfferFeedOutput,
   UpdateOfferQuantityCommand,
 } from '@openlinker/core/integrations';
 import type { IncomingOrder } from '@openlinker/core/orders';
@@ -23,6 +25,10 @@ import {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
+  AllegroCategoryParametersResponse,
+  AllegroOfferParameter,
+  AllegroProductOffer,
+  AllegroOffersResponse,
 } from '../../domain/types/allegro-api.types';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
@@ -133,6 +139,46 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     } catch (error) {
       this.logger.error(
         `Failed to list Allegro order feed (connection: ${this.connectionId}): ${(error as Error).message}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * List marketplace offers (Allegro).
+   *
+   * Uses offset-based pagination. Cursor is treated as an opaque offset string.
+   */
+  async listOffers(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput> {
+    const offset = this.parseOffset(input.cursor);
+
+    this.logger.debug(
+      `Listing Allegro offers (connection: ${this.connectionId}, offset: ${offset}, limit: ${input.limit})`,
+    );
+
+    try {
+      const response = await this.httpClient.get<AllegroOffersResponse>('/sale/offers', {
+        queryParams: {
+          limit: input.limit,
+          offset,
+        },
+      });
+
+      const offers = response.data.offers ?? [];
+      this.logger.debug(
+        `Received Allegro offers (connection: ${this.connectionId}, offers: ${offers.length}, total: ${response.data.totalCount})`,
+      );
+      const nextOffset = offset + offers.length;
+      const nextCursor = nextOffset < response.data.totalCount ? String(nextOffset) : null;
+
+      return {
+        items: await this.buildOfferFeedItems(offers),
+        nextCursor,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to list Allegro offers (connection: ${this.connectionId}): ${(error as Error).message}`,
         error,
       );
       throw error;
@@ -290,6 +336,157 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     // Format as UUID v4: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
     // Take first 32 hex characters and format as UUID
     return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-4${hash.substring(12, 15)}-${((parseInt(hash.substring(15, 16), 16) & 0x3) | 0x8).toString(16)}${hash.substring(16, 19)}-${hash.substring(19, 31)}`;
+  }
+
+  private parseOffset(cursor?: string | null): number {
+    if (!cursor) {
+      return 0;
+    }
+    const parsed = Number.parseInt(cursor, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }
+
+  private async buildOfferFeedItems(
+    offers: AllegroOffersResponse['offers'],
+  ): Promise<MarketplaceOfferFeedOutput['items']> {
+    const items: MarketplaceOfferFeedOutput['items'] = [];
+
+    for (const offer of offers) {
+      if (await this.isOfferMapped(offer.id)) {
+        this.logger.debug(
+          `Skipping Allegro offer ${offer.id} (connection: ${this.connectionId}) - already mapped`,
+        );
+        continue;
+      }
+
+      try {
+        const identifiers = await this.fetchOfferIdentifiers(offer.id, offer.category?.id);
+        items.push({
+          offerId: offer.id,
+          externalRef: offer.external?.id ?? null,
+          sku: identifiers.sku,
+          ean: identifiers.ean,
+          gtin: identifiers.gtin,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve identifiers for offer ${offer.id} (connection: ${this.connectionId}): ${(error as Error).message}`,
+        );
+        items.push({
+          offerId: offer.id,
+          externalRef: offer.external?.id ?? null,
+        });
+      }
+    }
+
+    return items;
+  }
+
+  private async isOfferMapped(offerId: string): Promise<boolean> {
+    try {
+      const internalId = await this.identifierMapping.getInternalId(
+        'Offer',
+        offerId,
+        this.connectionId,
+      );
+      return internalId !== null;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to check existing offer mapping for ${offerId} (connection: ${this.connectionId}): ${(error as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  private async fetchOfferIdentifiers(
+    offerId: string,
+    categoryId?: string,
+  ): Promise<{ sku: string | null; ean: string | null; gtin: string | null }> {
+    const response = await this.httpClient.get<AllegroProductOffer>(
+      `/sale/product-offers/${offerId}`,
+    );
+
+    const offer = response.data;
+    const resolvedCategoryId = categoryId ?? offer.category?.id ?? null;
+
+    let eanIds: Set<string> = new Set();
+    let gtinIds: Set<string> = new Set();
+
+    if (resolvedCategoryId) {
+      const categoryParamsResponse = await this.httpClient.get<AllegroCategoryParametersResponse>(
+        `/sale/categories/${resolvedCategoryId}/parameters`,
+      );
+      const { eanIds: resolvedEanIds, gtinIds: resolvedGtinIds } =
+        this.findIdentifierParameterIds(categoryParamsResponse.data.parameters);
+      eanIds = resolvedEanIds;
+      gtinIds = resolvedGtinIds;
+    }
+
+    const offerParams = offer.parameters ?? [];
+    const productParams = offer.productSet?.flatMap((item) => item.product?.parameters ?? []) ?? [];
+    const allParams = [...offerParams, ...productParams];
+
+    const eanValues = this.extractIdentifierValues(allParams, eanIds, /ean/i);
+    const gtinValues = this.extractIdentifierValues(allParams, gtinIds, /gtin/i);
+
+    return {
+      sku: null,
+      ean: this.pickSingleValue(eanValues),
+      gtin: this.pickSingleValue(gtinValues),
+    };
+  }
+
+  private findIdentifierParameterIds(
+    parameters: Array<{ id: string; name: string }>,
+  ): { eanIds: Set<string>; gtinIds: Set<string> } {
+    const eanIds = new Set<string>();
+    const gtinIds = new Set<string>();
+
+    for (const param of parameters) {
+      const name = param.name.toLowerCase();
+      if (name.includes('ean')) {
+        eanIds.add(param.id);
+      }
+      if (name.includes('gtin')) {
+        gtinIds.add(param.id);
+      }
+    }
+
+    return { eanIds, gtinIds };
+  }
+
+  private extractIdentifierValues(
+    parameters: AllegroOfferParameter[],
+    idFilter: Set<string>,
+    nameMatcher: RegExp,
+  ): string[] {
+    const values: string[] = [];
+
+    for (const param of parameters) {
+      const matchesId = idFilter.size > 0 && idFilter.has(param.id);
+      const matchesName = idFilter.size === 0 && !!param.name && nameMatcher.test(param.name);
+
+      if (!matchesId && !matchesName) {
+        continue;
+      }
+
+      for (const value of param.values ?? []) {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          values.push(trimmed);
+        }
+      }
+    }
+
+    return values;
+  }
+
+  private pickSingleValue(values: string[]): string | null {
+    const unique = Array.from(new Set(values));
+    if (unique.length !== 1) {
+      return null;
+    }
+    return unique[0];
   }
 
   /**

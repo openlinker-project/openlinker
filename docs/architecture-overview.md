@@ -165,6 +165,7 @@ The system is organized into the following core bounded contexts:
   - Offer-to-product mapping
   - Offer status synchronization
   - Price management for marketplace offers
+- Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
 
 ### 6. Sync Manager
 - **Responsibility**: Job scheduling and retry logic; workers execute jobs. **Sync orchestration policies live in core application services** (e.g., order ingestion, inventory propagation), not in worker handlers.

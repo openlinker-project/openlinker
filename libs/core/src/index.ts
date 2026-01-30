@@ -15,4 +15,5 @@ export * from './customers';
 export * from './products';
 export * from './inventory';
 export * from './sync';
+export * from './listings';
 

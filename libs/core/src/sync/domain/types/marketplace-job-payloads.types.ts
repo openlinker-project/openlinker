@@ -37,3 +37,8 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   idempotencyKey?: string;
 }
 
+export interface MarketplaceOffersSyncPayloadV1 {
+  schemaVersion: 1;
+  limit: number;
+  cursor?: string | null;
+}

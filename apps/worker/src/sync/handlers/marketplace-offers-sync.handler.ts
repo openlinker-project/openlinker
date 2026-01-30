@@ -1,0 +1,109 @@
+/**
+ * Marketplace Offers Sync Handler (Generic)
+ *
+ * Thin delegate for jobs of type 'marketplace.offers.sync'. Delegates
+ * offer mapping population to core OfferMappingSyncService.
+ *
+ * @module apps/worker/src/sync/handlers
+ */
+import { Injectable, Inject } from '@nestjs/common';
+import {
+  SyncJobHandler,
+  SyncJob as SyncJobEntity,
+  SyncJobExecutionError,
+  MarketplaceOffersSyncPayloadV1,
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  SyncJobRequest,
+} from '@openlinker/core/sync';
+import {
+  IOfferMappingSyncService,
+  OFFER_MAPPING_SYNC_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
+import { Logger } from '@openlinker/shared/logging';
+
+type SyncJob = SyncJobEntity;
+
+@Injectable()
+export class MarketplaceOffersSyncHandler implements SyncJobHandler {
+  private readonly logger = new Logger(MarketplaceOffersSyncHandler.name);
+
+  constructor(
+    @Inject(OFFER_MAPPING_SYNC_SERVICE_TOKEN)
+    private readonly offerMappingSync: IOfferMappingSyncService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort,
+  ) {}
+
+  async execute(job: SyncJob): Promise<void> {
+    const payload = this.getPayload(job);
+
+    this.logger.log(
+      `Executing marketplace.offers.sync job ${job.id} for connection ${job.connectionId} (limit=${payload.limit}, cursor=${payload.cursor ?? 'none'})`,
+    );
+
+    try {
+      const result = await this.offerMappingSync.sync(job.connectionId, {
+        limit: payload.limit,
+        cursor: payload.cursor ?? null,
+      });
+
+      if (result.nextCursor) {
+        const followUpPayload: MarketplaceOffersSyncPayloadV1 = {
+          schemaVersion: 1,
+          limit: payload.limit,
+          cursor: result.nextCursor,
+        };
+
+        const idempotencyKey = `marketplace.offers.sync:${job.connectionId}:${result.nextCursor}`;
+
+        const followUpRequest: SyncJobRequest = {
+          jobType: 'marketplace.offers.sync',
+          connectionId: job.connectionId,
+          payload: followUpPayload as unknown as Record<string, unknown>,
+          idempotencyKey,
+        };
+
+        await this.jobEnqueue.enqueueJob(followUpRequest);
+
+        this.logger.debug(
+          `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${result.nextCursor})`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SyncJobExecutionError(
+        `Marketplace offers sync failed: ${message}`,
+        job.id,
+        job.jobType,
+        job.connectionId,
+        error instanceof Error ? error : undefined,
+      );
+    }
+  }
+
+  private getPayload(job: SyncJob): MarketplaceOffersSyncPayloadV1 {
+    const payload = job.payload as unknown as Partial<MarketplaceOffersSyncPayloadV1>;
+    if (!payload || typeof payload !== 'object') {
+      throw new SyncJobExecutionError(
+        `Missing payload for job: ${job.id}`,
+        job.id,
+        job.jobType,
+        job.connectionId,
+      );
+    }
+    if (payload.limit === undefined || payload.limit === null || typeof payload.limit !== 'number') {
+      throw new SyncJobExecutionError(
+        `Missing or invalid limit in payload: ${JSON.stringify(job.payload)}`,
+        job.id,
+        job.jobType,
+        job.connectionId,
+      );
+    }
+    return {
+      schemaVersion: 1,
+      limit: payload.limit,
+      cursor: payload.cursor ?? null,
+    };
+  }
+}
