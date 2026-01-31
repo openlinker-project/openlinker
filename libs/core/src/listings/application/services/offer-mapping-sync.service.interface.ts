@@ -7,6 +7,7 @@
 export interface OfferMappingSyncOptions {
   limit: number;
   cursor?: string | null;
+  masterConnectionId?: string | null;
 }
 
 export interface OfferMappingSyncResult {

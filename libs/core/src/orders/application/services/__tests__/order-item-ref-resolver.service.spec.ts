@@ -19,6 +19,7 @@ describe('OrderItemRefResolverService', () => {
       createMapping: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       getOrCreateExactMapping: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
     variantRepository = {

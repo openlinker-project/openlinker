@@ -39,6 +39,7 @@ describe('CustomerIdentityResolverService', () => {
       getExternalIds: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       getOrCreateExactMapping: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingPort>;
 
     projectionRepository = {

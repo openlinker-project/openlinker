@@ -231,6 +231,24 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     await this.repository.create(mapping);
   }
 
+  async deleteMapping(
+    entityType: EntityType,
+    externalId: string,
+    connectionId: string,
+  ): Promise<void> {
+    const connection = await this.connectionPort.get(connectionId);
+    const platformType = connection.platformType;
+    await this.repository.deleteByExternalKey(
+      entityType,
+      platformType,
+      connectionId,
+      externalId,
+    );
+    this.logger.debug(
+      `Deleted mapping for ${entityType}:${externalId}@${connectionId} (platform=${platformType})`,
+    );
+  }
+
   async batchGetOrCreateInternalIds(
     requests: IdentifierMappingRequest[],
   ): Promise<Map<string, string>> {

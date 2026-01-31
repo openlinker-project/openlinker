@@ -60,6 +60,7 @@ describe('MarketplaceOffersSyncHandler', () => {
     expect(offerMappingSync.sync).toHaveBeenCalledWith('connection-1', {
       limit: 50,
       cursor: null,
+      masterConnectionId: null,
     });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -69,6 +70,7 @@ describe('MarketplaceOffersSyncHandler', () => {
           schemaVersion: 1,
           limit: 50,
           cursor: '50',
+          masterConnectionId: null,
         }),
       }),
     );

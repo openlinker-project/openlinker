@@ -7,6 +7,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { MarketplaceOfferFeedItem } from '@openlinker/core/integrations';
+import { normalizeBarcode as normalizeBarcodeValue } from '@openlinker/core/products';
 
 export type OfferLinkMethod = 'externalRef' | 'sku' | 'ean' | 'gtin';
 
@@ -49,7 +50,7 @@ export class OfferLinkingService {
       }
     }
 
-    const ean = this.normalize(item.ean);
+    const ean = this.normalizeBarcode(item.ean);
     if (ean) {
       const match = lookups.eanToVariantId.get(ean);
       if (match) {
@@ -60,7 +61,7 @@ export class OfferLinkingService {
       }
     }
 
-    const gtin = this.normalize(item.gtin);
+    const gtin = this.normalizeBarcode(item.gtin);
     if (gtin) {
       const match = lookups.gtinToVariantId.get(gtin);
       if (match) {
@@ -80,5 +81,9 @@ export class OfferLinkingService {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private normalizeBarcode(value?: string | null): string | null {
+    return normalizeBarcodeValue(value ?? null);
   }
 }

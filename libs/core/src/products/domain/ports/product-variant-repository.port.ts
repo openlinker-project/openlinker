@@ -52,12 +52,18 @@ export interface ProductVariantRepositoryPort {
   findBySkuIn(skus: string[]): Promise<ProductVariant[]>;
 
   /**
-   * Find variants by EAN/GTIN list (attributes-based)
+   * Find variants by EAN or GTIN list, scoped to master catalog connection
    *
+   * @param connectionId - Master catalog connection ID
    * @param values - Array of EAN/GTIN strings
+   * @param field - Barcode field to match ('ean' or 'gtin')
    * @returns Array of product variant domain entities
    */
-  findByEanOrGtinIn(values: string[]): Promise<ProductVariant[]>;
+  findByEanOrGtinIn(
+    connectionId: string,
+    values: string[],
+    field: 'ean' | 'gtin',
+  ): Promise<ProductVariant[]>;
 
   /**
    * Upsert variant (create or update by internal ID)

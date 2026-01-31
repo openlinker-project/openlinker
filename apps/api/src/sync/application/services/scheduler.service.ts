@@ -152,10 +152,11 @@ export class SchedulerService implements OnModuleInit {
         jobType: 'marketplace.offers.sync',
         cronExpression: offersCronExpression,
         enabledEnvVar: 'ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
-        generatePayload: () => ({
+        generatePayload: (connection) => ({
           schemaVersion: 1,
           limit: Number.isFinite(pageLimit) && pageLimit > 0 ? pageLimit : 100,
           cursor: null,
+          masterConnectionId: this.getMasterCatalogConnectionId(connection),
         }),
         generateIdempotencyKey: (connection, timestamp) =>
           `marketplace:${connection.id}:offers:sync:${timestamp}`,
@@ -300,6 +301,12 @@ export class SchedulerService implements OnModuleInit {
     );
 
     return jobId;
+  }
+
+  private getMasterCatalogConnectionId(connection: Connection): string | null {
+    const config = connection.config as Record<string, unknown>;
+    const masterConnectionId = config.masterCatalogConnectionId;
+    return typeof masterConnectionId === 'string' ? masterConnectionId : null;
   }
 }
 

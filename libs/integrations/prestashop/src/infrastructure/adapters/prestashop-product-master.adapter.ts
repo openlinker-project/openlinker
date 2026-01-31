@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ProductMasterPort}
  */
-import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category } from '@openlinker/core/products';
+import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode } from '@openlinker/core/products';
 import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from '../mappers/prestashop.mapper.interface';
@@ -142,6 +142,12 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       throw error;
     }
 
+    // Fetch product for barcode fallback / synthetic variant
+    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
+      'products',
+      prestashopProductId.externalId,
+    );
+
     // Fetch combinations from PrestaShop
     const combinations = await this.httpClient.listResources<PrestashopCombination>(
       'combinations',
@@ -153,8 +159,39 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     if (combinations.length === 0) {
-      return [];
+      const syntheticExternalId = `product:${prestashopProductId.externalId}`;
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
+        'Product',
+        syntheticExternalId,
+        this.connection.id,
+        {
+          parentEntityType: 'Product',
+          parentInternalId: productId,
+          metadata: {
+            isVariant: true,
+            variantExternalId: syntheticExternalId,
+            synthetic: true,
+          },
+        },
+      );
+      const sku = prestashopProduct.reference ?? `product-${prestashopProductId.externalId}`;
+      const productEan = this.normalizeEan(prestashopProduct.ean13);
+      const productGtin = this.normalizeGtin(prestashopProduct.upc);
+
+      return [
+        {
+          id: internalId,
+          productId,
+          sku,
+          ean: productEan ?? undefined,
+          gtin: productGtin ?? undefined,
+        },
+      ];
     }
+
+    // Ensure stale synthetic variant mapping is removed once combinations exist
+    const syntheticExternalId = `product:${prestashopProductId.externalId}`;
+    await this.identifierMapping.deleteMapping('Product', syntheticExternalId, this.connection.id);
 
     // Batch identifier mapping for variants
     // Note: ProductVariant is not a separate EntityType in the core system
@@ -176,6 +213,9 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(mappingRequests);
 
+    const productEan = this.normalizeEan(prestashopProduct.ean13);
+    const productGtin = this.normalizeGtin(prestashopProduct.upc);
+
     // Map variants with internal IDs
     return combinations.map((combination) => {
       const externalId = String(combination.id);
@@ -187,11 +227,28 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       }
 
       const mapped = this.productMapper.mapVariant(combination, productId);
+      if (combinations.length === 1) {
+        if (!mapped.ean && productEan) {
+          mapped.ean = productEan;
+        }
+        if (!mapped.gtin && productGtin) {
+          mapped.gtin = productGtin;
+        }
+      }
       return {
         ...mapped,
         id: internalId,
       };
     }).filter((v): v is ProductVariant => v !== null);
+  }
+
+  private normalizeEan(value?: string | null): string | null {
+    const normalized = normalizeBarcode(value ?? null);
+    return normalized && normalized.length === 13 ? normalized : null;
+  }
+
+  private normalizeGtin(value?: string | null): string | null {
+    return normalizeBarcode(value ?? null);
   }
 
   // Write operations - not supported in MVP

@@ -27,7 +27,20 @@ describe('OfferMappingSyncService', () => {
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(marketplace),
-      getAdapter: jest.fn(),
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: {
+          id: 'connection-1',
+          platformType: 'allegro',
+          name: 'Allegro',
+          status: 'active',
+          config: { masterCatalogConnectionId: 'master-1' },
+          credentialsRef: 'cred',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        adapter: marketplace,
+        metadata: { adapterKey: 'allegro', supportedCapabilities: ['Marketplace'] },
+      }),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
@@ -38,6 +51,7 @@ describe('OfferMappingSyncService', () => {
       createMapping: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       getOrCreateExactMapping: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
     variantRepository = {
@@ -98,5 +112,69 @@ describe('OfferMappingSyncService', () => {
     const result = await service.sync('connection-1', { limit: 50, cursor: null });
 
     expect(result).toEqual({ scanned: 1, linked: 0, skipped: 1, nextCursor: null });
+  });
+
+  it('skips barcode lookup when masterCatalogConnectionId is missing', async () => {
+    integrationsService.getAdapter.mockResolvedValueOnce({
+      connection: {
+        id: 'connection-1',
+        platformType: 'allegro',
+        name: 'Allegro',
+        status: 'active',
+        config: {},
+        credentialsRef: 'cred',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      adapter: marketplace,
+      metadata: {
+        adapterKey: 'allegro',
+        supportedCapabilities: ['Marketplace'],
+        platformType: 'allegro',
+      },
+    });
+
+    (marketplace.listOffers as jest.Mock).mockResolvedValue({
+      items: [{ offerId: 'offer-1', ean: '5901234123457' }],
+      nextCursor: null,
+    });
+
+    variantRepository.findBySkuIn.mockResolvedValue([]);
+    variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
+
+    const result = await service.sync('connection-1', { limit: 50, cursor: null });
+
+    expect(result).toEqual({ scanned: 1, linked: 0, skipped: 1, nextCursor: null });
+    expect(variantRepository.findByEanOrGtinIn).not.toHaveBeenCalled();
+  });
+
+  it('uses masterCatalogConnectionId for barcode lookup', async () => {
+    (marketplace.listOffers as jest.Mock).mockResolvedValue({
+      items: [{ offerId: 'offer-1', ean: '5901234123457' }],
+      nextCursor: null,
+    });
+
+    variantRepository.findBySkuIn.mockResolvedValue([]);
+    variantRepository.findByEanOrGtinIn.mockResolvedValue([
+      new ProductVariantEntity(
+        'variant-1',
+        'product-1',
+        'SKU-1',
+        null,
+        new Date(),
+        new Date(),
+        '5901234123457',
+        null,
+      ),
+    ]);
+
+    const result = await service.sync('connection-1', { limit: 50, cursor: null });
+
+    expect(result).toEqual({ scanned: 1, linked: 1, skipped: 0, nextCursor: null });
+    expect(variantRepository.findByEanOrGtinIn).toHaveBeenCalledWith(
+      'master-1',
+      ['5901234123457'],
+      'ean',
+    );
   });
 });

@@ -46,6 +46,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
       const result = await this.offerMappingSync.sync(job.connectionId, {
         limit: payload.limit,
         cursor: payload.cursor ?? null,
+        masterConnectionId: payload.masterConnectionId ?? null,
       });
 
       if (result.nextCursor) {
@@ -53,6 +54,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
           schemaVersion: 1,
           limit: payload.limit,
           cursor: result.nextCursor,
+          masterConnectionId: payload.masterConnectionId ?? null,
         };
 
         const idempotencyKey = `marketplace.offers.sync:${job.connectionId}:${result.nextCursor}`;
@@ -104,6 +106,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
       schemaVersion: 1,
       limit: payload.limit,
       cursor: payload.cursor ?? null,
+      masterConnectionId: payload.masterConnectionId ?? null,
     };
   }
 }

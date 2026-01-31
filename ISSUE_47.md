@@ -87,7 +87,7 @@ In production there is **no flow** that populates `identifier_mappings(entityTyp
   * ambiguous matches are skipped (no mapping written)
 * [ ] `marketplace.order.sync` no longer throws `MissingOrderItemMappingError` **for offers that have been linked** by the sync job.
 * [ ] All tests pass
-* [ ] Code follows [[Engineering Standards](https://chatgpt.com/g/g-p-6931c81637688191a8994f0a3c9b1ffb-openlinker/docs/engineering-standards.md)](../docs/engineering-standards.md)
+* [ ] Code follows [[Engineering Standards](engineering-standards.md)](../docs/engineering-standards.md)
 * [ ] Documentation updated (if applicable)
 
 ## Notes

@@ -112,6 +112,20 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     }
   }
 
+  async deleteByExternalKey(
+    entityType: EntityType,
+    platformType: string,
+    connectionId: string,
+    externalId: string,
+  ): Promise<void> {
+    await this.repository.delete({
+      entityType,
+      platformType,
+      connectionId,
+      externalId,
+    });
+  }
+
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
     return new IdentifierMapping(
       entity.id,

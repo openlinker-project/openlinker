@@ -27,6 +27,7 @@ describe('IdentifierMappingService', () => {
       findByInternalId: jest.fn(),
       create: jest.fn(),
       insertMapping: jest.fn(),
+      deleteByExternalKey: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingRepositoryPort>;
 
     const mockConnectionPort = {

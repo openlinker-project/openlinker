@@ -19,6 +19,8 @@ export interface PrestashopProduct {
   name?: { language?: Array<{ '#text': string; '@_id': string }> } | string;
   description?: { language?: Array<{ '#text': string; '@_id': string }> } | string;
   reference?: string;
+  ean13?: string;
+  upc?: string;
   price?: string | number;
   weight?: string | number;
   active?: string | number;
@@ -32,6 +34,8 @@ export interface PrestashopCombination {
   id: string | number;
   id_product: string | number;
   reference?: string;
+  ean13?: string;
+  upc?: string;
   price?: string | number;
   weight?: string | number;
   associations?: {

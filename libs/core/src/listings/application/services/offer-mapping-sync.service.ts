@@ -20,6 +20,7 @@ import {
 import {
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   ProductVariantRepositoryPort,
+  normalizeBarcode,
 } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import {
@@ -50,6 +51,9 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     connectionId: string,
     options: OfferMappingSyncOptions,
   ): Promise<OfferMappingSyncResult> {
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    const masterConnectionId = this.getMasterCatalogConnectionId(connection.config);
+
     const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
       connectionId,
       'Marketplace',
@@ -67,7 +71,12 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     this.logger.debug(
       `Offer feed loaded (items: ${items.length}, nextCursor: ${feed.nextCursor ?? 'none'})`,
     );
-    const lookups = await this.buildLookups(items);
+    if (!masterConnectionId) {
+      this.logger.warn(
+        `masterConnectionId missing for marketplace.offers.sync (connection=${connectionId}); barcode linking disabled`,
+      );
+    }
+    const lookups = await this.buildLookups(items, masterConnectionId);
 
     let linked = 0;
     let skipped = 0;
@@ -112,11 +121,14 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     };
   }
 
-  private async buildLookups(items: MarketplaceOfferFeedItem[]): Promise<OfferLinkingLookups> {
+  private async buildLookups(
+    items: MarketplaceOfferFeedItem[],
+    masterConnectionId: string | null,
+  ): Promise<OfferLinkingLookups> {
     const externalRefs = this.uniqueValues(items.map((i) => i.externalRef));
     const skus = this.uniqueValues(items.map((i) => i.sku));
-    const eans = this.uniqueValues(items.map((i) => i.ean));
-    const gtins = this.uniqueValues(items.map((i) => i.gtin));
+    const eans = this.uniqueBarcodeValues(items.map((i) => i.ean));
+    const gtins = this.uniqueBarcodeValues(items.map((i) => i.gtin));
     this.logger.debug(
       `Offer lookup inputs (externalRefs: ${externalRefs.length}, skus: ${skus.length}, eans: ${eans.length}, gtins: ${gtins.length})`,
     );
@@ -130,17 +142,26 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     const externalRefMap = this.selectLookup(externalRefs, skuMap);
     const directSkuMap = this.selectLookup(skus, skuMap);
 
-    const eanVariants = eans.length > 0
-      ? await this.variantRepository.findByEanOrGtinIn(eans)
+    const eanVariants = masterConnectionId && eans.length > 0
+      ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, eans, 'ean')
       : [];
-    const gtinVariants = gtins.length > 0
-      ? await this.variantRepository.findByEanOrGtinIn(gtins)
+    const gtinVariants = masterConnectionId && gtins.length > 0
+      ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, gtins, 'gtin')
       : [];
 
-    const eanMap = this.buildUniqueMap(eanVariants, (variant) => this.getAttributeValue(variant.attributes, 'ean'));
+    const eanMap = this.buildUniqueMap(
+      eanVariants,
+      (variant) =>
+        this.normalizeBarcodeValue(
+          variant.ean ?? this.getAttributeValue(variant.attributes, 'ean'),
+        ),
+    );
     const gtinMap = this.buildUniqueMap(
       gtinVariants,
-      (variant) => this.getAttributeValue(variant.attributes, 'gtin'),
+      (variant) =>
+        this.normalizeBarcodeValue(
+          variant.gtin ?? this.getAttributeValue(variant.attributes, 'gtin'),
+        ),
     );
 
     return {
@@ -155,9 +176,31 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     return [...new Set(values.filter((v): v is string => !!v && v.trim().length > 0).map((v) => v.trim()))];
   }
 
+  private uniqueBarcodeValues(values: Array<string | null | undefined>): string[] {
+    return [
+      ...new Set(
+        values
+          .map((value) => this.normalizeBarcodeValue(value ?? null))
+          .filter((value): value is string => !!value),
+      ),
+    ];
+  }
+
   private buildUniqueMap(
-    variants: Array<{ id: string; attributes?: Record<string, string> | null; sku?: string | null }>,
-    keySelector: (variant: { id: string; attributes?: Record<string, string> | null; sku?: string | null }) => string | null,
+    variants: Array<{
+      id: string;
+      attributes?: Record<string, string> | null;
+      sku?: string | null;
+      ean?: string | null;
+      gtin?: string | null;
+    }>,
+    keySelector: (variant: {
+      id: string;
+      attributes?: Record<string, string> | null;
+      sku?: string | null;
+      ean?: string | null;
+      gtin?: string | null;
+    }) => string | null,
   ): Map<string, string | null> {
     const map = new Map<string, string | null>();
     for (const variant of variants) {
@@ -203,5 +246,14 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private normalizeBarcodeValue(value: string | null): string | null {
+    return normalizeBarcode(value ?? null);
+  }
+
+  private getMasterCatalogConnectionId(config: Record<string, unknown>): string | null {
+    const masterConnectionId = config.masterCatalogConnectionId;
+    return typeof masterConnectionId === 'string' ? masterConnectionId : null;
   }
 }

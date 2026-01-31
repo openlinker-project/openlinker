@@ -61,10 +61,10 @@ describe('OfferLinkingService', () => {
 
   it('falls back to ean when sku is missing', () => {
     const lookups = buildLookups({
-      eanToVariantId: new Map([['123', 'variant-1']]),
+      eanToVariantId: new Map([['5901234123457', 'variant-1']]),
     });
 
-    const result = service.linkOffer({ offerId: 'offer-1', ean: '123' }, lookups);
+    const result = service.linkOffer({ offerId: 'offer-1', ean: '5901234123457' }, lookups);
 
     expect(result).toEqual({
       status: 'linked',
