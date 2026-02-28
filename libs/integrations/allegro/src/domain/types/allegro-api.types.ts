@@ -86,6 +86,31 @@ export interface AllegroOrderEventsResponse {
 }
 
 /**
+ * Allegro offer event (from GET /sale/offer-events)
+ */
+export interface AllegroOfferEvent {
+  id: string;
+  occurredAt: string;
+  type: string;
+  offer: {
+    id: string;
+    external?: {
+      id?: string | null;
+    };
+  };
+}
+
+/**
+ * Allegro offer events API response
+ *
+ * Response from GET /sale/offer-events endpoint containing offer event references.
+ */
+export interface AllegroOfferEventsResponse {
+  offerEvents: AllegroOfferEvent[];
+  lastEventId?: string;
+}
+
+/**
  * Allegro offer quantity change command request
  *
  * Request body for PUT /sale/offer-quantity-change-commands/{commandId} endpoint.

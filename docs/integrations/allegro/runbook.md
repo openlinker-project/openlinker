@@ -13,7 +13,12 @@ Operational guide for managing and troubleshooting the Allegro integration in Op
 
 ## Reset Cursor
 
-The cursor (`lastEventId`) tracks the last processed order event from Allegro. Resetting the cursor allows you to re-sync orders from a specific point.
+OpenLinker persists Allegro cursors in `connection_cursors` and currently uses two keys:
+
+- `allegro.orders.lastEventId` for `marketplace.orders.poll` (`GET /order/events`)
+- `allegro.offers.lastEventId` for `marketplace.offers.sync` in events mode (`GET /sale/offer-events`)
+
+Resetting a cursor allows you to replay data from an earlier point.
 
 ### When to Reset
 
@@ -26,35 +31,53 @@ The cursor (`lastEventId`) tracks the last processed order event from Allegro. R
 **Option 1: Delete cursor via API** (if endpoint exists)
 
 ```bash
-# Delete cursor for a connection
+# Delete orders cursor for a connection
 curl -X DELETE http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors/allegro.orders.lastEventId
+
+# Delete offers cursor for a connection
+curl -X DELETE http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors/allegro.offers.lastEventId
 ```
 
 **Option 2: Direct database update**
 
 ```sql
--- Delete cursor for a specific connection
+-- Delete orders cursor for a specific connection
 DELETE FROM connection_cursors
 WHERE connection_id = 'your-connection-id'
   AND cursor_key = 'allegro.orders.lastEventId';
+
+-- Delete offers cursor for a specific connection
+DELETE FROM connection_cursors
+WHERE connection_id = 'your-connection-id'
+  AND cursor_key = 'allegro.offers.lastEventId';
 ```
 
 **Option 3: Set cursor to a specific event ID**
 
 ```sql
--- Set cursor to a specific event ID
+-- Set orders cursor to a specific event ID
 UPDATE connection_cursors
 SET cursor_value = 'specific-event-id',
     updated_at = NOW()
 WHERE connection_id = 'your-connection-id'
   AND cursor_key = 'allegro.orders.lastEventId';
+
+-- Set offers cursor to a specific event ID
+UPDATE connection_cursors
+SET cursor_value = 'specific-event-id',
+    updated_at = NOW()
+WHERE connection_id = 'your-connection-id'
+  AND cursor_key = 'allegro.offers.lastEventId';
 ```
 
 ### Verify Cursor Reset
 
 ```bash
-# Check current cursor value
+# Check orders cursor value
 curl http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.orders.lastEventId
+
+# Check offers cursor value
+curl http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.offers.lastEventId
 ```
 
 **Response**:
@@ -69,7 +92,7 @@ curl http://localhost:3000/integrations/allegro/connections/{connectionId}/curso
 }
 ```
 
-A `null` value means the next poll will start from the beginning.
+A `null` value means the next sync run starts from the beginning of the respective event journal.
 
 ## Diagnose Rate Limiting
 

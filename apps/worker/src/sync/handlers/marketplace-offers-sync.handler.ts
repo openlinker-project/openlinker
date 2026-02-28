@@ -15,6 +15,8 @@ import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
+  ConnectionCursorRepositoryPort,
+  CONNECTION_CURSOR_REPOSITORY_TOKEN,
 } from '@openlinker/core/sync';
 import {
   IOfferMappingSyncService,
@@ -33,31 +35,58 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
     private readonly offerMappingSync: IOfferMappingSyncService,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
+    private readonly cursorRepository: ConnectionCursorRepositoryPort,
   ) {}
 
   async execute(job: SyncJob): Promise<void> {
     const payload = this.getPayload(job);
 
+    const feedType = payload.feedType ?? (payload.cursorKey ? 'events' : 'offers');
+    if (feedType === 'events' && (!payload.cursorKey || typeof payload.cursorKey !== 'string')) {
+      throw new SyncJobExecutionError(
+        `Missing or invalid cursorKey for events feed: ${JSON.stringify(job.payload)}`,
+        job.id,
+        job.jobType,
+        job.connectionId,
+      );
+    }
+    const storedCursor = payload.cursorKey
+      ? await this.cursorRepository.get(job.connectionId, payload.cursorKey)
+      : null;
+    const effectiveCursor = payload.cursor ?? storedCursor ?? null;
+
     this.logger.log(
-      `Executing marketplace.offers.sync job ${job.id} for connection ${job.connectionId} (limit=${payload.limit}, cursor=${payload.cursor ?? 'none'})`,
+      `Executing marketplace.offers.sync job ${job.id} for connection ${job.connectionId} (limit=${payload.limit}, feedType=${feedType}, cursor=${effectiveCursor ?? 'none'})`,
     );
 
     try {
       const result = await this.offerMappingSync.sync(job.connectionId, {
         limit: payload.limit,
-        cursor: payload.cursor ?? null,
+        cursor: effectiveCursor,
+        feedType,
         masterConnectionId: payload.masterConnectionId ?? null,
       });
 
-      if (result.nextCursor) {
+      const nextCursor = result.nextCursor;
+      const cursorAdvanced =
+        typeof nextCursor === 'string' && nextCursor !== effectiveCursor;
+
+      if (payload.cursorKey && cursorAdvanced) {
+        await this.cursorRepository.set(job.connectionId, payload.cursorKey, nextCursor);
+      }
+
+      if (cursorAdvanced) {
         const followUpPayload: MarketplaceOffersSyncPayloadV1 = {
           schemaVersion: 1,
           limit: payload.limit,
-          cursor: result.nextCursor,
+          cursor: nextCursor,
+          cursorKey: payload.cursorKey,
+          feedType,
           masterConnectionId: payload.masterConnectionId ?? null,
         };
 
-        const idempotencyKey = `marketplace.offers.sync:${job.connectionId}:${result.nextCursor}`;
+        const idempotencyKey = `marketplace.offers.sync:${feedType}:${job.connectionId}:${nextCursor}`;
 
         const followUpRequest: SyncJobRequest = {
           jobType: 'marketplace.offers.sync',
@@ -69,7 +98,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         await this.jobEnqueue.enqueueJob(followUpRequest);
 
         this.logger.debug(
-          `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${result.nextCursor})`,
+          `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${nextCursor})`,
         );
       }
     } catch (error) {
@@ -106,6 +135,8 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
       schemaVersion: 1,
       limit: payload.limit,
       cursor: payload.cursor ?? null,
+      cursorKey: payload.cursorKey,
+      feedType: payload.feedType,
       masterConnectionId: payload.masterConnectionId ?? null,
     };
   }

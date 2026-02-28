@@ -40,6 +40,13 @@ export interface MarketplacePort {
   listOffers?(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput>;
 
   /**
+   * List incremental marketplace offer events (optional).
+   *
+   * Uses a cursor-based event journal when supported by the marketplace.
+   */
+  listOfferEvents?(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput>;
+
+  /**
    * Update a single offer quantity.
    */
   updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void>;

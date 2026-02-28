@@ -7,6 +7,7 @@
 export interface OfferMappingSyncOptions {
   limit: number;
   cursor?: string | null;
+  feedType?: 'offers' | 'events';
   masterConnectionId?: string | null;
 }
 

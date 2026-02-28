@@ -58,13 +58,10 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
       connectionId,
       'Marketplace',
     );
-    if (!marketplace.listOffers) {
-      throw new Error('Marketplace adapter does not support listOffers');
-    }
-
-    const feed = await marketplace.listOffers({
+    const feed = await this.loadOfferFeed(marketplace, {
       cursor: options.cursor ?? null,
       limit: options.limit,
+      feedType: options.feedType ?? 'offers',
     });
 
     const items = feed.items ?? [];
@@ -119,6 +116,27 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
       skipped,
       nextCursor: feed.nextCursor ?? null,
     };
+  }
+
+  private async loadOfferFeed(
+    marketplace: MarketplacePort,
+    input: { cursor: string | null; limit: number; feedType: 'offers' | 'events' },
+  ): Promise<{ items: MarketplaceOfferFeedItem[]; nextCursor: string | null }> {
+    if (input.feedType === 'events') {
+      if (!marketplace.listOfferEvents) {
+        this.logger.warn(
+          'Marketplace adapter does not support listOfferEvents; falling back to listOffers',
+        );
+      } else {
+        return marketplace.listOfferEvents({ cursor: input.cursor, limit: input.limit });
+      }
+    }
+
+    if (!marketplace.listOffers) {
+      throw new Error('Marketplace adapter does not support listOffers');
+    }
+
+    return marketplace.listOffers({ cursor: input.cursor, limit: input.limit });
   }
 
   private async buildLookups(

@@ -145,6 +145,10 @@ export class SchedulerService implements OnModuleInit {
       const pageLimit = Number(
         this.configService.get<string>('ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
       );
+      const offersFeedTypeRaw = this.configService
+        .get<string>('ALLEGRO_OFFERS_SYNC_FEED_TYPE', 'events')
+        .toLowerCase();
+      const offersFeedType = offersFeedTypeRaw === 'offers' ? 'offers' : 'events';
 
       this.registerTask({
         taskId: 'allegro-offers-sync',
@@ -156,6 +160,8 @@ export class SchedulerService implements OnModuleInit {
           schemaVersion: 1,
           limit: Number.isFinite(pageLimit) && pageLimit > 0 ? pageLimit : 100,
           cursor: null,
+          cursorKey: offersFeedType === 'events' ? 'allegro.offers.lastEventId' : undefined,
+          feedType: offersFeedType,
           masterConnectionId: this.getMasterCatalogConnectionId(connection),
         }),
         generateIdempotencyKey: (connection, timestamp) =>

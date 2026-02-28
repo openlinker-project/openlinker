@@ -315,7 +315,6 @@ Do **not** assume undocumented behavior.
 ---
 
 ### 4️⃣ Architecture Mapping
-
 **Reference**: [Architecture Overview - Hexagonal Architecture Structure](./architecture-overview.md#hexagonal-architecture-structure)
 
 Explicitly map the task to OpenLinker architecture:

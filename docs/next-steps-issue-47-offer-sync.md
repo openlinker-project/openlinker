@@ -25,6 +25,7 @@ Set/verify these env vars in API runtime:
 - `ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED` (default `true`)
 - `ALLEGRO_OFFERS_SYNC_INTERVAL_CRON` (default `*/30 * * * *`)
 - `ALLEGRO_OFFERS_SYNC_PAGE_LIMIT` (default `100`)
+- `ALLEGRO_OFFERS_SYNC_FEED_TYPE` (`events` by default; set to `offers` for full-crawl bootstrap)
 
 Confirm the API instance logs the registration of `allegro-offers-sync`.
 
@@ -46,12 +47,19 @@ If you want to force a full run immediately, enqueue a seed job:
 {
   "jobType": "marketplace.offers.sync",
   "connectionId": "<ALLEGRO_CONNECTION_ID>",
-  "payload": { "schemaVersion": 1, "limit": 200, "cursor": null },
+  "payload": {
+    "schemaVersion": 1,
+    "limit": 200,
+    "feedType": "events",
+    "cursorKey": "allegro.offers.lastEventId"
+  },
   "idempotencyKey": "marketplace:<ALLEGRO_CONNECTION_ID>:offers:sync:seed-1"
 }
 ```
 
 Follow-up jobs are automatically enqueued by the worker handler until `nextCursor` is empty.
+
+For initial backfill, you can temporarily set `ALLEGRO_OFFERS_SYNC_FEED_TYPE=offers` (or enqueue a manual job with `feedType: "offers"`), then switch back to `events` for incremental runs.
 
 ---
 
@@ -71,12 +79,13 @@ Ensure `internalId` points to **variant IDs** only (no product IDs).
 
 ### 5) Validate Allegro API Assumptions
 
-Confirm `GET /sale/offers` returns:
+Confirm events feed behavior for `GET /sale/offer-events`:
 
-- `offers[].id` (offerId)
-- `offers[].external.id` (externalRef)
+- event IDs are monotonic for cursor progression
+- `offer.id` is present for each relevant event
 
-If `external.id` is missing in real data, linking will fall back to SKU or skip.
+The handler persists cursor key `allegro.offers.lastEventId` after each successful page.
+If identifiers are missing on some offers, linking falls back to SKU/barcodes or safely skips.
 
 ---
 

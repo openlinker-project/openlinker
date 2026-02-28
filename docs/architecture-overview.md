@@ -168,6 +168,7 @@ The system is organized into the following core bounded contexts:
   - Offer status synchronization
   - Price management for marketplace offers
 - Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
+- Allegro offer sync uses `GET /sale/offer-events` with persisted cursor key `allegro.offers.lastEventId`.
 - Offer linking by barcode uses master-catalog scoping and links only on unique matches.
 
 ### 6. Sync Manager

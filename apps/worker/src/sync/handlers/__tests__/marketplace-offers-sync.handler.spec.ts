@@ -6,7 +6,7 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { MarketplaceOffersSyncHandler } from '../marketplace-offers-sync.handler';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { SyncJobExecutionError, ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 
@@ -15,6 +15,7 @@ describe('MarketplaceOffersSyncHandler', () => {
   type OfferMappingSyncServiceLike = { sync: jest.Mock };
   let offerMappingSync: OfferMappingSyncServiceLike;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+  let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
 
   beforeEach(() => {
     offerMappingSync = {
@@ -25,7 +26,17 @@ describe('MarketplaceOffersSyncHandler', () => {
       enqueueJob: jest.fn(),
     } as unknown as jest.Mocked<JobEnqueuePort>;
 
-    handler = new MarketplaceOffersSyncHandler(offerMappingSync, jobEnqueue);
+    cursorRepository = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn(),
+      delete: jest.fn(),
+    } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
+
+    handler = new MarketplaceOffersSyncHandler(
+      offerMappingSync,
+      jobEnqueue,
+      cursorRepository,
+    );
   });
 
   const createJob = (payload: Record<string, unknown>): SyncJob => ({
@@ -60,16 +71,19 @@ describe('MarketplaceOffersSyncHandler', () => {
     expect(offerMappingSync.sync).toHaveBeenCalledWith('connection-1', {
       limit: 50,
       cursor: null,
+      feedType: 'offers',
       masterConnectionId: null,
     });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
       expect.objectContaining({
         jobType: 'marketplace.offers.sync',
         connectionId: 'connection-1',
+        idempotencyKey: 'marketplace.offers.sync:offers:connection-1:50',
         payload: expect.objectContaining({
           schemaVersion: 1,
           limit: 50,
           cursor: '50',
+          feedType: 'offers',
           masterConnectionId: null,
         }),
       }),
@@ -91,8 +105,73 @@ describe('MarketplaceOffersSyncHandler', () => {
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
   });
 
+  it('uses cursor repository for events feed', async () => {
+    const job = createJob({
+      schemaVersion: 1,
+      limit: 25,
+      cursorKey: 'allegro.offers.lastEventId',
+      feedType: 'events',
+    });
+
+    cursorRepository.get.mockResolvedValue('event-10');
+    offerMappingSync.sync.mockResolvedValue({
+      scanned: 1,
+      linked: 0,
+      skipped: 1,
+      nextCursor: 'event-11',
+    });
+
+    await handler.execute(job);
+
+    expect(offerMappingSync.sync).toHaveBeenCalledWith('connection-1', {
+      limit: 25,
+      cursor: 'event-10',
+      feedType: 'events',
+      masterConnectionId: null,
+    });
+    expect(cursorRepository.set).toHaveBeenCalledWith(
+      'connection-1',
+      'allegro.offers.lastEventId',
+      'event-11',
+    );
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey:
+          'marketplace.offers.sync:events:connection-1:event-11',
+      }),
+    );
+  });
+
+  it('does not enqueue follow-up when cursor does not advance', async () => {
+    const job = createJob({
+      schemaVersion: 1,
+      limit: 25,
+      cursorKey: 'allegro.offers.lastEventId',
+      feedType: 'events',
+    });
+
+    cursorRepository.get.mockResolvedValue('event-10');
+    offerMappingSync.sync.mockResolvedValue({
+      scanned: 0,
+      linked: 0,
+      skipped: 0,
+      nextCursor: 'event-10',
+    });
+
+    await handler.execute(job);
+
+    expect(cursorRepository.set).not.toHaveBeenCalled();
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
   it('throws SyncJobExecutionError on invalid payload', async () => {
     const job = createJob({ schemaVersion: 1 });
+
+    await expect(handler.execute(job)).rejects.toBeInstanceOf(SyncJobExecutionError);
+  });
+
+  it('throws SyncJobExecutionError when events feed has no cursorKey', async () => {
+    const job = createJob({ schemaVersion: 1, limit: 10, feedType: 'events' });
 
     await expect(handler.execute(job)).rejects.toBeInstanceOf(SyncJobExecutionError);
   });

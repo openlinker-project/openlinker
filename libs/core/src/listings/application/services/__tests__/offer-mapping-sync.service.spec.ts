@@ -23,6 +23,7 @@ describe('OfferMappingSyncService', () => {
       getOrder: jest.fn(),
       updateOfferQuantity: jest.fn(),
       listOffers: jest.fn(),
+      listOfferEvents: jest.fn(),
     } as unknown as jest.Mocked<MarketplacePort>;
 
     integrationsService = {
@@ -39,7 +40,11 @@ describe('OfferMappingSyncService', () => {
           updatedAt: new Date(),
         },
         adapter: marketplace,
-        metadata: { adapterKey: 'allegro', supportedCapabilities: ['Marketplace'] },
+        metadata: {
+          adapterKey: 'allegro',
+          supportedCapabilities: ['Marketplace'],
+          platformType: 'allegro',
+        },
       }),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;

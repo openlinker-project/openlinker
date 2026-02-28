@@ -29,6 +29,7 @@ import {
   AllegroOfferParameter,
   AllegroProductOffer,
   AllegroOffersResponse,
+  AllegroOfferEventsResponse,
 } from '../../domain/types/allegro-api.types';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
@@ -139,6 +140,59 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     } catch (error) {
       this.logger.error(
         `Failed to list Allegro order feed (connection: ${this.connectionId}): ${(error as Error).message}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * List incremental marketplace offer events (Allegro).
+   *
+   * Uses Allegro offer events journal with cursor-based pagination.
+   */
+  async listOfferEvents(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput> {
+    this.logger.debug(
+      `Listing Allegro offer events (connection: ${this.connectionId}, fromCursor: ${input.cursor || 'none'}, limit: ${input.limit})`,
+    );
+
+    try {
+      const queryParams: Record<string, string | number> = {};
+      if (input.cursor) {
+        queryParams.from = input.cursor;
+      }
+      queryParams.limit = input.limit;
+
+      const response = await this.httpClient.get<AllegroOfferEventsResponse>('/sale/offer-events', {
+        queryParams,
+      });
+
+      const events = response.data.offerEvents || [];
+      const nextCursor =
+        response.data.lastEventId ||
+        (events.length > 0 ? events[events.length - 1]?.id : input.cursor || null);
+
+      this.logger.debug(
+        `Fetched ${events.length} offer events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`,
+      );
+
+      const eventMap = new Map<string, (typeof events)[number]>();
+      for (const event of events) {
+        eventMap.set(event.offer.id, event);
+      }
+
+      const offers = Array.from(eventMap.values()).map((event) => ({
+        id: event.offer.id,
+        external: event.offer.external?.id ? { id: event.offer.external.id } : undefined,
+      }));
+
+      return {
+        items: await this.buildOfferFeedItems(offers),
+        nextCursor,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to list Allegro offer events (connection: ${this.connectionId}): ${(error as Error).message}`,
         error,
       );
       throw error;
