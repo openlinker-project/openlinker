@@ -38,6 +38,8 @@ export interface ProductVariant {
   productId: string;
   sku: string;
   attributes?: Record<string, string>;
+  ean?: string;
+  gtin?: string;
   price?: number;
   weight?: number;
   [key: string]: unknown;

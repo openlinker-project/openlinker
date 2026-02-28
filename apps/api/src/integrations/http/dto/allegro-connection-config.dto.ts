@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsEnum, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -43,5 +43,13 @@ export class AllegroConnectionConfigDto {
   @IsOptional()
   @IsString()
   apiBaseUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Master catalog connection ID for barcode lookups',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
+  @IsOptional()
+  masterCatalogConnectionId?: string;
 }
 

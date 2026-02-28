@@ -23,6 +23,7 @@ import {
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+import { ProductsModule } from '@openlinker/core/products';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -33,6 +34,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for cursor repository, job queue, and locks
+    ProductsModule, // Required for PRODUCT_VARIANT_REPOSITORY_TOKEN
   ],
   providers: [
     // Provide classes directly first

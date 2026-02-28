@@ -231,6 +231,8 @@ describe('PrestashopProductMasterAdapter', () => {
         },
       ]);
 
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+
       const combinations: PrestashopCombination[] = [
         {
           id: '101',
@@ -261,6 +263,7 @@ describe('PrestashopProductMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const result = await adapter.getProductVariants(productId);
 
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalProductId);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'combinations',
@@ -276,9 +279,63 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('internal-variant-1');
       expect(result[1].id).toBe('internal-variant-2');
+      expect(mockIdentifierMapping.deleteMapping).toHaveBeenCalledWith(
+        'Product',
+        `product:${externalProductId}`,
+        connection.id,
+      );
     });
 
-    it('should return empty array when no variants found', async () => {
+    it('does not fallback to product barcode when multiple combinations exist', async () => {
+      const productId = 'internal-product-123';
+      const externalProductId = '42';
+
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        {
+          connectionId: connection.id,
+          externalId: externalProductId,
+          entityType: 'Product',
+        },
+      ]);
+
+      mockHttpClient.getResource = jest.fn().mockResolvedValue({
+        ...samplePrestashopProduct,
+        id: externalProductId,
+        ean13: '5901234123457',
+        upc: '012345678905',
+      });
+
+      const combinations: PrestashopCombination[] = [
+        {
+          id: '101',
+          id_product: '42',
+          reference: 'VAR-001',
+        },
+        {
+          id: '102',
+          id_product: '42',
+          reference: 'VAR-002',
+        },
+      ];
+
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+
+      const idMap = new Map([
+        ['101:test-connection-id', 'internal-variant-1'],
+        ['102:test-connection-id', 'internal-variant-2'],
+      ]);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
+
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].ean).toBeUndefined();
+      expect(result[0].gtin).toBeUndefined();
+      expect(result[1].ean).toBeUndefined();
+      expect(result[1].gtin).toBeUndefined();
+    });
+
+    it('should return synthetic variant when no combinations found', async () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
 
@@ -291,12 +348,22 @@ describe('PrestashopProductMasterAdapter', () => {
         },
       ]);
 
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const result = await adapter.getProductVariants(productId);
 
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0].sku).toBe(samplePrestashopProduct.reference);
+      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'Product',
+        `product:${externalProductId}`,
+        connection.id,
+        expect.objectContaining({
+          metadata: expect.objectContaining({ isVariant: true, synthetic: true }),
+        }),
+      );
     });
 
     it('should throw PrestashopResourceNotFoundException when product not found', async () => {

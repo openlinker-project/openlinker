@@ -10,11 +10,16 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import {
+  PRODUCT_VARIANT_REPOSITORY_TOKEN,
+} from '@openlinker/core/products';
+import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 export interface ResolvedOrderItemProduct {
   internalProductId: string;
+  internalVariantId?: string;
 }
 
 @Injectable()
@@ -22,6 +27,8 @@ export class OrderItemRefResolverService {
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
+    private readonly variantRepository: ProductVariantRepositoryPort,
   ) {}
 
   async resolve(
@@ -30,15 +37,23 @@ export class OrderItemRefResolverService {
   ): Promise<ResolvedOrderItemProduct> {
     switch (productRef.type) {
       case 'offer': {
-        const internalProductId = await this.identifierMapping.getInternalId(
+        const internalVariantId = await this.identifierMapping.getInternalId(
           'Offer',
           productRef.externalId,
           connectionId,
         );
-        if (!internalProductId) {
+        if (!internalVariantId) {
           throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Offer');
         }
-        return { internalProductId };
+        const variant = await this.variantRepository.findById(internalVariantId);
+        if (!variant) {
+          throw new MissingOrderItemMappingError(
+            connectionId,
+            productRef,
+            'identifier_mappings:Offer:variant-missing',
+          );
+        }
+        return { internalProductId: variant.productId, internalVariantId: variant.id };
       }
       case 'product': {
         const internalProductId = await this.identifierMapping.getInternalId(
@@ -52,30 +67,42 @@ export class OrderItemRefResolverService {
         return { internalProductId };
       }
       case 'variant': {
-        const internalProductId = await this.identifierMapping.getInternalId(
+        const internalVariantId = await this.identifierMapping.getInternalId(
           'ProductVariant',
           productRef.externalId,
           connectionId,
         );
-        if (!internalProductId) {
+        if (!internalVariantId) {
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
             'identifier_mappings:ProductVariant',
           );
         }
-        return { internalProductId };
+        const variant = await this.variantRepository.findById(internalVariantId);
+        if (!variant) {
+          throw new MissingOrderItemMappingError(
+            connectionId,
+            productRef,
+            'identifier_mappings:ProductVariant:variant-missing',
+          );
+        }
+        return { internalProductId: variant.productId, internalVariantId: variant.id };
       }
       case 'sku': {
-        const internalProductId = await this.identifierMapping.getInternalId(
+        const internalId = await this.identifierMapping.getInternalId(
           'Sku',
           productRef.externalId,
           connectionId,
         );
-        if (!internalProductId) {
+        if (!internalId) {
           throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Sku');
         }
-        return { internalProductId };
+        const variant = await this.variantRepository.findById(internalId);
+        if (variant) {
+          return { internalProductId: variant.productId, internalVariantId: variant.id };
+        }
+        return { internalProductId: internalId };
       }
     }
   }

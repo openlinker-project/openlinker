@@ -357,6 +357,36 @@ describe('PrestashopProductMapper', () => {
       expect(result.attributes).toBeDefined();
       expect(Object.keys(result.attributes || {}).length).toBeGreaterThan(0);
     });
+
+    it('should map ean13 and upc to ean/gtin', () => {
+      const combination: PrestashopCombination = {
+        id: '101',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        ean13: '5901234123457',
+        upc: '012345678905',
+      };
+
+      const result = mapper.mapVariant(combination, 'internal-product-id');
+
+      expect(result.ean).toBe('5901234123457');
+      expect(result.gtin).toBe('012345678905');
+    });
+
+    it('should drop invalid barcode lengths for ean13/upc', () => {
+      const combination: PrestashopCombination = {
+        id: '101',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        ean13: 'ABC',
+        upc: '12345',
+      };
+
+      const result = mapper.mapVariant(combination, 'internal-product-id');
+
+      expect(result.ean).toBeUndefined();
+      expect(result.gtin).toBeUndefined();
+    });
   });
 });
 

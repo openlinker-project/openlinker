@@ -67,6 +67,7 @@ describe('OrderIngestionService', () => {
       getExternalIds: jest.fn(),
       createMapping: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
     orderItemRefResolver = {

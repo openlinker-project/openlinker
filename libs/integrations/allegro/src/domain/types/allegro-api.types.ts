@@ -86,6 +86,31 @@ export interface AllegroOrderEventsResponse {
 }
 
 /**
+ * Allegro offer event (from GET /sale/offer-events)
+ */
+export interface AllegroOfferEvent {
+  id: string;
+  occurredAt: string;
+  type: string;
+  offer: {
+    id: string;
+    external?: {
+      id?: string | null;
+    };
+  };
+}
+
+/**
+ * Allegro offer events API response
+ *
+ * Response from GET /sale/offer-events endpoint containing offer event references.
+ */
+export interface AllegroOfferEventsResponse {
+  offerEvents: AllegroOfferEvent[];
+  lastEventId?: string;
+}
+
+/**
  * Allegro offer quantity change command request
  *
  * Request body for PUT /sale/offer-quantity-change-commands/{commandId} endpoint.
@@ -109,6 +134,68 @@ export interface AllegroOfferQuantityChangeCommandResponse {
   errors?: Array<{
     code: string;
     message: string;
+  }>;
+}
+
+/**
+ * Allegro offers list item (from GET /sale/offers)
+ */
+export interface AllegroOfferListItem {
+  id: string;
+  category?: {
+    id: string;
+  };
+  external?: {
+    id?: string | null;
+  };
+}
+
+/**
+ * Allegro offers list response
+ */
+export interface AllegroOffersResponse {
+  offers: AllegroOfferListItem[];
+  count: number;
+  totalCount: number;
+}
+
+/**
+ * Allegro offer parameter entry (from GET /sale/product-offers/{offerId})
+ */
+export interface AllegroOfferParameter {
+  id: string;
+  name?: string;
+  values?: string[];
+  valuesIds?: string[];
+}
+
+/**
+ * Allegro product offer (from GET /sale/product-offers/{offerId})
+ */
+export interface AllegroProductOffer {
+  id: string;
+  name?: string;
+  category?: {
+    id: string;
+  };
+  parameters?: AllegroOfferParameter[];
+  productSet?: Array<{
+    product?: {
+      parameters?: AllegroOfferParameter[];
+    };
+  }>;
+  external?: {
+    id?: string | null;
+  };
+}
+
+/**
+ * Allegro category parameters response (from GET /sale/categories/{categoryId}/parameters)
+ */
+export interface AllegroCategoryParametersResponse {
+  parameters: Array<{
+    id: string;
+    name: string;
   }>;
 }
 

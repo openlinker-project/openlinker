@@ -15,10 +15,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In, Brackets } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
 import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
 import { ProductVariant } from '../../../domain/entities/product-variant.entity';
+import { normalizeBarcode } from '../../../domain/utils/barcode-normalization';
 
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {
@@ -43,6 +44,77 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     const entities = await this.repository.find({
       where: { productId },
     });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findBySku(sku: string): Promise<ProductVariant | null> {
+    const entity = await this.repository.findOne({
+      where: { sku },
+    });
+
+    if (!entity) {
+      return null;
+    }
+
+    return this.toDomain(entity);
+  }
+
+  async findBySkuIn(skus: string[]): Promise<ProductVariant[]> {
+    if (skus.length === 0) {
+      return [];
+    }
+
+    const entities = await this.repository.find({
+      where: { sku: In(skus) },
+    });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findByEanOrGtinIn(
+    connectionId: string,
+    values: string[],
+    field: 'ean' | 'gtin',
+  ): Promise<ProductVariant[]> {
+    const normalizedValues = [
+      ...new Set(
+        values
+          .map((value) => normalizeBarcode(value))
+          .filter((value): value is string => !!value),
+      ),
+    ];
+    if (normalizedValues.length === 0) {
+      return [];
+    }
+
+    const attributeKey = field === 'ean' ? 'ean' : 'gtin';
+
+    const entities = await this.repository
+      .createQueryBuilder('variant')
+      .innerJoin(
+        'identifier_mappings',
+        'mapping',
+        `
+          mapping.internalId = variant.id
+          AND mapping.connectionId = :connectionId
+          AND mapping.entityType = :entityType
+          AND (mapping.context -> 'metadata' ->> 'isVariant') = 'true'
+        `,
+        {
+          connectionId,
+          entityType: 'Product',
+        },
+      )
+      .where(
+        new Brackets((qb) => {
+          qb.where(`variant.${field} IN (:...values)`, { values: normalizedValues }).orWhere(
+            `(variant.${field} IS NULL AND variant.attributes ->> '${attributeKey}' IN (:...values))`,
+            { values: normalizedValues },
+          );
+        }),
+      )
+      .getMany();
 
     return entities.map((entity) => this.toDomain(entity));
   }
@@ -98,6 +170,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       entity.attributes,
       entity.createdAt,
       entity.updatedAt,
+      entity.ean,
+      entity.gtin,
     );
   }
 
@@ -110,6 +184,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     entity.productId = variant.productId;
     entity.sku = variant.sku;
     entity.attributes = variant.attributes;
+    entity.ean = variant.ean;
+    entity.gtin = variant.gtin;
     entity.createdAt = variant.createdAt;
     entity.updatedAt = variant.updatedAt;
     return entity;

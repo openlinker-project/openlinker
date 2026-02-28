@@ -44,5 +44,16 @@ export interface IdentifierMappingRepositoryPort {
    * @throws DuplicateIdentifierMappingError if unique constraint violation occurs
    */
   insertMapping(mapping: IdentifierMapping): Promise<IdentifierMapping>;
+
+  /**
+   * Delete mapping by external key (entityType, platformType, connectionId, externalId)
+   * Idempotent: no-op if mapping does not exist.
+   */
+  deleteByExternalKey(
+    entityType: EntityType,
+    platformType: string,
+    connectionId: string,
+    externalId: string,
+  ): Promise<void>;
 }
 

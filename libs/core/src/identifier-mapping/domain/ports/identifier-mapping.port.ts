@@ -87,5 +87,15 @@ export interface IdentifierMappingPort {
     connectionId: string,
     context?: MappingContext,
   ): Promise<string>;
+
+  /**
+   * Delete mapping by external key (idempotent)
+   * Service resolves platformType from Connection internally
+   */
+  deleteMapping(
+    entityType: EntityType,
+    externalId: string,
+    connectionId: string,
+  ): Promise<void>;
 }
 

@@ -36,6 +36,12 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   attributes!: Record<string, string> | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  ean!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  gtin!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

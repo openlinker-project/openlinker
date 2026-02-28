@@ -28,6 +28,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       createMapping: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       getOrCreateExactMapping: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
     inventoryService = {
@@ -201,6 +202,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       await handler.execute(job);
 
       expect(inventoryService.getInventory).toHaveBeenCalledWith('product-id', 'variant-id', null);
+      expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Offer', 'variant-id');
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
           payload: expect.objectContaining({

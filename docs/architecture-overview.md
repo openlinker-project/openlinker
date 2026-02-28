@@ -125,6 +125,8 @@ The system is organized into the following core bounded contexts:
 - **Key Entities**: Product, ProductMapping, ProductVariant
 - **Location**: `libs/core/src/products/`
 - **Capability**: Uses `ProductMasterPort` abstraction
+- **Barcode Storage**: EAN/GTIN are stored on `ProductVariant` (not `Product`), as variants are the canonical offer-link targets.
+- **Simple Products**: Products without combinations produce a deterministic synthetic variant to ensure a stable mapping target.
 
 ### 3. Inventory
 - **Responsibility**: Inventory synchronization, stock level management
@@ -165,6 +167,9 @@ The system is organized into the following core bounded contexts:
   - Offer-to-product mapping
   - Offer status synchronization
   - Price management for marketplace offers
+- Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
+- Allegro offer sync uses `GET /sale/offer-events` with persisted cursor key `allegro.offers.lastEventId`.
+- Offer linking by barcode uses master-catalog scoping and links only on unique matches.
 
 ### 6. Sync Manager
 - **Responsibility**: Job scheduling and retry logic; workers execute jobs. **Sync orchestration policies live in core application services** (e.g., order ingestion, inventory propagation), not in worker handlers.
