@@ -23,6 +23,7 @@ import {
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SyncModule } from '@openlinker/core/sync';
 
 // Re-export tokens for convenience
 export {
@@ -38,6 +39,7 @@ export {
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
+    SyncModule, // Required for SYNC_JOB_QUEUE_TOKEN (inventory propagation enqueue)
   ],
   providers: [
     // Provide classes directly first

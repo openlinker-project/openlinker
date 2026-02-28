@@ -48,7 +48,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   });
 
   describe('execute', () => {
-    const createJob = (payload: { productId: string; variantId?: string | null }): SyncJob => ({
+    const createJob = (payload: { productId: string; variantId?: string | null; inventoryUpdatedAt?: string | null }): SyncJob => ({
       id: 'job-id',
       jobType: 'inventory.propagateToMarketplaces',
       connectionId: '', // Empty for inventory propagation jobs
@@ -213,6 +213,42 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     });
 
     it('should generate idempotency key correctly', async () => {
+      const job = createJob({
+        productId: 'product-id',
+        inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+      });
+      const inventory = new InventoryItemEntity(
+        'inventory-id',
+        'product-id',
+        null,
+        100,
+        0,
+        null,
+        new Date(),
+      );
+
+      inventoryService.getInventory.mockResolvedValue(inventory);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
+      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+
+      await handler.execute(job);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey:
+            'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z',
+        }),
+      );
+    });
+
+    it('should keep backward compatibility when inventoryUpdatedAt is missing', async () => {
       const job = createJob({ productId: 'product-id' });
       const inventory = new InventoryItemEntity(
         'inventory-id',
@@ -239,7 +275,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey: 'inventory:connection-id:product-id:base:100',
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy',
         }),
       );
     });

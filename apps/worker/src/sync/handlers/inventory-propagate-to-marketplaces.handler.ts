@@ -32,6 +32,7 @@ import { Logger } from '@openlinker/shared/logging';
 interface InventoryPropagateToMarketplacesPayload {
   productId: string;
   variantId?: string | null;
+  inventoryUpdatedAt?: string | null;
 }
 
 /**
@@ -114,9 +115,10 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         return;
       }
 
+      const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
       const enqueuePromises = allegroMappings.map(async (mapping) => {
-        // Generate idempotency key: inventory:connectionId:productId:variantId:quantity
-        const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}`;
+        // Include write-event token to avoid suppressing legitimate quantity oscillations (e.g. 5->6->5).
+        const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}`;
 
         const updatePayload = {
           schemaVersion: 1 as const,
@@ -174,6 +176,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     return {
       productId: payload.productId,
       variantId: payload.variantId || null,
+      inventoryUpdatedAt:
+        typeof payload.inventoryUpdatedAt === 'string' ? payload.inventoryUpdatedAt : null,
     };
   }
 }
