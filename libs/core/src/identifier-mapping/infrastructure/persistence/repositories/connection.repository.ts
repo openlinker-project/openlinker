@@ -15,14 +15,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
+import { Connection } from '../../../domain/entities/connection.entity';
+import { ConnectionPort } from '../../../domain/ports/connection.port';
 import {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
-import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
+} from '../../../domain/types/connection.types';
+import { ConnectionNotFoundException } from '../../../domain/exceptions/connection-not-found.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

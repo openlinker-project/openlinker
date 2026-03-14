@@ -36,6 +36,36 @@ export interface ProductVariantRepositoryPort {
   findByProductId(productId: string): Promise<ProductVariant[]>;
 
   /**
+   * Find variant by SKU
+   *
+   * @param sku - SKU string
+   * @returns Product variant domain entity or null if not found
+   */
+  findBySku(sku: string): Promise<ProductVariant | null>;
+
+  /**
+   * Find variants by SKU list
+   *
+   * @param skus - Array of SKU strings
+   * @returns Array of product variant domain entities
+   */
+  findBySkuIn(skus: string[]): Promise<ProductVariant[]>;
+
+  /**
+   * Find variants by EAN or GTIN list, scoped to master catalog connection
+   *
+   * @param connectionId - Master catalog connection ID
+   * @param values - Array of EAN/GTIN strings
+   * @param field - Barcode field to match ('ean' or 'gtin')
+   * @returns Array of product variant domain entities
+   */
+  findByEanOrGtinIn(
+    connectionId: string,
+    values: string[],
+    field: 'ean' | 'gtin',
+  ): Promise<ProductVariant[]>;
+
+  /**
    * Upsert variant (create or update by internal ID)
    *
    * If variant with given ID exists, updates it. Otherwise, creates new variant.

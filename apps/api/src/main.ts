@@ -56,6 +56,7 @@ async function bootstrap(): Promise<void> {
     .setVersion('1.0')
     .addTag('connections', 'Connection management endpoints')
     .addTag('adapters', 'Adapter discovery endpoints')
+    .addTag('allegro', 'Allegro integration endpoints (OAuth, validation)')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);

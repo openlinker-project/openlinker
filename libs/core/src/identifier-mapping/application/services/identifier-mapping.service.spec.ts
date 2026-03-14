@@ -27,6 +27,7 @@ describe('IdentifierMappingService', () => {
       findByInternalId: jest.fn(),
       create: jest.fn(),
       insertMapping: jest.fn(),
+      deleteByExternalKey: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingRepositoryPort>;
 
     const mockConnectionPort = {
@@ -128,21 +129,8 @@ describe('IdentifierMappingService', () => {
       expect(repository.insertMapping).toHaveBeenCalled();
     });
 
-    it('should handle concurrency: return existing mapping on unique violation', async () => {
-      repository.findByExternalKey
-        .mockResolvedValueOnce(null) // First call: no mapping exists
-        .mockResolvedValueOnce({
-          // Second call: mapping was created by concurrent request
-          id: 'id-1',
-          entityType: 'Product',
-          internalId: 'ol_product_concurrent123',
-          externalId: 'external-123',
-          platformType,
-          connectionId,
-          context: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        } as IdentifierMapping);
+    it('should throw DuplicateIdentifierMappingError on unique violation (concurrency not handled yet)', async () => {
+      repository.findByExternalKey.mockResolvedValue(null); // No mapping exists initially
 
       const duplicateError = new DuplicateIdentifierMappingError(
         'Product',
@@ -152,15 +140,12 @@ describe('IdentifierMappingService', () => {
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
 
-      const result = await service.getOrCreateInternalId(
-        'Product',
-        'external-123',
-        connectionId,
-      );
+      await expect(
+        service.getOrCreateInternalId('Product', 'external-123', connectionId),
+      ).rejects.toThrow(DuplicateIdentifierMappingError);
 
-      expect(result).toBe('ol_product_concurrent123');
       expect(repository.insertMapping).toHaveBeenCalled();
-      expect(repository.findByExternalKey).toHaveBeenCalledTimes(2);
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(1);
     });
 
     it('should resolve platformType from Connection', async () => {

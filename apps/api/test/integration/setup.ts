@@ -219,7 +219,12 @@ let globalHarness: IntegrationTestHarness | null = null;
 export async function getTestHarness(): Promise<IntegrationTestHarness> {
   if (!globalHarness) {
     globalHarness = new IntegrationTestHarness();
-    await globalHarness.setup();
+    try {
+      await globalHarness.setup();
+    } catch (error) {
+      globalHarness = null;
+      throw error;
+    }
   }
   return globalHarness;
 }

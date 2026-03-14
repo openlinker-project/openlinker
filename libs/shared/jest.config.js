@@ -2,6 +2,7 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
+  testSequencer: '<rootDir>/../test/openlinker.sequencer.cjs',
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },

@@ -9,7 +9,7 @@
  */
 import { Product, ProductVariant } from '@openlinker/core/products';
 import { Inventory } from '@openlinker/core/inventory';
-import { Order } from '@openlinker/core/orders';
+import { Order, OrderCreate } from '@openlinker/core/orders';
 
 /**
  * PrestaShop product data (from API response)
@@ -19,6 +19,8 @@ export interface PrestashopProduct {
   name?: { language?: Array<{ '#text': string; '@_id': string }> } | string;
   description?: { language?: Array<{ '#text': string; '@_id': string }> } | string;
   reference?: string;
+  ean13?: string;
+  upc?: string;
   price?: string | number;
   weight?: string | number;
   active?: string | number;
@@ -32,6 +34,8 @@ export interface PrestashopCombination {
   id: string | number;
   id_product: string | number;
   reference?: string;
+  ean13?: string;
+  upc?: string;
   price?: string | number;
   weight?: string | number;
   associations?: {
@@ -143,6 +147,53 @@ export interface IPrestashopOrderMapper {
    * @returns OpenLinker Order (without ID - ID mapping handled by adapter)
    */
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'>;
+
+  /**
+   * Map OpenLinker OrderCreate to PrestaShop order format
+   *
+   * @param orderCreate - OpenLinker order creation request
+   * @param externalCustomerId - PrestaShop customer ID (external)
+   * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
+   * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
+   * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
+   * @returns PrestaShop order data ready for API submission
+   */
+  mapOrderCreate(
+    orderCreate: OrderCreate,
+    externalCustomerId: string | number,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
+  ): Record<string, unknown>;
+
+  /**
+   * Map OpenLinker OrderCreate to PrestaShop cart format
+   *
+   * Creates a cart structure that can be used to create a cart in PrestaShop,
+   * which is then required to create an order.
+   *
+   * @param orderCreate - OpenLinker order creation request
+   * @param externalCustomerId - PrestaShop customer ID (external)
+   * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
+   * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
+   * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
+   * @returns PrestaShop cart data ready for API submission
+   */
+  mapCartCreate(
+    orderCreate: OrderCreate,
+    externalCustomerId: string | number,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>,
+    externalShippingAddressId?: string | number,
+    externalBillingAddressId?: string | number,
+    externalCurrencyId?: string | number,
+    externalLangId?: string | number,
+  ): Record<string, unknown>;
 }
 
 

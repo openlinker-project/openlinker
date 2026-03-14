@@ -11,6 +11,9 @@
 // Token for dependency injection (interfaces can't be used as values)
 export const JOB_ENQUEUE_TOKEN = Symbol('JobEnqueuePort');
 export const SYNC_JOB_REPOSITORY_TOKEN = Symbol('SyncJobRepositoryPort');
+export const CONNECTION_CURSOR_REPOSITORY_TOKEN = Symbol('ConnectionCursorRepositoryPort');
+export const SYNC_JOB_QUEUE_TOKEN = Symbol('SyncJobQueuePort');
+export const SYNC_LOCK_TOKEN = Symbol('SyncLockPort');
 
 
 

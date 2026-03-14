@@ -77,6 +77,7 @@ describe('IntegrationsService', () => {
       getExternalIds: jest.fn(),
       getOrCreateInternalId: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
+      deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingPort>;
 
     const mockCredentialsResolver = {
@@ -265,7 +266,7 @@ describe('IntegrationsService', () => {
       const allegroMetadata: AdapterMetadata = {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['ProductMaster', 'OrderProcessorManager'],
+        supportedCapabilities: ['ProductMaster', 'Marketplace'],
       };
 
       connectionPort.list.mockResolvedValue([

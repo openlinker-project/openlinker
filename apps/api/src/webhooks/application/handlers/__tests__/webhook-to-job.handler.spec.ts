@@ -9,8 +9,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
-import { JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { InboundWebhookEvent } from '@openlinker/core/events';
+import { JobTypeValues } from '@openlinker/core/sync';
 
 describe('WebhookToJobHandler', () => {
   let handler: WebhookToJobHandler;
@@ -65,7 +65,7 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.inventory.syncByExternalId');
+      expect(job.jobType).toBe('master.inventory.syncByExternalId');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(job.payload.objectType).toBe('Inventory'); // Normalized canonical type
     });
@@ -76,7 +76,7 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.inventory.syncByExternalId');
+      expect(job.jobType).toBe('master.inventory.syncByExternalId');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(job.payload.objectType).toBe('Inventory');
     });
@@ -87,21 +87,19 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.product.syncByExternalId');
+      expect(job.jobType).toBe('master.product.syncByExternalId');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(job.payload.objectType).toBe('Product');
     });
 
-    it('should pass through PrestaShop "order" unchanged', () => {
+    it('should throw error for unsupported PrestaShop "order" master objectType', () => {
       const event = createInboundEvent('prestashop', 'order');
       event.eventType = 'order.created';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      const job = (handler as any).mapToSyncJob(event);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.order.syncByExternalId');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.payload.objectType).toBe('Order');
+      expect(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        (handler as any).mapToSyncJob(event);
+      }).toThrow(/Unsupported master objectType: order/i);
     });
 
     it('should throw error for unmapped objectType that results in invalid job type', () => {
@@ -110,7 +108,7 @@ describe('WebhookToJobHandler', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         (handler as any).mapToSyncJob(event);
-      }).toThrow(/Invalid job type: prestashop\.unknown_type\.syncByExternalId/);
+      }).toThrow(/Unsupported master objectType: unknown_type/i);
     });
 
     it('should throw error for unknown provider that results in invalid job type', () => {
@@ -129,7 +127,7 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.inventory.syncByExternalId');
+      expect(job.jobType).toBe('master.inventory.syncByExternalId');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(job.payload.objectType).toBe('Inventory');
     });
@@ -154,7 +152,7 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       expect(job).toMatchObject({
-        jobType: 'prestashop.inventory.syncByExternalId',
+        jobType: 'master.inventory.syncByExternalId',
         connectionId: '59f4129e-a827-4650-b69b-fc2302b9ecb7',
         payload: {
           externalId: '23',
@@ -174,7 +172,7 @@ describe('WebhookToJobHandler', () => {
       const job = (handler as any).mapToSyncJob(event);
 
       expect(job).toMatchObject({
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         payload: {
           objectType: 'Product',
           eventType: 'product.saved',
@@ -191,7 +189,7 @@ describe('WebhookToJobHandler', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         (handler as any).mapToSyncJob(event);
-      }).toThrow(/Invalid job type: prestashop\.invalid_type\.syncByExternalId/);
+      }).toThrow(/Unsupported master objectType: invalid_type/i);
     });
 
     it('should throw error for invalid job type even if normalization works', () => {
@@ -201,7 +199,7 @@ describe('WebhookToJobHandler', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         (handler as any).mapToSyncJob(event);
-      }).toThrow(/Invalid job type: prestashop\.product_variant\.syncByExternalId/);
+      }).toThrow(/Unsupported master objectType: product_variant/i);
     });
 
     it('should preserve event payload in job payload', () => {
@@ -266,15 +264,15 @@ describe('WebhookToJobHandler', () => {
   describe('validateJobType', () => {
     it('should return valid job type', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      const result = (handler as any).validateJobType('prestashop.product.syncByExternalId');
-      expect(result).toBe('prestashop.product.syncByExternalId');
+      const result = (handler as any).validateJobType('master.product.syncByExternalId');
+      expect(result).toBe('master.product.syncByExternalId');
       expect(JobTypeValues).toContain(result);
     });
 
     it('should return valid inventory job type', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      const result = (handler as any).validateJobType('prestashop.inventory.syncByExternalId');
-      expect(result).toBe('prestashop.inventory.syncByExternalId');
+      const result = (handler as any).validateJobType('master.inventory.syncByExternalId');
+      expect(result).toBe('master.inventory.syncByExternalId');
       expect(JobTypeValues).toContain(result);
     });
 
@@ -289,7 +287,7 @@ describe('WebhookToJobHandler', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         (handler as any).validateJobType('invalid.job.type');
-      }).toThrow(/Valid types: .*prestashop\.product\.syncByExternalId/);
+      }).toThrow(/Valid types: .*master\.product\.syncByExternalId/);
     });
   });
 
@@ -312,7 +310,7 @@ describe('WebhookToJobHandler', () => {
 
       // Verify job type uses canonical terminology
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.inventory.syncByExternalId');
+      expect(job.jobType).toBe('master.inventory.syncByExternalId');
 
       // Verify payload uses normalized canonical terminology
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -345,7 +343,7 @@ describe('WebhookToJobHandler', () => {
 
       // Verify job type (no mapping needed for product)
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.jobType).toBe('prestashop.product.syncByExternalId');
+      expect(job.jobType).toBe('master.product.syncByExternalId');
 
       // Verify payload uses normalized objectType
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -375,7 +373,7 @@ describe('WebhookToJobHandler', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         (handler as any).mapToSyncJob(event);
-      }).toThrow(/Invalid job type: prestashop\.product_variant_attribute\.syncByExternalId/);
+      }).toThrow(/Unsupported master objectType: product_variant_attribute/i);
     });
 
     it('should handle empty objectType', () => {

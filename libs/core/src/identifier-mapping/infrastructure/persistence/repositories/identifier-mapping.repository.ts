@@ -18,9 +18,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-entity';
-import { IdentifierMappingRepositoryPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping-repository.port';
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
+import { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
+import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
+import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
 import {
   EntityType,
   MappingContext,
@@ -110,6 +110,20 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
       }
       throw error;
     }
+  }
+
+  async deleteByExternalKey(
+    entityType: EntityType,
+    platformType: string,
+    connectionId: string,
+    externalId: string,
+  ): Promise<void> {
+    await this.repository.delete({
+      entityType,
+      platformType,
+      connectionId,
+      externalId,
+    });
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {

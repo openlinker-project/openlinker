@@ -41,3 +41,8 @@ export const getEnvBoolean = (key: string, defaultValue?: boolean): boolean => {
   return value.toLowerCase() === 'true';
 };
 
+// Export PII configuration and hashing utilities
+export * from './pii-config';
+export * from './pii-hashing';
+export * from './pii-config-error';
+

@@ -73,5 +73,29 @@ export interface IdentifierMappingPort {
   batchGetOrCreateInternalIds(
     requests: IdentifierMappingRequest[],
   ): Promise<Map<string, string>>;
+
+  /**
+   * Get or create exact mapping between external and internal identifiers
+   * Checks both directions (by external ID and by internal ID) to handle conflicts
+   * Returns the external ID if mapping exists or was created successfully
+   * @throws Error if there's a conflict (e.g., external ID mapped to different internal ID)
+   */
+  getOrCreateExactMapping(
+    entityType: EntityType,
+    externalId: string,
+    internalId: string,
+    connectionId: string,
+    context?: MappingContext,
+  ): Promise<string>;
+
+  /**
+   * Delete mapping by external key (idempotent)
+   * Service resolves platformType from Connection internally
+   */
+  deleteMapping(
+    entityType: EntityType,
+    externalId: string,
+    connectionId: string,
+  ): Promise<void>;
 }
 

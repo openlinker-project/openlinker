@@ -14,10 +14,16 @@
  * Swagger documentation, and UI dropdowns.
  */
 export const JobTypeValues = [
-  'prestashop.product.syncByExternalId',
-  'prestashop.inventory.syncByExternalId',
-  'prestashop.products.reconcile',
-  'prestashop.order.syncByExternalId',
+  // Generic (Option B)
+  'marketplace.orders.poll',
+  'marketplace.order.sync',
+  'marketplace.offers.sync',
+  'marketplace.offerQuantity.update',
+  'master.product.syncByExternalId',
+  'master.inventory.syncByExternalId',
+
+  // Internal orchestration (core-owned policies; executed by worker)
+  'inventory.propagateToMarketplaces',
 ] as const;
 
 /**
@@ -59,7 +65,7 @@ export type JobStatus = (typeof JobStatusValues)[number];
  */
 export interface SyncJobRequest {
   /**
-   * Job type identifier (e.g., 'prestashop.product.syncByExternalId')
+   * Job type identifier (e.g., 'marketplace.orders.poll')
    */
   jobType: JobType;
 

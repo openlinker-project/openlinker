@@ -38,3 +38,6 @@ export interface AdapterFactoryPort {
 
 
 
+
+
+

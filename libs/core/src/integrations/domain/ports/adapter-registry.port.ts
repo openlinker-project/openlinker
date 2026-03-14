@@ -35,3 +35,5 @@ export interface AdapterRegistryPort {
 
 
 
+
+

@@ -1,0 +1,110 @@
+/**
+ * Order Item Ref Resolver Service
+ *
+ * Resolves external-only IncomingOrder item references to internal OpenLinker IDs.
+ *
+ * @module libs/core/src/orders/application/services
+ */
+import { Injectable, Inject } from '@nestjs/common';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  PRODUCT_VARIANT_REPOSITORY_TOKEN,
+} from '@openlinker/core/products';
+import { ProductVariantRepositoryPort } from '@openlinker/core/products';
+import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
+import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+
+export interface ResolvedOrderItemProduct {
+  internalProductId: string;
+  internalVariantId?: string;
+}
+
+@Injectable()
+export class OrderItemRefResolverService {
+  constructor(
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
+    private readonly variantRepository: ProductVariantRepositoryPort,
+  ) {}
+
+  async resolve(
+    connectionId: string,
+    productRef: IncomingOrderItemRef,
+  ): Promise<ResolvedOrderItemProduct> {
+    switch (productRef.type) {
+      case 'offer': {
+        const internalVariantId = await this.identifierMapping.getInternalId(
+          'Offer',
+          productRef.externalId,
+          connectionId,
+        );
+        if (!internalVariantId) {
+          throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Offer');
+        }
+        const variant = await this.variantRepository.findById(internalVariantId);
+        if (!variant) {
+          throw new MissingOrderItemMappingError(
+            connectionId,
+            productRef,
+            'identifier_mappings:Offer:variant-missing',
+          );
+        }
+        return { internalProductId: variant.productId, internalVariantId: variant.id };
+      }
+      case 'product': {
+        const internalProductId = await this.identifierMapping.getInternalId(
+          'Product',
+          productRef.externalId,
+          connectionId,
+        );
+        if (!internalProductId) {
+          throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Product');
+        }
+        return { internalProductId };
+      }
+      case 'variant': {
+        const internalVariantId = await this.identifierMapping.getInternalId(
+          'ProductVariant',
+          productRef.externalId,
+          connectionId,
+        );
+        if (!internalVariantId) {
+          throw new MissingOrderItemMappingError(
+            connectionId,
+            productRef,
+            'identifier_mappings:ProductVariant',
+          );
+        }
+        const variant = await this.variantRepository.findById(internalVariantId);
+        if (!variant) {
+          throw new MissingOrderItemMappingError(
+            connectionId,
+            productRef,
+            'identifier_mappings:ProductVariant:variant-missing',
+          );
+        }
+        return { internalProductId: variant.productId, internalVariantId: variant.id };
+      }
+      case 'sku': {
+        const internalId = await this.identifierMapping.getInternalId(
+          'Sku',
+          productRef.externalId,
+          connectionId,
+        );
+        if (!internalId) {
+          throw new MissingOrderItemMappingError(connectionId, productRef, 'identifier_mappings:Sku');
+        }
+        const variant = await this.variantRepository.findById(internalId);
+        if (variant) {
+          return { internalProductId: variant.productId, internalVariantId: variant.id };
+        }
+        return { internalProductId: internalId };
+      }
+    }
+  }
+}
+

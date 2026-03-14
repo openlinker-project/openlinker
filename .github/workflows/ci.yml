@@ -63,14 +63,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build dependencies
         run: |
-          # Build shared, core, and PrestaShop integration packages first
-          # Worker tests import types from @openlinker/integrations-prestashop, so it must be built
-          # This ensures TypeScript can resolve workspace subpath exports like @openlinker/core/orders
+          # Build shared, core, and integration packages first
+          # Tests import workspace packages directly, so required package artifacts
+          # must exist before recursive test execution.
           pnpm --filter @openlinker/shared build
           pnpm --filter @openlinker/core build
           pnpm --filter @openlinker/integrations-prestashop build
+          pnpm --filter @openlinker/integrations-allegro build
       - name: Run tests
-        run: pnpm test
+        run: pnpm test:ci
 
   test-integration:
     name: Integration Tests

@@ -20,6 +20,12 @@ import { PrestashopOrderMapper } from '../infrastructure/mappers/prestashop-orde
 import { PrestashopProductMasterAdapter } from '../infrastructure/adapters/prestashop-product-master.adapter';
 import { PrestashopInventoryMasterAdapter } from '../infrastructure/adapters/prestashop-inventory-master.adapter';
 import { PrestashopOrderSourceAdapter } from '../infrastructure/adapters/prestashop-order-source.adapter';
+import { PrestashopOrderProcessorManagerAdapter } from '../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+import { PrestashopCustomerProvisioner } from '../infrastructure/provisioners/prestashop-customer-provisioner';
+import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
+import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
+import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
+import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -29,6 +35,16 @@ import { Logger } from '@openlinker/shared/logging';
  */
 export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   private readonly logger = new Logger(PrestashopAdapterFactory.name);
+
+  constructor(
+    private readonly customerProvisioner?: PrestashopCustomerProvisioner,
+    private readonly addressProvisioner?: PrestashopAddressProvisioner,
+    private readonly customerProjectionRepository?: CustomerProjectionRepositoryPort,
+  ) {
+    // Validate that if orderProcessorManager is needed, dependencies are provided
+    // Note: Dependencies are optional to allow factory creation without customer provisioning
+    // The adapter will fail at runtime if dependencies are missing when needed
+  }
 
   async createAdapters(
     connection: Connection,
@@ -77,12 +93,40 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection,
     );
 
+    // Create orderProcessorManager only if customer provisioning dependencies are provided
+    let orderProcessorManager: PrestashopOrderProcessorManagerAdapter | undefined;
+    if (this.customerProvisioner && this.customerProjectionRepository) {
+      // Create provisioners (if not provided, create new instances)
+      const countryResolver = new PrestashopCountryResolver();
+      const currencyResolver = new PrestashopCurrencyResolver();
+      const addressProvisioner =
+        this.addressProvisioner || new PrestashopAddressProvisioner(null, countryResolver);
+
+      orderProcessorManager = new PrestashopOrderProcessorManagerAdapter(
+        httpClient,
+        identifierMapping,
+        orderMapper,
+        connection,
+        this.customerProvisioner,
+        addressProvisioner,
+        currencyResolver,
+        this.customerProjectionRepository,
+      );
+    } else {
+      this.logger.warn(
+        `OrderProcessorManager adapter not created for connection ${connection.id}: ` +
+          `customerProvisioner or customerProjectionRepository not provided. ` +
+          `This adapter is required for order processing.`,
+      );
+    }
+
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
     return {
       productMaster,
       inventoryMaster,
       orderSource,
+      orderProcessorManager,
     };
   }
 

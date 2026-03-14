@@ -109,13 +109,16 @@ export class PrestashopQueryBuilder {
     }
 
     // Custom filters
+    // PrestaShop filter syntax: filter[field]=[value]
+    // Values must be URL-encoded to handle special characters (e.g., +, @, = in email addresses)
     if (filters?.custom) {
       for (const [key, value] of Object.entries(filters.custom)) {
         if (Array.isArray(value)) {
-          const arrayParam = value.map(String).join(',');
+          const arrayParam = value.map((v) => encodeURIComponent(String(v))).join(',');
           params.push(`filter[${key}]=[${arrayParam}]`);
         } else {
-          params.push(`filter[${key}]=[${String(value)}]`);
+          const encodedValue = encodeURIComponent(String(value));
+          params.push(`filter[${key}]=[${encodedValue}]`);
         }
       }
     }

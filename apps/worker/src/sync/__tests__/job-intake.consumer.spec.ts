@@ -106,7 +106,7 @@ describe('JobIntakeConsumer', () => {
 
   describe('processMessage', () => {
     const createValidFields = (): Record<string, string> => ({
-      jobType: 'prestashop.product.syncByExternalId',
+      jobType: 'master.product.syncByExternalId',
       connectionId: randomUUID(),
       payloadJson: JSON.stringify({ externalId: '1', objectType: 'Product' }),
       idempotencyKey: `test-key-${randomUUID()}`,
@@ -117,7 +117,7 @@ describe('JobIntakeConsumer', () => {
       const fields = createValidFields();
       const mockJob = new SyncJob(
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         fields.connectionId,
         JSON.parse(fields.payloadJson),
         'queued',
@@ -138,7 +138,7 @@ describe('JobIntakeConsumer', () => {
       await (consumer as any).processMessage(messageId, fields);
 
       expect(jobRepository.createIfNotExistsByIdempotencyKey).toHaveBeenCalledWith({
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: fields.connectionId,
         payload: JSON.parse(fields.payloadJson),
         idempotencyKey: fields.idempotencyKey,
@@ -223,7 +223,7 @@ describe('JobIntakeConsumer', () => {
     it('should handle missing required fields', async () => {
       const messageId = '123-0';
       const fields = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         // Missing connectionId, payloadJson, idempotencyKey
       };
       const mockJob = new SyncJob(
@@ -271,7 +271,7 @@ describe('JobIntakeConsumer', () => {
     it('should ACK message on invalid message format error (prevents infinite retry)', async () => {
       const messageId = '123-0';
       const fields = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: 'invalid-json',
         idempotencyKey: `test-key-${randomUUID()}`,
@@ -307,7 +307,7 @@ describe('JobIntakeConsumer', () => {
   describe('parseJobRequest', () => {
     it('should parse valid job request fields', () => {
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: JSON.stringify({ externalId: '1', objectType: 'Product' }),
         idempotencyKey: `test-key-${randomUUID()}`,
@@ -316,7 +316,7 @@ describe('JobIntakeConsumer', () => {
       const result = (consumer as any).parseJobRequest(fields);
 
       expect(result).toEqual({
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: fields.connectionId,
         payload: { externalId: '1', objectType: 'Product' },
         idempotencyKey: fields.idempotencyKey,
@@ -335,7 +335,7 @@ describe('JobIntakeConsumer', () => {
 
     it('should throw error when connectionId is missing', () => {
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         payloadJson: JSON.stringify({}),
         idempotencyKey: `test-key-${randomUUID()}`,
       };
@@ -345,7 +345,7 @@ describe('JobIntakeConsumer', () => {
 
     it('should throw error when payloadJson is missing', () => {
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         idempotencyKey: `test-key-${randomUUID()}`,
       };
@@ -355,7 +355,7 @@ describe('JobIntakeConsumer', () => {
 
     it('should throw error when idempotencyKey is missing', () => {
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: JSON.stringify({}),
       };
@@ -365,7 +365,7 @@ describe('JobIntakeConsumer', () => {
 
     it('should throw error when payloadJson is invalid JSON', () => {
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: 'invalid-json{',
         idempotencyKey: `test-key-${randomUUID()}`,
@@ -386,7 +386,7 @@ describe('JobIntakeConsumer', () => {
       };
 
       const fields: Record<string, string> = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: JSON.stringify(complexPayload),
         idempotencyKey: `test-key-${randomUUID()}`,
@@ -529,7 +529,7 @@ describe('JobIntakeConsumer', () => {
     it('should read messages from stream and process them', async () => {
       const messageId = '123-0';
       const fields = {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: randomUUID(),
         payloadJson: JSON.stringify({ externalId: '1' }),
         idempotencyKey: `test-key-${randomUUID()}`,
@@ -537,7 +537,7 @@ describe('JobIntakeConsumer', () => {
 
       const mockJob = new SyncJob(
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         fields.connectionId,
         JSON.parse(fields.payloadJson),
         'queued',

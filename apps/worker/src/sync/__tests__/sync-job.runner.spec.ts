@@ -99,7 +99,7 @@ describe('SyncJobRunner', () => {
     const createMockJob = (_overrides?: Partial<SyncJob>): SyncJob => {
       return new SyncJob(
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         randomUUID(),
         { externalId: '1', objectType: 'Product' },
         'queued',
@@ -183,7 +183,7 @@ describe('SyncJobRunner', () => {
     const createMockJob = (attempts: number, maxAttempts: number = 10): SyncJob => {
       return new SyncJob(
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         randomUUID(),
         { externalId: '1' },
         'running',
@@ -338,7 +338,7 @@ describe('SyncJobRunner', () => {
       const error = new SyncJobExecutionError(
         'Product not found',
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         randomUUID(),
       );
       const message = (runner as any).extractErrorMessage(error);
@@ -396,7 +396,7 @@ describe('SyncJobRunner', () => {
     it('should poll for jobs and process them', async () => {
       const job1 = new SyncJob(
         randomUUID(),
-        'prestashop.product.syncByExternalId',
+        'master.product.syncByExternalId',
         randomUUID(),
         { externalId: '1' },
         'queued',

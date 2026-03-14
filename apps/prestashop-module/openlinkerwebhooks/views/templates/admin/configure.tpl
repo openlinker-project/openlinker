@@ -1,4 +1,4 @@
-{*
+ze{*
  * OpenLinker Webhooks Module Configuration Template
  *
  * @author OpenLinker Team

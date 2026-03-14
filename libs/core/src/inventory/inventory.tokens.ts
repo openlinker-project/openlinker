@@ -11,4 +11,6 @@
 // Token for dependency injection (interfaces can't be used as values)
 export const INVENTORY_REPOSITORY_TOKEN = Symbol('InventoryRepositoryPort');
 export const INVENTORY_SERVICE_TOKEN = Symbol('IInventoryService');
+export const INVENTORY_SYNC_SERVICE_TOKEN = Symbol('IInventorySyncService');
+export const MASTER_INVENTORY_SYNC_SERVICE_TOKEN = Symbol('IMasterInventorySyncService');
 

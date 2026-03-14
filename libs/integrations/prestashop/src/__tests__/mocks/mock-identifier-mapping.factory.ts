@@ -16,6 +16,7 @@ export function createMockIdentifierMapping(
     getInternalId: jest.fn().mockResolvedValue(null),
     createMapping: jest.fn().mockResolvedValue(undefined),
     batchGetOrCreateInternalIds: jest.fn().mockResolvedValue(new Map()),
+    deleteMapping: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as jest.Mocked<IdentifierMappingPort>;
 }

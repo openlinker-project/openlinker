@@ -6,7 +6,6 @@
  *
  * @module apps/api/test/integration
  */
-import { StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 
@@ -85,4 +84,6 @@ export async function stopHarness(): Promise<void> {
   // Clear global state
   globalThis.__API_TEST_HARNESS__ = undefined;
 }
+
+
 

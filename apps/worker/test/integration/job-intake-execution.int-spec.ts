@@ -10,10 +10,10 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { createTestSyncJob, getSyncJobById, getSyncJobsByStatus } from './helpers/test-sync-job.helper';
+import { createTestSyncJob, getSyncJobById } from './helpers/test-sync-job.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
 import { randomUUID } from 'crypto';
 
 describe('Job Intake → Execution Integration', () => {
@@ -49,9 +49,10 @@ describe('Job Intake → Execution Integration', () => {
 
       // 2. Publish job to Redis Stream
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0], // 'prestashop.product.syncByExternalId'
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         payload: {
+          schemaVersion: 1,
           externalId: '1',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -66,7 +67,7 @@ describe('Job Intake → Execution Integration', () => {
         idempotencyKey: jobRequest.idempotencyKey,
       };
 
-      const messageId = await redisClient.xAdd('jobs.sync', '*', fields);
+      await redisClient.xAdd('jobs.sync', '*', fields);
 
       // 3. Wait for job intake consumer to process (simulate consumption)
       // Note: In a real test, we'd need to start the JobIntakeConsumer
@@ -100,9 +101,9 @@ describe('Job Intake → Execution Integration', () => {
 
       const idempotencyKey = `test-idempotency-${randomUUID()}`;
       const jobRequest: SyncJobRequest = {
-        jobType: JobTypeValues[0],
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
-        payload: { externalId: '1', objectType: 'Product' },
+        payload: { externalId: '1', objectType: 'Product', schemaVersion: 1 },
         idempotencyKey,
       };
 
@@ -145,11 +146,12 @@ describe('Job Intake → Execution Integration', () => {
 
       // Create a job directly in database (simulating job intake)
       const job = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'queued',
         nextRunAt: new Date(), // Due now
         payloadJson: {
+          schemaVersion: 1,
           externalId: '1',
           objectType: 'Product',
           eventType: 'product.updated',
@@ -165,7 +167,7 @@ describe('Job Intake → Execution Integration', () => {
       const retrievedJob = await getSyncJobById(harness.getDataSource(), job.id);
       expect(retrievedJob).toBeDefined();
       expect(retrievedJob?.status).toBe('queued');
-      expect(retrievedJob?.jobType).toBe('prestashop.product.syncByExternalId');
+      expect(retrievedJob?.jobType).toBe('master.product.syncByExternalId');
     });
 
     it('should find and lock due jobs', async () => {
@@ -176,14 +178,14 @@ describe('Job Intake → Execution Integration', () => {
 
       // Create multiple queued jobs
       const job1 = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'queued',
         nextRunAt: new Date(Date.now() - 1000), // Due (in the past)
       });
 
       const job2 = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'queued',
         nextRunAt: new Date(Date.now() - 2000), // Due earlier
@@ -214,7 +216,7 @@ describe('Job Intake → Execution Integration', () => {
       });
 
       const job = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'running',
       });
@@ -234,7 +236,7 @@ describe('Job Intake → Execution Integration', () => {
       });
 
       const job = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'running',
         attempts: 1,
@@ -259,7 +261,7 @@ describe('Job Intake → Execution Integration', () => {
       });
 
       const job = await createTestSyncJob(harness.getDataSource(), {
-        jobType: 'prestashop.product.syncByExternalId',
+        jobType: 'master.product.syncByExternalId',
         connectionId: connection.id,
         status: 'running',
         attempts: 9,

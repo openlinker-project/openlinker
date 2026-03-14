@@ -13,10 +13,10 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { IProductsService } from './products.service.interface';
-import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
-import { Product } from '@openlinker/core/products/domain/entities/product.entity';
-import { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import { ProductRepositoryPort } from '../../domain/ports/product-repository.port';
+import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
+import { Product } from '../../domain/entities/product.entity';
+import { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { Logger } from '@openlinker/shared/logging';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 

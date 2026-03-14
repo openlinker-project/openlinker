@@ -7,12 +7,7 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import {
-  ConnectionCreate,
-  ConnectionUpdate,
-  ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
+import { Connection, ConnectionCreate, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 
 export interface IConnectionService {
   /**
@@ -51,6 +46,7 @@ export interface IConnectionService {
    */
   disable(connectionId: string): Promise<Connection>;
 }
+
 
 
 

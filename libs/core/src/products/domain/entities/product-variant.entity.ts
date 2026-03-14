@@ -15,6 +15,8 @@ export class ProductVariant {
     public readonly attributes: Record<string, string> | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly ean: string | null = null,
+    public readonly gtin: string | null = null,
   ) {}
 }
 
