@@ -9,7 +9,7 @@
     "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
     "build:api": "pnpm --filter @openlinker/api exec nest build",
     "test": "pnpm -r test",
-    "test:ci": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm -r test",
+    "test:ci": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-allegro build && pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "test:cov": "pnpm -r test:cov",
     "test:integration": "pnpm --filter @openlinker/api test:integration",

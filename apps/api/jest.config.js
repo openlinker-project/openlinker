@@ -12,6 +12,8 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
+    '^@openlinker/integrations-allegro$': path.resolve(__dirname, '../../libs/integrations/allegro/src/index.ts'),
+    '^@openlinker/integrations-allegro/(.*)$': path.resolve(__dirname, '../../libs/integrations/allegro/src/$1'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),
     '^@openlinker/shared/(.*)$': path.resolve(__dirname, '../../libs/shared/src/$1'),
   },
