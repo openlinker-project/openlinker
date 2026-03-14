@@ -111,6 +111,10 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 
 ---
 
+Frontend-specific conventions for the separate UI application are documented in `docs/frontend-architecture.md`.
+
+---
+
 ## Core Bounded Contexts
 
 The system is organized into the following core bounded contexts:
