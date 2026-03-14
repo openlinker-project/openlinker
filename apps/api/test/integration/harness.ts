@@ -6,7 +6,6 @@
  *
  * @module apps/api/test/integration
  */
-import { StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 

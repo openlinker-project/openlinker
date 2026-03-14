@@ -84,7 +84,9 @@ describe('Webhook Ingestion Integration', () => {
       );
 
       expect(events).toBeDefined();
-      expect(events.length).toBeGreaterThan(0);
+      if (!events || events.length === 0) {
+        throw new Error('Expected webhook event to be published');
+      }
 
       // Find our event
       const ourEvent = events[0].messages.find(
@@ -172,6 +174,10 @@ describe('Webhook Ingestion Integration', () => {
         { COUNT: 10 },
       );
 
+      if (!events || events.length === 0) {
+        throw new Error('Expected webhook events to exist');
+      }
+
       const duplicateEvents = events[0].messages.filter(
         (msg) => msg.message.eventId === 'duplicate-test-event',
       );
@@ -202,7 +208,7 @@ describe('Webhook Ingestion Integration', () => {
         .digest('hex');
 
       // Send with exact raw body - should succeed
-      const response1 = await harness
+      await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
         .set('X-OpenLinker-Timestamp', timestamp)
@@ -282,6 +288,10 @@ describe('Webhook Ingestion Integration', () => {
         [{ key: 'events.inbound.webhooks', id: '0' }],
         { COUNT: 10 },
       );
+
+      if (!events || events.length === 0) {
+        throw new Error('Expected crash-retry event to be published');
+      }
 
       const ourEvent = events[0].messages.find(
         (msg) => msg.message.eventId === 'crash-retry-test',
