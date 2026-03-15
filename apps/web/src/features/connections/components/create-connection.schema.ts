@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
+import { PLATFORM_TYPES, type CreateConnectionInput, type PlatformType } from '../api/connections.types';
+
+export const platformTypeFormSchema = z
+  .enum([...PLATFORM_TYPES, ''] as const)
+  .refine((value): value is PlatformType => value !== '', 'Platform type is required');
 
 export const createConnectionSchema = z.object({
   adapterKey: z.string().trim().optional(),
@@ -17,12 +21,13 @@ export const createConnectionSchema = z.object({
     }, 'Configuration must be valid JSON'),
   credentialsRef: z.string().trim().min(1, 'Credentials reference is required'),
   name: z.string().trim().min(1, 'Connection name is required'),
-  platformType: z.string().trim().min(1, 'Platform type is required'),
+  platformType: platformTypeFormSchema,
 });
 
-export type CreateConnectionFormValues = z.infer<typeof createConnectionSchema>;
+export type CreateConnectionFormValues = z.input<typeof createConnectionSchema>;
+export type CreateConnectionFormSubmission = z.output<typeof createConnectionSchema>;
 
-export function toCreateConnectionInput(values: CreateConnectionFormValues): CreateConnectionInput {
+export function toCreateConnectionInput(values: CreateConnectionFormSubmission): CreateConnectionInput {
   return {
     name: values.name,
     platformType: values.platformType,

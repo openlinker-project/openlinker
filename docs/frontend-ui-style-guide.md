@@ -336,6 +336,66 @@ The design system should prioritize these primitives:
 
 These primitives matter more than decorative hero sections or unusual card layouts.
 
+## MVP Primitives Standard
+
+The FE-003 baseline should establish a small reusable primitive layer in `apps/web/src/shared/ui`.
+
+Required MVP primitives:
+
+- `Button`
+- `Input`
+- `Select`
+- `Textarea`
+- `StatusBadge`
+- `DataTable`
+- `ConfirmDialog`
+- `Alert`
+- lightweight toast feedback
+- form helpers such as `FormField`, `FieldError`, and `FormErrorSummary`
+
+Implementation rules:
+
+- prefer native HTML semantics first and wrap them with thin React components
+- keep primitives token-driven and aligned with `apps/web/src/index.css`
+- avoid over-generalized APIs; build only the surface the current product needs
+- use the same primitive in real pages immediately after introducing it
+- prefer one explicit primitive over many near-duplicate variants
+
+### Buttons
+
+Buttons should support:
+
+- primary actions
+- secondary actions
+- destructive confirmation actions
+- disabled and busy states
+
+Use links only for real navigation. If an element submits, confirms, or mutates state, it should be a button.
+
+### Inputs, Selects, And Textareas
+
+Control primitives should:
+
+- preserve native browser semantics
+- share the same spacing, border, and focus treatment
+- expose invalid state visually and through `aria-invalid`
+- work cleanly with React Hook Form registration
+
+### Status Badge
+
+Status badges should use a normalized semantic vocabulary and visual variants rather than per-feature ad hoc styling.
+
+Recommended MVP variants:
+
+- success
+- warning
+- error
+- info
+- review
+- neutral
+
+Badges must still include status text, not just color or dot indicators.
+
 ## Tables
 
 Tables are primary UX elements in OpenLinker.
@@ -354,6 +414,17 @@ Prefer tables and structured lists over dashboard-style card grids for operation
 
 For dashboard and queue views, introduce tables early instead of relying on summary cards alone.
 
+MVP `DataTable` expectations:
+
+- typed column definitions
+- accessible table semantics
+- dense but readable rows
+- status badge support inside cells
+- row-level action cells where needed
+- empty-state support
+
+Defer advanced grid behavior until real workflows justify it.
+
 ## Forms
 
 Forms should be:
@@ -364,6 +435,16 @@ Forms should be:
 - explicit about validation and next steps
 
 Avoid very large single-screen setup forms. Integration onboarding should prefer step-by-step flows.
+
+MVP form pattern rules:
+
+- keep validation schemas colocated with the feature
+- use `react-hook-form` with `zod` as the default pattern
+- use `FormField` to connect label, control, description, and error state
+- render field-level errors consistently
+- render form-level validation or API errors through a shared summary or alert pattern
+- use confirm dialogs for destructive resets or irreversible actions
+- use toast feedback for transient mutation success or non-blocking feedback
 
 ## Status Language
 

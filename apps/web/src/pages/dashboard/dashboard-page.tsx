@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { StatusBadge } from '../../shared/ui/status-badge';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 
@@ -60,7 +61,7 @@ export function DashboardPage(): ReactElement {
             </thead>
             <tbody>
               <tr>
-                <td><span className="status-pill status-pill--error">Failed</span></td>
+                <td><StatusBadge tone="error">Failed</StatusBadge></td>
                 <td>Connection</td>
                 <td>Allegro auth validation failed</td>
                 <td className="mono-text">allegro.main</td>
@@ -68,7 +69,7 @@ export function DashboardPage(): ReactElement {
                 <td>Reconnect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--warning">Retrying</span></td>
+                <td><StatusBadge tone="warning">Retrying</StatusBadge></td>
                 <td>Sync job</td>
                 <td>Connection validation backoff in progress</td>
                 <td className="mono-text">job_sync_1842</td>
@@ -76,7 +77,7 @@ export function DashboardPage(): ReactElement {
                 <td>Inspect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--review">Review</span></td>
+                <td><StatusBadge tone="review">Review</StatusBadge></td>
                 <td>Integration</td>
                 <td>New setup waiting for credentials approval</td>
                 <td className="mono-text">prestashop.draft</td>

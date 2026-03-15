@@ -1,7 +1,56 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
-import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import type { Connection, ConnectionStatus } from '../api/connections.types';
+import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
+import { ErrorState, LoadingState, EmptyState } from '../../../shared/ui/feedback-state';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+
+function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'disabled':
+      return 'neutral';
+    case 'error':
+      return 'error';
+  }
+}
+
+const columns: DataTableColumn<Connection>[] = [
+  {
+    id: 'name',
+    header: 'Connection',
+    cell: (connection) => (
+      <div className="data-table__stack">
+        <strong>{connection.name}</strong>
+        <span className="muted-text">
+          {connection.platformType} · {connection.adapterKey ?? 'default adapter'}
+        </span>
+      </div>
+    ),
+  },
+  {
+    id: 'identifier',
+    header: 'Identifier',
+    cell: (connection) => <span className="mono-text">{connection.id}</span>,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (connection) => <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>,
+  },
+  {
+    id: 'actions',
+    header: 'Action',
+    cell: (connection) => (
+      <Link className="data-table__action" to={`/connections/${connection.id}`}>
+        View details
+      </Link>
+    ),
+    align: 'right',
+  },
+];
 
 export function ConnectionsOverview(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
@@ -55,22 +104,12 @@ export function ConnectionsOverview(): ReactElement {
         <span className="panel__meta">{connections.length} configured</span>
       </div>
 
-      <ul className="connection-list">
-        {connections.map((connection) => (
-          <li key={connection.id} className="connection-list__item">
-            <div>
-              <strong>{connection.name}</strong>
-              <p>
-                {connection.platformType} · {connection.adapterKey ?? 'default adapter'}
-              </p>
-            </div>
-            <div className="connection-list__meta">
-              <span className="muted-text mono-text">{connection.id}</span>
-              <span className={`status-pill status-pill--${connection.status}`}>{connection.status}</span>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <DataTable
+        caption="Configured connections"
+        columns={columns}
+        rowKey={(connection) => connection.id}
+        rows={connections}
+      />
     </div>
   );
 }

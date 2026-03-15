@@ -1,8 +1,21 @@
 import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import type { ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+
+function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'disabled':
+      return 'neutral';
+    case 'error':
+      return 'error';
+  }
+}
 
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
@@ -63,7 +76,7 @@ export function ConnectionDetailPage(): ReactElement {
                 <p className="eyebrow">Connection summary</p>
                 <h3 className="section-title">Current state</h3>
               </div>
-              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+              <StatusBadge tone={toStatusTone(connectionQuery.data.status)}>{connectionQuery.data.status}</StatusBadge>
             </div>
 
             <dl className="definition-list">

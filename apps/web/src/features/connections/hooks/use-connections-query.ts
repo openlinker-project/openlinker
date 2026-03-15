@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { connectionsQueryKeys } from '../api/connections.query-keys';
-import type { ConnectionFilters } from '../api/connections.types';
+import type { Connection, ConnectionFilters } from '../api/connections.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
-export function useConnectionsQuery(filters?: ConnectionFilters) {
+export function useConnectionsQuery(filters?: ConnectionFilters): UseQueryResult<Connection[]> {
   const apiClient = useApiClient();
 
   return useQuery({

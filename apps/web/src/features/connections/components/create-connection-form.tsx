@@ -1,11 +1,24 @@
+import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { PLATFORM_TYPES } from '../api/connections.types';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   createConnectionSchema,
   toCreateConnectionInput,
+  type CreateConnectionFormSubmission,
   type CreateConnectionFormValues,
 } from './create-connection.schema';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
+import { FormField } from '../../../shared/ui/form-field';
+import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
+import { Textarea } from '../../../shared/ui/textarea';
+import { useToast } from '../../../shared/ui/toast-provider';
 
 const DEFAULT_CONFIG = JSON.stringify(
   {
@@ -15,81 +28,145 @@ const DEFAULT_CONFIG = JSON.stringify(
   2,
 );
 
-export function CreateConnectionForm() {
+const DEFAULT_VALUES: CreateConnectionFormValues = {
+  adapterKey: '',
+  configText: DEFAULT_CONFIG,
+  credentialsRef: '',
+  name: '',
+  platformType: '',
+};
+
+const PLATFORM_OPTIONS = [
+  { value: PLATFORM_TYPES[0], label: 'PrestaShop' },
+  { value: PLATFORM_TYPES[1], label: 'Allegro' },
+] as const;
+
+export function CreateConnectionForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
-  const form = useForm<CreateConnectionFormValues>({
-    defaultValues: {
-      adapterKey: '',
-      configText: DEFAULT_CONFIG,
-      credentialsRef: '',
-      name: '',
-      platformType: '',
-    },
+  const { showToast } = useToast();
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
+    defaultValues: DEFAULT_VALUES,
     resolver: zodResolver(createConnectionSchema),
   });
 
+  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
+    error?.message ? [String(error.message)] : [],
+  );
+
   const onSubmit = form.handleSubmit(async (values) => {
-    await createConnection.mutateAsync(toCreateConnectionInput(values));
-    form.reset({
-      adapterKey: '',
-      configText: DEFAULT_CONFIG,
-      credentialsRef: '',
-      name: '',
-      platformType: '',
-    });
+    try {
+      await createConnection.mutateAsync(toCreateConnectionInput(values));
+      form.reset(DEFAULT_VALUES);
+      showToast({
+        tone: 'success',
+        title: 'Connection created',
+        description: 'Connection request submitted successfully.',
+      });
+    } catch {
+      return;
+    }
   });
 
   return (
-    <form className="form-card" onSubmit={(event) => void onSubmit(event)}>
-      <div className="panel__header">
-        <div>
-          <p className="eyebrow">Setup flow</p>
-          <h3 className="section-title">Connection draft</h3>
+    <>
+      <form className="form-card" onSubmit={(event) => void onSubmit(event)}>
+        <div className="panel__header">
+          <div>
+            <p className="eyebrow">Setup flow</p>
+            <h3 className="section-title">Connection draft</h3>
+          </div>
+          <span className="panel__meta">Validated input</span>
         </div>
-        <span className="panel__meta">Validated input</span>
-      </div>
 
-      <div className="form-grid">
-        <label className="field">
-          <span>Connection name</span>
-          <input aria-label="Connection name" {...form.register('name')} placeholder="Main PrestaShop Store" />
-          <small>{form.formState.errors.name?.message}</small>
-        </label>
-
-        <label className="field">
-          <span>Platform type</span>
-          <input aria-label="Platform type" {...form.register('platformType')} placeholder="prestashop" />
-          <small>{form.formState.errors.platformType?.message}</small>
-        </label>
-
-        <label className="field">
-          <span>Credentials reference</span>
-          <input aria-label="Credentials reference" {...form.register('credentialsRef')} placeholder="db:cred_123" />
-          <small>{form.formState.errors.credentialsRef?.message}</small>
-        </label>
-
-        <label className="field">
-          <span>Adapter key</span>
-          <input aria-label="Adapter key" {...form.register('adapterKey')} placeholder="prestashop.webservice.v1" />
-          <small>{form.formState.errors.adapterKey?.message}</small>
-        </label>
-      </div>
-
-      <label className="field">
-        <span>Config JSON</span>
-        <textarea aria-label="Config JSON" rows={10} {...form.register('configText')} />
-        <small>{form.formState.errors.configText?.message}</small>
-      </label>
-
-      <div className="form-actions">
-        <button type="submit" disabled={createConnection.isPending}>
-          {createConnection.isPending ? 'Creating...' : 'Create connection'}
-        </button>
-        {createConnection.isSuccess ? (
-          <p className="success-text">Connection request submitted successfully.</p>
+        {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
+        {createConnection.error ? (
+          <Alert tone="error" title="Unable to create connection">
+            {createConnection.error.message}
+          </Alert>
         ) : null}
-        {createConnection.error ? <p className="error-text">{createConnection.error.message}</p> : null}
-      </div>
-    </form>
+
+        <div className="form-grid">
+          <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
+            <Input {...form.register('name')} placeholder="Main PrestaShop Store" invalid={Boolean(form.formState.errors.name)} />
+          </FormField>
+
+          <FormField
+            label="Platform type"
+            name="platformType"
+            error={form.formState.errors.platformType?.message}
+            description="Use the platform family this connection will integrate with."
+          >
+            <Select {...form.register('platformType')} invalid={Boolean(form.formState.errors.platformType)}>
+              <option value="">Select a platform</option>
+              {PLATFORM_OPTIONS.map((platform) => (
+                <option key={platform.value} value={platform.value}>
+                  {platform.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          <FormField label="Credentials reference" name="credentialsRef" error={form.formState.errors.credentialsRef?.message}>
+            <Input
+              {...form.register('credentialsRef')}
+              placeholder="db:cred_123"
+              invalid={Boolean(form.formState.errors.credentialsRef)}
+            />
+          </FormField>
+
+          <FormField
+            label="Adapter key"
+            name="adapterKey"
+            error={form.formState.errors.adapterKey?.message}
+            description="Optional when the default adapter can be inferred from the selected platform."
+          >
+            <Input
+              {...form.register('adapterKey')}
+              placeholder="prestashop.webservice.v1"
+              invalid={Boolean(form.formState.errors.adapterKey)}
+            />
+          </FormField>
+        </div>
+
+        <FormField
+          label="Config JSON"
+          name="configText"
+          error={form.formState.errors.configText?.message}
+          description="Provide only safe connection configuration values. Secrets must remain outside the browser."
+        >
+          <Textarea {...form.register('configText')} rows={10} invalid={Boolean(form.formState.errors.configText)} />
+        </FormField>
+
+        <div className="form-actions">
+          <Button type="submit" disabled={createConnection.isPending}>
+            {createConnection.isPending ? 'Creating...' : 'Create connection'}
+          </Button>
+          <Button tone="secondary" onClick={() => setIsResetDialogOpen(true)} disabled={createConnection.isPending}>
+            Reset draft
+          </Button>
+        </div>
+      </form>
+
+      <ConfirmDialog
+        open={isResetDialogOpen}
+        onOpenChange={setIsResetDialogOpen}
+        title="Reset connection draft?"
+        description="This will clear the current form values and validation state for the integration draft."
+        confirmLabel="Reset draft"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onConfirm={() => {
+          form.reset(DEFAULT_VALUES);
+          createConnection.reset();
+          setIsResetDialogOpen(false);
+          showToast({
+            tone: 'info',
+            title: 'Draft reset',
+            description: 'Connection draft values were cleared.',
+          });
+        }}
+      />
+    </>
   );
 }

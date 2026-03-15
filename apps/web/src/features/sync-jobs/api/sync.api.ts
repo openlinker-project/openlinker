@@ -19,7 +19,7 @@ interface ApiRequest {
 
 export function createSyncJobsApi(request: ApiRequest): SyncJobsApi {
   return {
-    enqueue(input) {
+    enqueue(input): Promise<SyncJobResponse> {
       return request<SyncJobResponse>('/sync/jobs', {
         method: 'POST',
         body: JSON.stringify(input),

@@ -1,7 +1,10 @@
 import type { PropsWithChildren, ReactElement } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSession } from '../auth/use-session';
+import { Button } from './button';
 import { EnvironmentBadge } from './environment-badge';
+import { Input } from './input';
+import { StatusBadge, type StatusBadgeTone } from './status-badge';
 
 interface NavigationItem {
   end?: boolean;
@@ -41,6 +44,11 @@ const navigationGroups: NavigationGroup[] = [
 
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session } = useSession();
+  const sessionTone: StatusBadgeTone = isReady
+    ? session.status === 'authenticated'
+      ? 'success'
+      : 'warning'
+    : 'info';
 
   return (
     <div className="app-shell">
@@ -88,15 +96,16 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
             <div className="topbar__actions">
               <label className="search-field">
                 <span className="sr-only">Search</span>
-                <input type="search" placeholder="Search orders, products, jobs..." />
+                <Input type="search" placeholder="Search orders, products, jobs..." />
               </label>
-              <button type="button" className="button button--secondary">
+              <Button tone="secondary">
                 Alerts 0
-              </button>
-              <button type="button" className="button">Quick action</button>
-              <div className="session-badge">
-                <span className={`status-dot status-dot--${session.status}`} />
-                {isReady ? session.status : 'loading'}
+              </Button>
+              <Button>Quick action</Button>
+              <div className="session-status">
+                <StatusBadge tone={sessionTone} withDot>
+                  {isReady ? session.status : 'loading'}
+                </StatusBadge>
               </div>
             </div>
           </header>
