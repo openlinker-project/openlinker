@@ -1,15 +1,20 @@
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../shared/ui/status-badge';
+import { Link } from 'react-router-dom';
+import { PageLayout } from '../../shared/ui/page-layout';
 
 export function DashboardPage(): ReactElement {
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <p className="eyebrow">Overview</p>
-        <h2>Operations overview</h2>
-        <p>Monitor failures, retry pressure, integration health, and manual-review workload from one command surface.</p>
-      </div>
-
+    <PageLayout
+      eyebrow="Overview"
+      title="Operations overview"
+      description="Monitor failures, retry pressure, integration health, and manual-review workload from one command surface."
+      actions={
+        <Link className="button" to="/connections">
+          Review integrations
+        </Link>
+      }
+    >
       <section className="status-strip">
         <article className="metric-card">
           <span className="metric-card__label">Integration health</span>
@@ -124,21 +129,21 @@ export function DashboardPage(): ReactElement {
               <span className="timeline-list__time">23:41</span>
               <div>
                 <strong>Connection validated</strong>
-                <p>Allegro sandbox credentials accepted and connection kept active.</p>
+                <p className="timeline-list__description">Allegro sandbox credentials accepted and connection kept active.</p>
               </div>
             </li>
             <li>
               <span className="timeline-list__time">23:35</span>
               <div>
                 <strong>Retry scheduled</strong>
-                <p>Validation job entered retry backoff after transient upstream failure.</p>
+                <p className="timeline-list__description">Validation job entered retry backoff after transient upstream failure.</p>
               </div>
             </li>
             <li>
               <span className="timeline-list__time">23:18</span>
               <div>
                 <strong>Manual review opened</strong>
-                <p>A new integration draft is waiting for operator confirmation.</p>
+                <p className="timeline-list__description">A new integration draft is waiting for operator confirmation.</p>
               </div>
             </li>
           </ul>
@@ -169,6 +174,6 @@ export function DashboardPage(): ReactElement {
           </ul>
         </article>
       </div>
-    </section>
+    </PageLayout>
   );
 }

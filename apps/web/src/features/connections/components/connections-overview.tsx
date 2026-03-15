@@ -2,8 +2,8 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
 import type { Connection, ConnectionStatus } from '../api/connections.types';
-import { Alert } from '../../../shared/ui/alert';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
+import { ErrorState, LoadingState, EmptyState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
@@ -56,14 +56,25 @@ export function ConnectionsOverview(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
 
   if (connectionsQuery.isLoading) {
-    return <p className="muted-text">Loading connections...</p>;
+    return (
+      <LoadingState
+        title="Loading connections"
+        message="Fetching the latest connection inventory and health summary."
+      />
+    );
   }
 
   if (connectionsQuery.error) {
     return (
-      <Alert tone="error" title="Unable to load connections">
-        {connectionsQuery.error.message}
-      </Alert>
+      <ErrorState
+        title="Unable to load connections"
+        message={connectionsQuery.error.message}
+        action={
+          <button type="button" className="button button--secondary" onClick={() => void connectionsQuery.refetch()}>
+            Retry
+          </button>
+        }
+      />
     );
   }
 
@@ -71,10 +82,15 @@ export function ConnectionsOverview(): ReactElement {
 
   if (connections.length === 0) {
     return (
-      <div className="empty-state">
-        <h2>No connections yet</h2>
-        <p>Create the first connection to start configuring integrations.</p>
-      </div>
+      <EmptyState
+        title="No connections yet"
+        message="Create the first connection to start configuring integrations."
+        action={
+          <Link className="button" to="/connections/new">
+            Add the first connection
+          </Link>
+        }
+      />
     );
   }
 

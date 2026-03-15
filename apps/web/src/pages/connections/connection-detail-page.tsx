@@ -1,8 +1,9 @@
 import type { ReactElement } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
-import { Alert } from '../../shared/ui/alert';
+import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
@@ -21,18 +22,51 @@ export function ConnectionDetailPage(): ReactElement {
   const connectionQuery = useConnectionQuery(connectionId);
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <p className="eyebrow">Integration detail</p>
-        <h2>Connection {connectionId}</h2>
-        <p>Detail views should combine configuration, health, status, and action context without hiding debug value.</p>
-      </div>
-
-      {connectionQuery.isLoading ? <p className="muted-text">Loading connection...</p> : null}
+    <PageLayout
+      eyebrow="Integration detail"
+      title={`Connection ${connectionId}`}
+      description="Detail views should combine configuration, health, status, and action context without hiding debug value."
+      actions={
+        <Link className="button button--secondary" to="/connections">
+          Back to integrations
+        </Link>
+      }
+      summary={
+        connectionQuery.data ? (
+          <>
+            <div className="toolbar__group">
+              <span className="toolbar-chip">Detail workspace</span>
+              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+            </div>
+            <div className="toolbar__group">
+              <span className="muted-text">Configuration, health, and operator guidance in one view.</span>
+            </div>
+          </>
+        ) : undefined
+      }
+    >
+      {connectionQuery.isLoading ? (
+        <LoadingState
+          title="Loading connection"
+          message="Fetching the latest connection summary and operator guidance."
+        />
+      ) : null}
       {connectionQuery.error ? (
-        <Alert tone="error" title="Unable to load connection">
-          {connectionQuery.error.message}
-        </Alert>
+        <ErrorState
+          title="Unable to load connection"
+          message={connectionQuery.error.message}
+          action={
+            <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
+              Retry
+            </button>
+          }
+        />
+      ) : null}
+      {!connectionQuery.isLoading && !connectionQuery.error && !connectionQuery.data ? (
+        <EmptyState
+          title="Connection not found"
+          message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
+        />
       ) : null}
       {connectionQuery.data ? (
         <div className="workspace-grid">
@@ -91,6 +125,6 @@ export function ConnectionDetailPage(): ReactElement {
           </div>
         </div>
       ) : null}
-    </section>
+    </PageLayout>
   );
 }

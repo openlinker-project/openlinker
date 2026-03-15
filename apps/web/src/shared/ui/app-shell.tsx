@@ -1,15 +1,16 @@
-import type { ReactElement } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import type { PropsWithChildren, ReactElement } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useSession } from '../auth/use-session';
 import { Button } from './button';
+import { EnvironmentBadge } from './environment-badge';
 import { Input } from './input';
 import { StatusBadge, type StatusBadgeTone } from './status-badge';
 
 interface NavigationItem {
-  enabled: boolean;
   end?: boolean;
   label: string;
-  to?: string;
+  state: 'live' | 'planned';
+  to: string;
 }
 
 interface NavigationGroup {
@@ -21,27 +22,27 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: 'Operations',
     items: [
-      { to: '/', label: 'Dashboard', end: true, enabled: true },
-      { label: 'Orders', enabled: false },
-      { label: 'Products', enabled: false },
-      { label: 'Inventory', enabled: false },
-      { label: 'Jobs & Logs', enabled: false },
-      { label: 'Automations', enabled: false },
+      { to: '/', label: 'Dashboard', end: true, state: 'live' },
+      { to: '/orders', label: 'Orders', state: 'planned' },
+      { to: '/products', label: 'Products', state: 'planned' },
+      { to: '/inventory', label: 'Inventory', state: 'planned' },
+      { to: '/jobs-logs', label: 'Jobs & Logs', state: 'planned' },
+      { to: '/automations', label: 'Automations', state: 'planned' },
     ],
   },
   {
     label: 'Platform',
     items: [
-      { to: '/connections', label: 'Integrations', enabled: true },
-      { to: '/connections/new', label: 'Add connection', enabled: true },
-      { label: 'Shipping', enabled: false },
-      { label: 'Invoices', enabled: false },
-      { to: '/settings', label: 'Settings', enabled: true },
+      { to: '/connections', label: 'Integrations', state: 'live' },
+      { to: '/connections/new', label: 'Add connection', state: 'live' },
+      { to: '/shipping', label: 'Shipping', state: 'planned' },
+      { to: '/invoices', label: 'Invoices', state: 'planned' },
+      { to: '/settings', label: 'Settings', state: 'live' },
     ],
   },
 ];
 
-export function AppShell(): ReactElement {
+export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session } = useSession();
   const sessionTone: StatusBadgeTone = isReady
     ? session.status === 'authenticated'
@@ -56,7 +57,7 @@ export function AppShell(): ReactElement {
           <div className="sidebar-brand">
             <div className="sidebar-brand__row">
               <strong className="sidebar-brand__title">OpenLinker</strong>
-              <span className="context-chip">Dev</span>
+              <EnvironmentBadge compact />
             </div>
             <span className="sidebar-brand__org">Default organization</span>
           </div>
@@ -68,21 +69,14 @@ export function AppShell(): ReactElement {
                 <ul className="nav-list">
                   {group.items.map((item) => (
                     <li key={item.label}>
-                      {item.enabled && item.to ? (
-                        <NavLink
-                          to={item.to}
-                          end={item.end}
-                          className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
-                        >
-                          <span>{item.label}</span>
-                          <span className="nav-link__meta">Live</span>
-                        </NavLink>
-                      ) : (
-                        <span className="nav-link nav-link--disabled">
-                          <span>{item.label}</span>
-                          <span className="nav-link__meta">Locked</span>
-                        </span>
-                      )}
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+                      >
+                        <span>{item.label}</span>
+                        <span className="nav-link__meta">{item.state === 'live' ? 'Live' : 'Planned'}</span>
+                      </NavLink>
                     </li>
                   ))}
                 </ul>
@@ -96,7 +90,7 @@ export function AppShell(): ReactElement {
             <div className="topbar__context">
               <span className="topbar__label">Workspace</span>
               <strong>Default organization</strong>
-              <span className="context-chip">Development</span>
+              <EnvironmentBadge />
             </div>
 
             <div className="topbar__actions">
@@ -117,7 +111,7 @@ export function AppShell(): ReactElement {
           </header>
 
           <main className="main-content">
-            <Outlet />
+            {children}
           </main>
         </div>
       </div>
