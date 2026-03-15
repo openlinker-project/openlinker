@@ -1,24 +1,47 @@
+import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
+import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 
-export function ConnectionsOverview() {
+export function ConnectionsOverview(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
 
   if (connectionsQuery.isLoading) {
-    return <p className="muted-text">Loading connections...</p>;
+    return (
+      <LoadingState
+        title="Loading connections"
+        message="Fetching the latest connection inventory and health summary."
+      />
+    );
   }
 
   if (connectionsQuery.error) {
-    return <p className="error-text">Unable to load connections: {connectionsQuery.error.message}</p>;
+    return (
+      <ErrorState
+        title="Unable to load connections"
+        message={connectionsQuery.error.message}
+        action={
+          <button type="button" className="button button--secondary" onClick={() => void connectionsQuery.refetch()}>
+            Retry
+          </button>
+        }
+      />
+    );
   }
 
   const connections = connectionsQuery.data ?? [];
 
   if (connections.length === 0) {
     return (
-      <div className="empty-state">
-        <h2>No connections yet</h2>
-        <p>Create the first connection to start configuring integrations.</p>
-      </div>
+      <EmptyState
+        title="No connections yet"
+        message="Create the first connection to start configuring integrations."
+        action={
+          <Link className="button" to="/connections/new">
+            Add the first connection
+          </Link>
+        }
+      />
     );
   }
 
@@ -27,7 +50,7 @@ export function ConnectionsOverview() {
       <div className="list-card__header">
         <div>
           <p className="eyebrow">Health overview</p>
-          <h2>Connections</h2>
+          <h2 className="section-title">Connections</h2>
         </div>
         <span className="panel__meta">{connections.length} configured</span>
       </div>

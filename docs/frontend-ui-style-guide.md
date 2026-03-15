@@ -283,6 +283,36 @@ Recommended defaults:
 - input radius: `6px`
 - avoid more than three visual depth levels on the same screen
 
+## CSS Implementation Standard
+
+The visual direction above must be enforced in CSS and component markup, not only in mockups.
+
+Required implementation rules:
+
+- define theme values as tokens first and consume those tokens in component rules
+- avoid raw hex colors in component selectors; literals belong in the token layer
+- prefer explicit component classes over broad descendant selectors such as `.panel p` or `.page-header h2`
+- keep default HTML affordances useful: links should look like links unless a component intentionally restyles them
+- style modifiers after their base rules and keep state classes explicit, for example `status-pill--error` or `context-chip--info`
+- responsive overrides must match the layout model being changed; use grid overrides for grid layouts and flex overrides for flex layouts
+- add or extend shared primitives before introducing page-specific one-off styling
+
+Recommended CSS structure for `apps/web/src/index.css`:
+
+- tokens
+- base element defaults
+- layout primitives
+- shared component primitives
+- state modifiers
+- responsive overrides
+
+Markup conventions:
+
+- use dedicated classes for component text roles such as page title, page description, section title, panel copy, and state messages
+- avoid styling bare tags inside containers when the intent is component-specific
+- use semantic status text together with color; status color must never be the only signal
+- keep interactive classes consistent across links and buttons so hover and focus behavior stays predictable
+
 ## Core Component Patterns
 
 The design system should prioritize these primitives:
