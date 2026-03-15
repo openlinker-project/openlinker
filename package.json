@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "clean": "find libs apps -type f -path '*/src/*' \\( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -name 'jest.config.js' ! -name '.eslintrc.js' -delete",
-    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-prestashop build && pnpm --filter @openlinker/integrations-allegro build && pnpm --filter @openlinker/api build",
+    "build": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm --filter @openlinker/integrations-prestashop build && pnpm --filter @openlinker/integrations-allegro build && pnpm --filter @openlinker/api build && pnpm --filter @openlinker/web build",
     "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
     "build:api": "pnpm --filter @openlinker/api exec nest build",
     "test": "pnpm -r test",
@@ -23,6 +23,7 @@
     "start:prod": "pnpm --filter api start:prod",
     "start:prod:api": "node apps/api/dist/apps/api/src/main",
     "start:prod:worker": "pnpm --filter @openlinker/worker start",
+    "start:dev:web": "pnpm --filter @openlinker/web dev",
     "build:worker": "pnpm --filter @openlinker/worker build",
     "dev:stack:up": "docker compose up -d postgres redis mysql phpmyadmin prestashop",
     "dev:stack:down": "docker compose down",

@@ -6,6 +6,7 @@
   },
   "references": [
     { "path": "./apps/api" },
+    { "path": "./apps/web" },
     { "path": "./libs/core" },
     { "path": "./libs/shared" }
   ],

@@ -79,6 +79,8 @@ jobs:
     # Run on push to main (after merge) and on PRs to catch issues early
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     needs: [test] # Only run if unit tests pass
+    env:
+      OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

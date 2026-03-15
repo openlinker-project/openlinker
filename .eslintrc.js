@@ -40,6 +40,58 @@ module.exports = {
   },
   overrides: [
     {
+      files: ['apps/web/**/*.{ts,tsx}'],
+      env: {
+        browser: true,
+      },
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+      rules: {
+        '@typescript-eslint/no-redundant-type-constituents': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/require-await': 'off',
+      },
+    },
+    {
+      files: ['apps/web/src/shared/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/features/**', '**/pages/**'],
+                message: 'Shared modules must not import feature or page modules.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      files: ['apps/web/src/features/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/pages/**'],
+                message: 'Feature modules must not import page modules.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       files: ['**/*.spec.ts', '**/*.test.ts'],
       rules: {
         '@typescript-eslint/unbound-method': 'off',
@@ -47,6 +99,17 @@ module.exports = {
         // Exception classes extending Error should be valid, but TypeScript infers them as 'any'
         '@typescript-eslint/no-unsafe-argument': 'off',
         // Allow unsafe assignments in test files - Jest matchers like expect.objectContaining() return 'any'
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+      },
+    },
+    {
+      files: ['**/*.spec.tsx', '**/*.test.tsx'],
+      env: {
+        browser: true,
+      },
+      rules: {
+        '@typescript-eslint/unbound-method': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
         '@typescript-eslint/no-unsafe-assignment': 'off',
       },
     },
