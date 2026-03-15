@@ -44,7 +44,7 @@ export function CreateConnectionForm() {
       <div className="panel__header">
         <div>
           <p className="eyebrow">Setup flow</p>
-          <h3>Connection draft</h3>
+          <h3 className="section-title">Connection draft</h3>
         </div>
         <span className="panel__meta">Validated input</span>
       </div>
