@@ -28,19 +28,19 @@ function buildQuery(filters?: ConnectionFilters): string {
 
 export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
   return {
-    create(input) {
+    create(input): Promise<Connection> {
       return request<Connection>('/connections', {
         method: 'POST',
         body: JSON.stringify(input),
       });
     },
-    getById(connectionId) {
+    getById(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`);
     },
-    list(filters) {
+    list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);
     },
-    update(connectionId, input) {
+    update(connectionId, input): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`, {
         method: 'PATCH',
         body: JSON.stringify(input),

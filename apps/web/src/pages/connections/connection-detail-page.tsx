@@ -1,7 +1,22 @@
+import type { ReactElement } from 'react';
 import { useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import type { ConnectionStatus } from '../../features/connections/api/connections.types';
+import { Alert } from '../../shared/ui/alert';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 
-export function ConnectionDetailPage() {
+function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'disabled':
+      return 'neutral';
+    case 'error':
+      return 'error';
+  }
+}
+
+export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
 
@@ -14,16 +29,20 @@ export function ConnectionDetailPage() {
       </div>
 
       {connectionQuery.isLoading ? <p className="muted-text">Loading connection...</p> : null}
-      {connectionQuery.error ? <p className="error-text">{connectionQuery.error.message}</p> : null}
+      {connectionQuery.error ? (
+        <Alert tone="error" title="Unable to load connection">
+          {connectionQuery.error.message}
+        </Alert>
+      ) : null}
       {connectionQuery.data ? (
         <div className="workspace-grid">
           <div className="panel panel--dense">
             <div className="panel__header">
               <div>
                 <p className="eyebrow">Connection summary</p>
-                <h3>Current state</h3>
+                <h3 className="section-title">Current state</h3>
               </div>
-              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+              <StatusBadge tone={toStatusTone(connectionQuery.data.status)}>{connectionQuery.data.status}</StatusBadge>
             </div>
 
             <dl className="definition-list">
@@ -50,7 +69,7 @@ export function ConnectionDetailPage() {
             <div className="panel__header">
               <div>
                 <p className="eyebrow">Operator context</p>
-                <h3>Suggested next actions</h3>
+                <h3 className="section-title">Suggested next actions</h3>
               </div>
               <span className="panel__meta">Guidance</span>
             </div>

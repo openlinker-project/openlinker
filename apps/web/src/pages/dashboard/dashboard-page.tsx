@@ -1,4 +1,7 @@
-export function DashboardPage() {
+import type { ReactElement } from 'react';
+import { StatusBadge } from '../../shared/ui/status-badge';
+
+export function DashboardPage(): ReactElement {
   return (
     <section className="page-section">
       <div className="page-header">
@@ -35,7 +38,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Triage</p>
-              <h3>Attention queue</h3>
+              <h3 className="section-title">Attention queue</h3>
             </div>
             <span className="panel__meta">Action now</span>
           </div>
@@ -53,7 +56,7 @@ export function DashboardPage() {
             </thead>
             <tbody>
               <tr>
-                <td><span className="status-pill status-pill--error">Failed</span></td>
+                <td><StatusBadge tone="error">Failed</StatusBadge></td>
                 <td>Connection</td>
                 <td>Allegro auth validation failed</td>
                 <td className="mono-text">allegro.main</td>
@@ -61,7 +64,7 @@ export function DashboardPage() {
                 <td>Reconnect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--warning">Retrying</span></td>
+                <td><StatusBadge tone="warning">Retrying</StatusBadge></td>
                 <td>Sync job</td>
                 <td>Connection validation backoff in progress</td>
                 <td className="mono-text">job_sync_1842</td>
@@ -69,7 +72,7 @@ export function DashboardPage() {
                 <td>Inspect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--review">Review</span></td>
+                <td><StatusBadge tone="review">Review</StatusBadge></td>
                 <td>Integration</td>
                 <td>New setup waiting for credentials approval</td>
                 <td className="mono-text">prestashop.draft</td>
@@ -84,7 +87,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Health</p>
-              <h3>Integration health</h3>
+              <h3 className="section-title">Integration health</h3>
             </div>
             <span className="panel__meta">Last sync</span>
           </div>
@@ -111,7 +114,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Activity</p>
-              <h3>Recent events</h3>
+              <h3 className="section-title">Recent events</h3>
             </div>
             <span className="panel__meta">Timeline</span>
           </div>
@@ -145,7 +148,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Failures</p>
-              <h3>Retry and incident queue</h3>
+              <h3 className="section-title">Retry and incident queue</h3>
             </div>
             <span className="panel__meta">Ops bridge</span>
           </div>

@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react';
 import { ConnectionsOverview } from '../../features/connections/components/connections-overview';
 
-export function ConnectionsListPage() {
+export function ConnectionsListPage(): ReactElement {
   return (
     <section className="page-section">
       <div className="page-header">

@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react';
 import { CreateConnectionForm } from '../../features/connections/components/create-connection-form';
 
-export function NewConnectionPage() {
+export function NewConnectionPage(): ReactElement {
   return (
     <section className="page-section">
       <div className="page-header">

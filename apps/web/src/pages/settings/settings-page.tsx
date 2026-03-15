@@ -1,4 +1,6 @@
-export function SettingsPage() {
+import type { ReactElement } from 'react';
+
+export function SettingsPage(): ReactElement {
   return (
     <section className="page-section">
       <div className="page-header">
