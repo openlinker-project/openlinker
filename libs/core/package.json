@@ -86,6 +86,16 @@
       "types": "./dist/customers/*.d.ts",
       "require": "./dist/customers/*.js",
       "default": "./dist/customers/*.js"
+    },
+    "./users": {
+      "types": "./dist/users/index.d.ts",
+      "require": "./dist/users/index.js",
+      "default": "./dist/users/index.js"
+    },
+    "./users/*": {
+      "types": "./dist/users/*.d.ts",
+      "require": "./dist/users/*.js",
+      "default": "./dist/users/*.js"
     }
   },
   "files": ["dist"],
