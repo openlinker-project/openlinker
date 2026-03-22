@@ -1,19 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import { ConnectionsOverview } from './connections-overview';
-
-const sampleConnection = {
-  id: 'conn_1',
-  name: 'Main PrestaShop Store',
-  platformType: 'prestashop',
-  status: 'active',
-  config: { baseUrl: 'https://example.com' },
-  credentialsRef: 'db:cred_1',
-  adapterKey: 'prestashop.webservice.v1',
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-};
 
 describe('ConnectionsOverview', () => {
   it('shows loading state while fetching', () => {

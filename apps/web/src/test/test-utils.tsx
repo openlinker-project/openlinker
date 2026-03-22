@@ -15,7 +15,7 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   route?: string;
 }
 
-const sampleConnection: Connection = {
+export const sampleConnection: Connection = {
   id: 'conn_1',
   name: 'Main PrestaShop Store',
   platformType: 'prestashop',

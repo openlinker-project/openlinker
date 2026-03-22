@@ -16,6 +16,9 @@ interface ControlProps {
 }
 
 interface FormFieldProps {
+  // children must be a form control (Input, Select, Textarea, or a wrapper component) that
+  // forwards id, aria-describedby, and aria-invalid to its underlying native element.
+  // Wrappers that do not forward these props will silently break the accessibility wiring.
   children: ReactElement<ControlProps>;
   description?: ReactNode;
   error?: string;

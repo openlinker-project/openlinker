@@ -23,118 +23,76 @@ export function ConfirmDialog({
   open,
   title,
   tone = 'default',
-}: ConfirmDialogProps): ReactElement | null {
+}: ConfirmDialogProps): ReactElement {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const lastFocusedElementRef = useRef<HTMLElement | null>(null);
   const baseId = useId();
   const titleId = `${baseId}-title`;
   const descriptionId = `${baseId}-description`;
 
+  // showModal/close handle focus trapping, Escape key, and focus restoration natively
   useEffect(() => {
-    if (!open) {
-      return undefined;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (open) {
+      dialog.showModal();
+      confirmButtonRef.current?.focus();
+    } else if (dialog.open) {
+      dialog.close();
     }
+  }, [open]);
 
-    lastFocusedElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    confirmButtonRef.current?.focus();
+  // Intercept the native cancel event (fired on Escape) to keep controlled state in sync
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
 
-    const getFocusableElements = (): HTMLElement[] => {
-      if (!dialogRef.current) {
-        return [];
-      }
-
-      const focusableSelector = [
-        'button:not([disabled])',
-        '[href]',
-        'input:not([disabled])',
-        'select:not([disabled])',
-        'textarea:not([disabled])',
-        '[tabindex]:not([tabindex="-1"])',
-      ].join(',');
-
-      return Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-        (element) => !element.hasAttribute('aria-hidden'),
-      );
+    const handleCancel = (event: Event): void => {
+      event.preventDefault();
+      onOpenChange(false);
     };
 
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onOpenChange(false);
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const focusableElements = getFocusableElements();
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-
-      const firstFocusableElement = focusableElements[0];
-      const lastFocusableElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey && document.activeElement === firstFocusableElement) {
-        event.preventDefault();
-        lastFocusableElement.focus();
-        return;
-      }
-
-      if (!event.shiftKey && document.activeElement === lastFocusableElement) {
-        event.preventDefault();
-        firstFocusableElement.focus();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
+    dialog.addEventListener('cancel', handleCancel);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      lastFocusedElementRef.current?.focus();
+      dialog.removeEventListener('cancel', handleCancel);
     };
-  }, [onOpenChange, open]);
-
-  if (!open) {
-    return null;
-  }
+  }, [onOpenChange]);
 
   return (
-    <div
-      className="dialog-backdrop"
+    <dialog
+      ref={dialogRef}
+      aria-describedby={descriptionId}
+      aria-labelledby={titleId}
+      className="dialog"
       onClick={(event) => {
+        // Close when clicking the backdrop (the dialog element itself, not its children)
         if (event.target === event.currentTarget) {
           onOpenChange(false);
         }
       }}
     >
-      <div
-        ref={dialogRef}
-        aria-describedby={descriptionId}
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="dialog"
-        role="dialog"
-      >
-        <div className="dialog__header">
-          <h2 id={titleId} className="dialog__title">
-            {title}
-          </h2>
-        </div>
-        <div id={descriptionId} className="dialog__body">
-          {description}
-        </div>
-        <div className="dialog__actions">
-          <Button tone="secondary" onClick={() => onOpenChange(false)}>
-            {cancelLabel}
-          </Button>
-          <Button ref={confirmButtonRef} tone={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} disabled={isConfirming}>
-            {confirmLabel}
-          </Button>
-        </div>
+      <div className="dialog__header">
+        <h2 id={titleId} className="dialog__title">
+          {title}
+        </h2>
       </div>
-    </div>
+      <div id={descriptionId} className="dialog__body">
+        {description}
+      </div>
+      <div className="dialog__actions">
+        <Button tone="secondary" onClick={() => onOpenChange(false)}>
+          {cancelLabel}
+        </Button>
+        <Button
+          ref={confirmButtonRef}
+          tone={tone === 'danger' ? 'danger' : 'primary'}
+          onClick={onConfirm}
+          disabled={isConfirming}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
+    </dialog>
   );
 }
