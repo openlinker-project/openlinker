@@ -1,30 +1,53 @@
 /**
  * Authentication Service
  *
- * Handles user authentication and JWT token generation. Validates user
- * credentials and issues JWT access tokens for authenticated users.
+ * Handles user credential validation and JWT token issuance. Depends on
+ * UserRepositoryPort (via USER_REPOSITORY_TOKEN) to look up users and
+ * bcryptjs to compare hashed passwords.
  *
  * @module apps/api/src/auth
  */
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+import { User, UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
+import { LoginResponseDto } from './dto/login-response.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    @Inject(USER_REPOSITORY_TOKEN)
+    private readonly userRepository: UserRepositoryPort,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  // TODO: Implement authentication logic
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async validateUser(_username: string, _password: string): Promise<unknown> {
-    // Placeholder implementation
-    return null;
+  // Dummy hash used when user is not found to keep response time constant and
+  // prevent user-enumeration via timing differences.
+  private static readonly DUMMY_HASH =
+    '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+  async validateUser(username: string, password: string): Promise<User | null> {
+    const user = await this.userRepository.findByUsername(username);
+    if (!user) {
+      await bcrypt.compare(password, AuthService.DUMMY_HASH);
+      return null;
+    }
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    return isMatch ? user : null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async login(user: unknown): Promise<{ access_token: string }> {
-    const payload = { sub: (user as { id: string }).id };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
+  login(user: User): LoginResponseDto {
+    const payload = { sub: user.id, username: user.username };
+    const dto = new LoginResponseDto();
+    dto.access_token = this.jwtService.sign(payload);
+    return dto;
+  }
+
+  async getMe(userId: string): Promise<User> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+    return user;
   }
 }
