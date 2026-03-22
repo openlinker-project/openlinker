@@ -17,7 +17,8 @@ async function seedUser(
   password: string,
   email: string | null = null,
 ): Promise<string> {
-  const passwordHash = await bcrypt.hash(password, 10);
+  // Use low cost factor (4) for test speed; real cost is set by the application layer
+  const passwordHash = await bcrypt.hash(password, 4);
   const result = await dataSource.query<{ id: string }[]>(
     `INSERT INTO users (username, email, password_hash)
      VALUES ($1, $2, $3)

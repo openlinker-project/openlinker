@@ -21,7 +21,7 @@ describe('ConnectionsOverview', () => {
       connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
     });
     renderWithProviders(<ConnectionsOverview />, { apiClient });
-    expect(screen.getByText('Loading connections...')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Loading connections' })).toBeInTheDocument();
   });
 
   it('shows error state when fetch fails', async () => {
@@ -29,7 +29,7 @@ describe('ConnectionsOverview', () => {
       connections: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
     });
     renderWithProviders(<ConnectionsOverview />, { apiClient });
-    expect(await screen.findByText(/Unable to load connections:/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Unable to load connections' })).toBeInTheDocument();
   });
 
   it('shows empty state when no connections exist', async () => {

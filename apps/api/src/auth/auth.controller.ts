@@ -14,10 +14,11 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  Request,
+  Req,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -31,7 +32,7 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { AuthenticatedUser } from './strategies/jwt.strategy';
 
-interface RequestWithUser extends Request {
+interface RequestWithUser extends ExpressRequest {
   user: AuthenticatedUser;
 }
 
@@ -44,6 +45,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with username and password, returns JWT' })
   @ApiResponse({ status: 200, description: 'Login successful', type: LoginResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (missing or invalid fields)' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
     const user = await this.authService.validateUser(dto.username, dto.password);
@@ -59,7 +61,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Get the currently authenticated user' })
   @ApiResponse({ status: 200, description: 'Current user', type: UserResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getMe(@Request() req: RequestWithUser): Promise<UserResponseDto> {
+  async getMe(@Req() req: RequestWithUser): Promise<UserResponseDto> {
     const user = await this.authService.getMe(req.user.id);
     return UserResponseDto.fromDomain(user);
   }

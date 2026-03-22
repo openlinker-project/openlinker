@@ -21,9 +21,15 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
+  // Dummy hash used when user is not found to keep response time constant and
+  // prevent user-enumeration via timing differences.
+  private static readonly DUMMY_HASH =
+    '$2b$10$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
   async validateUser(username: string, password: string): Promise<User | null> {
     const user = await this.userRepository.findByUsername(username);
     if (!user) {
+      await bcrypt.compare(password, AuthService.DUMMY_HASH);
       return null;
     }
     const isMatch = await bcrypt.compare(password, user.passwordHash);
