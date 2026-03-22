@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { connectionsQueryKeys } from '../api/connections.query-keys';
-import type { CreateConnectionInput } from '../api/connections.types';
+import type { Connection, CreateConnectionInput } from '../api/connections.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
-export function useCreateConnectionMutation() {
+export function useCreateConnectionMutation(): UseMutationResult<Connection, Error, CreateConnectionInput> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
 

@@ -14,7 +14,7 @@ interface ApiRequest {
 
 export function createAdaptersApi(request: ApiRequest): AdaptersApi {
   return {
-    list() {
+    list(): Promise<AdapterSummary[]> {
       return request<AdapterSummary[]>('/adapters');
     },
   };

@@ -1,29 +1,82 @@
-import { useParams } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import type { ConnectionStatus } from '../../features/connections/api/connections.types';
+import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { PageLayout } from '../../shared/ui/page-layout';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 
-export function ConnectionDetailPage() {
+function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'disabled':
+      return 'neutral';
+    case 'error':
+      return 'error';
+  }
+}
+
+export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <p className="eyebrow">Integration detail</p>
-        <h2>Connection {connectionId}</h2>
-        <p>Detail views should combine configuration, health, status, and action context without hiding debug value.</p>
-      </div>
-
-      {connectionQuery.isLoading ? <p className="muted-text">Loading connection...</p> : null}
-      {connectionQuery.error ? <p className="error-text">{connectionQuery.error.message}</p> : null}
+    <PageLayout
+      eyebrow="Integration detail"
+      title={`Connection ${connectionId}`}
+      description="Detail views should combine configuration, health, status, and action context without hiding debug value."
+      actions={
+        <Link className="button button--secondary" to="/connections">
+          Back to integrations
+        </Link>
+      }
+      summary={
+        connectionQuery.data ? (
+          <>
+            <div className="toolbar__group">
+              <span className="toolbar-chip">Detail workspace</span>
+              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+            </div>
+            <div className="toolbar__group">
+              <span className="muted-text">Configuration, health, and operator guidance in one view.</span>
+            </div>
+          </>
+        ) : undefined
+      }
+    >
+      {connectionQuery.isLoading ? (
+        <LoadingState
+          title="Loading connection"
+          message="Fetching the latest connection summary and operator guidance."
+        />
+      ) : null}
+      {connectionQuery.error ? (
+        <ErrorState
+          title="Unable to load connection"
+          message={connectionQuery.error.message}
+          action={
+            <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
+              Retry
+            </button>
+          }
+        />
+      ) : null}
+      {!connectionQuery.isLoading && !connectionQuery.error && !connectionQuery.data ? (
+        <EmptyState
+          title="Connection not found"
+          message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
+        />
+      ) : null}
       {connectionQuery.data ? (
         <div className="workspace-grid">
           <div className="panel panel--dense">
             <div className="panel__header">
               <div>
                 <p className="eyebrow">Connection summary</p>
-                <h3>Current state</h3>
+                <h3 className="section-title">Current state</h3>
               </div>
-              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+              <StatusBadge tone={toStatusTone(connectionQuery.data.status)}>{connectionQuery.data.status}</StatusBadge>
             </div>
 
             <dl className="definition-list">
@@ -50,7 +103,7 @@ export function ConnectionDetailPage() {
             <div className="panel__header">
               <div>
                 <p className="eyebrow">Operator context</p>
-                <h3>Suggested next actions</h3>
+                <h3 className="section-title">Suggested next actions</h3>
               </div>
               <span className="panel__meta">Guidance</span>
             </div>
@@ -72,6 +125,6 @@ export function ConnectionDetailPage() {
           </div>
         </div>
       ) : null}
-    </section>
+    </PageLayout>
   );
 }

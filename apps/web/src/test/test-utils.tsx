@@ -8,6 +8,7 @@ import { ApiClientProvider } from '../app/api/api-client-provider';
 import type { Connection } from '../features/connections/api/connections.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
+import { ToastProvider } from '../shared/ui/toast-provider';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   apiClient?: ApiClient;
@@ -83,9 +84,11 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
         <SessionProvider adapter={createNoopSessionAdapter()}>
-          <ApiClientProvider client={apiClient}>
-            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-          </ApiClientProvider>
+          <ToastProvider>
+            <ApiClientProvider client={apiClient}>
+              <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
         </SessionProvider>
       </MemoryRouter>
     ),

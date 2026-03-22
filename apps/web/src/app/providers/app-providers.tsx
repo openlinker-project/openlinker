@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useMemo, useState, type PropsWithChildren } from 'react';
+import { useMemo, useState, type PropsWithChildren, type ReactElement } from 'react';
 import { createApiClient } from '../api/api-client';
 import { ApiClientProvider } from '../api/api-client-provider';
 import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
 import { SessionProvider } from '../../shared/auth/session-provider';
+import { ToastProvider } from '../../shared/ui/toast-provider';
 import { env } from '../../shared/config/env';
 
-export function AppProviders({ children }: PropsWithChildren) {
+export function AppProviders({ children }: PropsWithChildren): ReactElement {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -30,9 +31,11 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <SessionProvider adapter={sessionAdapter}>
-      <ApiClientProvider client={apiClient}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </ApiClientProvider>
+      <ToastProvider>
+        <ApiClientProvider client={apiClient}>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </ApiClientProvider>
+      </ToastProvider>
     </SessionProvider>
   );
 }

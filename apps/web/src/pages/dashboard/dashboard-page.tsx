@@ -1,12 +1,20 @@
-export function DashboardPage() {
-  return (
-    <section className="page-section">
-      <div className="page-header">
-        <p className="eyebrow">Overview</p>
-        <h2>Operations overview</h2>
-        <p>Monitor failures, retry pressure, integration health, and manual-review workload from one command surface.</p>
-      </div>
+import type { ReactElement } from 'react';
+import { StatusBadge } from '../../shared/ui/status-badge';
+import { Link } from 'react-router-dom';
+import { PageLayout } from '../../shared/ui/page-layout';
 
+export function DashboardPage(): ReactElement {
+  return (
+    <PageLayout
+      eyebrow="Overview"
+      title="Operations overview"
+      description="Monitor failures, retry pressure, integration health, and manual-review workload from one command surface."
+      actions={
+        <Link className="button" to="/connections">
+          Review integrations
+        </Link>
+      }
+    >
       <section className="status-strip">
         <article className="metric-card">
           <span className="metric-card__label">Integration health</span>
@@ -35,7 +43,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Triage</p>
-              <h3>Attention queue</h3>
+              <h3 className="section-title">Attention queue</h3>
             </div>
             <span className="panel__meta">Action now</span>
           </div>
@@ -53,7 +61,7 @@ export function DashboardPage() {
             </thead>
             <tbody>
               <tr>
-                <td><span className="status-pill status-pill--error">Failed</span></td>
+                <td><StatusBadge tone="error">Failed</StatusBadge></td>
                 <td>Connection</td>
                 <td>Allegro auth validation failed</td>
                 <td className="mono-text">allegro.main</td>
@@ -61,7 +69,7 @@ export function DashboardPage() {
                 <td>Reconnect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--warning">Retrying</span></td>
+                <td><StatusBadge tone="warning">Retrying</StatusBadge></td>
                 <td>Sync job</td>
                 <td>Connection validation backoff in progress</td>
                 <td className="mono-text">job_sync_1842</td>
@@ -69,7 +77,7 @@ export function DashboardPage() {
                 <td>Inspect</td>
               </tr>
               <tr>
-                <td><span className="status-pill status-pill--review">Review</span></td>
+                <td><StatusBadge tone="review">Review</StatusBadge></td>
                 <td>Integration</td>
                 <td>New setup waiting for credentials approval</td>
                 <td className="mono-text">prestashop.draft</td>
@@ -84,7 +92,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Health</p>
-              <h3>Integration health</h3>
+              <h3 className="section-title">Integration health</h3>
             </div>
             <span className="panel__meta">Last sync</span>
           </div>
@@ -111,7 +119,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Activity</p>
-              <h3>Recent events</h3>
+              <h3 className="section-title">Recent events</h3>
             </div>
             <span className="panel__meta">Timeline</span>
           </div>
@@ -121,21 +129,21 @@ export function DashboardPage() {
               <span className="timeline-list__time">23:41</span>
               <div>
                 <strong>Connection validated</strong>
-                <p>Allegro sandbox credentials accepted and connection kept active.</p>
+                <p className="timeline-list__description">Allegro sandbox credentials accepted and connection kept active.</p>
               </div>
             </li>
             <li>
               <span className="timeline-list__time">23:35</span>
               <div>
                 <strong>Retry scheduled</strong>
-                <p>Validation job entered retry backoff after transient upstream failure.</p>
+                <p className="timeline-list__description">Validation job entered retry backoff after transient upstream failure.</p>
               </div>
             </li>
             <li>
               <span className="timeline-list__time">23:18</span>
               <div>
                 <strong>Manual review opened</strong>
-                <p>A new integration draft is waiting for operator confirmation.</p>
+                <p className="timeline-list__description">A new integration draft is waiting for operator confirmation.</p>
               </div>
             </li>
           </ul>
@@ -145,7 +153,7 @@ export function DashboardPage() {
           <div className="panel__header">
             <div>
               <p className="eyebrow">Failures</p>
-              <h3>Retry and incident queue</h3>
+              <h3 className="section-title">Retry and incident queue</h3>
             </div>
             <span className="panel__meta">Ops bridge</span>
           </div>
@@ -166,6 +174,6 @@ export function DashboardPage() {
           </ul>
         </article>
       </div>
-    </section>
+    </PageLayout>
   );
 }

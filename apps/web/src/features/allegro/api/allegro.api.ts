@@ -19,7 +19,7 @@ interface ApiRequest {
 
 export function createAllegroApi(request: ApiRequest): AllegroApi {
   return {
-    startOAuth(input) {
+    startOAuth(input): Promise<StartAllegroOAuthResponse> {
       return request<StartAllegroOAuthResponse>('/integrations/allegro/oauth/connect', {
         method: 'POST',
         body: JSON.stringify(input),

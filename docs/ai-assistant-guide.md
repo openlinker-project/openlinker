@@ -21,6 +21,12 @@ Before generating or modifying code, always consult:
 3. **[Database Migrations](./migrations.md)**  
    Database migration workflow, generation, and execution guidelines.
 
+4. **[Frontend Architecture Overview](./frontend-overview.md)**  
+   Source of system structure, boundaries, and design decisions for Frontend.
+
+5. **[Style guide](./frontend-ui-style-guide.md)**
+   Frontend style guide
+
 These documents take precedence over any AI-generated suggestions.
 
 ---
