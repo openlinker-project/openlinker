@@ -62,7 +62,10 @@ export function createApiClient({
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => { controller.abort(); }, requestTimeoutMs);
-    const signal = init.signal ?? controller.signal;
+    // Combine the timeout signal with any caller-supplied signal so both can abort the request
+    const signal = init.signal
+      ? AbortSignal.any([controller.signal, init.signal])
+      : controller.signal;
 
     try {
       const response = await fetchFn(buildUrl(baseUrl, path), {
