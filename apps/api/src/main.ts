@@ -54,6 +54,8 @@ async function bootstrap(): Promise<void> {
     .setTitle('OpenLinker API')
     .setDescription('Open-source, modular, API-first e-commerce orchestration platform')
     .setVersion('1.0')
+    .addBearerAuth()
+    .addTag('auth', 'Authentication endpoints')
     .addTag('connections', 'Connection management endpoints')
     .addTag('adapters', 'Adapter discovery endpoints')
     .addTag('allegro', 'Allegro integration endpoints (OAuth, validation)')

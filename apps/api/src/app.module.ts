@@ -17,6 +17,7 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
+import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SyncModule } from './sync/sync.module';
@@ -31,6 +32,7 @@ import { SyncModule } from './sync/sync.module';
     DatabaseModule,
     RedisConfigModule,
     HealthModule,
+    AuthModule,
     IdentifierMappingModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,

@@ -28,35 +28,42 @@ const sampleConnection: Connection = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
+type DeepPartialApiClient = {
+  request?: ApiClient['request'];
+  adapters?: Partial<ApiClient['adapters']>;
+  allegro?: Partial<ApiClient['allegro']>;
+  connections?: Partial<ApiClient['connections']>;
+  syncJobs?: Partial<ApiClient['syncJobs']>;
+};
+
+export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiClient {
   return {
-    request: vi.fn(),
+    request: overrides.request ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
-    },
+    } as ApiClient['adapters'],
     allegro: {
       startOAuth: vi.fn().mockResolvedValue({
         authorizationUrl: 'https://example.com/oauth',
         state: 'state',
       }),
       ...overrides.allegro,
-    },
+    } as ApiClient['allegro'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       getById: vi.fn().mockResolvedValue(sampleConnection),
       list: vi.fn().mockResolvedValue([sampleConnection]),
       update: vi.fn().mockResolvedValue(sampleConnection),
       ...overrides.connections,
-    },
+    } as ApiClient['connections'],
     syncJobs: {
       enqueue: vi.fn().mockResolvedValue({
         jobId: 'job_1',
         status: 'queued',
       }),
       ...overrides.syncJobs,
-    },
-    ...overrides,
+    } as ApiClient['syncJobs'],
   };
 }
 

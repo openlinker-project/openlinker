@@ -25,19 +25,20 @@
     "migration:show": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' bash node_modules/.bin/typeorm migration:show -d src/database/data-source.ts"
   },
   "dependencies": {
-    "@nestjs/common": "10.3.0",
-    "@nestjs/core": "10.3.0",
-    "@nestjs/platform-express": "10.3.0",
-    "@nestjs/config": "3.2.0",
     "@nestjs/axios": "3.0.2",
-    "@nestjs/typeorm": "10.0.2",
+    "@nestjs/common": "10.3.0",
+    "@nestjs/config": "3.2.0",
+    "@nestjs/core": "10.3.0",
     "@nestjs/jwt": "10.2.0",
     "@nestjs/passport": "10.0.3",
+    "@nestjs/platform-express": "10.3.0",
     "@nestjs/schedule": "4.0.0",
     "@nestjs/swagger": "^7.3.0",
+    "@nestjs/typeorm": "10.0.2",
     "@openlinker/core": "workspace:*",
     "@openlinker/integrations-allegro": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.1",
     "passport": "0.7.0",
@@ -54,6 +55,7 @@
     "@nestjs/testing": "10.3.0",
     "@testcontainers/postgresql": "^10.9.0",
     "@testcontainers/redis": "^10.9.0",
+    "@types/bcryptjs": "^3.0.0",
     "@types/express": "4.17.21",
     "@types/jest": "29.5.12",
     "@types/node": "20.11.30",
@@ -74,4 +76,3 @@
     "typescript": "5.4.3"
   }
 }
-
