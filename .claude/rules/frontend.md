@@ -22,22 +22,63 @@ paths:
 ## Naming
 
 - Components: `PascalCase.tsx`
-- Hooks: `use-*.ts`
+- Hooks: `use-*.ts` (kebab-case)
 - Route modules: `*.route.tsx`
-- Tests: `*.test.tsx`
+- Tests: `*.test.tsx` (colocated with source)
 - API modules: `*.api.ts`
 - Query keys: `*.query-keys.ts`
+- Types: `*.types.ts`
+- Zod schemas: `*.schema.ts`
 
-## Patterns
+## Styling
 
-- API calls go through `shared/api/api-client.ts` — no raw `fetch()` in components
-- Query hooks live in `features/{domain}/hooks/use-*-query.ts`
-- Mutation hooks live in `features/{domain}/hooks/use-*-mutation.ts`
-- Zod schemas live alongside forms in `*.schema.ts`
+- **No Tailwind, no CSS-in-JS** — pure vanilla CSS with design tokens in `index.css`
+- All colors, spacing, typography via CSS custom properties (`var(--token-name)`)
+- Spacing on 4px grid: `0.25rem`, `0.5rem`, `0.75rem`, `1rem`, `1.5rem`, `2rem`
+- CSS class naming: `.component-name`, `.component-name--modifier`, `.component-name__child`
+- New styles go in `apps/web/src/index.css` in the appropriate section
+
+## Component Patterns
+
+- All shared UI components use `forwardRef` (required for React Hook Form)
+- Extend native element props via `ComponentPropsWithoutRef<'element'>`
+- Accept and merge `className` — never override
+- No external UI library (no shadcn, Radix, MUI) — thin wrappers over native HTML
+- Use `tone` for variant props (not `variant` or `color`)
+- Class construction: `['base', condition ? 'modifier' : '', className].filter(Boolean).join(' ')`
+
+## Data Fetching
+
+- Use `useApiClient()` hook — never import API client directly
+- Query hooks return full `UseQueryResult` — let consumer destructure
+- Mutation hooks invalidate queries on success via `queryClient.invalidateQueries()`
+- Always handle all states: loading → error → empty → data
+
+## Form Patterns
+
+- Zod schema in `*.schema.ts` colocated with form component
+- Export `FormValues` (input type) and `FormSubmission` (output type)
+- Show `FormErrorSummary` only after first submit (`submitCount > 0`)
+- Show API errors in `Alert` at top of form (separate from validation)
+- Disable submit button during mutation, show loading text
+- Toast on success, `form.reset()` after successful mutation
+- Add `noValidate` on `<form>` — Zod handles validation, not the browser
+
+## Accessibility
+
+- Semantic HTML first — `<button>`, `<input>`, `<dialog>`, `<table>`, not `<div>` with roles
+- Labels on all form controls via `<label htmlFor>` or `aria-label`
+- Use `FormField` for automatic `aria-invalid`, `aria-describedby` wiring
+- `role="alert"` for errors, `aria-live="polite"` for loading/status
+- `aria-hidden="true"` on decorative elements
+- Visible focus outlines — never remove (`2px solid var(--accent-focus)`)
+- Color is never the only signal — always pair with text
 
 ## Testing
 
-- Unit tests with Vitest + Testing Library
+- Use `renderWithProviders()` from `test/test-utils.tsx`
+- Use `createMockApiClient()` to mock API responses
+- Test priorities: happy path → loading → error → empty → form submission → interactions
 - Mock API responses, not implementation details
 - Test user interactions, not internal state
 - Run: `pnpm test`
@@ -45,5 +86,7 @@ paths:
 ## UI Style
 
 - Follow `docs/frontend-ui-style-guide.md` for layout, spacing, and component patterns
-- Use shared UI components from `shared/ui/`
+- Use shared UI components from `shared/ui/` — check existing inventory before creating new
 - Status-first, dense-but-readable operator cockpit style
+- Shopify admin clarity + Linear polish — no glassmorphism, heavy gradients, or glow effects
+- Monospace (`.mono-text`) for identifiers, payload fields, system references
