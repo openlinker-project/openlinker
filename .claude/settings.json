@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm start:dev:*)",
+      "Bash(pnpm dev:stack:*)",
+      "Bash(pnpm --filter *)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(git worktree:*)",
+      "Bash(docker ps:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(git remote:*)",
+      "mcp__github__get_me",
+      "mcp__github__list_issues",
+      "mcp__github__search_issues",
+      "mcp__github__issue_read",
+      "mcp__github__issue_write",
+      "mcp__github__list_pull_requests",
+      "mcp__github__pull_request_read",
+      "mcp__github__add_issue_comment",
+      "mcp__github__pull_request_review_write",
+      "mcp__github__create_pull_request"
+    ],
+    "deny": [
+      "Bash(git push * main)",
+      "Bash(git push --force *)",
+      "Bash(rm -rf *)"
+    ]
+  }
+}

@@ -61,3 +61,6 @@ Thumbs.db
 # Docker
 .dockerignore
 
+# Claude Code worktrees
+.claude/worktrees/
+
