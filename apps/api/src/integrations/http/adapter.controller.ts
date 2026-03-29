@@ -7,13 +7,11 @@
  *
  * @module apps/api/src/integrations/http
  */
-import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { AdapterRegistryPort } from '@openlinker/core/integrations';
-import { ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
-import { Inject } from '@nestjs/common';
-import { AdapterMetadata } from '@openlinker/core/integrations';
+import { Controller, Get, Inject } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { AdapterRegistryPort, ADAPTER_REGISTRY_TOKEN, AdapterMetadata } from '@openlinker/core/integrations';
 
+@ApiBearerAuth()
 @ApiTags('adapters')
 @Controller('adapters')
 export class AdapterController {

@@ -22,6 +22,7 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiHeader } from '@nestjs/swagger';
+import { Public } from '../../auth/decorators/public.decorator';
 import { WebhookRequestDto } from './dto/webhook-request.dto';
 import { WebhookService } from '../application/services/webhook.service';
 import { RequestWithRawBody } from './middleware/raw-body.middleware';
@@ -29,6 +30,7 @@ import { WebhookAuthenticationException } from '../application/errors/webhook-au
 import { WebhookReplayException } from '../application/errors/webhook-replay.exception';
 import { Logger } from '@openlinker/shared/logging';
 
+@Public()
 @ApiTags('webhooks')
 @Controller('webhooks')
 export class WebhookController {

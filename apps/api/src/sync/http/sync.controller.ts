@@ -15,12 +15,15 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, SyncJobRequest } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
 import { EnqueueSyncJobResponseDto } from './dto/enqueue-sync-job-response.dto';
 import { Logger } from '@openlinker/shared/logging';
 
+@Roles('admin')
+@ApiBearerAuth()
 @ApiTags('sync')
 @Controller('sync')
 export class SyncController {
@@ -47,6 +50,7 @@ export class SyncController {
     status: 400,
     description: 'Invalid request (validation failed)',
   })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async enqueueJob(@Body() dto: EnqueueSyncJobDto): Promise<EnqueueSyncJobResponseDto> {
     this.logger.log(
       `Enqueuing sync job: ${dto.jobType} for connection ${dto.connectionId} (idempotencyKey: ${dto.idempotencyKey})`,

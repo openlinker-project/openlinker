@@ -1,7 +1,9 @@
 export interface SessionUser {
   id: string;
-  email: string;
-  roles: string[];
+  username: string;
+  email: string | null;
+  role: string;
+  permissions: string[];
 }
 
 export interface Session {
