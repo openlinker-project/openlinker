@@ -1,5 +1,6 @@
-import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
+import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
+import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
 import { ApiError } from '../../shared/api/api-error';
@@ -17,6 +18,7 @@ interface ApiClientConfig {
 export interface ApiClient {
   adapters: AdaptersApi;
   allegro: AllegroApi;
+  auth: AuthApi;
   connections: ConnectionsApi;
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   syncJobs: SyncJobsApi;
@@ -101,6 +103,7 @@ export function createApiClient({
   return {
     adapters: createAdaptersApi(request),
     allegro: createAllegroApi(request),
+    auth: createAuthApi(request),
     connections: createConnectionsApi(request),
     request,
     syncJobs: createSyncJobsApi(request),

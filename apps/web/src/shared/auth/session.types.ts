@@ -1,6 +1,13 @@
+export interface MeResponse {
+  id: string;
+  username: string;
+  email: string | null;
+}
+
 export interface SessionUser {
   id: string;
-  email: string;
+  username: string;
+  email: string | null;
   roles: string[];
 }
 

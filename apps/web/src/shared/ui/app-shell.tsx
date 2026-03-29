@@ -5,6 +5,7 @@ import { Button } from './button';
 import { EnvironmentBadge } from './environment-badge';
 import { Input } from './input';
 import { StatusBadge, type StatusBadgeTone } from './status-badge';
+import { useToast } from './toast-provider';
 
 interface NavigationItem {
   end?: boolean;
@@ -43,12 +44,20 @@ const navigationGroups: NavigationGroup[] = [
 ];
 
 export function AppShell({ children }: PropsWithChildren): ReactElement {
-  const { isReady, session } = useSession();
+  const { isReady, session, clearSession } = useSession();
+  const { showToast } = useToast();
   const sessionTone: StatusBadgeTone = isReady
     ? session.status === 'authenticated'
       ? 'success'
       : 'warning'
     : 'info';
+
+  const handleLogout = (): void => {
+    void (async (): Promise<void> => {
+      await clearSession();
+      showToast({ tone: 'info', description: 'You have been logged out.' });
+    })();
+  };
 
   return (
     <div className="app-shell">
@@ -103,9 +112,17 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
               </Button>
               <Button>Quick action</Button>
               <div className="session-status">
+                {session.user ? (
+                  <span className="session-status__user">{session.user.username}</span>
+                ) : null}
                 <StatusBadge tone={sessionTone} withDot>
                   {isReady ? session.status : 'loading'}
                 </StatusBadge>
+                {session.status === 'authenticated' ? (
+                  <Button tone="ghost" onClick={handleLogout}>
+                    Logout
+                  </Button>
+                ) : null}
               </div>
             </div>
           </header>

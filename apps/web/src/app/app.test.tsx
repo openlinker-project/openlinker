@@ -1,18 +1,31 @@
 import { render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { AppProviders } from './providers/app-providers';
+import { createAuthenticatedSessionAdapter, createMockApiClient } from '../test/test-utils';
+import { ApiClientProvider } from './api/api-client-provider';
 import { rootRoute } from './routes/root.route';
+import { SessionProvider } from '../shared/auth/session-provider';
+import { ToastProvider } from '../shared/ui/toast-provider';
 
 function renderApp(initialEntries: string[]): ReturnType<typeof render> {
-  const router = createMemoryRouter([rootRoute], {
-    initialEntries,
+  const router = createMemoryRouter([rootRoute], { initialEntries });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
   });
+  const sessionAdapter = createAuthenticatedSessionAdapter();
+  const apiClient = createMockApiClient();
 
   return render(
-    <AppProviders>
-      <RouterProvider router={router} />
-    </AppProviders>,
+    <SessionProvider adapter={sessionAdapter}>
+      <ToastProvider>
+        <ApiClientProvider client={apiClient}>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </ToastProvider>
+    </SessionProvider>,
   );
 }
 
