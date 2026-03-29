@@ -11,5 +11,5 @@ import { User } from '../entities/user.entity';
 export interface UserRepositoryPort {
   findByUsername(username: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
-  save(user: Pick<User, 'username' | 'email' | 'passwordHash'>): Promise<User>;
+  save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role'>): Promise<User>;
 }

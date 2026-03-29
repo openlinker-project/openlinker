@@ -18,8 +18,11 @@ import {
   HttpStatus,
   BadRequestException,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Public } from '../../auth/decorators/public.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { AllegroOAuthService } from '../application/services/allegro-oauth.service';
 import { AllegroOAuthConnectDto } from './dto/allegro-oauth-connect.dto';
 import { AllegroOAuthCallbackQueryDto } from './dto/allegro-oauth-callback-query.dto';
@@ -31,7 +34,6 @@ import {
 } from '@openlinker/integrations-allegro';
 import { AllegroQuantityCommandResponseDto } from './dto/allegro-quantity-command-response.dto';
 import { AllegroCommandsQueryDto } from './dto/allegro-commands-query.dto';
-import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 @ApiTags('allegro')
@@ -47,6 +49,8 @@ export class AllegroController {
     private readonly commandRepository: AllegroQuantityCommandRepositoryPort,
   ) {}
 
+  @Roles('admin')
+  @ApiBearerAuth()
   @Post('oauth/connect')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Initiate Allegro OAuth flow' })
@@ -68,6 +72,7 @@ export class AllegroController {
     },
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async connect(@Body() dto: AllegroOAuthConnectDto): Promise<{
     authorizationUrl: string;
     state: string;
@@ -88,6 +93,7 @@ export class AllegroController {
     return result;
   }
 
+  @Public()
   @Get('oauth/callback')
   @ApiOperation({ summary: 'Handle Allegro OAuth callback' })
   @ApiQuery({ name: 'code', description: 'OAuth authorization code', required: true })
@@ -151,6 +157,7 @@ export class AllegroController {
     }
   }
 
+  @ApiBearerAuth()
   @Get('connections/:id/validate')
   @ApiOperation({ summary: 'Validate Allegro connection configuration' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
@@ -181,6 +188,7 @@ export class AllegroController {
     return this.oauthService.validateConnection(connectionId);
   }
 
+  @ApiBearerAuth()
   @Get('connections/:id/cursors')
   @ApiOperation({ summary: 'Get all cursors for an Allegro connection' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })
@@ -242,6 +250,7 @@ export class AllegroController {
     return { cursors: [] };
   }
 
+  @ApiBearerAuth()
   @Get('connections/:id/commands')
   @ApiOperation({ summary: 'Get quantity commands for an Allegro connection' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })
@@ -266,6 +275,7 @@ export class AllegroController {
     return commands.map((command: AllegroQuantityCommand) => AllegroQuantityCommandResponseDto.fromDomain(command));
   }
 
+  @ApiBearerAuth()
   @Get('connections/:id/commands/failed')
   @ApiOperation({ summary: 'Get failed quantity commands for an Allegro connection' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })
@@ -290,6 +300,7 @@ export class AllegroController {
     return commands.map((command: AllegroQuantityCommand) => AllegroQuantityCommandResponseDto.fromDomain(command));
   }
 
+  @ApiBearerAuth()
   @Get('connections/:id/commands/:commandId')
   @ApiOperation({ summary: 'Get quantity command by commandId for a connection' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })

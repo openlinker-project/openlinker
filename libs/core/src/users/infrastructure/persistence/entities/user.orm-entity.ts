@@ -29,6 +29,9 @@ export class UserOrmEntity {
   @Column({ name: 'password_hash' })
   passwordHash!: string;
 
+  @Column({ type: 'varchar', length: 50, default: 'admin' })
+  role!: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

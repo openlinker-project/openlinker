@@ -8,12 +8,15 @@
  * @module libs/core/src/users/domain/entities
  */
 
+import { UserRole } from '../types/role.types';
+
 export class User {
   constructor(
     public readonly id: string,
     public readonly username: string,
     public readonly email: string | null,
     public readonly passwordHash: string,
+    public readonly role: UserRole,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}

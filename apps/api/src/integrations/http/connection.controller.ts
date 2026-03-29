@@ -17,7 +17,8 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
@@ -25,6 +26,7 @@ import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionService } from '../application/services/connection.service';
 import { ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 
+@ApiBearerAuth()
 @ApiTags('connections')
 @Controller('connections')
 export class ConnectionController {
@@ -32,6 +34,7 @@ export class ConnectionController {
     private readonly connectionService: ConnectionService,
   ) {}
 
+  @Roles('admin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new connection' })
@@ -41,6 +44,7 @@ export class ConnectionController {
     type: ConnectionResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async create(
     @Body() dto: CreateConnectionDto,
   ): Promise<ConnectionResponseDto> {
@@ -81,6 +85,7 @@ export class ConnectionController {
     return ConnectionResponseDto.fromDomain(connection);
   }
 
+  @Roles('admin')
   @Patch(':id')
   @ApiOperation({ summary: 'Update an existing connection' })
   @ApiResponse({
@@ -88,6 +93,7 @@ export class ConnectionController {
     description: 'Connection updated successfully',
     type: ConnectionResponseDto,
   })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async update(
     @Param('id') id: string,
@@ -103,6 +109,7 @@ export class ConnectionController {
     return ConnectionResponseDto.fromDomain(connection);
   }
 
+  @Roles('admin')
   @Patch(':id/disable')
   @ApiOperation({ summary: 'Disable a connection' })
   @ApiResponse({
@@ -110,6 +117,7 @@ export class ConnectionController {
     description: 'Connection disabled successfully',
     type: ConnectionResponseDto,
   })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async disable(@Param('id') id: string): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.disable(id);

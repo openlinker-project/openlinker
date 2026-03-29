@@ -19,6 +19,7 @@ const makeUser = (overrides: Partial<User> = {}): User =>
     overrides.username ?? 'admin',
     overrides.email ?? null,
     overrides.passwordHash ?? '$2a$10$hashedpassword',
+    overrides.role ?? 'admin',
     overrides.createdAt ?? new Date(),
     overrides.updatedAt ?? new Date(),
   );
@@ -83,7 +84,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return LoginResponseDto with access_token', () => {
+    it('should return LoginResponseDto with access_token containing role', () => {
       const user = makeUser();
 
       const result = service.login(user);
@@ -91,6 +92,7 @@ describe('AuthService', () => {
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: user.id,
         username: user.username,
+        role: user.role,
       });
       expect(result.access_token).toBe('signed-jwt-token');
     });

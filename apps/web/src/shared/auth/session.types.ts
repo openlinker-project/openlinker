@@ -8,7 +8,8 @@ export interface SessionUser {
   id: string;
   username: string;
   email: string | null;
-  roles: string[];
+  role: string;
+  permissions: string[];
 }
 
 export interface Session {
