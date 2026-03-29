@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useMemo, useState, type PropsWithChildren, type ReactElement } from 'react';
 import { createApiClient } from '../api/api-client';
 import { ApiClientProvider } from '../api/api-client-provider';
-import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
+import { createJwtBearerSessionAdapter } from '../../shared/auth/jwt-bearer-session-adapter';
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { env } from '../../shared/config/env';
@@ -19,7 +19,10 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
         },
       }),
   );
-  const sessionAdapter = useMemo(() => createNoopSessionAdapter(), []);
+  const sessionAdapter = useMemo(
+    () => createJwtBearerSessionAdapter({ baseUrl: env.VITE_API_BASE_URL }),
+    [],
+  );
   const apiClient = useMemo(
     () =>
       createApiClient({

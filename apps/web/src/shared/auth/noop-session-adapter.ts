@@ -9,6 +9,9 @@ export function createNoopSessionAdapter(): SessionAdapter {
     async getAccessToken(): Promise<string | null> {
       return null;
     },
+    async persistSession(): Promise<void> {
+      return;
+    },
     async clearSession(): Promise<void> {
       return;
     },

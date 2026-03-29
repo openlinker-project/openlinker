@@ -7,12 +7,15 @@ import type { ApiClient } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
 import type { Connection } from '../features/connections/api/connections.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
+import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
+import type { SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   apiClient?: ApiClient;
   route?: string;
+  sessionAdapter?: SessionAdapter;
 }
 
 export const sampleConnection: Connection = {
@@ -33,6 +36,7 @@ type DeepPartialApiClient = {
   request?: ApiClient['request'];
   adapters?: Partial<ApiClient['adapters']>;
   allegro?: Partial<ApiClient['allegro']>;
+  auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
 };
@@ -51,6 +55,10 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       ...overrides.allegro,
     } as ApiClient['allegro'],
+    auth: {
+      login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
+      ...overrides.auth,
+    } as ApiClient['auth'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       getById: vi.fn().mockResolvedValue(sampleConnection),
@@ -68,8 +76,36 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
   };
 }
 
+const DEFAULT_TEST_USER: SessionUser = {
+  id: 'user_1',
+  username: 'admin',
+  email: 'admin@example.com',
+  roles: [],
+};
+
+export function createAuthenticatedSessionAdapter(
+  user: SessionUser = DEFAULT_TEST_USER,
+): SessionAdapter {
+  const token = 'test-jwt-token';
+  return {
+    async getSession(): Promise<{ status: 'authenticated'; accessToken: string; user: SessionUser }> {
+      return { status: 'authenticated', accessToken: token, user };
+    },
+    async getAccessToken(): Promise<string> {
+      return token;
+    },
+    async persistSession(): Promise<void> {},
+    async clearSession(): Promise<void> {},
+  };
+}
+
 export function renderWithProviders(ui: ReactElement, options: RenderWithProvidersOptions = {}): RenderResult {
-  const { apiClient = createMockApiClient(), route = '/', ...renderOptions } = options;
+  const {
+    apiClient = createMockApiClient(),
+    route = '/',
+    sessionAdapter = createNoopSessionAdapter(),
+    ...renderOptions
+  } = options;
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -83,7 +119,7 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
   return render(ui, {
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
-        <SessionProvider adapter={createNoopSessionAdapter()}>
+        <SessionProvider adapter={sessionAdapter}>
           <ToastProvider>
             <ApiClientProvider client={apiClient}>
               <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

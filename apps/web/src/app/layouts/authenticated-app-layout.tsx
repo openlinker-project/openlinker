@@ -1,18 +1,16 @@
 import type { ReactElement } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { AppShell } from '../../shared/ui/app-shell';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function AuthenticatedAppLayout(): ReactElement {
-  const { isReady } = useSession();
+  const { isReady, session } = useSession();
 
-  return (
-    <AppShell>
-      {isReady ? (
-        <Outlet />
-      ) : (
+  if (!isReady) {
+    return (
+      <AppShell>
         <PageLayout
           eyebrow="Session"
           title="Preparing workspace"
@@ -23,7 +21,17 @@ export function AuthenticatedAppLayout(): ReactElement {
             message="Checking the current session state and workspace metadata."
           />
         </PageLayout>
-      )}
+      </AppShell>
+    );
+  }
+
+  if (session.status === 'anonymous') {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <AppShell>
+      <Outlet />
     </AppShell>
   );
 }
