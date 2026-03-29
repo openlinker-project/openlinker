@@ -8,6 +8,7 @@
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { AppService } from './app.service';
+import { Public } from './auth/decorators/public.decorator';
 import { IDevStackHealthService } from './health/dev-stack-health.service.interface';
 import {
   InternalHealthResponse,
@@ -15,6 +16,7 @@ import {
 } from './health/dev-stack-health.types';
 import { DEV_STACK_HEALTH_SERVICE_TOKEN } from './health/health.module';
 
+@Public()
 @Controller()
 export class AppController {
   constructor(

@@ -15,7 +15,7 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { User } from '@openlinker/core/users';
 
 const makeUser = (): User =>
-  new User('user-uuid-123', 'admin', null, '$2a$10$hash', new Date(), new Date());
+  new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', new Date(), new Date());
 
 const makeLoginResponse = (): LoginResponseDto => {
   const dto = new LoginResponseDto();
@@ -71,16 +71,19 @@ describe('AuthController', () => {
   });
 
   describe('GET /auth/me', () => {
-    it('should return UserResponseDto for the authenticated user', async () => {
+    it('should return UserResponseDto with role and permissions for the authenticated user', async () => {
       const user = makeUser();
       authService.getMe.mockResolvedValue(user);
 
-      const req = { user: { id: user.id, username: user.username } } as never;
-      const result = await controller.getMe(req);
+      const authenticatedUser = { id: user.id, username: user.username, role: 'admin' as const };
+      const result = await controller.getMe(authenticatedUser);
 
       expect(authService.getMe).toHaveBeenCalledWith(user.id);
       expect(result.id).toBe(user.id);
       expect(result.username).toBe(user.username);
+      expect(result.role).toBe('admin');
+      expect(result.permissions).toBeDefined();
+      expect(result.permissions.length).toBeGreaterThan(0);
     });
   });
 });
