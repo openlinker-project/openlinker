@@ -19,7 +19,15 @@ export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port'
 export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 
 // Types
-export type { SyncJob, SyncJobRequest, JobType, JobStatus } from './domain/types/sync-job.types';
+export type {
+  SyncJob,
+  SyncJobRequest,
+  JobType,
+  JobStatus,
+  SyncJobFilters,
+  SyncJobPagination,
+  PaginatedSyncJobs,
+} from './domain/types/sync-job.types';
 export { JobTypeValues, JobStatusValues } from './domain/types/sync-job.types';
 export {
   MarketplaceOrdersPollPayloadV1,

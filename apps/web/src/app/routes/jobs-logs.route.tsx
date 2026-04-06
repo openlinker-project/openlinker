@@ -1,14 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
-import { ModulePlaceholderPage } from '../../pages/placeholders/module-placeholder-page';
+import { SyncJobsPage } from '../../pages/sync-jobs/sync-jobs-page';
+import { SyncJobDetailPage } from '../../pages/sync-jobs/sync-job-detail-page';
 
 export const jobsLogsRoute: RouteObject = {
   path: 'jobs-logs',
-  element: (
-    <ModulePlaceholderPage
-      eyebrow="Operations"
-      title="Jobs and logs workspace"
-      moduleName="Jobs & Logs"
-      description="Background execution visibility, retry triage, and diagnostic log drilldowns will be grouped in this module."
-    />
-  ),
+  children: [
+    { index: true, element: <SyncJobsPage /> },
+    { path: ':id', element: <SyncJobDetailPage /> },
+  ],
 };

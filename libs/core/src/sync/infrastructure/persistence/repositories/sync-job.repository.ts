@@ -26,6 +26,9 @@ import {
   JobStatusValues,
   JobType,
   JobTypeValues,
+  SyncJobFilters,
+  SyncJobPagination,
+  PaginatedSyncJobs,
 } from '../../../domain/types/sync-job.types';
 
 @Injectable()
@@ -191,6 +194,27 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       lockedBy: null,
       lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
     });
+  }
+
+  async findById(id: string): Promise<SyncJob | null> {
+    const entity = await this.repository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  async findMany(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs> {
+    const where: { status?: string; connectionId?: string; jobType?: string } = {};
+    if (filters.status) where.status = filters.status;
+    if (filters.connectionId) where.connectionId = filters.connectionId;
+    if (filters.jobType) where.jobType = filters.jobType;
+
+    const [entities, total] = await this.repository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: pagination.limit,
+      skip: pagination.offset,
+    });
+
+    return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   async requeueStuckJobs(lockTimeoutMinutes: number): Promise<number> {

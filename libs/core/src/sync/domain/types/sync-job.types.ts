@@ -87,6 +87,40 @@ export interface SyncJobRequest {
 }
 
 /**
+ * Sync Job Filters
+ *
+ * Criteria for querying sync jobs. All fields are optional — omitting a field
+ * means no filter is applied for that dimension.
+ */
+export interface SyncJobFilters {
+  status?: JobStatus;
+  connectionId?: string;
+  jobType?: JobType;
+}
+
+/**
+ * Sync Job Pagination
+ *
+ * Offset-based pagination parameters for sync job list queries.
+ */
+export interface SyncJobPagination {
+  /** Number of items to return (1–100) */
+  limit: number;
+  /** Number of items to skip */
+  offset: number;
+}
+
+/**
+ * Paginated Sync Jobs
+ *
+ * Result of a paginated sync job query.
+ */
+export interface PaginatedSyncJobs {
+  items: SyncJob[];
+  total: number;
+}
+
+/**
  * Sync Job (Persisted)
  *
  * Represents a persisted sync job in the database. Extends SyncJobRequest

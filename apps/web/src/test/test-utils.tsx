@@ -76,6 +76,13 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         jobId: 'job_1',
         status: 'queued',
       }),
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue(null),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
   };
