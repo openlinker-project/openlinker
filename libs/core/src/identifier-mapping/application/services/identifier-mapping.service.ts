@@ -18,12 +18,13 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { QueryFailedError } from 'typeorm';
+import { Logger } from '@openlinker/shared/logging';
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';
 import { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
 import { ConnectionPort } from '../../domain/ports/connection.port';
 import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplicate-identifier-mapping.error';
+import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-already-exists.error';
 import { IdentifierMappingConflictException } from '../../domain/exceptions/identifier-mapping-conflict.exception';
 import {
   EntityType,
@@ -31,7 +32,6 @@ import {
   IdentifierMappingRequest,
   ExternalIdMapping,
 } from '../../domain/types/identifier-mapping.types';
-import { Logger } from '@openlinker/shared/logging';
 import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
 
 @Injectable()
@@ -70,7 +70,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     }
 
     // Step 3: Generate new internal ID and create mapping
-    let internalId = this.generateInternalId(entityType);
+    const internalId = this.generateInternalId(entityType);
     const mapping = new IdentifierMapping(
       randomUUID(),
       entityType,
@@ -90,74 +90,25 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       );
       return internalId;
     } catch (error) {
-      // Log error details for debugging
-      const errorType = error?.constructor?.name || 'unknown';
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        `Failed to create identifier mapping for ${entityType}:${externalId}@${connectionId}`,
-      );
-      this.logger.error(`Error type: ${errorType}`);
-      this.logger.error(`Error message: ${errorMessage}`);
-      if (errorStack) {
-        this.logger.error(`Error stack: ${errorStack}`);
-      }
-
-      // TODO: Add concurrency handling for duplicate external key errors
-      // When concurrent requests try to create the same mapping, handle DuplicateIdentifierMappingError
-      // by checking if mapping was created by another request and returning the existing internalId
+      // Concurrent insert: another worker created the same mapping first.
+      // Read the winner and return its internalId (idempotent result).
       if (error instanceof DuplicateIdentifierMappingError) {
-        this.logger.error(
-          `DuplicateIdentifierMappingError: Mapping already exists for ${entityType}:${externalId}@${connectionId}. This should not happen if initial check worked correctly.`,
+        const winner = await this.repository.findByExternalKey(
+          entityType,
+          platformType,
+          connectionId,
+          externalId,
         );
-        // Re-throw for now - will be handled in future concurrency implementation
+        if (winner) {
+          this.logger.debug(
+            `Concurrent insert detected for ${entityType}:${externalId}@${connectionId}, returning existing mapping -> ${winner.internalId}`,
+          );
+          return winner.internalId;
+        }
+        // Winner not found — should not happen; re-throw original error
         throw error;
       }
 
-      // Handle internal ID collision (very rare)
-      // If the generated internal ID already exists for a different external ID, retry once
-      if (
-        error instanceof QueryFailedError &&
-        (error.message.includes('IDX_84b761294149aed081cfba5c95') ||
-          (error.message.includes('duplicate key value') &&
-            error.message.includes('internalId')))
-      ) {
-        this.logger.warn(
-          `Internal ID collision detected for ${entityType}:${externalId}@${connectionId} (internalId: ${internalId}), generating new ID and retrying...`,
-        );
-        // Generate new ID and retry once
-        internalId = this.generateInternalId(entityType);
-        const retryMapping = new IdentifierMapping(
-          randomUUID(),
-          entityType,
-          internalId,
-          externalId,
-          platformType,
-          connectionId,
-          context ?? null,
-          new Date(),
-          new Date(),
-        );
-        try {
-          await this.repository.insertMapping(retryMapping);
-          this.logger.log(
-            `Created new mapping after ID collision retry for ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
-          );
-          return internalId;
-        } catch (retryError) {
-          const retryErrorType = retryError?.constructor?.name || 'unknown';
-          const retryErrorMessage = retryError instanceof Error ? retryError.message : String(retryError);
-          this.logger.error(
-            `Retry after ID collision also failed for ${entityType}:${externalId}@${connectionId}`,
-          );
-          this.logger.error(`Retry error type: ${retryErrorType}`);
-          this.logger.error(`Retry error message: ${retryErrorMessage}`);
-          throw retryError;
-        }
-      }
-
-      // Not a retryable error, re-throw
       throw error;
     }
   }
@@ -211,9 +162,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       externalId,
     );
     if (existing) {
-      throw new Error(
-        `Mapping already exists for ${entityType}:${externalId}@${connectionId} -> ${existing.internalId}`,
-      );
+      throw new MappingAlreadyExistsError(entityType, externalId, connectionId, existing.internalId);
     }
 
     const mapping = new IdentifierMapping(
@@ -288,8 +237,12 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   /**
-   * Internal helper for get-or-create with resolved platformType
-   * Used by batch operations to avoid redundant connection lookups
+   * Internal helper for get-or-create with resolved platformType.
+   * Used by batch operations to avoid redundant connection lookups.
+   *
+   * Note: this helper handles DuplicateIdentifierMappingError (concurrent insert) but
+   * does NOT retry on InternalIdCollisionError. Internal ID collisions are astronomically
+   * rare with UUID generation; if one occurs here the error propagates to the caller.
    * @private
    */
   private async getOrCreateInternalIdWithPlatform(

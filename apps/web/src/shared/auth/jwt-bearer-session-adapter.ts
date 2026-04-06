@@ -47,8 +47,8 @@ export function createJwtBearerSessionAdapter({
           id: data.id,
           username: data.username,
           email: data.email,
-          role: data.role,
-          permissions: data.permissions,
+          role: data.role ?? '',
+          permissions: data.permissions ?? [],
         };
 
         return {
