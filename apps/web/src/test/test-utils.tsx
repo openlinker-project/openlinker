@@ -80,7 +80,8 @@ const DEFAULT_TEST_USER: SessionUser = {
   id: 'user_1',
   username: 'admin',
   email: 'admin@example.com',
-  roles: [],
+  role: 'admin',
+  permissions: [],
 };
 
 export function createAuthenticatedSessionAdapter(

@@ -85,9 +85,12 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   /**
-   * Insert mapping with unique violation detection
-   * Used for concurrency-safe get-or-create operations
-   * @throws DuplicateIdentifierMappingError if unique constraint violation occurs
+   * Insert mapping with unique violation detection.
+   * Used for concurrency-safe get-or-create operations.
+   * The only unique constraint on this table is the external key index
+   * (entityType, platformType, connectionId, externalId), so any
+   * duplicate key error is converted to DuplicateIdentifierMappingError.
+   * @throws DuplicateIdentifierMappingError on unique constraint violation
    */
   async insertMapping(mapping: IdentifierMapping): Promise<IdentifierMapping> {
     const entity = this.toOrmEntity(mapping);
@@ -95,12 +98,10 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
     } catch (error) {
-      // Check if it's a unique constraint violation
       if (
         error instanceof QueryFailedError &&
         error.message.includes('duplicate key value')
       ) {
-        // Throw domain-level error instead of infrastructure error
         throw new DuplicateIdentifierMappingError(
           mapping.entityType,
           mapping.externalId,
