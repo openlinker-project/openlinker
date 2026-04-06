@@ -30,11 +30,11 @@ export function SettingsPage(): ReactElement {
             <span className="panel__meta">Build-time config</span>
           </div>
           <dl className="definition-list">
-            <div className="definition-list__row">
+            <div>
               <dt>Environment</dt>
               <dd className="mono-text">{env.VITE_APP_ENV}</dd>
             </div>
-            <div className="definition-list__row">
+            <div>
               <dt>API base URL</dt>
               <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
             </div>
@@ -63,13 +63,17 @@ export function SettingsPage(): ReactElement {
 
           {isReady && session.status === 'authenticated' && session.user !== null && (
             <dl className="definition-list">
-              <div className="definition-list__row">
+              <div>
                 <dt>Username</dt>
                 <dd>{session.user.username}</dd>
               </div>
-              <div className="definition-list__row">
+              <div>
                 <dt>Email</dt>
                 <dd>{session.user.email ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{session.user.role}</dd>
               </div>
             </dl>
           )}
@@ -82,7 +86,7 @@ export function SettingsPage(): ReactElement {
               <p className="eyebrow">Alerts</p>
               <h3 className="section-title">Notifications</h3>
             </div>
-            <span className="toolbar-chip">Coming soon</span>
+            <span className="panel__meta">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
             Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.
@@ -96,7 +100,7 @@ export function SettingsPage(): ReactElement {
               <p className="eyebrow">Workspace</p>
               <h3 className="section-title">Organization</h3>
             </div>
-            <span className="toolbar-chip">Coming soon</span>
+            <span className="panel__meta">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
             Team members, roles, and workspace-level settings will be managed here.
@@ -110,7 +114,7 @@ export function SettingsPage(): ReactElement {
               <p className="eyebrow">Display</p>
               <h3 className="section-title">Preferences</h3>
             </div>
-            <span className="toolbar-chip">Coming soon</span>
+            <span className="panel__meta">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
             Timezone, date format, and display density options will be available here.
