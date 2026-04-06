@@ -51,66 +51,14 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     connectionId: string,
     context?: MappingContext,
   ): Promise<string> {
-    // Step 1: Resolve Connection and derive platformType
     const connection = await this.connectionPort.get(connectionId);
-    const platformType = connection.platformType;
-
-    // Step 2: Check if mapping already exists
-    const existing = await this.repository.findByExternalKey(
+    return this.getOrCreateInternalIdWithPlatform(
       entityType,
-      platformType,
-      connectionId,
       externalId,
-    );
-    if (existing) {
-      this.logger.debug(
-        `Found existing mapping for ${entityType}:${externalId}@${connectionId} -> ${existing.internalId}`,
-      );
-      return existing.internalId;
-    }
-
-    // Step 3: Generate new internal ID and create mapping
-    const internalId = this.generateInternalId(entityType);
-    const mapping = new IdentifierMapping(
-      randomUUID(),
-      entityType,
-      internalId,
-      externalId,
-      platformType,
       connectionId,
-      context ?? null,
-      new Date(),
-      new Date(),
+      connection.platformType,
+      context,
     );
-
-    try {
-      await this.repository.insertMapping(mapping);
-      this.logger.log(
-        `Created new mapping for ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
-      );
-      return internalId;
-    } catch (error) {
-      // Concurrent insert: another worker created the same mapping first.
-      // Read the winner and return its internalId (idempotent result).
-      if (error instanceof DuplicateIdentifierMappingError) {
-        const winner = await this.repository.findByExternalKey(
-          entityType,
-          platformType,
-          connectionId,
-          externalId,
-        );
-        if (winner) {
-          this.logger.debug(
-            `Concurrent insert detected for ${entityType}:${externalId}@${connectionId}, returning existing mapping -> ${winner.internalId}`,
-          );
-          return winner.internalId;
-        }
-        // Winner not found — should not happen; re-throw original error
-        throw error;
-      }
-
-      throw error;
-    }
   }
 
   async getInternalId(
@@ -210,7 +158,10 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     );
     const connectionMap = new Map(connections.map((c) => [c.id, c]));
 
-    // Process items with resolved platformType (avoid redundant connection lookups)
+    // Process items with resolved platformType (avoid redundant connection lookups).
+    // Note: all requests are issued concurrently. This is intentional for the current
+    // use case where batch sizes are small (typically < 50 items per job). If batch
+    // sizes grow significantly, consider chunking to limit DB concurrency.
     await Promise.all(
       requests.map(async (request) => {
         const connection = connectionMap.get(request.connectionId);
@@ -350,7 +301,11 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       );
     }
 
-    // Create mapping (createMapping already checks for duplicates and throws if exists)
+    // Create mapping (createMapping already checks for duplicates and throws if exists).
+    // TODO: this path is not concurrency-safe — concurrent calls can race between the
+    // findByExternalKey check above and repository.create() below, producing a raw
+    // QueryFailedError instead of a domain error. Fix if concurrent createMapping calls
+    // become a realistic scenario.
     await this.createMapping(entityType, externalId, connectionId, internalId, context);
     this.logger.debug(
       `Created mapping: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
