@@ -9,7 +9,7 @@
  * @module libs/core/src/sync/domain/ports
  * @see {@link RedisStreamsJobEnqueueService} for the Redis Streams implementation
  */
-import { SyncJobRequest } from '../types/sync-job.types';
+import { EnqueueJobResult, SyncJobRequest } from '../types/sync-job.types';
 
 /**
  * Job Enqueue Port
@@ -27,10 +27,10 @@ export interface JobEnqueuePort {
    * job requests under handler retries, parallel consumers, and pending re-deliveries.
    *
    * @param job - The sync job request to enqueue
-   * @returns Promise resolving to the job ID assigned by the queue
+   * @returns Promise resolving to the enqueue result (job ID + idempotency flag)
    * @throws Error if enqueueing fails
    */
-  enqueueJob(job: SyncJobRequest): Promise<string>;
+  enqueueJob(job: SyncJobRequest): Promise<EnqueueJobResult>;
 }
 
 

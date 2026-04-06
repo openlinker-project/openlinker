@@ -1,3 +1,11 @@
+/**
+ * Sync Jobs API Client
+ *
+ * Thin API module for the sync jobs feature. Provides typed methods for
+ * enqueueing, listing, and fetching individual sync jobs via the REST API.
+ *
+ * @module apps/web/src/features/sync-jobs/api
+ */
 import type {
   SyncJob,
   SyncJobFilters,
@@ -7,7 +15,7 @@ import type {
 
 export interface EnqueueSyncJobInput {
   connectionId: string;
-  syncType: string;
+  jobType: string;
   payload?: Record<string, unknown>;
 }
 

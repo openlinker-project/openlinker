@@ -10,5 +10,6 @@ export function useSyncJobQuery(id: string): UseQueryResult<SyncJob> {
     queryKey: syncJobsQueryKeys.detail(id),
     queryFn: () => apiClient.syncJobs.getById(id),
     enabled: Boolean(id),
+    retry: false,
   });
 }

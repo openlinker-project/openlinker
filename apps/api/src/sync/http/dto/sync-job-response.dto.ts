@@ -8,19 +8,20 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
+import type { JobStatus, JobType } from '@openlinker/core/sync';
 
 export class SyncJobResponseDto {
   @ApiProperty({ description: 'Job UUID' })
   id!: string;
 
   @ApiProperty({ enum: JobTypeValues, description: 'Job type identifier' })
-  jobType!: string;
+  jobType!: JobType;
 
   @ApiProperty({ description: 'Connection UUID this job belongs to' })
   connectionId!: string;
 
   @ApiProperty({ enum: JobStatusValues, description: 'Current job status' })
-  status!: string;
+  status!: JobStatus;
 
   @ApiProperty({ description: 'Number of execution attempts so far' })
   attempts!: number;

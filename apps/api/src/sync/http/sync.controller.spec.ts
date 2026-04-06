@@ -87,7 +87,7 @@ describe('SyncController', () => {
 
     it('should enqueue a job successfully', async () => {
       const expectedJobId = '1704110400000-0';
-      jobEnqueue.enqueueJob.mockResolvedValue(expectedJobId);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: expectedJobId, isExisting: false });
 
       const result = await controller.enqueueJob(validDto);
 
@@ -108,8 +108,8 @@ describe('SyncController', () => {
     });
 
     it('should detect existing job (idempotent)', async () => {
-      const existingJobId = 'existing:marketplace:123e4567-e89b-12d3-a456-426614174000:orders:poll-1';
-      jobEnqueue.enqueueJob.mockResolvedValue(existingJobId);
+      const existingJobId = 'marketplace:123e4567-e89b-12d3-a456-426614174000:orders:poll-1';
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: existingJobId, isExisting: true });
 
       const result = await controller.enqueueJob(validDto);
 
@@ -155,7 +155,7 @@ describe('SyncController', () => {
           idempotencyKey: `test:${jobType}:1`,
         };
 
-        jobEnqueue.enqueueJob.mockResolvedValue(`job-${jobType}`);
+        jobEnqueue.enqueueJob.mockResolvedValue({ jobId: `job-${jobType}`, isExisting: false });
 
         const result = await controller.enqueueJob(dto);
 

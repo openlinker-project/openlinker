@@ -1,4 +1,13 @@
-export const JOB_STATUS_VALUES = ['queued', 'running', 'succeeded', 'failed', 'dead'] as const;
+/**
+ * Sync Jobs Feature Types
+ *
+ * Frontend transport types for the sync jobs API. Mirrors the backend
+ * SyncJobResponseDto contract. All date fields are ISO 8601 strings.
+ *
+ * @module apps/web/src/features/sync-jobs/api
+ */
+
+export const JOB_STATUS_VALUES = ['queued', 'running', 'succeeded', 'dead'] as const;
 export type JobStatus = (typeof JOB_STATUS_VALUES)[number];
 
 export const JOB_TYPE_VALUES = [

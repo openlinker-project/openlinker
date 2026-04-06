@@ -47,7 +47,7 @@ export class SyncJobQueueService implements SyncJobQueuePort {
         idempotencyKey: req.options.dedupeKey,
       };
 
-      const jobId = await this.jobEnqueue.enqueueJob(jobRequest);
+      const { jobId } = await this.jobEnqueue.enqueueJob(jobRequest);
       jobIds.push(jobId);
     }
 

@@ -1,3 +1,12 @@
+/**
+ * Sync Job Status Badge
+ *
+ * Renders a semantic status badge for a sync job status value.
+ * Tone mapping mirrors the job lifecycle: queued → info, running → review,
+ * succeeded → success, dead → error.
+ *
+ * @module apps/web/src/features/sync-jobs/components
+ */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { JobStatus } from '../api/sync-jobs.types';
@@ -6,7 +15,6 @@ const STATUS_TONE: Record<JobStatus, StatusBadgeTone> = {
   queued: 'info',
   running: 'review',
   succeeded: 'success',
-  failed: 'warning',
   dead: 'error',
 };
 

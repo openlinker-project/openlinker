@@ -44,7 +44,6 @@ export const JobStatusValues = [
   'queued',
   'running',
   'succeeded',
-  'failed',
   'dead',
 ] as const;
 
@@ -55,6 +54,19 @@ export const JobStatusValues = [
  * without runtime overhead.
  */
 export type JobStatus = (typeof JobStatusValues)[number];
+
+/**
+ * Enqueue Job Result
+ *
+ * Returned by JobEnqueuePort.enqueueJob. Separates the job ID from the
+ * idempotency flag so callers do not need to parse string prefixes.
+ */
+export interface EnqueueJobResult {
+  /** Job ID assigned by the queue (stream message ID or existing job ID) */
+  jobId: string;
+  /** True when the idempotency key matched an already-enqueued job */
+  isExisting: boolean;
+}
 
 /**
  * Sync Job Request

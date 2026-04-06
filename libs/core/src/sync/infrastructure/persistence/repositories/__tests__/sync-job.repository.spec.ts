@@ -567,7 +567,7 @@ describe('SyncJobRepository', () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
-      expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid job type in database');
+      expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job jobType');
     });
 
     it('should throw error for invalid job status', () => {
@@ -578,7 +578,7 @@ describe('SyncJobRepository', () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
-      expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid job status in database');
+      expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job status');
     });
   });
 });

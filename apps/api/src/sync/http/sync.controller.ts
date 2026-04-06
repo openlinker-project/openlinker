@@ -82,11 +82,7 @@ export class SyncController {
         idempotencyKey: dto.idempotencyKey,
       };
 
-      // Enqueue job
-      const jobId = await this.jobEnqueue.enqueueJob(jobRequest);
-
-      // Check if this is an existing job (idempotent)
-      const isExisting = jobId.startsWith('existing:');
+      const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
 
       this.logger.log(
         `Job enqueued successfully: ${jobId} (type: ${dto.jobType}, connection: ${dto.connectionId})`,

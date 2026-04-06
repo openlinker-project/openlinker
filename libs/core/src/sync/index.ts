@@ -22,6 +22,7 @@ export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 export type {
   SyncJob,
   SyncJobRequest,
+  EnqueueJobResult,
   JobType,
   JobStatus,
   SyncJobFilters,
@@ -42,6 +43,7 @@ export {
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
+export { InvalidSyncJobStateError } from './domain/exceptions/invalid-sync-job-state.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
