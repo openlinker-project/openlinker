@@ -9,7 +9,7 @@ import type { Connection } from '../features/connections/api/connections.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
-import type { SessionUser } from '../shared/auth/session.types';
+import type { Session, SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
@@ -80,7 +80,8 @@ const DEFAULT_TEST_USER: SessionUser = {
   id: 'user_1',
   username: 'admin',
   email: 'admin@example.com',
-  roles: [],
+  role: 'admin',
+  permissions: [],
 };
 
 export function createAuthenticatedSessionAdapter(
@@ -88,7 +89,7 @@ export function createAuthenticatedSessionAdapter(
 ): SessionAdapter {
   const token = 'test-jwt-token';
   return {
-    async getSession(): Promise<{ status: 'authenticated'; accessToken: string; user: SessionUser }> {
+    async getSession(): Promise<Session> {
       return { status: 'authenticated', accessToken: token, user };
     },
     async getAccessToken(): Promise<string> {

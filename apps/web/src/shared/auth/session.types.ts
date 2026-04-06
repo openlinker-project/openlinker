@@ -2,6 +2,8 @@ export interface MeResponse {
   id: string;
   username: string;
   email: string | null;
+  role: string;
+  permissions: string[];
 }
 
 export interface SessionUser {
