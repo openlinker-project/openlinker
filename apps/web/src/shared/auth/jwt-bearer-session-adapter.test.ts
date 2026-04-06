@@ -66,7 +66,8 @@ describe('JwtBearerSessionAdapter', () => {
           id: 'user_1',
           username: 'admin',
           email: 'admin@example.com',
-          roles: [],
+          role: '',
+          permissions: [],
         },
       });
       expect(fetchFn).toHaveBeenCalledWith('http://localhost:3000/auth/me', {
