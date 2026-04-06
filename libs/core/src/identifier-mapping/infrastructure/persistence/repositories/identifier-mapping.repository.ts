@@ -23,6 +23,7 @@ import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.e
 import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
 import {
   EntityType,
+  EntityTypeValues,
   MappingContext,
 } from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
 
@@ -98,9 +99,11 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
     } catch (error) {
+      // PostgreSQL error code 23505 = unique_violation. Using the code rather than
+      // message string to avoid locale/version sensitivity.
       if (
         error instanceof QueryFailedError &&
-        error.message.includes('duplicate key value')
+        (error as QueryFailedError & { code?: string }).code === '23505'
       ) {
         throw new DuplicateIdentifierMappingError(
           mapping.entityType,
@@ -128,6 +131,9 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
+    if (!(EntityTypeValues as readonly string[]).includes(entity.entityType)) {
+      throw new Error(`Invalid entityType in database: ${entity.entityType}`);
+    }
     return new IdentifierMapping(
       entity.id,
       entity.entityType as EntityType,

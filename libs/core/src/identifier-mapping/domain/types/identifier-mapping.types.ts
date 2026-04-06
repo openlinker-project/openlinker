@@ -6,14 +6,17 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
-export type EntityType =
-  | 'Product'
-  | 'ProductVariant'
-  | 'Sku'
-  | 'Order'
-  | 'Offer'
-  | 'Inventory'
-  | 'Customer';
+export const EntityTypeValues = [
+  'Product',
+  'ProductVariant',
+  'Sku',
+  'Order',
+  'Offer',
+  'Inventory',
+  'Customer',
+] as const;
+
+export type EntityType = (typeof EntityTypeValues)[number];
 
 export interface MappingContext {
   parentEntityType?: string;
