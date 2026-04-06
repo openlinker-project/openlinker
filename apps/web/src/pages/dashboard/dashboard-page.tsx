@@ -1,8 +1,8 @@
-import type { ReactElement } from 'react';
+import { useCallback, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
-import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types';
+import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types'; // ServiceHealth used in ServiceHealthRow prop type
 import type { Connection } from '../../features/connections/api/connections.types';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -15,7 +15,7 @@ function toStatusTone(status: string): StatusBadgeTone {
   return 'neutral';
 }
 
-function toHealthTone(status: OverallStatus | 'ok' | 'error'): StatusBadgeTone {
+function toHealthTone(status: OverallStatus): StatusBadgeTone {
   if (status === 'ok') return 'success';
   if (status === 'degraded') return 'warning';
   return 'error';
@@ -64,10 +64,10 @@ export function DashboardPage(): ReactElement {
   const activeCount = connections.filter((c) => c.status === 'active').length;
   const errorCount = connections.filter((c) => c.status === 'error').length;
 
-  function handleRefresh(): void {
+  const handleRefresh = useCallback((): void => {
     void connectionsQuery.refetch();
     void healthQuery.refetch();
-  }
+  }, [connectionsQuery.refetch, healthQuery.refetch]);
 
   return (
     <PageLayout
@@ -111,13 +111,13 @@ export function DashboardPage(): ReactElement {
         <article className="metric-card">
           <span className="metric-card__label">Jobs needing attention</span>
           <strong className="metric-card__value">—</strong>
-          <p className="muted-text">Available when #70 ships</p>
+          <p className="muted-text">Visible once sync job monitoring is enabled</p>
         </article>
 
         <article className="metric-card">
           <span className="metric-card__label">Manual reviews</span>
           <strong className="metric-card__value">—</strong>
-          <p className="muted-text">Available when #70 ships</p>
+          <p className="muted-text">Visible once sync job monitoring is enabled</p>
         </article>
       </section>
 
@@ -194,7 +194,7 @@ export function DashboardPage(): ReactElement {
             <span className="toolbar-chip">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
-            Sync job activity timeline will be visible here once the jobs read API (#70) ships.
+            Sync job activity timeline will be visible here once the sync job monitoring feature ships.
           </p>
         </article>
 
@@ -207,7 +207,7 @@ export function DashboardPage(): ReactElement {
             <span className="toolbar-chip">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
-            Failed and retrying sync jobs will appear here once the jobs read API (#70) ships.
+            Failed and retrying sync jobs will appear here once the sync job monitoring feature ships.
           </p>
         </article>
       </div>

@@ -66,7 +66,9 @@ export class ConnectionDiagnosticsResponseDto {
     dto.connectionStatus = connection.status;
 
     const succeededJobs = recentJobs.filter((j) => j.status === 'succeeded');
-    const failedJobs = recentJobs.filter((j) => j.status === 'failed' || j.status === 'dead');
+    // 'failed' status is never written — markFailed() re-queues jobs as 'queued'.
+    // Capture dead jobs and any retrying job that has a recorded lastError.
+    const failedJobs = recentJobs.filter((j) => j.status === 'dead' || j.lastError !== null);
 
     dto.lastSucceededAt = succeededJobs.length > 0
       ? new Date(succeededJobs[0].updatedAt).toISOString()

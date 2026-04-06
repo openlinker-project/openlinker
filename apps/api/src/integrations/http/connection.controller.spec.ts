@@ -35,20 +35,20 @@ describe('ConnectionController', () => {
 
   const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
     new SyncJob(
-      overrides.id ?? 'job-1',
-      overrides.jobType ?? 'marketplace.orders.poll',
-      'connection-123',
-      {},
-      overrides.status ?? 'succeeded',
-      overrides.idempotencyKey ?? 'key-1',
-      overrides.attempts ?? 1,
-      10,
-      new Date('2025-01-01T10:00:00Z'),
-      null,
-      null,
-      overrides.lastError ?? null,
-      overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
-      overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z'),
+      /* id           */ overrides.id ?? 'job-1',
+      /* jobType      */ overrides.jobType ?? 'marketplace.orders.poll',
+      /* connectionId */ 'connection-123',
+      /* payload      */ {},
+      /* status       */ overrides.status ?? 'succeeded',
+      /* idempotencyKey */ overrides.idempotencyKey ?? 'key-1',
+      /* attempts     */ overrides.attempts ?? 1,
+      /* maxAttempts  */ 10,
+      /* nextRunAt    */ new Date('2025-01-01T10:00:00Z'),
+      /* lockedAt     */ null,
+      /* lockedBy     */ null,
+      /* lastError    */ overrides.lastError ?? null,
+      /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
+      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z'),
     );
 
   beforeEach(async () => {
@@ -227,14 +227,16 @@ describe('ConnectionController', () => {
       await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('should derive lastFailedAt from most recent failed job', async () => {
-      const failedJob = makeSyncJob({
-        status: 'failed',
+    it('should derive lastFailedAt from retrying job with lastError (markFailed sets status queued)', async () => {
+      // markFailed() re-queues jobs as 'queued', so 'failed' status never appears.
+      // The filter uses lastError !== null to capture retrying failures.
+      const retryingJob = makeSyncJob({
+        status: 'queued',
         lastError: 'Timeout',
         updatedAt: new Date('2025-01-01T11:00:00Z'),
       });
       service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([failedJob]);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([retryingJob]);
 
       const result = await controller.getDiagnostics('connection-123');
 
