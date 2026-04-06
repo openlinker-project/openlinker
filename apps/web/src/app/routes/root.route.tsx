@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router-dom';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { allegroCallbackRoute } from './allegro-callback.route';
+import { allegroSetupRoute } from './allegro-setup.route';
 import { automationsRoute } from './automations.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionsRoute } from './connections.route';
@@ -24,6 +25,7 @@ export const rootRoute: RouteObject = {
     inventoryRoute,
     connectionsRoute,
     newConnectionRoute,
+    allegroSetupRoute,
     connectionDetailRoute,
     allegroCallbackRoute,
     jobsLogsRoute,

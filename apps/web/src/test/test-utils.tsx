@@ -53,6 +53,11 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         authorizationUrl: 'https://example.com/oauth',
         state: 'state',
       }),
+      handleCallback: vi.fn().mockResolvedValue({
+        message: 'OAuth callback processed successfully. Connection created.',
+        connectionId: 'conn_allegro_1',
+        connectionName: 'Allegro sandbox',
+      }),
       ...overrides.allegro,
     } as ApiClient['allegro'],
     auth: {
