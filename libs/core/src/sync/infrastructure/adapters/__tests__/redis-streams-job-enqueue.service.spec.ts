@@ -61,7 +61,7 @@ describe('RedisStreamsJobEnqueueService', () => {
 
       const result = await service.enqueueJob(jobRequest);
 
-      expect(result).toBe(messageId);
+      expect(result).toEqual({ jobId: messageId, isExisting: false });
       expect(redisClient.set).toHaveBeenCalledWith(
         idempotencyKey,
         'enqueued',
@@ -100,7 +100,7 @@ describe('RedisStreamsJobEnqueueService', () => {
 
       const result = await service.enqueueJob(jobRequest);
 
-      expect(result).toBe(`existing:${jobRequest.idempotencyKey}`);
+      expect(result).toEqual({ jobId: jobRequest.idempotencyKey, isExisting: true });
       expect(redisClient.set).toHaveBeenCalledWith(
         idempotencyKey,
         'enqueued',

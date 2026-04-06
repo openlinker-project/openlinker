@@ -10,6 +10,7 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import { SyncJob } from '../entities/sync-job.entity';
+import { SyncJobFilters, SyncJobPagination, PaginatedSyncJobs } from '../types/sync-job.types';
 
 /**
  * Sync Job Repository Port
@@ -66,6 +67,17 @@ export interface SyncJobRepositoryPort {
    * @param error - Final error message
    */
   markDead(id: string, error: string): Promise<void>;
+
+  /**
+   * Find jobs matching filters with offset pagination.
+   * Results are ordered by createdAt DESC.
+   */
+  findMany(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs>;
+
+  /**
+   * Find a single job by ID. Returns null if not found.
+   */
+  findById(id: string): Promise<SyncJob | null>;
 
   /**
    * Requeue stuck jobs (optional helper)

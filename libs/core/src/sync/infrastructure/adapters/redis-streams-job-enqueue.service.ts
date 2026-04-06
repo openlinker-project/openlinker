@@ -12,7 +12,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
 import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
-import { SyncJobRequest } from '../../domain/types/sync-job.types';
+import { EnqueueJobResult, SyncJobRequest } from '../../domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -27,7 +27,7 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
     private readonly redisClient: RedisClientType,
   ) {}
 
-  async enqueueJob(job: SyncJobRequest): Promise<string> {
+  async enqueueJob(job: SyncJobRequest): Promise<EnqueueJobResult> {
     const idempotencyKey = `${this.IDEMPOTENCY_KEY_PREFIX}${job.idempotencyKey}`;
 
     try {
@@ -38,15 +38,10 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
       });
 
       if (idempotencyResult !== 'OK') {
-        // Job already enqueued - return existing job ID
-        // We store the job ID in the idempotency key value, but for MVP we'll
-        // return a deterministic ID based on the idempotency key
         this.logger.debug(
           `Job already enqueued (idempotent): ${job.jobType} for ${job.connectionId}`,
         );
-        // For MVP, we can't retrieve the original job ID, so we return a deterministic one
-        // In a full implementation, we might store jobId -> idempotencyKey mapping
-        return `existing:${job.idempotencyKey}`;
+        return { jobId: job.idempotencyKey, isExisting: true };
       }
 
       // Build field map for XADD command
@@ -68,7 +63,6 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
         await this.redisClient.del(idempotencyKey).catch(() => {
           // Ignore cleanup errors
         });
-        // Throw consistent error message format
         throw new Error(`Failed to enqueue job to stream: ${this.STREAM_NAME}`);
       }
 
@@ -88,7 +82,7 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
         `Enqueued job ${job.jobType} for ${job.connectionId} with message ID ${messageId}`,
       );
 
-      return messageId;
+      return { jobId: messageId, isExisting: false };
     } catch (error) {
       this.logger.error(
         `Failed to enqueue job ${job.jobType} for ${job.connectionId}`,

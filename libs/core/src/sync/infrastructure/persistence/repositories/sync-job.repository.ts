@@ -21,11 +21,15 @@ import { randomUUID } from 'crypto';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
 import { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
+import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import {
   JobStatus,
   JobStatusValues,
   JobType,
   JobTypeValues,
+  SyncJobFilters,
+  SyncJobPagination,
+  PaginatedSyncJobs,
 } from '../../../domain/types/sync-job.types';
 
 @Injectable()
@@ -172,10 +176,9 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       throw new Error(`Job not found: ${id}`);
     }
 
-    // Set status back to 'queued' so job can be picked up again for retry
-    // The 'failed' status is implicit (job has lastError and nextRunAt in future)
+    // Requeue the job so it can be picked up again after nextRunAt
     await this.repository.update(id, {
-      status: 'queued', // Requeue for retry
+      status: 'queued',
       attempts: job.attempts + 1,
       nextRunAt,
       lockedAt: null,
@@ -191,6 +194,27 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       lockedBy: null,
       lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
     });
+  }
+
+  async findById(id: string): Promise<SyncJob | null> {
+    const entity = await this.repository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  async findMany(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs> {
+    const where: { status?: string; connectionId?: string; jobType?: string } = {};
+    if (filters.status) where.status = filters.status;
+    if (filters.connectionId) where.connectionId = filters.connectionId;
+    if (filters.jobType) where.jobType = filters.jobType;
+
+    const [entities, total] = await this.repository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: pagination.limit,
+      skip: pagination.offset,
+    });
+
+    return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   async requeueStuckJobs(lockTimeoutMinutes: number): Promise<number> {
@@ -227,12 +251,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   private toDomain(entity: SyncJobOrmEntity): SyncJob {
     // Validate job type
     if (!this.isValidJobType(entity.jobType)) {
-      throw new Error(`Invalid job type in database: ${entity.jobType}`);
+      throw new InvalidSyncJobStateError('jobType', entity.jobType, entity.id);
     }
 
     // Validate job status
     if (!this.isValidJobStatus(entity.status)) {
-      throw new Error(`Invalid job status in database: ${entity.status}`);
+      throw new InvalidSyncJobStateError('status', entity.status, entity.id);
     }
 
     return new SyncJob(

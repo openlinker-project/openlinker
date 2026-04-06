@@ -86,7 +86,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-id',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
@@ -161,7 +161,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-id',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
@@ -197,7 +197,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-id',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
@@ -236,7 +236,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-id',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
@@ -269,7 +269,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-id',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
@@ -321,7 +321,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           externalId: 'offer-2',
         },
       ]);
-      jobEnqueue.enqueueJob.mockResolvedValue('enqueued-job-id');
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 

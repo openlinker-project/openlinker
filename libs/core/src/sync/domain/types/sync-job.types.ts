@@ -44,7 +44,6 @@ export const JobStatusValues = [
   'queued',
   'running',
   'succeeded',
-  'failed',
   'dead',
 ] as const;
 
@@ -55,6 +54,19 @@ export const JobStatusValues = [
  * without runtime overhead.
  */
 export type JobStatus = (typeof JobStatusValues)[number];
+
+/**
+ * Enqueue Job Result
+ *
+ * Returned by JobEnqueuePort.enqueueJob. Separates the job ID from the
+ * idempotency flag so callers do not need to parse string prefixes.
+ */
+export interface EnqueueJobResult {
+  /** Job ID assigned by the queue (stream message ID or existing job ID) */
+  jobId: string;
+  /** True when the idempotency key matched an already-enqueued job */
+  isExisting: boolean;
+}
 
 /**
  * Sync Job Request
@@ -84,6 +96,40 @@ export interface SyncJobRequest {
    * Format: {provider}:{connectionId}:{eventId}
    */
   idempotencyKey: string;
+}
+
+/**
+ * Sync Job Filters
+ *
+ * Criteria for querying sync jobs. All fields are optional — omitting a field
+ * means no filter is applied for that dimension.
+ */
+export interface SyncJobFilters {
+  status?: JobStatus;
+  connectionId?: string;
+  jobType?: JobType;
+}
+
+/**
+ * Sync Job Pagination
+ *
+ * Offset-based pagination parameters for sync job list queries.
+ */
+export interface SyncJobPagination {
+  /** Number of items to return (1–100) */
+  limit: number;
+  /** Number of items to skip */
+  offset: number;
+}
+
+/**
+ * Paginated Sync Jobs
+ *
+ * Result of a paginated sync job query.
+ */
+export interface PaginatedSyncJobs {
+  items: SyncJob[];
+  total: number;
 }
 
 /**

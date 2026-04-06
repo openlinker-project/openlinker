@@ -300,10 +300,10 @@ export class SchedulerService implements OnModuleInit {
     };
 
     // Enqueue job
-    const jobId = await this.jobEnqueue.enqueueJob(jobRequest);
+    const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
 
     this.logger.debug(
-      `Enqueued job for connection ${connection.id} (${connection.name}) in task ${task.taskId}: ${jobId}`,
+      `Enqueued job for connection ${connection.id} (${connection.name}) in task ${task.taskId}: ${jobId} (existing: ${String(isExisting)})`,
     );
 
     return jobId;

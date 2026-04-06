@@ -19,7 +19,16 @@ export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port'
 export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 
 // Types
-export type { SyncJob, SyncJobRequest, JobType, JobStatus } from './domain/types/sync-job.types';
+export type {
+  SyncJob,
+  SyncJobRequest,
+  EnqueueJobResult,
+  JobType,
+  JobStatus,
+  SyncJobFilters,
+  SyncJobPagination,
+  PaginatedSyncJobs,
+} from './domain/types/sync-job.types';
 export { JobTypeValues, JobStatusValues } from './domain/types/sync-job.types';
 export {
   MarketplaceOrdersPollPayloadV1,
@@ -34,6 +43,7 @@ export {
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
+export { InvalidSyncJobStateError } from './domain/exceptions/invalid-sync-job-state.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
