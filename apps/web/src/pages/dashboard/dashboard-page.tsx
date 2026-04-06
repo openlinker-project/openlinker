@@ -2,7 +2,7 @@ import { useCallback, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
-import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types'; // ServiceHealth used in ServiceHealthRow prop type
+import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';

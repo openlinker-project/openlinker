@@ -47,7 +47,7 @@ export class ConnectionDiagnosticsResponseDto {
   @ApiProperty({ description: 'Timestamp of last succeeded job (ISO 8601), or null if none', nullable: true })
   lastSucceededAt!: string | null;
 
-  @ApiProperty({ description: 'Timestamp of last failed or dead job (ISO 8601), or null if none', nullable: true })
+  @ApiProperty({ description: 'Timestamp of last failed, dead, or retrying job with a recorded error (ISO 8601), or null if none', nullable: true })
   lastFailedAt!: string | null;
 
   @ApiProperty({ description: 'Error messages from recent failed jobs', type: [String] })
