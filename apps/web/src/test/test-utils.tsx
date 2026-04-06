@@ -38,6 +38,7 @@ type DeepPartialApiClient = {
   allegro?: Partial<ApiClient['allegro']>;
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
+  health?: Partial<ApiClient['health']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
 };
 
@@ -66,11 +67,32 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
     } as ApiClient['auth'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
+      getDiagnostics: vi.fn().mockResolvedValue({
+        connectionId: 'conn_1',
+        connectionName: 'Main PrestaShop Store',
+        connectionStatus: 'active',
+        lastSucceededAt: null,
+        lastFailedAt: null,
+        recentErrors: [],
+        recentJobs: [],
+      }),
       getById: vi.fn().mockResolvedValue(sampleConnection),
       list: vi.fn().mockResolvedValue([sampleConnection]),
       update: vi.fn().mockResolvedValue(sampleConnection),
       ...overrides.connections,
     } as ApiClient['connections'],
+    health: {
+      getDevStackHealth: vi.fn().mockResolvedValue({
+        status: 'ok',
+        services: {
+          postgres: { status: 'ok' },
+          redis: { status: 'ok' },
+          prestashop: { status: 'ok' },
+        },
+        timestamp: '2026-04-06T00:00:00.000Z',
+      }),
+      ...overrides.health,
+    } as ApiClient['health'],
     syncJobs: {
       enqueue: vi.fn().mockResolvedValue({
         jobId: 'job_1',

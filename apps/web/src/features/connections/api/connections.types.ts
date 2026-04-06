@@ -35,3 +35,23 @@ export interface UpdateConnectionInput {
   config?: Record<string, unknown>;
   adapterKey?: string;
 }
+
+export interface RecentJobSummary {
+  id: string;
+  jobType: string;
+  status: string;
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
+  lastError: string | null;
+}
+
+export interface ConnectionDiagnostics {
+  connectionId: string;
+  connectionName: string;
+  connectionStatus: string;
+  lastSucceededAt: string | null;
+  lastFailedAt: string | null;
+  recentErrors: string[];
+  recentJobs: RecentJobSummary[];
+}

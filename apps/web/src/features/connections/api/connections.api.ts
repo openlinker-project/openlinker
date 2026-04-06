@@ -1,7 +1,14 @@
-import type { Connection, ConnectionFilters, CreateConnectionInput, UpdateConnectionInput } from './connections.types';
+import type {
+  Connection,
+  ConnectionDiagnostics,
+  ConnectionFilters,
+  CreateConnectionInput,
+  UpdateConnectionInput,
+} from './connections.types';
 
 export interface ConnectionsApi {
   create: (input: CreateConnectionInput) => Promise<Connection>;
+  getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
@@ -33,6 +40,9 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
         method: 'POST',
         body: JSON.stringify(input),
       });
+    },
+    getDiagnostics(connectionId): Promise<ConnectionDiagnostics> {
+      return request<ConnectionDiagnostics>(`/connections/${connectionId}/diagnostics`);
     },
     getById(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`);

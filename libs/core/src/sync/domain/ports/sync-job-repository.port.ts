@@ -77,5 +77,17 @@ export interface SyncJobRepositoryPort {
    * @returns Number of jobs requeued
    */
   requeueStuckJobs(lockTimeoutMinutes: number): Promise<number>;
+
+  /**
+   * Find recent jobs for a connection
+   *
+   * Returns the most recent sync jobs for the given connection, ordered by
+   * createdAt descending. Used for diagnostics and activity summary views.
+   *
+   * @param connectionId - Connection UUID
+   * @param limit - Maximum number of jobs to return
+   * @returns Array of sync job domain entities, newest first
+   */
+  findRecentByConnectionId(connectionId: string, limit: number): Promise<SyncJob[]>;
 }
 
