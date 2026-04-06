@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { PLATFORM_TYPES } from '../api/connections.types';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
@@ -49,6 +50,9 @@ export function CreateConnectionForm(): ReactElement {
     defaultValues: DEFAULT_VALUES,
     resolver: zodResolver(createConnectionSchema),
   });
+
+  const watchedPlatformType = form.watch('platformType');
+  const isAllegroSelected = watchedPlatformType === 'allegro';
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -107,45 +111,59 @@ export function CreateConnectionForm(): ReactElement {
             </Select>
           </FormField>
 
-          <FormField label="Credentials reference" name="credentialsRef" error={form.formState.errors.credentialsRef?.message}>
-            <Input
-              {...form.register('credentialsRef')}
-              placeholder="db:cred_123"
-              invalid={Boolean(form.formState.errors.credentialsRef)}
-            />
-          </FormField>
+          {isAllegroSelected ? null : (
+            <FormField label="Credentials reference" name="credentialsRef" error={form.formState.errors.credentialsRef?.message}>
+              <Input
+                {...form.register('credentialsRef')}
+                placeholder="db:cred_123"
+                invalid={Boolean(form.formState.errors.credentialsRef)}
+              />
+            </FormField>
+          )}
 
+          {isAllegroSelected ? null : (
+            <FormField
+              label="Adapter key"
+              name="adapterKey"
+              error={form.formState.errors.adapterKey?.message}
+              description="Optional when the default adapter can be inferred from the selected platform."
+            >
+              <Input
+                {...form.register('adapterKey')}
+                placeholder="prestashop.webservice.v1"
+                invalid={Boolean(form.formState.errors.adapterKey)}
+              />
+            </FormField>
+          )}
+        </div>
+
+        {isAllegroSelected ? (
+          <Alert tone="info" title="Allegro uses OAuth">
+            Allegro connections require OAuth authorization.{' '}
+            <Link to="/connections/new/allegro">Use the Allegro setup wizard</Link> to connect your
+            account securely.
+          </Alert>
+        ) : (
           <FormField
-            label="Adapter key"
-            name="adapterKey"
-            error={form.formState.errors.adapterKey?.message}
-            description="Optional when the default adapter can be inferred from the selected platform."
+            label="Config JSON"
+            name="configText"
+            error={form.formState.errors.configText?.message}
+            description="Provide only safe connection configuration values. Secrets must remain outside the browser."
           >
-            <Input
-              {...form.register('adapterKey')}
-              placeholder="prestashop.webservice.v1"
-              invalid={Boolean(form.formState.errors.adapterKey)}
-            />
+            <Textarea {...form.register('configText')} rows={10} invalid={Boolean(form.formState.errors.configText)} />
           </FormField>
-        </div>
+        )}
 
-        <FormField
-          label="Config JSON"
-          name="configText"
-          error={form.formState.errors.configText?.message}
-          description="Provide only safe connection configuration values. Secrets must remain outside the browser."
-        >
-          <Textarea {...form.register('configText')} rows={10} invalid={Boolean(form.formState.errors.configText)} />
-        </FormField>
-
-        <div className="form-actions">
-          <Button type="submit" disabled={createConnection.isPending}>
-            {createConnection.isPending ? 'Creating...' : 'Create connection'}
-          </Button>
-          <Button tone="secondary" onClick={() => setIsResetDialogOpen(true)} disabled={createConnection.isPending}>
-            Reset draft
-          </Button>
-        </div>
+        {isAllegroSelected ? null : (
+          <div className="form-actions">
+            <Button type="submit" disabled={createConnection.isPending}>
+              {createConnection.isPending ? 'Creating...' : 'Create connection'}
+            </Button>
+            <Button tone="secondary" onClick={() => setIsResetDialogOpen(true)} disabled={createConnection.isPending}>
+              Reset draft
+            </Button>
+          </div>
+        )}
       </form>
 
       <ConfirmDialog

@@ -1,30 +1,121 @@
 import type { ReactElement } from 'react';
-import { EmptyState } from '../../shared/ui/feedback-state';
+import { useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useHandleAllegroCallbackMutation } from '../../features/allegro/hooks/use-handle-allegro-callback-mutation';
+import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function AllegroConnectCallbackPage(): ReactElement {
+  const [searchParams] = useSearchParams();
+  const code = searchParams.get('code');
+  const state = searchParams.get('state');
+  const oauthError = searchParams.get('error');
+
+  const callbackMutation = useHandleAllegroCallbackMutation();
+
+  useEffect(() => {
+    if (code && state) {
+      callbackMutation.mutate({ code, state });
+    }
+  // Intentionally run once on mount — OAuth callback is a one-shot operation.
+  }, []); // eslint-disable-line
+
+  function renderContent(): ReactElement {
+    if (oauthError) {
+      return (
+        <ErrorState
+          title="Authorization denied"
+          message="You did not authorize OpenLinker on Allegro. No connection was created."
+          action={
+            <Link className="button" to="/connections/new/allegro">
+              Start over
+            </Link>
+          }
+        />
+      );
+    }
+
+    if (!code || !state) {
+      return (
+        <ErrorState
+          title="Invalid callback"
+          message="The OAuth callback is missing required parameters. This may happen if you navigate here directly."
+          action={
+            <Link className="button" to="/connections/new/allegro">
+              Start setup
+            </Link>
+          }
+        />
+      );
+    }
+
+    if (callbackMutation.isPending) {
+      return <LoadingState title="Completing authorization" message="Exchanging authorization code with Allegro…" />;
+    }
+
+    if (callbackMutation.error) {
+      return (
+        <ErrorState
+          title="Authorization failed"
+          message={callbackMutation.error.message}
+          action={
+            <Link className="button" to="/connections/new/allegro">
+              Try again
+            </Link>
+          }
+        />
+      );
+    }
+
+    if (callbackMutation.data) {
+      const { connectionId, connectionName } = callbackMutation.data;
+      return (
+        <article className="panel panel--dense">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Success</p>
+              <h3 className="section-title">Connection created</h3>
+            </div>
+            <span className="panel__meta">Active</span>
+          </div>
+          <dl className="definition-list">
+            <div>
+              <dt>Name</dt>
+              <dd>{connectionName}</dd>
+            </div>
+            <div>
+              <dt>Connection ID</dt>
+              <dd className="mono-text">{connectionId}</dd>
+            </div>
+          </dl>
+          <div className="form-actions">
+            <Link className="button" to={`/connections/${connectionId}`}>
+              Go to connection
+            </Link>
+            <Link className="button button--secondary" to="/connections">
+              View all connections
+            </Link>
+          </div>
+        </article>
+      );
+    }
+
+    return <LoadingState title="Completing authorization" message="Exchanging authorization code with Allegro…" />;
+  }
+
   return (
     <PageLayout
       eyebrow="OAuth callback"
-      title="Allegro callback checkpoint"
-      description="This route reserves the browser return point for a future step-based integration onboarding flow."
+      title="Allegro authorization"
+      description="Processing the authorization response from Allegro."
       summary={
-        <>
-          <div className="toolbar__group">
-            <span className="toolbar-chip">Reserved route</span>
-            <span className="toolbar-chip">OAuth boundary</span>
-          </div>
-          <div className="toolbar__group">
-            <span className="muted-text">The callback exists now so the app shell does not need to change when OAuth is implemented.</span>
-          </div>
-        </>
+        <div className="toolbar__group">
+          <span className="toolbar-chip">OAuth 2.0</span>
+          <span className="toolbar-chip">Allegro API</span>
+        </div>
       }
     >
-      <EmptyState
-        eyebrow="Setup wizard"
-        title="Flow placeholder"
-        message="FE-001 defines the route boundary now so OAuth can be added later without changing the shell or page model."
-      />
+      {renderContent()}
     </PageLayout>
   );
 }
