@@ -16,6 +16,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -23,8 +24,11 @@ import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionService } from '../application/services/connection.service';
 import { ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
+import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 
 @ApiBearerAuth()
 @ApiTags('connections')
@@ -32,6 +36,8 @@ import { ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier
 export class ConnectionController {
   constructor(
     private readonly connectionService: ConnectionService,
+    @Inject(SYNC_JOB_REPOSITORY_TOKEN)
+    private readonly syncJobRepository: SyncJobRepositoryPort,
   ) {}
 
   @Roles('admin')
@@ -107,6 +113,20 @@ export class ConnectionController {
     };
     const connection = await this.connectionService.update(id, patch);
     return ConnectionResponseDto.fromDomain(connection);
+  }
+
+  @Get(':id/diagnostics')
+  @ApiOperation({ summary: 'Get connection diagnostics and activity summary' })
+  @ApiResponse({
+    status: 200,
+    description: 'Connection diagnostics with recent sync job activity',
+    type: ConnectionDiagnosticsResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async getDiagnostics(@Param('id') id: string): Promise<ConnectionDiagnosticsResponseDto> {
+    const connection = await this.connectionService.get(id);
+    const recentJobs = await this.syncJobRepository.findRecentByConnectionId(id, 10);
+    return ConnectionDiagnosticsResponseDto.fromDomain(connection, recentJobs);
   }
 
   @Roles('admin')

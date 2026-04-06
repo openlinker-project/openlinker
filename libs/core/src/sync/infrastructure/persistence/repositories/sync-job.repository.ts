@@ -212,6 +212,15 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return result.affected || 0;
   }
 
+  async findRecentByConnectionId(connectionId: string, limit: number): Promise<SyncJob[]> {
+    const entities = await this.repository.find({
+      where: { connectionId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return entities.map((e) => this.toDomain(e));
+  }
+
   /**
    * Map ORM entity to domain entity
    */

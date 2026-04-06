@@ -18,6 +18,7 @@ import {
 @Entity('sync_jobs')
 @Index(['status', 'nextRunAt'])
 @Index(['lockedAt'])
+@Index(['connectionId', 'createdAt']) // Supports findRecentByConnectionId diagnostics query
 export class SyncJobOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

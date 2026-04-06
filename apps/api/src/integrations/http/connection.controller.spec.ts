@@ -6,15 +6,21 @@
  *
  * @module apps/api/src/integrations/http
  */
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
+import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import type { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
+import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
   let service: jest.Mocked<ConnectionService>;
+  let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -27,6 +33,24 @@ describe('ConnectionController', () => {
     new Date('2025-01-01'),
   );
 
+  const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
+    new SyncJob(
+      /* id           */ overrides.id ?? 'job-1',
+      /* jobType      */ overrides.jobType ?? 'marketplace.orders.poll',
+      /* connectionId */ 'connection-123',
+      /* payload      */ {},
+      /* status       */ overrides.status ?? 'succeeded',
+      /* idempotencyKey */ overrides.idempotencyKey ?? 'key-1',
+      /* attempts     */ overrides.attempts ?? 1,
+      /* maxAttempts  */ 10,
+      /* nextRunAt    */ new Date('2025-01-01T10:00:00Z'),
+      /* lockedAt     */ null,
+      /* lockedBy     */ null,
+      /* lastError    */ overrides.lastError ?? null,
+      /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
+      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z'),
+    );
+
   beforeEach(async () => {
     const mockService = {
       create: jest.fn(),
@@ -36,6 +60,16 @@ describe('ConnectionController', () => {
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
+    const mockSyncJobRepository: jest.Mocked<SyncJobRepositoryPort> = {
+      createIfNotExistsByIdempotencyKey: jest.fn(),
+      findAndLockDueJobs: jest.fn(),
+      markSucceeded: jest.fn(),
+      markFailed: jest.fn(),
+      markDead: jest.fn(),
+      requeueStuckJobs: jest.fn(),
+      findRecentByConnectionId: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ConnectionController],
       providers: [
@@ -43,11 +77,16 @@ describe('ConnectionController', () => {
           provide: ConnectionService,
           useValue: mockService,
         },
+        {
+          provide: SYNC_JOB_REPOSITORY_TOKEN,
+          useValue: mockSyncJobRepository,
+        },
       ],
     }).compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
     service = module.get(ConnectionService);
+    syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
   });
 
   describe('create', () => {
@@ -163,10 +202,59 @@ describe('ConnectionController', () => {
       expect(service.disable).toHaveBeenCalledWith('connection-123');
     });
   });
+
+  describe('getDiagnostics', () => {
+    it('should return diagnostics DTO for existing connection', async () => {
+      const succeededJob = makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') });
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([succeededJob]);
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result).toBeInstanceOf(ConnectionDiagnosticsResponseDto);
+      expect(result.connectionId).toBe('connection-123');
+      expect(result.connectionName).toBe('Test Connection');
+      expect(result.connectionStatus).toBe('active');
+      expect(result.lastSucceededAt).toBe('2025-01-01T10:01:00.000Z');
+      expect(result.lastFailedAt).toBeNull();
+      expect(result.recentJobs).toHaveLength(1);
+      expect(syncJobRepository.findRecentByConnectionId).toHaveBeenCalledWith('connection-123', 10);
+    });
+
+    it('should throw NotFoundException for unknown connection', async () => {
+      service.get.mockRejectedValue(new NotFoundException('Connection not found'));
+
+      await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should derive lastFailedAt from retrying job with lastError (markFailed sets status queued)', async () => {
+      // markFailed() re-queues jobs as 'queued', so 'failed' status never appears.
+      // The filter uses lastError !== null to capture retrying failures.
+      const retryingJob = makeSyncJob({
+        status: 'queued',
+        lastError: 'Timeout',
+        updatedAt: new Date('2025-01-01T11:00:00Z'),
+      });
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([retryingJob]);
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.lastFailedAt).toBe('2025-01-01T11:00:00.000Z');
+      expect(result.lastSucceededAt).toBeNull();
+      expect(result.recentErrors).toEqual(['Timeout']);
+    });
+
+    it('should return empty diagnostics when no jobs exist', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.recentJobs).toHaveLength(0);
+      expect(result.lastSucceededAt).toBeNull();
+      expect(result.lastFailedAt).toBeNull();
+      expect(result.recentErrors).toHaveLength(0);
+    });
+  });
 });
-
-
-
-
-
-

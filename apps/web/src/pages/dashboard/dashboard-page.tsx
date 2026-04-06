@@ -1,152 +1,201 @@
-import type { ReactElement } from 'react';
-import { StatusBadge } from '../../shared/ui/status-badge';
+import { useCallback, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
+import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types';
+import type { Connection } from '../../features/connections/api/connections.types';
+import { Button } from '../../shared/ui/button';
+import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+
+function toStatusTone(status: string): StatusBadgeTone {
+  if (status === 'active') return 'success';
+  if (status === 'error') return 'error';
+  return 'neutral';
+}
+
+function toHealthTone(status: OverallStatus): StatusBadgeTone {
+  if (status === 'ok') return 'success';
+  if (status === 'degraded') return 'warning';
+  return 'error';
+}
+
+function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealth }): ReactElement {
+  return (
+    <li>
+      <strong>{name}</strong>
+      <StatusBadge tone={toHealthTone(health.status)}>
+        {health.status}
+      </StatusBadge>
+      {health.message ? <span className="muted-text">{health.message}</span> : null}
+    </li>
+  );
+}
+
+function ConnectionHealthList({ connections }: { connections: Connection[] }): ReactElement {
+  if (connections.length === 0) {
+    return (
+      <p className="muted-text">
+        No connections configured.{' '}
+        <Link to="/connections/new">Add the first connection.</Link>
+      </p>
+    );
+  }
+  return (
+    <ul className="check-list">
+      {connections.map((c) => (
+        <li key={c.id}>
+          <strong>{c.name}</strong>
+          <StatusBadge tone={toStatusTone(c.status)} withDot>
+            {c.status}
+          </StatusBadge>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function DashboardPage(): ReactElement {
+  const connectionsQuery = useConnectionsQuery();
+  const healthQuery = useDevStackHealthQuery();
+
+  const connections = connectionsQuery.data ?? [];
+  const activeCount = connections.filter((c) => c.status === 'active').length;
+  const errorCount = connections.filter((c) => c.status === 'error').length;
+
+  const handleRefresh = useCallback((): void => {
+    void connectionsQuery.refetch();
+    void healthQuery.refetch();
+  }, [connectionsQuery.refetch, healthQuery.refetch]);
+
   return (
     <PageLayout
       eyebrow="Overview"
       title="Operations overview"
-      description="Monitor failures, retry pressure, integration health, and manual-review workload from one command surface."
+      description="Monitor integration health, dependency status, and connection activity from one command surface."
       actions={
-        <Link className="button" to="/connections">
-          Review integrations
-        </Link>
+        <Button onClick={handleRefresh} disabled={connectionsQuery.isFetching || healthQuery.isFetching}>
+          {connectionsQuery.isFetching || healthQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+        </Button>
       }
     >
+      {/* ── Metric strip ─────────────────────────────────────────── */}
       <section className="status-strip">
-        <article className="metric-card">
+        <article className={errorCount > 0 ? 'metric-card metric-card--warning' : 'metric-card'}>
           <span className="metric-card__label">Integration health</span>
-          <strong className="metric-card__value">3 / 3</strong>
-          <p>All channels connected</p>
+          {connectionsQuery.isLoading ? (
+            <strong className="metric-card__value">—</strong>
+          ) : (
+            <strong className="metric-card__value">{activeCount} / {connections.length}</strong>
+          )}
+          <p>{errorCount > 0 ? `${errorCount} connection${errorCount > 1 ? 's' : ''} in error` : 'All channels active'}</p>
         </article>
-        <article className="metric-card metric-card--warning">
-          <span className="metric-card__label">Jobs needing attention</span>
-          <strong className="metric-card__value">2</strong>
-          <p>1 failed, 1 retrying</p>
-        </article>
+
         <article className="metric-card">
-          <span className="metric-card__label">Inventory conflicts</span>
-          <strong className="metric-card__value">0</strong>
-          <p>No blocked syncs</p>
+          <span className="metric-card__label">System health</span>
+          {healthQuery.isLoading ? (
+            <strong className="metric-card__value">—</strong>
+          ) : healthQuery.error ? (
+            <strong className="metric-card__value">!</strong>
+          ) : (
+            <strong className="metric-card__value">
+              <StatusBadge tone={toHealthTone(healthQuery.data?.status ?? 'error')}>
+                {healthQuery.data?.status ?? 'unknown'}
+              </StatusBadge>
+            </strong>
+          )}
+          <p>Postgres · Redis · PrestaShop</p>
         </article>
-        <article className="metric-card metric-card--review">
+
+        <article className="metric-card">
+          <span className="metric-card__label">Jobs needing attention</span>
+          <strong className="metric-card__value">—</strong>
+          <p className="muted-text">Visible once sync job monitoring is enabled</p>
+        </article>
+
+        <article className="metric-card">
           <span className="metric-card__label">Manual reviews</span>
-          <strong className="metric-card__value">1</strong>
-          <p>1 operator checkpoint</p>
+          <strong className="metric-card__value">—</strong>
+          <p className="muted-text">Visible once sync job monitoring is enabled</p>
         </article>
       </section>
 
       <div className="workspace-grid workspace-grid--primary">
+        {/* ── Integration health ───────────────────────────────────── */}
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Triage</p>
-              <h3 className="section-title">Attention queue</h3>
+              <p className="eyebrow">Integrations</p>
+              <h3 className="section-title">Connection health</h3>
             </div>
-            <span className="panel__meta">Action now</span>
+            <span className="panel__meta">
+              {connectionsQuery.isLoading ? '…' : `${connections.length} configured`}
+            </span>
           </div>
 
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Entity</th>
-                <th>Issue</th>
-                <th>Source</th>
-                <th>Since</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><StatusBadge tone="error">Failed</StatusBadge></td>
-                <td>Connection</td>
-                <td>Allegro auth validation failed</td>
-                <td className="mono-text">allegro.main</td>
-                <td>12m</td>
-                <td>Reconnect</td>
-              </tr>
-              <tr>
-                <td><StatusBadge tone="warning">Retrying</StatusBadge></td>
-                <td>Sync job</td>
-                <td>Connection validation backoff in progress</td>
-                <td className="mono-text">job_sync_1842</td>
-                <td>4m</td>
-                <td>Inspect</td>
-              </tr>
-              <tr>
-                <td><StatusBadge tone="review">Review</StatusBadge></td>
-                <td>Integration</td>
-                <td>New setup waiting for credentials approval</td>
-                <td className="mono-text">prestashop.draft</td>
-                <td>21m</td>
-                <td>Open</td>
-              </tr>
-            </tbody>
-          </table>
+          {connectionsQuery.isLoading && (
+            <LoadingState title="Loading connections" message="Fetching connection status…" liveRegion="off" />
+          )}
+          {connectionsQuery.error && (
+            <ErrorState
+              title="Unable to load connections"
+              message={connectionsQuery.error.message}
+              action={<Button onClick={() => void connectionsQuery.refetch()}>Retry</Button>}
+            />
+          )}
+          {!connectionsQuery.isLoading && !connectionsQuery.error && (
+            <ConnectionHealthList connections={connections} />
+          )}
         </article>
 
+        {/* ── System health ─────────────────────────────────────────── */}
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
-              <p className="eyebrow">Health</p>
-              <h3 className="section-title">Integration health</h3>
+              <p className="eyebrow">Infrastructure</p>
+              <h3 className="section-title">System health</h3>
             </div>
-            <span className="panel__meta">Last sync</span>
+            {healthQuery.data && (
+              <StatusBadge tone={toHealthTone(healthQuery.data.status)}>
+                {healthQuery.data.status}
+              </StatusBadge>
+            )}
           </div>
 
-          <ul className="check-list">
-            <li>
-              <strong>Allegro sandbox</strong>
-              <span className="muted-text">Healthy · synced 2m ago</span>
-            </li>
-            <li>
-              <strong>PrestaShop staging</strong>
-              <span className="muted-text">Needs review · auth warning</span>
-            </li>
-            <li>
-              <strong>Webhook intake</strong>
-              <span className="muted-text">Healthy · 0 replay errors</span>
-            </li>
-          </ul>
+          {healthQuery.isLoading && (
+            <LoadingState title="Checking system health" message="Pinging dependencies…" liveRegion="off" />
+          )}
+          {healthQuery.error && (
+            <ErrorState
+              title="Health check failed"
+              message={healthQuery.error.message}
+              action={<Button onClick={() => void healthQuery.refetch()}>Retry</Button>}
+            />
+          )}
+          {healthQuery.data && (
+            <ul className="check-list">
+              <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
+              <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />
+              <ServiceHealthRow name="PrestaShop" health={healthQuery.data.services.prestashop} />
+            </ul>
+          )}
         </article>
       </div>
 
+      {/* ── Placeholder panels ───────────────────────────────────────── */}
       <div className="workspace-grid">
         <article className="panel panel--dense">
           <div className="panel__header">
             <div>
               <p className="eyebrow">Activity</p>
-              <h3 className="section-title">Recent events</h3>
+              <h3 className="section-title">Recent sync events</h3>
             </div>
-            <span className="panel__meta">Timeline</span>
+            <span className="toolbar-chip">Coming soon</span>
           </div>
-
-          <ul className="timeline-list">
-            <li>
-              <span className="timeline-list__time">23:41</span>
-              <div>
-                <strong>Connection validated</strong>
-                <p className="timeline-list__description">Allegro sandbox credentials accepted and connection kept active.</p>
-              </div>
-            </li>
-            <li>
-              <span className="timeline-list__time">23:35</span>
-              <div>
-                <strong>Retry scheduled</strong>
-                <p className="timeline-list__description">Validation job entered retry backoff after transient upstream failure.</p>
-              </div>
-            </li>
-            <li>
-              <span className="timeline-list__time">23:18</span>
-              <div>
-                <strong>Manual review opened</strong>
-                <p className="timeline-list__description">A new integration draft is waiting for operator confirmation.</p>
-              </div>
-            </li>
-          </ul>
+          <p className="muted-text panel-copy">
+            Sync job activity timeline will be visible here once the sync job monitoring feature ships.
+          </p>
         </article>
 
         <article className="panel panel--dense">
@@ -155,23 +204,11 @@ export function DashboardPage(): ReactElement {
               <p className="eyebrow">Failures</p>
               <h3 className="section-title">Retry and incident queue</h3>
             </div>
-            <span className="panel__meta">Ops bridge</span>
+            <span className="toolbar-chip">Coming soon</span>
           </div>
-
-          <ul className="check-list">
-            <li>
-              <strong>Retry backlog</strong>
-              <span className="muted-text">1 validation retry scheduled in the next 5 minutes</span>
-            </li>
-            <li>
-              <strong>Manual review queue</strong>
-              <span className="muted-text">1 connection setup blocked on credentials confirmation</span>
-            </li>
-            <li>
-              <strong>Dead-letter queue</strong>
-              <span className="muted-text">No failed events requiring replay</span>
-            </li>
-          </ul>
+          <p className="muted-text panel-copy">
+            Failed and retrying sync jobs will appear here once the sync job monitoring feature ships.
+          </p>
         </article>
       </div>
     </PageLayout>
