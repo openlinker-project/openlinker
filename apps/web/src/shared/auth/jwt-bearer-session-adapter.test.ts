@@ -55,7 +55,7 @@ describe('JwtBearerSessionAdapter', () => {
         username: 'admin',
         email: 'admin@example.com',
         role: 'admin',
-        permissions: ['read:products'],
+        permissions: ['connections:read', 'read:products'],
       });
       const adapter = createJwtBearerSessionAdapter({ baseUrl: BASE_URL, fetchFn });
 
@@ -69,7 +69,7 @@ describe('JwtBearerSessionAdapter', () => {
           username: 'admin',
           email: 'admin@example.com',
           role: 'admin',
-          permissions: ['read:products'],
+          permissions: ['read:products', 'connections:read'],
         },
       });
       expect(fetchFn).toHaveBeenCalledWith('http://localhost:3000/auth/me', {
