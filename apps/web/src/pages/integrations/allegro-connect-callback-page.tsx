@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useHandleAllegroCallbackMutation } from '../../features/allegro/hooks/use-handle-allegro-callback-mutation';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -12,13 +12,14 @@ export function AllegroConnectCallbackPage(): ReactElement {
   const oauthError = searchParams.get('error');
 
   const callbackMutation = useHandleAllegroCallbackMutation();
+  const hasCalledRef = useRef(false);
 
   useEffect(() => {
-    if (code && state) {
+    if (!hasCalledRef.current && code && state) {
+      hasCalledRef.current = true;
       callbackMutation.mutate({ code, state });
     }
-  // Intentionally run once on mount — OAuth callback is a one-shot operation.
-  }, []); // eslint-disable-line
+  }, [code, state, callbackMutation.mutate]);
 
   function renderContent(): ReactElement {
     if (oauthError) {

@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AllegroSetupForm } from './AllegroSetupForm';
 
@@ -17,6 +17,10 @@ function fillForm(
 }
 
 describe('AllegroSetupForm', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('renders all four form fields', () => {
     const { container } = renderWithProviders(<AllegroSetupForm />);
     const scope = within(container);
@@ -59,10 +63,7 @@ describe('AllegroSetupForm', () => {
       state: 'abc123',
     });
     const apiClient = createMockApiClient({ allegro: { startOAuth } });
-    Object.defineProperty(window, 'location', {
-      writable: true,
-      value: { origin: 'http://localhost:5173', assign: vi.fn() },
-    });
+    vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
 
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
     fillForm(container);
@@ -81,10 +82,7 @@ describe('AllegroSetupForm', () => {
 
   it('redirects to authorizationUrl on success', async () => {
     const assignMock = vi.fn();
-    Object.defineProperty(window, 'location', {
-      writable: true,
-      value: { origin: 'http://localhost:5173', assign: assignMock },
-    });
+    vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: assignMock });
     const apiClient = createMockApiClient({
       allegro: {
         startOAuth: vi.fn().mockResolvedValue({

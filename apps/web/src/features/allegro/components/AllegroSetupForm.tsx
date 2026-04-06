@@ -114,7 +114,7 @@ export function AllegroSetupForm(): ReactElement {
       <p className="muted-text panel-copy">
         After submitting, you will be redirected to Allegro to authorize this connection. Make sure
         your Allegro app has{' '}
-        <span className="mono-text">{typeof window !== 'undefined' ? `${window.location.origin}/integrations/allegro/connect/callback` : '/integrations/allegro/connect/callback'}</span>{' '}
+        <span className="mono-text">{`${window.location.origin}/integrations/allegro/connect/callback`}</span>{' '}
         registered as a redirect URI.
       </p>
 

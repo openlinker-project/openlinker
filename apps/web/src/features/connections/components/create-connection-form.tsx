@@ -52,6 +52,8 @@ export function CreateConnectionForm(): ReactElement {
   });
 
   const watchedPlatformType = form.watch('platformType');
+  // TODO: when a second OAuth platform is added, extract platform-specific
+  // form rendering into separate components rather than accumulating conditionals here.
   const isAllegroSelected = watchedPlatformType === 'allegro';
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -59,6 +61,10 @@ export function CreateConnectionForm(): ReactElement {
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
+    // Guard against Enter-key form submission while a platform-specific wizard
+    // (e.g. Allegro) is selected: the schema still validates hidden fields, so
+    // submission would fail silently without visible feedback.
+    if (isAllegroSelected) return;
     try {
       await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(DEFAULT_VALUES);
