@@ -69,6 +69,20 @@ export interface IAllegroHttpClient {
     body?: Record<string, unknown> | string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>>;
+
+  /**
+   * Make PATCH request
+   *
+   * @param path - API path
+   * @param body - Request body (partial update)
+   * @param options - Request options (headers, query params)
+   * @returns Response data
+   */
+  patch<T = unknown>(
+    path: string,
+    body?: Record<string, unknown> | string,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
 }
 
 

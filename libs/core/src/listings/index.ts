@@ -23,3 +23,10 @@ export type {
   OfferMappingPagination,
   PaginatedOfferMappings,
 } from './domain/types/offer-mapping.types';
+export type {
+  OfferDescriptionSectionItem,
+  OfferDescriptionSection,
+  OfferPriceUpdate,
+  OfferDescriptionUpdate,
+  OfferFieldUpdate,
+} from './domain/types/offer-update.types';

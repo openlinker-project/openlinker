@@ -23,6 +23,7 @@ import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-pr
 import { MarketplaceOrdersPollHandler } from './handlers/marketplace-orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
@@ -48,6 +49,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrdersPollHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOfferQuantityUpdateHandler,
+    MarketplaceOfferFieldUpdateHandler,
     MarketplaceOffersSyncHandler,
     MasterProductSyncHandler,
     MasterInventorySyncHandler,

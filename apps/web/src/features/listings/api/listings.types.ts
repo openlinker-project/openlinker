@@ -38,3 +38,22 @@ export interface PaginatedOfferMappings {
   limit: number;
   offset: number;
 }
+
+export interface UpdateOfferDescriptionSectionItem {
+  type: 'TEXT';
+  content: string;
+}
+
+export interface UpdateOfferDescriptionSection {
+  items: UpdateOfferDescriptionSectionItem[];
+}
+
+export interface UpdateOfferFieldsPayload {
+  price?: { amount: string; currency: string };
+  title?: string;
+  description?: { sections: UpdateOfferDescriptionSection[] };
+}
+
+export interface UpdateOfferFieldsResult {
+  jobId: string;
+}

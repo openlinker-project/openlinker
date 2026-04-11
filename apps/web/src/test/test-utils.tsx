@@ -148,6 +148,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {
@@ -227,6 +228,11 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
     defaultOptions: {
       queries: {
         retry: false,
+        gcTime: Infinity,
+      },
+      mutations: {
+        retry: false,
+        gcTime: Infinity,
       },
     },
   });

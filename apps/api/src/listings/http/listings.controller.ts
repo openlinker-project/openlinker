@@ -10,6 +10,9 @@
 import {
   Controller,
   Get,
+  Post,
+  Body,
+  Headers,
   Query,
   Param,
   HttpCode,
@@ -22,9 +25,12 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '@openlinker/core/listings';
 import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import { randomUUID } from 'crypto';
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
+import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -34,6 +40,8 @@ export class ListingsController {
   constructor(
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
     private readonly offerMappingRepository: OfferMappingRepositoryPort,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort,
   ) {}
 
   @Get()
@@ -76,6 +84,42 @@ export class ListingsController {
       throw new NotFoundException(`Offer mapping not found: ${id}`);
     }
     return this.toDto(mapping);
+  }
+
+  @Post('connections/:connectionId/offers/:offerId/fields')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiParam({ name: 'connectionId', description: 'Connection ID' })
+  @ApiParam({ name: 'offerId', description: 'Internal OpenLinker offer ID' })
+  @ApiOperation({
+    summary: 'Update offer fields',
+    description:
+      'Dispatches an async job to update Allegro offer fields (price, title, description). At least one field must be provided. Returns 202 Accepted with a job ID.',
+  })
+  @ApiResponse({ status: 202, description: 'Update job dispatched', type: UpdateOfferFieldsResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error — no fields provided or invalid values' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async updateOfferFields(
+    @Param('connectionId') connectionId: string,
+    @Param('offerId') offerId: string,
+    @Body() dto: UpdateOfferFieldsDto,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+  ): Promise<UpdateOfferFieldsResponseDto> {
+    const { jobId } = await this.jobEnqueue.enqueueJob({
+      jobType: 'marketplace.offer.updateFields',
+      connectionId,
+      idempotencyKey: clientIdempotencyKey ?? randomUUID(),
+      payload: {
+        schemaVersion: 1,
+        offerId,
+        fields: {
+          ...(dto.price !== undefined && { price: dto.price }),
+          ...(dto.title !== undefined && { title: dto.title }),
+          ...(dto.description !== undefined && { description: dto.description }),
+        },
+      },
+    });
+
+    return { jobId };
   }
 
   private toDto(mapping: IdentifierMapping): OfferMappingResponseDto {

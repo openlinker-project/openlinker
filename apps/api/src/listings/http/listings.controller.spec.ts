@@ -8,6 +8,8 @@ import { NotFoundException } from '@nestjs/common';
 import { ListingsController } from './listings.controller';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '@openlinker/core/listings';
 import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 
 describe('ListingsController', () => {
@@ -38,6 +40,10 @@ describe('ListingsController', () => {
         {
           provide: OFFER_MAPPING_REPOSITORY_TOKEN,
           useValue: mockRepository,
+        },
+        {
+          provide: JOB_ENQUEUE_TOKEN,
+          useValue: { enqueueJob: jest.fn() } as jest.Mocked<JobEnqueuePort>,
         },
       ],
     }).compile();

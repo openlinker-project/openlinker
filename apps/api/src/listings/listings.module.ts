@@ -8,10 +8,11 @@
  */
 import { Module } from '@nestjs/common';
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings';
+import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { ListingsController } from './http/listings.controller';
 
 @Module({
-  imports: [CoreListingsModule],
+  imports: [CoreListingsModule, CoreSyncModule],
   controllers: [ListingsController],
 })
 export class ListingsApiModule {}
