@@ -21,6 +21,7 @@ import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SyncModule } from './sync/sync.module';
+import { ProductsApiModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SyncModule } from './sync/sync.module';
     IntegrationsModule,
     WebhooksModule,
     SyncModule,
+    ProductsApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

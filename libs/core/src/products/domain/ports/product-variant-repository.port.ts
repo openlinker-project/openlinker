@@ -10,6 +10,7 @@
  * @see {@link ProductVariantRepository} for the TypeORM implementation
  */
 import { ProductVariant } from '../entities/product-variant.entity';
+import { ProductVariantListFilters, ProductPagination, PaginatedProductVariants } from '../types/product.types';
 
 /**
  * Product Variant Repository Port
@@ -84,5 +85,11 @@ export interface ProductVariantRepositoryPort {
    * @returns Array of upserted variant domain entities
    */
   upsertMany(variants: ProductVariant[]): Promise<ProductVariant[]>;
+
+  /**
+   * Find variants matching filters with offset pagination.
+   * Results are ordered by createdAt DESC.
+   */
+  findMany(filters: ProductVariantListFilters, pagination: ProductPagination): Promise<PaginatedProductVariants>;
 }
 

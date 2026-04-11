@@ -17,6 +17,13 @@ import { ProductRepositoryPort } from '../../domain/ports/product-repository.por
 import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
 import { Product } from '../../domain/entities/product.entity';
 import { ProductVariant } from '../../domain/entities/product-variant.entity';
+import {
+  ProductListFilters,
+  ProductVariantListFilters,
+  ProductPagination,
+  PaginatedProducts,
+  PaginatedProductVariants,
+} from '../../domain/types/product.types';
 import { Logger } from '@openlinker/shared/logging';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
@@ -66,6 +73,24 @@ export class ProductsService implements IProductsService {
 
     await this.variantRepository.upsertMany(variantsWithProductId);
     this.logger.debug(`Variants upserted for product: ${productId}`);
+  }
+
+  async getProduct(id: string): Promise<Product | null> {
+    return this.productRepository.findById(id);
+  }
+
+  async listProducts(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+  ): Promise<PaginatedProducts> {
+    return this.productRepository.findMany(filters, pagination);
+  }
+
+  async listVariants(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination,
+  ): Promise<PaginatedProductVariants> {
+    return this.variantRepository.findMany(filters, pagination);
   }
 }
 

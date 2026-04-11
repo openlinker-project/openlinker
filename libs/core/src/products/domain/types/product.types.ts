@@ -7,6 +7,8 @@
  *
  * @module libs/core/src/products/domain/types
  */
+import { Product } from '../entities/product.entity';
+import { ProductVariant } from '../entities/product-variant.entity';
 
 /**
  * Product filters
@@ -87,8 +89,57 @@ export interface ProductVariantCreate {
   [key: string]: unknown;
 }
 
+// ---------------------------------------------------------------------------
+// Read API types (used by repository ports and application services)
+// ---------------------------------------------------------------------------
 
+/**
+ * Product list filters
+ *
+ * Criteria for querying the internal product store. All fields are optional —
+ * omitting a field means no filter is applied for that dimension.
+ */
+export interface ProductListFilters {
+  /** Case-insensitive search on product name or SKU */
+  search?: string;
+}
 
+/**
+ * Product variant list filters
+ *
+ * Criteria for querying the internal product variant store.
+ */
+export interface ProductVariantListFilters {
+  /** Scope to variants of a single product */
+  productId?: string;
+  /** Case-insensitive search on SKU, EAN, or GTIN */
+  search?: string;
+}
 
+/**
+ * Offset-based pagination parameters
+ */
+export interface ProductPagination {
+  /** Number of items to return (1–100) */
+  limit: number;
+  /** Number of items to skip */
+  offset: number;
+}
+
+/**
+ * Paginated products result
+ */
+export interface PaginatedProducts {
+  items: Product[];
+  total: number;
+}
+
+/**
+ * Paginated product variants result
+ */
+export interface PaginatedProductVariants {
+  items: ProductVariant[];
+  total: number;
+}
 
 
