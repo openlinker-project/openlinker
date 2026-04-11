@@ -21,8 +21,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   InventoryRepositoryPort,
   INVENTORY_REPOSITORY_TOKEN,
+  InventoryItemEntity as InventoryItem,
 } from '@openlinker/core/inventory';
-import type { InventoryItem } from '@openlinker/core/inventory/domain/entities/inventory-item.entity';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';

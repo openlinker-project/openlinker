@@ -8,6 +8,7 @@ import type {
 
 export interface ConnectionsApi {
   create: (input: CreateConnectionInput) => Promise<Connection>;
+  disable: (connectionId: string) => Promise<Connection>;
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
@@ -39,6 +40,11 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
       return request<Connection>('/connections', {
         method: 'POST',
         body: JSON.stringify(input),
+      });
+    },
+    disable(connectionId): Promise<Connection> {
+      return request<Connection>(`/connections/${connectionId}/disable`, {
+        method: 'PATCH',
       });
     },
     getDiagnostics(connectionId): Promise<ConnectionDiagnostics> {

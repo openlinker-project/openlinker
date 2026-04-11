@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
+import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
+import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -21,25 +24,34 @@ export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
 
+  const connection = connectionQuery.data;
+
   return (
     <PageLayout
       eyebrow="Integration detail"
-      title={`Connection ${connectionId}`}
-      description="Detail views should combine configuration, health, status, and action context without hiding debug value."
+      title={connection ? connection.name : `Connection ${connectionId}`}
+      description="Connection overview, configuration, health, and operator actions."
       actions={
-        <Link className="button button--secondary" to="/connections">
-          Back to integrations
-        </Link>
+        <div className="button-group">
+          {connection ? (
+            <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
+              Edit connection
+            </Link>
+          ) : null}
+          <Link className="button button--secondary" to="/connections">
+            Back to integrations
+          </Link>
+        </div>
       }
       summary={
-        connectionQuery.data ? (
+        connection ? (
           <>
             <div className="toolbar__group">
-              <span className="toolbar-chip">Detail workspace</span>
-              <span className={`status-pill status-pill--${connectionQuery.data.status}`}>{connectionQuery.data.status}</span>
+              <span className="toolbar-chip">{connection.platformType}</span>
+              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
             </div>
             <div className="toolbar__group">
-              <span className="muted-text">Configuration, health, and operator guidance in one view.</span>
+              <span className="muted-text">Created {new Date(connection.createdAt).toLocaleDateString()}</span>
             </div>
           </>
         ) : undefined
@@ -48,7 +60,7 @@ export function ConnectionDetailPage(): ReactElement {
       {connectionQuery.isLoading ? (
         <LoadingState
           title="Loading connection"
-          message="Fetching the latest connection summary and operator guidance."
+          message="Fetching the latest connection summary and diagnostics."
         />
       ) : null}
       {connectionQuery.error ? (
@@ -62,67 +74,54 @@ export function ConnectionDetailPage(): ReactElement {
           }
         />
       ) : null}
-      {!connectionQuery.isLoading && !connectionQuery.error && !connectionQuery.data ? (
+      {!connectionQuery.isLoading && !connectionQuery.error && !connection ? (
         <EmptyState
           title="Connection not found"
           message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
         />
       ) : null}
-      {connectionQuery.data ? (
+      {connection ? (
         <div className="workspace-grid">
           <div className="panel panel--dense">
             <div className="panel__header">
               <div>
                 <p className="eyebrow">Connection summary</p>
-                <h3 className="section-title">Current state</h3>
+                <h3 className="section-title">Overview</h3>
               </div>
-              <StatusBadge tone={toStatusTone(connectionQuery.data.status)}>{connectionQuery.data.status}</StatusBadge>
+              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
             </div>
 
             <dl className="definition-list">
               <div>
                 <dt>Name</dt>
-                <dd>{connectionQuery.data.name}</dd>
+                <dd>{connection.name}</dd>
               </div>
               <div>
                 <dt>Platform</dt>
-                <dd>{connectionQuery.data.platformType}</dd>
+                <dd>{connection.platformType}</dd>
               </div>
               <div>
                 <dt>Credentials ref</dt>
-                <dd className="mono-text">{connectionQuery.data.credentialsRef}</dd>
+                <dd className="mono-text">{connection.credentialsRef}</dd>
               </div>
               <div>
                 <dt>Adapter</dt>
-                <dd className="mono-text">{connectionQuery.data.adapterKey ?? 'default adapter'}</dd>
+                <dd className="mono-text">{connection.adapterKey ?? 'default adapter'}</dd>
+              </div>
+              <div>
+                <dt>Connection ID</dt>
+                <dd className="mono-text">{connection.id}</dd>
+              </div>
+              <div>
+                <dt>Last updated</dt>
+                <dd>{new Date(connection.updatedAt).toLocaleString()}</dd>
               </div>
             </dl>
           </div>
 
-          <div className="panel panel--dense">
-            <div className="panel__header">
-              <div>
-                <p className="eyebrow">Operator context</p>
-                <h3 className="section-title">Suggested next actions</h3>
-              </div>
-              <span className="panel__meta">Guidance</span>
-            </div>
-
-            <ul className="check-list">
-              <li>
-                <strong>Validate auth state</strong>
-                <span className="muted-text">Confirm credentials and permissions are still valid.</span>
-              </li>
-              <li>
-                <strong>Check sync history</strong>
-                <span className="muted-text">Future iterations should expose job runs and retry history here.</span>
-              </li>
-              <li>
-                <strong>Review raw payloads</strong>
-                <span className="muted-text">Debug access should become a first-class tab in later feature work.</span>
-              </li>
-            </ul>
-          </div>
+          <ConnectionConfigPanel config={connection.config} />
+          <ConnectionDiagnosticsPanel connectionId={connection.id} />
+          <ConnectionActionsPanel connection={connection} />
         </div>
       ) : null}
     </PageLayout>

@@ -71,6 +71,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
     } as ApiClient['auth'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
+      disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
       getDiagnostics: vi.fn().mockResolvedValue({
         connectionId: 'conn_1',
         connectionName: 'Main PrestaShop Store',
