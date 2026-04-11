@@ -15,11 +15,13 @@ import { ProductRepository } from './infrastructure/persistence/repositories/pro
 import { ProductVariantRepository } from './infrastructure/persistence/repositories/product-variant.repository';
 import { ProductsService } from './application/services/products.service';
 import { MasterProductSyncService } from './application/services/master-product-sync.service';
+import { AutoMatchVariantOffersService } from './application/services/auto-match-variant-offers.service';
 import {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
   MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
+  AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
 } from './products.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -44,6 +46,7 @@ export {
     ProductVariantRepository,
     ProductsService,
     MasterProductSyncService,
+    AutoMatchVariantOffersService,
     // Then provide token bindings using useExisting
     {
       provide: PRODUCT_REPOSITORY_TOKEN,
@@ -60,6 +63,10 @@ export {
     {
       provide: MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
       useExisting: MasterProductSyncService,
+    },
+    {
+      provide: AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
+      useExisting: AutoMatchVariantOffersService,
     },
     // Also provide as string tokens for convenience
     {
@@ -78,16 +85,22 @@ export {
       provide: 'IMasterProductSyncService',
       useExisting: MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
     },
+    {
+      provide: 'IAutoMatchVariantOffersService',
+      useExisting: AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
+    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
     PRODUCT_VARIANT_REPOSITORY_TOKEN,
     PRODUCTS_SERVICE_TOKEN,
     MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
+    AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
     'ProductRepositoryPort',
     'ProductVariantRepositoryPort',
     'IProductsService',
     'IMasterProductSyncService',
+    'IAutoMatchVariantOffersService',
   ],
 })
 export class ProductsModule {}

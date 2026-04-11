@@ -138,6 +138,21 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       );
     }
 
+    if (filters.connectionId) {
+      qb.innerJoin(
+        'identifier_mappings',
+        'mapping',
+        `mapping.internalId = variant.id AND mapping.connectionId = :connectionId AND mapping.entityType = :entityType AND (mapping.context -> 'metadata' ->> 'isVariant') = 'true'`,
+        { connectionId: filters.connectionId, entityType: 'Product' },
+      );
+    }
+
+    if (filters.hasIdentifiers) {
+      qb.andWhere(
+        '(variant.ean IS NOT NULL OR variant.gtin IS NOT NULL OR variant.sku IS NOT NULL)',
+      );
+    }
+
     qb.orderBy('variant.createdAt', 'DESC')
       .skip(pagination.offset)
       .take(pagination.limit);

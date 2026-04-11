@@ -27,6 +27,7 @@ import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
+import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -53,6 +54,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOffersSyncHandler,
     MasterProductSyncHandler,
     MasterInventorySyncHandler,
+    AutoMatchVariantsHandler,
     HandlerRegistrationService,
   ],
 })
