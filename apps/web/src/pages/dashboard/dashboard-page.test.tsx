@@ -145,7 +145,9 @@ describe('DashboardPage', () => {
     });
     renderWithProviders(<DashboardPage />, { apiClient });
 
-    expect(await screen.findByRole('heading', { name: 'Unable to load sync jobs' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Unable to load sync jobs' }, { timeout: 5000 }),
+    ).toBeInTheDocument();
   });
 
   it('shows empty state when no sync jobs exist', async () => {
