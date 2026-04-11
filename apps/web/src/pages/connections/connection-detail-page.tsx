@@ -34,9 +34,14 @@ export function ConnectionDetailPage(): ReactElement {
       actions={
         <div className="button-group">
           {connection ? (
-            <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
-              Edit connection
-            </Link>
+            <>
+              <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
+                Edit connection
+              </Link>
+              <Link className="button button--secondary" to={`/connections/${connectionId}/mappings`}>
+                Mappings
+              </Link>
+            </>
           ) : null}
           <Link className="button button--secondary" to="/connections">
             Back to integrations

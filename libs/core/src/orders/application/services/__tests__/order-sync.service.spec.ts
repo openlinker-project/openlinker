@@ -12,11 +12,13 @@ import { OrderProcessorManagerPort } from '../../../domain/ports/order-processor
 import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
 import { Order } from '../../../domain/ports/order-source.port';
 import { OrderRef } from '../../../domain/types/order-processor.types';
+import { IMappingConfigService } from '@openlinker/core/mappings';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let processorAdapter: jest.Mocked<OrderProcessorManagerPort>;
+  let mappingConfigService: jest.Mocked<IMappingConfigService>;
 
   const destinationConnectionId = 'destination-connection-123';
   const originalEnv = process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
@@ -32,10 +34,20 @@ describe('OrderSyncService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    mappingConfigService = {
+      getStatusMappings: jest.fn().mockResolvedValue([]),
+      upsertStatusMappings: jest.fn().mockResolvedValue([]),
+      getCarrierMappings: jest.fn().mockResolvedValue([]),
+      upsertCarrierMappings: jest.fn().mockResolvedValue([]),
+      getPaymentMappings: jest.fn().mockResolvedValue([]),
+      upsertPaymentMappings: jest.fn().mockResolvedValue([]),
+      resolveStatusMapping: jest.fn().mockResolvedValue(null),
+    } as jest.Mocked<IMappingConfigService>;
+
     // Set environment variable
     process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = destinationConnectionId;
 
-    service = new OrderSyncService(integrationsService);
+    service = new OrderSyncService(integrationsService, mappingConfigService);
   });
 
   afterEach(() => {
@@ -195,7 +207,7 @@ describe('OrderSyncService', () => {
 
     it('should throw error if destination connection ID not configured', async () => {
       delete process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
-      const serviceWithoutConfig = new OrderSyncService(integrationsService);
+      const serviceWithoutConfig = new OrderSyncService(integrationsService, mappingConfigService);
 
       const order = createOrder();
       const request: OrderSyncRequest = {

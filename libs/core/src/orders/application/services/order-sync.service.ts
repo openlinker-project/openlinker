@@ -17,6 +17,7 @@ import { OrderCreate } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -33,6 +34,8 @@ export class OrderSyncService implements IOrderSyncService {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
+    private readonly mappingConfigService: IMappingConfigService,
   ) {
     // MVP: Read destination connection ID from environment variable
     // TODO: Phase 8+ - Support multiple destinations, connection-based routing, etc.
@@ -74,8 +77,14 @@ export class OrderSyncService implements IOrderSyncService {
     );
 
     // Map unified Order to OrderCreate request
-    // Validate and map order status to OrderStatus type
-    const orderStatus = this.validateOrderStatus(order.status);
+    // Resolve status via configured mapping first; fall back to validated default.
+    const resolvedStatus = await this.mappingConfigService.resolveStatusMapping(
+      sourceConnectionId,
+      order.status,
+    );
+    const orderStatus = resolvedStatus
+      ? this.validateOrderStatus(resolvedStatus)
+      : this.validateOrderStatus(order.status);
     const orderCreate: OrderCreate = {
       orderNumber: order.orderNumber,
       status: orderStatus,

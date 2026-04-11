@@ -45,6 +45,7 @@ type DeepPartialApiClient = {
   listings?: Partial<ApiClient['listings']>;
   orders?: Partial<ApiClient['orders']>;
   products?: Partial<ApiClient['products']>;
+  mappings?: Partial<ApiClient['mappings']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
 };
 
@@ -159,6 +160,21 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.products,
     } as ApiClient['products'],
+    mappings: {
+      getStatusMappings: vi.fn().mockResolvedValue([]),
+      upsertStatusMappings: vi.fn().mockResolvedValue([]),
+      getCarrierMappings: vi.fn().mockResolvedValue([]),
+      upsertCarrierMappings: vi.fn().mockResolvedValue([]),
+      getPaymentMappings: vi.fn().mockResolvedValue([]),
+      upsertPaymentMappings: vi.fn().mockResolvedValue([]),
+      getAllegroOrderStatuses: vi.fn().mockResolvedValue([]),
+      getAllegroDeliveryMethods: vi.fn().mockResolvedValue([]),
+      getAllegroPaymentProviders: vi.fn().mockResolvedValue([]),
+      getPrestashopOrderStatuses: vi.fn().mockResolvedValue([]),
+      getPrestashopCarriers: vi.fn().mockResolvedValue([]),
+      getPrestashopPaymentModules: vi.fn().mockResolvedValue([]),
+      ...overrides.mappings,
+    } as ApiClient['mappings'],
     syncJobs: {
       enqueue: vi.fn().mockResolvedValue({
         jobId: 'job_1',
