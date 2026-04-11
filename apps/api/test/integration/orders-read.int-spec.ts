@@ -70,8 +70,8 @@ describe('Orders Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      const targetConnectionId = '00000000-0000-0000-0000-000000000001';
-      const otherConnectionId = '00000000-0000-0000-0000-000000000099';
+      const targetConnectionId = '11111111-1111-4111-8111-111111111111';
+      const otherConnectionId = '99999999-9999-4999-8999-999999999999';
 
       await createTestOrderRecord(dataSource, { sourceConnectionId: targetConnectionId });
       await createTestOrderRecord(dataSource, { sourceConnectionId: otherConnectionId });

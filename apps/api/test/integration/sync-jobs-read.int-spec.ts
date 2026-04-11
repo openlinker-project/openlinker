@@ -13,6 +13,11 @@ import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestH
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestSyncJob } from './fixtures/sync-job.fixtures';
 
+// Valid UUID v4 constants for filter tests
+const TARGET_CONNECTION_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_CONNECTION_ID = '99999999-9999-4999-8999-999999999999';
+const NONEXISTENT_ID = '00000000-0000-4000-8000-000000000000';
+
 describe('Sync Jobs Read API Integration', () => {
   let harness: IntegrationTestHarness;
 
@@ -49,7 +54,7 @@ describe('Sync Jobs Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const job = await createTestSyncJob(dataSource, {
-        jobType: 'master.inventory.syncAll',
+        jobType: 'master.inventory.syncByExternalId',
         status: 'queued',
       });
 
@@ -63,7 +68,7 @@ describe('Sync Jobs Read API Integration', () => {
 
       const item = response.body.items[0];
       expect(item.id).toBe(job.id);
-      expect(item.jobType).toBe('master.inventory.syncAll');
+      expect(item.jobType).toBe('master.inventory.syncByExternalId');
       expect(item.status).toBe('queued');
       expect(item.connectionId).toBeDefined();
       expect(item.createdAt).toBeDefined();
@@ -77,7 +82,7 @@ describe('Sync Jobs Read API Integration', () => {
 
       await createTestSyncJob(dataSource, { status: 'queued' });
       await createTestSyncJob(dataSource, { status: 'succeeded' });
-      await createTestSyncJob(dataSource, { status: 'failed' });
+      await createTestSyncJob(dataSource, { status: 'dead' });
 
       const response = await http
         .get('/sync/jobs?status=queued')
@@ -93,19 +98,16 @@ describe('Sync Jobs Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      const targetConnectionId = '00000000-0000-0000-0000-000000000001';
-      const otherConnectionId = '00000000-0000-0000-0000-000000000099';
-
-      await createTestSyncJob(dataSource, { connectionId: targetConnectionId });
-      await createTestSyncJob(dataSource, { connectionId: otherConnectionId });
+      await createTestSyncJob(dataSource, { connectionId: TARGET_CONNECTION_ID });
+      await createTestSyncJob(dataSource, { connectionId: OTHER_CONNECTION_ID });
 
       const response = await http
-        .get(`/sync/jobs?connectionId=${targetConnectionId}`)
+        .get(`/sync/jobs?connectionId=${TARGET_CONNECTION_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(response.body.total).toBe(1);
-      expect(response.body.items[0].connectionId).toBe(targetConnectionId);
+      expect(response.body.items[0].connectionId).toBe(TARGET_CONNECTION_ID);
     });
 
     it('should filter by jobType', async () => {
@@ -113,16 +115,16 @@ describe('Sync Jobs Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      await createTestSyncJob(dataSource, { jobType: 'master.inventory.syncAll' });
+      await createTestSyncJob(dataSource, { jobType: 'master.inventory.syncByExternalId' });
       await createTestSyncJob(dataSource, { jobType: 'marketplace.offers.sync' });
 
       const response = await http
-        .get('/sync/jobs?jobType=master.inventory.syncAll')
+        .get('/sync/jobs?jobType=master.inventory.syncByExternalId')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(response.body.total).toBe(1);
-      expect(response.body.items[0].jobType).toBe('master.inventory.syncAll');
+      expect(response.body.items[0].jobType).toBe('master.inventory.syncByExternalId');
     });
 
     it('should paginate results with limit and offset', async () => {
@@ -170,7 +172,7 @@ describe('Sync Jobs Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      const job = await createTestSyncJob(dataSource, { jobType: 'master.inventory.syncAll' });
+      const job = await createTestSyncJob(dataSource, { jobType: 'master.inventory.syncByExternalId' });
 
       const response = await http
         .get(`/sync/jobs/${job.id}`)
@@ -178,7 +180,7 @@ describe('Sync Jobs Read API Integration', () => {
         .expect(200);
 
       expect(response.body.id).toBe(job.id);
-      expect(response.body.jobType).toBe('master.inventory.syncAll');
+      expect(response.body.jobType).toBe('master.inventory.syncByExternalId');
       expect(response.body.status).toBe('queued');
     });
 
@@ -188,14 +190,14 @@ describe('Sync Jobs Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/sync/jobs/00000000-0000-0000-0000-000000000000')
+        .get(`/sync/jobs/${NONEXISTENT_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/sync/jobs/00000000-0000-0000-0000-000000000000').expect(401);
+      await http.get(`/sync/jobs/${NONEXISTENT_ID}`).expect(401);
     });
   });
 });

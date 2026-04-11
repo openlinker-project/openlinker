@@ -18,8 +18,8 @@ export async function createTestSyncJob(
   const repo = dataSource.getRepository(SyncJobOrmEntity);
 
   const entity = repo.create({
-    jobType: 'master.inventory.syncAll',
-    connectionId: '00000000-0000-0000-0000-000000000001',
+    jobType: 'master.inventory.syncByExternalId',
+    connectionId: '11111111-1111-4111-8111-111111111111',
     payloadJson: {},
     status: 'queued',
     idempotencyKey: `test-key-${Date.now()}-${Math.random()}`,

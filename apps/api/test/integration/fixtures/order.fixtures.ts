@@ -21,12 +21,12 @@ export async function createTestOrderRecord(
   const entity = repo.create({
     internalOrderId: `ol_order_fixture_${suffix}`,
     customerId: null,
-    sourceConnectionId: '00000000-0000-0000-0000-000000000001',
+    sourceConnectionId: '11111111-1111-4111-8111-111111111111',
     sourceEventId: null,
     orderSnapshot: { items: [] },
     syncStatus: [
       {
-        destinationConnectionId: '00000000-0000-0000-0000-000000000002',
+        destinationConnectionId: '22222222-2222-4222-8222-222222222222',
         status: 'pending',
       },
     ],

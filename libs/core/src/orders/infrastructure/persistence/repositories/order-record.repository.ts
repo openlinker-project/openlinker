@@ -74,7 +74,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // JSONB containment: find orders where any destination has this status
       // Use quoted column name to match TypeORM's camelCase mapping
       qb.andWhere(
-        `"order_records"."syncStatus" @> :syncStatusFilter::jsonb`,
+        `order."syncStatus" @> :syncStatusFilter::jsonb`,
         { syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]) },
       );
     }

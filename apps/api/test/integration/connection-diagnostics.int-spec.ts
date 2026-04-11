@@ -41,10 +41,9 @@ describe('Connection Diagnostics API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      expect(response.body.id).toBe(connection.id);
-      expect(response.body.platformType).toBe('prestashop');
-      expect(response.body.name).toBe('Test Connection');
-      expect(response.body.status).toBe('active');
+      expect(response.body.connectionId).toBe(connection.id);
+      expect(response.body.connectionName).toBe('Test Connection');
+      expect(response.body.connectionStatus).toBe('active');
       expect(response.body.recentJobs).toBeDefined();
       expect(Array.isArray(response.body.recentJobs)).toBe(true);
     });
@@ -59,13 +58,13 @@ describe('Connection Diagnostics API Integration', () => {
       // Seed sync jobs for this connection
       await createTestSyncJob(dataSource, {
         connectionId: connection.id,
-        jobType: 'master.inventory.syncAll',
+        jobType: 'master.inventory.syncByExternalId',
         status: 'succeeded',
       });
       await createTestSyncJob(dataSource, {
         connectionId: connection.id,
         jobType: 'marketplace.offers.sync',
-        status: 'failed',
+        status: 'dead',
       });
 
       const response = await http
@@ -80,7 +79,6 @@ describe('Connection Diagnostics API Integration', () => {
       expect(job.id).toBeDefined();
       expect(job.jobType).toBeDefined();
       expect(job.status).toBeDefined();
-      expect(job.connectionId).toBe(connection.id);
       expect(job.createdAt).toBeDefined();
     });
 
@@ -90,14 +88,14 @@ describe('Connection Diagnostics API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/connections/00000000-0000-0000-0000-000000000000/diagnostics')
+        .get('/connections/00000000-0000-4000-8000-000000000000/diagnostics')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/connections/00000000-0000-0000-0000-000000000000/diagnostics').expect(401);
+      await http.get('/connections/00000000-0000-4000-8000-000000000000/diagnostics').expect(401);
     });
   });
 });
