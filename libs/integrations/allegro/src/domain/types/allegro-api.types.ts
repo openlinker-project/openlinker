@@ -190,6 +190,25 @@ export interface AllegroProductOffer {
 }
 
 /**
+ * Allegro category item (from GET /sale/categories)
+ */
+export interface AllegroCategoryItem {
+  id: string;
+  name: string;
+  parent?: {
+    id: string;
+  } | null;
+  leaf: boolean;
+}
+
+/**
+ * Allegro categories response (from GET /sale/categories)
+ */
+export interface AllegroCategoriesResponse {
+  categories: AllegroCategoryItem[];
+}
+
+/**
  * Allegro category parameters response (from GET /sale/categories/{categoryId}/parameters)
  */
 export interface AllegroCategoryParametersResponse {

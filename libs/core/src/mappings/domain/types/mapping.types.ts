@@ -20,3 +20,10 @@ export interface PaymentMappingInput {
   allegroPaymentProvider: string;
   prestashopPaymentModule: string;
 }
+
+export interface CategoryMappingInput {
+  prestashopCategoryId: string;
+  allegroCategoryId: string;
+  allegroCategoryName: string;
+  allegroCategoryPath?: string;
+}

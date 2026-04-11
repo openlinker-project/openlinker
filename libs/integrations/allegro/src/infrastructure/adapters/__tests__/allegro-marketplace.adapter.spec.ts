@@ -476,6 +476,62 @@ describe('AllegroMarketplaceAdapter', () => {
       ).rejects.toThrow('Allegro API error');
     });
   });
+
+  describe('fetchCategories', () => {
+    it('should fetch root categories when no parentId provided', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          categories: [
+            { id: '1', name: 'Electronics', parent: null, leaf: false },
+            { id: '2', name: 'Fashion', parent: null, leaf: false },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchCategories();
+
+      expect(result).toEqual([
+        { id: '1', name: 'Electronics', parentId: null, leaf: false },
+        { id: '2', name: 'Fashion', parentId: null, leaf: false },
+      ]);
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/categories', { queryParams: {} });
+    });
+
+    it('should fetch child categories when parentId provided', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          categories: [
+            { id: '10', name: 'Smartphones', parent: { id: '1' }, leaf: true },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchCategories('1');
+
+      expect(result).toEqual([
+        { id: '10', name: 'Smartphones', parentId: '1', leaf: true },
+      ]);
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/categories', {
+        queryParams: { 'parent.id': '1' },
+      });
+    });
+
+    it('should return empty array when no categories returned', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: { categories: [] },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchCategories('999');
+
+      expect(result).toEqual([]);
+    });
+  });
 });
 
 

@@ -12,6 +12,7 @@ import {
   Controller,
   Get,
   Put,
+  Delete,
   Body,
   Param,
   HttpCode,
@@ -36,6 +37,8 @@ import { UpsertPaymentMappingsDto } from './dto/upsert-payment-mappings.dto';
 import { StatusMappingResponseDto } from './dto/status-mapping-response.dto';
 import { CarrierMappingResponseDto } from './dto/carrier-mapping-response.dto';
 import { PaymentMappingResponseDto } from './dto/payment-mapping-response.dto';
+import { CategoryMappingInputDto } from './dto/category-mapping-input.dto';
+import { CategoryMappingResponseDto } from './dto/category-mapping-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -132,5 +135,55 @@ export class MappingsController {
   ): Promise<PaymentMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.upsertPaymentMappings(connectionId, dto.items);
     return mappings.map((m) => PaymentMappingResponseDto.fromDomain(m));
+  }
+
+  // ── Category mappings ───────────────────────────────────────────────────
+
+  @Get('categories')
+  @ApiOperation({ summary: 'Get category mappings for a connection' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiResponse({ status: 200, type: [CategoryMappingResponseDto] })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getCategoryMappings(
+    @Param('connectionId') connectionId: string,
+  ): Promise<CategoryMappingResponseDto[]> {
+    const mappings = await this.mappingConfigService.getCategoryMappings(connectionId);
+    return mappings.map((m) => CategoryMappingResponseDto.fromDomain(m));
+  }
+
+  @Put('categories/:prestashopCategoryId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or update a category mapping for a PrestaShop category' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiParam({ name: 'prestashopCategoryId', type: String })
+  @ApiResponse({ status: 200, type: CategoryMappingResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async upsertCategoryMapping(
+    @Param('connectionId') connectionId: string,
+    @Param('prestashopCategoryId') prestashopCategoryId: string,
+    @Body() dto: CategoryMappingInputDto,
+  ): Promise<CategoryMappingResponseDto> {
+    const mapping = await this.mappingConfigService.upsertCategoryMapping(connectionId, {
+      prestashopCategoryId,
+      allegroCategoryId: dto.allegroCategoryId,
+      allegroCategoryName: dto.allegroCategoryName,
+      allegroCategoryPath: dto.allegroCategoryPath,
+    });
+    return CategoryMappingResponseDto.fromDomain(mapping);
+  }
+
+  @Delete('categories/:prestashopCategoryId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a category mapping for a PrestaShop category' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiParam({ name: 'prestashopCategoryId', type: String })
+  @ApiResponse({ status: 204, description: 'Mapping deleted' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async deleteCategoryMapping(
+    @Param('connectionId') connectionId: string,
+    @Param('prestashopCategoryId') prestashopCategoryId: string,
+  ): Promise<void> {
+    await this.mappingConfigService.deleteCategoryMapping(connectionId, prestashopCategoryId);
   }
 }

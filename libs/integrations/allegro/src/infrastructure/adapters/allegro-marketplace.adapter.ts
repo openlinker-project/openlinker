@@ -18,6 +18,7 @@ import {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
 } from '@openlinker/core/integrations';
+import type { MarketplaceCategory } from '@openlinker/core/integrations';
 import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
@@ -27,6 +28,7 @@ import {
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
   AllegroCategoryParametersResponse,
+  AllegroCategoriesResponse,
   AllegroOfferParameter,
   AllegroProductOffer,
   AllegroOffersResponse,
@@ -490,6 +492,27 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       ean: this.pickSingleValue(eanValues),
       gtin: this.pickSingleValue(gtinValues),
     };
+  }
+
+  async fetchCategories(parentId?: string): Promise<MarketplaceCategory[]> {
+    this.logger.debug(
+      `Fetching Allegro categories (connection: ${this.connectionId}, parentId: ${parentId ?? 'root'})`,
+    );
+    const queryParams: Record<string, string | number> = {};
+    if (parentId) {
+      queryParams['parent.id'] = parentId;
+    }
+    const response = await this.httpClient.get<AllegroCategoriesResponse>(
+      '/sale/categories',
+      { queryParams },
+    );
+    const categories = response.data.categories ?? [];
+    return categories.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      parentId: cat.parent?.id ?? null,
+      leaf: cat.leaf,
+    }));
   }
 
   private findIdentifierParameterIds(
