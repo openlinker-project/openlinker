@@ -23,7 +23,12 @@ import { CustomerProjectionRepositoryPort } from '../../../domain/ports/customer
 import { CustomerProjection } from '../../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../../domain/entities/customer-address-projection.entity';
 import { DestinationAddressMapping } from '../../../domain/entities/destination-address-mapping.entity';
-import { AddressType } from '../../../domain/types/customer-projection.types';
+import {
+  AddressType,
+  CustomerProjectionFilters,
+  CustomerProjectionPagination,
+  PaginatedCustomerProjections,
+} from '../../../domain/types/customer-projection.types';
 
 @Injectable()
 export class CustomerProjectionRepository implements CustomerProjectionRepositoryPort {
@@ -46,6 +51,34 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     }
 
     return this.toDomainCustomer(entity);
+  }
+
+  async findMany(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination,
+  ): Promise<PaginatedCustomerProjections> {
+    const qb = this.customerRepository.createQueryBuilder('customer');
+
+    if (filters.search) {
+      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
+      qb.where(
+        '(customer.emailHash ILIKE :search OR customer.normalizedEmail ILIKE :search OR customer.firstName ILIKE :search OR customer.lastName ILIKE :search)',
+        { search: `%${escapedSearch}%` },
+      );
+    }
+
+    if (filters.lastSourceConnectionId) {
+      qb.andWhere('customer.lastSourceConnectionId = :connectionId', {
+        connectionId: filters.lastSourceConnectionId,
+      });
+    }
+
+    qb.orderBy('customer.lastSeenAt', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map((e) => this.toDomainCustomer(e)), total };
   }
 
   async findByEmailHash(emailHash: string): Promise<CustomerProjection[]> {

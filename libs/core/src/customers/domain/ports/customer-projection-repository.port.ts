@@ -15,7 +15,12 @@
 import { CustomerProjection } from '../entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../entities/customer-address-projection.entity';
 import { DestinationAddressMapping } from '../entities/destination-address-mapping.entity';
-import { AddressType } from '../types/customer-projection.types';
+import {
+  AddressType,
+  CustomerProjectionFilters,
+  CustomerProjectionPagination,
+  PaginatedCustomerProjections,
+} from '../types/customer-projection.types';
 
 export interface CustomerProjectionRepositoryPort {
   /**
@@ -28,6 +33,15 @@ export interface CustomerProjectionRepositoryPort {
    * Returns array to support collision detection (0, 1, or >1 matches)
    */
   findByEmailHash(emailHash: string): Promise<CustomerProjection[]>;
+
+  /**
+   * Find customer projections matching filters with offset pagination.
+   * Results are ordered by lastSeenAt DESC.
+   */
+  findMany(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination,
+  ): Promise<PaginatedCustomerProjections>;
 
   /**
    * Upsert customer projection (insert or update)
