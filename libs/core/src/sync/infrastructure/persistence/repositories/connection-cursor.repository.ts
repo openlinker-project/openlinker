@@ -18,6 +18,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { ConnectionCursorOrmEntity } from '../entities/connection-cursor.orm-entity';
 import { ConnectionCursorRepositoryPort } from '../../../domain/ports/connection-cursor-repository.port';
+import type {
+  ConnectionCursor,
+  ConnectionCursorFilters,
+  ConnectionCursorPagination,
+  PaginatedConnectionCursors,
+} from '../../../domain/types/connection-cursor.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -105,6 +111,62 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
       }
       throw error;
     }
+  }
+
+  async findMany(
+    filters?: ConnectionCursorFilters,
+    pagination?: ConnectionCursorPagination,
+  ): Promise<PaginatedConnectionCursors> {
+    const where: Record<string, string> = {};
+    if (filters?.connectionId) {
+      where.connectionId = filters.connectionId;
+    }
+
+    const limit = pagination?.limit ?? 20;
+    const offset = pagination?.offset ?? 0;
+
+    const [entities, total] = await this.repository.findAndCount({
+      where,
+      order: { updatedAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+
+    this.logger.debug(
+      `Found ${total} cursors (limit=${limit}, offset=${offset}, connectionId=${filters?.connectionId ?? 'all'})`,
+    );
+
+    return {
+      items: entities.map((entity) => this.toDomain(entity)),
+      total,
+    };
+  }
+
+  async findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null> {
+    try {
+      const entity = await this.repository.findOne({
+        where: { connectionId, cursorKey },
+      });
+      return entity ? this.toDomain(entity) : null;
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        this.logger.warn(
+          `Failed to find cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+        );
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private toDomain(entity: ConnectionCursorOrmEntity): ConnectionCursor {
+    return {
+      connectionId: entity.connectionId,
+      cursorKey: entity.cursorKey,
+      value: entity.value,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
   }
 }
 

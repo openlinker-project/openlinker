@@ -18,6 +18,13 @@
  * Implementations handle the specifics of the underlying database technology
  * and ensure atomic updates for cursor advancement.
  */
+import type {
+  ConnectionCursor,
+  ConnectionCursorFilters,
+  ConnectionCursorPagination,
+  PaginatedConnectionCursors,
+} from '../types/connection-cursor.types';
+
 export interface ConnectionCursorRepositoryPort {
   /**
    * Get cursor value for a connection and cursor key
@@ -50,6 +57,30 @@ export interface ConnectionCursorRepositoryPort {
    * @param cursorKey - Cursor key identifier
    */
   delete(connectionId: string, cursorKey: string): Promise<void>;
+
+  /**
+   * Find cursors with optional filters and pagination
+   *
+   * Returns a paginated list of cursors, optionally filtered by connectionId.
+   * Results are ordered by updatedAt descending (most recently updated first).
+   *
+   * @param filters - Optional filters (connectionId)
+   * @param pagination - Pagination options (limit, offset)
+   * @returns Paginated cursor list with total count
+   */
+  findMany(
+    filters?: ConnectionCursorFilters,
+    pagination?: ConnectionCursorPagination,
+  ): Promise<PaginatedConnectionCursors>;
+
+  /**
+   * Find a single cursor by connectionId and cursorKey
+   *
+   * @param connectionId - Connection identifier (UUID)
+   * @param cursorKey - Cursor key identifier
+   * @returns Full cursor object or null if not found
+   */
+  findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null>;
 }
 
 

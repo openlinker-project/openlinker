@@ -26,6 +26,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ProductsApiModule } from './products/products.module';
 import { CustomersApiModule } from './customers/customers.module';
 import { ListingsApiModule } from './listings/listings.module';
+import { CursorsModule } from './cursors/cursors.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ListingsApiModule } from './listings/listings.module';
     ProductsApiModule,
     CustomersApiModule,
     ListingsApiModule,
+    CursorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
