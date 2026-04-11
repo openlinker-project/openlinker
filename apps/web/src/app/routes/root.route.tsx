@@ -8,8 +8,10 @@ import { connectionDetailRoute } from './connection-detail.route';
 import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
+import { customersRoute } from './customers.route';
 import { dashboardRoute } from './dashboard.route';
 import { invoicesRoute } from './invoices.route';
+import { listingsRoute } from './listings.route';
 import { inventoryRoute } from './inventory.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
@@ -27,6 +29,8 @@ export const rootRoute: RouteObject = {
     productsRoute,
     inventoryRoute,
     cursorsRoute,
+    customersRoute,
+    listingsRoute,
     connectionsRoute,
     adaptersRoute,
     newConnectionRoute,

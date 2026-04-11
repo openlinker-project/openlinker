@@ -39,8 +39,10 @@ type DeepPartialApiClient = {
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
   cursors?: Partial<ApiClient['cursors']>;
+  customers?: Partial<ApiClient['customers']>;
   health?: Partial<ApiClient['health']>;
   inventory?: Partial<ApiClient['inventory']>;
+  listings?: Partial<ApiClient['listings']>;
   orders?: Partial<ApiClient['orders']>;
   products?: Partial<ApiClient['products']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
@@ -95,6 +97,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       ...overrides.cursors,
     } as ApiClient['cursors'],
+    customers: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue(null),
+      ...overrides.customers,
+    } as ApiClient['customers'],
     health: {
       getDevStackHealth: vi.fn().mockResolvedValue({
         status: 'ok',
@@ -127,6 +139,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.orders,
     } as ApiClient['orders'],
+    listings: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue(null),
+      ...overrides.listings,
+    } as ApiClient['listings'],
     products: {
       list: vi.fn().mockResolvedValue({
         items: [],

@@ -3,8 +3,10 @@ import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/al
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
 import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
+import { createCustomersApi, type CustomersApi } from '../../features/customers/api/customers.api';
 import { createHealthApi, type HealthApi } from '../../features/health/api/health.api';
 import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
+import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
@@ -26,8 +28,10 @@ export interface ApiClient {
   auth: AuthApi;
   connections: ConnectionsApi;
   cursors: CursorsApi;
+  customers: CustomersApi;
   health: HealthApi;
   inventory: InventoryApi;
+  listings: ListingsApi;
   orders: OrdersApi;
   products: ProductsApi;
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -116,8 +120,10 @@ export function createApiClient({
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
     cursors: createCursorsApi(request),
+    customers: createCustomersApi(request),
     health: createHealthApi(request),
     inventory: createInventoryApi(request),
+    listings: createListingsApi(request),
     orders: createOrdersApi(request),
     products: createProductsApi(request),
     request,
