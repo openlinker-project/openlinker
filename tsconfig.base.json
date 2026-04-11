@@ -29,6 +29,7 @@
     "paths": {
       "@openlinker/api/*": ["apps/api/src/*"],
       "@openlinker/core": ["libs/core/src/index.ts"],
+      "@openlinker/core/mappings": ["libs/core/src/mappings/index.ts"],
       "@openlinker/core/*": ["libs/core/src/*"],
       "@openlinker/shared": ["libs/shared/src/index.ts"],
       "@openlinker/shared/*": ["libs/shared/src/*"],
