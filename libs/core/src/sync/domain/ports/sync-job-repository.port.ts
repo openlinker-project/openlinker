@@ -91,6 +91,18 @@ export interface SyncJobRepositoryPort {
   requeueStuckJobs(lockTimeoutMinutes: number): Promise<number>;
 
   /**
+   * Requeue a dead job for retry
+   *
+   * Resets a job in 'dead' status back to 'queued' with attempts=0 and
+   * nextRunAt=now(), allowing the worker to pick it up again.
+   * Throws InvalidSyncJobStateError if the job is not in 'dead' status.
+   *
+   * @param id - Job ID
+   * @returns Updated sync job domain entity
+   */
+  requeueDeadJob(id: string): Promise<SyncJob>;
+
+  /**
    * Find recent jobs for a connection
    *
    * Returns the most recent sync jobs for the given connection, ordered by

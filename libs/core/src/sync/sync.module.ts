@@ -16,12 +16,14 @@ import { ConnectionCursorOrmEntity } from './infrastructure/persistence/entities
 import { ConnectionCursorRepository } from './infrastructure/persistence/repositories/connection-cursor.repository';
 import { SyncJobQueueService } from './application/services/sync-job-queue.service';
 import { RedisSyncLockService } from './application/services/redis-sync-lock.service';
+import { SyncJobRetryService } from './application/services/sync-job-retry.service';
 import {
   JOB_ENQUEUE_TOKEN,
   SYNC_JOB_REPOSITORY_TOKEN,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
+  SYNC_JOB_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -31,6 +33,7 @@ export {
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
+  SYNC_JOB_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 @Module({
@@ -81,6 +84,13 @@ export {
       useExisting: SYNC_JOB_QUEUE_TOKEN,
     },
 
+    // Retry service (application-level)
+    SyncJobRetryService,
+    {
+      provide: SYNC_JOB_RETRY_SERVICE_TOKEN,
+      useExisting: SyncJobRetryService,
+    },
+
     // Distributed lock (application-level)
     RedisSyncLockService,
     {
@@ -108,6 +118,8 @@ export {
     SYNC_LOCK_TOKEN,
     RedisSyncLockService,
     'SyncLockPort',
+    SYNC_JOB_RETRY_SERVICE_TOKEN,
+    SyncJobRetryService,
   ],
 })
 export class SyncModule {}

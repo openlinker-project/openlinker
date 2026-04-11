@@ -188,6 +188,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      retry: vi.fn().mockResolvedValue(null),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
   };

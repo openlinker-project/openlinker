@@ -14,6 +14,7 @@ export const SYNC_JOB_REPOSITORY_TOKEN = Symbol('SyncJobRepositoryPort');
 export const CONNECTION_CURSOR_REPOSITORY_TOKEN = Symbol('ConnectionCursorRepositoryPort');
 export const SYNC_JOB_QUEUE_TOKEN = Symbol('SyncJobQueuePort');
 export const SYNC_LOCK_TOKEN = Symbol('SyncLockPort');
+export const SYNC_JOB_RETRY_SERVICE_TOKEN = Symbol('SyncJobRetryServicePort');
 
 
 

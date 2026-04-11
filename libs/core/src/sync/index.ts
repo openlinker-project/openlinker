@@ -53,9 +53,13 @@ export {
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
 export { InvalidSyncJobStateError } from './domain/exceptions/invalid-sync-job-state.error';
+export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+
+// Application Services (interfaces)
+export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
 
 // Module and tokens
 export { SyncModule } from './sync.module';
@@ -65,6 +69,7 @@ export {
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
+  SYNC_JOB_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)

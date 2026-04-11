@@ -14,6 +14,7 @@ import {
   SyncJobRequest,
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
+  SYNC_JOB_RETRY_SERVICE_TOKEN,
   SyncJobEntity,
 } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
@@ -55,7 +56,12 @@ describe('SyncController', () => {
     markFailed: jest.fn(),
     markDead: jest.fn(),
     requeueStuckJobs: jest.fn(),
+    requeueDeadJob: jest.fn(),
     findRecentByConnectionId: jest.fn(),
+  };
+
+  const mockRetryService = {
+    retryJob: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -64,6 +70,7 @@ describe('SyncController', () => {
       providers: [
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
         { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: mockSyncJobRepository },
+        { provide: SYNC_JOB_RETRY_SERVICE_TOKEN, useValue: mockRetryService },
       ],
     }).compile();
 
