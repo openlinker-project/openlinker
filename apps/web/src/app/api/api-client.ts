@@ -2,6 +2,7 @@ import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api
 import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
+import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
 import { createHealthApi, type HealthApi } from '../../features/health/api/health.api';
 import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
@@ -24,6 +25,7 @@ export interface ApiClient {
   allegro: AllegroApi;
   auth: AuthApi;
   connections: ConnectionsApi;
+  cursors: CursorsApi;
   health: HealthApi;
   inventory: InventoryApi;
   orders: OrdersApi;
@@ -113,6 +115,7 @@ export function createApiClient({
     allegro: createAllegroApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
+    cursors: createCursorsApi(request),
     health: createHealthApi(request),
     inventory: createInventoryApi(request),
     orders: createOrdersApi(request),

@@ -6,6 +6,7 @@ import { allegroSetupRoute } from './allegro-setup.route';
 import { automationsRoute } from './automations.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionsRoute } from './connections.route';
+import { cursorsRoute } from './cursors.route';
 import { dashboardRoute } from './dashboard.route';
 import { invoicesRoute } from './invoices.route';
 import { inventoryRoute } from './inventory.route';
@@ -24,6 +25,7 @@ export const rootRoute: RouteObject = {
     ordersRoute,
     productsRoute,
     inventoryRoute,
+    cursorsRoute,
     connectionsRoute,
     adaptersRoute,
     newConnectionRoute,

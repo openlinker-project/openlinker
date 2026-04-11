@@ -18,6 +18,14 @@ export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port'
 // Domain Entities
 export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 
+// Connection Cursor Types
+export type {
+  ConnectionCursor,
+  ConnectionCursorFilters,
+  ConnectionCursorPagination,
+  PaginatedConnectionCursors,
+} from './domain/types/connection-cursor.types';
+
 // Types
 export type {
   SyncJob,

@@ -38,6 +38,7 @@ type DeepPartialApiClient = {
   allegro?: Partial<ApiClient['allegro']>;
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
+  cursors?: Partial<ApiClient['cursors']>;
   health?: Partial<ApiClient['health']>;
   inventory?: Partial<ApiClient['inventory']>;
   orders?: Partial<ApiClient['orders']>;
@@ -84,6 +85,15 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       update: vi.fn().mockResolvedValue(sampleConnection),
       ...overrides.connections,
     } as ApiClient['connections'],
+    cursors: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      ...overrides.cursors,
+    } as ApiClient['cursors'],
     health: {
       getDevStackHealth: vi.fn().mockResolvedValue({
         status: 'ok',
