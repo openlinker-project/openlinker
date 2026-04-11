@@ -54,6 +54,8 @@ export async function startHarness(): Promise<void> {
   process.env.REDIS_PASSWORD = '';
   process.env.REDIS_DB = '0';
   process.env.NODE_ENV = 'test';
+  process.env.JWT_SECRET = 'test-secret-for-integration-tests';
+  process.env.JWT_EXPIRES_IN = '1d';
 
   // Store containers on globalThis for teardown
   globalThis.__API_TEST_HARNESS__ = { postgres, redis };
