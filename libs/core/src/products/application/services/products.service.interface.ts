@@ -9,6 +9,13 @@
  */
 import { Product } from '../../domain/entities/product.entity';
 import { ProductVariant } from '../../domain/entities/product-variant.entity';
+import {
+  ProductListFilters,
+  ProductVariantListFilters,
+  ProductPagination,
+  PaginatedProducts,
+  PaginatedProductVariants,
+} from '../../domain/types/product.types';
 
 /**
  * Products Service Interface
@@ -34,5 +41,20 @@ export interface IProductsService {
    * @param variants - Array of product variant domain entities
    */
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
+
+  /**
+   * Get a single product by internal ID
+   */
+  getProduct(id: string): Promise<Product | null>;
+
+  /**
+   * List products with optional filters and pagination
+   */
+  listProducts(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts>;
+
+  /**
+   * List product variants with optional filters and pagination
+   */
+  listVariants(filters: ProductVariantListFilters, pagination: ProductPagination): Promise<PaginatedProductVariants>;
 }
 

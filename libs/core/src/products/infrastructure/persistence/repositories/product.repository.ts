@@ -19,6 +19,7 @@ import { Repository } from 'typeorm';
 import { ProductOrmEntity } from '../entities/product.orm-entity';
 import { ProductRepositoryPort } from '../../../domain/ports/product-repository.port';
 import { Product } from '../../../domain/entities/product.entity';
+import { ProductListFilters, ProductPagination, PaginatedProducts } from '../../../domain/types/product.types';
 
 @Injectable()
 export class ProductRepository implements ProductRepositoryPort {
@@ -37,6 +38,25 @@ export class ProductRepository implements ProductRepositoryPort {
     }
 
     return this.toDomain(entity);
+  }
+
+  async findMany(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts> {
+    const qb = this.repository.createQueryBuilder('product');
+
+    if (filters.search) {
+      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
+      qb.where(
+        '(product.name ILIKE :search OR product.sku ILIKE :search)',
+        { search: `%${escapedSearch}%` },
+      );
+    }
+
+    qb.orderBy('product.createdAt', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   async upsert(product: Product): Promise<Product> {

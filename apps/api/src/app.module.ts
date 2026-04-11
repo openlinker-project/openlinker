@@ -23,6 +23,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { SyncModule } from './sync/sync.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
+import { ProductsApiModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { OrdersModule } from './orders/orders.module';
     SyncModule,
     InventoryModule,
     OrdersModule,
+    ProductsApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

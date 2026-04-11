@@ -19,6 +19,7 @@ import { Repository, In, Brackets } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
 import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
 import { ProductVariant } from '../../../domain/entities/product-variant.entity';
+import { ProductVariantListFilters, ProductPagination, PaginatedProductVariants } from '../../../domain/types/product.types';
 import { normalizeBarcode } from '../../../domain/utils/barcode-normalization';
 
 @Injectable()
@@ -117,6 +118,32 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       .getMany();
 
     return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findMany(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination,
+  ): Promise<PaginatedProductVariants> {
+    const qb = this.repository.createQueryBuilder('variant');
+
+    if (filters.productId) {
+      qb.andWhere('variant.productId = :productId', { productId: filters.productId });
+    }
+
+    if (filters.search) {
+      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
+      qb.andWhere(
+        '(variant.sku ILIKE :search OR variant.ean ILIKE :search OR variant.gtin ILIKE :search)',
+        { search: `%${escapedSearch}%` },
+      );
+    }
+
+    qb.orderBy('variant.createdAt', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   async upsert(variant: ProductVariant): Promise<ProductVariant> {

@@ -10,6 +10,7 @@
  * @see {@link ProductRepository} for the TypeORM implementation
  */
 import { Product } from '../entities/product.entity';
+import { ProductListFilters, ProductPagination, PaginatedProducts } from '../types/product.types';
 
 /**
  * Product Repository Port
@@ -26,6 +27,12 @@ export interface ProductRepositoryPort {
    * @returns Product domain entity or null if not found
    */
   findById(id: string): Promise<Product | null>;
+
+  /**
+   * Find products matching filters with offset pagination.
+   * Results are ordered by createdAt DESC.
+   */
+  findMany(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts>;
 
   /**
    * Upsert product (create or update by internal ID)
