@@ -1191,6 +1191,13 @@ textarea {
   width: 100%;
 }
 
+/* Badge group (inline badge list) */
+.badge-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
 /* Raw payload display */
 .raw-payload {
   white-space: pre-wrap;

@@ -1,8 +1,4 @@
-export interface AdapterSummary {
-  key: string;
-  provider: string;
-  capabilities: string[];
-}
+import type { AdapterSummary } from './adapters.types';
 
 export interface AdaptersApi {
   list: () => Promise<AdapterSummary[]>;

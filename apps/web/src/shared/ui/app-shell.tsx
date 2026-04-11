@@ -35,6 +35,7 @@ const navigationGroups: NavigationGroup[] = [
     label: 'Platform',
     items: [
       { to: '/connections', label: 'Integrations', state: 'live' },
+      { to: '/adapters', label: 'Adapters', state: 'live' },
       { to: '/connections/new', label: 'Add connection', state: 'live' },
       { to: '/shipping', label: 'Shipping', state: 'planned' },
       { to: '/invoices', label: 'Invoices', state: 'planned' },
