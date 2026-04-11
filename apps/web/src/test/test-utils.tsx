@@ -228,11 +228,11 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
     defaultOptions: {
       queries: {
         retry: false,
-        gcTime: Infinity,
+        gcTime: 0,
       },
       mutations: {
         retry: false,
-        gcTime: Infinity,
+        gcTime: 0,
       },
     },
   });
