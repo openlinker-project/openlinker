@@ -24,6 +24,8 @@ import { SyncModule } from './sync/sync.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { ProductsApiModule } from './products/products.module';
+import { CustomersApiModule } from './customers/customers.module';
+import { ListingsApiModule } from './listings/listings.module';
 
 @Module({
   imports: [
@@ -44,6 +46,8 @@ import { ProductsApiModule } from './products/products.module';
     InventoryModule,
     OrdersModule,
     ProductsApiModule,
+    CustomersApiModule,
+    ListingsApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
