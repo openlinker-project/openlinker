@@ -3,6 +3,8 @@ import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/al
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
 import { createHealthApi, type HealthApi } from '../../features/health/api/health.api';
+import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
+import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
 import { ApiError } from '../../shared/api/api-error';
@@ -23,6 +25,8 @@ export interface ApiClient {
   auth: AuthApi;
   connections: ConnectionsApi;
   health: HealthApi;
+  inventory: InventoryApi;
+  orders: OrdersApi;
   products: ProductsApi;
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   syncJobs: SyncJobsApi;
@@ -110,6 +114,8 @@ export function createApiClient({
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
     health: createHealthApi(request),
+    inventory: createInventoryApi(request),
+    orders: createOrdersApi(request),
     products: createProductsApi(request),
     request,
     syncJobs: createSyncJobsApi(request),
