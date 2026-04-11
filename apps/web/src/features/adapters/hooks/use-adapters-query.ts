@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import type { AdapterSummary } from '../api/adapters.api';
+import type { AdapterSummary } from '../api/adapters.types';
 import { adaptersQueryKeys } from '../api/adapters.query-keys';
 
 export function useAdaptersQuery(): UseQueryResult<AdapterSummary[]> {
