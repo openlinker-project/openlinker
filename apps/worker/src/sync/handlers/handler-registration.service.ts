@@ -16,6 +16,7 @@ import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-up
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
+import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -29,6 +30,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
+    private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
   ) {}
 
   onModuleInit(): void {
@@ -42,6 +44,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Register generic master handlers (Option B)
     this.handlerRegistry.register('master.product.syncByExternalId', this.masterProductSyncHandler);
     this.handlerRegistry.register('master.inventory.syncByExternalId', this.masterInventorySyncHandler);
+
+    // Register auto-match variants handler
+    this.handlerRegistry.register('master.variants.autoMatch', this.autoMatchVariantsHandler);
 
     // Register inventory propagate to marketplaces handler
     this.handlerRegistry.register('inventory.propagateToMarketplaces', this.inventoryPropagateHandler);

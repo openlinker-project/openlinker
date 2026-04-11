@@ -31,6 +31,7 @@ import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
 import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
+import { AutoMatchVariantsRequestDto, AutoMatchVariantsResponseDto } from './dto/auto-match-variants.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -116,6 +117,34 @@ export class ListingsController {
           ...(dto.title !== undefined && { title: dto.title }),
           ...(dto.description !== undefined && { description: dto.description }),
         },
+      },
+    });
+
+    return { jobId };
+  }
+
+  @Post('connections/:connectionId/sync/auto-match-variants')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID (e.g., Allegro)' })
+  @ApiOperation({
+    summary: 'Auto-match variants to offers',
+    description:
+      'Dispatches a background job that matches PrestaShop product variants to marketplace offers by EAN/SKU. Returns 202 Accepted with a job ID.',
+  })
+  @ApiResponse({ status: 202, description: 'Auto-match job dispatched', type: AutoMatchVariantsResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async autoMatchVariants(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: AutoMatchVariantsRequestDto,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+  ): Promise<AutoMatchVariantsResponseDto> {
+    const { jobId } = await this.jobEnqueue.enqueueJob({
+      jobType: 'master.variants.autoMatch',
+      connectionId,
+      idempotencyKey: clientIdempotencyKey ?? `auto-match-variants:${connectionId}:${randomUUID()}`,
+      payload: {
+        schemaVersion: 1,
+        dryRun: dto.dryRun ?? false,
       },
     });
 

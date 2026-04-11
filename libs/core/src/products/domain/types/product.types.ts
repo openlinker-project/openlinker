@@ -114,6 +114,10 @@ export interface ProductVariantListFilters {
   productId?: string;
   /** Case-insensitive search on SKU, EAN, or GTIN */
   search?: string;
+  /** Scope to variants linked to a specific connection via identifier mappings */
+  connectionId?: string;
+  /** When true, only return variants with at least one non-empty identifier (EAN, GTIN, or SKU) */
+  hasIdentifiers?: boolean;
 }
 
 /**

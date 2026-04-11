@@ -13,4 +13,5 @@ export const PRODUCT_REPOSITORY_TOKEN = Symbol('ProductRepositoryPort');
 export const PRODUCT_VARIANT_REPOSITORY_TOKEN = Symbol('ProductVariantRepositoryPort');
 export const PRODUCTS_SERVICE_TOKEN = Symbol('IProductsService');
 export const MASTER_PRODUCT_SYNC_SERVICE_TOKEN = Symbol('IMasterProductSyncService');
+export const AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN = Symbol('IAutoMatchVariantOffersService');
 

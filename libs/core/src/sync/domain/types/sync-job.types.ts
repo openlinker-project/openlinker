@@ -23,6 +23,8 @@ export const JobTypeValues = [
   'master.product.syncByExternalId',
   'master.inventory.syncByExternalId',
 
+  'master.variants.autoMatch',
+
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
 ] as const;
