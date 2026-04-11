@@ -10,11 +10,12 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { OrderRecordOrmEntity, OrderSyncStatusJson } from '../entities/order-record.orm-entity';
 import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
+import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords } from '../../../domain/types/order-record.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -33,6 +34,57 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     }
 
     return this.toDomain(entity);
+  }
+
+  async findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination,
+  ): Promise<PaginatedOrderRecords> {
+    const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
+      .createQueryBuilder('order')
+      .orderBy('order.createdAt', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset);
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('order.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+
+    if (filters.customerId) {
+      qb.andWhere('order.customerId = :customerId', {
+        customerId: filters.customerId,
+      });
+    }
+
+    if (filters.createdFrom) {
+      qb.andWhere('order.createdAt >= :createdFrom', {
+        createdFrom: filters.createdFrom,
+      });
+    }
+
+    if (filters.createdTo) {
+      qb.andWhere('order.createdAt <= :createdTo', {
+        createdTo: filters.createdTo,
+      });
+    }
+
+    if (filters.syncStatus) {
+      // JSONB containment: find orders where any destination has this status
+      // Use quoted column name to match TypeORM's camelCase mapping
+      qb.andWhere(
+        `"order_records"."syncStatus" @> :syncStatusFilter::jsonb`,
+        { syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]) },
+      );
+    }
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      items: entities.map((e) => this.toDomain(e)),
+      total,
+    };
   }
 
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {

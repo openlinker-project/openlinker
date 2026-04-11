@@ -10,6 +10,7 @@
  * @see {@link InventoryRepository} for the TypeORM implementation
  */
 import { InventoryItem } from '../entities/inventory-item.entity';
+import type { InventoryFilters, InventoryPagination, PaginatedInventoryItems } from '../types/inventory.types';
 
 /**
  * Inventory Repository Port
@@ -43,5 +44,18 @@ export interface InventoryRepositoryPort {
    * @returns Upserted inventory item domain entity
    */
   upsert(item: InventoryItem): Promise<InventoryItem>;
+
+  /**
+   * Find inventory item by ID
+   */
+  findById(id: string): Promise<InventoryItem | null>;
+
+  /**
+   * Find inventory items with filters and pagination
+   */
+  findMany(
+    filters: InventoryFilters,
+    pagination: InventoryPagination,
+  ): Promise<PaginatedInventoryItems>;
 }
 

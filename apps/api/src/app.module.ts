@@ -21,6 +21,8 @@ import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SyncModule } from './sync/sync.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { OrdersModule } from './orders/orders.module';
 import { ProductsApiModule } from './products/products.module';
 
 @Module({
@@ -39,6 +41,8 @@ import { ProductsApiModule } from './products/products.module';
     IntegrationsModule,
     WebhooksModule,
     SyncModule,
+    InventoryModule,
+    OrdersModule,
     ProductsApiModule,
   ],
   controllers: [AppController],

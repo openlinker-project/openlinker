@@ -6,6 +6,7 @@
  *
  * @module libs/core/src/inventory/domain/types
  */
+import type { InventoryItem } from '../entities/inventory-item.entity';
 
 /**
  * Inventory adjustment
@@ -44,6 +45,31 @@ export interface InventoryAdjustment {
    * Additional metadata (optional)
    */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Inventory filters for list queries
+ */
+export interface InventoryFilters {
+  productId?: string;
+  productVariantId?: string;
+  locationId?: string;
+}
+
+/**
+ * Pagination parameters for inventory queries
+ */
+export interface InventoryPagination {
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Paginated inventory items result
+ */
+export interface PaginatedInventoryItems {
+  items: InventoryItem[];
+  total: number;
 }
 
 

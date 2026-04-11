@@ -70,6 +70,8 @@ describe('ConnectionController', () => {
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
       findRecentByConnectionId: jest.fn(),
+      findMany: jest.fn(),
+      findById: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
