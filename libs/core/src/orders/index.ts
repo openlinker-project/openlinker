@@ -55,6 +55,9 @@ export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
 
+// ORM Entities (for integration test seeding)
+export { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
+
 // Module
 export { OrdersModule } from './orders.module';
 

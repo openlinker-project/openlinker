@@ -119,8 +119,15 @@ export class IntegrationTestHarness {
     }
 
     // Truncate all tables (in correct order due to foreign keys)
+    // Child tables first, then parents
     await this.dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE sync_jobs CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE inventory_items CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE order_records CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE products CASCADE');
     await this.dataSource.query('TRUNCATE TABLE connections CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE users CASCADE');
 
     // Clear Redis cache
     if (this.redisClient) {
