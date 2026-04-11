@@ -1,7 +1,28 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
+import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
+
+function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
+  return {
+    id: 'job_1',
+    jobType: 'marketplace.orders.poll',
+    connectionId: 'conn_1',
+    status: 'succeeded',
+    attempts: 1,
+    maxAttempts: 3,
+    nextRunAt: '2026-04-11T00:00:00.000Z',
+    lastError: null,
+    payloadJson: null,
+    idempotencyKey: null,
+    lockedAt: null,
+    lockedBy: null,
+    createdAt: '2026-04-11T00:00:00.000Z',
+    updatedAt: '2026-04-11T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 describe('DashboardPage', () => {
   it('renders the operations overview heading', () => {
@@ -72,11 +93,70 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: 'Health check failed' })).toBeInTheDocument();
   });
 
-  it('shows placeholder panels for sync jobs sections', () => {
+  it('shows recent sync jobs in a table', async () => {
+    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
+      if (filters?.status === 'dead') {
+        return Promise.resolve({ items: [], total: 0, limit: 10, offset: 0 });
+      }
+      return Promise.resolve({
+        items: [
+          makeSyncJob({ id: 'j1', jobType: 'marketplace.orders.poll', status: 'succeeded' }),
+          makeSyncJob({ id: 'j2', jobType: 'marketplace.offers.sync', status: 'running' }),
+        ],
+        total: 2,
+        limit: 5,
+        offset: 0,
+      });
+    });
+    const apiClient = createMockApiClient({
+      syncJobs: { list: listMock },
+    });
+    renderWithProviders(<DashboardPage />, { apiClient });
+
+    expect(await screen.findByText('marketplace › orders › poll')).toBeInTheDocument();
+    expect(screen.getByText('marketplace › offers › sync')).toBeInTheDocument();
+  });
+
+  it('shows failed jobs count in metric card', async () => {
+    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
+      if (filters?.status === 'dead') {
+        return Promise.resolve({
+          items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
+          total: 1,
+          limit: 10,
+          offset: 0,
+        });
+      }
+      return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
+    });
+    const apiClient = createMockApiClient({
+      syncJobs: { list: listMock },
+    });
+    renderWithProviders(<DashboardPage />, { apiClient });
+
+    expect(await screen.findByText('1 job needs attention')).toBeInTheDocument();
+  });
+
+  it('shows error state when sync jobs fail to load', async () => {
+    const apiClient = createMockApiClient({
+      syncJobs: {
+        list: vi.fn().mockRejectedValue(new Error('Sync API down')),
+      },
+    });
+    renderWithProviders(<DashboardPage />, { apiClient });
+
+    expect(await screen.findByRole('heading', { name: 'Unable to load sync jobs' })).toBeInTheDocument();
+  });
+
+  it('shows empty state when no sync jobs exist', async () => {
     renderWithProviders(<DashboardPage />);
 
-    const headings = screen.getAllByRole('heading').map((h) => h.textContent);
-    expect(headings).toContain('Recent sync events');
-    expect(headings).toContain('Retry and incident queue');
+    // Wait for queries to settle, then verify empty states are present
+    await waitFor(() => {
+      expect(screen.queryAllByText('No sync jobs recorded yet.').length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(screen.queryAllByText('No failed jobs. All clear.').length).toBeGreaterThan(0);
+    });
   });
 });
