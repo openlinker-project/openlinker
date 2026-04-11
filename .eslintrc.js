@@ -60,6 +60,8 @@ module.exports = {
       },
     },
     {
+      // Layer boundary: shared/ must not import from higher layers.
+      // Exception: shared/auth/ is exempt from the fetch restriction (see override below).
       files: ['apps/web/src/shared/**/*.{ts,tsx}'],
       rules: {
         'no-restricted-imports': [
@@ -67,10 +69,17 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['**/features/**', '**/pages/**'],
-                message: 'Shared modules must not import feature or page modules.',
+                group: ['**/features/**', '**/pages/**', '**/app/**'],
+                message: 'Shared modules must not import feature, page, or app modules.',
               },
             ],
+          },
+        ],
+        'no-restricted-globals': [
+          'error',
+          {
+            name: 'fetch',
+            message: 'Use API client modules from shared/api instead of raw fetch().',
           },
         ],
       },
@@ -87,6 +96,44 @@ module.exports = {
                 message: 'Feature modules must not import page modules.',
               },
             ],
+          },
+        ],
+        'no-restricted-globals': [
+          'error',
+          {
+            name: 'fetch',
+            message: 'Use API client modules from shared/api instead of raw fetch().',
+          },
+        ],
+      },
+    },
+    {
+      // Session adapter is low-level auth infra that the API client itself depends on —
+      // it must use raw fetch() and is exempt from the no-restricted-globals rule.
+      files: ['apps/web/src/shared/auth/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-globals': 'off',
+      },
+    },
+    {
+      files: ['apps/web/src/pages/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/app/**'],
+                message: 'Page modules must not import app modules.',
+              },
+            ],
+          },
+        ],
+        'no-restricted-globals': [
+          'error',
+          {
+            name: 'fetch',
+            message: 'Use API client modules from shared/api instead of raw fetch().',
           },
         ],
       },

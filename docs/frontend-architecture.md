@@ -262,7 +262,9 @@ Dependency direction must remain simple and enforceable:
 - `features` may import `shared`
 - `shared` must not import `features` or `pages`
 
-These boundaries should be enforced by lint rules, not only documented as team guidance.
+These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, and `pages/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
+
+> **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 
 Additional rules:
 
