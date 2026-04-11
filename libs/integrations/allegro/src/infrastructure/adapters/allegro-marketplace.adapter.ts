@@ -34,6 +34,7 @@ import {
   AllegroOffersResponse,
   AllegroOfferEventsResponse,
   AllegroOfferFieldsPatchBody,
+  AllegroMatchingCategoriesResponse,
 } from '../../domain/types/allegro-api.types';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
@@ -513,6 +514,37 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       parentId: cat.parent?.id ?? null,
       leaf: cat.leaf,
     }));
+  }
+
+  async matchCategoryByBarcode(barcode: string): Promise<string | null> {
+    this.logger.debug(
+      `Matching Allegro category by barcode (connection: ${this.connectionId}, barcode: ${barcode})`,
+    );
+    try {
+      const response = await this.httpClient.get<AllegroMatchingCategoriesResponse>(
+        '/sale/matching-categories',
+        { queryParams: { ean: barcode } },
+      );
+      const matches = response.data.matchingCategories ?? [];
+      if (matches.length === 1) {
+        const categoryId = matches[0].category.id;
+        this.logger.debug(
+          `Barcode auto-detect matched category ${categoryId} (connection: ${this.connectionId})`,
+        );
+        return categoryId;
+      }
+      if (matches.length > 1) {
+        this.logger.debug(
+          `Barcode auto-detect returned ${matches.length} categories, skipping (connection: ${this.connectionId})`,
+        );
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to match category by barcode (connection: ${this.connectionId}): ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   private findIdentifierParameterIds(
