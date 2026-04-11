@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 
-// jsdom does not implement HTMLDialogElement.showModal / .close.
-// These stubs mirror the browser behaviours that our components rely on in tests:
+// happy-dom (and jsdom) do not fully implement HTMLDialogElement.showModal / .close
+// with proper focus management. These stubs mirror the browser behaviours that our
+// components rely on in tests:
 //   showModal — marks the dialog open and remembers the previously-focused element
 //   close     — closes the dialog and restores focus (matching native browser behaviour)
 const previouslyFocused = new WeakMap<HTMLDialogElement, HTMLElement | null>();
