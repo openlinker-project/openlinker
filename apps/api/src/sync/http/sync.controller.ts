@@ -16,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   Inject,
   ParseUUIDPipe,
@@ -28,8 +29,12 @@ import {
   SyncJobRequest,
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
+  SYNC_JOB_RETRY_SERVICE_TOKEN,
+  InvalidSyncJobStateError,
+  SyncJobNotFoundError,
 } from '@openlinker/core/sync';
 import type { SyncJob } from '@openlinker/core/sync';
+import type { ISyncJobRetryService } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
 import { EnqueueSyncJobResponseDto } from './dto/enqueue-sync-job-response.dto';
 import { ListSyncJobsQueryDto } from './dto/list-sync-jobs-query.dto';
@@ -49,6 +54,8 @@ export class SyncController {
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly syncJobRepository: SyncJobRepositoryPort,
+    @Inject(SYNC_JOB_RETRY_SERVICE_TOKEN)
+    private readonly retryService: ISyncJobRetryService,
   ) {}
 
   @Post('jobs')
@@ -144,6 +151,32 @@ export class SyncController {
       throw new NotFoundException(`Sync job not found: ${id}`);
     }
     return this.toDto(job);
+  }
+
+  @Post('jobs/:id/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Retry a dead sync job',
+    description:
+      'Requeues a dead sync job for retry. Resets the job to queued status with zero attempts. Only jobs in dead status can be retried.',
+  })
+  @ApiResponse({ status: 200, description: 'Job requeued for retry', type: SyncJobResponseDto })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  @ApiResponse({ status: 409, description: 'Job is not in dead status' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryJob(@Param('id', ParseUUIDPipe) id: string): Promise<SyncJobResponseDto> {
+    try {
+      const job = await this.retryService.retryJob(id);
+      return this.toDto(job);
+    } catch (error) {
+      if (error instanceof SyncJobNotFoundError) {
+        throw new NotFoundException(`Sync job not found: ${id}`);
+      }
+      if (error instanceof InvalidSyncJobStateError) {
+        throw new ConflictException(`Job cannot be retried: ${error.message}`);
+      }
+      throw error;
+    }
   }
 
   private toDto(job: SyncJob): SyncJobResponseDto {

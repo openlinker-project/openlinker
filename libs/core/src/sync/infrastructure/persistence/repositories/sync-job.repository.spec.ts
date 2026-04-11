@@ -11,6 +11,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Repository } from 'typeorm';
 import { SyncJobRepository } from './sync-job.repository';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
+import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
+import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
 
 function makeOrmEntity(overrides: Partial<SyncJobOrmEntity> = {}): SyncJobOrmEntity {
   const e = new SyncJobOrmEntity();
@@ -144,6 +146,44 @@ describe('SyncJobRepository', () => {
       expect(ormRepo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({ take: 2, skip: 4 }),
       );
+    });
+  });
+
+  describe('requeueDeadJob', () => {
+    function mockQueryBuilder(affected: number): void {
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      ormRepo.createQueryBuilder.mockReturnValue(qb as never);
+    }
+
+    it('should requeue a dead job to queued status atomically', async () => {
+      mockQueryBuilder(1);
+      const requeuedEntity = makeOrmEntity({ id: 'dead-1', status: 'queued', attempts: 0, lastError: 'some error' });
+      ormRepo.findOne.mockResolvedValue(requeuedEntity);
+
+      const result = await repo.requeueDeadJob('dead-1');
+
+      expect(result.id).toBe('dead-1');
+      expect(result.status).toBe('queued');
+      expect(ormRepo.createQueryBuilder).toHaveBeenCalled();
+    });
+
+    it('should throw SyncJobNotFoundError when job does not exist', async () => {
+      mockQueryBuilder(0);
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await expect(repo.requeueDeadJob('missing')).rejects.toThrow(SyncJobNotFoundError);
+    });
+
+    it('should throw InvalidSyncJobStateError when job is not dead', async () => {
+      mockQueryBuilder(0);
+      ormRepo.findOne.mockResolvedValue(makeOrmEntity({ status: 'queued' }));
+
+      await expect(repo.requeueDeadJob('job-1')).rejects.toThrow(InvalidSyncJobStateError);
     });
   });
 });

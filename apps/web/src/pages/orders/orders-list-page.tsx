@@ -127,6 +127,11 @@ export function OrdersListPage(): ReactElement {
       eyebrow="Operations"
       title="Orders"
       description="Order monitoring — track sync status and troubleshoot failures."
+      actions={
+        <Link to="/orders/failed" className="button button--ghost">
+          Failed Orders
+        </Link>
+      }
     >
       {/* Filter bar */}
       <div className="toolbar">

@@ -22,6 +22,7 @@ import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
 import { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
+import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
 import {
   JobStatus,
   JobStatusValues,
@@ -234,6 +235,37 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       .execute();
 
     return result.affected || 0;
+  }
+
+  async requeueDeadJob(id: string): Promise<SyncJob> {
+    // Atomic conditional update — avoids TOCTOU race between status check and update
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(SyncJobOrmEntity)
+      .set({
+        status: 'queued',
+        attempts: 0,
+        nextRunAt: new Date(),
+        lockedAt: null,
+        lockedBy: null,
+      })
+      .where('id = :id AND status = :status', { id, status: 'dead' })
+      .execute();
+
+    if (result.affected === 0) {
+      // Distinguish not-found from wrong-status
+      const existing = await this.repository.findOne({ where: { id } });
+      if (!existing) {
+        throw new SyncJobNotFoundError(id);
+      }
+      throw new InvalidSyncJobStateError('status', existing.status, id);
+    }
+
+    const updated = await this.repository.findOne({ where: { id } });
+    if (!updated) {
+      throw new SyncJobNotFoundError(id);
+    }
+    return this.toDomain(updated);
   }
 
   async findRecentByConnectionId(connectionId: string, limit: number): Promise<SyncJob[]> {

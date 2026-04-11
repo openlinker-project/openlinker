@@ -69,6 +69,7 @@ describe('ConnectionController', () => {
       markFailed: jest.fn(),
       markDead: jest.fn(),
       requeueStuckJobs: jest.fn(),
+      requeueDeadJob: jest.fn(),
       findRecentByConnectionId: jest.fn(),
     };
 

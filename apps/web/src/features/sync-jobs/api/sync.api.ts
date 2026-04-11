@@ -28,6 +28,7 @@ export interface SyncJobsApi {
   enqueue: (input: EnqueueSyncJobInput) => Promise<SyncJobResponse>;
   list: (filters?: SyncJobFilters, pagination?: SyncJobPagination) => Promise<PaginatedSyncJobs>;
   getById: (id: string) => Promise<SyncJob>;
+  retry: (id: string) => Promise<SyncJob>;
 }
 
 interface ApiRequest {
@@ -58,6 +59,9 @@ export function createSyncJobsApi(request: ApiRequest): SyncJobsApi {
     },
     getById(id): Promise<SyncJob> {
       return request<SyncJob>(`/sync/jobs/${id}`);
+    },
+    retry(id): Promise<SyncJob> {
+      return request<SyncJob>(`/sync/jobs/${id}/retry`, { method: 'POST' });
     },
   };
 }
