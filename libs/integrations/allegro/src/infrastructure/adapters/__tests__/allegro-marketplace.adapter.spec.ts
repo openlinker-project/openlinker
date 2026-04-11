@@ -532,7 +532,63 @@ describe('AllegroMarketplaceAdapter', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('matchCategoryByBarcode', () => {
+    it('should return category ID when exactly one match is found', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          matchingCategories: [
+            { category: { id: 'cat-100', name: 'Electronics' } },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.matchCategoryByBarcode('5901234123457');
+
+      expect(result).toBe('cat-100');
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/matching-categories', {
+        queryParams: { ean: '5901234123457' },
+      });
+    });
+
+    it('should return null when no matches are found', async () => {
+      httpClient.get.mockResolvedValue({
+        data: { matchingCategories: [] },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.matchCategoryByBarcode('0000000000000');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when multiple matches are found', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          matchingCategories: [
+            { category: { id: 'cat-1' } },
+            { category: { id: 'cat-2' } },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.matchCategoryByBarcode('5901234123457');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when the API call fails', async () => {
+      httpClient.get.mockRejectedValue(new Error('API error'));
+
+      const result = await adapter.matchCategoryByBarcode('5901234123457');
+
+      expect(result).toBeNull();
+    });
+  });
 });
-
-
 

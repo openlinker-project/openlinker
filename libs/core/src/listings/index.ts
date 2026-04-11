@@ -9,9 +9,18 @@ export {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 export { OfferLinkingService } from './application/services/offer-linking.service';
 export { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
+export { CategoryResolutionService } from './application/services/category-resolution.service';
+export type { ICategoryResolutionService } from './application/interfaces/category-resolution.service.interface';
+export type {
+  CategoryResolutionInput,
+  CategoryResolutionResult,
+  CategoryResolutionMethod,
+} from './application/types/category-resolution.types';
+export { CategoryResolutionMethodValues } from './application/types/category-resolution.types';
 export type {
   IOfferMappingSyncService,
   OfferMappingSyncOptions,

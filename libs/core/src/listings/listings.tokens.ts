@@ -7,3 +7,4 @@
 export const OFFER_LINKING_SERVICE_TOKEN = Symbol('OfferLinkingService');
 export const OFFER_MAPPING_SYNC_SERVICE_TOKEN = Symbol('OfferMappingSyncService');
 export const OFFER_MAPPING_REPOSITORY_TOKEN = Symbol('OfferMappingRepositoryPort');
+export const CATEGORY_RESOLUTION_SERVICE_TOKEN = Symbol('ICategoryResolutionService');

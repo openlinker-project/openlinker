@@ -241,5 +241,17 @@ export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
   };
 }
 
-
+/**
+ * Response from Allegro GET /sale/matching-categories
+ *
+ * Returns categories that match a given product identified by barcode (EAN/GTIN).
+ */
+export interface AllegroMatchingCategoriesResponse {
+  matchingCategories: Array<{
+    category: {
+      id: string;
+      name?: string;
+    };
+  }>;
+}
 

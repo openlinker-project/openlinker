@@ -71,5 +71,13 @@ export interface MarketplacePort {
    * Fetch marketplace categories (optional).
    */
   fetchCategories?(parentId?: string): Promise<MarketplaceCategory[]>;
+
+  /**
+   * Match a marketplace category by product barcode (EAN/GTIN) — optional capability.
+   *
+   * Returns the category ID if the marketplace can auto-detect a category for the
+   * given barcode, or null if no match / ambiguous.
+   */
+  matchCategoryByBarcode?(barcode: string): Promise<string | null>;
 }
 
