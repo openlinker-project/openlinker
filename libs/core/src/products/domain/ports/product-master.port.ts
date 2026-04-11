@@ -176,6 +176,14 @@ export interface ProductMasterPort {
    * @returns Array of matching products with internal IDs
    */
   searchProducts(query: string, filters?: ProductFilters): Promise<Product[]>;
+
+  /**
+   * List all categories from the product catalog (optional).
+   *
+   * Returns the full category tree for the connection.
+   * Implementations that do not support this should omit the method.
+   */
+  getCategories?(): Promise<Category[]>;
 }
 
 

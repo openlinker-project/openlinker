@@ -42,6 +42,10 @@ describe('OrderSyncService', () => {
       getPaymentMappings: jest.fn().mockResolvedValue([]),
       upsertPaymentMappings: jest.fn().mockResolvedValue([]),
       resolveStatusMapping: jest.fn().mockResolvedValue(null),
+      getCategoryMappings: jest.fn(),
+      upsertCategoryMapping: jest.fn(),
+      deleteCategoryMapping: jest.fn(),
+      resolveAllegroCategory: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;
 
     // Set environment variable

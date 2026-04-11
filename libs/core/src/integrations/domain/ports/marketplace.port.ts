@@ -23,6 +23,7 @@ import {
   UpdateOfferQuantitiesBatchResult,
 } from '../types/marketplace-quantity-update.types';
 import type { UpdateOfferFieldsCommand } from '../types/marketplace-offer-update.types';
+import type { MarketplaceCategory } from '../types/marketplace-category.types';
 
 export interface MarketplacePort {
   /**
@@ -65,5 +66,10 @@ export interface MarketplacePort {
    * Partial update semantics: only fields present in cmd.fields are sent to the marketplace.
    */
   updateOfferFields?(cmd: UpdateOfferFieldsCommand): Promise<void>;
+
+  /**
+   * Fetch marketplace categories (optional).
+   */
+  fetchCategories?(parentId?: string): Promise<MarketplaceCategory[]>;
 }
 

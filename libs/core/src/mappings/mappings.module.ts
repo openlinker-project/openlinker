@@ -13,15 +13,18 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { StatusMappingOrmEntity } from './infrastructure/persistence/entities/status-mapping.orm-entity';
 import { CarrierMappingOrmEntity } from './infrastructure/persistence/entities/carrier-mapping.orm-entity';
 import { PaymentMappingOrmEntity } from './infrastructure/persistence/entities/payment-mapping.orm-entity';
+import { CategoryMappingOrmEntity } from './infrastructure/persistence/entities/category-mapping.orm-entity';
 import { StatusMappingRepository } from './infrastructure/persistence/repositories/status-mapping.repository';
 import { CarrierMappingRepository } from './infrastructure/persistence/repositories/carrier-mapping.repository';
 import { PaymentMappingRepository } from './infrastructure/persistence/repositories/payment-mapping.repository';
+import { CategoryMappingRepository } from './infrastructure/persistence/repositories/category-mapping.repository';
 import { MappingConfigService } from './application/services/mapping-config.service';
 import {
   MAPPING_CONFIG_SERVICE_TOKEN,
   STATUS_MAPPING_REPOSITORY_TOKEN,
   CARRIER_MAPPING_REPOSITORY_TOKEN,
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
+  CATEGORY_MAPPING_REPOSITORY_TOKEN,
 } from './mappings.tokens';
 
 @Module({
@@ -30,12 +33,14 @@ import {
       StatusMappingOrmEntity,
       CarrierMappingOrmEntity,
       PaymentMappingOrmEntity,
+      CategoryMappingOrmEntity,
     ]),
   ],
   providers: [
     StatusMappingRepository,
     CarrierMappingRepository,
     PaymentMappingRepository,
+    CategoryMappingRepository,
     MappingConfigService,
     {
       provide: STATUS_MAPPING_REPOSITORY_TOKEN,
@@ -48,6 +53,10 @@ import {
     {
       provide: PAYMENT_MAPPING_REPOSITORY_TOKEN,
       useExisting: PaymentMappingRepository,
+    },
+    {
+      provide: CATEGORY_MAPPING_REPOSITORY_TOKEN,
+      useExisting: CategoryMappingRepository,
     },
     {
       provide: MAPPING_CONFIG_SERVICE_TOKEN,

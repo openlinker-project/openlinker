@@ -9,11 +9,12 @@
 
 import { Module } from '@nestjs/common';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
+import { CategoriesModule } from '../categories/categories.module';
 import { MappingsController } from './http/mappings.controller';
 import { MappingOptionsController } from './http/mapping-options.controller';
 
 @Module({
-  imports: [CoreMappingsModule],
+  imports: [CoreMappingsModule, CategoriesModule],
   controllers: [MappingsController, MappingOptionsController],
 })
 export class MappingsApiModule {}

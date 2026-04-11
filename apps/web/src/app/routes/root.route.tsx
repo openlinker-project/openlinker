@@ -5,6 +5,7 @@ import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';
 import { automationsRoute } from './automations.route';
 import { connectionDetailRoute } from './connection-detail.route';
+import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
 import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
@@ -37,6 +38,7 @@ export const rootRoute: RouteObject = {
     newConnectionRoute,
     allegroSetupRoute,
     connectionDetailRoute,
+    connectionCategoryMappingsRoute,
     connectionMappingsRoute,
     editConnectionRoute,
     allegroCallbackRoute,

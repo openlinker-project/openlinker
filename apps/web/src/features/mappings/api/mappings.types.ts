@@ -48,6 +48,30 @@ export interface UpsertPaymentMappingsPayload {
   items: { allegroPaymentProvider: string; prestashopPaymentModule: string }[];
 }
 
+// ── Category mapping types ────────────────────────────────────────────────
+
+export interface AllegroCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+  leaf: boolean;
+}
+
+export interface CategoryMapping {
+  id: string;
+  connectionId: string;
+  prestashopCategoryId: string;
+  allegroCategoryId: string;
+  allegroCategoryName: string;
+  allegroCategoryPath: string | null;
+}
+
+export interface UpsertCategoryMappingPayload {
+  allegroCategoryId: string;
+  allegroCategoryName: string;
+  allegroCategoryPath?: string;
+}
+
 // ── Mapping options bundle ────────────────────────────────────────────────
 
 export interface MappingOptions {

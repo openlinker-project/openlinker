@@ -50,6 +50,7 @@ export {
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/marketplace-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/marketplace-offer-update.types';
+export type { MarketplaceCategory } from './domain/types/marketplace-category.types';
 
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';

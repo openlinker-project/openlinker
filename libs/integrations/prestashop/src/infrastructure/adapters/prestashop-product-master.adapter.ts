@@ -312,6 +312,46 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     return Promise.reject(error);
   }
 
+  async getCategories(): Promise<Category[]> {
+    this.logger.debug(`Fetching all categories (connection: ${this.connection.id})`);
+
+    const raw = await this.httpClient.listResources<Record<string, unknown>>('categories');
+
+    const langId = this.getLangId();
+
+    return raw.map((cat) => {
+      const id = String(cat['id'] ?? '');
+      const nameField = cat['name'];
+      let name = `Category ${id}`;
+      if (typeof nameField === 'string') {
+        name = nameField;
+      } else if (Array.isArray(nameField)) {
+        const lang = (nameField as Array<{ language?: Array<{ attrs?: { id: string }; value: string }> }>)
+          .flatMap((n) => n.language ?? [])
+          .find((l) => String(l.attrs?.id) === String(langId));
+        if (lang) {
+          name = lang.value;
+        }
+      }
+
+      const parentId = String(cat['id_parent'] ?? '0');
+      const depth = Number(cat['level_depth'] ?? 0);
+
+      return {
+        id,
+        name,
+        parentId: parentId === '0' ? undefined : parentId,
+        depth,
+        active: String(cat['active']) === '1',
+      };
+    }).filter((c) => Number(c.depth) > 0); // Exclude root node
+  }
+
+  private getLangId(): number {
+    const config = this.connection.config as Record<string, unknown> | undefined;
+    return Number(config?.['languageId'] ?? 1);
+  }
+
   async searchProducts(_query: string, _filters?: ProductFilters): Promise<Product[]> {
     // For MVP, we can use getProducts with query filter
     return this.getProducts({

@@ -8,10 +8,13 @@
  * @module apps/api/src/mappings/http
  */
 
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, Inject } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { MappingOptionResponseDto } from './dto/mapping-option-response.dto';
+import { AllegroCategoryResponseDto } from './dto/allegro-category-response.dto';
+import { ICategoriesCacheService } from '../../categories/categories-cache.service.interface';
+import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../categories/categories.tokens';
 
 /**
  * Well-known Allegro order/payment statuses.
@@ -104,6 +107,11 @@ const PRESTASHOP_PAYMENT_MODULES: MappingOptionResponseDto[] = [
 @ApiTags('mappings')
 @Controller('connections/:connectionId')
 export class MappingOptionsController {
+  constructor(
+    @Inject(CATEGORIES_CACHE_SERVICE_TOKEN)
+    private readonly categoriesCacheService: ICategoriesCacheService,
+  ) {}
+
   // ── Allegro options ───────────────────────────────────────────────────────
 
   @Get('allegro/order-statuses')
@@ -172,5 +180,32 @@ export class MappingOptionsController {
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return PRESTASHOP_PAYMENT_MODULES;
+  }
+
+  // ── PrestaShop categories ────────────────────────────────────────────────
+
+  @Get('prestashop/categories')
+  @ApiOperation({ summary: 'List PrestaShop categories for a connection (live fetch)' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiResponse({ status: 200, description: 'Array of PrestaShop categories' })
+  async getPrestashopCategories(
+    @Param('connectionId') connectionId: string,
+  ): Promise<unknown[]> {
+    return this.categoriesCacheService.getPrestashopCategories(connectionId);
+  }
+
+  // ── Allegro categories ──────────────────────────────────────────────────
+
+  @Get('allegro/categories')
+  @ApiOperation({ summary: 'Browse Allegro category tree (cached, 24h TTL)' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiQuery({ name: 'parentId', required: false, type: String, description: 'Parent category ID (omit for root)' })
+  @ApiResponse({ status: 200, type: [AllegroCategoryResponseDto] })
+  async getAllegroCategories(
+    @Param('connectionId') connectionId: string,
+    @Query('parentId') parentId?: string,
+  ): Promise<AllegroCategoryResponseDto[]> {
+    const categories = await this.categoriesCacheService.getAllegroCategories(connectionId, parentId);
+    return categories.map((c) => AllegroCategoryResponseDto.fromDomain(c));
   }
 }

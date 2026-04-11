@@ -10,10 +10,13 @@ import type {
   StatusMapping,
   CarrierMapping,
   PaymentMapping,
+  CategoryMapping,
+  AllegroCategory,
   MappingOption,
   UpsertStatusMappingsPayload,
   UpsertCarrierMappingsPayload,
   UpsertPaymentMappingsPayload,
+  UpsertCategoryMappingPayload,
 } from './mappings.types';
 
 export interface MappingsApi {
@@ -32,6 +35,11 @@ export interface MappingsApi {
   getPrestashopOrderStatuses: (connectionId: string) => Promise<MappingOption[]>;
   getPrestashopCarriers: (connectionId: string) => Promise<MappingOption[]>;
   getPrestashopPaymentModules: (connectionId: string) => Promise<MappingOption[]>;
+
+  getCategoryMappings: (connectionId: string) => Promise<CategoryMapping[]>;
+  upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
+  deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
+  getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
 }
 
 interface ApiRequest {
@@ -84,5 +92,24 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
 
     getPrestashopPaymentModules: (connectionId) =>
       request<MappingOption[]>(`/connections/${connectionId}/prestashop/payment-modules`),
+
+    getCategoryMappings: (connectionId) =>
+      request<CategoryMapping[]>(`/connections/${connectionId}/mappings/categories`),
+
+    upsertCategoryMapping: (connectionId, prestashopCategoryId, payload) =>
+      request<CategoryMapping>(`/connections/${connectionId}/mappings/categories/${prestashopCategoryId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    deleteCategoryMapping: (connectionId, prestashopCategoryId) =>
+      request<void>(`/connections/${connectionId}/mappings/categories/${prestashopCategoryId}`, {
+        method: 'DELETE',
+      }),
+
+    getAllegroCategories: (connectionId, parentId?) => {
+      const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
+      return request<AllegroCategory[]>(`/connections/${connectionId}/allegro/categories${qs}`);
+    },
   };
 }
