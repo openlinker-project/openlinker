@@ -55,6 +55,7 @@ describe('SyncController', () => {
     markFailed: jest.fn(),
     markDead: jest.fn(),
     requeueStuckJobs: jest.fn(),
+    findRecentByConnectionId: jest.fn(),
   };
 
   beforeEach(async () => {

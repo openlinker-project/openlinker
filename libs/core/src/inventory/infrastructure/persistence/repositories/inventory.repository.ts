@@ -20,6 +20,7 @@ import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import type { InventoryFilters, InventoryPagination, PaginatedInventoryItems } from '../../../domain/types/inventory.types';
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
@@ -58,6 +59,40 @@ export class InventoryRepository implements InventoryRepositoryPort {
     }
 
     return this.toDomain(entity);
+  }
+
+  async findById(id: string): Promise<InventoryItem | null> {
+    const entity = await this.repository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  async findMany(
+    filters: InventoryFilters,
+    pagination: InventoryPagination,
+  ): Promise<PaginatedInventoryItems> {
+    const where: Record<string, unknown> = {};
+
+    if (filters.productId) {
+      where.productId = filters.productId;
+    }
+    if (filters.productVariantId) {
+      where.productVariantId = filters.productVariantId;
+    }
+    if (filters.locationId) {
+      where.locationId = filters.locationId;
+    }
+
+    const [entities, total] = await this.repository.findAndCount({
+      where,
+      order: { updatedAt: 'DESC' },
+      take: pagination.limit,
+      skip: pagination.offset,
+    });
+
+    return {
+      items: entities.map((e) => this.toDomain(e)),
+      total,
+    };
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {

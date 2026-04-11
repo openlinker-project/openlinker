@@ -34,7 +34,12 @@ export { IMasterInventorySyncService, MasterInventorySyncResult } from './applic
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 
 // Types
-export { InventoryAdjustment } from './domain/types/inventory.types';
+export {
+  InventoryAdjustment,
+  InventoryFilters,
+  InventoryPagination,
+  PaginatedInventoryItems,
+} from './domain/types/inventory.types';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)
 export { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';

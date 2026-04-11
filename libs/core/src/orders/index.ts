@@ -21,6 +21,13 @@ export {
   IncomingOrderTotals,
   IncomingOrderAddress,
 } from './domain/types/incoming-order.types';
+export {
+  OrderRecordFilters,
+  OrderRecordPagination,
+  PaginatedOrderRecords,
+  OrderSyncStatusFilter,
+  OrderSyncStatusFilterValues,
+} from './domain/types/order-record.types';
 
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
