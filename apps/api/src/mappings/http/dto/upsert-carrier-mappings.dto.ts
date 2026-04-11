@@ -7,12 +7,12 @@
 import { IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { CarrierMappingItemDto } from './carrier-mapping-item.dto';
+import { CarrierMappingInputDto } from './carrier-mapping-input.dto';
 
 export class UpsertCarrierMappingsDto {
-  @ApiProperty({ type: [CarrierMappingItemDto] })
+  @ApiProperty({ type: [CarrierMappingInputDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CarrierMappingItemDto)
-  items!: CarrierMappingItemDto[];
+  @Type(() => CarrierMappingInputDto)
+  items!: CarrierMappingInputDto[];
 }

@@ -25,10 +25,10 @@ export class PaymentMappingOrmEntity {
   @Column({ type: 'uuid', name: 'connection_id' })
   connectionId!: string;
 
-  @Column({ type: 'varchar', name: 'allegro_payment_provider' })
+  @Column({ type: 'varchar', length: 100, name: 'allegro_payment_provider' })
   allegroPaymentProvider!: string;
 
-  @Column({ type: 'varchar', name: 'prestashop_payment_module' })
+  @Column({ type: 'varchar', length: 100, name: 'prestashop_payment_module' })
   prestashopPaymentModule!: string;
 
   @CreateDateColumn({ name: 'created_at' })

@@ -111,6 +111,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getAllegroOrderStatuses(
+    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return ALLEGRO_ORDER_STATUSES;
@@ -121,6 +122,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getAllegroDeliveryMethods(
+    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return ALLEGRO_DELIVERY_METHODS;
@@ -131,6 +133,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getAllegroPaymentProviders(
+    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return ALLEGRO_PAYMENT_PROVIDERS;
@@ -143,6 +146,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getPrestashopOrderStatuses(
+    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return PRESTASHOP_ORDER_STATUSES;
@@ -153,6 +157,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getPrestashopCarriers(
+    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return PRESTASHOP_CARRIERS;
@@ -163,6 +168,7 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
   getPrestashopPaymentModules(
+    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
     @Param('connectionId') _connectionId: string,
   ): MappingOptionResponseDto[] {
     return PRESTASHOP_PAYMENT_MODULES;

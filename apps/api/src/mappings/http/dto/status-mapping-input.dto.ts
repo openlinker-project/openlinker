@@ -1,5 +1,5 @@
 /**
- * Status Mapping Item DTO
+ * Status Mapping Input DTO
  *
  * Single status mapping item used in upsert requests.
  *
@@ -9,7 +9,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class StatusMappingItemDto {
+export class StatusMappingInputDto {
   @ApiProperty({ description: 'Allegro order status value', example: 'READY_FOR_PROCESSING' })
   @IsString()
   @IsNotEmpty()

@@ -1,5 +1,7 @@
 /**
- * Carrier Mapping Item DTO
+ * Carrier Mapping Input DTO
+ *
+ * Single carrier mapping item used in upsert requests.
  *
  * @module apps/api/src/mappings/http/dto
  */
@@ -7,7 +9,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class CarrierMappingItemDto {
+export class CarrierMappingInputDto {
   @ApiProperty({ description: 'Allegro delivery method ID', example: 'INPOST_PACZKOMAT' })
   @IsString()
   @IsNotEmpty()

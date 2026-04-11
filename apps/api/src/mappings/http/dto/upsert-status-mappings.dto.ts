@@ -10,12 +10,12 @@
 import { IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { StatusMappingItemDto } from './status-mapping-item.dto';
+import { StatusMappingInputDto } from './status-mapping-input.dto';
 
 export class UpsertStatusMappingsDto {
-  @ApiProperty({ type: [StatusMappingItemDto] })
+  @ApiProperty({ type: [StatusMappingInputDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => StatusMappingItemDto)
-  items!: StatusMappingItemDto[];
+  @Type(() => StatusMappingInputDto)
+  items!: StatusMappingInputDto[];
 }

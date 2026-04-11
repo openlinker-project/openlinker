@@ -25,10 +25,10 @@ export class CarrierMappingOrmEntity {
   @Column({ type: 'uuid', name: 'connection_id' })
   connectionId!: string;
 
-  @Column({ type: 'varchar', name: 'allegro_delivery_method_id' })
+  @Column({ type: 'varchar', length: 100, name: 'allegro_delivery_method_id' })
   allegroDeliveryMethodId!: string;
 
-  @Column({ type: 'varchar', name: 'prestashop_carrier_id' })
+  @Column({ type: 'varchar', length: 20, name: 'prestashop_carrier_id' })
   prestashopCarrierId!: string;
 
   @CreateDateColumn({ name: 'created_at' })

@@ -27,7 +27,9 @@ export class AddConnectionMappingTables1778000000000 implements MigrationInterfa
         "updated_at"            timestamptz         NOT NULL DEFAULT now(),
         CONSTRAINT "PK_connection_status_mappings_id" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_connection_status_mappings_conn_status"
-          UNIQUE ("connection_id", "allegro_status")
+          UNIQUE ("connection_id", "allegro_status"),
+        CONSTRAINT "FK_connection_status_mappings_connection"
+          FOREIGN KEY ("connection_id") REFERENCES "connections" ("id") ON DELETE CASCADE
       )
     `);
 
@@ -41,7 +43,9 @@ export class AddConnectionMappingTables1778000000000 implements MigrationInterfa
         "updated_at"                  timestamptz         NOT NULL DEFAULT now(),
         CONSTRAINT "PK_connection_carrier_mappings_id" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_connection_carrier_mappings_conn_method"
-          UNIQUE ("connection_id", "allegro_delivery_method_id")
+          UNIQUE ("connection_id", "allegro_delivery_method_id"),
+        CONSTRAINT "FK_connection_carrier_mappings_connection"
+          FOREIGN KEY ("connection_id") REFERENCES "connections" ("id") ON DELETE CASCADE
       )
     `);
 
@@ -55,7 +59,9 @@ export class AddConnectionMappingTables1778000000000 implements MigrationInterfa
         "updated_at"                  timestamptz         NOT NULL DEFAULT now(),
         CONSTRAINT "PK_connection_payment_mappings_id" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_connection_payment_mappings_conn_provider"
-          UNIQUE ("connection_id", "allegro_payment_provider")
+          UNIQUE ("connection_id", "allegro_payment_provider"),
+        CONSTRAINT "FK_connection_payment_mappings_connection"
+          FOREIGN KEY ("connection_id") REFERENCES "connections" ("id") ON DELETE CASCADE
       )
     `);
   }

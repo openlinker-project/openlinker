@@ -25,10 +25,10 @@ export class StatusMappingOrmEntity {
   @Column({ type: 'uuid', name: 'connection_id' })
   connectionId!: string;
 
-  @Column({ type: 'varchar', name: 'allegro_status' })
+  @Column({ type: 'varchar', length: 100, name: 'allegro_status' })
   allegroStatus!: string;
 
-  @Column({ type: 'varchar', name: 'prestashop_status_id' })
+  @Column({ type: 'varchar', length: 20, name: 'prestashop_status_id' })
   prestashopStatusId!: string;
 
   @CreateDateColumn({ name: 'created_at' })

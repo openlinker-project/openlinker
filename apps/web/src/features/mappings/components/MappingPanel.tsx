@@ -8,7 +8,7 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import { useState, type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
@@ -56,6 +56,7 @@ export function MappingPanel({
   const [localRows, setLocalRows] = useState<MappingRow[]>(savedRows);
   const [pendingSource, setPendingSource] = useState('');
   const [pendingTarget, setPendingTarget] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Track dirty state by comparing local rows to saved rows
   const isDirty =
@@ -67,16 +68,17 @@ export function MappingPanel({
     );
 
   // Sync local rows when saved rows update (after a successful save)
-  const [prevSaved, setPrevSaved] = useState(savedRows);
-  if (prevSaved !== savedRows) {
-    setPrevSaved(savedRows);
+  useEffect(() => {
     setLocalRows(savedRows);
-  }
+  }, [savedRows]);
 
   function handleAddRow(): void {
     if (!pendingSource || !pendingTarget) return;
-    // Prevent duplicate source values
-    if (localRows.some((r) => r.sourceValue === pendingSource)) return;
+    if (localRows.some((r) => r.sourceValue === pendingSource)) {
+      setAddError('A mapping for this source value already exists.');
+      return;
+    }
+    setAddError(null);
     setLocalRows((prev) => [...prev, { sourceValue: pendingSource, targetValue: pendingTarget }]);
     setPendingSource('');
     setPendingTarget('');
@@ -187,6 +189,12 @@ export function MappingPanel({
           Add
         </Button>
       </div>
+
+      {addError && (
+        <p className="error-message" role="alert" style={{ marginTop: '0.25rem' }}>
+          {addError}
+        </p>
+      )}
 
       {saveError && (
         <p className="error-message" role="alert" style={{ marginTop: '0.5rem' }}>
