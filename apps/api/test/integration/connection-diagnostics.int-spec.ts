@@ -49,7 +49,7 @@ describe('Connection Diagnostics API Integration', () => {
       expect(Array.isArray(response.body.recentJobs)).toBe(true);
     });
 
-    it('should include recent sync jobs in diagnostics', async () => {
+    it('should include recent sync jobs in diagnostics with correct shape', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
@@ -74,6 +74,14 @@ describe('Connection Diagnostics API Integration', () => {
         .expect(200);
 
       expect(response.body.recentJobs).toHaveLength(2);
+
+      // Verify the shape of each job entry matches the FE contract
+      const job = response.body.recentJobs[0];
+      expect(job.id).toBeDefined();
+      expect(job.jobType).toBeDefined();
+      expect(job.status).toBeDefined();
+      expect(job.connectionId).toBe(connection.id);
+      expect(job.createdAt).toBeDefined();
     });
 
     it('should return 404 for non-existent connection', async () => {

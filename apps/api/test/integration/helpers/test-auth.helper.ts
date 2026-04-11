@@ -13,6 +13,11 @@ import request from 'supertest';
  * Seed a user and return a valid Bearer token
  *
  * Creates a user in the database and logs in to obtain a JWT.
+ *
+ * Note: username must be unique per test. Because resetTestHarness() truncates
+ * the users table between tests, calling this once per test with the default
+ * username is safe. If called multiple times in a single test, use distinct
+ * usernames to avoid a unique-constraint violation.
  */
 export async function loginAsAdmin(
   http: ReturnType<typeof request>,

@@ -6,9 +6,7 @@
  * @module apps/api/test/integration/fixtures
  */
 import { DataSource } from 'typeorm';
-import { OrderRecordOrmEntity } from '@openlinker/core/orders/infrastructure/persistence/entities/order-record.orm-entity';
-
-let orderCounter = 0;
+import { OrderRecordOrmEntity } from '@openlinker/core/orders';
 
 /**
  * Seed an order_records row directly in the database.
@@ -17,11 +15,11 @@ export async function createTestOrderRecord(
   dataSource: DataSource,
   overrides?: Partial<OrderRecordOrmEntity>,
 ): Promise<OrderRecordOrmEntity> {
-  orderCounter++;
+  const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   const repo = dataSource.getRepository(OrderRecordOrmEntity);
 
   const entity = repo.create({
-    internalOrderId: `ol_order_fixture_${orderCounter}`,
+    internalOrderId: `ol_order_fixture_${suffix}`,
     customerId: null,
     sourceConnectionId: '00000000-0000-0000-0000-000000000001',
     sourceEventId: null,

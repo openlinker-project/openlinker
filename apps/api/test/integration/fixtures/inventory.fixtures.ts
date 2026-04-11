@@ -10,8 +10,6 @@ import { DataSource } from 'typeorm';
 import { ProductOrmEntity } from '@openlinker/core/products';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory';
 
-let productCounter = 0;
-
 /**
  * Seed a product + inventory item row.
  *
@@ -21,20 +19,18 @@ export async function createTestInventoryItem(
   dataSource: DataSource,
   overrides?: Partial<InventoryItemOrmEntity>,
 ): Promise<InventoryItemOrmEntity> {
-  productCounter++;
-  const productId = `ol_product_fixture_${productCounter}`;
+  const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const productId = `ol_product_fixture_${suffix}`;
 
   // Seed parent product (inventory_items has FK to products)
   const productRepo = dataSource.getRepository(ProductOrmEntity);
-  if (!(await productRepo.findOne({ where: { id: productId } }))) {
-    await productRepo.save(
-      productRepo.create({ id: productId, name: `Test Product ${productCounter}`, sku: null, price: null }),
-    );
-  }
+  await productRepo.save(
+    productRepo.create({ id: productId, name: `Test Product ${suffix}`, sku: null, price: null }),
+  );
 
   const repo = dataSource.getRepository(InventoryItemOrmEntity);
   const entity = repo.create({
-    id: `ol_inventory_fixture_${productCounter}`,
+    id: `ol_inventory_fixture_${suffix}`,
     productId,
     productVariantId: null,
     availableQuantity: 10,
