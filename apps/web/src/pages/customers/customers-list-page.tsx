@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -15,17 +15,17 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
   {
     id: 'internalCustomerId',
     header: 'Customer ID',
-    cell: (c) => <span className="mono-text">{c.internalCustomerId}</span>,
+    cell: (c): ReactNode => <span className="mono-text">{c.internalCustomerId}</span>,
   },
   {
     id: 'emailHash',
     header: 'Email Hash',
-    cell: (c) => <span className="mono-text">{c.emailHash}</span>,
+    cell: (c): ReactNode => <span className="mono-text">{c.emailHash}</span>,
   },
   {
     id: 'name',
     header: 'Name',
-    cell: (c) => {
+    cell: (c): ReactNode => {
       const name = [c.firstName, c.lastName].filter(Boolean).join(' ');
       return name ? <span>{name}</span> : <span className="text-muted">—</span>;
     },
@@ -33,7 +33,7 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
   {
     id: 'lastSourceConnectionId',
     header: 'Last Source',
-    cell: (c) =>
+    cell: (c): ReactNode =>
       c.lastSourceConnectionId ? (
         <span className="mono-text">{c.lastSourceConnectionId}</span>
       ) : (
@@ -43,12 +43,12 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
   {
     id: 'lastSeenAt',
     header: 'Last Seen',
-    cell: (c) => new Date(c.lastSeenAt).toLocaleDateString(),
+    cell: (c): ReactNode => new Date(c.lastSeenAt).toLocaleDateString(),
   },
   {
     id: 'detail',
     header: '',
-    cell: (c) => (
+    cell: (c): ReactNode => (
       <Link to={c.internalCustomerId} className="button button--ghost button--compact">
         View
       </Link>

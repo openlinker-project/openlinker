@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -15,37 +15,37 @@ const COLUMNS: DataTableColumn<OfferMapping>[] = [
   {
     id: 'externalId',
     header: 'External ID',
-    cell: (m) => <span className="mono-text">{m.externalId}</span>,
+    cell: (m): ReactNode => <span className="mono-text">{m.externalId}</span>,
   },
   {
     id: 'internalId',
     header: 'Internal ID',
-    cell: (m) => <span className="mono-text">{m.internalId}</span>,
+    cell: (m): ReactNode => <span className="mono-text">{m.internalId}</span>,
   },
   {
     id: 'platformType',
     header: 'Platform',
-    cell: (m) => <span className="mono-text">{m.platformType}</span>,
+    cell: (m): ReactNode => <span className="mono-text">{m.platformType}</span>,
   },
   {
     id: 'entityType',
     header: 'Entity Type',
-    cell: (m) => <span className="mono-text">{m.entityType}</span>,
+    cell: (m): ReactNode => <span className="mono-text">{m.entityType}</span>,
   },
   {
     id: 'connectionId',
     header: 'Connection',
-    cell: (m) => <span className="mono-text">{m.connectionId}</span>,
+    cell: (m): ReactNode => <span className="mono-text">{m.connectionId}</span>,
   },
   {
     id: 'createdAt',
     header: 'Created',
-    cell: (m) => new Date(m.createdAt).toLocaleDateString(),
+    cell: (m): ReactNode => new Date(m.createdAt).toLocaleDateString(),
   },
   {
     id: 'detail',
     header: '',
-    cell: (m) => (
+    cell: (m): ReactNode => (
       <Link to={m.id} className="button button--ghost button--compact">
         View
       </Link>

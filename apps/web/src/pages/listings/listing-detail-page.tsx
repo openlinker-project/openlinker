@@ -81,7 +81,7 @@ export function ListingDetailPage(): ReactElement {
       {mapping.context !== null ? (
         <section className="detail-section">
           <h2 className="detail-section__title">Context</h2>
-          <pre className="mono-text" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <pre className="raw-payload">
             {JSON.stringify(mapping.context, null, 2)}
           </pre>
         </section>
