@@ -1,14 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
-import { ModulePlaceholderPage } from '../../pages/placeholders/module-placeholder-page';
+import { ProductsListPage } from '../../pages/products/products-list-page';
+import { ProductDetailPage } from '../../pages/products/product-detail-page';
 
 export const productsRoute: RouteObject = {
   path: 'products',
-  element: (
-    <ModulePlaceholderPage
-      eyebrow="Operations"
-      title="Products workspace"
-      moduleName="Products"
-      description="Product catalog controls, mapping review, and publishing diagnostics will be added here in later frontend slices."
-    />
-  ),
+  children: [
+    { index: true, element: <ProductsListPage /> },
+    { path: ':id', element: <ProductDetailPage /> },
+  ],
 };
