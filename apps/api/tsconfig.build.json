@@ -1,16 +1,22 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src",
+    "rootDir": "../../", // widened to monorepo root — path aliases resolve lib .ts sources outside apps/api/src (matches tsconfig.type-check.json pattern)
     "outDir": "./dist",
     "noEmit": false,
     "emitDeclarationOnly": false,
     "incremental": false,
     "paths": {
-      "@openlinker/api/*": ["./src/*"]
+      "@openlinker/api/*": ["./src/*"],
+      "@openlinker/core": ["../../libs/core/src/index.ts"],
+      "@openlinker/core/mappings": ["../../libs/core/src/mappings/index.ts"],
+      "@openlinker/core/*": ["../../libs/core/src/*"],
+      "@openlinker/shared": ["../../libs/shared/src/index.ts"],
+      "@openlinker/shared/*": ["../../libs/shared/src/*"],
+      "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
+      "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"]
     }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "test", "**/*.spec.ts", "**/*.test.ts"]
 }
-

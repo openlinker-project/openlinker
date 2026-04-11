@@ -16,4 +16,5 @@ export * from './inventory';
 export * from './sync';
 export * from './listings';
 export * from './users';
+export * from './mappings';
 

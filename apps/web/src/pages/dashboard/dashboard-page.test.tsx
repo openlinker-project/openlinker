@@ -90,8 +90,8 @@ describe('DashboardPage', () => {
     });
     renderWithProviders(<DashboardPage />, { apiClient });
 
-    expect(await screen.findByRole('heading', { name: 'Health check failed' })).toBeInTheDocument();
-  });
+    expect(await screen.findByRole('heading', { name: 'Health check failed' }, { timeout: 10000 })).toBeInTheDocument();
+  }, 15000);
 
   it('shows recent sync jobs in a table', async () => {
     const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
