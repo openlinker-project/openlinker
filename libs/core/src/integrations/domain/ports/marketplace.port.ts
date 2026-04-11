@@ -22,6 +22,7 @@ import {
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
 } from '../types/marketplace-quantity-update.types';
+import type { UpdateOfferFieldsCommand } from '../types/marketplace-offer-update.types';
 
 export interface MarketplacePort {
   /**
@@ -57,5 +58,12 @@ export interface MarketplacePort {
   updateOfferQuantitiesBatch?(
     cmd: UpdateOfferQuantitiesBatchCommand,
   ): Promise<UpdateOfferQuantitiesBatchResult>;
+
+  /**
+   * Update offer fields (price, title, description) — optional capability.
+   *
+   * Partial update semantics: only fields present in cmd.fields are sent to the marketplace.
+   */
+  updateOfferFields?(cmd: UpdateOfferFieldsCommand): Promise<void>;
 }
 

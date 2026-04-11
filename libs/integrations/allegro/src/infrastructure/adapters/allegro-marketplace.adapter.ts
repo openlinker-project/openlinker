@@ -16,6 +16,7 @@ import {
   MarketplaceOfferFeedInput,
   MarketplaceOfferFeedOutput,
   UpdateOfferQuantityCommand,
+  UpdateOfferFieldsCommand,
 } from '@openlinker/core/integrations';
 import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -30,6 +31,7 @@ import {
   AllegroProductOffer,
   AllegroOffersResponse,
   AllegroOfferEventsResponse,
+  AllegroOfferFieldsPatchBody,
 } from '../../domain/types/allegro-api.types';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
@@ -559,6 +561,69 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
         const status = allegroStatus as string;
         this.logger.warn(`Unknown Allegro command status: ${status}, defaulting to 'queued'`);
         return 'queued';
+    }
+  }
+
+  /**
+   * Update offer fields (price, title, description) via Allegro PATCH.
+   *
+   * Partial update semantics: only fields present in cmd.fields are included
+   * in the Allegro request payload. Uses PATCH /sale/product-offers/{offerId}.
+   */
+  async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
+    this.logger.debug(
+      `Updating Allegro offer fields: offerId=${cmd.externalOfferId} (connection: ${this.connectionId}, fields=${Object.keys(cmd.fields).join(',')})`,
+    );
+
+    // Build partial PATCH payload — only include keys that are present
+    const body: AllegroOfferFieldsPatchBody = {};
+
+    if (cmd.fields.price !== undefined) {
+      body.sellingMode = {
+        price: {
+          amount: cmd.fields.price.amount,
+          currency: cmd.fields.price.currency,
+        },
+      };
+    }
+
+    if (cmd.fields.title !== undefined) {
+      body.name = cmd.fields.title;
+    }
+
+    if (cmd.fields.description !== undefined) {
+      body.description = {
+        sections: cmd.fields.description.sections.map((section) => ({
+          items: section.items.map((item) => ({
+            type: item.type,
+            content: item.content,
+          })),
+        })),
+      };
+    }
+
+    if (Object.keys(body).length === 0) {
+      this.logger.warn(
+        `updateOfferFields called with empty fields for offerId=${cmd.externalOfferId} — skipping`,
+      );
+      return;
+    }
+
+    try {
+      await this.httpClient.patch<void>(
+        `/sale/product-offers/${cmd.externalOfferId}`,
+        body,
+      );
+
+      this.logger.debug(
+        `Allegro offer fields updated: offerId=${cmd.externalOfferId} (connection: ${this.connectionId})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to update Allegro offer fields (offerId: ${cmd.externalOfferId}, connection: ${this.connectionId}): ${(error as Error).message}`,
+        error,
+      );
+      throw error;
     }
   }
 

@@ -49,6 +49,7 @@ export {
   UpdateOfferQuantitiesBatchResult,
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/marketplace-quantity-update.types';
+export type { UpdateOfferFieldsCommand } from './domain/types/marketplace-offer-update.types';
 
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';

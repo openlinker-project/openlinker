@@ -42,6 +42,7 @@ export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
   MarketplaceOfferQuantityUpdatePayloadV1,
+  MarketplaceOfferFieldUpdatePayloadV1,
   MarketplaceOffersSyncPayloadV1,
 } from './domain/types/marketplace-job-payloads.types';
 export {

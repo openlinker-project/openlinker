@@ -29,6 +29,7 @@ describe('AllegroMarketplaceAdapter', () => {
       get: jest.fn(),
       post: jest.fn(),
       put: jest.fn(),
+      patch: jest.fn(),
     } as unknown as jest.Mocked<IAllegroHttpClient>;
 
     identifierMapping = {
@@ -380,6 +381,99 @@ describe('AllegroMarketplaceAdapter', () => {
           idempotencyKey: 'idempotency-key-123',
         }),
       ).rejects.toThrow('Network error');
+    });
+  });
+
+  describe('updateOfferFields', () => {
+    beforeEach(() => {
+      httpClient.patch.mockResolvedValue({ data: undefined, status: 204, headers: {} });
+    });
+
+    it('should send only price when only price field provided', async () => {
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: { price: { amount: '99.99', currency: 'PLN' } },
+      });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(
+        '/sale/product-offers/allegro-offer-1',
+        expect.objectContaining({
+          sellingMode: { price: { amount: '99.99', currency: 'PLN' } },
+        }),
+      );
+      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
+      expect(body).not.toHaveProperty('name');
+      expect(body).not.toHaveProperty('description');
+    });
+
+    it('should send only title when only title field provided', async () => {
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: { title: 'My new title' },
+      });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(
+        '/sale/product-offers/allegro-offer-1',
+        expect.objectContaining({ name: 'My new title' }),
+      );
+      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
+      expect(body).not.toHaveProperty('sellingMode');
+      expect(body).not.toHaveProperty('description');
+    });
+
+    it('should send only description when only description field provided', async () => {
+      const description = {
+        sections: [{ items: [{ type: 'TEXT' as const, content: 'Hello world' }] }],
+      };
+
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: { description },
+      });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(
+        '/sale/product-offers/allegro-offer-1',
+        expect.objectContaining({ description: { sections: [{ items: [{ type: 'TEXT', content: 'Hello world' }] }] } }),
+      );
+      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
+      expect(body).not.toHaveProperty('name');
+      expect(body).not.toHaveProperty('sellingMode');
+    });
+
+    it('should send all fields when all fields provided', async () => {
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: {
+          price: { amount: '49.00', currency: 'PLN' },
+          title: 'Updated title',
+          description: { sections: [{ items: [{ type: 'TEXT', content: 'Desc' }] }] },
+        },
+      });
+
+      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>, unknown])[1];
+      expect(body).toHaveProperty('sellingMode');
+      expect(body).toHaveProperty('name', 'Updated title');
+      expect(body).toHaveProperty('description');
+    });
+
+    it('should not call HTTP when fields object is empty', async () => {
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: {},
+      });
+
+      expect(httpClient.patch).not.toHaveBeenCalled();
+    });
+
+    it('should propagate HTTP errors', async () => {
+      httpClient.patch.mockRejectedValueOnce(new Error('Allegro API error'));
+
+      await expect(
+        adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-1',
+          fields: { title: 'New title' },
+        }),
+      ).rejects.toThrow('Allegro API error');
     });
   });
 });

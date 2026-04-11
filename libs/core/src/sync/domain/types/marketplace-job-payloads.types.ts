@@ -37,6 +37,14 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   idempotencyKey?: string;
 }
 
+export interface MarketplaceOfferFieldUpdatePayloadV1 {
+  schemaVersion: 1;
+  /** Internal OpenLinker offer ID (resolved to external ID by the handler). */
+  offerId: string;
+  fields: import('@openlinker/core/listings').OfferFieldUpdate;
+  idempotencyKey?: string;
+}
+
 export interface MarketplaceOffersSyncPayloadV1 {
   schemaVersion: 1;
   limit: number;

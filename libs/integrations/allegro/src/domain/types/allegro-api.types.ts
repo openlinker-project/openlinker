@@ -199,5 +199,28 @@ export interface AllegroCategoryParametersResponse {
   }>;
 }
 
+/**
+ * Allegro offer fields PATCH request body (PATCH /sale/product-offers/{offerId})
+ *
+ * All fields are optional — only fields present in the object are sent to Allegro.
+ */
+export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
+  name?: string;
+  sellingMode?: {
+    price?: {
+      amount: string;
+      currency: string;
+    };
+  };
+  description?: {
+    sections: Array<{
+      items: Array<{
+        type: 'TEXT';
+        content: string;
+      }>;
+    }>;
+  };
+}
+
 
 

@@ -103,6 +103,14 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     return this.request<T>('PUT', path, body, options);
   }
 
+  async patch<T = unknown>(
+    path: string,
+    body?: Record<string, unknown> | string,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('PATCH', path, body, options);
+  }
+
   /**
    * Make HTTP request with retry logic
    *

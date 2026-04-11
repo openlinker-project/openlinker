@@ -11,11 +11,14 @@ import type {
   ListingsPagination,
   OfferMapping,
   PaginatedOfferMappings,
+  UpdateOfferFieldsPayload,
+  UpdateOfferFieldsResult,
 } from './listings.types';
 
 export interface ListingsApi {
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) => Promise<PaginatedOfferMappings>;
   getById: (id: string) => Promise<OfferMapping>;
+  updateOfferFields: (connectionId: string, offerId: string, fields: UpdateOfferFieldsPayload) => Promise<UpdateOfferFieldsResult>;
 }
 
 interface ApiRequest {
@@ -41,6 +44,16 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     },
     getById(id): Promise<OfferMapping> {
       return request<OfferMapping>(`/listings/${id}`);
+    },
+    updateOfferFields(connectionId, offerId, fields): Promise<UpdateOfferFieldsResult> {
+      return request<UpdateOfferFieldsResult>(
+        `/listings/connections/${connectionId}/offers/${offerId}/fields`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fields),
+        },
+      );
     },
   };
 }

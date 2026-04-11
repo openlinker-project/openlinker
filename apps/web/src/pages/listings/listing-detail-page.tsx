@@ -1,13 +1,15 @@
-import type { ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
+import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
 
 export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useListingQuery(id);
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
 
   if (query.isLoading) {
     return (
@@ -36,9 +38,16 @@ export function ListingDetailPage(): ReactElement {
       eyebrow="Listings"
       title={`Mapping — ${mapping.externalId}`}
       actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to listings
-        </Link>
+        <>
+          {mapping.platformType.toLowerCase() === 'allegro' ? (
+            <Button onClick={() => setIsEditDrawerOpen(true)}>
+              Edit offer
+            </Button>
+          ) : null}
+          <Link to=".." relative="path" className="button button--ghost">
+            ← Back to listings
+          </Link>
+        </>
       }
     >
       <section className="detail-section">
@@ -86,6 +95,12 @@ export function ListingDetailPage(): ReactElement {
           </pre>
         </section>
       ) : null}
+
+      <EditOfferDrawer
+        isOpen={isEditDrawerOpen}
+        onClose={() => setIsEditDrawerOpen(false)}
+        mapping={mapping}
+      />
     </PageLayout>
   );
 }

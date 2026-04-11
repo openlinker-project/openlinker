@@ -8,6 +8,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    teardownTimeout: 10000,
     setupFiles: './src/test/setup.ts',
     css: true,
     coverage: {
