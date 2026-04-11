@@ -11,6 +11,8 @@
     "allowJs": true,
     "paths": {
       "@openlinker/api/*": ["./src/*"],
+      "@openlinker/core": ["../../libs/core/src/index.ts"],
+      "@openlinker/core/mappings": ["../../libs/core/src/mappings/index.ts"],
       "@openlinker/core/*": ["../../libs/core/src/*"],
       "@openlinker/shared/*": ["../../libs/shared/src/*"],
       "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
