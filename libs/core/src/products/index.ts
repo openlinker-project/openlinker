@@ -47,6 +47,11 @@ export {
   ProductCreate,
   ProductUpdate,
   ProductVariantCreate,
+  ProductListFilters,
+  ProductVariantListFilters,
+  ProductPagination,
+  PaginatedProducts,
+  PaginatedProductVariants,
 } from './domain/types/product.types';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)
