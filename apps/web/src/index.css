@@ -1198,15 +1198,64 @@ textarea {
   gap: 0.25rem;
 }
 
-/* Raw payload display */
-.raw-payload {
+/* Raw payload / config display */
+.raw-payload,
+.config-block {
   white-space: pre-wrap;
   word-break: break-word;
   padding: 1rem;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 0.625rem;
-  font-size: 0.85rem;
-  max-height: 32rem;
+  font-size: 0.8125rem;
+  max-height: 24rem;
   overflow-y: auto;
+  margin: 0;
+}
+
+/* Action list */
+.action-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.action-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.action-list__item:last-child {
+  border-bottom: none;
+}
+
+/* Diagnostics errors */
+.diagnostics-errors {
+  margin-top: 0.5rem;
+}
+
+.error-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.error-list li {
+  font-size: 0.8125rem;
+  color: var(--status-error-fg, var(--status-error));
+  padding: 0.25rem 0.5rem;
+  background: var(--status-error-soft);
+  border-radius: 0.375rem;
+}
+
+/* Button group */
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
