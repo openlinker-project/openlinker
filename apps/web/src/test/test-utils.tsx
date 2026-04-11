@@ -39,6 +39,7 @@ type DeepPartialApiClient = {
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
   health?: Partial<ApiClient['health']>;
+  products?: Partial<ApiClient['products']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
 };
 
@@ -93,6 +94,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       ...overrides.health,
     } as ApiClient['health'],
+    products: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue(null),
+      ...overrides.products,
+    } as ApiClient['products'],
     syncJobs: {
       enqueue: vi.fn().mockResolvedValue({
         jobId: 'job_1',

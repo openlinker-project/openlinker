@@ -25,7 +25,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', end: true, state: 'live' },
       { to: '/orders', label: 'Orders', state: 'planned' },
-      { to: '/products', label: 'Products', state: 'planned' },
+      { to: '/products', label: 'Products', state: 'live' },
       { to: '/inventory', label: 'Inventory', state: 'planned' },
       { to: '/jobs-logs', label: 'Jobs & Logs', state: 'planned' },
       { to: '/automations', label: 'Automations', state: 'planned' },
