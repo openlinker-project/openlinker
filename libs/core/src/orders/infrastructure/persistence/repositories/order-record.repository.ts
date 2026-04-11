@@ -41,40 +41,40 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     pagination: OrderRecordPagination,
   ): Promise<PaginatedOrderRecords> {
     const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
-      .createQueryBuilder('order')
-      .orderBy('order.createdAt', 'DESC')
+      .createQueryBuilder('rec')
+      .orderBy('rec.createdAt', 'DESC')
       .take(pagination.limit)
       .skip(pagination.offset);
 
     if (filters.sourceConnectionId) {
-      qb.andWhere('order.sourceConnectionId = :sourceConnectionId', {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
         sourceConnectionId: filters.sourceConnectionId,
       });
     }
 
     if (filters.customerId) {
-      qb.andWhere('order.customerId = :customerId', {
+      qb.andWhere('rec.customerId = :customerId', {
         customerId: filters.customerId,
       });
     }
 
     if (filters.createdFrom) {
-      qb.andWhere('order.createdAt >= :createdFrom', {
+      qb.andWhere('rec.createdAt >= :createdFrom', {
         createdFrom: filters.createdFrom,
       });
     }
 
     if (filters.createdTo) {
-      qb.andWhere('order.createdAt <= :createdTo', {
+      qb.andWhere('rec.createdAt <= :createdTo', {
         createdTo: filters.createdTo,
       });
     }
 
     if (filters.syncStatus) {
       // JSONB containment: find orders where any destination has this status
-      // Use quoted column name to match TypeORM's camelCase mapping
+      // 'order' is a reserved word in PostgreSQL so the alias is 'rec'
       qb.andWhere(
-        `order."syncStatus" @> :syncStatusFilter::jsonb`,
+        `rec."syncStatus" @> :syncStatusFilter::jsonb`,
         { syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]) },
       );
     }

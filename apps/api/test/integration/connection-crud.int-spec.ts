@@ -10,6 +10,7 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
 import { createPrestashopConnectionDto } from './fixtures/connection.fixtures';
 import { getConnectionById, countConnections } from './helpers/test-database.helper';
+import { loginAsAdmin } from './helpers/test-auth.helper';
 
 describe('Connection CRUD Integration', () => {
   let harness: IntegrationTestHarness;
@@ -30,6 +31,7 @@ describe('Connection CRUD Integration', () => {
     it('should create connection and persist to database', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       const dto = createPrestashopConnectionDto({
         name: 'My PrestaShop Store',
@@ -38,6 +40,7 @@ describe('Connection CRUD Integration', () => {
       // Create connection via HTTP
       const response = await http
         .post('/connections')
+        .set('Authorization', `Bearer ${token}`)
         .send(dto)
         .expect(201);
 
@@ -64,9 +67,20 @@ describe('Connection CRUD Integration', () => {
 
     it('should validate required fields', async () => {
       const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       // Missing required fields
-      await http.post('/connections').send({}).expect(400);
+      await http
+        .post('/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(400);
+    });
+
+    it('should return 401 without token', async () => {
+      const http = harness.getHttp();
+      await http.post('/connections').send({}).expect(401);
     });
   });
 
@@ -74,14 +88,22 @@ describe('Connection CRUD Integration', () => {
     it('should retrieve connection from database', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       // Create connection via HTTP
       const dto = createPrestashopConnectionDto();
-      const createResponse = await http.post('/connections').send(dto).expect(201);
+      const createResponse = await http
+        .post('/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send(dto)
+        .expect(201);
       const connectionId = createResponse.body.id;
 
       // Retrieve connection via HTTP
-      const getResponse = await http.get(`/connections/${connectionId}`).expect(200);
+      const getResponse = await http
+        .get(`/connections/${connectionId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       // Verify response matches database
       expect(getResponse.body.id).toBe(connectionId);
@@ -95,8 +117,18 @@ describe('Connection CRUD Integration', () => {
 
     it('should return 404 for non-existent connection', async () => {
       const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
-      await http.get('/connections/non-existent-id').expect(404);
+      await http
+        .get('/connections/00000000-0000-4000-8000-000000000000')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it('should return 401 without token', async () => {
+      const http = harness.getHttp();
+      await http.get('/connections/00000000-0000-4000-8000-000000000000').expect(401);
     });
   });
 
@@ -104,16 +136,20 @@ describe('Connection CRUD Integration', () => {
     it('should list all connections', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       // Create multiple connections
       const dto1 = createPrestashopConnectionDto({ name: 'Store 1' });
       const dto2 = createPrestashopConnectionDto({ name: 'Store 2' });
 
-      await http.post('/connections').send(dto1).expect(201);
-      await http.post('/connections').send(dto2).expect(201);
+      await http.post('/connections').set('Authorization', `Bearer ${token}`).send(dto1).expect(201);
+      await http.post('/connections').set('Authorization', `Bearer ${token}`).send(dto2).expect(201);
 
       // List connections
-      const response = await http.get('/connections').expect(200);
+      const response = await http
+        .get('/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
 
       // Verify response
       expect(Array.isArray(response.body)).toBe(true);
@@ -126,14 +162,21 @@ describe('Connection CRUD Integration', () => {
 
     it('should filter connections by platformType', async () => {
       const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       // Create connections with different platform types
       const prestashopDto = createPrestashopConnectionDto({ name: 'PrestaShop Store' });
-      await http.post('/connections').send(prestashopDto).expect(201);
+      await http
+        .post('/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send(prestashopDto)
+        .expect(201);
 
       // Filter by platformType
       const response = await http
         .get('/connections')
+        .set('Authorization', `Bearer ${token}`)
         .query({ platformType: 'prestashop' })
         .expect(200);
 
@@ -149,10 +192,15 @@ describe('Connection CRUD Integration', () => {
     it('should update connection in database', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
 
       // Create connection
       const dto = createPrestashopConnectionDto();
-      const createResponse = await http.post('/connections').send(dto).expect(201);
+      const createResponse = await http
+        .post('/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send(dto)
+        .expect(201);
       const connectionId = createResponse.body.id;
 
       // Update connection
@@ -163,6 +211,7 @@ describe('Connection CRUD Integration', () => {
 
       const updateResponse = await http
         .patch(`/connections/${connectionId}`)
+        .set('Authorization', `Bearer ${token}`)
         .send(updateDto)
         .expect(200);
 
@@ -180,9 +229,3 @@ describe('Connection CRUD Integration', () => {
     });
   });
 });
-
-
-
-
-
-
