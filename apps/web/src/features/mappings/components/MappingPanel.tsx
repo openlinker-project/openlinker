@@ -202,7 +202,7 @@ export function MappingPanel({
         </p>
       )}
 
-      <div style={{ marginTop: '1rem' }}>
+      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <Button
           tone="primary"
           disabled={!isDirty || isSaving}
@@ -210,6 +210,11 @@ export function MappingPanel({
         >
           {isSaving ? 'Saving…' : 'Save mappings'}
         </Button>
+        {saveError && (
+          <Button tone="secondary" disabled={isSaving} onClick={handleSave}>
+            Try again
+          </Button>
+        )}
       </div>
     </div>
   );

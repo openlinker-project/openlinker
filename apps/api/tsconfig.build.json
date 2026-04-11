@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "../../",
+    "rootDir": "../../", // widened to monorepo root — path aliases resolve lib .ts sources outside apps/api/src (matches tsconfig.type-check.json pattern)
     "outDir": "./dist",
     "noEmit": false,
     "emitDeclarationOnly": false,

@@ -245,6 +245,64 @@ describe('OrderSyncService', () => {
 
       await expect(service.syncOrder(request)).rejects.toThrow('Order creation failed');
     });
+
+    // ── MappingConfigService integration ──────────────────────────────────
+
+    it('should use resolved status from mapping config when a mapping exists', async () => {
+      const order = createOrder();
+      order.status = 'READY_FOR_PROCESSING';
+      const request: OrderSyncRequest = {
+        order,
+        sourceConnectionId: 'source-connection-123',
+      };
+
+      // Mapping resolves Allegro status to PS status ID '3' (Processing in progress)
+      mappingConfigService.resolveStatusMapping.mockResolvedValue('processing');
+      processorAdapter.createOrder.mockResolvedValue({ orderId: 'dest_order_789' });
+
+      await service.syncOrder(request);
+
+      expect(mappingConfigService.resolveStatusMapping).toHaveBeenCalledWith(
+        'source-connection-123',
+        'READY_FOR_PROCESSING',
+      );
+      expect(processorAdapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'processing' }),
+      );
+    });
+
+    it('should fall back to order status when no mapping is configured', async () => {
+      const order = createOrder();
+      order.status = 'shipped';
+      const request: OrderSyncRequest = {
+        order,
+        sourceConnectionId: 'source-connection-123',
+      };
+
+      mappingConfigService.resolveStatusMapping.mockResolvedValue(null);
+      processorAdapter.createOrder.mockResolvedValue({ orderId: 'dest_order_789' });
+
+      await service.syncOrder(request);
+
+      expect(processorAdapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'shipped' }),
+      );
+    });
+
+    it('should propagate error if mapping config service throws', async () => {
+      const order = createOrder();
+      const request: OrderSyncRequest = {
+        order,
+        sourceConnectionId: 'source-connection-123',
+      };
+
+      mappingConfigService.resolveStatusMapping.mockRejectedValue(
+        new Error('Mapping service unavailable'),
+      );
+
+      await expect(service.syncOrder(request)).rejects.toThrow('Mapping service unavailable');
+      expect(processorAdapter.createOrder).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -64,6 +64,8 @@ export class MappingConfigService implements IMappingConfigService {
   }
 
   async resolveStatusMapping(connectionId: string, allegroStatus: string): Promise<string | null> {
+    // TODO: cache per sync session to avoid N+1 queries when resolving status for every order.
+    // Acceptable for MVP; a session-scoped Map<connectionId, StatusMapping[]> would eliminate the per-order DB fetch.
     const mappings = await this.statusRepo.findByConnectionId(connectionId);
     const match = mappings.find((m) => m.allegroStatus === allegroStatus);
     return match?.prestashopStatusId ?? null;
