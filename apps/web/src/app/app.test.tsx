@@ -39,12 +39,11 @@ describe('App', () => {
     expect(screen.getAllByText('Development')).not.toHaveLength(0);
   });
 
-  it('renders planned placeholder routes from the primary navigation', async () => {
+  it('renders orders list page from the primary navigation', async () => {
     const view = renderApp(['/orders']);
 
-    expect(await screen.findByRole('heading', { name: 'Orders workspace' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
     const primaryNavigation = within(view.container).getByRole('navigation', { name: 'Primary' });
     expect(within(primaryNavigation).getByText('Orders').closest('a')).toHaveAttribute('href', '/orders');
-    expect(screen.getByText('Orders is planned')).toBeInTheDocument();
   });
 });

@@ -1190,3 +1190,16 @@ textarea {
 .guest-form__submit {
   width: 100%;
 }
+
+/* Raw payload display */
+.raw-payload {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  font-size: 0.85rem;
+  max-height: 32rem;
+  overflow-y: auto;
+}

@@ -1,14 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
-import { ModulePlaceholderPage } from '../../pages/placeholders/module-placeholder-page';
+import { OrdersListPage } from '../../pages/orders/orders-list-page';
+import { OrderDetailPage } from '../../pages/orders/order-detail-page';
 
 export const ordersRoute: RouteObject = {
   path: 'orders',
-  element: (
-    <ModulePlaceholderPage
-      eyebrow="Operations"
-      title="Orders workspace"
-      moduleName="Orders"
-      description="Order intake, exceptions, and reconciliation will live here once the shell-level navigation contract is in place."
-    />
-  ),
+  children: [
+    { index: true, element: <OrdersListPage /> },
+    { path: ':internalOrderId', element: <OrderDetailPage /> },
+  ],
 };

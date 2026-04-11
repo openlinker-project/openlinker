@@ -1,14 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
-import { ModulePlaceholderPage } from '../../pages/placeholders/module-placeholder-page';
+import { InventoryListPage } from '../../pages/inventory/inventory-list-page';
+import { InventoryDetailPage } from '../../pages/inventory/inventory-detail-page';
 
 export const inventoryRoute: RouteObject = {
   path: 'inventory',
-  element: (
-    <ModulePlaceholderPage
-      eyebrow="Operations"
-      title="Inventory workspace"
-      moduleName="Inventory"
-      description="Inventory health, conflict resolution, and stock synchronization workflows will expand into this area later."
-    />
-  ),
+  children: [
+    { index: true, element: <InventoryListPage /> },
+    { path: ':id', element: <InventoryDetailPage /> },
+  ],
 };
