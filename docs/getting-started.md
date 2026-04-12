@@ -113,7 +113,24 @@ _TBD_
 
 ## 6. Initial catalog & inventory pull
 
-_TBD_
+**Products — automatic:** creating a PrestaShop connection (step 4) automatically
+enqueues a one-shot `master.product.syncAll` job. Once the worker picks it up,
+the source catalog is enumerated and a per-product sync job is fanned out for
+every product. You should see products appear in OpenLinker within a minute or
+two of the worker starting.
+
+Recurring catalog re-sync runs every 20 minutes by default (configurable via
+`OL_PRODUCT_SYNC_CRON` / `OL_PRODUCT_SYNC_ENABLED` in `apps/api/.env`).
+
+**Products — manual:** on the connection detail page, click **Sync products now**
+to enqueue a catalog discovery pass on demand. Safe to run anytime; subsequent
+runs update existing projections rather than duplicating.
+
+**Inventory:** the `OL_INVENTORY_SYNC_ENABLED` scheduler refreshes stock every
+15 minutes for all products already discovered by the catalog sync above.
+
+If no products appear: confirm the worker is running (`pnpm start:dev:worker`)
+and check the Jobs & Logs page for the `master.product.syncAll` job status.
 
 ## 7. Category & attribute mapping
 

@@ -124,6 +124,23 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     }).filter((p): p is Product => p !== null);
   }
 
+  async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
+    this.logger.debug(
+      `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`,
+    );
+
+    const raw = await this.httpClient.listResources<{ id: string | number }>(
+      'products',
+      { display: '[id]' },
+      filters?.limit,
+      filters?.offset,
+    );
+
+    return raw
+      .map((r) => (r.id !== undefined && r.id !== null ? String(r.id) : ''))
+      .filter((id) => id.length > 0);
+  }
+
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
     this.logger.debug(`Getting variants for product: ${productId} (connection: ${this.connection.id})`);
 

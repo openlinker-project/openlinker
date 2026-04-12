@@ -178,6 +178,22 @@ export interface ProductMasterPort {
   searchProducts(query: string, filters?: ProductFilters): Promise<Product[]>;
 
   /**
+   * List external product IDs from the source platform.
+   *
+   * Returns raw external identifiers (e.g. PrestaShop product IDs) without
+   * creating identifier mappings or fetching full product bodies. Intended for
+   * catalog-discovery fan-out, where the caller enqueues per-product sync jobs
+   * keyed by external ID.
+   *
+   * Implementations SHOULD support `limit`/`offset` pagination; callers loop
+   * until a short page (<limit) is returned.
+   *
+   * @param filters - Optional pagination filters
+   * @returns Array of external IDs as strings (order is platform-defined)
+   */
+  listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]>;
+
+  /**
    * List all categories from the product catalog (optional).
    *
    * Returns the full category tree for the connection.

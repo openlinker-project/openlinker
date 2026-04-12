@@ -22,3 +22,7 @@ export interface MasterInventorySyncAllPayloadV1 {
   schemaVersion: 1;
 }
 
+export interface MasterProductSyncAllPayloadV1 {
+  schemaVersion: 1;
+}
+

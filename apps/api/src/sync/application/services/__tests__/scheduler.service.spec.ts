@@ -63,6 +63,7 @@ describe('SchedulerService', () => {
         'OL_ALLEGRO_POLL_INTERVAL_CRON',
         'OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
         'OL_INVENTORY_SYNC_CRON',
+        'OL_PRODUCT_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       if (key === 'OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT') return '100';
@@ -89,6 +90,27 @@ describe('SchedulerService', () => {
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-inventory-sync');
+    });
+
+    it('should register product sync task when enabled', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onModuleInit();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('master-product-sync');
+    });
+
+    it('should not register product sync task when disabled', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_PRODUCT_SYNC_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onModuleInit();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('master-product-sync');
     });
   });
 

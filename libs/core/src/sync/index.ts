@@ -49,6 +49,7 @@ export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,
   MasterInventorySyncAllPayloadV1,
+  MasterProductSyncAllPayloadV1,
 } from './domain/types/master-job-payloads.types';
 
 // Exceptions
