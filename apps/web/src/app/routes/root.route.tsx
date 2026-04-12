@@ -17,6 +17,8 @@ import { listingsRoute } from './listings.route';
 import { inventoryRoute } from './inventory.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
+import { prestashopSetupRoute } from './prestashop-setup.route';
+import { advancedNewConnectionRoute } from './advanced-new-connection.route';
 import { ordersRoute } from './orders.route';
 import { productsRoute } from './products.route';
 import { settingsRoute } from './settings.route';
@@ -36,6 +38,8 @@ export const rootRoute: RouteObject = {
     connectionsRoute,
     adaptersRoute,
     newConnectionRoute,
+    prestashopSetupRoute,
+    advancedNewConnectionRoute,
     allegroSetupRoute,
     connectionDetailRoute,
     connectionCategoryMappingsRoute,

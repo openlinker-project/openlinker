@@ -978,13 +978,19 @@ textarea {
 
 .dialog {
   width: min(100%, 28rem);
-  display: grid;
   gap: 1rem;
   border: 1px solid var(--border-default);
   border-radius: 0.75rem;
   padding: 1.25rem;
   background: var(--bg-surface);
   box-shadow: var(--shadow-soft);
+}
+
+/* Only render the dialog when `open` is set. Without this, base `.dialog`
+   styles override the native <dialog> user-agent `display: none` and the
+   modal becomes visible on page load (see #160). */
+.dialog[open] {
+  display: grid;
 }
 
 .dialog__header,
@@ -1468,4 +1474,68 @@ textarea {
   .category-mappings-layout {
     grid-template-columns: 1fr;
   }
+}
+
+.platform-picker {
+  display: grid;
+  gap: 1rem;
+}
+
+.platform-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.platform-picker__card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.625rem;
+  background: var(--bg-surface);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.platform-picker__card:hover,
+.platform-picker__card:focus-visible {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-soft);
+}
+
+.platform-picker__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.platform-picker__card-title {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.platform-picker__card-description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.platform-picker__card-cta {
+  margin-top: 0.25rem;
+  color: var(--accent-primary);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.platform-picker__advanced {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
 }
