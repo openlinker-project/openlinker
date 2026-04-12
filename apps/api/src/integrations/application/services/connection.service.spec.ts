@@ -39,6 +39,9 @@ describe('ConnectionService', () => {
     'cred_123',
     new Date(),
     new Date(),
+  
+    undefined,
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
   );
 
   beforeEach(async () => {
@@ -58,6 +61,11 @@ describe('ConnectionService', () => {
       }),
       getCapabilityAdapter: jest.fn(),
       listCapabilityAdapters: jest.fn(),
+      resolveAdapterMetadata: jest.fn().mockResolvedValue({
+        adapterKey: 'prestashop.webservice.v1',
+        platformType: 'prestashop',
+        supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+      }),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
     const mockJobEnqueue = {
@@ -93,7 +101,12 @@ describe('ConnectionService', () => {
       const result = await service.create(payload);
 
       expect(result).toEqual(mockConnection);
-      expect(connectionPort.create).toHaveBeenCalledWith(payload);
+      expect(connectionPort.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ...payload,
+          enabledCapabilities: expect.any(Array),
+        }),
+      );
     });
 
     it('should enqueue master.product.syncAll when adapter supports ProductMaster', async () => {
@@ -189,8 +202,12 @@ describe('ConnectionService', () => {
         'cred_123',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
+      connectionPort.get.mockResolvedValue(mockConnection);
       connectionPort.update.mockResolvedValue(updatedConnection);
 
       const result = await service.update('connection-123', patch);
@@ -200,7 +217,7 @@ describe('ConnectionService', () => {
     });
 
     it('should throw NotFoundException when connection not found', async () => {
-      connectionPort.update.mockRejectedValue(
+      connectionPort.get.mockRejectedValue(
         new ConnectionNotFoundException('connection-123'),
       );
 
@@ -221,6 +238,9 @@ describe('ConnectionService', () => {
         'cred_123',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       connectionPort.disable.mockResolvedValue(disabledConnection);

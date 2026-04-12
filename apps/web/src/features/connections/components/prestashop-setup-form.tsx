@@ -12,12 +12,16 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
+  PRESTASHOP_ADAPTER_KEY,
+  PRESTASHOP_FALLBACK_CAPABILITIES,
   PRESTASHOP_SETUP_DEFAULT_VALUES,
   prestashopSetupSchema,
   toCreateConnectionInput,
   type PrestashopSetupFormSubmission,
   type PrestashopSetupFormValues,
 } from './prestashop-setup.schema';
+import type { Capability } from '../api/connections.types';
+import { useAdaptersQuery } from '../../adapters/hooks/use-adapters-query';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -25,13 +29,31 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 
+const CAPABILITY_HELP: Record<Capability, string> = {
+  ProductMaster: 'Read the product catalog (variants, attributes, categories) from this shop.',
+  InventoryMaster: 'Read stock levels from this shop as the inventory source of truth.',
+  OrderProcessorManager: 'Create and manage orders in this shop (typically the order destination).',
+  OrderSource: 'Fetch new orders from this shop (disable if orders come from a marketplace instead).',
+  Marketplace: 'Manage offers and listings on this marketplace.',
+};
+
 export function PrestashopSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
+  const adaptersQuery = useAdaptersQuery();
   const form = useForm<PrestashopSetupFormValues, undefined, PrestashopSetupFormSubmission>({
     defaultValues: PRESTASHOP_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(prestashopSetupSchema),
   });
+
+  // Prefer the live adapter registry as the source of truth for supported
+  // capabilities; fall back to a hardcoded list if the /adapters call fails so
+  // the wizard still works offline or under partial outage.
+  const adapterMetadata = adaptersQuery.data?.find(
+    (a) => a.adapterKey === PRESTASHOP_ADAPTER_KEY,
+  );
+  const supportedCapabilities: Capability[] =
+    adapterMetadata?.supportedCapabilities ?? PRESTASHOP_FALLBACK_CAPABILITIES;
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -130,6 +152,35 @@ export function PrestashopSetupForm(): ReactElement {
           />
         </FormField>
       </div>
+
+      <fieldset className="capability-fieldset">
+        <legend className="capability-fieldset__legend">Capabilities</legend>
+        <p className="muted-text capability-fieldset__help">
+          Pick which roles this connection should fulfil. You can change this later on the
+          connection\u2019s detail page.
+        </p>
+        <ul className="capability-list">
+          {supportedCapabilities.map((capability) => {
+            const id = `new-cap-${capability}`;
+            return (
+              <li key={capability} className="capability-list__item">
+                <label htmlFor={id} className="capability-list__label">
+                  <input
+                    id={id}
+                    type="checkbox"
+                    value={capability}
+                    {...form.register('enabledCapabilities')}
+                  />
+                  <span className="capability-list__name mono-text">{capability}</span>
+                </label>
+                <p className="capability-list__help muted-text">
+                  {CAPABILITY_HELP[capability]}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      </fieldset>
 
       <div className="form-actions">
         <Button type="submit" disabled={createConnection.isPending}>

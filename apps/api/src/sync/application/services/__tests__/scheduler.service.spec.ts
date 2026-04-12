@@ -22,7 +22,18 @@ describe('SchedulerService', () => {
   let schedulerRegistry: jest.Mocked<SchedulerRegistry>;
 
   const createConnection = (id: string, platformType = 'prestashop'): Connection =>
-    new Connection(id, platformType, `Test ${id}`, 'active', {}, 'cred-ref', new Date(), new Date());
+    new Connection(
+      id,
+      platformType,
+      `Test ${id}`,
+      'active',
+      {},
+      'cred-ref',
+      new Date(),
+      new Date(),
+      undefined,
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+    );
 
   beforeEach(() => {
     connectionPort = {

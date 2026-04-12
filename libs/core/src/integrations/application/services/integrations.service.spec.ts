@@ -40,6 +40,9 @@ describe('IntegrationsService', () => {
     'cred_123',
     new Date(),
     new Date(),
+  
+    undefined,
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
   );
 
   const mockAdapterMetadata: AdapterMetadata = {
@@ -129,6 +132,7 @@ describe('IntegrationsService', () => {
         new Date(),
         new Date(),
         'prestashop.webservice.v1',
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
       );
 
       connectionPort.get.mockResolvedValue(connectionWithKey);
@@ -178,6 +182,9 @@ describe('IntegrationsService', () => {
         'cred_123',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       connectionPort.get.mockResolvedValue(disabledConnection);
@@ -242,6 +249,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       const allegroConnection = new Connection(
@@ -253,6 +263,9 @@ describe('IntegrationsService', () => {
         'cred_2',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       // Mock both adapters to support the same capability for testing purposes
@@ -305,6 +318,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       const prestashopMetadata: AdapterMetadata = {
@@ -342,6 +358,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       // connectionPort.list is called with { status: 'active' } filter,
@@ -380,6 +399,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       const invalidConnection = new Connection(
@@ -391,6 +413,9 @@ describe('IntegrationsService', () => {
         'cred_2',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       connectionPort.list.mockResolvedValue([validConnection, invalidConnection]);

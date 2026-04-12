@@ -14,6 +14,7 @@ import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 
@@ -31,6 +32,9 @@ describe('ConnectionController', () => {
     'cred_123',
     new Date('2025-01-01'),
     new Date('2025-01-01'),
+  
+    undefined,
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
   );
 
   const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
@@ -83,6 +87,16 @@ describe('ConnectionController', () => {
         {
           provide: SYNC_JOB_REPOSITORY_TOKEN,
           useValue: mockSyncJobRepository,
+        },
+        {
+          provide: INTEGRATIONS_SERVICE_TOKEN,
+          useValue: {
+            resolveAdapterMetadata: jest.fn().mockResolvedValue({
+              adapterKey: 'prestashop.webservice.v1',
+              platformType: 'prestashop',
+              supportedCapabilities: ['ProductMaster'],
+            }),
+          },
         },
       ],
     }).compile();
@@ -157,6 +171,9 @@ describe('ConnectionController', () => {
         'cred_123',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       service.update.mockResolvedValue(updatedConnection);
@@ -194,6 +211,9 @@ describe('ConnectionController', () => {
         'cred_123',
         new Date(),
         new Date(),
+      
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
       );
 
       service.disable.mockResolvedValue(disabledConnection);

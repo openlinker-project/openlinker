@@ -45,6 +45,8 @@ describe('PrestashopAdapterFactory', () => {
           ...config,
         },
         credentialsRef: 'test_credentials',
+        adapterKey: undefined,
+        enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
         createdAt: new Date(),
         updatedAt: new Date(),
       } as Connection;

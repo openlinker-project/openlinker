@@ -31,6 +31,7 @@ describe('ConnectionRepository', () => {
     config: { baseUrl: 'https://example.com' },
     credentialsRef: 'cred_123',
     adapterKey: 'prestashop.webservice.v1',
+    enabledCapabilities: ['ProductMaster'],
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),
   };
@@ -45,6 +46,7 @@ describe('ConnectionRepository', () => {
     new Date('2025-01-01'),
     new Date('2025-01-01'),
     'prestashop.webservice.v1',
+    ['ProductMaster'],
   );
 
   beforeEach(async () => {
@@ -160,6 +162,7 @@ describe('ConnectionRepository', () => {
         platformType: 'prestashop',
         config: { baseUrl: 'https://new.com' },
         credentialsRef: 'cred_new',
+        enabledCapabilities: ['ProductMaster'],
       };
 
       const savedEntity = {
@@ -185,6 +188,7 @@ describe('ConnectionRepository', () => {
         config: {},
         credentialsRef: 'cred_new',
         adapterKey: 'prestashop.webservice.v2',
+        enabledCapabilities: ['ProductMaster'],
       };
 
       const savedEntity = {

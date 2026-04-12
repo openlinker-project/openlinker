@@ -10,7 +10,7 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { IConnectionService } from '../interfaces/connection.service.interface';
 import {
   ConnectionPort,
@@ -49,7 +49,31 @@ export class ConnectionService implements IConnectionService {
   async create(payload: ConnectionCreate): Promise<Connection> {
     try {
       this.logger.log(`Creating connection: ${payload.name} (platform: ${payload.platformType})`);
-      const connection = await this.connectionPort.create(payload);
+
+      // Resolve adapter metadata to (a) default enabledCapabilities when the
+      // caller omits them and (b) validate any explicit subset against the
+      // adapter's supportedCapabilities.
+      const metadata = await this.integrationsService.resolveAdapterMetadata({
+        platformType: payload.platformType,
+        adapterKey: payload.adapterKey,
+      });
+
+      const enabledCapabilities =
+        payload.enabledCapabilities ?? [...metadata.supportedCapabilities];
+
+      const invalid = enabledCapabilities.filter(
+        (c) => !metadata.supportedCapabilities.includes(c),
+      );
+      if (invalid.length > 0) {
+        throw new BadRequestException(
+          `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`,
+        );
+      }
+
+      const connection = await this.connectionPort.create({
+        ...payload,
+        enabledCapabilities,
+      });
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
       await this.enqueueInitialCatalogSync(connection);
       return connection;
@@ -131,6 +155,32 @@ export class ConnectionService implements IConnectionService {
   ): Promise<Connection> {
     try {
       this.logger.log(`Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`);
+
+      const existing = await this.connectionPort.get(connectionId);
+
+      // adapterKey is immutable post-create. Silently accept the unchanged
+      // value (so naive round-trip patches work) but reject any real change.
+      if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
+        throw new BadRequestException(
+          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`,
+        );
+      }
+
+      if (patch.enabledCapabilities !== undefined) {
+        const metadata = await this.integrationsService.resolveAdapterMetadata({
+          platformType: existing.platformType,
+          adapterKey: existing.adapterKey,
+        });
+        const invalid = patch.enabledCapabilities.filter(
+          (c) => !metadata.supportedCapabilities.includes(c),
+        );
+        if (invalid.length > 0) {
+          throw new BadRequestException(
+            `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`,
+          );
+        }
+      }
+
       const connection = await this.connectionPort.update(connectionId, patch);
       this.logger.log(`Connection updated successfully: ${connection.id} (status: ${connection.status})`);
       return connection;

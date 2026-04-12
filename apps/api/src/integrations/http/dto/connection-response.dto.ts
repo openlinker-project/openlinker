@@ -8,6 +8,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Connection } from '@openlinker/core/identifier-mapping';
+import { Capability, CapabilityValues } from '@openlinker/core/integrations';
 
 export class ConnectionResponseDto {
   @ApiProperty({ description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
@@ -31,13 +32,30 @@ export class ConnectionResponseDto {
   @ApiPropertyOptional({ description: 'Adapter key', example: 'prestashop.webservice.v1' })
   adapterKey?: string;
 
+  @ApiProperty({
+    description: 'Capabilities enabled on this connection (operator-chosen subset of supportedCapabilities)',
+    isArray: true,
+    enum: CapabilityValues,
+  })
+  enabledCapabilities!: Capability[];
+
+  @ApiProperty({
+    description: 'Capabilities supported by the resolved adapter (derived, not persisted)',
+    isArray: true,
+    enum: CapabilityValues,
+  })
+  supportedCapabilities!: Capability[];
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt!: Date;
 
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt!: Date;
 
-  static fromDomain(connection: Connection): ConnectionResponseDto {
+  static fromDomain(
+    connection: Connection,
+    supportedCapabilities: Capability[],
+  ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
     dto.platformType = connection.platformType;
@@ -46,6 +64,8 @@ export class ConnectionResponseDto {
     dto.config = connection.config;
     dto.credentialsRef = connection.credentialsRef;
     dto.adapterKey = connection.adapterKey;
+    dto.enabledCapabilities = connection.enabledCapabilities;
+    dto.supportedCapabilities = supportedCapabilities;
     dto.createdAt = connection.createdAt;
     dto.updatedAt = connection.updatedAt;
     return dto;

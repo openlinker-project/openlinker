@@ -43,6 +43,9 @@ export class ConnectionOrmEntity {
   @Column({ nullable: true })
   adapterKey?: string;
 
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  enabledCapabilities!: string[];
+
   @CreateDateColumn()
   createdAt!: Date;
 

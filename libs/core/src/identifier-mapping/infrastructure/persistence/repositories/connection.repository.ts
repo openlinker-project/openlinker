@@ -24,6 +24,7 @@ import {
 } from '../../../domain/types/connection.types';
 import { ConnectionNotFoundException } from '../../../domain/exceptions/connection-not-found.exception';
 import { Logger } from '@openlinker/shared/logging';
+import type { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
 
 @Injectable()
 export class ConnectionRepository implements ConnectionPort {
@@ -115,6 +116,9 @@ export class ConnectionRepository implements ConnectionPort {
     if (patch.adapterKey !== undefined) {
       existing.adapterKey = patch.adapterKey;
     }
+    if (patch.enabledCapabilities !== undefined) {
+      existing.enabledCapabilities = patch.enabledCapabilities;
+    }
 
       // Save updated entity
       const saved = await this.repository.save(existing);
@@ -149,6 +153,7 @@ export class ConnectionRepository implements ConnectionPort {
       entity.createdAt,
       entity.updatedAt,
       entity.adapterKey,
+      (entity.enabledCapabilities ?? []) as Capability[],
     );
   }
 
@@ -166,6 +171,7 @@ export class ConnectionRepository implements ConnectionPort {
       entity.config = payload.config;
       entity.credentialsRef = payload.credentialsRef;
       entity.adapterKey = payload.adapterKey;
+      entity.enabledCapabilities = payload.enabledCapabilities;
       entity.createdAt = payload.createdAt;
       entity.updatedAt = payload.updatedAt;
     } else {
@@ -176,6 +182,12 @@ export class ConnectionRepository implements ConnectionPort {
       entity.config = payload.config;
       entity.credentialsRef = payload.credentialsRef;
       entity.adapterKey = payload.adapterKey;
+      if (payload.enabledCapabilities === undefined) {
+        throw new Error(
+          'ConnectionCreate.enabledCapabilities must be set by ConnectionService before reaching the repository',
+        );
+      }
+      entity.enabledCapabilities = payload.enabledCapabilities;
     }
 
     return entity;

@@ -28,6 +28,7 @@ import {
 } from '../../integrations.tokens';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
+import { CapabilityNotEnabledException } from '../../domain/exceptions/capability-not-enabled.exception';
 import { AdapterFactoryResolverService } from '../../infrastructure/adapters/adapter-factory-resolver.service';
 import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
 import { Logger } from '@openlinker/shared/logging';
@@ -96,12 +97,20 @@ export class IntegrationsService implements IIntegrationsService {
 
     const { connection, metadata } = await this.getAdapter(connectionId);
 
-    // Validate capability support
+    // Validate capability support (adapter level)
     if (!metadata.supportedCapabilities.includes(capability)) {
       this.logger.warn(
         `Capability ${capability} not supported by adapter ${metadata.adapterKey} (supported: ${metadata.supportedCapabilities.join(', ')})`,
       );
       throw new CapabilityNotSupportedException(metadata.adapterKey, capability);
+    }
+
+    // Validate capability is enabled on this specific connection
+    if (!connection.enabledCapabilities.includes(capability)) {
+      this.logger.warn(
+        `Capability ${capability} disabled on connection ${connectionId} (enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`,
+      );
+      throw new CapabilityNotEnabledException(connectionId, metadata.adapterKey, capability);
     }
 
     // Try to create adapter using factory resolver
@@ -143,6 +152,14 @@ export class IntegrationsService implements IIntegrationsService {
     return adapter as T;
   }
 
+  async resolveAdapterMetadata(params: {
+    platformType: string;
+    adapterKey?: string;
+  }): Promise<AdapterMetadata> {
+    const adapterKey = params.adapterKey ?? this.deriveAdapterKey(params.platformType);
+    return this.adapterRegistry.getAdapterMetadata(adapterKey);
+  }
+
   async listCapabilityAdapters<T>(filters: {
     capability: Capability;
     platformType?: string;
@@ -182,8 +199,11 @@ export class IntegrationsService implements IIntegrationsService {
 
         const metadata = await this.adapterRegistry.getAdapterMetadata(adapterKey);
 
-        // Filter to only connections whose adapter supports the requested capability
-        if (metadata.supportedCapabilities.includes(filters.capability)) {
+        // Filter to only connections whose adapter supports AND whose operator
+        // has enabled the requested capability on this connection.
+        const adapterSupports = metadata.supportedCapabilities.includes(filters.capability);
+        const connectionEnabled = connection.enabledCapabilities.includes(filters.capability);
+        if (adapterSupports && connectionEnabled) {
           // Try to create adapter using factory resolver (mirrors getCapabilityAdapter logic)
           // If factory is not registered, fall back to placeholder from registry
           let adapter: T | null = null;
@@ -236,9 +256,13 @@ export class IntegrationsService implements IIntegrationsService {
               `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`,
             );
           }
-        } else {
+        } else if (!adapterSupports) {
           this.logger.debug(
             `Connection ${connection.id} does not support ${filters.capability} (adapter: ${adapterKey}, supported: ${metadata.supportedCapabilities.join(', ')})`,
+          );
+        } else {
+          this.logger.debug(
+            `Connection ${connection.id} has ${filters.capability} disabled (adapter supports it; enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`,
           );
         }
       } catch (error) {

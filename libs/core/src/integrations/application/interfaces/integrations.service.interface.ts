@@ -60,6 +60,20 @@ export interface IIntegrationsService {
    * @param filters - Filter criteria (capability required, platformType optional)
    * @returns Array of objects containing connectionId, connection, adapter, and metadata
    */
+  /**
+   * Resolve adapter metadata by platformType and optional explicit adapterKey.
+   *
+   * Used during connection creation (before the connection exists) to determine
+   * defaults for fields like `enabledCapabilities`. Mirrors the adapterKey
+   * derivation used by getAdapter() but does not require a persisted connection.
+   *
+   * @throws AdapterNotFoundException if no adapter matches
+   */
+  resolveAdapterMetadata(params: {
+    platformType: string;
+    adapterKey?: string;
+  }): Promise<AdapterMetadata>;
+
   listCapabilityAdapters<T>(filters: {
     capability: Capability;
     platformType?: string;

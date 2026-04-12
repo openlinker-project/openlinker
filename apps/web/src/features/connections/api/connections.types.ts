@@ -4,6 +4,16 @@ export type PlatformType = (typeof PLATFORM_TYPES)[number];
 
 export type ConnectionStatus = 'active' | 'disabled' | 'error';
 
+export const CAPABILITY_VALUES = [
+  'ProductMaster',
+  'InventoryMaster',
+  'OrderProcessorManager',
+  'OrderSource',
+  'Marketplace',
+] as const;
+
+export type Capability = (typeof CAPABILITY_VALUES)[number];
+
 export interface Connection {
   id: string;
   name: string;
@@ -12,6 +22,8 @@ export interface Connection {
   config: Record<string, unknown>;
   credentialsRef: string;
   adapterKey?: string;
+  enabledCapabilities: Capability[];
+  supportedCapabilities: Capability[];
   createdAt: string;
   updatedAt: string;
 }
@@ -27,6 +39,7 @@ export interface CreateConnectionInput {
   config: Record<string, unknown>;
   credentialsRef: string;
   adapterKey?: string;
+  enabledCapabilities?: Capability[];
 }
 
 export interface UpdateConnectionInput {
@@ -34,6 +47,7 @@ export interface UpdateConnectionInput {
   status?: ConnectionStatus;
   config?: Record<string, unknown>;
   adapterKey?: string;
+  enabledCapabilities?: Capability[];
 }
 
 export interface RecentJobSummary {

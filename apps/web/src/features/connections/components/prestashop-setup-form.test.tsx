@@ -1,9 +1,11 @@
-import { fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrestashopSetupForm } from './prestashop-setup-form';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 
 describe('PrestashopSetupForm', () => {
+  afterEach(cleanup);
+
   it('submits a PrestaShop connection with the inferred adapter key and config', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });
@@ -27,7 +29,36 @@ describe('PrestashopSetupForm', () => {
       adapterKey: 'prestashop.webservice.v1',
       credentialsRef: 'WSKEY123',
       config: { baseUrl: 'https://shop.example.com' },
+      enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
     });
+  });
+
+  it('submits only the capabilities the user left checked', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
+      target: { value: 'Dest only' },
+    });
+    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
+      target: { value: 'https://shop.example.com' },
+    });
+    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
+      target: { value: 'WSKEY123' },
+    });
+
+    // Uncheck OrderSource (this PrestaShop is order destination, not source)
+    fireEvent.click(within(view.container).getByRole('checkbox', { name: /OrderSource/ }));
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await screen.findByText('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+      }),
+    );
   });
 
   it('includes shopId in config when provided', async () => {

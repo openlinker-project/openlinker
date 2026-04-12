@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
+import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
@@ -128,6 +129,7 @@ export function ConnectionDetailPage(): ReactElement {
           </div>
 
           <ConnectionConfigPanel config={connection.config} />
+          <ConnectionCapabilitiesPanel connection={connection} />
           <ConnectionDiagnosticsPanel connectionId={connection.id} />
           <ConnectionActionsPanel connection={connection} />
         </div>

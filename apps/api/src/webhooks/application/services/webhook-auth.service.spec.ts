@@ -28,6 +28,7 @@ describe('WebhookAuthService', () => {
     new Date(),
     new Date(),
     'prestashop.webservice.v1',
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
   );
 
   beforeEach(async () => {
@@ -143,6 +144,7 @@ describe('WebhookAuthService', () => {
         mockConnection.createdAt,
         mockConnection.updatedAt,
         mockConnection.adapterKey,
+        mockConnection.enabledCapabilities,
       );
       connectionPort.get.mockResolvedValue(disabledConnection);
 
