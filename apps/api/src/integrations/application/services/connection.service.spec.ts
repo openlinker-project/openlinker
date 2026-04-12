@@ -18,10 +18,17 @@ import {
   ConnectionUpdate,
   ConnectionFilters,
 } from '@openlinker/core/identifier-mapping';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 
 describe('ConnectionService', () => {
   let service: ConnectionService;
   let connectionPort: jest.Mocked<ConnectionPort>;
+  let integrationsService: jest.Mocked<IIntegrationsService>;
+  let jobEnqueue: jest.Mocked<JobEnqueuePort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -43,35 +50,90 @@ describe('ConnectionService', () => {
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionPort>;
 
+    const mockIntegrationsService = {
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: mockConnection,
+        adapter: {},
+        metadata: { supportedCapabilities: [] },
+      }),
+      getCapabilityAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn(),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
+    const mockJobEnqueue = {
+      enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
+    } as unknown as jest.Mocked<JobEnqueuePort>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
-        {
-          provide: CONNECTION_PORT_TOKEN,
-          useValue: mockConnectionPort,
-        },
+        { provide: CONNECTION_PORT_TOKEN, useValue: mockConnectionPort },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrationsService },
+        { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
       ],
     }).compile();
 
     service = module.get<ConnectionService>(ConnectionService);
     connectionPort = module.get(CONNECTION_PORT_TOKEN);
+    integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
+    jobEnqueue = module.get(JOB_ENQUEUE_TOKEN);
   });
 
   describe('create', () => {
-    it('should create and return connection', async () => {
-      const payload: ConnectionCreate = {
-        name: 'New Connection',
-        platformType: 'prestashop',
-        config: { baseUrl: 'https://new.com' },
-        credentialsRef: 'cred_new',
-      };
+    const payload: ConnectionCreate = {
+      name: 'New Connection',
+      platformType: 'prestashop',
+      config: { baseUrl: 'https://new.com' },
+      credentialsRef: 'cred_new',
+    };
 
+    it('should create and return connection', async () => {
       connectionPort.create.mockResolvedValue(mockConnection);
 
       const result = await service.create(payload);
 
       expect(result).toEqual(mockConnection);
       expect(connectionPort.create).toHaveBeenCalledWith(payload);
+    });
+
+    it('should enqueue master.product.syncAll when adapter supports ProductMaster', async () => {
+      connectionPort.create.mockResolvedValue(mockConnection);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: mockConnection,
+        adapter: {},
+        metadata: { supportedCapabilities: ['ProductMaster', 'InventoryMaster'] },
+      } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+
+      await service.create(payload);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobType: 'master.product.syncAll',
+          connectionId: mockConnection.id,
+          idempotencyKey: `bootstrap:${mockConnection.id}:product:syncAll`,
+        }),
+      );
+    });
+
+    it('should skip enqueue when adapter does not support ProductMaster', async () => {
+      connectionPort.create.mockResolvedValue(mockConnection);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: mockConnection,
+        adapter: {},
+        metadata: { supportedCapabilities: ['Marketplace'] },
+      } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+
+      await service.create(payload);
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should not fail connection creation when bootstrap enqueue throws', async () => {
+      connectionPort.create.mockResolvedValue(mockConnection);
+      integrationsService.getAdapter.mockRejectedValue(new Error('adapter resolution failed'));
+
+      await expect(service.create(payload)).resolves.toEqual(mockConnection);
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
   });
 

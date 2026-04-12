@@ -36,6 +36,15 @@ export interface PrestashopQueryFilters {
    * Custom filters (key-value pairs)
    */
   custom?: Record<string, string | number | (string | number)[]>;
+
+  /**
+   * Field selection override.
+   *
+   * Defaults to `'full'`. Set to `'[id]'` (or another PrestaShop display clause)
+   * for enumeration-only paths where body payload is wasted bandwidth — e.g.,
+   * initial catalog discovery fan-out.
+   */
+  display?: string;
 }
 
 /**
@@ -59,8 +68,8 @@ export class PrestashopQueryBuilder {
   ): string {
     const params: string[] = [];
 
-    // Field selection: always use display=full for complete data
-    params.push('display=full');
+    // Field selection: default to display=full, allow override for id-only enumeration.
+    params.push(`display=${filters?.display ?? 'full'}`);
 
     // Multi-store support: add id_shop if shopId is configured
     if (config !== undefined) {

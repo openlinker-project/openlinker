@@ -18,6 +18,11 @@ export interface PrestashopQueryFilters {
   updatedSince?: Date;
   status?: string | string[];
   custom?: Record<string, string | number | (string | number)[]>;
+  /**
+   * Field selection override (defaults to `'full'`). Use e.g. `'[id]'` for
+   * enumeration-only paths to skip full body payload.
+   */
+  display?: string;
 }
 
 /**

@@ -17,6 +17,7 @@ export interface EnqueueSyncJobInput {
   connectionId: string;
   jobType: string;
   payload?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 export interface SyncJobResponse {

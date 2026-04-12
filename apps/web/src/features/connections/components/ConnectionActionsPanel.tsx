@@ -2,10 +2,16 @@ import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
+import { useEnqueueSyncJobMutation } from '../../sync-jobs/hooks/use-enqueue-sync-job-mutation';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
+
+// TODO(#164): derive from resolved adapter capabilities on the connection detail
+// endpoint rather than hardcoding platform types. A second ProductMaster adapter
+// (e.g. Shopify) will silently hide this button until then.
+const PRODUCT_MASTER_PLATFORMS = ['prestashop'];
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -13,10 +19,30 @@ interface ConnectionActionsPanelProps {
 
 export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelProps): ReactElement {
   const disableConnection = useDisableConnectionMutation();
+  const enqueueSyncJob = useEnqueueSyncJobMutation();
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
 
   const isDisabled = connection.status === 'disabled';
+  const supportsProductMaster = PRODUCT_MASTER_PLATFORMS.includes(connection.platformType);
+
+  const handleSyncProducts = async (): Promise<void> => {
+    try {
+      await enqueueSyncJob.mutateAsync({
+        connectionId: connection.id,
+        jobType: 'master.product.syncAll',
+        payload: { schemaVersion: 1 },
+        idempotencyKey: `manual:${connection.id}:product:syncAll:${Date.now()}`,
+      });
+      showToast({
+        tone: 'success',
+        title: 'Product sync started',
+        description: `Catalog discovery for "${connection.name}" has been enqueued.`,
+      });
+    } catch {
+      // Surfaced via enqueueSyncJob.error alert below.
+    }
+  };
 
   return (
     <div className="panel panel--dense">
@@ -34,6 +60,12 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
         </Alert>
       ) : null}
 
+      {enqueueSyncJob.error ? (
+        <Alert tone="error" title="Unable to start product sync">
+          {enqueueSyncJob.error.message}
+        </Alert>
+      ) : null}
+
       <div className="action-list">
         <div className="action-list__item">
           <div>
@@ -44,6 +76,25 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
             Edit
           </Link>
         </div>
+
+        {supportsProductMaster && !isDisabled ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Sync products now</strong>
+              <p className="muted-text">
+                Enumerate the source catalog and enqueue a per-product sync. Safe to run anytime;
+                runs also happen on the recurring schedule.
+              </p>
+            </div>
+            <Button
+              tone="primary"
+              onClick={() => void handleSyncProducts()}
+              disabled={enqueueSyncJob.isPending}
+            >
+              {enqueueSyncJob.isPending ? 'Enqueuing...' : 'Sync now'}
+            </Button>
+          </div>
+        ) : null}
 
         {isDisabled ? null : (
           <div className="action-list__item">

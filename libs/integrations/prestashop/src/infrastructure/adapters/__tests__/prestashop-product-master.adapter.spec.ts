@@ -217,6 +217,45 @@ describe('PrestashopProductMasterAdapter', () => {
     });
   });
 
+  describe('listExternalIds', () => {
+    it('should return external ids as strings without creating mappings', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValue([{ id: 1 }, { id: '2' }, { id: 3 }]);
+
+      const result = await adapter.listExternalIds({ limit: 100, offset: 0 });
+
+      expect(result).toEqual(['1', '2', '3']);
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'products',
+        { display: '[id]' },
+        100,
+        0,
+      );
+      // listExternalIds must NOT touch identifier mapping; creating mappings is the
+      // downstream master.product.syncByExternalId handler's responsibility.
+      expect(mockIdentifierMapping.batchGetOrCreateInternalIds).not.toHaveBeenCalled();
+    });
+
+    it('should skip entries without an id', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValue([{ id: 7 }, { id: null }, { id: undefined }, { id: 9 }]);
+
+      const result = await adapter.listExternalIds();
+
+      expect(result).toEqual(['7', '9']);
+    });
+
+    it('should return empty array when the source is empty', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+      const result = await adapter.listExternalIds({ limit: 50, offset: 0 });
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('getProductVariants', () => {
     it('should fetch and map product variants', async () => {
       const productId = 'internal-product-123';

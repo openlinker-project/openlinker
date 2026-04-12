@@ -21,6 +21,15 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import {
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  SyncJobRequest,
+} from '@openlinker/core/sync';
 import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -31,6 +40,10 @@ export class ConnectionService implements IConnectionService {
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort,
   ) {}
 
   async create(payload: ConnectionCreate): Promise<Connection> {
@@ -38,10 +51,49 @@ export class ConnectionService implements IConnectionService {
       this.logger.log(`Creating connection: ${payload.name} (platform: ${payload.platformType})`);
       const connection = await this.connectionPort.create(payload);
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
+      await this.enqueueInitialCatalogSync(connection);
       return connection;
     } catch (error) {
       this.logger.error(`Failed to create connection: ${payload.name}`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Best-effort initial product catalog bootstrap for newly created connections.
+   *
+   * Enqueues a single master.product.syncAll job when the connection's adapter
+   * supports the ProductMaster capability. The idempotency key is stable per
+   * connection ID so retries / re-creates with the same ID naturally dedupe — the
+   * recurring scheduler (OL_PRODUCT_SYNC_CRON) and the manual "Sync now" button
+   * own ongoing re-sync.
+   *
+   * Failures here MUST NOT fail connection creation: a user has successfully
+   * created the connection even if the bootstrap enqueue fails; the scheduler
+   * will pick it up at the next cron tick.
+   */
+  private async enqueueInitialCatalogSync(connection: Connection): Promise<void> {
+    try {
+      const { metadata } = await this.integrationsService.getAdapter(connection.id);
+      if (!metadata.supportedCapabilities.includes('ProductMaster')) {
+        return;
+      }
+
+      const jobRequest: SyncJobRequest = {
+        jobType: 'master.product.syncAll',
+        connectionId: connection.id,
+        payload: { schemaVersion: 1 },
+        idempotencyKey: `bootstrap:${connection.id}:product:syncAll`,
+      };
+
+      const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
+      this.logger.log(
+        `Bootstrap catalog sync ${isExisting ? 'already enqueued' : 'enqueued'} for connection ${connection.id}: ${jobId}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Bootstrap catalog sync skipped for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

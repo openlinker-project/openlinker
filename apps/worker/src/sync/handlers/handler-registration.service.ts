@@ -18,6 +18,7 @@ import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
+import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -33,6 +34,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
+    private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
   ) {}
 
   onModuleInit(): void {
@@ -52,6 +54,9 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register master inventory sync all handler (periodic full sync)
     this.handlerRegistry.register('master.inventory.syncAll', this.masterInventorySyncAllHandler);
+
+    // Register master product sync all handler (catalog discovery / periodic full sync)
+    this.handlerRegistry.register('master.product.syncAll', this.masterProductSyncAllHandler);
 
     // Register inventory propagate to marketplaces handler
     this.handlerRegistry.register('inventory.propagateToMarketplaces', this.inventoryPropagateHandler);

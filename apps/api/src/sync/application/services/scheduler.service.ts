@@ -184,6 +184,9 @@ export class SchedulerService implements OnModuleInit {
 
     // Periodic inventory sync (capability-based, cross-platform)
     this.registerInventorySyncTask();
+
+    // Periodic product catalog sync (capability-based, cross-platform)
+    this.registerProductSyncTask();
   }
 
   /**
@@ -373,6 +376,47 @@ export class SchedulerService implements OnModuleInit {
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `master:${connection.id}:inventory:syncAll:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register periodic product catalog sync task.
+   *
+   * Enqueues master.product.syncAll jobs for all active connections that support
+   * the ProductMaster capability. Handler enumerates source-platform products and
+   * fans out per-product syncByExternalId sub-jobs — this is the catalog-discovery
+   * path that populates identifier mappings on a fresh connection.
+   */
+  private registerProductSyncTask(): void {
+    const productSyncEnabled = this.configService.get<string>(
+      'OL_PRODUCT_SYNC_ENABLED',
+      'true',
+    );
+    if (productSyncEnabled === 'false') {
+      return;
+    }
+
+    const productCron = this.configService.get<string>(
+      'OL_PRODUCT_SYNC_CRON',
+      '*/20 * * * *',
+    );
+
+    this.registerTask({
+      taskId: 'master-product-sync',
+      jobType: 'master.product.syncAll',
+      cronExpression: productCron,
+      enabledEnvVar: 'OL_PRODUCT_SYNC_ENABLED',
+      connectionFilter: async () => {
+        const adapters = await this.integrationsService.listCapabilityAdapters({
+          capability: 'ProductMaster',
+        });
+        return adapters.map((a) => a.connection);
+      },
+      generatePayload: () => ({
+        schemaVersion: 1,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `master:${connection.id}:product:syncAll:${timestamp}`,
     });
   }
 

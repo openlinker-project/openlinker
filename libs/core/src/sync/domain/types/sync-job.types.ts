@@ -21,6 +21,7 @@ export const JobTypeValues = [
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields',
   'master.product.syncByExternalId',
+  'master.product.syncAll',
   'master.inventory.syncByExternalId',
   'master.inventory.syncAll',
 
