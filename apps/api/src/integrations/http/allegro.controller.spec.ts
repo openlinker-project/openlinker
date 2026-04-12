@@ -33,6 +33,9 @@ describe('AllegroController', () => {
     'db:allegro_123',
     new Date('2025-01-01'),
     new Date('2025-01-01'),
+  
+    undefined,
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
   );
 
   beforeEach(async () => {

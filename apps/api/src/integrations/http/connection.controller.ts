@@ -19,6 +19,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
@@ -26,19 +27,49 @@ import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionService } from '../application/services/connection.service';
-import { ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  Capability,
+} from '@openlinker/core/integrations';
 
 @ApiBearerAuth()
 @ApiTags('connections')
 @Controller('connections')
 export class ConnectionController {
+  private readonly logger = new Logger(ConnectionController.name);
+
   constructor(
     private readonly connectionService: ConnectionService,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly syncJobRepository: SyncJobRepositoryPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
+
+  private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
+    let supported: Capability[] = [];
+    try {
+      const metadata = await this.integrationsService.resolveAdapterMetadata({
+        platformType: connection.platformType,
+        adapterKey: connection.adapterKey,
+      });
+      supported = metadata.supportedCapabilities;
+    } catch (error) {
+      // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
+      // supportedCapabilities empty; the FE will render an "adapter not
+      // recognized" notice. We still want this to be observable in the API
+      // logs so operators can spot and fix the offending row.
+      this.logger.warn(
+        `Could not resolve adapter metadata for connection ${connection.id} (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`,
+      );
+      supported = [];
+    }
+    return ConnectionResponseDto.fromDomain(connection, supported);
+  }
 
   @Roles('admin')
   @Post()
@@ -55,7 +86,7 @@ export class ConnectionController {
     @Body() dto: CreateConnectionDto,
   ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
-    return ConnectionResponseDto.fromDomain(connection);
+    return this.toResponse(connection);
   }
 
   @Get()
@@ -73,9 +104,7 @@ export class ConnectionController {
       ...(filtersDto.status && { status: filtersDto.status }),
     };
     const connections = await this.connectionService.list(filters);
-    return connections.map((connection) =>
-      ConnectionResponseDto.fromDomain(connection),
-    );
+    return Promise.all(connections.map((connection) => this.toResponse(connection)));
   }
 
   @Get(':id')
@@ -88,7 +117,7 @@ export class ConnectionController {
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async get(@Param('id') id: string): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.get(id);
-    return ConnectionResponseDto.fromDomain(connection);
+    return this.toResponse(connection);
   }
 
   @Roles('admin')
@@ -110,9 +139,12 @@ export class ConnectionController {
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.config !== undefined && { config: dto.config }),
       ...(dto.adapterKey !== undefined && { adapterKey: dto.adapterKey }),
+      ...(dto.enabledCapabilities !== undefined && {
+        enabledCapabilities: dto.enabledCapabilities,
+      }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return ConnectionResponseDto.fromDomain(connection);
+    return this.toResponse(connection);
   }
 
   @Get(':id/diagnostics')
@@ -141,7 +173,7 @@ export class ConnectionController {
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async disable(@Param('id') id: string): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.disable(id);
-    return ConnectionResponseDto.fromDomain(connection);
+    return this.toResponse(connection);
   }
 }
 

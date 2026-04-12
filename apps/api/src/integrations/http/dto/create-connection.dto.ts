@@ -6,8 +6,9 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsNotEmpty, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsObject, IsArray, IsIn } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Capability, CapabilityValues } from '@openlinker/core/integrations';
 
 export class CreateConnectionDto {
   @ApiProperty({
@@ -50,5 +51,16 @@ export class CreateConnectionDto {
   @IsString()
   @IsOptional()
   adapterKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Capabilities this connection should fulfil. Defaults to the adapter\u2019s full supported set when omitted. Must be a subset of supportedCapabilities.',
+    isArray: true,
+    enum: CapabilityValues,
+  })
+  @IsArray()
+  @IsIn(CapabilityValues, { each: true })
+  @IsOptional()
+  enabledCapabilities?: Capability[];
 }
 

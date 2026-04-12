@@ -1,7 +1,9 @@
+import type { Capability } from '../../connections/api/connections.types';
+
 export interface AdapterSummary {
   adapterKey: string;
   platformType: string;
-  supportedCapabilities: string[];
+  supportedCapabilities: Capability[];
   displayName?: string;
   version?: string;
 }

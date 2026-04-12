@@ -52,6 +52,9 @@ describe('AllegroMarketplaceAdapter', () => {
       'credentials-ref',
       new Date(),
       new Date(),
+    
+      undefined,
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
     );
 
     adapter = new AllegroMarketplaceAdapter(connectionId, httpClient, identifierMapping, connection);

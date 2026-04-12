@@ -28,6 +28,8 @@ export const sampleConnection: Connection = {
   },
   credentialsRef: 'db:cred_1',
   adapterKey: 'prestashop.webservice.v1',
+  enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };

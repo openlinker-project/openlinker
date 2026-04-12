@@ -128,6 +128,8 @@ describe('OfferMappingSyncService', () => {
         status: 'active',
         config: {},
         credentialsRef: 'cred',
+        adapterKey: undefined,
+        enabledCapabilities: ['Marketplace'],
         createdAt: new Date(),
         updatedAt: new Date(),
       },

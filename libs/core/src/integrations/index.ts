@@ -55,6 +55,7 @@ export type { MarketplaceCategory } from './domain/types/marketplace-category.ty
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';
 export { CapabilityNotSupportedException } from './domain/exceptions/capability-not-supported.exception';
+export { CapabilityNotEnabledException } from './domain/exceptions/capability-not-enabled.exception';
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
 
 // Tokens

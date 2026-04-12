@@ -14,9 +14,21 @@
  * in the connection payload.
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
+import type { Capability, CreateConnectionInput } from '../api/connections.types';
 
 export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
+
+/**
+ * Fallback set used only when the adapter registry cannot be queried (network
+ * failure, stale cache, etc.). The source of truth is the `/adapters` endpoint
+ * consumed by the wizard via `useAdaptersQuery`.
+ */
+export const PRESTASHOP_FALLBACK_CAPABILITIES: Capability[] = [
+  'ProductMaster',
+  'InventoryMaster',
+  'OrderProcessorManager',
+  'OrderSource',
+];
 
 export const prestashopSetupSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
@@ -28,6 +40,17 @@ export const prestashopSetupSchema = z.object({
     ),
   webserviceKey: z.string().trim().min(1, 'Webservice key is required'),
   shopId: z.string().trim().optional(),
+  enabledCapabilities: z
+    .array(
+      z.enum([
+        'ProductMaster',
+        'InventoryMaster',
+        'OrderProcessorManager',
+        'OrderSource',
+        'Marketplace',
+      ]),
+    )
+    .default(PRESTASHOP_FALLBACK_CAPABILITIES),
 });
 
 export type PrestashopSetupFormValues = z.input<typeof prestashopSetupSchema>;
@@ -38,6 +61,7 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   baseUrl: '',
   webserviceKey: '',
   shopId: '',
+  enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
 };
 
 export function toCreateConnectionInput(
@@ -53,5 +77,6 @@ export function toCreateConnectionInput(
     adapterKey: PRESTASHOP_ADAPTER_KEY,
     credentialsRef: values.webserviceKey,
     config,
+    enabledCapabilities: values.enabledCapabilities,
   };
 }
