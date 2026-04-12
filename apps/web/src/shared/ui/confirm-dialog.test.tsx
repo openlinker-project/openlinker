@@ -41,6 +41,22 @@ describe('ConfirmDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('does not set the open attribute when rendered with open=false', () => {
+    const view = render(
+      <ConfirmDialog
+        open={false}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+        title="Delete item?"
+        description="This action cannot be undone."
+      />,
+    );
+
+    const dialog = view.container.querySelector('dialog');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.hasAttribute('open')).toBe(false);
+  });
+
   // Focus trapping (Tab cycle) and Escape handling are provided natively by showModal() —
   // they are browser behaviours not exercisable via fireEvent in jsdom.
 
