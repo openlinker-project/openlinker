@@ -9,14 +9,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
-interface PrestashopCategoryApi {
-  id: string;
-  name: string;
-  parentId: string | null;
-  depth: number;
-  active: boolean;
-}
-
 export interface PrestashopCategoryFlat {
   id: string;
   name: string;
@@ -29,17 +21,15 @@ export function usePrestashopCategoriesQuery(connectionId: string): UseQueryResu
   return useQuery({
     queryKey: ['prestashop-categories', connectionId],
     queryFn: async () => {
-      const raw = await apiClient.request<PrestashopCategoryApi[]>(
-        `/connections/${connectionId}/prestashop/categories`,
-      );
-      return raw
+      const categories = await apiClient.mappings.getPrestashopCategories(connectionId);
+      return categories
+        .filter((cat) => cat.depth > 0)
         .map(({ id, name, parentId, depth }) => ({
-          id: String(id),
+          id,
           name: name || `Category ${id}`,
-          parentId: parentId ?? null,
-          depth: Number(depth),
-        }))
-        .filter((cat) => cat.depth > 0);
+          parentId,
+          depth,
+        }));
     },
     retry: false,
   });
