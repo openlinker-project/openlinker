@@ -15,7 +15,7 @@ import { AllegroConnectionConfig, AllegroEnvironmentValues } from '../domain/typ
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
-import { AllegroMarketplaceAdapter } from '../infrastructure/adapters/allegro-marketplace.adapter';
+import { AllegroMarketplaceAdapter, QuantityPollConfig } from '../infrastructure/adapters/allegro-marketplace.adapter';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
 import { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
@@ -32,6 +32,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
+    private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
   ) {}
 
   async createAdapters(
@@ -80,6 +81,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       connection,
       this.customerIdentityResolver,
       this.commandRepository,
+      this.quantityPollConfig,
     );
 
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);

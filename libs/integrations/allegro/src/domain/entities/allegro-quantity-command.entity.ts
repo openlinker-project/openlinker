@@ -9,6 +9,7 @@
 export const AllegroQuantityCommandStatusValues = [
   'queued',
   'accepted',
+  'succeeded',
   'rejected',
   'failed',
 ] as const;

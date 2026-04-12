@@ -27,6 +27,7 @@ import {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
+  AllegroQuantityChangeCommandStatusResponse,
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
   AllegroOfferParameter,
@@ -46,12 +47,27 @@ import {
 type MarketplaceOrderFeedItem = MarketplaceOrderFeedOutput['items'][number];
 
 /**
+ * Polling configuration for Allegro async quantity change commands.
+ *
+ * Defaults: 5 attempts, 2s initial delay, 30s max delay, 2x backoff multiplier
+ * (worst case ~62s total). Override via factory when ops need different tuning.
+ */
+export interface QuantityPollConfig {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+}
+
+/**
  * Allegro Marketplace Adapter
  *
  * Adapter for Allegro marketplace operations (order ingestion and offer quantity updates).
  */
 export class AllegroMarketplaceAdapter implements MarketplacePort {
   private readonly logger = new Logger(AllegroMarketplaceAdapter.name);
+
+  private readonly quantityPollConfig: QuantityPollConfig;
 
   constructor(
     private readonly connectionId: string,
@@ -60,7 +76,14 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     _connection: Connection,
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
+    quantityPollConfig?: Partial<QuantityPollConfig>,
   ) {
+    this.quantityPollConfig = {
+      maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
+      initialDelayMs: quantityPollConfig?.initialDelayMs ?? 2000,
+      maxDelayMs: quantityPollConfig?.maxDelayMs ?? 30000,
+      backoffMultiplier: quantityPollConfig?.backoffMultiplier ?? 2,
+    };
     // Connection is stored for potential future use but not currently accessed
     void _connection;
     // Keep deps in constructor for backward compatibility with factory, but do not use
@@ -374,6 +397,9 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       this.logger.debug(
         `Allegro offer quantity command submitted: commandId=${response.data.id} (connection: ${this.connectionId})`,
       );
+
+      // Poll for async command completion
+      await this.pollAndUpdateCommandStatus(response.data.id, cmd.offerId);
     } catch (error) {
       this.logger.error(
         `Failed to update Allegro offer quantity (offerId: ${cmd.offerId}, connection: ${this.connectionId}): ${(error as Error).message}`,
@@ -680,6 +706,118 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       );
       throw error;
     }
+  }
+
+  /**
+   * Poll Allegro for quantity change command completion status.
+   *
+   * Uses exponential backoff: 2s initial, 2x multiplier, 30s max, 5 attempts.
+   * Returns the final status response, or the last response if still pending after timeout.
+   */
+  private async pollQuantityCommandStatus(
+    commandId: string,
+  ): Promise<AllegroQuantityChangeCommandStatusResponse | null> {
+    const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = this.quantityPollConfig;
+
+    let delayMs = initialDelayMs;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.sleep(delayMs);
+
+      try {
+        const response = await this.httpClient.get<AllegroQuantityChangeCommandStatusResponse>(
+          `/sale/offer-quantity-change-commands/${commandId}`,
+        );
+
+        const tasks = response.data.tasks ?? [];
+        const allTerminal = tasks.length > 0 && tasks.every(
+          (t) => t.status === 'SUCCESS' || t.status === 'FAIL',
+        );
+
+        if (allTerminal) {
+          return response.data;
+        }
+
+        this.logger.debug(
+          `Allegro command ${commandId} still pending (attempt ${attempt}/${maxAttempts}, connection: ${this.connectionId})`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to poll Allegro command status (commandId: ${commandId}, attempt ${attempt}/${maxAttempts}): ${(error as Error).message}`,
+        );
+      }
+
+      delayMs = Math.min(delayMs * backoffMultiplier, maxDelayMs);
+    }
+
+    this.logger.warn(
+      `Allegro command ${commandId} did not reach terminal status after ${maxAttempts} polling attempts (connection: ${this.connectionId})`,
+    );
+    return null;
+  }
+
+  /**
+   * Poll for command status and update the persisted command record.
+   *
+   * On SUCCESS: update to 'succeeded'
+   * On FAIL: update to 'failed' with error details, then throw
+   * On timeout: leave as 'queued', log warning
+   */
+  private async pollAndUpdateCommandStatus(
+    commandId: string,
+    offerId: string,
+  ): Promise<void> {
+    const result = await this.pollQuantityCommandStatus(commandId);
+
+    if (!result) {
+      // Polling timed out — command may still be processing
+      return;
+    }
+
+    const tasks = result.tasks ?? [];
+    const failedTasks = tasks.filter((t) => t.status === 'FAIL');
+
+    if (failedTasks.length > 0) {
+      const errorMessages = failedTasks
+        .map((t) => {
+          const errDetails = t.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? t.message ?? 'unknown';
+          return `offer ${t.offerId}: ${errDetails}`;
+        })
+        .join(', ');
+
+      try {
+        if (this.commandRepository) {
+          await this.commandRepository.updateStatus(commandId, 'failed', errorMessages);
+        }
+      } catch (persistError) {
+        this.logger.warn(
+          `Failed to persist command failure status (commandId: ${commandId}): ${(persistError as Error).message}`,
+        );
+      }
+
+      throw new Error(
+        `Allegro quantity command ${commandId} failed for offer ${offerId}: ${errorMessages}`,
+      );
+    }
+
+    // All tasks succeeded
+    try {
+      if (this.commandRepository) {
+        await this.commandRepository.updateStatus(commandId, 'succeeded');
+      }
+    } catch (persistError) {
+      this.logger.warn(
+        `Failed to persist command success status (commandId: ${commandId}): ${(persistError as Error).message}`,
+      );
+    }
+
+    this.logger.debug(
+      `Allegro quantity command ${commandId} confirmed SUCCESS (connection: ${this.connectionId})`,
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private mapAllegroEventType(type: string): MarketplaceOrderEventType {

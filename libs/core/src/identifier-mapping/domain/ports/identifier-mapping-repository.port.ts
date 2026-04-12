@@ -55,5 +55,13 @@ export interface IdentifierMappingRepositoryPort {
     connectionId: string,
     externalId: string,
   ): Promise<void>;
+
+  /**
+   * Find all mappings for a given entity type and connection.
+   */
+  findByEntityTypeAndConnection(
+    entityType: EntityType,
+    connectionId: string,
+  ): Promise<IdentifierMapping[]>;
 }
 

@@ -13,6 +13,7 @@ import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory';
 import { AllegroTokenRefreshService } from '../token-refresh/allegro-token-refresh.service';
 import { AllegroQuantityCommandRepositoryPort } from '../../domain/ports/allegro-quantity-command-repository.port';
+import { QuantityPollConfig } from './allegro-marketplace.adapter';
 // Adapters are created by factory, no need to import here
 
 /**
@@ -27,11 +28,13 @@ export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
     private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
+    private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
   ) {
     this.factory = new AllegroAdapterFactory(
       this.customerIdentityResolver,
       this.tokenRefreshService,
       this.commandRepository,
+      this.quantityPollConfig,
     );
   }
 

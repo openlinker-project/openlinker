@@ -22,10 +22,10 @@
 
 Set/verify these env vars in API runtime:
 
-- `ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED` (default `true`)
-- `ALLEGRO_OFFERS_SYNC_INTERVAL_CRON` (default `*/30 * * * *`)
-- `ALLEGRO_OFFERS_SYNC_PAGE_LIMIT` (default `100`)
-- `ALLEGRO_OFFERS_SYNC_FEED_TYPE` (`events` by default; set to `offers` for full-crawl bootstrap)
+- `OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED` (default `true`)
+- `OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON` (default `*/30 * * * *`)
+- `OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT` (default `100`)
+- `OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE` (`events` by default; set to `offers` for full-crawl bootstrap)
 
 Confirm the API instance logs the registration of `allegro-offers-sync`.
 
@@ -59,7 +59,7 @@ If you want to force a full run immediately, enqueue a seed job:
 
 Follow-up jobs are automatically enqueued by the worker handler until `nextCursor` is empty.
 
-For initial backfill, you can temporarily set `ALLEGRO_OFFERS_SYNC_FEED_TYPE=offers` (or enqueue a manual job with `feedType: "offers"`), then switch back to `events` for incremental runs.
+For initial backfill, you can temporarily set `OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE=offers` (or enqueue a manual job with `feedType: "offers"`), then switch back to `events` for incremental runs.
 
 ---
 
@@ -101,7 +101,7 @@ Pick an order whose offers have been mapped and trigger `marketplace.order.sync`
 ## Optional Follow-Ups
 
 - Add a per-connection “offers sync in progress” guard if cron overlap becomes a problem.
-- Tune `ALLEGRO_OFFERS_SYNC_INTERVAL_CRON` based on account size and rate limits.
+- Tune `OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON` based on account size and rate limits.
 - Extend linking to support EAN/GTIN if you confirm data availability.
 
 ---

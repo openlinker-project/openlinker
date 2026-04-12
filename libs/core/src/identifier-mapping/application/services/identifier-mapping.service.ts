@@ -146,6 +146,17 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     );
   }
 
+  async listExternalIdsByConnection(
+    entityType: EntityType,
+    connectionId: string,
+  ): Promise<string[]> {
+    const mappings = await this.repository.findByEntityTypeAndConnection(
+      entityType,
+      connectionId,
+    );
+    return mappings.map((m) => m.externalId);
+  }
+
   async batchGetOrCreateInternalIds(
     requests: IdentifierMappingRequest[],
   ): Promise<Map<string, string>> {

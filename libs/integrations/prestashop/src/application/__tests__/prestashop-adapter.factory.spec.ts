@@ -26,6 +26,7 @@ describe('PrestashopAdapterFactory', () => {
       batchGetOrCreateInternalIds: jest.fn(),
       getOrCreateExactMapping: jest.fn(),
       deleteMapping: jest.fn(),
+      listExternalIdsByConnection: jest.fn(),
     } as jest.Mocked<IdentifierMappingPort>;
     mockCredentialsResolver = {
       get: jest.fn(),

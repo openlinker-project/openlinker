@@ -10,6 +10,7 @@
 import { Module } from '@nestjs/common';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { IntegrationsModule } from '@openlinker/core/integrations';
 import { SyncController } from './http/sync.controller';
 import { SchedulerService } from './application/services/scheduler.service';
 
@@ -17,6 +18,7 @@ import { SchedulerService } from './application/services/scheduler.service';
   imports: [
     CoreSyncModule, // Provides JobEnqueuePort
     IdentifierMappingModule, // Provides ConnectionPort
+    IntegrationsModule, // Provides IIntegrationsService (for capability-based scheduling)
   ],
   controllers: [SyncController],
   providers: [SchedulerService],

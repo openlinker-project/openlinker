@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
 import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, SyncJobRequest, JobType } from '@openlinker/core/sync';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -27,9 +28,11 @@ export interface SchedulerTaskConfig {
   taskId: string;
 
   /**
-   * Platform type to filter connections (e.g., 'allegro', 'prestashop')
+   * Platform type to filter connections (e.g., 'allegro', 'prestashop').
+   *
+   * Ignored when `connectionFilter` is provided. Required otherwise.
    */
-  platformType: string;
+  platformType?: string;
 
   /**
    * Job type to enqueue (e.g., 'allegro.orders.poll')
@@ -44,9 +47,17 @@ export interface SchedulerTaskConfig {
 
   /**
    * Environment variable name to enable/disable this task (default: true)
-   * Example: 'ALLEGRO_POLL_SCHEDULER_ENABLED'
+   * Example: 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED'
    */
   enabledEnvVar?: string;
+
+  /**
+   * Optional custom connection filter (overrides default platformType-based lookup).
+   *
+   * When provided, the scheduler calls this instead of filtering by platformType.
+   * Useful for capability-based filtering that spans multiple platform types.
+   */
+  connectionFilter?: () => Promise<Connection[]>;
 
   /**
    * Generate job payload for a connection
@@ -76,6 +87,8 @@ export class SchedulerService implements OnModuleInit {
     private readonly connectionPort: ConnectionPort,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
@@ -107,12 +120,12 @@ export class SchedulerService implements OnModuleInit {
   private registerDefaultTasks(): void {
     // Marketplace orders poll task (for Allegro connections)
     const allegroPollEnabled = this.configService.get<string>(
-      'ALLEGRO_POLL_SCHEDULER_ENABLED',
+      'OL_ALLEGRO_POLL_SCHEDULER_ENABLED',
       'true',
     );
     if (allegroPollEnabled !== 'false') {
       const allegroCronExpression = this.configService.get<string>(
-        'ALLEGRO_POLL_INTERVAL_CRON',
+        'OL_ALLEGRO_POLL_INTERVAL_CRON',
         '*/5 * * * *', // Every 5 minutes
       );
 
@@ -121,7 +134,7 @@ export class SchedulerService implements OnModuleInit {
         platformType: 'allegro',
         jobType: 'marketplace.orders.poll',
         cronExpression: allegroCronExpression,
-        enabledEnvVar: 'ALLEGRO_POLL_SCHEDULER_ENABLED',
+        enabledEnvVar: 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED',
         generatePayload: () => ({
           schemaVersion: 1,
           cursorKey: 'allegro.orders.lastEventId',
@@ -134,19 +147,19 @@ export class SchedulerService implements OnModuleInit {
 
     // Marketplace offers sync task (for Allegro connections)
     const allegroOffersSyncEnabled = this.configService.get<string>(
-      'ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
+      'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
       'true',
     );
     if (allegroOffersSyncEnabled !== 'false') {
       const offersCronExpression = this.configService.get<string>(
-        'ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
+        'OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
         '*/30 * * * *', // Every 30 minutes
       );
       const pageLimit = Number(
-        this.configService.get<string>('ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
+        this.configService.get<string>('OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
       );
       const offersFeedTypeRaw = this.configService
-        .get<string>('ALLEGRO_OFFERS_SYNC_FEED_TYPE', 'events')
+        .get<string>('OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE', 'events')
         .toLowerCase();
       const offersFeedType = offersFeedTypeRaw === 'offers' ? 'offers' : 'events';
 
@@ -155,7 +168,7 @@ export class SchedulerService implements OnModuleInit {
         platformType: 'allegro',
         jobType: 'marketplace.offers.sync',
         cronExpression: offersCronExpression,
-        enabledEnvVar: 'ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
+        enabledEnvVar: 'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
         generatePayload: (connection) => ({
           schemaVersion: 1,
           limit: Number.isFinite(pageLimit) && pageLimit > 0 ? pageLimit : 100,
@@ -168,6 +181,9 @@ export class SchedulerService implements OnModuleInit {
           `marketplace:${connection.id}:offers:sync:${timestamp}`,
       });
     }
+
+    // Periodic inventory sync (capability-based, cross-platform)
+    this.registerInventorySyncTask();
   }
 
   /**
@@ -197,7 +213,7 @@ export class SchedulerService implements OnModuleInit {
     cronJob.start();
 
     this.logger.log(
-      `Registered scheduler task: ${task.taskId} (platform: ${task.platformType}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
+      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'none')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
     );
   }
 
@@ -218,22 +234,34 @@ export class SchedulerService implements OnModuleInit {
 
     this.logger.debug(`Executing scheduler task: ${task.taskId}`);
 
+    const scope = task.connectionFilter ? 'capability' : (task.platformType ?? 'unknown');
+
     try {
-      // Get all active connections for this platform
-      const connections = await this.connectionPort.list({
-        platformType: task.platformType,
-        status: 'active',
-      });
+      // Get connections: use custom filter if provided, otherwise filter by platformType
+      let connections;
+      if (task.connectionFilter) {
+        connections = await task.connectionFilter();
+      } else if (task.platformType) {
+        connections = await this.connectionPort.list({
+          platformType: task.platformType,
+          status: 'active',
+        });
+      } else {
+        this.logger.error(
+          `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`,
+        );
+        return;
+      }
 
       if (connections.length === 0) {
         this.logger.debug(
-          `No active ${task.platformType} connections found for task ${task.taskId}, skipping`,
+          `No active ${scope} connections found for task ${task.taskId}, skipping`,
         );
         return;
       }
 
       this.logger.log(
-        `Found ${connections.length} active ${task.platformType} connection(s) for task ${task.taskId}, enqueuing jobs`,
+        `Found ${connections.length} active ${scope} connection(s) for task ${task.taskId}, enqueuing jobs`,
       );
 
       // Enqueue job for each connection
@@ -307,6 +335,45 @@ export class SchedulerService implements OnModuleInit {
     );
 
     return jobId;
+  }
+
+  /**
+   * Register periodic inventory sync task.
+   *
+   * Enqueues master.inventory.syncAll jobs for all active connections
+   * that support the InventoryMaster capability.
+   */
+  private registerInventorySyncTask(): void {
+    const inventorySyncEnabled = this.configService.get<string>(
+      'OL_INVENTORY_SYNC_ENABLED',
+      'true',
+    );
+    if (inventorySyncEnabled === 'false') {
+      return;
+    }
+
+    const inventoryCron = this.configService.get<string>(
+      'OL_INVENTORY_SYNC_CRON',
+      '*/15 * * * *',
+    );
+
+    this.registerTask({
+      taskId: 'master-inventory-sync',
+      jobType: 'master.inventory.syncAll',
+      cronExpression: inventoryCron,
+      enabledEnvVar: 'OL_INVENTORY_SYNC_ENABLED',
+      connectionFilter: async () => {
+        const adapters = await this.integrationsService.listCapabilityAdapters({
+          capability: 'InventoryMaster',
+        });
+        return adapters.map((a) => a.connection);
+      },
+      generatePayload: () => ({
+        schemaVersion: 1,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `master:${connection.id}:inventory:syncAll:${timestamp}`,
+    });
   }
 
   private getMasterCatalogConnectionId(connection: Connection): string | null {
