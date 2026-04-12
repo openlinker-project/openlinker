@@ -84,12 +84,22 @@ services:
       PS_ENABLE_SSL: 0
       PS_DEMO_MODE: 0
       PS_DEV_MODE: 0
+      PS_INSTALL_AUTO: 1
+      DB_SERVER: mysql
+      DB_NAME: prestashop
+      DB_USER: prestashop
+      DB_PASSWD: prestashop
+      DB_PREFIX: ps_
+      ADMIN_MAIL: demo@prestashop.com
+      ADMIN_PASSWD: prestashop_demo
     ports:
       - '8080:80'
     volumes:
       - prestashop_data:/var/www/html
       # Bind-mount module source for fast dev iteration
       - ./apps/prestashop-module/openlinkerwebhooks:/var/www/html/modules/openlinkerwebhooks
+      # Post-install script: rename randomized admin folder to /admin-dev
+      - ./docker/prestashop/post-install:/tmp/post-install-scripts:ro
     extra_hosts:
       # Enable host.docker.internal on Linux (macOS/Windows work out of the box)
       # Allows PrestaShop container to reach OpenLinker API running on host

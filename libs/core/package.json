@@ -32,6 +32,16 @@
       "require": "./dist/identifier-mapping/*.js",
       "default": "./dist/identifier-mapping/*.js"
     },
+    "./mappings": {
+      "types": "./dist/mappings/index.d.ts",
+      "require": "./dist/mappings/index.js",
+      "default": "./dist/mappings/index.js"
+    },
+    "./mappings/*": {
+      "types": "./dist/mappings/*.d.ts",
+      "require": "./dist/mappings/*.js",
+      "default": "./dist/mappings/*.js"
+    },
     "./orders": {
       "types": "./dist/orders/index.d.ts",
       "require": "./dist/orders/index.js",
