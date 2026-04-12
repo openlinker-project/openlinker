@@ -78,6 +78,7 @@ describe('IntegrationsService', () => {
       getOrCreateInternalId: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       deleteMapping: jest.fn(),
+      listExternalIdsByConnection: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingPort>;
 
     const mockCredentialsResolver = {

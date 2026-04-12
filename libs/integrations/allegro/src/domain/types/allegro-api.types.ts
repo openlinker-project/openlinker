@@ -138,6 +138,29 @@ export interface AllegroOfferQuantityChangeCommandResponse {
 }
 
 /**
+ * Allegro offer quantity change command status response
+ *
+ * Response from GET /sale/offer-quantity-change-commands/{commandId} endpoint.
+ * Used to poll for async command completion status.
+ */
+export type AllegroCommandTaskStatus = 'NEW' | 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
+
+export interface AllegroQuantityChangeCommandStatusResponse {
+  id: string;
+  taskCount: number;
+  completedTaskCount?: number;
+  tasks: Array<{
+    offerId: string;
+    status: AllegroCommandTaskStatus;
+    message?: string;
+    errors?: Array<{
+      code: string;
+      message: string;
+    }>;
+  }>;
+}
+
+/**
  * Allegro offers list item (from GET /sale/offers)
  */
 export interface AllegroOfferListItem {

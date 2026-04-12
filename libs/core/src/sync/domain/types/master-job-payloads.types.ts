@@ -18,3 +18,7 @@ export interface MasterInventorySyncByExternalIdPayloadV1 {
   objectType: 'Inventory' | 'Product';
 }
 
+export interface MasterInventorySyncAllPayloadV1 {
+  schemaVersion: 1;
+}
+

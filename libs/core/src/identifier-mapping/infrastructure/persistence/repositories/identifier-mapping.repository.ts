@@ -116,6 +116,19 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     }
   }
 
+  async findByEntityTypeAndConnection(
+    entityType: EntityType,
+    connectionId: string,
+  ): Promise<IdentifierMapping[]> {
+    const entities = await this.repository.find({
+      where: {
+        entityType,
+        connectionId,
+      },
+    });
+    return entities.map((entity: IdentifierMappingOrmEntity) => this.toDomain(entity));
+  }
+
   async deleteByExternalKey(
     entityType: EntityType,
     platformType: string,

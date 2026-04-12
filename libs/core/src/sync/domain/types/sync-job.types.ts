@@ -22,6 +22,7 @@ export const JobTypeValues = [
   'marketplace.offer.updateFields',
   'master.product.syncByExternalId',
   'master.inventory.syncByExternalId',
+  'master.inventory.syncAll',
 
   'master.variants.autoMatch',
 

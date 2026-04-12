@@ -14,18 +14,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-
-/**
- * Command status values
- */
-export const AllegroQuantityCommandStatusValues = [
-  'queued',
-  'accepted',
-  'rejected',
-  'failed',
-] as const;
-
-export type AllegroQuantityCommandStatus = (typeof AllegroQuantityCommandStatusValues)[number];
+import { AllegroQuantityCommandStatus } from '../../../domain/entities/allegro-quantity-command.entity';
 
 @Entity('allegro_quantity_commands')
 @Index(['commandId'], { unique: true })

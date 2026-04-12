@@ -8,6 +8,7 @@
  * @module libs/integrations/allegro/src
  */
 import { Module, OnModuleInit, Inject, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   IntegrationsModule,
@@ -77,6 +78,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     @Optional()
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
+    @Optional()
+    private readonly configService?: ConfigService,
   ) {}
 
   onModuleInit(): void {
@@ -85,9 +88,32 @@ export class AllegroIntegrationModule implements OnModuleInit {
       this.customerIdentityResolver,
       this.tokenRefreshService,
       this.commandRepository,
+      this.readQuantityPollConfig(),
     );
     this.factoryResolver.registerFactory('allegro.publicapi.v1', factory);
     this.logger.log('Allegro adapter factory registered successfully');
+  }
+
+  private readQuantityPollConfig(): Record<string, number> | undefined {
+    if (!this.configService) {
+      return undefined;
+    }
+    const parseInt = (key: string): number | undefined => {
+      const raw = this.configService?.get<string>(key);
+      if (!raw) return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    const config: Record<string, number> = {};
+    const maxAttempts = parseInt('OL_ALLEGRO_QUANTITY_POLL_MAX_ATTEMPTS');
+    const initialDelayMs = parseInt('OL_ALLEGRO_QUANTITY_POLL_INITIAL_DELAY_MS');
+    const maxDelayMs = parseInt('OL_ALLEGRO_QUANTITY_POLL_MAX_DELAY_MS');
+    const backoffMultiplier = parseInt('OL_ALLEGRO_QUANTITY_POLL_BACKOFF_MULTIPLIER');
+    if (maxAttempts !== undefined) config.maxAttempts = maxAttempts;
+    if (initialDelayMs !== undefined) config.initialDelayMs = initialDelayMs;
+    if (maxDelayMs !== undefined) config.maxDelayMs = maxDelayMs;
+    if (backoffMultiplier !== undefined) config.backoffMultiplier = backoffMultiplier;
+    return Object.keys(config).length > 0 ? config : undefined;
   }
 }
 

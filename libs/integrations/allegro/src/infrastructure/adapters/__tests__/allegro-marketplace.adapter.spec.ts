@@ -9,6 +9,7 @@
 import { AllegroMarketplaceAdapter } from '../allegro-marketplace.adapter';
 import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports/allegro-quantity-command-repository.port';
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import {
   AllegroCheckoutForm,
@@ -39,6 +40,7 @@ describe('AllegroMarketplaceAdapter', () => {
       createMapping: jest.fn(),
       batchGetOrCreateInternalIds: jest.fn(),
       deleteMapping: jest.fn(),
+      listExternalIdsByConnection: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingPort>;
 
     connection = new Connection(
@@ -265,6 +267,20 @@ describe('AllegroMarketplaceAdapter', () => {
   });
 
   describe('updateOfferQuantity', () => {
+    beforeEach(() => {
+      // Mock polling response for command status (SUCCESS by default)
+      httpClient.get.mockResolvedValue({
+        data: {
+          id: 'command-123',
+          taskCount: 1,
+          completedTaskCount: 1,
+          tasks: [{ offerId: 'offer-1', status: 'SUCCESS' }],
+        },
+        status: 200,
+        headers: {},
+      });
+    });
+
     it('should submit offer quantity change command successfully', async () => {
       const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
         id: 'command-123',
@@ -381,6 +397,118 @@ describe('AllegroMarketplaceAdapter', () => {
           idempotencyKey: 'idempotency-key-123',
         }),
       ).rejects.toThrow('Network error');
+    });
+
+    it('should throw when polling returns FAIL status', async () => {
+      const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
+        id: 'command-fail',
+        status: 'ACCEPTED',
+      };
+
+      httpClient.put.mockResolvedValueOnce({
+        data: mockCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      httpClient.get.mockResolvedValue({
+        data: {
+          id: 'command-fail',
+          taskCount: 1,
+          tasks: [{
+            offerId: 'offer-1',
+            status: 'FAIL',
+            errors: [{ code: 'INVALID', message: 'bad quantity' }],
+          }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      await expect(
+        adapter.updateOfferQuantity({
+          offerId: 'offer-1',
+          quantity: 10,
+          idempotencyKey: 'fail-key',
+        }),
+      ).rejects.toThrow('Allegro quantity command command-fail failed');
+    });
+
+    it('should not throw when polling times out (still pending)', async () => {
+      jest.useFakeTimers();
+
+      const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
+        id: 'command-pending',
+        status: 'ACCEPTED',
+      };
+
+      httpClient.put.mockResolvedValueOnce({
+        data: mockCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      // Return pending status on every poll attempt
+      httpClient.get.mockResolvedValue({
+        data: {
+          id: 'command-pending',
+          taskCount: 1,
+          tasks: [{ offerId: 'offer-1', status: 'NEW' }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      // Start the update (will be pending due to polling sleeps)
+      const promise = adapter.updateOfferQuantity({
+        offerId: 'offer-1',
+        quantity: 10,
+        idempotencyKey: 'pending-key',
+      });
+
+      // Advance timers through all polling attempts
+      for (let i = 0; i < 5; i++) {
+        await jest.advanceTimersByTimeAsync(60000);
+      }
+
+      // Should not throw — timeout is treated as non-fatal
+      await expect(promise).resolves.toBeUndefined();
+
+      jest.useRealTimers();
+    });
+
+    it('should persist succeeded status via command repository', async () => {
+      const commandRepository: jest.Mocked<AllegroQuantityCommandRepositoryPort> = {
+        findByCommandId: jest.fn(),
+        find: jest.fn(),
+        create: jest.fn(),
+        updateStatus: jest.fn(),
+      };
+
+      const adapterWithRepo = new AllegroMarketplaceAdapter(
+        connectionId,
+        httpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        commandRepository,
+      );
+
+      httpClient.put.mockResolvedValueOnce({
+        data: { id: 'cmd-1', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      commandRepository.create.mockResolvedValue({} as never);
+
+      await adapterWithRepo.updateOfferQuantity({
+        offerId: 'offer-1',
+        quantity: 5,
+        idempotencyKey: 'repo-key',
+      });
+
+      expect(commandRepository.updateStatus).toHaveBeenCalledWith('cmd-1', 'succeeded');
     });
   });
 

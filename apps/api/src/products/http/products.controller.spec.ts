@@ -62,6 +62,7 @@ function createMockIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
     batchGetOrCreateInternalIds: jest.fn(),
     getOrCreateExactMapping: jest.fn(),
     deleteMapping: jest.fn(),
+    listExternalIdsByConnection: jest.fn(),
   };
 }
 

@@ -12,7 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:integration": "jest --config ./test/jest-integration.js",
+    "test:integration": "jest --config ./test/jest-integration.cjs",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "type-check": "tsc --noEmit"
   },

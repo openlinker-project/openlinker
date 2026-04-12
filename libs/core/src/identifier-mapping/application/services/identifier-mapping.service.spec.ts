@@ -29,6 +29,7 @@ describe('IdentifierMappingService', () => {
       create: jest.fn(),
       insertMapping: jest.fn(),
       deleteByExternalKey: jest.fn(),
+      findByEntityTypeAndConnection: jest.fn(),
     } as unknown as jest.Mocked<IdentifierMappingRepositoryPort>;
 
     const mockConnectionPort = {
@@ -450,6 +451,29 @@ describe('IdentifierMappingService', () => {
       expect(id1).toMatch(/^ol_product_[a-f0-9]{32}$/);
       expect(id2).toMatch(/^ol_product_[a-f0-9]{32}$/);
       expect(id1).not.toBe(id2); // Ensure they are different
+    });
+  });
+
+  describe('listExternalIdsByConnection', () => {
+    it('should return external IDs from repository mappings', async () => {
+      const mappings = [
+        new IdentifierMapping('m1', 'Product', 'ol_product_abc', 'ext-1', 'prestashop', 'conn-1', null, new Date(), new Date()),
+        new IdentifierMapping('m2', 'Product', 'ol_product_def', 'ext-2', 'prestashop', 'conn-1', null, new Date(), new Date()),
+      ];
+      repository.findByEntityTypeAndConnection.mockResolvedValue(mappings);
+
+      const result = await service.listExternalIdsByConnection('Product', 'conn-1');
+
+      expect(repository.findByEntityTypeAndConnection).toHaveBeenCalledWith('Product', 'conn-1');
+      expect(result).toEqual(['ext-1', 'ext-2']);
+    });
+
+    it('should return empty array when no mappings found', async () => {
+      repository.findByEntityTypeAndConnection.mockResolvedValue([]);
+
+      const result = await service.listExternalIdsByConnection('Product', 'conn-1');
+
+      expect(result).toEqual([]);
     });
   });
 });
