@@ -12,6 +12,7 @@ import type {
   PaymentMapping,
   CategoryMapping,
   AllegroCategory,
+  PrestashopCategory,
   MappingOption,
   UpsertStatusMappingsPayload,
   UpsertCarrierMappingsPayload,
@@ -40,6 +41,7 @@ export interface MappingsApi {
   upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
   deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
+  getPrestashopCategories: (connectionId: string) => Promise<PrestashopCategory[]>;
 }
 
 interface ApiRequest {
@@ -111,5 +113,8 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
       const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
       return request<AllegroCategory[]>(`/connections/${connectionId}/allegro/categories${qs}`);
     },
+
+    getPrestashopCategories: (connectionId) =>
+      request<PrestashopCategory[]>(`/connections/${connectionId}/prestashop/categories`),
   };
 }

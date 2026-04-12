@@ -109,7 +109,34 @@ A dedicated "Test connection" button and capability list are tracked in [#164](h
 
 ## 5. Allegro connection (OAuth sandbox)
 
-_TBD_
+### 5.1 Register a sandbox application on Allegro
+
+1. Sign in at https://apps.developer.allegro.pl.allegrosandbox.pl/ (use your real Allegro account — sandbox shares the auth).
+2. **My applications → Register new application** → select **Application with user authorization (OAuth)**.
+3. Fill in:
+   - **Name**: e.g. `OpenLinker dev`
+   - **Redirect URI**: `http://localhost:5173/integrations/allegro/connect/callback`
+4. Save and copy the generated **Client ID** and **Client Secret**.
+
+### 5.2 Create the connection in OpenLinker
+
+1. In the OpenLinker web app → **Add connection** → **Guided setup** → choose **Allegro**.
+2. Fill in:
+   - **Connection name**: e.g. `Allegro sandbox`
+   - **Environment**: **Sandbox**
+   - **Client ID** / **Client Secret**: from step 5.1
+3. Click **Connect**. You're redirected to Allegro → authorize the app → redirected back to the OpenLinker web app. The connection should appear with status **active**.
+
+> You may see a burst of `OAuth state not found or expired` warnings in the API log after a successful connect — the callback effect fires multiple times in dev and only the first exchange succeeds. Harmless; tracked in [#172](https://github.com/SilkSoftwareHouse/openlinker/issues/172).
+
+### 5.3 Verify
+
+Open the connection detail page. You should see:
+
+- Platform `allegro`, Adapter `allegro.publicapi.v1`, status **active**.
+- Capabilities resolved to `Marketplace` (Test connection button + capability pills tracked in [#164](https://github.com/SilkSoftwareHouse/openlinker/issues/164)).
+
+> Do **not** click **Category Mappings** on the Allegro connection detail — it currently crashes (tracked in [#173](https://github.com/SilkSoftwareHouse/openlinker/issues/173)). Category mapping is driven from the PrestaShop (source) side — see §7.
 
 ## 6. Initial catalog & inventory pull
 

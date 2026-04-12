@@ -57,6 +57,14 @@ export interface AllegroCategory {
   leaf: boolean;
 }
 
+export interface PrestashopCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+  depth: number;
+  active: boolean;
+}
+
 export interface CategoryMapping {
   id: string;
   connectionId: string;
