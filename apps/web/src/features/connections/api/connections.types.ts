@@ -37,7 +37,10 @@ export interface CreateConnectionInput {
   name: string;
   platformType: PlatformType;
   config: Record<string, unknown>;
-  credentialsRef: string;
+  /** Platform-specific credential payload (e.g. `{ webserviceApiKey }` for PrestaShop). */
+  credentials?: Record<string, unknown>;
+  /** Existing db-backed reference (must start with `db:`). Used by OAuth flows. */
+  credentialsRef?: string;
   adapterKey?: string;
   enabledCapabilities?: Capability[];
 }

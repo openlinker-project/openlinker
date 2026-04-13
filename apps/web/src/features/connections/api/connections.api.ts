@@ -13,6 +13,10 @@ export interface ConnectionsApi {
   getById: (connectionId: string) => Promise<Connection>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
+  updateCredentials: (
+    connectionId: string,
+    credentials: Record<string, unknown>,
+  ) => Promise<void>;
 }
 
 interface ApiRequest {
@@ -60,6 +64,12 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
       return request<Connection>(`/connections/${connectionId}`, {
         method: 'PATCH',
         body: JSON.stringify(input),
+      });
+    },
+    updateCredentials(connectionId, credentials): Promise<void> {
+      return request<void>(`/connections/${connectionId}/credentials`, {
+        method: 'PUT',
+        body: JSON.stringify({ credentials }),
       });
     },
   };

@@ -89,6 +89,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       getById: vi.fn().mockResolvedValue(sampleConnection),
       list: vi.fn().mockResolvedValue([sampleConnection]),
       update: vi.fn().mockResolvedValue(sampleConnection),
+      updateCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.connections,
     } as ApiClient['connections'],
     cursors: {

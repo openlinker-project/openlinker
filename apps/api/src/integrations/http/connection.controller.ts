@@ -11,6 +11,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Body,
   Param,
   Query,
@@ -23,6 +24,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
+import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
@@ -159,6 +161,21 @@ export class ConnectionController {
     const connection = await this.connectionService.get(id);
     const recentJobs = await this.syncJobRepository.findRecentByConnectionId(id, 10);
     return ConnectionDiagnosticsResponseDto.fromDomain(connection, recentJobs);
+  }
+
+  @Roles('admin')
+  @Put(':id/credentials')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Rotate the credentials stored for this connection' })
+  @ApiResponse({ status: 204, description: 'Credentials rotated' })
+  @ApiResponse({ status: 400, description: 'Invalid payload or connection not db-backed' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async updateCredentials(
+    @Param('id') id: string,
+    @Body() dto: UpdateConnectionCredentialsDto,
+  ): Promise<void> {
+    await this.connectionService.updateCredentials(id, dto.credentials);
   }
 
   @Roles('admin')

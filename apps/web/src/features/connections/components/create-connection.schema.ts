@@ -19,7 +19,14 @@ export const createConnectionSchema = z.object({
         return false;
       }
     }, 'Configuration must be valid JSON'),
-  credentialsRef: z.string().trim().min(1, 'Credentials reference is required'),
+  credentialsRef: z
+    .string()
+    .trim()
+    .min(1, 'Credentials reference is required')
+    .refine(
+      (value) => value.startsWith('db:'),
+      'Credentials reference must start with "db:" — raw keys are no longer accepted',
+    ),
   name: z.string().trim().min(1, 'Connection name is required'),
   platformType: platformTypeFormSchema,
 });

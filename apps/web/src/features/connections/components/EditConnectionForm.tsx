@@ -1,9 +1,10 @@
-import type { ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
+import { useUpdateConnectionCredentialsMutation } from '../hooks/use-update-connection-credentials-mutation';
 import {
   editConnectionSchema,
   toUpdateConnectionInput,
@@ -83,9 +84,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           <Input value={connection.platformType} disabled />
         </FormField>
 
-        <FormField label="Credentials reference" name="credentialsRef">
-          <Input value={connection.credentialsRef} disabled />
-        </FormField>
+        <CredentialsPanel connection={connection} />
 
         <FormField
           label="Adapter key"
@@ -119,5 +118,93 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         </Button>
       </div>
     </form>
+  );
+}
+
+function CredentialsPanel({ connection }: { connection: Connection }): ReactElement {
+  const isDbBacked = connection.credentialsRef.startsWith('db:');
+  const [showRotate, setShowRotate] = useState(false);
+  const [newKey, setNewKey] = useState('');
+  const rotate = useUpdateConnectionCredentialsMutation();
+  const { showToast } = useToast();
+
+  if (!isDbBacked) {
+    return (
+      <FormField label="Credentials reference" name="credentialsRef">
+        <Input value={connection.credentialsRef} disabled />
+      </FormField>
+    );
+  }
+
+  if (connection.platformType !== 'prestashop') {
+    return (
+      <FormField label="Credentials" name="credentials">
+        <Input value="Stored securely (managed by integration)" disabled />
+      </FormField>
+    );
+  }
+
+  const onRotate = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (newKey.trim().length === 0) return;
+    try {
+      await rotate.mutateAsync({
+        connectionId: connection.id,
+        credentials: { webserviceApiKey: newKey.trim() },
+      });
+      showToast({
+        tone: 'success',
+        title: 'Credentials rotated',
+        description: 'The new webservice key is now in use.',
+      });
+      setNewKey('');
+      setShowRotate(false);
+    } catch {
+      // surfaced via rotate.error
+    }
+  };
+
+  return (
+    <FormField
+      label="Webservice key"
+      name="credentials"
+      description="Stored securely on the server. Rotate to replace the key without restarting the API."
+    >
+      {showRotate ? (
+        <div className="form-grid">
+          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder="New webservice key"
+            value={newKey}
+            onChange={(event) => setNewKey(event.target.value)}
+          />
+          <div className="form-actions">
+            <Button
+              type="button"
+              onClick={(event) => void onRotate(event)}
+              disabled={rotate.isPending || newKey.trim().length === 0}
+            >
+              {rotate.isPending ? 'Rotating...' : 'Save new key'}
+            </Button>
+            <Button
+              tone="secondary"
+              type="button"
+              onClick={() => {
+                setShowRotate(false);
+                setNewKey('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
+          Rotate webservice key
+        </Button>
+      )}
+    </FormField>
   );
 }

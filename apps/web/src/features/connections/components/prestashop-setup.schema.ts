@@ -3,15 +3,10 @@
  *
  * Zod schema and form → API payload mapping for the guided PrestaShop
  * connection wizard. Maps user-visible fields (shop URL, webservice key,
- * optional shop ID) to the generic CreateConnectionInput shape
- * ({ platformType, adapterKey, config, credentialsRef }).
- *
- * NOTE: Until the API exposes an endpoint to register an integration
- * credential from a raw key, the webservice key is sent directly as
- * `credentialsRef`. This matches current MVP backend behavior but
- * overloads a field documented as an opaque reference. Follow-up work
- * will introduce a credentials-create step so the raw key never appears
- * in the connection payload.
+ * optional shop ID) to the generic CreateConnectionInput shape. The
+ * webservice key is submitted as the `credentials` payload; the API
+ * persists it in the integration credentials store and assigns a
+ * `db:<uuid>` reference automatically.
  */
 import { z } from 'zod';
 import type { Capability, CreateConnectionInput } from '../api/connections.types';
@@ -75,7 +70,7 @@ export function toCreateConnectionInput(
     name: values.name,
     platformType: 'prestashop',
     adapterKey: PRESTASHOP_ADAPTER_KEY,
-    credentialsRef: values.webserviceKey,
+    credentials: { webserviceApiKey: values.webserviceKey },
     config,
     enabledCapabilities: values.enabledCapabilities,
   };

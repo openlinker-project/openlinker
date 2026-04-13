@@ -7,7 +7,10 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
-import { Connection, ConnectionCreate, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { ConnectionCreateInput } from './connection.service.types';
+
+export type { ConnectionCreateInput };
 
 export interface IConnectionService {
   /**
@@ -15,7 +18,7 @@ export interface IConnectionService {
    * @param payload - Connection creation payload
    * @returns Created Connection entity
    */
-  create(payload: ConnectionCreate): Promise<Connection>;
+  create(payload: ConnectionCreateInput): Promise<Connection>;
 
   /**
    * List connections with optional filters
@@ -40,14 +43,21 @@ export interface IConnectionService {
   update(connectionId: string, patch: ConnectionUpdate): Promise<Connection>;
 
   /**
+   * Rotate the credentials stored for a connection. Writes to the credential
+   * row referenced by `credentialsRef`; the connection row is not modified.
+   *
+   * @param connectionId - The connection identifier (UUID)
+   * @param credentials - Platform-specific credential payload (replaces stored value)
+   */
+  updateCredentials(
+    connectionId: string,
+    credentials: Record<string, unknown>,
+  ): Promise<void>;
+
+  /**
    * Disable a connection
    * @param connectionId - The connection identifier (UUID)
    * @returns Disabled Connection entity or throws if not found
    */
   disable(connectionId: string): Promise<Connection>;
 }
-
-
-
-
-

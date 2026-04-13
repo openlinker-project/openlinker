@@ -96,12 +96,6 @@ export function PrestashopSetupForm(): ReactElement {
         resources enabled.
       </Alert>
 
-      <Alert tone="warning" title="Webservice key handling (MVP)">
-        The key is stored as the connection&apos;s credentials reference until the dedicated
-        credentials service is available. Treat this connection as carrying a secret until the
-        follow-up backend work lands.
-      </Alert>
-
       <div className="form-grid">
         <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
           <Input

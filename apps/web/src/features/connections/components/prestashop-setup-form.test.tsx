@@ -27,7 +27,7 @@ describe('PrestashopSetupForm', () => {
       name: 'Main store',
       platformType: 'prestashop',
       adapterKey: 'prestashop.webservice.v1',
-      credentialsRef: 'WSKEY123',
+      credentials: { webserviceApiKey: 'WSKEY123' },
       config: { baseUrl: 'https://shop.example.com' },
       enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
     });
