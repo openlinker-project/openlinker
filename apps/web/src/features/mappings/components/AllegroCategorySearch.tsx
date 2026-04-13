@@ -15,7 +15,7 @@ import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedbac
 import type { AllegroCategory, CategoryMapping } from '../api/mappings.types';
 
 interface AllegroCategorySearchProps {
-  connectionId: string;
+  marketplaceConnectionId: string;
   currentMapping: CategoryMapping | undefined;
   onSelect: (category: AllegroCategory, path: string) => void;
   onClear: () => void;
@@ -28,7 +28,7 @@ interface BreadcrumbItem {
 }
 
 export function AllegroCategorySearch({
-  connectionId,
+  marketplaceConnectionId,
   currentMapping,
   onSelect,
   onClear,
@@ -37,7 +37,7 @@ export function AllegroCategorySearch({
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const currentParentId = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : undefined;
 
-  const categoriesQuery = useAllegroCategoriesQuery(connectionId, currentParentId);
+  const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, currentParentId);
 
   function navigateInto(category: AllegroCategory): void {
     setBreadcrumbs((prev) => [...prev, { id: category.id, name: category.name }]);
