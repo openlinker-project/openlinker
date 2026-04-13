@@ -12,6 +12,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
 
 async function bootstrap(): Promise<void> {
   // Disable Nest's default body parser so we can control parser order
@@ -48,6 +49,9 @@ async function bootstrap(): Promise<void> {
       transform: true,
     }),
   );
+
+  // Map capability-related domain errors to 400 instead of the default 500
+  app.useGlobalFilters(new CapabilityNotSupportedFilter());
 
   // Swagger API documentation
   const config = new DocumentBuilder()

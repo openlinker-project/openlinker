@@ -42,9 +42,11 @@ export function ConnectionDetailPage(): ReactElement {
               <Link className="button button--secondary" to={`/connections/${connectionId}/mappings`}>
                 Mappings
               </Link>
-              <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
-                Category Mappings
-              </Link>
+              {connection.enabledCapabilities.includes('ProductMaster') ? (
+                <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
+                  Category Mappings
+                </Link>
+              ) : null}
             </>
           ) : null}
           <Link className="button button--secondary" to="/connections">
