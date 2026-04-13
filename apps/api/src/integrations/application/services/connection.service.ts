@@ -12,7 +12,9 @@
  */
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { IConnectionService, ConnectionCreateInput } from '../interfaces/connection.service.interface';
+import { IConnectionService } from '../interfaces/connection.service.interface';
+import { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import { validateCredentialsShape } from '../credentials/credential-shape.validator';
 import {
   ConnectionPort,
   Connection,
@@ -280,20 +282,3 @@ export class ConnectionService implements IConnectionService {
   }
 }
 
-/**
- * Enforce the minimum credential shape required by each platform before we
- * persist arbitrary user-supplied JSON into the credentials store.
- */
-function validateCredentialsShape(
-  platformType: string,
-  credentials: Record<string, unknown>,
-): void {
-  if (platformType === 'prestashop') {
-    const key = credentials.webserviceApiKey;
-    if (typeof key !== 'string' || key.trim().length === 0) {
-      throw new BadRequestException(
-        'PrestaShop credentials must include a non-empty `webserviceApiKey` string',
-      );
-    }
-  }
-}

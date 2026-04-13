@@ -23,10 +23,26 @@ import {
   IsArray,
   IsIn,
   Matches,
-  ValidateIf,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Capability, CapabilityValues } from '@openlinker/core/integrations';
+
+@ValidatorConstraint({ name: 'CredentialsXor', async: false })
+class CredentialsXorConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    const obj = args.object as CreateConnectionDto;
+    const hasCreds = obj.credentials !== undefined && obj.credentials !== null;
+    const hasRef = typeof obj.credentialsRef === 'string' && obj.credentialsRef.length > 0;
+    return hasCreds !== hasRef; // exactly one
+  }
+  defaultMessage(): string {
+    return 'Exactly one of `credentials` or `credentialsRef` must be provided';
+  }
+}
 
 export class CreateConnectionDto {
   @ApiProperty({
@@ -60,9 +76,10 @@ export class CreateConnectionDto {
       'credentialsRef to `db:<uuid>` automatically. Mutually exclusive with credentialsRef.',
     example: { webserviceApiKey: 'XXXXX' },
   })
-  @ValidateIf((o: CreateConnectionDto) => o.credentials !== undefined || o.credentialsRef === undefined)
+  @IsOptional()
   @IsObject()
   @IsNotEmpty()
+  @Validate(CredentialsXorConstraint)
   credentials?: Record<string, unknown>;
 
   @ApiPropertyOptional({
@@ -71,7 +88,7 @@ export class CreateConnectionDto {
       'that persist the credential themselves. Mutually exclusive with `credentials`.',
     example: 'db:550e8400-e29b-41d4-a716-446655440000',
   })
-  @ValidateIf((o: CreateConnectionDto) => o.credentialsRef !== undefined || o.credentials === undefined)
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @Matches(/^db:/, {

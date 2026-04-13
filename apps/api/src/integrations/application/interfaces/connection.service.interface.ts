@@ -7,20 +7,10 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
-import { Connection, ConnectionCreate, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { ConnectionCreateInput } from './connection.service.types';
 
-/**
- * Connection create input accepted by the API service.
- *
- * Extends the core `ConnectionCreate` with an optional `credentials` payload.
- * When `credentials` is supplied, the service persists it in the integration
- * credentials store and sets `credentialsRef` to the resulting `db:<uuid>`
- * automatically. Exactly one of `credentials` or `credentialsRef` must be set.
- */
-export type ConnectionCreateInput = Omit<ConnectionCreate, 'credentialsRef'> & {
-  credentialsRef?: string;
-  credentials?: Record<string, unknown>;
-};
+export type { ConnectionCreateInput };
 
 export interface IConnectionService {
   /**

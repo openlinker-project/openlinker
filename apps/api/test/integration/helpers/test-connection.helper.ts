@@ -24,7 +24,7 @@ export async function createTestConnection(
     name: 'Test Connection',
     status: 'active',
     config: { baseUrl: 'https://shop.example.com' },
-    credentialsRef: 'test-credentials-ref',
+    credentialsRef: 'db:test-credentials-ref',
     adapterKey: 'prestashop.webservice.v1',
     ...overrides,
   });

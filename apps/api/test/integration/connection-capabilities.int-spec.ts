@@ -30,13 +30,16 @@ describe('Connection Capabilities Integration', () => {
     await teardownTestHarness();
   });
 
-  async function createConnection(body: Record<string, unknown>): Promise<{ id: string; enabledCapabilities: string[]; supportedCapabilities: string[] }> {
+  async function createConnection(
+    body: object,
+    token?: string,
+  ): Promise<{ id: string; enabledCapabilities: string[]; supportedCapabilities: string[] }> {
     const http = harness.getHttp();
     const dataSource = harness.getDataSource();
-    const token = await loginAsAdmin(http, dataSource);
+    const authToken = token ?? (await loginAsAdmin(http, dataSource));
     const response = await http
       .post('/connections')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${authToken}`)
       .send(body)
       .expect(201);
     return response.body;
@@ -84,7 +87,7 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Narrow me' }));
+    const created = await createConnection(createPrestashopConnectionDto({ name: 'Narrow me' }), token);
 
     const updated = await http
       .patch(`/connections/${created.id}`)
@@ -103,7 +106,7 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Immutable key' }));
+    const created = await createConnection(createPrestashopConnectionDto({ name: 'Immutable key' }), token);
 
     await http
       .patch(`/connections/${created.id}`)
@@ -117,7 +120,7 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Validate subset' }));
+    const created = await createConnection(createPrestashopConnectionDto({ name: 'Validate subset' }), token);
 
     await http
       .patch(`/connections/${created.id}`)

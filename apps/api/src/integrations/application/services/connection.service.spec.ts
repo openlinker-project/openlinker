@@ -24,7 +24,7 @@ import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
 } from '@openlinker/core/integrations';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { ConnectionCreateInput } from '../interfaces/connection.service.interface';
+import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
 describe('ConnectionService', () => {
   let service: ConnectionService;

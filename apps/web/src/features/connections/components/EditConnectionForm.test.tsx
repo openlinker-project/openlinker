@@ -11,17 +11,17 @@ describe('EditConnectionForm', () => {
 
     expect(screen.getByDisplayValue(sampleConnection.name)).toBeInTheDocument();
     expect(screen.getByDisplayValue(sampleConnection.platformType)).toBeInTheDocument();
-    expect(screen.getByDisplayValue(sampleConnection.credentialsRef)).toBeInTheDocument();
+    expect(screen.getByText('Rotate webservice key')).toBeInTheDocument();
   });
 
-  it('shows platform type and credentials ref as disabled fields', () => {
+  it('shows platform type as disabled and credentials behind a rotate button', () => {
     renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
 
     const platformInput = screen.getByDisplayValue(sampleConnection.platformType);
-    const credentialsInput = screen.getByDisplayValue(sampleConnection.credentialsRef);
-
     expect(platformInput).toBeDisabled();
-    expect(credentialsInput).toBeDisabled();
+    expect(screen.getByText('Rotate webservice key')).toBeInTheDocument();
+    // The opaque db: ref must not be exposed in the UI any more.
+    expect(screen.queryByDisplayValue(sampleConnection.credentialsRef)).not.toBeInTheDocument();
   });
 
   it('submits the update with changed values', async () => {
