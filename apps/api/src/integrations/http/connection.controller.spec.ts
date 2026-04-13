@@ -61,6 +61,7 @@ describe('ConnectionController', () => {
       list: jest.fn(),
       get: jest.fn(),
       update: jest.fn(),
+      updateCredentials: jest.fn(),
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
@@ -114,7 +115,7 @@ describe('ConnectionController', () => {
         name: 'Test Connection',
         platformType: 'prestashop',
         config: { baseUrl: 'https://example.com' },
-        credentialsRef: 'cred_123',
+        credentialsRef: 'db:cred_123',
       };
 
       const result = await controller.create(dto);

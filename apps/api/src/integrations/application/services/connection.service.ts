@@ -11,11 +11,11 @@
  * @see {@link ConnectionPort} for the core port
  */
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { IConnectionService } from '../interfaces/connection.service.interface';
+import { randomUUID } from 'node:crypto';
+import { IConnectionService, ConnectionCreateInput } from '../interfaces/connection.service.interface';
 import {
   ConnectionPort,
   Connection,
-  ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
   CONNECTION_PORT_TOKEN,
@@ -24,6 +24,8 @@ import {
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
+  IntegrationCredentialRepositoryPort,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
 } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
@@ -44,22 +46,34 @@ export class ConnectionService implements IConnectionService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
+    private readonly credentialRepository: IntegrationCredentialRepositoryPort,
   ) {}
 
-  async create(payload: ConnectionCreate): Promise<Connection> {
-    try {
-      this.logger.log(`Creating connection: ${payload.name} (platform: ${payload.platformType})`);
+  async create(payload: ConnectionCreateInput): Promise<Connection> {
+    const { credentials, credentialsRef, ...rest } = payload;
 
-      // Resolve adapter metadata to (a) default enabledCapabilities when the
-      // caller omits them and (b) validate any explicit subset against the
-      // adapter's supportedCapabilities.
+    if ((credentials && credentialsRef) || (!credentials && !credentialsRef)) {
+      throw new BadRequestException(
+        'Exactly one of `credentials` or `credentialsRef` must be provided',
+      );
+    }
+    if (credentialsRef && !credentialsRef.startsWith('db:')) {
+      throw new BadRequestException(
+        'credentialsRef must start with "db:" — raw keys are no longer accepted',
+      );
+    }
+
+    try {
+      this.logger.log(`Creating connection: ${rest.name} (platform: ${rest.platformType})`);
+
       const metadata = await this.integrationsService.resolveAdapterMetadata({
-        platformType: payload.platformType,
-        adapterKey: payload.adapterKey,
+        platformType: rest.platformType,
+        adapterKey: rest.adapterKey,
       });
 
       const enabledCapabilities =
-        payload.enabledCapabilities ?? [...metadata.supportedCapabilities];
+        rest.enabledCapabilities ?? [...metadata.supportedCapabilities];
 
       const invalid = enabledCapabilities.filter(
         (c) => !metadata.supportedCapabilities.includes(c),
@@ -70,15 +84,55 @@ export class ConnectionService implements IConnectionService {
         );
       }
 
-      const connection = await this.connectionPort.create({
-        ...payload,
-        enabledCapabilities,
-      });
+      // Persist credentials if the caller supplied raw values. We write the
+      // credential row *before* the connection row so the connection is never
+      // persisted pointing at a missing credential. If connection creation
+      // fails afterwards we best-effort delete the credential to avoid leaks.
+      let resolvedCredentialsRef = credentialsRef;
+      let createdCredentialRef: string | null = null;
+      if (credentials) {
+        validateCredentialsShape(rest.platformType, credentials);
+        const ref = randomUUID();
+        await this.credentialRepository.create({
+          ref,
+          platformType: rest.platformType,
+          credentialsJson: credentials,
+        });
+        createdCredentialRef = ref;
+        resolvedCredentialsRef = `db:${ref}`;
+        this.logger.log(
+          `Persisted credentials for new ${rest.platformType} connection (ref: db:${ref})`,
+        );
+      }
+
+      let connection: Connection;
+      try {
+        connection = await this.connectionPort.create({
+          ...rest,
+          credentialsRef: resolvedCredentialsRef!,
+          enabledCapabilities,
+        });
+      } catch (error) {
+        if (createdCredentialRef) {
+          try {
+            await this.credentialRepository.delete(createdCredentialRef);
+            this.logger.warn(
+              `Rolled back orphaned credential ${createdCredentialRef} after connection create failure`,
+            );
+          } catch (cleanupError) {
+            this.logger.error(
+              `Failed to roll back orphaned credential ${createdCredentialRef}: ${(cleanupError as Error).message}`,
+            );
+          }
+        }
+        throw error;
+      }
+
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
       await this.enqueueInitialCatalogSync(connection);
       return connection;
     } catch (error) {
-      this.logger.error(`Failed to create connection: ${payload.name}`, error);
+      this.logger.error(`Failed to create connection: ${rest.name}`, error);
       throw error;
     }
   }
@@ -158,8 +212,6 @@ export class ConnectionService implements IConnectionService {
 
       const existing = await this.connectionPort.get(connectionId);
 
-      // adapterKey is immutable post-create. Silently accept the unchanged
-      // value (so naive round-trip patches work) but reject any real change.
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
         throw new BadRequestException(
           `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`,
@@ -194,6 +246,23 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
+  async updateCredentials(
+    connectionId: string,
+    credentials: Record<string, unknown>,
+  ): Promise<void> {
+    const connection = await this.get(connectionId);
+    if (!connection.credentialsRef.startsWith('db:')) {
+      throw new BadRequestException(
+        `Connection ${connectionId} does not have a db-backed credentials reference ` +
+          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`,
+      );
+    }
+    validateCredentialsShape(connection.platformType, credentials);
+    const ref = connection.credentialsRef.slice('db:'.length);
+    await this.credentialRepository.update(ref, { credentialsJson: credentials });
+    this.logger.log(`Rotated credentials for connection ${connectionId}`);
+  }
+
   async disable(connectionId: string): Promise<Connection> {
     try {
       this.logger.log(`Disabling connection: ${connectionId}`);
@@ -211,3 +280,20 @@ export class ConnectionService implements IConnectionService {
   }
 }
 
+/**
+ * Enforce the minimum credential shape required by each platform before we
+ * persist arbitrary user-supplied JSON into the credentials store.
+ */
+function validateCredentialsShape(
+  platformType: string,
+  credentials: Record<string, unknown>,
+): void {
+  if (platformType === 'prestashop') {
+    const key = credentials.webserviceApiKey;
+    if (typeof key !== 'string' || key.trim().length === 0) {
+      throw new BadRequestException(
+        'PrestaShop credentials must include a non-empty `webserviceApiKey` string',
+      );
+    }
+  }
+}
