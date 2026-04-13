@@ -20,12 +20,11 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
-import { IBootstrapAdminService } from './bootstrap-admin.service.interface';
 
 const BCRYPT_COST = 10;
 
 @Injectable()
-export class BootstrapAdminService implements IBootstrapAdminService, OnApplicationBootstrap {
+export class BootstrapAdminService implements OnApplicationBootstrap {
   private readonly logger = new Logger(BootstrapAdminService.name);
 
   constructor(
@@ -40,7 +39,7 @@ export class BootstrapAdminService implements IBootstrapAdminService, OnApplicat
 
   async bootstrap(): Promise<void> {
     const enabled = this.configService.get<string>('OL_BOOTSTRAP_ADMIN_ENABLED', 'true');
-    if (enabled.toLowerCase() !== 'true') {
+    if (enabled.trim().toLowerCase() !== 'true') {
       return;
     }
 
@@ -108,7 +107,7 @@ export class BootstrapAdminService implements IBootstrapAdminService, OnApplicat
     if (typeof error !== 'object' || error === null) {
       return false;
     }
-    const code = (error as { code?: string }).code;
-    return code === '23505';
+    const e = error as { code?: string; driverError?: { code?: string } };
+    return e.code === '23505' || e.driverError?.code === '23505';
   }
 }

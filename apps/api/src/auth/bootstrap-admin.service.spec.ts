@@ -31,12 +31,18 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
 });
 
 describe('BootstrapAdminService', () => {
-  let warnSpy: jest.SpyInstance;
-  let logSpy: jest.SpyInstance;
+  let warnMessages: string[];
+  let logMessages: string[];
 
   beforeEach(() => {
-    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    warnMessages = [];
+    logMessages = [];
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((msg: string) => {
+      warnMessages.push(msg);
+    });
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((msg: string) => {
+      logMessages.push(msg);
+    });
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -56,11 +62,9 @@ describe('BootstrapAdminService', () => {
     expect(saved.role).toBe('admin');
     const hash: string = saved.passwordHash;
     expect(await bcrypt.compare('wrong', hash)).toBe(false);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const banner = String(warnSpy.mock.calls[0][0]);
-    expect(banner).toMatch(/username=admin/);
-    expect(banner).toMatch(/password=/);
+    expect(warnMessages).toHaveLength(1);
+    expect(warnMessages[0]).toMatch(/username=admin/);
+    expect(warnMessages[0]).toMatch(/password=/);
   });
 
   it('seeds with provided password and does NOT log it', async () => {
@@ -77,8 +81,8 @@ describe('BootstrapAdminService', () => {
     const saved = repo.save.mock.calls[0][0];
     const hash: string = saved.passwordHash;
     expect(await bcrypt.compare('secret-pass', hash)).toBe(true);
-    expect(warnSpy).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(warnMessages).toHaveLength(0);
+    expect(logMessages).toContainEqual(
       expect.stringContaining("Seeded default admin user 'admin' with provided password"),
     );
   });
@@ -91,7 +95,7 @@ describe('BootstrapAdminService', () => {
     await service.bootstrap();
 
     expect(repo.save).not.toHaveBeenCalled();
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnMessages).toHaveLength(0);
   });
 
   it('skips when disabled via env', async () => {
@@ -114,7 +118,7 @@ describe('BootstrapAdminService', () => {
 
     const service = new BootstrapAdminService(makeConfig(), repo);
     await expect(service.bootstrap()).resolves.toBeUndefined();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('already created by another'));
+    expect(logMessages).toContainEqual(expect.stringContaining('already created by another'));
   });
 
   it('rethrows non-unique-violation save errors', async () => {
