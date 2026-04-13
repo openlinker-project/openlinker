@@ -92,22 +92,11 @@ export class DevStackHealthService implements IDevStackHealthService {
 
   private async checkPostgres(): Promise<ServiceHealth> {
     try {
-      let timeoutId: NodeJS.Timeout | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('PostgreSQL health check timeout')),
-          this.CHECK_TIMEOUT_MS,
-        );
-      });
-
-      try {
-        await Promise.race([this.dataSource.query('SELECT 1'), timeoutPromise]);
-        return { status: 'ok' as ServiceStatus };
-      } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      }
+      await this.withTimeout(
+        this.dataSource.query('SELECT 1'),
+        'PostgreSQL health check timeout',
+      );
+      return { status: 'ok' as ServiceStatus };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -119,67 +108,52 @@ export class DevStackHealthService implements IDevStackHealthService {
     }
   }
 
+  private async withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error(message)),
+        this.CHECK_TIMEOUT_MS,
+      );
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   private async checkRedis(): Promise<ServiceHealth> {
     try {
-      // Test Redis Streams by writing and reading from a dedicated healthcheck stream
       const streamKey = this.HEALTHCHECK_STREAM;
       const timestamp = Date.now().toString();
 
-      // Write test entry with MAXLEN ~ 1 to cap stream size
-      // Redis v4 API: xAdd(key, id, fields, options?)
-      let timeoutId: NodeJS.Timeout | undefined;
-      const addTimeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('Redis xAdd timeout')),
-          this.CHECK_TIMEOUT_MS,
-        );
-      });
+      await this.withTimeout(
+        this.redisClient.ping(),
+        'Redis ping timeout',
+      );
 
-      try {
-        await Promise.race([
-          this.redisClient.xAdd(
-            streamKey,
-            '*',
-            { timestamp },
-            {
-              TRIM: {
-                strategy: 'MAXLEN',
-                strategyModifier: '~',
-                threshold: 1,
-              },
+      // Exercise Redis Streams with a non-blocking write. XADD succeeds iff
+      // the server supports Streams and accepts writes; no read-back needed,
+      // which avoids false positives on cold boot when consumer groups or
+      // stream entries are not yet initialized.
+      await this.withTimeout(
+        this.redisClient.xAdd(
+          streamKey,
+          '*',
+          { timestamp },
+          {
+            TRIM: {
+              strategy: 'MAXLEN',
+              strategyModifier: '~',
+              threshold: 1,
             },
-          ),
-          addTimeoutPromise,
-        ]);
-      } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      }
-
-      // Read back to verify Streams are working
-      // Redis v4 API: xRead(commands, options?)
-      timeoutId = undefined;
-      const readTimeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error('Redis xRead timeout')),
-          this.CHECK_TIMEOUT_MS,
-        );
-      });
-
-      try {
-        await Promise.race([
-          this.redisClient.xRead(
-            [{ key: streamKey, id: '0' }],
-            { COUNT: 1 },
-          ),
-          readTimeoutPromise,
-        ]);
-      } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      }
+          },
+        ),
+        'Redis xAdd timeout',
+      );
 
       return { status: 'ok' as ServiceStatus };
     } catch (error) {
