@@ -14,6 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, FindOptionsWhere, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import { WebhookDeliveryOrmEntity } from '../entities/webhook-delivery.orm-entity';
 import { WebhookDelivery } from '../../../domain/entities/webhook-delivery.entity';
+import { WebhookDeliveryUpsertFailedError } from '../../../domain/exceptions/webhook-delivery-upsert-failed.error';
 import {
   WebhookDeliveryRepositoryPort,
   WebhookDeliveryUpsertInput,
@@ -82,9 +83,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       },
     });
     if (!saved) {
-      throw new Error(
-        `Upsert failed to locate row: provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}`,
-      );
+      throw new WebhookDeliveryUpsertFailedError(input.provider, input.connectionId, input.eventId);
     }
     return this.toDomain(saved);
   }

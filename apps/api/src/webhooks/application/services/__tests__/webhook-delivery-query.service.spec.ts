@@ -43,4 +43,14 @@ describe('WebhookDeliveryQueryService', () => {
     expect(result).toBeNull();
     expect(repo.findById).toHaveBeenCalledWith('abc');
   });
+
+  it('should propagate repository errors from list', async () => {
+    repo.findMany.mockRejectedValue(new Error('DB connection lost'));
+    await expect(service.list({}, { limit: 10, offset: 0 })).rejects.toThrow('DB connection lost');
+  });
+
+  it('should propagate repository errors from getById', async () => {
+    repo.findById.mockRejectedValue(new Error('DB connection lost'));
+    await expect(service.getById('abc')).rejects.toThrow('DB connection lost');
+  });
 });

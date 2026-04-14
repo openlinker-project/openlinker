@@ -12,6 +12,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -19,7 +20,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { WebhookDeliveryQueryService } from '../application/services/webhook-delivery-query.service';
+import {
+  IWebhookDeliveryQueryService,
+  WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN,
+} from '../application/interfaces/webhook-delivery-query.service.interface';
 import { ListWebhookDeliveriesQueryDto } from './dto/list-webhook-deliveries-query.dto';
 import { PaginatedWebhookDeliveriesResponseDto } from './dto/paginated-webhook-deliveries-response.dto';
 import { WebhookDeliveryDetailResponseDto } from './dto/webhook-delivery-detail-response.dto';
@@ -31,7 +35,10 @@ import type { WebhookDelivery } from '@openlinker/core/webhooks';
 @ApiTags('webhooks')
 @Controller('webhook-deliveries')
 export class WebhookDeliveryController {
-  constructor(private readonly queryService: WebhookDeliveryQueryService) {}
+  constructor(
+    @Inject(WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN)
+    private readonly queryService: IWebhookDeliveryQueryService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)

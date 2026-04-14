@@ -6,6 +6,7 @@
  *
  * @module libs/core/src/webhooks/domain/types
  */
+import type { WebhookDelivery } from '../entities/webhook-delivery.entity';
 
 export const WebhookDeliveryStatusValues = [
   'received',
@@ -32,8 +33,6 @@ export interface WebhookDeliveryPagination {
   limit: number;
   offset: number;
 }
-
-import type { WebhookDelivery } from '../entities/webhook-delivery.entity';
 
 export interface PaginatedWebhookDeliveries {
   items: WebhookDelivery[];
