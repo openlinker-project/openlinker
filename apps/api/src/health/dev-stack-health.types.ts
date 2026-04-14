@@ -5,7 +5,7 @@
  *
  * @module apps/api/src/health
  */
-export type ServiceStatus = 'ok' | 'error';
+export type ServiceStatus = 'ok' | 'warning' | 'error';
 
 export interface ServiceHealth {
   status: ServiceStatus;
@@ -27,6 +27,7 @@ export interface DevStackHealthResponse {
     postgres: ServiceHealth;
     redis: ServiceHealth;
     prestashop: ServiceHealth;
+    worker: ServiceHealth;
   };
   timestamp: string;
 }

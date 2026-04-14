@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
-import type { OverallStatus, ServiceHealth } from '../../features/health/api/health.types';
+import type { ServiceHealth } from '../../features/health/api/health.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { Button } from '../../shared/ui/button';
@@ -85,9 +85,9 @@ const failedJobColumns: DataTableColumn<SyncJob>[] = [
   updatedAtColumn,
 ];
 
-function toHealthTone(status: OverallStatus): StatusBadgeTone {
+function toHealthTone(status: string): StatusBadgeTone {
   if (status === 'ok') return 'success';
-  if (status === 'degraded') return 'warning';
+  if (status === 'warning' || status === 'degraded') return 'warning';
   return 'error';
 }
 
@@ -187,7 +187,7 @@ export function DashboardPage(): ReactElement {
               </StatusBadge>
             </strong>
           )}
-          <p>Postgres · Redis · PrestaShop</p>
+          <p>Postgres · Redis · PrestaShop · Worker</p>
         </article>
 
         <article className={deadCount > 0 ? 'metric-card metric-card--warning' : 'metric-card'}>
@@ -268,6 +268,9 @@ export function DashboardPage(): ReactElement {
               <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
               <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />
               <ServiceHealthRow name="PrestaShop" health={healthQuery.data.services.prestashop} />
+              {healthQuery.data.services.worker && (
+                <ServiceHealthRow name="Worker" health={healthQuery.data.services.worker} />
+              )}
             </ul>
           )}
         </article>

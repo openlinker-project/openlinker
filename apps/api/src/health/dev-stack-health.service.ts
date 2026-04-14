@@ -29,6 +29,9 @@ export class DevStackHealthService implements IDevStackHealthService {
   private readonly logger = new Logger(DevStackHealthService.name);
   private readonly CHECK_TIMEOUT_MS = 5000;
   private readonly HEALTHCHECK_STREAM = 'healthcheck';
+  private readonly WORKER_HEARTBEAT_KEY = 'openlinker:worker:heartbeat';
+  private readonly WORKER_OK_MS = 30_000; // 30 seconds
+  private readonly WORKER_WARN_MS = 60_000; // 60 seconds
 
   constructor(
     @InjectDataSource()
@@ -59,24 +62,31 @@ export class DevStackHealthService implements IDevStackHealthService {
   }
 
   async checkDevStackHealth(): Promise<DevStackHealthResponse> {
-    const services = {
-      postgres: await this.checkPostgres(),
-      redis: await this.checkRedis(),
-      prestashop: await this.checkPrestaShop(),
-    };
+    // Run all checks in parallel so checkWorker()'s GET reaches Redis before
+    // checkRedis()'s xAdd is queued, preventing pipeline blocking.
+    const [postgres, redis, prestashop, worker] = await Promise.all([
+      this.checkPostgres(),
+      this.checkRedis(),
+      this.checkPrestaShop(),
+      this.checkWorker(),
+    ]);
+    const services = { postgres, redis, prestashop, worker };
 
     // Determine overall status
     // Priority: internal errors > external errors > all ok
     const hasInternalError =
       services.postgres.status === 'error' || services.redis.status === 'error';
-    const hasExternalError = services.prestashop.status === 'error';
+    const hasExternalError =
+      services.prestashop.status === 'error' ||
+      services.worker.status === 'error' ||
+      services.worker.status === 'warning';
 
     let status: 'ok' | 'degraded' | 'error';
     if (hasInternalError) {
       // Internal services (PostgreSQL, Redis) are down - critical error
       status = 'error';
     } else if (hasExternalError) {
-      // Internal services are healthy, but external (PrestaShop) is down - degraded
+      // Internal services are healthy, but external (PrestaShop/worker) is down/slow - degraded
       status = 'degraded';
     } else {
       // All services (internal + external) are healthy
@@ -210,6 +220,48 @@ export class DevStackHealthService implements IDevStackHealthService {
       return {
         status: 'error' as ServiceStatus,
         message: 'PrestaShop is unreachable',
+      };
+    }
+  }
+
+  private async checkWorker(): Promise<ServiceHealth> {
+    try {
+      const heartbeat = await this.withTimeout(
+        this.redisClient.get(this.WORKER_HEARTBEAT_KEY),
+        'Worker heartbeat check timeout',
+      );
+
+      if (!heartbeat) {
+        return {
+          status: 'error' as ServiceStatus,
+          message: 'Worker is not running',
+        };
+      }
+
+      const age = Date.now() - parseInt(heartbeat, 10);
+
+      if (age <= this.WORKER_OK_MS) {
+        return { status: 'ok' as ServiceStatus };
+      }
+
+      if (age <= this.WORKER_WARN_MS) {
+        return {
+          status: 'warning' as ServiceStatus,
+          message: `Worker last seen ${Math.round(age / 1000)}s ago`,
+        };
+      }
+
+      return {
+        status: 'error' as ServiceStatus,
+        message: `Worker last seen ${Math.round(age / 1000)}s ago`,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Worker health check failed: ${errorMessage}`, error);
+      return {
+        status: 'error' as ServiceStatus,
+        message: 'Worker health check failed',
       };
     }
   }

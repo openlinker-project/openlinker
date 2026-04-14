@@ -18,6 +18,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
 import { SyncWorkerModule } from './sync/sync-worker.module';
+import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { SyncWorkerModule } from './sync/sync-worker.module';
     SyncModule,
     SyncWorkerModule,
   ],
+  providers: [WorkerHeartbeatService],
 })
 export class AppModule {}
 

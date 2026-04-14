@@ -63,6 +63,7 @@ describe('DashboardPage', () => {
             postgres: { status: 'ok' },
             redis: { status: 'ok' },
             prestashop: { status: 'error', message: 'Connection refused' },
+            worker: { status: 'ok' },
           },
           timestamp: '2026-04-06T00:00:00.000Z',
         }),
