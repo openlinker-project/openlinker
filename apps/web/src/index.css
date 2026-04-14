@@ -1017,6 +1017,24 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.dialog__subtitle {
+  margin: 0;
+}
+
+.trigger-sync-dialog {
+  min-width: 28rem;
+  max-width: 36rem;
+}
+
+.trigger-sync-dialog .dialog__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.trigger-sync-dialog__description {
+  margin: 0;
+}
+
 .toast-region {
   position: fixed;
   right: 1rem;
