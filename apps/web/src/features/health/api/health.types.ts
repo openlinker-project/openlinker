@@ -1,4 +1,4 @@
-export type ServiceStatus = 'ok' | 'error';
+export type ServiceStatus = 'ok' | 'warning' | 'error';
 export type OverallStatus = 'ok' | 'degraded' | 'error';
 
 export interface ServiceHealth {
@@ -12,6 +12,7 @@ export interface DevStackHealth {
     postgres: ServiceHealth;
     redis: ServiceHealth;
     prestashop: ServiceHealth;
+    worker?: ServiceHealth;
   };
   timestamp: string;
 }

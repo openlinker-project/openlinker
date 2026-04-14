@@ -58,6 +58,8 @@ Health check:
 curl -s http://localhost:3000/health/dev-stack | jq .
 ```
 
+Once the worker is running (`pnpm start:dev:worker`), the **System Health** panel at **http://localhost:5173** (dashboard) will show four tiles: PostgreSQL, Redis, PrestaShop, and Worker. The Worker tile confirms the background sync worker is alive; if it remains red after the worker starts, check the worker logs for errors.
+
 ## 3. Admin user & login
 
 Log in at http://localhost:5173.

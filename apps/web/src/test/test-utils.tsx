@@ -118,6 +118,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
           postgres: { status: 'ok' },
           redis: { status: 'ok' },
           prestashop: { status: 'ok' },
+          worker: { status: 'ok' },
         },
         timestamp: '2026-04-06T00:00:00.000Z',
       }),
