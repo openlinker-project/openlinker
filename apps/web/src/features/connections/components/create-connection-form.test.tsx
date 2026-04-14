@@ -1,7 +1,14 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { useLocation } from 'react-router-dom';
 import { CreateConnectionForm } from './create-connection-form';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <div data-testid="location-pathname">{location.pathname}</div>;
+}
 
 describe('CreateConnectionForm', () => {
   it('shows validation feedback for invalid JSON configuration', async () => {
@@ -26,7 +33,12 @@ describe('CreateConnectionForm', () => {
   });
 
   it('shows a success toast after creating a connection', async () => {
-    const view = renderWithProviders(<CreateConnectionForm />);
+    const view = renderWithProviders(
+      <>
+        <CreateConnectionForm />
+        <LocationProbe />
+      </>,
+    );
 
     fireEvent.change(within(view.container).getAllByLabelText('Connection name')[0], {
       target: { value: 'Main store' },
@@ -44,8 +56,11 @@ describe('CreateConnectionForm', () => {
 
     expect(await screen.findByText('Connection created')).toBeInTheDocument();
     expect(
-      screen.getByText(/Connection ".*" was created\./),
+      screen.getByText('Connection "Main PrestaShop Store" was created.'),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
+    });
   });
 
   it('resets the draft through the confirm dialog', async () => {

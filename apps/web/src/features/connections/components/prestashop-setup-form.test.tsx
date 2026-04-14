@@ -1,7 +1,14 @@
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useLocation } from 'react-router-dom';
 import { PrestashopSetupForm } from './prestashop-setup-form';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <div data-testid="location-pathname">{location.pathname}</div>;
+}
 
 describe('PrestashopSetupForm', () => {
   afterEach(cleanup);
@@ -9,7 +16,13 @@ describe('PrestashopSetupForm', () => {
   it('submits a PrestaShop connection with the inferred adapter key and config', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });
-    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+    const view = renderWithProviders(
+      <>
+        <PrestashopSetupForm />
+        <LocationProbe />
+      </>,
+      { apiClient },
+    );
 
     fireEvent.change(within(view.container).getByLabelText('Connection name'), {
       target: { value: 'Main store' },
@@ -23,6 +36,9 @@ describe('PrestashopSetupForm', () => {
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Connection created')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
+    });
     expect(create).toHaveBeenCalledWith({
       name: 'Main store',
       platformType: 'prestashop',
