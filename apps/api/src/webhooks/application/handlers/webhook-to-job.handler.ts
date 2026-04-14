@@ -15,6 +15,11 @@ import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
 import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  WebhookDeliveryRepositoryPort,
+  WebhookDeliveryUpsertInput,
+  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
+} from '@openlinker/core/webhooks';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../webhooks.tokens';
 import { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
 
@@ -36,7 +41,19 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     private readonly redisClient: RedisClientType,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
+    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
   ) {}
+
+  private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
+    try {
+      await this.deliveryRepository.upsert(input);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record webhook delivery from handler (non-fatal): eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   async onModuleInit(): Promise<void> {
     await this.initializeConsumerGroup();
@@ -218,12 +235,28 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
           `Failed to map webhook event to job: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, error=${errorMessage}`,
         );
         await this.sendToDeadLetterQueue(event, errorMessage, fields);
+        await this.recordDelivery({
+          eventId: event.eventId,
+          provider: event.provider,
+          connectionId: event.connectionId,
+          status: 'deadlettered',
+          dlqReason: errorMessage.slice(0, 500),
+        });
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
         return;
       }
 
       // Enqueue job (idempotency enforced at JobEnqueuePort level)
-      await this.jobEnqueue.enqueueJob(job);
+      const { jobId } = await this.jobEnqueue.enqueueJob(job);
+
+      await this.recordDelivery({
+        eventId: event.eventId,
+        provider: event.provider,
+        connectionId: event.connectionId,
+        status: 'job_enqueued',
+        downstreamJobId: jobId,
+        downstreamJobType: job.jobType,
+      });
 
       // ACK message only after successful enqueue
       await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);

@@ -23,6 +23,7 @@ import { ordersRoute } from './orders.route';
 import { productsRoute } from './products.route';
 import { settingsRoute } from './settings.route';
 import { shippingRoute } from './shipping.route';
+import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
 export const rootRoute: RouteObject = {
   path: '/',
@@ -47,6 +48,7 @@ export const rootRoute: RouteObject = {
     editConnectionRoute,
     allegroCallbackRoute,
     jobsLogsRoute,
+    webhookDeliveriesRoute,
     automationsRoute,
     shippingRoute,
     invoicesRoute,

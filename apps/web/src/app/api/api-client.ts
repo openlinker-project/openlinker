@@ -11,6 +11,10 @@ import { createOrdersApi, type OrdersApi } from '../../features/orders/api/order
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
 import { createMappingsApi, type MappingsApi } from '../../features/mappings/api/mappings.api';
+import {
+  createWebhookDeliveriesApi,
+  type WebhookDeliveriesApi,
+} from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 
@@ -38,6 +42,7 @@ export interface ApiClient {
   mappings: MappingsApi;
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   syncJobs: SyncJobsApi;
+  webhookDeliveries: WebhookDeliveriesApi;
 }
 
 function buildUrl(baseUrl: string, path: string): string {
@@ -131,5 +136,6 @@ export function createApiClient({
     products: createProductsApi(request),
     request,
     syncJobs: createSyncJobsApi(request),
+    webhookDeliveries: createWebhookDeliveriesApi(request),
   };
 }

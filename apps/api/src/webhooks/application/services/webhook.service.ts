@@ -8,7 +8,7 @@
  * @module apps/api/src/webhooks/application/services
  * @implements {IWebhookService}
  */
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { IWebhookService } from '../interfaces/webhook.service.interface';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
@@ -16,6 +16,11 @@ import { WebhookEventPublisher } from './webhook-event-publisher.service';
 import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
 import { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  WebhookDeliveryRepositoryPort,
+  WebhookDeliveryUpsertInput,
+  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
+} from '@openlinker/core/webhooks';
 
 @Injectable()
 export class WebhookService implements IWebhookService {
@@ -25,7 +30,19 @@ export class WebhookService implements IWebhookService {
     private readonly authService: WebhookAuthService,
     private readonly dedupService: WebhookDedupService,
     private readonly eventPublisher: WebhookEventPublisher,
+    @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
+    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
   ) {}
+
+  private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
+    try {
+      await this.deliveryRepository.upsert(input);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record webhook delivery (non-fatal): provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   async processWebhook(
     provider: string,
@@ -40,16 +57,31 @@ export class WebhookService implements IWebhookService {
       `Processing webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, eventType=${request.eventType}`,
     );
 
+    const receivedAt = new Date();
+    const baseDelivery: WebhookDeliveryUpsertInput = {
+      eventId: request.eventId,
+      provider,
+      connectionId,
+      eventType: request.eventType ?? null,
+      objectType: request.object?.type ?? null,
+      externalId: request.object?.externalId ?? null,
+      receivedAt,
+      payload: request.payload as Record<string, unknown>,
+    };
+    await this.recordDelivery({ ...baseDelivery, status: 'received' });
+
     const timestamp = headers['x-openlinker-timestamp'] || headers['X-OpenLinker-Timestamp'];
     const signature = headers['x-openlinker-signature'] || headers['X-OpenLinker-Signature'];
 
     if (!timestamp) {
       this.logger.warn(`Missing X-OpenLinker-Timestamp header: provider=${provider}, connectionId=${connectionId}`);
+      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'missing_timestamp_header' });
       throw new Error('Missing X-OpenLinker-Timestamp header');
     }
 
     if (!signature) {
       this.logger.warn(`Missing X-OpenLinker-Signature header: provider=${provider}, connectionId=${connectionId}`);
+      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'missing_signature_header' });
       throw new Error('Missing X-OpenLinker-Signature header');
     }
 
@@ -61,6 +93,7 @@ export class WebhookService implements IWebhookService {
         `Timestamp validation failed: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
         error instanceof Error ? error.message : String(error),
       );
+      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'stale_timestamp' });
       throw error;
     }
 
@@ -77,6 +110,12 @@ export class WebhookService implements IWebhookService {
       this.logger.error(
         `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
       );
+      await this.recordDelivery({
+        ...baseDelivery,
+        signatureValid: false,
+        status: 'rejected',
+        rejectionReason: 'invalid_signature',
+      });
       throw new Error('Invalid webhook signature');
     }
 
@@ -90,6 +129,11 @@ export class WebhookService implements IWebhookService {
       this.logger.warn(
         `Duplicate webhook event detected: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
       );
+      await this.recordDelivery({
+        ...baseDelivery,
+        signatureValid: true,
+        dedupResult: 'duplicate',
+      });
       return; // Return 202 (already accepted)
     }
 
@@ -112,6 +156,13 @@ export class WebhookService implements IWebhookService {
       this.logger.log(
         `Published webhook event: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, messageId=${messageId}`,
       );
+      await this.recordDelivery({
+        ...baseDelivery,
+        signatureValid: true,
+        dedupResult: 'new',
+        status: 'published',
+        publishedMessageId: messageId,
+      });
 
       // Step 6: Mark as done (non-fatal if it fails)
       try {
@@ -138,6 +189,13 @@ export class WebhookService implements IWebhookService {
         `Failed to process webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
         error instanceof Error ? error.stack : String(error),
       );
+      await this.recordDelivery({
+        ...baseDelivery,
+        signatureValid: true,
+        dedupResult: 'new',
+        status: 'failed',
+        rejectionReason: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+      });
 
       throw error;
     }

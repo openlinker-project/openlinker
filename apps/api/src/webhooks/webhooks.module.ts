@@ -14,11 +14,15 @@ import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { WebhookController } from './http/webhook.controller';
+import { WebhookDeliveryController } from './http/webhook-delivery.controller';
 import { WebhookService } from './application/services/webhook.service';
 import { WebhookAuthService } from './application/services/webhook-auth.service';
 import { WebhookDedupService } from './application/services/webhook-dedup.service';
 import { WebhookEventPublisher } from './application/services/webhook-event-publisher.service';
+import { WebhookDeliveryQueryService } from './application/services/webhook-delivery-query.service';
+import { WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN } from './application/interfaces/webhook-delivery-query.service.interface';
 import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handler';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
 
@@ -35,13 +39,16 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
     IntegrationsModule, // For WebhookSecretProviderPort
     IdentifierMappingModule, // For ConnectionPort
     SyncModule, // For JobEnqueuePort
+    WebhooksCoreModule, // For WebhookDeliveryRepositoryPort
   ],
-  controllers: [WebhookController],
+  controllers: [WebhookController, WebhookDeliveryController],
   providers: [
     WebhookService,
     WebhookAuthService,
     WebhookDedupService,
     WebhookEventPublisher,
+    WebhookDeliveryQueryService,
+    { provide: WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN, useExisting: WebhookDeliveryQueryService },
     WebhookToJobHandler,
     {
       // Dedicated client for blocking xReadGroup loop — must not share with health check client

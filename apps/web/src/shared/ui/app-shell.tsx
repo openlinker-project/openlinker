@@ -31,6 +31,7 @@ const navigationGroups: NavigationGroup[] = [
       { to: '/listings', label: 'Listings', state: 'live' },
       { to: '/cursors', label: 'Cursors', state: 'live' },
       { to: '/jobs-logs', label: 'Jobs & Logs', state: 'planned' },
+      { to: '/webhook-deliveries', label: 'Webhooks', state: 'live' },
       { to: '/automations', label: 'Automations', state: 'planned' },
     ],
   },
