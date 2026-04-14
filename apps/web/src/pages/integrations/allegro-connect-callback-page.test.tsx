@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
+import { ApiError } from '../../shared/api/api-error';
 import { AllegroConnectCallbackPage } from './allegro-connect-callback-page';
 
 const CALLBACK_ROUTE = '/integrations/allegro/connect/callback';
@@ -84,7 +85,12 @@ describe('AllegroConnectCallbackPage', () => {
   it('shows friendly message when OAuth state was already used', async () => {
     const apiClient = createMockApiClient({
       allegro: {
-        handleCallback: vi.fn().mockRejectedValue(new Error('Invalid or expired OAuth state parameter')),
+        handleCallback: vi.fn().mockRejectedValue(
+          new ApiError('Invalid or expired OAuth state parameter', 400, {
+            message: 'Invalid or expired OAuth state parameter',
+            code: 'OAUTH_STATE_INVALID',
+          }),
+        ),
       },
     });
     renderWithProviders(<AllegroConnectCallbackPage />, {

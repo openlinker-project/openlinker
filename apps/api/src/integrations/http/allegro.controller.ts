@@ -140,7 +140,10 @@ export class AllegroController {
             connectionName: completed.connectionName,
           };
         }
-        throw new BadRequestException('Invalid or expired OAuth state parameter');
+        throw new BadRequestException({
+          message: 'Invalid or expired OAuth state parameter',
+          code: 'OAUTH_STATE_INVALID',
+        });
       }
 
       // Exchange code for token using credentials from validated state

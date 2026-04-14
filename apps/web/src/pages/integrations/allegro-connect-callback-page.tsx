@@ -1,8 +1,20 @@
 import type { ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handle-allegro-callback';
+import { ApiError } from '../../shared/api/api-error';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+
+function isOAuthStateInvalidError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  const details = error.details;
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'code' in details &&
+    (details as { code?: unknown }).code === 'OAUTH_STATE_INVALID'
+  );
+}
 
 export function AllegroConnectCallbackPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -46,8 +58,7 @@ export function AllegroConnectCallbackPage(): ReactElement {
     }
 
     if (callbackState.status === 'error') {
-      const isAlreadyUsed = callbackState.error.includes('Invalid or expired OAuth state');
-      if (isAlreadyUsed) {
+      if (isOAuthStateInvalidError(callbackState.error)) {
         return (
           <ErrorState
             title="Authorization already completed"
@@ -60,10 +71,12 @@ export function AllegroConnectCallbackPage(): ReactElement {
           />
         );
       }
+      const message =
+        callbackState.error instanceof Error ? callbackState.error.message : 'Unknown error';
       return (
         <ErrorState
           title="Authorization failed"
-          message={callbackState.error}
+          message={message}
           action={
             <Link className="button" to="/connections/new/allegro">
               Try again

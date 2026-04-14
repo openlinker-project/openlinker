@@ -441,6 +441,8 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       return JSON.parse(stored) as CompletedStateData;
     } catch (error) {
       this.logger.error(`Failed to parse OAuth completed state data: ${(error as Error).message}`, error);
+      // Self-heal: drop the poisoned marker so a subsequent write can succeed cleanly.
+      await this.redisClient.del(key);
       return null;
     }
   }

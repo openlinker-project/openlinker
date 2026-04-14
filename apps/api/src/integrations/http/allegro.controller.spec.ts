@@ -215,6 +215,9 @@ describe('AllegroController', () => {
 
       await expect(controller.callback(query)).rejects.toThrow(BadRequestException);
       await expect(controller.callback(query)).rejects.toThrow('Invalid or expired OAuth state parameter');
+      await expect(controller.callback(query)).rejects.toMatchObject({
+        response: { code: 'OAUTH_STATE_INVALID' },
+      });
     });
 
     it('should return idempotent success when callback is replayed within completed-state TTL', async () => {

@@ -56,8 +56,11 @@ describe('AllegroOAuthService', () => {
     service = module.get<AllegroOAuthService>(AllegroOAuthService);
   });
 
+  const originalFetch = global.fetch;
+
   afterEach(() => {
     jest.clearAllMocks();
+    global.fetch = originalFetch;
   });
 
   describe('markStateCompleted', () => {
@@ -100,15 +103,16 @@ describe('AllegroOAuthService', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null (not throw) when stored value is invalid JSON', async () => {
+    it('should return null and drop poisoned marker when stored value is invalid JSON', async () => {
       redisClient.get.mockResolvedValue('not-valid-json{{{');
 
       const result = await service.checkCompletedState('state-abc');
 
       expect(result).toBeNull();
+      expect(redisClient.del).toHaveBeenCalledWith('allegro:oauth:completed:state-abc');
     });
 
-    it('should not delete the marker (read-only, idempotent)', async () => {
+    it('should not delete the marker on successful read (read-only, idempotent)', async () => {
       redisClient.get.mockResolvedValue(
         JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' }),
       );
