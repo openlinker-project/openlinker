@@ -2,6 +2,7 @@ import type {
   Connection,
   ConnectionDiagnostics,
   ConnectionFilters,
+  ConnectionTestResult,
   CreateConnectionInput,
   UpdateConnectionInput,
 } from './connections.types';
@@ -12,6 +13,7 @@ export interface ConnectionsApi {
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
+  test: (connectionId: string) => Promise<ConnectionTestResult>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
   updateCredentials: (
     connectionId: string,
@@ -59,6 +61,11 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);
+    },
+    test(connectionId): Promise<ConnectionTestResult> {
+      return request<ConnectionTestResult>(`/connections/${connectionId}/test`, {
+        method: 'POST',
+      });
     },
     update(connectionId, input): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`, {

@@ -8,6 +8,7 @@
  * @see {@link ConnectionService} for the implementation
  */
 import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import { ConnectionTestResult } from '@openlinker/core/integrations';
 import { ConnectionCreateInput } from './connection.service.types';
 
 export type { ConnectionCreateInput };
@@ -53,6 +54,15 @@ export interface IConnectionService {
     connectionId: string,
     credentials: Record<string, unknown>,
   ): Promise<void>;
+
+  /**
+   * Probe the connection using its adapter-specific tester. Never throws on
+   * network/auth failures — always returns a structured result for the UI.
+   *
+   * @param connectionId - The connection identifier (UUID)
+   * @returns Structured test result
+   */
+  testConnection(connectionId: string): Promise<ConnectionTestResult>;
 
   /**
    * Disable a connection

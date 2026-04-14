@@ -63,6 +63,13 @@ export interface RecentJobSummary {
   lastError: string | null;
 }
 
+export interface ConnectionTestResult {
+  success: boolean;
+  status?: number;
+  message: string;
+  latencyMs: number;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

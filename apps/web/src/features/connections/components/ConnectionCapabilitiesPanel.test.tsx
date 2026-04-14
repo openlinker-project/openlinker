@@ -49,6 +49,20 @@ describe('ConnectionCapabilitiesPanel', () => {
     );
   });
 
+  it('renders supported capabilities as pills above the toggles', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    const pillsRow = screen.getByLabelText('Supported capabilities');
+    expect(pillsRow).toBeInTheDocument();
+    expect(pillsRow.textContent).toContain('ProductMaster');
+    expect(pillsRow.textContent).toContain('InventoryMaster');
+  });
+
   it('shows a warning when no capabilities are enabled', () => {
     const connection: Connection = {
       ...sampleConnection,

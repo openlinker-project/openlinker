@@ -11,11 +11,13 @@
 export { IntegrationsService } from './application/services/integrations.service';
 export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
 export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
+export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
 export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
+export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookSecretProviderPort } from './domain/ports/webhook-secret-provider.port';
 export { MarketplacePort } from './domain/ports/marketplace.port';
 export {
@@ -31,6 +33,7 @@ export {
   AdapterMetadata,
   AdapterInstance,
 } from './domain/types/adapter.types';
+export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
 export {
   MarketplaceOrderEventTypeValues,
@@ -64,6 +67,7 @@ export {
   INTEGRATIONS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
 } from './integrations.tokens';

@@ -90,6 +90,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       getById: vi.fn().mockResolvedValue(sampleConnection),
       list: vi.fn().mockResolvedValue([sampleConnection]),
+      test: vi.fn().mockResolvedValue({ success: true, status: 200, message: 'OK', latencyMs: 42 }),
       update: vi.fn().mockResolvedValue(sampleConnection),
       updateCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.connections,

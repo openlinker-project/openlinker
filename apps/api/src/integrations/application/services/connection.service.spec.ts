@@ -22,6 +22,11 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
   IntegrationCredentialRepositoryPort,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ConnectionTesterRegistryService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  CREDENTIALS_RESOLVER_TOKEN,
+  CredentialsResolverPort,
+  ConnectionTesterPort,
 } from '@openlinker/core/integrations';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
@@ -32,6 +37,8 @@ describe('ConnectionService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let credentialRepository: jest.Mocked<IntegrationCredentialRepositoryPort>;
+  let testerRegistry: ConnectionTesterRegistryService;
+  let mockTester: jest.Mocked<ConnectionTesterPort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -92,6 +99,14 @@ describe('ConnectionService', () => {
       delete: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<IntegrationCredentialRepositoryPort>;
 
+    testerRegistry = new ConnectionTesterRegistryService();
+    mockTester = { test: jest.fn() } as jest.Mocked<ConnectionTesterPort>;
+    testerRegistry.register('prestashop.webservice.v1', mockTester);
+
+    const mockCredentialsResolver: CredentialsResolverPort = {
+      get: jest.fn(),
+    } as unknown as CredentialsResolverPort;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
@@ -99,6 +114,8 @@ describe('ConnectionService', () => {
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrationsService },
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
         { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: mockCredentialRepository },
+        { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
+        { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
       ],
     }).compile();
 
@@ -368,6 +385,48 @@ describe('ConnectionService', () => {
         service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' }),
       ).rejects.toThrow(/does not have a db-backed/);
       expect(credentialRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('testConnection', () => {
+    it('should delegate to the registered tester and return result', async () => {
+      connectionPort.get.mockResolvedValue(mockConnection);
+      mockTester.test.mockResolvedValue({
+        success: true,
+        status: 200,
+        message: 'OK',
+        latencyMs: 123,
+      });
+
+      const result = await service.testConnection('connection-123');
+
+      expect(result).toEqual({ success: true, status: 200, message: 'OK', latencyMs: 123 });
+      expect(mockTester.test).toHaveBeenCalledWith(mockConnection, expect.anything());
+    });
+
+    it('should throw BadRequest when no tester is registered for the adapter', async () => {
+      const adapterLessConnection = new Connection(
+        'connection-999',
+        'unknown-platform',
+        'X',
+        'active',
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        [],
+      );
+      connectionPort.get.mockResolvedValue(adapterLessConnection);
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'unknown.v1',
+        platformType: 'unknown-platform',
+        supportedCapabilities: [],
+      });
+
+      await expect(service.testConnection('connection-999')).rejects.toThrow(
+        /not supported/,
+      );
     });
   });
 

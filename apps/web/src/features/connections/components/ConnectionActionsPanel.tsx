@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
+import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import { TriggerSyncDialog } from '../../sync-jobs/components/TriggerSyncDialog';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -14,11 +15,35 @@ interface ConnectionActionsPanelProps {
 
 export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelProps): ReactElement {
   const disableConnection = useDisableConnectionMutation();
+  const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
 
   const isDisabled = connection.status === 'disabled';
+
+  async function handleTest(): Promise<void> {
+    try {
+      const result = await testConnection.mutateAsync(connection.id);
+      showToast({
+        tone: result.success ? 'success' : 'error',
+        title: result.success
+          ? `Connection OK (${result.latencyMs}ms)`
+          : 'Connection test failed',
+        description: result.success
+          ? result.message
+          : `${result.message}${
+              result.status !== undefined ? ` (HTTP ${result.status})` : ''
+            }`,
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: 'Connection test failed',
+        description: (error as Error).message,
+      });
+    }
+  }
 
   return (
     <div className="panel panel--dense">
@@ -37,6 +62,23 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
       ) : null}
 
       <div className="action-list">
+        <div className="action-list__item">
+          <div>
+            <strong>Test connection</strong>
+            <p className="muted-text">
+              Probe the integration using a cheap authenticated call. Verifies the base URL and
+              stored credentials.
+            </p>
+          </div>
+          <Button
+            tone="secondary"
+            disabled={testConnection.isPending}
+            onClick={() => void handleTest()}
+          >
+            {testConnection.isPending ? 'Testing...' : 'Test connection'}
+          </Button>
+        </div>
+
         <div className="action-list__item">
           <div>
             <strong>Edit connection</strong>
