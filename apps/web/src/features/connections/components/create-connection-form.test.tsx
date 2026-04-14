@@ -43,7 +43,9 @@ describe('CreateConnectionForm', () => {
     fireEvent.click(within(view.container).getAllByRole('button', { name: 'Create connection' })[0]);
 
     expect(await screen.findByText('Connection created')).toBeInTheDocument();
-    expect(screen.getByText('Connection request submitted successfully.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Connection ".*" was created\./),
+    ).toBeInTheDocument();
   });
 
   it('resets the draft through the confirm dialog', async () => {

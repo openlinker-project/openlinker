@@ -10,6 +10,7 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   PRESTASHOP_ADAPTER_KEY,
@@ -40,6 +41,7 @@ const CAPABILITY_HELP: Record<Capability, string> = {
 export function PrestashopSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
   const form = useForm<PrestashopSetupFormValues, undefined, PrestashopSetupFormSubmission>({
     defaultValues: PRESTASHOP_SETUP_DEFAULT_VALUES,
@@ -62,12 +64,12 @@ export function PrestashopSetupForm(): ReactElement {
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
-      form.reset(PRESTASHOP_SETUP_DEFAULT_VALUES);
       showToast({
         tone: 'success',
         title: 'Connection created',
         description: `PrestaShop connection "${created.name}" was created.`,
       });
+      void navigate('/connections');
     } catch {
       return;
     }

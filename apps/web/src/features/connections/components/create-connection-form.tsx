@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { PLATFORM_TYPES } from '../api/connections.types';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
@@ -45,6 +45,7 @@ const PLATFORM_OPTIONS = [
 export function CreateConnectionForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
@@ -66,13 +67,13 @@ export function CreateConnectionForm(): ReactElement {
     // submission would fail silently without visible feedback.
     if (isAllegroSelected) return;
     try {
-      await createConnection.mutateAsync(toCreateConnectionInput(values));
-      form.reset(DEFAULT_VALUES);
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
       showToast({
         tone: 'success',
         title: 'Connection created',
-        description: 'Connection request submitted successfully.',
+        description: `Connection "${created.name}" was created.`,
       });
+      void navigate('/connections');
     } catch {
       return;
     }
