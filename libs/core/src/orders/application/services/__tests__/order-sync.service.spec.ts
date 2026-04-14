@@ -98,6 +98,7 @@ describe('OrderSyncService', () => {
     } else {
       delete process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
     }
+    jest.restoreAllMocks();
   });
 
   describe('syncOrder', () => {
@@ -190,8 +191,6 @@ describe('OrderSyncService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('ORDER_SYNC_DESTINATION_CONNECTION_ID=dest-missing'),
       );
-
-      warnSpy.mockRestore();
     });
 
     it('should isolate partial failures and still report successful destinations', async () => {

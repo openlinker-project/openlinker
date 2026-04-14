@@ -67,12 +67,14 @@ export interface IOrderSyncService {
   /**
    * Sync order to destination processor(s)
    *
-   * Routes a unified order to configured destination OrderProcessorManager adapters.
-   * For MVP, routes to a single configured destination connection.
+   * Resolves all active OrderProcessorManager adapters (excluding the source
+   * connection) and dispatches the order to each in parallel. Per-destination
+   * failures are isolated — a failed destination yields a `status: 'failed'`
+   * result rather than aborting the entire sync.
    *
    * @param request - Order sync request with order and source metadata
-   * @returns Array of sync results (one per destination)
-   * @throws Error if destination connection not found or order creation fails
+   * @returns Array of sync results (one per destination, success or failed)
+   * @throws {NoOrderDestinationsAvailableException} if no eligible destinations are resolved
    */
   syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]>;
 }
