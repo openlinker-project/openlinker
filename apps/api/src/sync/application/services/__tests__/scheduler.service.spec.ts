@@ -156,5 +156,46 @@ describe('SchedulerService', () => {
       // connectionPort.list should NOT be called when connectionFilter is present
       expect(connectionPort.list).not.toHaveBeenCalled();
     });
+
+    it('should not throw when connectionFilter resolves to undefined', async () => {
+      const task = {
+        taskId: 'capability-undefined',
+        jobType: 'master.inventory.syncAll' as const,
+        cronExpression: '*/15 * * * *',
+        connectionFilter: (): Promise<Connection[]> =>
+          Promise.resolve(undefined as unknown as Connection[]),
+        generatePayload: (): Record<string, unknown> => ({ schemaVersion: 1 }),
+        generateIdempotencyKey: (c: Connection, t: string): string => `${c.id}:${t}`,
+      };
+
+      await expect(
+        (
+          service as unknown as { executeTask: (t: unknown) => Promise<void> }
+        ).executeTask(task),
+      ).resolves.not.toThrow();
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when connectionPort.list resolves to undefined', async () => {
+      connectionPort.list.mockResolvedValue(undefined as unknown as Connection[]);
+
+      const task = {
+        taskId: 'platform-undefined',
+        platformType: 'allegro',
+        jobType: 'marketplace.orders.poll' as const,
+        cronExpression: '*/5 * * * *',
+        generatePayload: (): Record<string, unknown> => ({ schemaVersion: 1 }),
+        generateIdempotencyKey: (c: Connection, t: string): string => `${c.id}:${t}`,
+      };
+
+      await expect(
+        (
+          service as unknown as { executeTask: (t: unknown) => Promise<void> }
+        ).executeTask(task),
+      ).resolves.not.toThrow();
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
   });
 });

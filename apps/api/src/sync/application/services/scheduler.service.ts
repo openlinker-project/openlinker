@@ -241,14 +241,15 @@ export class SchedulerService implements OnModuleInit {
 
     try {
       // Get connections: use custom filter if provided, otherwise filter by platformType
-      let connections;
+      let connections: Connection[];
       if (task.connectionFilter) {
-        connections = await task.connectionFilter();
+        connections = (await task.connectionFilter()) ?? [];
       } else if (task.platformType) {
-        connections = await this.connectionPort.list({
-          platformType: task.platformType,
-          status: 'active',
-        });
+        connections =
+          (await this.connectionPort.list({
+            platformType: task.platformType,
+            status: 'active',
+          })) ?? [];
       } else {
         this.logger.error(
           `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`,
@@ -369,7 +370,7 @@ export class SchedulerService implements OnModuleInit {
         const adapters = await this.integrationsService.listCapabilityAdapters({
           capability: 'InventoryMaster',
         });
-        return adapters.map((a) => a.connection);
+        return (adapters ?? []).map((a) => a.connection);
       },
       generatePayload: () => ({
         schemaVersion: 1,
@@ -410,7 +411,7 @@ export class SchedulerService implements OnModuleInit {
         const adapters = await this.integrationsService.listCapabilityAdapters({
           capability: 'ProductMaster',
         });
-        return adapters.map((a) => a.connection);
+        return (adapters ?? []).map((a) => a.connection);
       },
       generatePayload: () => ({
         schemaVersion: 1,
