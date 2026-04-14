@@ -49,6 +49,7 @@ type DeepPartialApiClient = {
   products?: Partial<ApiClient['products']>;
   mappings?: Partial<ApiClient['mappings']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
+  webhookDeliveries?: Partial<ApiClient['webhookDeliveries']>;
 };
 
 export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiClient {
@@ -198,6 +199,11 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       retry: vi.fn().mockResolvedValue(null),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
+    webhookDeliveries: {
+      list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getById: vi.fn().mockResolvedValue(null),
+      ...overrides.webhookDeliveries,
+    } as ApiClient['webhookDeliveries'],
   };
 }
 

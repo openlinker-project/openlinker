@@ -11,6 +11,7 @@ import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { InboundWebhookEvent } from '@openlinker/core/events';
 import { JobTypeValues } from '@openlinker/core/sync';
+import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../../webhooks.tokens';
 
 describe('WebhookToJobHandler', () => {
@@ -27,7 +28,13 @@ describe('WebhookToJobHandler', () => {
     };
 
     const mockJobEnqueue = {
-      enqueueJob: jest.fn(),
+      enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
+    };
+
+    const mockDeliveryRepo = {
+      upsert: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn(),
+      findMany: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -40,6 +47,10 @@ describe('WebhookToJobHandler', () => {
         {
           provide: JOB_ENQUEUE_TOKEN,
           useValue: mockJobEnqueue,
+        },
+        {
+          provide: WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
+          useValue: mockDeliveryRepo,
         },
       ],
     }).compile();

@@ -106,6 +106,16 @@
       "types": "./dist/users/*.d.ts",
       "require": "./dist/users/*.js",
       "default": "./dist/users/*.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks/index.d.ts",
+      "require": "./dist/webhooks/index.js",
+      "default": "./dist/webhooks/index.js"
+    },
+    "./webhooks/*": {
+      "types": "./dist/webhooks/*.d.ts",
+      "require": "./dist/webhooks/*.js",
+      "default": "./dist/webhooks/*.js"
     }
   },
   "files": ["dist"],
