@@ -10,7 +10,7 @@
  *
  * @module libs/core/src/orders/domain/exceptions
  */
-export class NoOrderDestinationsAvailableError extends Error {
+export class NoOrderDestinationsAvailableException extends Error {
   constructor(
     public readonly internalOrderId: string,
     public readonly sourceConnectionId: string,
@@ -18,9 +18,9 @@ export class NoOrderDestinationsAvailableError extends Error {
     super(
       `No OrderProcessorManager destinations available for order ${internalOrderId} (sourceConnectionId=${sourceConnectionId})`,
     );
-    this.name = 'NoOrderDestinationsAvailableError';
+    this.name = 'NoOrderDestinationsAvailableException';
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, NoOrderDestinationsAvailableError);
+      Error.captureStackTrace(this, NoOrderDestinationsAvailableException);
     }
   }
 }

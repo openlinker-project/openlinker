@@ -13,7 +13,8 @@ import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface'
 import { Order } from '../../../domain/ports/order-source.port';
 import { OrderRef } from '../../../domain/types/order-processor.types';
 import { IMappingConfigService } from '@openlinker/core/mappings';
-import { NoOrderDestinationsAvailableError } from '../../../domain/exceptions/no-order-destinations-available.exception';
+import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
+import { Logger } from '@openlinker/shared/logging';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -175,9 +176,7 @@ describe('OrderSyncService', () => {
     it('should warn when the env-var override resolves to zero destinations', async () => {
       process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = 'dest-missing';
       const overridden = new OrderSyncService(integrationsService, mappingConfigService);
-      const warnSpy = jest
-        .spyOn(overridden['logger'] as unknown as { warn: (msg: string) => void }, 'warn')
-        .mockImplementation(() => undefined);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
       registerDestinations([{ connectionId: 'dest-other', adapter: makeAdapter() }]);
 
@@ -186,11 +185,13 @@ describe('OrderSyncService', () => {
           order: createOrder(),
           sourceConnectionId: 'source-1',
         }),
-      ).rejects.toThrow(NoOrderDestinationsAvailableError);
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
 
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('ORDER_SYNC_DESTINATION_CONNECTION_ID=dest-missing'),
       );
+
+      warnSpy.mockRestore();
     });
 
     it('should isolate partial failures and still report successful destinations', async () => {
@@ -272,7 +273,24 @@ describe('OrderSyncService', () => {
           order: createOrder(),
           sourceConnectionId: 'source-1',
         }),
-      ).rejects.toThrow(NoOrderDestinationsAvailableError);
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
+    });
+
+    it('should attach internalOrderId and sourceConnectionId to the thrown exception', async () => {
+      registerDestinations([]);
+      const order = createOrder();
+
+      let caught: unknown;
+      try {
+        await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(NoOrderDestinationsAvailableException);
+      const exception = caught as NoOrderDestinationsAvailableException;
+      expect(exception.internalOrderId).toBe(order.id);
+      expect(exception.sourceConnectionId).toBe('source-1');
     });
 
     it('should throw when the only available destination is the source connection', async () => {
@@ -283,7 +301,7 @@ describe('OrderSyncService', () => {
           order: createOrder(),
           sourceConnectionId: 'source-1',
         }),
-      ).rejects.toThrow(NoOrderDestinationsAvailableError);
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
     });
 
     it('should use resolved status from mapping config when a mapping exists', async () => {

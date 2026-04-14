@@ -20,7 +20,7 @@ import { IIntegrationsService } from '@openlinker/core/integrations/application/
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
-import { NoOrderDestinationsAvailableError } from '../../domain/exceptions/no-order-destinations-available.exception';
+import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
  * Order Sync Service
@@ -62,7 +62,7 @@ export class OrderSyncService implements IOrderSyncService {
     const destinations = await this.resolveDestinations(sourceConnectionId);
 
     if (destinations.length === 0) {
-      throw new NoOrderDestinationsAvailableError(order.id, sourceConnectionId);
+      throw new NoOrderDestinationsAvailableException(order.id, sourceConnectionId);
     }
 
     // Resolve status mapping once — identical across all destinations
