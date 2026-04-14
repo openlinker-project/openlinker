@@ -16,7 +16,9 @@ import { IntegrationsService } from './application/services/integrations.service
 import { CredentialsResolverService } from './infrastructure/credentials/credentials-resolver.service';
 import { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 import { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
-import { StubWebhookSecretProvider } from './infrastructure/adapters/stub-webhook-secret-provider';
+import { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
+import { WebhookSecretService } from './application/services/webhook-secret.service';
+import { CryptoService } from '@openlinker/shared';
 import { IntegrationCredentialOrmEntity } from './infrastructure/persistence/entities/integration-credential.orm-entity';
 import { IntegrationCredentialRepository } from './infrastructure/persistence/repositories/integration-credential.repository';
 import {
@@ -25,6 +27,7 @@ import {
   CREDENTIALS_RESOLVER_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
 } from './integrations.tokens';
@@ -36,6 +39,7 @@ export {
   CREDENTIALS_RESOLVER_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
 } from './integrations.tokens';
@@ -43,7 +47,7 @@ export {
 @Module({
   imports: [
     IdentifierMappingModule, // For ConnectionPort
-    ConfigModule, // For ConfigService (webhook secrets from env vars)
+    ConfigModule,
     TypeOrmModule.forFeature([IntegrationCredentialOrmEntity]),
   ],
   providers: [
@@ -52,7 +56,9 @@ export {
     CredentialsResolverService,
     AdapterFactoryResolverService,
     ConnectionTesterRegistryService,
-    StubWebhookSecretProvider,
+    CredentialsWebhookSecretAdapter,
+    WebhookSecretService,
+    CryptoService,
     IntegrationCredentialRepository,
     {
       provide: ADAPTER_REGISTRY_TOKEN,
@@ -76,7 +82,11 @@ export {
     },
     {
       provide: WEBHOOK_SECRET_PROVIDER_TOKEN,
-      useExisting: StubWebhookSecretProvider,
+      useExisting: CredentialsWebhookSecretAdapter,
+    },
+    {
+      provide: WEBHOOK_SECRET_SERVICE_TOKEN,
+      useExisting: WebhookSecretService,
     },
     {
       provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
@@ -90,12 +100,13 @@ export {
     ADAPTER_FACTORY_RESOLVER_TOKEN,
     CONNECTION_TESTER_REGISTRY_TOKEN,
     WEBHOOK_SECRET_PROVIDER_TOKEN,
+    WEBHOOK_SECRET_SERVICE_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
     IntegrationsService,
     CredentialsResolverService,
     AdapterFactoryResolverService,
     ConnectionTesterRegistryService,
-    StubWebhookSecretProvider,
+    WebhookSecretService,
   ],
 })
 export class IntegrationsModule {}

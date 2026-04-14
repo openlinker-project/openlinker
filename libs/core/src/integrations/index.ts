@@ -18,7 +18,7 @@ export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
 export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
-export { WebhookSecretProviderPort } from './domain/ports/webhook-secret-provider.port';
+export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
 export { MarketplacePort } from './domain/ports/marketplace.port';
 export {
   IntegrationCredentialRepositoryPort,
@@ -61,6 +61,14 @@ export { CapabilityNotSupportedException } from './domain/exceptions/capability-
 export { CapabilityNotEnabledException } from './domain/exceptions/capability-not-enabled.exception';
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
 
+// Webhook secret
+export { WebhookSecretService } from './application/services/webhook-secret.service';
+export {
+  IWebhookSecretService,
+  RotateWebhookSecretResult,
+} from './application/interfaces/webhook-secret.service.interface';
+export { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
+
 // Tokens
 export {
   ADAPTER_REGISTRY_TOKEN,
@@ -69,6 +77,7 @@ export {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
 } from './integrations.tokens';
 

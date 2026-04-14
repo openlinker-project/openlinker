@@ -18,10 +18,19 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
+import {
+  IWebhookSecretService,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -51,6 +60,8 @@ export class ConnectionController {
     private readonly syncJobRepository: SyncJobRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
+    private readonly webhookSecretService: IWebhookSecretService,
   ) {}
 
   private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
@@ -193,6 +204,37 @@ export class ConnectionController {
     @Body() dto: UpdateConnectionCredentialsDto,
   ): Promise<void> {
     await this.connectionService.updateCredentials(id, dto.credentials);
+  }
+
+  @Roles('admin')
+  @Post(':id/webhooks/secret/rotate')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Rotate the webhook secret for this connection' })
+  @ApiResponse({
+    status: 201,
+    description: 'New secret generated. Returned once; never retrievable again.',
+    type: RotateWebhookSecretResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async rotateWebhookSecret(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<RotateWebhookSecretResponseDto> {
+    res.setHeader('Cache-Control', 'no-store');
+    const connection = await this.connectionService.get(id);
+    const { secret } = await this.webhookSecretService.rotate(
+      connection.platformType,
+      id,
+      user?.id,
+    );
+    return {
+      secret,
+      revealedOnce: true,
+      warning:
+        'Store this secret now. It cannot be retrieved again — rotate to generate a new one.',
+    };
   }
 
   @Roles('admin')
