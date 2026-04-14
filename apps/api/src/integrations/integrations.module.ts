@@ -19,6 +19,7 @@ import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
 import { ConnectionService } from './application/services/connection.service';
 import { AllegroOAuthService } from './application/services/allegro-oauth.service';
+import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oauth.service.interface';
 
 @Module({
   imports: [
@@ -30,7 +31,11 @@ import { AllegroOAuthService } from './application/services/allegro-oauth.servic
     AllegroIntegrationModule, // Register Allegro adapter factory
   ],
   controllers: [ConnectionController, AdapterController, AllegroController],
-  providers: [ConnectionService, AllegroOAuthService],
+  providers: [
+    ConnectionService,
+    AllegroOAuthService,
+    { provide: ALLEGRO_OAUTH_SERVICE_TOKEN, useExisting: AllegroOAuthService },
+  ],
 })
 export class IntegrationsModule {}
 

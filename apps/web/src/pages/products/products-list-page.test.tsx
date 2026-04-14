@@ -1,5 +1,5 @@
 import { screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
@@ -33,6 +33,19 @@ const sampleProducts: PaginatedProducts = {
 };
 
 describe('ProductsListPage', () => {
+  beforeEach(() => {
+    // shouldAdvanceTime allows waitFor/findBy to work while still controlling
+    // timers so we can flush pending debounce timers in afterEach.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    // Flush pending debounce timers before environment teardown to prevent
+    // "window is not defined" unhandled errors from useDebouncedValue.
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       products: {

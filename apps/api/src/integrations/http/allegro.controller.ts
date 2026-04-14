@@ -23,7 +23,7 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { AllegroOAuthService } from '../application/services/allegro-oauth.service';
+import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
 import { AllegroOAuthConnectDto } from './dto/allegro-oauth-connect.dto';
 import { AllegroOAuthCallbackQueryDto } from './dto/allegro-oauth-callback-query.dto';
 import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
@@ -42,7 +42,8 @@ export class AllegroController {
   private readonly logger = new Logger(AllegroController.name);
 
   constructor(
-    private readonly oauthService: AllegroOAuthService,
+    @Inject(ALLEGRO_OAUTH_SERVICE_TOKEN)
+    private readonly oauthService: IAllegroOAuthService,
     @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
@@ -129,7 +130,20 @@ export class AllegroController {
       // Validate state parameter (CSRF protection)
       const stateData = await this.oauthService.validateState(query.state);
       if (!stateData) {
-        throw new BadRequestException('Invalid or expired OAuth state parameter');
+        // State is gone — check if this is a replayed callback within the idempotency window
+        const completed = await this.oauthService.checkCompletedState(query.state);
+        if (completed) {
+          this.logger.log(`OAuth callback replayed for already-completed state: ${query.state}`);
+          return {
+            message: 'OAuth callback processed successfully. Connection created.',
+            connectionId: completed.connectionId,
+            connectionName: completed.connectionName,
+          };
+        }
+        throw new BadRequestException({
+          message: 'Invalid or expired OAuth state parameter',
+          code: 'OAUTH_STATE_INVALID',
+        });
       }
 
       // Exchange code for token using credentials from validated state
@@ -144,8 +158,9 @@ export class AllegroController {
       // Store credentials in database and create connection
       const connection = await this.oauthService.storeCredentialsAndCreateConnection(tokenResponse, stateData);
 
-      // Return success response with connection ID
-      // In production, this could redirect to a success page
+      // Persist completed marker so replayed callbacks within the TTL window get an idempotent 200
+      await this.oauthService.markStateCompleted(query.state, connection.id, connection.name);
+
       return {
         message: 'OAuth callback processed successfully. Connection created.',
         connectionId: connection.id,
