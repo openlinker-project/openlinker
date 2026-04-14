@@ -23,7 +23,7 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { AllegroOAuthService } from '../application/services/allegro-oauth.service';
+import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
 import { AllegroOAuthConnectDto } from './dto/allegro-oauth-connect.dto';
 import { AllegroOAuthCallbackQueryDto } from './dto/allegro-oauth-callback-query.dto';
 import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
@@ -42,7 +42,8 @@ export class AllegroController {
   private readonly logger = new Logger(AllegroController.name);
 
   constructor(
-    private readonly oauthService: AllegroOAuthService,
+    @Inject(ALLEGRO_OAUTH_SERVICE_TOKEN)
+    private readonly oauthService: IAllegroOAuthService,
     @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)

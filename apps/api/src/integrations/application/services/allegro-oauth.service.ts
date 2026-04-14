@@ -27,13 +27,6 @@ import type {
   CompletedStateData,
 } from '../interfaces/allegro-oauth.service.types';
 
-export type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAuthStateData, CompletedStateData };
-
-/**
- * Allegro OAuth Service
- *
- * Handles Allegro OAuth flow operations.
- */
 @Injectable()
 export class AllegroOAuthService implements IAllegroOAuthService {
   private readonly logger = new Logger(AllegroOAuthService.name);

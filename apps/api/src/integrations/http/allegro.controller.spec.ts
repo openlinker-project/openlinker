@@ -9,8 +9,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
-import { AllegroOAuthService } from '../application/services/allegro-oauth.service';
-import { IAllegroOAuthService } from '../application/interfaces/allegro-oauth.service.interface';
+import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
 import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   AllegroQuantityCommandRepositoryPort,
@@ -68,7 +67,7 @@ describe('AllegroController', () => {
       controllers: [AllegroController],
       providers: [
         {
-          provide: AllegroOAuthService,
+          provide: ALLEGRO_OAUTH_SERVICE_TOKEN,
           useValue: mockOAuthService,
         },
         {
@@ -83,7 +82,7 @@ describe('AllegroController', () => {
     }).compile();
 
     controller = module.get<AllegroController>(AllegroController);
-    oauthService = module.get(AllegroOAuthService);
+    oauthService = module.get(ALLEGRO_OAUTH_SERVICE_TOKEN);
     cursorRepository = module.get(CONNECTION_CURSOR_REPOSITORY_TOKEN);
     commandRepository = module.get(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN);
   });

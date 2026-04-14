@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handle-allegro-callback-mutation';
+import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handle-allegro-callback';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 

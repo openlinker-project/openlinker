@@ -13,6 +13,8 @@ import type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAut
 
 export type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAuthStateData, CompletedStateData };
 
+export const ALLEGRO_OAUTH_SERVICE_TOKEN = Symbol('IAllegroOAuthService');
+
 export interface IAllegroOAuthService {
   /**
    * Generate OAuth authorization URL and persist transient state to Redis.
