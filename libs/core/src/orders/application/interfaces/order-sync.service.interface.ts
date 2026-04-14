@@ -34,22 +34,27 @@ export interface OrderSyncRequest {
 /**
  * Order sync result
  *
- * Contains the result of order synchronization to destination processors.
+ * Discriminated union describing the outcome of syncing an order to a single
+ * destination processor. `status: 'success'` carries the destination order
+ * reference; `status: 'failed'` carries the error message so callers can
+ * surface partial failures without losing track of successful destinations.
  */
-export interface OrderSyncResult {
-  /**
-   * Destination connection ID where the order was synced
-   */
-  destinationConnectionId: string;
-
-  /**
-   * Order reference from the destination processor
-   */
-  orderRef: {
-    orderId: string;
-    orderNumber?: string;
-  };
-}
+export type OrderSyncResult =
+  | {
+      destinationConnectionId: string;
+      status: 'success';
+      orderRef: {
+        orderId: string;
+        orderNumber?: string;
+      };
+    }
+  | {
+      destinationConnectionId: string;
+      status: 'failed';
+      error: {
+        message: string;
+      };
+    };
 
 /**
  * Order Sync Service Interface

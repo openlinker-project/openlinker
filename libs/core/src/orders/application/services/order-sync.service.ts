@@ -2,7 +2,8 @@
  * Order Sync Service
  *
  * Application service for synchronizing orders from sources to destination processors.
- * Routes unified orders (with internal IDs) to configured OrderProcessorManager adapters.
+ * Routes unified orders (with internal IDs) to every active connection whose adapter
+ * supports the `OrderProcessorManager` capability, with per-destination error isolation.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderSyncService}
@@ -23,13 +24,17 @@ import { Logger } from '@openlinker/shared/logging';
 /**
  * Order Sync Service
  *
- * Routes orders from sources (e.g., Allegro) to destination processors (e.g., PrestaShop).
- * For MVP, uses a single configured destination connection ID from environment variable.
+ * Routes orders from sources (e.g. Allegro) to every configured
+ * `OrderProcessorManager` destination (e.g. PrestaShop + secondary WMS).
+ *
+ * The optional env var `ORDER_SYNC_DESTINATION_CONNECTION_ID` acts as a
+ * single-destination allowlist filter (legacy MVP behavior) — when set, only
+ * that connection ID is dispatched to, even if more processors are registered.
  */
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
   private readonly logger = new Logger(OrderSyncService.name);
-  private readonly destinationConnectionId: string | null;
+  private readonly destinationConnectionIdOverride: string | null;
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -37,47 +42,31 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
     private readonly mappingConfigService: IMappingConfigService,
   ) {
-    // MVP: Read destination connection ID from environment variable
-    // TODO: Phase 8+ - Support multiple destinations, connection-based routing, etc.
-    this.destinationConnectionId = process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID || null;
+    this.destinationConnectionIdOverride = process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID || null;
 
-    if (!this.destinationConnectionId) {
-      this.logger.warn(
-        'ORDER_SYNC_DESTINATION_CONNECTION_ID not configured. Order sync will fail until configured.',
-      );
-    } else {
+    if (this.destinationConnectionIdOverride) {
       this.logger.log(
-        `OrderSyncService initialized with destination connection: ${this.destinationConnectionId}`,
+        `OrderSyncService: single-destination override active for connection ${this.destinationConnectionIdOverride}`,
       );
     }
   }
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
-    this.logger.debug(`request: ${JSON.stringify(request)}`);
 
     this.logger.log(
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`,
     );
 
-    if (!this.destinationConnectionId) {
+    const destinations = await this.resolveDestinations(sourceConnectionId);
+
+    if (destinations.length === 0) {
       throw new Error(
-        'ORDER_SYNC_DESTINATION_CONNECTION_ID not configured. Set the environment variable to enable order sync.',
+        `No OrderProcessorManager destinations available for order ${order.id} (sourceConnectionId=${sourceConnectionId})`,
       );
     }
 
-    // Resolve destination OrderProcessorManager adapter
-    const processorAdapter = await this.integrationsService.getCapabilityAdapter<OrderProcessorManagerPort>(
-      this.destinationConnectionId,
-      'OrderProcessorManager',
-    );
-
-    this.logger.debug(
-      `Resolved OrderProcessorManager adapter for destination connection ${this.destinationConnectionId}`,
-    );
-
-    // Map unified Order to OrderCreate request
-    // Resolve status via configured mapping first; fall back to validated default.
+    // Resolve status mapping once — identical across all destinations
     const resolvedStatus = await this.mappingConfigService.resolveStatusMapping(
       sourceConnectionId,
       order.status,
@@ -85,6 +74,7 @@ export class OrderSyncService implements IOrderSyncService {
     const orderStatus = resolvedStatus
       ? this.validateOrderStatus(resolvedStatus)
       : this.validateOrderStatus(order.status);
+
     const orderCreate: OrderCreate = {
       orderNumber: order.orderNumber,
       status: orderStatus,
@@ -110,24 +100,71 @@ export class OrderSyncService implements IOrderSyncService {
         sourceConnectionId,
         sourceEventId,
         syncedAt: new Date().toISOString(),
-        internalOrderId: order.id, // Include internal order ID for idempotency checks
+        internalOrderId: order.id,
       },
     };
 
-    // Create order in destination system
-    this.logger.debug(`Creating order in destination system (connection: ${this.destinationConnectionId})`);
-    const orderRef = await processorAdapter.createOrder(orderCreate);
-
-    this.logger.log(
-      `Order ${order.id} synced successfully to destination ${this.destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`,
+    // Dispatch in parallel with per-destination error isolation
+    const settled = await Promise.allSettled(
+      destinations.map(({ connectionId, adapter }) =>
+        adapter
+          .createOrder(orderCreate)
+          .then((orderRef) => ({ connectionId, orderRef })),
+      ),
     );
 
-    return [
-      {
-        destinationConnectionId: this.destinationConnectionId,
-        orderRef,
-      },
-    ];
+    return settled.map((outcome, index): OrderSyncResult => {
+      const destinationConnectionId = destinations[index].connectionId;
+
+      if (outcome.status === 'fulfilled') {
+        const { orderRef } = outcome.value;
+        this.logger.log(
+          `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`,
+        );
+        return {
+          destinationConnectionId,
+          status: 'success',
+          orderRef,
+        };
+      }
+
+      const message =
+        outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+      this.logger.error(
+        `Order ${order.id} failed to sync to destination ${destinationConnectionId}: ${message}`,
+        outcome.reason instanceof Error ? outcome.reason.stack : undefined,
+      );
+      return {
+        destinationConnectionId,
+        status: 'failed',
+        error: { message },
+      };
+    });
+  }
+
+  /**
+   * Resolve all active `OrderProcessorManager` destinations for this sync.
+   *
+   * - Excludes the source connection (never route an order back to its origin)
+   * - If `ORDER_SYNC_DESTINATION_CONNECTION_ID` is set, narrows the result to
+   *   that single connection (legacy single-destination override)
+   */
+  private async resolveDestinations(
+    sourceConnectionId: string,
+  ): Promise<Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>> {
+    const resolved = await this.integrationsService.listCapabilityAdapters<OrderProcessorManagerPort>({
+      capability: 'OrderProcessorManager',
+    });
+
+    const filtered = resolved
+      .filter(({ connectionId }) => connectionId !== sourceConnectionId)
+      .filter(({ connectionId }) =>
+        this.destinationConnectionIdOverride
+          ? connectionId === this.destinationConnectionIdOverride
+          : true,
+      );
+
+    return filtered.map(({ connectionId, adapter }) => ({ connectionId, adapter }));
   }
 
   /**
@@ -135,18 +172,12 @@ export class OrderSyncService implements IOrderSyncService {
    *
    * Ensures type safety when mapping from Order (string status) to OrderCreate (OrderStatus union).
    * Defaults to 'pending' if status is not recognized.
-   *
-   * @param status - Order status string
-   * @returns Validated OrderStatus
    */
   private validateOrderStatus(status: string): OrderCreate['status'] {
     if (OrderStatusValues.includes(status as OrderCreate['status'])) {
       return status as OrderCreate['status'];
     }
-    this.logger.warn(
-      `Unknown order status: ${status}, defaulting to 'pending'`,
-    );
+    this.logger.warn(`Unknown order status: ${status}, defaulting to 'pending'`);
     return 'pending';
   }
 }
-
