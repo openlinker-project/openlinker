@@ -5,6 +5,9 @@
  * Shows breadcrumb path, allows selecting a category for mapping,
  * and clearing an existing mapping.
  *
+ * Selection is staged — clicking "Select" previews the pick. The caller
+ * receives the final choice only when the user confirms with "Save mapping".
+ *
  * @module apps/web/src/features/mappings/components
  */
 
@@ -27,6 +30,11 @@ interface BreadcrumbItem {
   name: string;
 }
 
+interface StagedPick {
+  category: AllegroCategory;
+  path: string;
+}
+
 export function AllegroCategorySearch({
   marketplaceConnectionId,
   currentMapping,
@@ -35,6 +43,7 @@ export function AllegroCategorySearch({
   isSaving,
 }: AllegroCategorySearchProps): ReactElement {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [staged, setStaged] = useState<StagedPick | null>(null);
   const currentParentId = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : undefined;
 
   const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, currentParentId);
@@ -53,13 +62,24 @@ export function AllegroCategorySearch({
     return parts.join(' > ');
   }
 
-  function handleSelect(category: AllegroCategory): void {
-    onSelect(category, buildPath(category));
+  function handleStage(category: AllegroCategory): void {
+    setStaged({ category, path: buildPath(category) });
+  }
+
+  function handleSave(): void {
+    if (!staged) return;
+    onSelect(staged.category, staged.path);
+    setStaged(null);
+  }
+
+  function handleCancel(): void {
+    setStaged(null);
   }
 
   return (
     <div className="allegro-category-search">
-      {currentMapping && (
+      {/* Current saved mapping */}
+      {currentMapping && !staged && (
         <div className="allegro-category-search__current">
           <span className="mono-text">{currentMapping.allegroCategoryName}</span>
           {currentMapping.allegroCategoryPath && (
@@ -72,6 +92,33 @@ export function AllegroCategorySearch({
           >
             Clear mapping
           </Button>
+        </div>
+      )}
+
+      {/* Staged (unsaved) pick */}
+      {staged && (
+        <div className="allegro-category-search__staged">
+          <span className="allegro-category-search__staged-label">Selected:</span>
+          <span className="mono-text">{staged.category.name}</span>
+          {staged.path && (
+            <span className="allegro-category-search__path">{staged.path}</span>
+          )}
+          <span className="allegro-category-search__staged-actions">
+            <Button
+              className="button--primary button--sm"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving…' : 'Save mapping'}
+            </Button>
+            <Button
+              className="button--ghost button--sm"
+              onClick={handleCancel}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+          </span>
         </div>
       )}
 
@@ -118,7 +165,13 @@ export function AllegroCategorySearch({
       {categoriesQuery.data && categoriesQuery.data.length > 0 && (
         <ul className="allegro-category-search__list" role="list">
           {categoriesQuery.data.map((cat) => (
-            <li key={cat.id} className="allegro-category-search__item">
+            <li
+              key={cat.id}
+              className={[
+                'allegro-category-search__item',
+                staged?.category.id === cat.id ? 'allegro-category-search__item--staged' : '',
+              ].filter(Boolean).join(' ')}
+            >
               <span className="allegro-category-search__name">{cat.name}</span>
               <span className="allegro-category-search__actions">
                 {!cat.leaf && (
@@ -131,11 +184,11 @@ export function AllegroCategorySearch({
                   </button>
                 )}
                 <Button
-                  className="button--primary button--sm"
-                  onClick={() => { handleSelect(cat); }}
+                  className={staged?.category.id === cat.id ? 'button--secondary button--sm' : 'button--primary button--sm'}
+                  onClick={() => { handleStage(cat); }}
                   disabled={isSaving}
                 >
-                  {isSaving ? 'Saving...' : 'Select'}
+                  {staged?.category.id === cat.id ? 'Selected' : 'Select'}
                 </Button>
               </span>
             </li>

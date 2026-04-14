@@ -48,7 +48,7 @@ Run migrations, then start the API and the web app (in separate terminals):
 ```bash
 pnpm --filter @openlinker/api migration:run
 pnpm start:dev:api       # http://localhost:3000
-pnpm start:dev:web       # http://localhost:5173
+pnpm start:dev:web       # http://localhost:4173
 pnpm start:dev:worker    # background sync jobs
 ```
 
@@ -58,14 +58,31 @@ Health check:
 curl -s http://localhost:3000/health/dev-stack | jq .
 ```
 
-Once the worker is running (`pnpm start:dev:worker`), the **System Health** panel at **http://localhost:5173** (dashboard) will show four tiles: PostgreSQL, Redis, PrestaShop, and Worker. The Worker tile confirms the background sync worker is alive; if it remains red after the worker starts, check the worker logs for errors.
+Once the worker is running (`pnpm start:dev:worker`), the **System Health** panel at **http://localhost:4173** (dashboard) will show four tiles: PostgreSQL, Redis, PrestaShop, and Worker. The Worker tile confirms the background sync worker is alive; if it remains red after the worker starts, check the worker logs for errors.
 
 ## 3. Admin user & login
 
-Log in at http://localhost:5173.
+Log in at **http://localhost:4173**.
 
-- Default admin seeding is tracked in [#157](https://github.com/SilkSoftwareHouse/openlinker/issues/157).
-- Password reset flow is tracked in [#158](https://github.com/SilkSoftwareHouse/openlinker/issues/158).
+On first boot the API seeds a default admin user if no users exist and prints the credentials to the log once:
+
+```
+[BootstrapAdminService] Default admin credentials: username=admin password=<generated>
+```
+
+Use those credentials on the login screen. The seed is idempotent — restarting the API will not overwrite a user that already exists.
+
+### Password reset
+
+Click **Forgot password?** on the login screen and enter the admin email (`admin@openlinker.local` by default). The API logs the reset link to the console:
+
+```
+[ConsolePasswordResetNotifierAdapter] [password-reset] user=admin email=admin@openlinker.local link=http://localhost:4173/reset-password/<token>
+```
+
+Open that link in your browser, enter a new password, and log in normally.
+
+> The link always uses port **4173** (the Vite dev server). If you run the web app on a different port, set `WEB_URL=http://localhost:<port>` in `apps/api/.env.local`.
 
 ## 4. PrestaShop connection
 
@@ -88,17 +105,7 @@ Log in at http://localhost:5173.
    - **Shop URL**: `http://localhost:8080/`
    - **Webservice key**: the key from step 4.1
    - **Shop ID**: leave blank (single-shop install)
-3. Click **Create connection**.
-
-> Post-create UX is a known gap — see [#163](https://github.com/SilkSoftwareHouse/openlinker/issues/163). The form clears silently; navigate to **Integrations** to see the new connection.
-
-> **Credentials workaround** (until [#165](https://github.com/SilkSoftwareHouse/openlinker/issues/165) lands): the wizard stores the webservice key as the `credentialsRef` itself, and the backend resolves it via env var. Add this to `apps/api/.env.local` and restart the API:
->
-> ```
-> CREDENTIALS_<WEBSERVICE_KEY_UPPERCASE>=<WEBSERVICE_KEY>
-> ```
->
-> (e.g. if your key is `ABC123`, add `CREDENTIALS_ABC123=ABC123`.) **Add the same line to `apps/worker/.env.local`** and restart the worker, otherwise background sync jobs will fail too. Without this, every adapter-backed page returns a 500.
+3. Click **Create connection**. You are redirected to the connection detail page.
 
 ### 4.3 Verify
 
@@ -106,8 +113,9 @@ Open the connection detail page. You should see:
 
 - Platform `prestashop`, Adapter `prestashop.webservice.v1`, status **active**.
 - Config `{ "baseUrl": "http://localhost:8080/" }`.
+- Capability pills: **ProductMaster**, **InventoryMaster**, **OrderProcessorManager**.
 
-A dedicated "Test connection" button and capability list are tracked in [#164](https://github.com/SilkSoftwareHouse/openlinker/issues/164).
+Click **Test connection** — it should return a green success indicator confirming the webservice key is valid and all capabilities resolve correctly.
 
 ## 5. Allegro connection (OAuth sandbox)
 
@@ -117,7 +125,7 @@ A dedicated "Test connection" button and capability list are tracked in [#164](h
 2. **My applications → Register new application** → select **Application with user authorization (OAuth)**.
 3. Fill in:
    - **Name**: e.g. `OpenLinker dev`
-   - **Redirect URI**: `http://localhost:5173/integrations/allegro/connect/callback`
+   - **Redirect URI**: `http://localhost:4173/integrations/allegro/connect/callback`
 4. Save and copy the generated **Client ID** and **Client Secret**.
 
 ### 5.2 Create the connection in OpenLinker
@@ -127,18 +135,20 @@ A dedicated "Test connection" button and capability list are tracked in [#164](h
    - **Connection name**: e.g. `Allegro sandbox`
    - **Environment**: **Sandbox**
    - **Client ID** / **Client Secret**: from step 5.1
-3. Click **Connect**. You're redirected to Allegro → authorize the app → redirected back to the OpenLinker web app. The connection should appear with status **active**.
+3. Click **Connect**. You are redirected to Allegro → authorize the app → redirected back to the OpenLinker web app. The connection should appear with status **active**.
 
-> You may see a burst of `OAuth state not found or expired` warnings in the API log after a successful connect — the callback effect fires multiple times in dev and only the first exchange succeeds. Harmless; tracked in [#172](https://github.com/SilkSoftwareHouse/openlinker/issues/172).
+> You may see a burst of `OAuth state not found or expired` warnings in the API log after a successful connect — the callback fires multiple times in dev and only the first exchange succeeds. Harmless; tracked in [#172](https://github.com/SilkSoftwareHouse/openlinker/issues/172).
 
 ### 5.3 Verify
 
 Open the connection detail page. You should see:
 
 - Platform `allegro`, Adapter `allegro.publicapi.v1`, status **active**.
-- Capabilities resolved to `Marketplace` (Test connection button + capability pills tracked in [#164](https://github.com/SilkSoftwareHouse/openlinker/issues/164)).
+- Capability pill: **Marketplace**.
 
-> Do **not** click **Category Mappings** on the Allegro connection detail — it currently crashes (tracked in [#173](https://github.com/SilkSoftwareHouse/openlinker/issues/173)). Category mapping is driven from the PrestaShop (source) side — see §7.
+Click **Test connection** — it should return a green success indicator.
+
+> **Category Mappings** on the Allegro connection detail is hidden — category mapping is driven from the PrestaShop (source) side, see §7.
 
 ## 6. Initial catalog & inventory pull
 
@@ -158,12 +168,39 @@ runs update existing projections rather than duplicating.
 **Inventory:** the `OL_INVENTORY_SYNC_ENABLED` scheduler refreshes stock every
 15 minutes for all products already discovered by the catalog sync above.
 
+**Inventory levels:** once the inventory scheduler runs, open **Inventory** in the left nav (http://localhost:4173/inventory) to see available and reserved quantities per product.
+
 If no products appear: confirm the worker is running (`pnpm start:dev:worker`)
 and check the Jobs & Logs page for the `master.product.syncAll` job status.
 
 ## 7. Category & attribute mapping
 
-_TBD_
+Category mapping connects your PrestaShop categories to Allegro's category tree so offers can be created in the correct Allegro category.
+
+### 7.1 Open the mapping page
+
+1. In OpenLinker → **Integrations** → click your **PrestaShop connection**.
+2. Click **Category Mappings** in the connection detail page.
+3. The page loads with:
+   - **Left panel**: PrestaShop category tree
+   - **Right panel**: Allegro category browser
+   - **Marketplace connection** selector at the top (auto-picks your Allegro connection if only one exists)
+
+> The **Category Mappings** entry is only shown on ProductMaster-capable connections (PrestaShop). It is hidden on Allegro connection detail pages.
+
+### 7.2 Map a category
+
+1. Click a PrestaShop category in the left panel — it highlights and the right panel activates.
+2. Browse the Allegro category tree using **Browse** to drill into subcategories. Use the breadcrumb at the top to navigate back up.
+3. When you find the right Allegro category, click **Select** — a blue preview bar appears at the top of the right panel showing your pick.
+4. Click **Save mapping** to persist. The row in the left panel updates to show the mapped Allegro category name.
+
+### 7.3 Change or remove a mapping
+
+- To **change**: click the PS category again, pick a different Allegro category, click **Select** → **Save mapping**.
+- To **remove**: click the PS category → click **Clear mapping** in the green bar at the top of the right panel.
+
+Repeat for each category you intend to list products in on Allegro.
 
 ## 8. First offer
 

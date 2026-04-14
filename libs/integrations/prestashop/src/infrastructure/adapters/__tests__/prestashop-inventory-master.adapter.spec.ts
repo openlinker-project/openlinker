@@ -88,6 +88,48 @@ describe('PrestashopInventoryMasterAdapter', () => {
       expect(result.quantity).toBe(50);
     });
 
+    it('should strip product: prefix from synthetic variant externalId before querying stock_availables', async () => {
+      const productId = 'internal-product-123';
+      // Simple products store a synthetic externalId of the form `product:<numericId>`
+      const syntheticExternalId = 'product:42';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        {
+          connectionId: connection.id,
+          externalId: syntheticExternalId,
+          entityType: 'Product',
+        },
+      ]);
+
+      const stockRecord: PrestashopStockAvailable = {
+        id: '101',
+        id_product: '42',
+        id_product_attribute: '0',
+        quantity: '75',
+        out_of_stock: '0',
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([stockRecord]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-inventory-123');
+
+      const result = await adapter.getInventory(productId);
+
+      // Adapter must send the plain numeric ID, not `product:42`
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'stock_availables',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          custom: expect.objectContaining({ id_product: '42' }),
+        }),
+      );
+      expect(result.quantity).toBe(75);
+    });
+
     it('should throw PrestashopResourceNotFoundException when product not found', async () => {
       const productId = 'internal-product-123';
 
