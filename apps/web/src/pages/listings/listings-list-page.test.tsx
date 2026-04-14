@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
 import type { PaginatedOfferMappings } from '../../features/listings/api/listings.types';
@@ -35,6 +35,7 @@ const sampleMappings: PaginatedOfferMappings = {
 };
 
 describe('ListingsListPage', () => {
+  afterEach(cleanup);
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       listings: {
