@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
-import type { ServiceHealth } from '../../features/health/api/health.types';
+import type { ServiceHealth, ServiceStatus, OverallStatus } from '../../features/health/api/health.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { Button } from '../../shared/ui/button';
@@ -85,7 +85,7 @@ const failedJobColumns: DataTableColumn<SyncJob>[] = [
   updatedAtColumn,
 ];
 
-function toHealthTone(status: string): StatusBadgeTone {
+function toHealthTone(status: ServiceStatus | OverallStatus): StatusBadgeTone {
   if (status === 'ok') return 'success';
   if (status === 'warning' || status === 'degraded') return 'warning';
   return 'error';

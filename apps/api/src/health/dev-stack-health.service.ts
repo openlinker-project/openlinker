@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, timeout } from 'rxjs';
 import { RedisClientType } from 'redis';
 import { IDevStackHealthService } from './dev-stack-health.service.interface';
+import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 import {
   InternalHealthResponse,
   DevStackHealthResponse,
@@ -29,7 +30,6 @@ export class DevStackHealthService implements IDevStackHealthService {
   private readonly logger = new Logger(DevStackHealthService.name);
   private readonly CHECK_TIMEOUT_MS = 5000;
   private readonly HEALTHCHECK_STREAM = 'healthcheck';
-  private readonly WORKER_HEARTBEAT_KEY = 'openlinker:worker:heartbeat';
   private readonly WORKER_OK_MS = 30_000; // 30 seconds
   private readonly WORKER_WARN_MS = 60_000; // 60 seconds
 
@@ -227,7 +227,7 @@ export class DevStackHealthService implements IDevStackHealthService {
   private async checkWorker(): Promise<ServiceHealth> {
     try {
       const heartbeat = await this.withTimeout(
-        this.redisClient.get(this.WORKER_HEARTBEAT_KEY),
+        this.redisClient.get(WORKER_HEARTBEAT_REDIS_KEY),
         'Worker heartbeat check timeout',
       );
 

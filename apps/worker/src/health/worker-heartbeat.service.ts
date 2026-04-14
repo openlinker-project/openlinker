@@ -11,13 +11,14 @@
 import { Injectable, Inject, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
+import { IWorkerHeartbeatService } from './worker-heartbeat.service.interface';
+import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 
-export const WORKER_HEARTBEAT_KEY = 'openlinker:worker:heartbeat';
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_SECONDS = 120;
 
 @Injectable()
-export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
+export class WorkerHeartbeatService implements IWorkerHeartbeatService, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkerHeartbeatService.name);
   private intervalId: NodeJS.Timeout | undefined;
 
@@ -53,7 +54,7 @@ export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
   private async writeHeartbeat(): Promise<void> {
     try {
       await this.redisClient.set(
-        WORKER_HEARTBEAT_KEY,
+        WORKER_HEARTBEAT_REDIS_KEY,
         Date.now().toString(),
         { EX: HEARTBEAT_TTL_SECONDS },
       );
