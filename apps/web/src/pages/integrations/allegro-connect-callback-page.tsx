@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react';
-import { useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useHandleAllegroCallbackMutation } from '../../features/allegro/hooks/use-handle-allegro-callback-mutation';
+import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handle-allegro-callback-mutation';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 
@@ -11,20 +10,7 @@ export function AllegroConnectCallbackPage(): ReactElement {
   const state = searchParams.get('state');
   const oauthError = searchParams.get('error');
 
-  const callbackMutation = useHandleAllegroCallbackMutation();
-  const hasCalledRef = useRef(false);
-
-  useEffect(() => {
-    if (!hasCalledRef.current && code && state) {
-      hasCalledRef.current = true;
-      // Strip ?code&state from the URL *before* firing the mutation so that
-      // a StrictMode double-mount or HMR remount sees a clean URL and does not
-      // dispatch a duplicate request (which would race against the in-flight one
-      // and hit the backend before the completed-state marker is written).
-      window.history.replaceState({}, '', window.location.pathname);
-      callbackMutation.mutate({ code, state });
-    }
-  }, [code, state, callbackMutation.mutate]);
+  const callbackState = useHandleAllegroCallback(code, state);
 
   function renderContent(): ReactElement {
     if (oauthError) {
@@ -41,7 +27,7 @@ export function AllegroConnectCallbackPage(): ReactElement {
       );
     }
 
-    if (!code || !state) {
+    if (callbackState.status === 'idle' && (!code || !state)) {
       return (
         <ErrorState
           title="Invalid callback"
@@ -55,12 +41,12 @@ export function AllegroConnectCallbackPage(): ReactElement {
       );
     }
 
-    if (callbackMutation.isPending) {
+    if (callbackState.status === 'idle' || callbackState.status === 'pending') {
       return <LoadingState title="Completing authorization" message="Exchanging authorization code with Allegro…" />;
     }
 
-    if (callbackMutation.error) {
-      const isAlreadyUsed = callbackMutation.error.message.includes('Invalid or expired OAuth state');
+    if (callbackState.status === 'error') {
+      const isAlreadyUsed = callbackState.error.includes('Invalid or expired OAuth state');
       if (isAlreadyUsed) {
         return (
           <ErrorState
@@ -77,7 +63,7 @@ export function AllegroConnectCallbackPage(): ReactElement {
       return (
         <ErrorState
           title="Authorization failed"
-          message={callbackMutation.error.message}
+          message={callbackState.error}
           action={
             <Link className="button" to="/connections/new/allegro">
               Try again
@@ -87,40 +73,36 @@ export function AllegroConnectCallbackPage(): ReactElement {
       );
     }
 
-    if (callbackMutation.data) {
-      const { connectionId, connectionName } = callbackMutation.data;
-      return (
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">Success</p>
-              <h3 className="section-title">Connection created</h3>
-            </div>
-            <span className="panel__meta">Active</span>
+    const { connectionId, connectionName } = callbackState.data;
+    return (
+      <article className="panel panel--dense">
+        <div className="panel__header">
+          <div>
+            <p className="eyebrow">Success</p>
+            <h3 className="section-title">Connection created</h3>
           </div>
-          <dl className="definition-list">
-            <div>
-              <dt>Name</dt>
-              <dd>{connectionName}</dd>
-            </div>
-            <div>
-              <dt>Connection ID</dt>
-              <dd className="mono-text">{connectionId}</dd>
-            </div>
-          </dl>
-          <div className="form-actions">
-            <Link className="button" to={`/connections/${connectionId}`}>
-              Go to connection
-            </Link>
-            <Link className="button button--secondary" to="/connections">
-              View all connections
-            </Link>
+          <span className="panel__meta">Active</span>
+        </div>
+        <dl className="definition-list">
+          <div>
+            <dt>Name</dt>
+            <dd>{connectionName}</dd>
           </div>
-        </article>
-      );
-    }
-
-    return <LoadingState title="Completing authorization" message="Exchanging authorization code with Allegro…" />;
+          <div>
+            <dt>Connection ID</dt>
+            <dd className="mono-text">{connectionId}</dd>
+          </div>
+        </dl>
+        <div className="form-actions">
+          <Link className="button" to={`/connections/${connectionId}`}>
+            Go to connection
+          </Link>
+          <Link className="button button--secondary" to="/connections">
+            View all connections
+          </Link>
+        </div>
+      </article>
+    );
   }
 
   return (
