@@ -28,6 +28,11 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
   IntegrationCredentialRepositoryPort,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ConnectionTesterRegistryService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  CREDENTIALS_RESOLVER_TOKEN,
+  CredentialsResolverPort,
+  ConnectionTestResult,
 } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
@@ -50,7 +55,34 @@ export class ConnectionService implements IConnectionService {
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
+    @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
+    private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
+    @Inject(CREDENTIALS_RESOLVER_TOKEN)
+    private readonly credentialsResolver: CredentialsResolverPort,
   ) {}
+
+  async testConnection(connectionId: string): Promise<ConnectionTestResult> {
+    const connection = await this.get(connectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    const tester = this.connectionTesterRegistry.get(metadata.adapterKey);
+    if (!tester) {
+      throw new BadRequestException(
+        `Connection testing is not supported for adapter ${metadata.adapterKey}`,
+      );
+    }
+    this.logger.log(
+      `Testing connection ${connectionId} (adapter: ${metadata.adapterKey})`,
+    );
+    const result = await tester.test(connection, this.credentialsResolver);
+    this.logger.log(
+      `Connection test ${result.success ? 'succeeded' : 'failed'} for ${connectionId} in ${result.latencyMs}ms` +
+        (result.status !== undefined ? ` (status=${result.status})` : ''),
+    );
+    return result;
+  }
 
   async create(payload: ConnectionCreateInput): Promise<Connection> {
     const { credentials, credentialsRef, ...rest } = payload;

@@ -11,6 +11,7 @@ import { useState, type ReactElement } from 'react';
 import type { Capability, Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { Alert } from '../../../shared/ui/alert';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 interface ConnectionCapabilitiesPanelProps {
@@ -76,6 +77,21 @@ export function ConnectionCapabilitiesPanel({
         <Alert tone="error" title="Unable to update capabilities">
           {updateMutation.error.message}
         </Alert>
+      ) : null}
+
+      {supported.length > 0 ? (
+        <div className="capability-list__pills" aria-label="Supported capabilities">
+          {supported.map((capability) => (
+            <StatusBadge
+              key={`pill-${capability}`}
+              tone={enabled.has(capability) ? 'success' : 'neutral'}
+              withDot
+              compact
+            >
+              {capability}
+            </StatusBadge>
+          ))}
+        </div>
       ) : null}
 
       {supported.length === 0 ? (

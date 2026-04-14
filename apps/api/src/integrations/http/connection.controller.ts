@@ -28,6 +28,7 @@ import { UpdateConnectionCredentialsDto } from './dto/update-connection-credenti
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
+import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
 import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
@@ -161,6 +162,22 @@ export class ConnectionController {
     const connection = await this.connectionService.get(id);
     const recentJobs = await this.syncJobRepository.findRecentByConnectionId(id, 10);
     return ConnectionDiagnosticsResponseDto.fromDomain(connection, recentJobs);
+  }
+
+  @Roles('admin')
+  @Post(':id/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Probe the connection and return liveness result' })
+  @ApiResponse({
+    status: 200,
+    description: 'Structured probe result (success/failure with latency)',
+    type: ConnectionTestResultDto,
+  })
+  @ApiResponse({ status: 400, description: 'Adapter does not support testing' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async test(@Param('id') id: string): Promise<ConnectionTestResultDto> {
+    const result = await this.connectionService.testConnection(id);
+    return ConnectionTestResultDto.fromDomain(result);
   }
 
   @Roles('admin')

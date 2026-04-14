@@ -15,6 +15,7 @@ import { AdapterRegistryService } from './infrastructure/adapters/adapter-regist
 import { IntegrationsService } from './application/services/integrations.service';
 import { CredentialsResolverService } from './infrastructure/credentials/credentials-resolver.service';
 import { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
+import { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 import { StubWebhookSecretProvider } from './infrastructure/adapters/stub-webhook-secret-provider';
 import { IntegrationCredentialOrmEntity } from './infrastructure/persistence/entities/integration-credential.orm-entity';
 import { IntegrationCredentialRepository } from './infrastructure/persistence/repositories/integration-credential.repository';
@@ -25,6 +26,7 @@ import {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 // Re-export tokens for convenience
@@ -35,6 +37,7 @@ export {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 @Module({
@@ -48,6 +51,7 @@ export {
     IntegrationsService,
     CredentialsResolverService,
     AdapterFactoryResolverService,
+    ConnectionTesterRegistryService,
     StubWebhookSecretProvider,
     IntegrationCredentialRepository,
     {
@@ -67,6 +71,10 @@ export {
       useExisting: AdapterFactoryResolverService,
     },
     {
+      provide: CONNECTION_TESTER_REGISTRY_TOKEN,
+      useExisting: ConnectionTesterRegistryService,
+    },
+    {
       provide: WEBHOOK_SECRET_PROVIDER_TOKEN,
       useExisting: StubWebhookSecretProvider,
     },
@@ -80,11 +88,13 @@ export {
     INTEGRATIONS_SERVICE_TOKEN,
     CREDENTIALS_RESOLVER_TOKEN,
     ADAPTER_FACTORY_RESOLVER_TOKEN,
+    CONNECTION_TESTER_REGISTRY_TOKEN,
     WEBHOOK_SECRET_PROVIDER_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
     IntegrationsService,
     CredentialsResolverService,
     AdapterFactoryResolverService,
+    ConnectionTesterRegistryService,
     StubWebhookSecretProvider,
   ],
 })

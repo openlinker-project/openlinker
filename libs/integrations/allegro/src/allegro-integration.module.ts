@@ -14,9 +14,12 @@ import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   AdapterFactoryResolverService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  ConnectionTesterRegistryService,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   IntegrationCredentialRepositoryPort,
 } from '@openlinker/core/integrations';
+import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';
@@ -70,6 +73,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
   constructor(
     @Inject(ADAPTER_FACTORY_RESOLVER_TOKEN)
     private readonly factoryResolver: AdapterFactoryResolverService,
+    @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
+    private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN)
     private readonly customerIdentityResolver: CustomerIdentityResolverPort,
     @Optional()
@@ -91,6 +96,10 @@ export class AllegroIntegrationModule implements OnModuleInit {
       this.readQuantityPollConfig(),
     );
     this.factoryResolver.registerFactory('allegro.publicapi.v1', factory);
+    this.connectionTesterRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroConnectionTesterAdapter(),
+    );
     this.logger.log('Allegro adapter factory registered successfully');
   }
 
