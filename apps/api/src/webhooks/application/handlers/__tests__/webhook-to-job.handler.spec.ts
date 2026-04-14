@@ -11,16 +11,19 @@ import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { InboundWebhookEvent } from '@openlinker/core/events';
 import { JobTypeValues } from '@openlinker/core/sync';
+import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../../webhooks.tokens';
 
 describe('WebhookToJobHandler', () => {
   let handler: WebhookToJobHandler;
+  let mockRedisClient: { xGroupCreate: jest.Mock; xReadGroup: jest.Mock; xAck: jest.Mock; xAdd: jest.Mock; quit: jest.Mock };
 
   beforeEach(async () => {
-    const mockRedisClient = {
+    mockRedisClient = {
       xGroupCreate: jest.fn(),
       xReadGroup: jest.fn(),
       xAck: jest.fn(),
       xAdd: jest.fn(),
+      quit: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockJobEnqueue = {
@@ -31,7 +34,7 @@ describe('WebhookToJobHandler', () => {
       providers: [
         WebhookToJobHandler,
         {
-          provide: 'REDIS_CLIENT',
+          provide: REDIS_CLIENT_BLOCKING_TOKEN,
           useValue: mockRedisClient,
         },
         {
@@ -42,8 +45,22 @@ describe('WebhookToJobHandler', () => {
     }).compile();
 
     handler = module.get<WebhookToJobHandler>(WebhookToJobHandler);
-    // Note: redisClient and jobEnqueue are not used in these tests
-    // as we're only testing private mapping methods
+  });
+
+  describe('onModuleDestroy', () => {
+    it('should call redisClient.quit() on module destroy', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const onModuleDestroyPromise = handler.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(2000);
+        await onModuleDestroyPromise;
+
+        expect(mockRedisClient.quit).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('mapObjectType (via mapToSyncJob)', () => {

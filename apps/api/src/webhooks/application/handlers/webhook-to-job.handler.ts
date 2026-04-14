@@ -15,6 +15,8 @@ import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
 import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../webhooks.tokens';
+import { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
 
 @Injectable()
 export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
@@ -30,7 +32,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private isRunning = false;
 
   constructor(
-    @Inject('REDIS_CLIENT')
+    @Inject(REDIS_CLIENT_BLOCKING_TOKEN)
     private readonly redisClient: RedisClientType,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
@@ -43,6 +45,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.stopConsumptionLoop();
+    await this.redisClient.quit();
   }
 
   /**
@@ -258,19 +261,6 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    * Map event envelope to inbound webhook event
    */
   private mapToInboundWebhookEvent(envelope: EventEnvelope): InboundWebhookEvent {
-    interface WebhookPayload {
-      objectType?: string;
-      externalId?: string;
-      payload?: Record<string, unknown>;
-      [key: string]: unknown;
-    }
-
-    interface WebhookMetadata {
-      provider?: string;
-      connectionId?: string;
-      [key: string]: unknown;
-    }
-
     const payload = JSON.parse(envelope.payloadJson) as WebhookPayload;
     const metadata = (envelope.metadataJson ? JSON.parse(envelope.metadataJson) : {}) as WebhookMetadata;
 
