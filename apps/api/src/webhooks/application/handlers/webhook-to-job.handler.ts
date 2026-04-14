@@ -30,7 +30,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private isRunning = false;
 
   constructor(
-    @Inject('REDIS_CLIENT')
+    @Inject('REDIS_CLIENT_BLOCKING')
     private readonly redisClient: RedisClientType,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
@@ -43,6 +43,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.stopConsumptionLoop();
+    await this.redisClient.quit();
   }
 
   /**

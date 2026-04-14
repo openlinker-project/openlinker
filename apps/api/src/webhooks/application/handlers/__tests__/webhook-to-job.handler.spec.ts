@@ -31,7 +31,7 @@ describe('WebhookToJobHandler', () => {
       providers: [
         WebhookToJobHandler,
         {
-          provide: 'REDIS_CLIENT',
+          provide: 'REDIS_CLIENT_BLOCKING',
           useValue: mockRedisClient,
         },
         {

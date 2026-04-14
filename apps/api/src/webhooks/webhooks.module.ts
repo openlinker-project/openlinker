@@ -8,6 +8,8 @@
  * @module apps/api/src/webhooks
  */
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, RedisClientType } from 'redis';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -40,6 +42,23 @@ import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handl
     WebhookDedupService,
     WebhookEventPublisher,
     WebhookToJobHandler,
+    {
+      // Dedicated client for blocking xReadGroup loop — must not share with health check client
+      provide: 'REDIS_CLIENT_BLOCKING',
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
+        const client = createClient({
+          socket: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: configService.get<number>('REDIS_PORT', 6379),
+          },
+          password: configService.get<string>('REDIS_PASSWORD'),
+          database: configService.get<number>('REDIS_DB', 0),
+        });
+        await client.connect();
+        return client as RedisClientType;
+      },
+      inject: [ConfigService],
+    },
   ],
 })
 export class WebhooksModule {}
