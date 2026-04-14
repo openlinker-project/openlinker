@@ -65,10 +65,18 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
-      const err = error as { status?: number; message?: string };
+      const err = error as { name?: string; statusCode?: number; message?: string };
+      let status: number | undefined;
+      if (typeof err.statusCode === 'number') {
+        status = err.statusCode;
+      } else if (err.name === 'PrestashopAuthenticationException') {
+        status = 401;
+      } else if (err.name === 'PrestashopResourceNotFoundException') {
+        status = 404;
+      }
       return {
         success: false,
-        status: typeof err.status === 'number' ? err.status : undefined,
+        status,
         message: err.message ?? 'PrestaShop probe failed',
         latencyMs: Date.now() - startedAt,
       };

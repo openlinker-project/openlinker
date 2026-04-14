@@ -1,10 +1,13 @@
 /**
- * Connection Tester Registry
+ * Connection Tester Registry Service
  *
  * Holds ConnectionTesterPort implementations keyed by adapterKey. Integration
- * modules register their testers at bootstrap (mirrors AdapterFactoryResolverService).
+ * modules register their testers at bootstrap alongside their adapter factory,
+ * mirroring the shape of AdapterFactoryResolverService. Consumed by the
+ * connection API layer to route /connections/:id/test to the right probe.
  *
  * @module libs/core/src/integrations/infrastructure/adapters
+ * @see {@link ConnectionTesterPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
 import { ConnectionTesterPort } from '../../domain/ports/connection-tester.port';

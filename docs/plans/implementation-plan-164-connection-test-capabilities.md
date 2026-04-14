@@ -33,13 +33,13 @@ Registered per adapter key in a small registry (same shape as `AdapterRegistrySe
 
 Both: measure elapsed ms, catch errors and map to `{success:false, status, message}`. Never leak secrets.
 
-### Persistence
-Migration: add to `connections` table
-- `last_tested_at timestamptz NULL`
-- `last_test_success boolean NULL`
-- `last_test_error text NULL`
-
-Update `ConnectionOrmEntity` + domain `Connection` + mapper.
+### Persistence — deferred to a follow-up PR
+The initial proposal sketched adding `last_tested_at / last_test_success /
+last_test_error` columns on `connections`. We are intentionally skipping that
+in this PR: the core acceptance ("click → pass/fail within ~2s, capabilities
+visible") is met via the toast + pills, and a separate PR can add schema +
+Diagnostics-tile surfacing once we know whether a per-connection column or a
+dedicated `connection_health_checks` table is the better shape.
 
 ### Application
 `ConnectionService.testConnection(connectionId)`:

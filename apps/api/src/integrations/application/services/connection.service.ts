@@ -62,6 +62,9 @@ export class ConnectionService implements IConnectionService {
   ) {}
 
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
+    // Disabled connections are intentionally still testable: operators use the
+    // probe to diagnose *why* a connection was disabled (expired credentials,
+    // unreachable host, etc). The FE gates the button on status separately.
     const connection = await this.get(connectionId);
     const metadata = await this.integrationsService.resolveAdapterMetadata({
       platformType: connection.platformType,

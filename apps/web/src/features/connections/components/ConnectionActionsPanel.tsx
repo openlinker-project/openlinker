@@ -22,6 +22,29 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
 
   const isDisabled = connection.status === 'disabled';
 
+  async function handleTest(): Promise<void> {
+    try {
+      const result = await testConnection.mutateAsync(connection.id);
+      showToast({
+        tone: result.success ? 'success' : 'error',
+        title: result.success
+          ? `Connection OK (${result.latencyMs}ms)`
+          : 'Connection test failed',
+        description: result.success
+          ? result.message
+          : `${result.message}${
+              result.status !== undefined ? ` (HTTP ${result.status})` : ''
+            }`,
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: 'Connection test failed',
+        description: (error as Error).message,
+      });
+    }
+  }
+
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
@@ -49,29 +72,8 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
           <Button
             tone="secondary"
-            disabled={testConnection.isPending || isDisabled}
-            onClick={async () => {
-              try {
-                const result = await testConnection.mutateAsync(connection.id);
-                showToast({
-                  tone: result.success ? 'success' : 'error',
-                  title: result.success
-                    ? `Connection OK (${result.latencyMs}ms)`
-                    : 'Connection test failed',
-                  description: result.success
-                    ? result.message
-                    : `${result.message}${
-                        result.status !== undefined ? ` (HTTP ${result.status})` : ''
-                      }`,
-                });
-              } catch (error) {
-                showToast({
-                  tone: 'error',
-                  title: 'Connection test failed',
-                  description: (error as Error).message,
-                });
-              }
-            }}
+            disabled={testConnection.isPending}
+            onClick={() => void handleTest()}
           >
             {testConnection.isPending ? 'Testing...' : 'Test connection'}
           </Button>
