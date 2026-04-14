@@ -1327,6 +1327,12 @@ textarea {
   overflow-y: auto;
 }
 
+.category-mappings-layout__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+}
+
 .category-mappings-layout__tree h3,
 .category-mappings-layout__search h3 {
   margin: 0 0 0.75rem;
@@ -1380,6 +1386,7 @@ textarea {
   padding: 0.375rem 0.5rem;
   border: 1px solid transparent;
   background: none;
+  color: var(--text-primary);
   cursor: pointer;
   border-radius: 0.375rem;
   text-align: left;
@@ -1445,6 +1452,35 @@ textarea {
 .allegro-category-search__path {
   color: var(--text-secondary);
   font-size: 0.75rem;
+}
+
+.allegro-category-search__staged {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary);
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  flex-wrap: wrap;
+}
+
+.allegro-category-search__staged-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.allegro-category-search__staged-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.allegro-category-search__item--staged {
+  background: var(--accent-primary-soft);
+  border-radius: 0.375rem;
 }
 
 .allegro-category-search__breadcrumbs {

@@ -50,12 +50,20 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       throw error;
     }
 
+    // Simple products (no combinations) are stored with a synthetic externalId
+    // of the form `product:<id>` by the product adapter. Strip the prefix so
+    // the stock_availables filter receives the plain numeric PrestaShop product ID.
+    const rawExternalId = prestashopProductId.externalId;
+    const psProductId = rawExternalId.startsWith('product:')
+      ? rawExternalId.slice('product:'.length)
+      : rawExternalId;
+
     // Fetch stock_available for product (id_product_attribute = 0 for product stock)
     const stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
       'stock_availables',
       {
         custom: {
-          id_product: prestashopProductId.externalId,
+          id_product: psProductId,
           id_product_attribute: 0, // Product stock, not variant
         },
       },

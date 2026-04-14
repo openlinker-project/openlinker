@@ -18,7 +18,7 @@ export class ConsolePasswordResetNotifierAdapter implements PasswordResetNotifie
   constructor(private readonly configService: ConfigService) {}
 
   async notifyResetRequested(user: User, rawToken: string): Promise<void> {
-    const base = this.configService.get<string>('WEB_URL', 'http://localhost:5173');
+    const base = this.configService.get<string>('WEB_URL', 'http://localhost:4173');
     const link = `${base.replace(/\/$/, '')}/reset-password/${rawToken}`;
     this.logger.log(
       `[password-reset] user=${user.username} email=${user.email ?? '-'} link=${link}`,
