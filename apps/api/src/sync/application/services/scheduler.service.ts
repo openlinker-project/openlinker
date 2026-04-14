@@ -243,13 +243,24 @@ export class SchedulerService implements OnModuleInit {
       // Get connections: use custom filter if provided, otherwise filter by platformType
       let connections: Connection[];
       if (task.connectionFilter) {
-        connections = (await task.connectionFilter()) ?? [];
+        const result = await task.connectionFilter();
+        if (result == null) {
+          this.logger.warn(
+            `Scheduler task ${task.taskId}: connectionFilter returned nullish — coercing to []. Upstream port contract violation.`,
+          );
+        }
+        connections = result ?? [];
       } else if (task.platformType) {
-        connections =
-          (await this.connectionPort.list({
-            platformType: task.platformType,
-            status: 'active',
-          })) ?? [];
+        const result = await this.connectionPort.list({
+          platformType: task.platformType,
+          status: 'active',
+        });
+        if (result == null) {
+          this.logger.warn(
+            `Scheduler task ${task.taskId}: connectionPort.list returned nullish — coercing to []. Upstream port contract violation.`,
+          );
+        }
+        connections = result ?? [];
       } else {
         this.logger.error(
           `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`,
