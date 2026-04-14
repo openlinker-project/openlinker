@@ -17,6 +17,11 @@ export function AllegroConnectCallbackPage(): ReactElement {
   useEffect(() => {
     if (!hasCalledRef.current && code && state) {
       hasCalledRef.current = true;
+      // Strip ?code&state from the URL *before* firing the mutation so that
+      // a StrictMode double-mount or HMR remount sees a clean URL and does not
+      // dispatch a duplicate request (which would race against the in-flight one
+      // and hit the backend before the completed-state marker is written).
+      window.history.replaceState({}, '', window.location.pathname);
       callbackMutation.mutate({ code, state });
     }
   }, [code, state, callbackMutation.mutate]);
@@ -55,6 +60,20 @@ export function AllegroConnectCallbackPage(): ReactElement {
     }
 
     if (callbackMutation.error) {
+      const isAlreadyUsed = callbackMutation.error.message.includes('Invalid or expired OAuth state');
+      if (isAlreadyUsed) {
+        return (
+          <ErrorState
+            title="Authorization already completed"
+            message="This authorization link was already used. Your Allegro connection should be active."
+            action={
+              <Link className="button" to="/connections">
+                View connections
+              </Link>
+            }
+          />
+        );
+      }
       return (
         <ErrorState
           title="Authorization failed"

@@ -129,6 +129,16 @@ export class AllegroController {
       // Validate state parameter (CSRF protection)
       const stateData = await this.oauthService.validateState(query.state);
       if (!stateData) {
+        // State is gone — check if this is a replayed callback within the idempotency window
+        const completed = await this.oauthService.checkCompletedState(query.state);
+        if (completed) {
+          this.logger.log(`OAuth callback replayed for already-completed state: ${query.state}`);
+          return {
+            message: 'OAuth callback processed successfully. Connection created.',
+            connectionId: completed.connectionId,
+            connectionName: completed.connectionName,
+          };
+        }
         throw new BadRequestException('Invalid or expired OAuth state parameter');
       }
 
@@ -144,8 +154,9 @@ export class AllegroController {
       // Store credentials in database and create connection
       const connection = await this.oauthService.storeCredentialsAndCreateConnection(tokenResponse, stateData);
 
-      // Return success response with connection ID
-      // In production, this could redirect to a success page
+      // Persist completed marker so replayed callbacks within the TTL window get an idempotent 200
+      await this.oauthService.markStateCompleted(query.state, connection.id, connection.name);
+
       return {
         message: 'OAuth callback processed successfully. Connection created.',
         connectionId: connection.id,

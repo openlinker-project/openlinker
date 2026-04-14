@@ -62,10 +62,29 @@ describe('AllegroConnectCallbackPage', () => {
     );
   });
 
-  it('shows error state on mutation failure', async () => {
+  it('shows error state on mutation failure with generic error', async () => {
     const apiClient = createMockApiClient({
       allegro: {
-        handleCallback: vi.fn().mockRejectedValue(new Error('Invalid or expired OAuth state')),
+        handleCallback: vi.fn().mockRejectedValue(new Error('Token exchange failed')),
+      },
+    });
+    renderWithProviders(<AllegroConnectCallbackPage />, {
+      apiClient,
+      route: `${CALLBACK_ROUTE}?code=auth_code&state=some_state`,
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Authorization failed' })).toBeInTheDocument();
+    expect(screen.getByText('Token exchange failed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /try again/i })).toHaveAttribute(
+      'href',
+      '/connections/new/allegro',
+    );
+  });
+
+  it('shows friendly message when OAuth state was already used', async () => {
+    const apiClient = createMockApiClient({
+      allegro: {
+        handleCallback: vi.fn().mockRejectedValue(new Error('Invalid or expired OAuth state parameter')),
       },
     });
     renderWithProviders(<AllegroConnectCallbackPage />, {
@@ -73,10 +92,11 @@ describe('AllegroConnectCallbackPage', () => {
       route: `${CALLBACK_ROUTE}?code=auth_code&state=expired_state`,
     });
 
-    expect(await screen.findByText('Invalid or expired OAuth state')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /try again/i })).toHaveAttribute(
+    expect(await screen.findByRole('heading', { name: 'Authorization already completed' })).toBeInTheDocument();
+    expect(screen.getByText(/This authorization link was already used/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /view connections/i })).toHaveAttribute(
       'href',
-      '/connections/new/allegro',
+      '/connections',
     );
   });
 });

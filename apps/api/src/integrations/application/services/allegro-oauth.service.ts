@@ -2,9 +2,11 @@
  * Allegro OAuth Service
  *
  * Application service for Allegro OAuth flow operations. Handles OAuth
- * authorization URL generation, token exchange, and connection validation.
+ * authorization URL generation, token exchange, connection validation,
+ * and idempotent callback state management via Redis completed-state markers.
  *
  * @module apps/api/src/integrations/application/services
+ * @implements {IAllegroOAuthService}
  */
 import { Injectable, BadRequestException, InternalServerErrorException, Inject, NotFoundException } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
@@ -17,38 +19,15 @@ import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   IntegrationCredentialRepositoryPort,
 } from '@openlinker/core/integrations';
+import { IAllegroOAuthService } from '../interfaces/allegro-oauth.service.interface';
+import type {
+  AllegroOAuthAuthorizationResponse,
+  AllegroOAuthTokenResponse,
+  OAuthStateData,
+  CompletedStateData,
+} from '../interfaces/allegro-oauth.service.types';
 
-/**
- * Allegro OAuth authorization response
- */
-export interface AllegroOAuthAuthorizationResponse {
-  authorizationUrl: string;
-  state: string;
-}
-
-/**
- * Allegro OAuth token response
- */
-export interface AllegroOAuthTokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in?: number;
-  token_type: string;
-}
-
-/**
- * OAuth state data stored in Redis
- *
- * Note: clientSecret is stored in state temporarily during OAuth flow.
- * After OAuth completes, credentials are stored in the database.
- */
-interface OAuthStateData {
-  clientId: string;
-  clientSecret: string; // Used during OAuth flow, then stored in DB
-  redirectUri: string;
-  environment: string;
-  connectionName?: string;
-}
+export type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAuthStateData, CompletedStateData };
 
 /**
  * Allegro OAuth Service
@@ -56,9 +35,10 @@ interface OAuthStateData {
  * Handles Allegro OAuth flow operations.
  */
 @Injectable()
-export class AllegroOAuthService {
+export class AllegroOAuthService implements IAllegroOAuthService {
   private readonly logger = new Logger(AllegroOAuthService.name);
   private readonly STATE_TTL_SECONDS = 600; // 10 minutes
+  private readonly COMPLETED_STATE_TTL_SECONDS = 300; // 5 minutes — idempotency window
 
   constructor(
     private readonly connectionService: ConnectionService,
@@ -135,7 +115,7 @@ export class AllegroOAuthService {
     const stored = await this.redisClient.get(stateKey);
 
     if (!stored) {
-      this.logger.warn(`OAuth state not found or expired: ${state}`);
+      this.logger.debug(`OAuth state not found or expired: ${state}`);
       return null;
     }
 
@@ -432,6 +412,43 @@ export class AllegroOAuthService {
       }
       this.logger.error(`Error refreshing token: ${(error as Error).message}`, error);
       throw new InternalServerErrorException('Failed to refresh access token');
+    }
+  }
+
+  /**
+   * Persist a short-lived completed marker in Redis after a successful callback.
+   * Allows the callback endpoint to respond idempotently if the same state is
+   * replayed within the TTL window (e.g. browser back-button or duplicate request).
+   */
+  async markStateCompleted(
+    state: string,
+    connectionId: string,
+    connectionName: string,
+  ): Promise<void> {
+    const key = `allegro:oauth:completed:${state}`;
+    const value: CompletedStateData = { connectionId, connectionName };
+    await this.redisClient.setEx(key, this.COMPLETED_STATE_TTL_SECONDS, JSON.stringify(value));
+    this.logger.debug(`OAuth completed marker stored for state: ${state}`);
+  }
+
+  /**
+   * Check whether a completed marker exists for the given state.
+   * Does not consume (delete) the marker — safe to call multiple times.
+   * Returns connection data if found within the TTL window, null otherwise.
+   */
+  async checkCompletedState(state: string): Promise<CompletedStateData | null> {
+    const key = `allegro:oauth:completed:${state}`;
+    const stored = await this.redisClient.get(key);
+
+    if (!stored) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(stored) as CompletedStateData;
+    } catch (error) {
+      this.logger.error(`Failed to parse OAuth completed state data: ${(error as Error).message}`, error);
+      return null;
     }
   }
 

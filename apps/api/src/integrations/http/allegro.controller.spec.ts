@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
 import { AllegroOAuthService } from '../application/services/allegro-oauth.service';
+import { IAllegroOAuthService } from '../application/interfaces/allegro-oauth.service.interface';
 import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   AllegroQuantityCommandRepositoryPort,
@@ -20,7 +21,7 @@ import { Connection } from '@openlinker/core/identifier-mapping';
 
 describe('AllegroController', () => {
   let controller: AllegroController;
-  let oauthService: jest.Mocked<AllegroOAuthService>;
+  let oauthService: jest.Mocked<IAllegroOAuthService>;
   let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
   let commandRepository: jest.Mocked<AllegroQuantityCommandRepositoryPort>;
 
@@ -45,7 +46,10 @@ describe('AllegroController', () => {
       exchangeCodeForToken: jest.fn(),
       storeCredentialsAndCreateConnection: jest.fn(),
       validateConnection: jest.fn(),
-    } as unknown as jest.Mocked<AllegroOAuthService>;
+      refreshToken: jest.fn(),
+      markStateCompleted: jest.fn(),
+      checkCompletedState: jest.fn(),
+    } as unknown as jest.Mocked<IAllegroOAuthService>;
 
     const mockCursorRepository = {
       get: jest.fn(),
@@ -170,6 +174,7 @@ describe('AllegroController', () => {
       oauthService.validateState.mockResolvedValue(stateData);
       oauthService.exchangeCodeForToken.mockResolvedValue(tokenResponse);
       oauthService.storeCredentialsAndCreateConnection.mockResolvedValue(mockConnection);
+      oauthService.markStateCompleted.mockResolvedValue(undefined);
 
       const result = await controller.callback(query);
 
@@ -187,6 +192,7 @@ describe('AllegroController', () => {
         'sandbox',
       );
       expect(oauthService.storeCredentialsAndCreateConnection).toHaveBeenCalledWith(tokenResponse, stateData);
+      expect(oauthService.markStateCompleted).toHaveBeenCalledWith('state-123', 'connection-123', 'Test Allegro Connection');
     });
 
     it('should throw BadRequestException when state is missing', async () => {
@@ -199,16 +205,40 @@ describe('AllegroController', () => {
       await expect(controller.callback(query)).rejects.toThrow('Missing state parameter');
     });
 
-    it('should throw BadRequestException when state is invalid', async () => {
+    it('should throw BadRequestException when state is invalid and no completed marker exists', async () => {
       const query = {
         code: 'auth-code-123',
         state: 'invalid-state',
       };
 
       oauthService.validateState.mockResolvedValue(null);
+      oauthService.checkCompletedState.mockResolvedValue(null);
 
       await expect(controller.callback(query)).rejects.toThrow(BadRequestException);
       await expect(controller.callback(query)).rejects.toThrow('Invalid or expired OAuth state parameter');
+    });
+
+    it('should return idempotent success when callback is replayed within completed-state TTL', async () => {
+      const query = {
+        code: 'auth-code-123',
+        state: 'already-completed-state',
+      };
+
+      oauthService.validateState.mockResolvedValue(null);
+      oauthService.checkCompletedState.mockResolvedValue({
+        connectionId: 'connection-123',
+        connectionName: 'Test Allegro Connection',
+      });
+
+      const result = await controller.callback(query);
+
+      expect(result).toEqual({
+        message: 'OAuth callback processed successfully. Connection created.',
+        connectionId: 'connection-123',
+        connectionName: 'Test Allegro Connection',
+      });
+      expect(oauthService.exchangeCodeForToken).not.toHaveBeenCalled();
+      expect(oauthService.storeCredentialsAndCreateConnection).not.toHaveBeenCalled();
     });
 
     it('should handle OAuth service errors', async () => {
