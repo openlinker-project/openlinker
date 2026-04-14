@@ -24,7 +24,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { InvalidPasswordResetTokenException } from '@openlinker/core/users';
+import {
+  InvalidPasswordResetTokenException,
+  WeakPasswordException,
+} from '@openlinker/core/users';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -33,6 +36,7 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { OkResponseDto } from './dto/ok-response.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
@@ -79,8 +83,12 @@ export class AuthController {
   @ApiOperation({
     summary: 'Request a password reset email. Always returns 200 to prevent user enumeration.',
   })
-  @ApiResponse({ status: 200, description: 'Request accepted (regardless of account existence)' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ ok: true }> {
+  @ApiResponse({
+    status: 200,
+    description: 'Request accepted (regardless of account existence)',
+    type: OkResponseDto,
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<OkResponseDto> {
     await this.passwordResetService.requestReset(dto.email);
     return { ok: true };
   }
@@ -89,13 +97,16 @@ export class AuthController {
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Consume a reset token and set a new password' })
-  @ApiResponse({ status: 200, description: 'Password updated' })
+  @ApiResponse({ status: 200, description: 'Password updated', type: OkResponseDto })
   @ApiResponse({ status: 400, description: 'Invalid or expired token, or weak password' })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ ok: true }> {
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<OkResponseDto> {
     try {
       await this.passwordResetService.resetPassword(dto.token, dto.newPassword);
     } catch (error) {
-      if (error instanceof InvalidPasswordResetTokenException) {
+      if (
+        error instanceof InvalidPasswordResetTokenException ||
+        error instanceof WeakPasswordException
+      ) {
         throw new BadRequestException(error.message);
       }
       throw error;

@@ -7,24 +7,24 @@
  *
  * @module apps/api/src/auth
  */
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import {
   InvalidPasswordResetTokenException,
+  PASSWORD_RESET_NOTIFIER_TOKEN,
   PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
   USER_REPOSITORY_TOKEN,
+  WeakPasswordException,
   type PasswordResetNotifierPort,
   type PasswordResetTokenRepositoryPort,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
-import {
-  IPasswordResetService,
-  PASSWORD_RESET_NOTIFIER_TOKEN,
-} from './password-reset.service.interface';
+import { IPasswordResetService } from './password-reset.service.interface';
 
 const DEFAULT_TTL_MINUTES = 60;
+const MIN_PASSWORD_LENGTH = 8;
 const BCRYPT_ROUNDS = 10;
 
 @Injectable()
@@ -49,8 +49,7 @@ export class PasswordResetService implements IPasswordResetService {
   async requestReset(email: string): Promise<void> {
     const user = await this.userRepository.findByEmail(email);
     if (!user) {
-      // No-op; never signal whether the account exists.
-      this.logger.debug(`Password reset requested for unknown email`);
+      this.logger.debug('Password reset requested for unknown email');
       return;
     }
 
@@ -69,19 +68,22 @@ export class PasswordResetService implements IPasswordResetService {
     if (!token || !newPassword) {
       throw new InvalidPasswordResetTokenException();
     }
-    if (newPassword.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new WeakPasswordException(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      );
     }
 
     const tokenHash = this.hashToken(token);
+    const now = new Date();
     const record = await this.tokenRepository.findByTokenHash(tokenHash);
-    if (!record || !record.isUsable()) {
+    if (!record || !record.isUsable(now)) {
       throw new InvalidPasswordResetTokenException();
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.userRepository.updatePasswordHash(record.userId, passwordHash);
-    await this.tokenRepository.markUsed(record.id, new Date());
+    await this.tokenRepository.markUsed(record.id, now);
   }
 
   private hashToken(rawToken: string): string {

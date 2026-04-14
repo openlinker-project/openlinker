@@ -13,10 +13,12 @@ export type { PasswordResetTokenRepositoryPort } from './domain/ports/password-r
 export type { PasswordResetNotifierPort } from './domain/ports/password-reset-notifier.port';
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
+export { WeakPasswordException } from './domain/exceptions/weak-password.exception';
 export {
   UsersModule,
   USER_REPOSITORY_TOKEN,
   PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
+  PASSWORD_RESET_NOTIFIER_TOKEN,
 } from './users.module';
 export {
   UserRoleValues,

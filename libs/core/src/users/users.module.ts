@@ -16,6 +16,7 @@ import { PasswordResetTokenRepository } from './infrastructure/persistence/repos
 
 export const USER_REPOSITORY_TOKEN = Symbol('UserRepositoryPort');
 export const PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN = Symbol('PasswordResetTokenRepositoryPort');
+export const PASSWORD_RESET_NOTIFIER_TOKEN = Symbol('PasswordResetNotifierPort');
 
 @Module({
   imports: [TypeOrmModule.forFeature([UserOrmEntity, PasswordResetTokenOrmEntity])],

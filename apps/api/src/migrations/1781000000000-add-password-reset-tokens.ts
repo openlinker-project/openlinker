@@ -8,11 +8,13 @@ export class AddPasswordResetTokens1781000000000 implements MigrationInterface {
       CREATE TABLE "password_reset_tokens" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "user_id" uuid NOT NULL,
-        "token_hash" varchar(128) NOT NULL,
+        "token_hash" varchar(64) NOT NULL,
         "expires_at" timestamptz NOT NULL,
         "used_at" timestamptz,
         "created_at" timestamptz NOT NULL DEFAULT now(),
-        CONSTRAINT "PK_password_reset_tokens" PRIMARY KEY ("id")
+        CONSTRAINT "PK_password_reset_tokens" PRIMARY KEY ("id"),
+        CONSTRAINT "FK_password_reset_tokens_user_id" FOREIGN KEY ("user_id")
+          REFERENCES "users"("id") ON DELETE CASCADE
       )
     `);
     await queryRunner.query(

@@ -23,7 +23,7 @@ export class PasswordResetTokenOrmEntity {
   userId!: string;
 
   @Index({ unique: true })
-  @Column({ name: 'token_hash', type: 'varchar', length: 128 })
+  @Column({ name: 'token_hash', type: 'varchar', length: 64 })
   tokenHash!: string;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })

@@ -29,7 +29,7 @@ export function ForgotPasswordForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      await mutation.mutateAsync({ email: values.email.trim() });
+      await mutation.mutateAsync({ email: values.email });
       setSubmitted(true);
     } catch {
       // mutation.error handles display

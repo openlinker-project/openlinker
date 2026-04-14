@@ -13,4 +13,3 @@ export interface IPasswordResetService {
 }
 
 export const PASSWORD_RESET_SERVICE_TOKEN = Symbol('IPasswordResetService');
-export const PASSWORD_RESET_NOTIFIER_TOKEN = Symbol('PasswordResetNotifierPort');

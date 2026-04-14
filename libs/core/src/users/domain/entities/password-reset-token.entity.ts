@@ -17,7 +17,7 @@ export class PasswordResetToken {
     public readonly createdAt: Date,
   ) {}
 
-  isUsable(now: Date = new Date()): boolean {
+  isUsable(now: Date): boolean {
     return this.usedAt === null && this.expiresAt.getTime() > now.getTime();
   }
 }

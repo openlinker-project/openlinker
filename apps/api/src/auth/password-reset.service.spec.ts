@@ -1,7 +1,6 @@
 /**
  * PasswordResetService unit tests.
  */
-import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PasswordResetService } from './password-reset.service';
@@ -9,6 +8,7 @@ import {
   InvalidPasswordResetTokenException,
   PasswordResetToken,
   User,
+  WeakPasswordException,
   type PasswordResetNotifierPort,
   type PasswordResetTokenRepositoryPort,
   type UserRepositoryPort,
@@ -112,10 +112,10 @@ describe('PasswordResetService', () => {
       );
     });
 
-    it('throws BadRequest when password is too short', async () => {
+    it('throws WeakPasswordException when password is too short', async () => {
       const { userRepo, tokenRepo, notifier } = makeMocks();
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig());
-      await expect(service.resetPassword('raw', 'short')).rejects.toThrow(BadRequestException);
+      await expect(service.resetPassword('raw', 'short')).rejects.toThrow(WeakPasswordException);
     });
 
     it('hashes new password, updates user, marks token used', async () => {
