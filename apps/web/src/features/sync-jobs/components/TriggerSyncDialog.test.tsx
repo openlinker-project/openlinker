@@ -1,3 +1,12 @@
+/**
+ * TriggerSyncDialog Tests
+ *
+ * Unit tests for the TriggerSyncDialog component covering rendering, payload
+ * field visibility, client-side validation, enqueue submission, success/error
+ * feedback, and reset-on-reopen behaviour.
+ *
+ * @module apps/web/src/features/sync-jobs/components
+ */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
@@ -26,7 +35,8 @@ function renderDialog(open = true, onOpenChange = vi.fn(), apiOverrides = {}) {
 
 describe('TriggerSyncDialog', () => {
   describe('rendering', () => {
-    it('should render all triggerable job types in the select', () => {
+    it('should render job types matching the connection capabilities', () => {
+      // sampleConnection supports ProductMaster + InventoryMaster (not Marketplace)
       renderDialog();
       const options = screen.getAllByRole('option');
       const labels = options.map((o) => o.textContent);
@@ -35,8 +45,26 @@ describe('TriggerSyncDialog', () => {
       expect(labels).toContain('Sync all inventory');
       expect(labels).toContain('Sync inventory by ID');
       expect(labels).toContain('Auto-match variants');
-      expect(labels).toContain('Sync marketplace offers');
+      expect(labels).not.toContain('Sync marketplace offers'); // requires Marketplace capability
       expect(labels).toContain('Propagate inventory to marketplaces');
+    });
+
+    it('should render marketplace jobs for Marketplace-capable connections', () => {
+      const allegroConnection = {
+        ...sampleConnection,
+        platformType: 'allegro' as const,
+        supportedCapabilities: ['Marketplace' as const],
+        enabledCapabilities: ['Marketplace' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={allegroConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+      const options = screen.getAllByRole('option');
+      const labels = options.map((o) => o.textContent);
+      expect(labels).toContain('Sync marketplace offers');
+      expect(labels).not.toContain('Sync all products'); // requires ProductMaster
     });
 
     it('should show job description for selected job type', () => {

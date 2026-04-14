@@ -7,9 +7,9 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import type { Connection } from '../../connections/api/connections.types';
+import type { Capability, Connection } from '../../connections/api/connections.types';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -30,14 +30,17 @@ interface TriggerableJob {
   label: string;
   description: string;
   payloadFields: PayloadField[];
+  /** If set, only show this job when the connection supports this capability. */
+  requiredCapability?: Capability;
 }
 
-const TRIGGERABLE_JOBS: TriggerableJob[] = [
+const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
   {
     jobType: 'master.product.syncAll',
     label: 'Sync all products',
     description: 'Enumerate and sync every product from the source catalog.',
     payloadFields: [],
+    requiredCapability: 'ProductMaster',
   },
   {
     jobType: 'master.product.syncByExternalId',
@@ -47,12 +50,14 @@ const TRIGGERABLE_JOBS: TriggerableJob[] = [
       { name: 'externalId', label: 'External ID', required: true },
       { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
     ],
+    requiredCapability: 'ProductMaster',
   },
   {
     jobType: 'master.inventory.syncAll',
     label: 'Sync all inventory',
     description: 'Enumerate and sync inventory levels for every product.',
     payloadFields: [],
+    requiredCapability: 'InventoryMaster',
   },
   {
     jobType: 'master.inventory.syncByExternalId',
@@ -62,24 +67,28 @@ const TRIGGERABLE_JOBS: TriggerableJob[] = [
       { name: 'externalId', label: 'External ID', required: true },
       { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
     ],
+    requiredCapability: 'InventoryMaster',
   },
   {
     jobType: 'master.variants.autoMatch',
     label: 'Auto-match variants',
     description: 'Match product variants to marketplace offers by barcode.',
     payloadFields: [],
+    requiredCapability: 'ProductMaster',
   },
   {
     jobType: 'marketplace.offers.sync',
     label: 'Sync marketplace offers',
     description: 'Pull offer listings from the marketplace.',
     payloadFields: [],
+    requiredCapability: 'Marketplace',
   },
   {
     jobType: 'inventory.propagateToMarketplaces',
     label: 'Propagate inventory to marketplaces',
     description: 'Push current inventory levels to all connected marketplaces.',
     payloadFields: [],
+    // No requiredCapability — this is a cross-connection fan-out job, valid for any active connection.
   },
 ];
 
@@ -99,14 +108,25 @@ export function TriggerSyncDialog({
   const titleId = `${baseId}-title`;
   const descriptionId = `${baseId}-description`;
 
-  const [selectedJobType, setSelectedJobType] = useState(TRIGGERABLE_JOBS[0].jobType);
+  const triggerableJobs = useMemo(
+    () =>
+      ALL_TRIGGERABLE_JOBS.filter(
+        (job) =>
+          !job.requiredCapability ||
+          connection.supportedCapabilities.includes(job.requiredCapability),
+      ),
+    [connection.supportedCapabilities],
+  );
+
+  const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const enqueueSyncJob = useEnqueueSyncJobMutation();
   const { showToast } = useToast();
 
-  const selectedJob = TRIGGERABLE_JOBS.find((j) => j.jobType === selectedJobType) ?? TRIGGERABLE_JOBS[0];
+  // selectedJobType is always sourced from triggerableJobs, so the find always succeeds.
+  const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
 
   // showModal/close handle focus trapping, Escape key, and focus restoration natively
   useEffect(() => {
@@ -123,12 +143,12 @@ export function TriggerSyncDialog({
   // Reset form state when dialog opens
   useEffect(() => {
     if (open) {
-      setSelectedJobType(TRIGGERABLE_JOBS[0].jobType);
+      setSelectedJobType(triggerableJobs[0]?.jobType ?? '');
       setPayloadValues({});
       setFieldErrors({});
       enqueueSyncJob.reset();
     }
-  }, [open]); // enqueueSyncJob.reset is intentionally excluded — stable mutation method, reset on open only
+  }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
 
   // Sync controlled state with native cancel event (Escape key)
   useEffect(() => {
@@ -154,6 +174,7 @@ export function TriggerSyncDialog({
   };
 
   const validate = (): boolean => {
+    if (!selectedJob) return false;
     const errors: Record<string, string> = {};
     for (const field of selectedJob.payloadFields) {
       if (field.required && !payloadValues[field.name]?.trim()) {
@@ -165,7 +186,7 @@ export function TriggerSyncDialog({
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (!validate()) return;
+    if (!selectedJob || !validate()) return;
 
     const payload: Record<string, unknown> = { schemaVersion: 1 };
     for (const field of selectedJob.payloadFields) {
@@ -231,7 +252,7 @@ export function TriggerSyncDialog({
             onChange={(e) => handleJobTypeChange(e.target.value)}
             disabled={enqueueSyncJob.isPending}
           >
-            {TRIGGERABLE_JOBS.map((job) => (
+            {triggerableJobs.map((job) => (
               <option key={job.jobType} value={job.jobType}>
                 {job.label}
               </option>
@@ -239,11 +260,11 @@ export function TriggerSyncDialog({
           </Select>
         </FormField>
 
-        {selectedJob.description ? (
+        {selectedJob?.description ? (
           <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
         ) : null}
 
-        {selectedJob.payloadFields.map((field) => (
+        {selectedJob?.payloadFields.map((field) => (
           <FormField
             key={field.name}
             label={field.required ? `${field.label} *` : field.label}
