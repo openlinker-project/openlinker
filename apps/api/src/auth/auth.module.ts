@@ -13,13 +13,16 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UsersModule } from '@openlinker/core/users';
+import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { PasswordResetService } from './password-reset.service';
+import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
+import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
 
 @Module({
   imports: [
@@ -41,6 +44,10 @@ import { RolesGuard } from './guards/roles.guard';
     AuthService,
     BootstrapAdminService,
     JwtStrategy,
+    PasswordResetService,
+    { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
+    ConsolePasswordResetNotifierAdapter,
+    { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

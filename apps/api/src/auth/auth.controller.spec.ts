@@ -12,7 +12,11 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
-import { User } from '@openlinker/core/users';
+import { User, InvalidPasswordResetTokenException } from '@openlinker/core/users';
+import { PASSWORD_RESET_SERVICE_TOKEN, IPasswordResetService } from './password-reset.service.interface';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { BadRequestException } from '@nestjs/common';
 
 const makeUser = (): User =>
   new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', new Date(), new Date());
@@ -26,6 +30,7 @@ const makeLoginResponse = (): LoginResponseDto => {
 describe('AuthController', () => {
   let controller: AuthController;
   let authService: jest.Mocked<AuthService>;
+  let passwordResetService: jest.Mocked<IPasswordResetService>;
 
   beforeEach(async () => {
     const mockAuthService = {
@@ -33,14 +38,22 @@ describe('AuthController', () => {
       login: jest.fn(),
       getMe: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
+    const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
+      requestReset: jest.fn(),
+      resetPassword: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
+      ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
     authService = module.get(AuthService);
+    passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
   });
 
   describe('POST /auth/login', () => {
@@ -67,6 +80,37 @@ describe('AuthController', () => {
 
       await expect(controller.login(dto)).rejects.toThrow(UnauthorizedException);
       expect(authService.login).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/forgot-password', () => {
+    it('should always return 200 and delegate to service', async () => {
+      passwordResetService.requestReset.mockResolvedValue();
+      const dto: ForgotPasswordDto = Object.assign(new ForgotPasswordDto(), {
+        email: 'a@b.com',
+      });
+      const result = await controller.forgotPassword(dto);
+      expect(result).toEqual({ ok: true });
+      expect(passwordResetService.requestReset).toHaveBeenCalledWith('a@b.com');
+    });
+  });
+
+  describe('POST /auth/reset-password', () => {
+    const dto: ResetPasswordDto = Object.assign(new ResetPasswordDto(), {
+      token: 'raw',
+      newPassword: 'longenough',
+    });
+
+    it('should return ok on success', async () => {
+      passwordResetService.resetPassword.mockResolvedValue();
+      await expect(controller.resetPassword(dto)).resolves.toEqual({ ok: true });
+    });
+
+    it('should convert InvalidPasswordResetTokenException to 400', async () => {
+      passwordResetService.resetPassword.mockRejectedValue(
+        new InvalidPasswordResetTokenException(),
+      );
+      await expect(controller.resetPassword(dto)).rejects.toThrow(BadRequestException);
     });
   });
 

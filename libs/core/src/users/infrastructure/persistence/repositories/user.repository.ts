@@ -28,9 +28,18 @@ export class UserRepository implements UserRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    const entity = await this.ormRepository.findOne({ where: { email } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findById(id: string): Promise<User | null> {
     const entity = await this.ormRepository.findOne({ where: { id } });
     return entity ? this.toDomain(entity) : null;
+  }
+
+  async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { passwordHash });
   }
 
   async save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role'>): Promise<User> {
