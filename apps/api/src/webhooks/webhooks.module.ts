@@ -20,6 +20,7 @@ import { WebhookAuthService } from './application/services/webhook-auth.service'
 import { WebhookDedupService } from './application/services/webhook-dedup.service';
 import { WebhookEventPublisher } from './application/services/webhook-event-publisher.service';
 import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handler';
+import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
 
 /**
  * Webhooks Module
@@ -44,7 +45,7 @@ import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handl
     WebhookToJobHandler,
     {
       // Dedicated client for blocking xReadGroup loop — must not share with health check client
-      provide: 'REDIS_CLIENT_BLOCKING',
+      provide: REDIS_CLIENT_BLOCKING_TOKEN,
       useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
         const client = createClient({
           socket: {
@@ -54,7 +55,13 @@ import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handl
           password: configService.get<string>('REDIS_PASSWORD'),
           database: configService.get<number>('REDIS_DB', 0),
         });
-        await client.connect();
+        try {
+          await client.connect();
+        } catch (error) {
+          throw new Error(
+            `WebhooksModule: Failed to connect REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         return client as RedisClientType;
       },
       inject: [ConfigService],
