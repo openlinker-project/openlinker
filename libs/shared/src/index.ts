@@ -12,4 +12,5 @@ export * from './database';
 export * from './errors';
 export * from './redis';
 export * from './types';
+export * from './crypto';
 

@@ -14,7 +14,7 @@ import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { INTEGRATIONS_SERVICE_TOKEN, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 
@@ -98,6 +98,10 @@ describe('ConnectionController', () => {
               supportedCapabilities: ['ProductMaster'],
             }),
           },
+        },
+        {
+          provide: WEBHOOK_SECRET_SERVICE_TOKEN,
+          useValue: { rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }) },
         },
       ],
     }).compile();
@@ -279,6 +283,23 @@ describe('ConnectionController', () => {
       expect(result.lastSucceededAt).toBeNull();
       expect(result.lastFailedAt).toBeNull();
       expect(result.recentErrors).toHaveLength(0);
+    });
+  });
+
+  describe('rotateWebhookSecret', () => {
+    it('returns a reveal-once payload with plaintext secret', async () => {
+      service.get.mockResolvedValue(mockConnection);
+
+      const mockRes = { setHeader: jest.fn() } as never;
+      const result = await controller.rotateWebhookSecret('connection-123', {
+        id: 'user-1',
+        username: 'admin',
+        role: 'admin',
+      }, mockRes);
+
+      expect(result.secret).toBe('deadbeef');
+      expect(result.revealedOnce).toBe(true);
+      expect(result.warning).toMatch(/cannot be retrieved again/);
     });
   });
 });
