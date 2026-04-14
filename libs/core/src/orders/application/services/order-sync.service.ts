@@ -20,6 +20,7 @@ import { IIntegrationsService } from '@openlinker/core/integrations/application/
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
+import { NoOrderDestinationsAvailableError } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
  * Order Sync Service
@@ -61,9 +62,7 @@ export class OrderSyncService implements IOrderSyncService {
     const destinations = await this.resolveDestinations(sourceConnectionId);
 
     if (destinations.length === 0) {
-      throw new Error(
-        `No OrderProcessorManager destinations available for order ${order.id} (sourceConnectionId=${sourceConnectionId})`,
-      );
+      throw new NoOrderDestinationsAvailableError(order.id, sourceConnectionId);
     }
 
     // Resolve status mapping once — identical across all destinations
@@ -99,6 +98,8 @@ export class OrderSyncService implements IOrderSyncService {
       metadata: {
         sourceConnectionId,
         sourceEventId,
+        // Stamped once and shared across destinations: marks when OL started
+        // dispatching this order, not per-destination completion time.
         syncedAt: new Date().toISOString(),
         internalOrderId: order.id,
       },
@@ -163,6 +164,12 @@ export class OrderSyncService implements IOrderSyncService {
           ? connectionId === this.destinationConnectionIdOverride
           : true,
       );
+
+    if (this.destinationConnectionIdOverride && filtered.length === 0) {
+      this.logger.warn(
+        `ORDER_SYNC_DESTINATION_CONNECTION_ID=${this.destinationConnectionIdOverride} is set but no matching active OrderProcessorManager adapter was resolved — check that the connection exists, is active, and is not the source connection`,
+      );
+    }
 
     return filtered.map(({ connectionId, adapter }) => ({ connectionId, adapter }));
   }

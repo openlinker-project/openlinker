@@ -13,6 +13,7 @@ import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface'
 import { Order } from '../../../domain/ports/order-source.port';
 import { OrderRef } from '../../../domain/types/order-processor.types';
 import { IMappingConfigService } from '@openlinker/core/mappings';
+import { NoOrderDestinationsAvailableError } from '../../../domain/exceptions/no-order-destinations-available.exception';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -149,6 +150,49 @@ describe('OrderSyncService', () => {
       expect(results.every((r) => r.status === 'success')).toBe(true);
     });
 
+    it('should propagate internalOrderId metadata to every destination', async () => {
+      const a = makeAdapter({ orderId: 'a-1' });
+      const b = makeAdapter({ orderId: 'b-1' });
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: a },
+        { connectionId: 'dest-b', adapter: b },
+      ]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      for (const adapter of [a, b]) {
+        expect(adapter.createOrder).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metadata: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
+          }),
+        );
+      }
+    });
+
+    it('should warn when the env-var override resolves to zero destinations', async () => {
+      process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = 'dest-missing';
+      const overridden = new OrderSyncService(integrationsService, mappingConfigService);
+      const warnSpy = jest
+        .spyOn(overridden['logger'] as unknown as { warn: (msg: string) => void }, 'warn')
+        .mockImplementation(() => undefined);
+
+      registerDestinations([{ connectionId: 'dest-other', adapter: makeAdapter() }]);
+
+      await expect(
+        overridden.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+        }),
+      ).rejects.toThrow(NoOrderDestinationsAvailableError);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('ORDER_SYNC_DESTINATION_CONNECTION_ID=dest-missing'),
+      );
+    });
+
     it('should isolate partial failures and still report successful destinations', async () => {
       const ok = makeAdapter({ orderId: 'ok-1' });
       const failing = {
@@ -228,7 +272,7 @@ describe('OrderSyncService', () => {
           order: createOrder(),
           sourceConnectionId: 'source-1',
         }),
-      ).rejects.toThrow('No OrderProcessorManager destinations available');
+      ).rejects.toThrow(NoOrderDestinationsAvailableError);
     });
 
     it('should throw when the only available destination is the source connection', async () => {
@@ -239,7 +283,7 @@ describe('OrderSyncService', () => {
           order: createOrder(),
           sourceConnectionId: 'source-1',
         }),
-      ).rejects.toThrow('No OrderProcessorManager destinations available');
+      ).rejects.toThrow(NoOrderDestinationsAvailableError);
     });
 
     it('should use resolved status from mapping config when a mapping exists', async () => {

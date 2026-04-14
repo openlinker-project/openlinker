@@ -53,6 +53,7 @@ export type OrderSyncResult =
       status: 'failed';
       error: {
         message: string;
+        code?: string;
       };
     };
 
