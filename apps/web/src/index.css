@@ -1215,6 +1215,19 @@ textarea {
   width: 100%;
 }
 
+.guest-form__secondary {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--accent-text);
+  text-align: center;
+  text-decoration: none;
+}
+
+.guest-form__secondary:hover {
+  text-decoration: underline;
+}
+
 /* Badge group (inline badge list) */
 .badge-group {
   display: flex;

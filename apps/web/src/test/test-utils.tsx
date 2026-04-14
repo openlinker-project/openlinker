@@ -72,6 +72,8 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
     } as ApiClient['allegro'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
+      forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
+      resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {

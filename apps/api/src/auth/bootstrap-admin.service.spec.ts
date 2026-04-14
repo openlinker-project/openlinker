@@ -26,8 +26,10 @@ const makeConfig = (overrides: Record<string, string | undefined> = {}): ConfigS
 
 const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   findByUsername: jest.fn(),
+  findByEmail: jest.fn(),
   findById: jest.fn(),
   save: jest.fn(),
+  updatePasswordHash: jest.fn(),
 });
 
 describe('BootstrapAdminService', () => {

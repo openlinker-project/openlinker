@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import { useLogin } from '../hooks/use-login';
 import { loginFormSchema, type LoginFormValues } from './login-form.schema';
 import { Alert } from '../../../shared/ui/alert';
@@ -65,6 +66,9 @@ export function LoginForm(): ReactElement {
         <Button className="guest-form__submit" type="submit" disabled={login.isPending}>
           {login.isPending ? 'Signing in...' : 'Sign in'}
         </Button>
+        <Link className="guest-form__secondary" to="/forgot-password">
+          Forgot password?
+        </Link>
       </div>
     </form>
   );
