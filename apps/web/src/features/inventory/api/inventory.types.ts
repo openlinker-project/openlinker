@@ -16,6 +16,8 @@ export interface InventoryItem {
   reservedQuantity: number;
   locationId: string | null;
   updatedAt: string;
+  productName: string | null;
+  productSku: string | null;
 }
 
 export interface InventoryFilters {

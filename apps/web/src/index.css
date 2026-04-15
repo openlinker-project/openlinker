@@ -885,6 +885,10 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.sku-label {
+  margin-left: 0.5rem;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

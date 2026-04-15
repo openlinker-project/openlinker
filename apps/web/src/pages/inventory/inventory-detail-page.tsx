@@ -49,6 +49,18 @@ export function InventoryDetailPage(): ReactElement {
             <dt>Item ID</dt>
             <dd><span className="mono-text">{item.id}</span></dd>
           </div>
+          {item.productName ? (
+            <div className="detail-list__row">
+              <dt>Product</dt>
+              <dd>{item.productName}</dd>
+            </div>
+          ) : null}
+          {item.productSku ? (
+            <div className="detail-list__row">
+              <dt>Product SKU</dt>
+              <dd><span className="mono-text">{item.productSku}</span></dd>
+            </div>
+          ) : null}
           <div className="detail-list__row">
             <dt>Product ID</dt>
             <dd><span className="mono-text">{item.productId}</span></dd>
