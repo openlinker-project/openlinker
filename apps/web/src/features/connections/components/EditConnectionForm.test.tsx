@@ -20,8 +20,8 @@ describe('EditConnectionForm', () => {
     const platformInput = screen.getByDisplayValue(sampleConnection.platformType);
     expect(platformInput).toBeDisabled();
     expect(screen.getByText('Rotate webservice key')).toBeInTheDocument();
-    // The opaque db: ref must not be exposed in the UI any more.
-    expect(screen.queryByDisplayValue(sampleConnection.credentialsRef)).not.toBeInTheDocument();
+    // The internal credential reference must not be exposed in the UI.
+    expect(screen.queryByDisplayValue('db:')).not.toBeInTheDocument();
   });
 
   it('submits the update with changed values', async () => {

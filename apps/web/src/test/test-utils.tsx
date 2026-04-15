@@ -26,7 +26,7 @@ export const sampleConnection: Connection = {
   config: {
     baseUrl: 'https://example.com',
   },
-  credentialsRef: 'db:cred_1',
+  credentialsBacked: true,
   adapterKey: 'prestashop.webservice.v1',
   enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
   supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],

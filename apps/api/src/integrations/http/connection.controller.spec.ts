@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http
  */
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
@@ -283,6 +283,38 @@ describe('ConnectionController', () => {
       expect(result.lastSucceededAt).toBeNull();
       expect(result.lastFailedAt).toBeNull();
       expect(result.recentErrors).toHaveLength(0);
+    });
+  });
+
+  describe('updateCredentials', () => {
+    it('should delegate to service and return 204', async () => {
+      service.updateCredentials.mockResolvedValue(undefined);
+
+      await controller.updateCredentials('connection-123', {
+        credentials: { webserviceApiKey: 'NEW_KEY' },
+      });
+
+      expect(service.updateCredentials).toHaveBeenCalledWith('connection-123', {
+        webserviceApiKey: 'NEW_KEY',
+      });
+    });
+
+    it('should propagate NotFoundException from service', async () => {
+      service.updateCredentials.mockRejectedValue(new NotFoundException('Connection not found'));
+
+      await expect(
+        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should propagate BadRequestException when connection is not db-backed', async () => {
+      service.updateCredentials.mockRejectedValue(
+        new BadRequestException('does not have a db-backed credentials reference'),
+      );
+
+      await expect(
+        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
