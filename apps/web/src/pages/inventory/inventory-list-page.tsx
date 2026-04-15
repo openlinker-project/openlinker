@@ -13,9 +13,26 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const COLUMNS: DataTableColumn<InventoryItem>[] = [
   {
-    id: 'productId',
-    header: 'Product ID',
-    cell: (item) => <span className="mono-text">{item.productId}</span>,
+    id: 'product',
+    header: 'Product',
+    cell: (item) => {
+      if (item.productName) {
+        return (
+          <span>
+            {item.productName}
+            {item.productSku ? (
+              <span className="text-muted" style={{ marginLeft: '0.5rem' }}>
+                <span className="mono-text">{item.productSku}</span>
+              </span>
+            ) : null}
+          </span>
+        );
+      }
+      if (item.productSku) {
+        return <span className="mono-text">{item.productSku}</span>;
+      }
+      return <span className="mono-text text-muted">{item.productId}</span>;
+    },
   },
   {
     id: 'productVariantId',

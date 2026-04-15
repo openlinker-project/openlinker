@@ -23,6 +23,11 @@ import {
   INVENTORY_REPOSITORY_TOKEN,
   InventoryItemEntity as InventoryItem,
 } from '@openlinker/core/inventory';
+import {
+  ProductRepositoryPort,
+  PRODUCT_REPOSITORY_TOKEN,
+  ProductEntity as Product,
+} from '@openlinker/core/products';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';
@@ -35,6 +40,8 @@ export class InventoryController {
   constructor(
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
+    @Inject(PRODUCT_REPOSITORY_TOKEN)
+    private readonly productRepository: ProductRepositoryPort,
   ) {}
 
   @Get()
@@ -54,8 +61,10 @@ export class InventoryController {
       { limit, offset },
     );
 
+    const productMap = await this.buildProductMap(items.map((i) => i.productId));
+
     return {
-      items: items.map((item) => this.toDto(item)),
+      items: items.map((item) => this.toDto(item, productMap.get(item.productId))),
       total,
       limit,
       offset,
@@ -73,10 +82,24 @@ export class InventoryController {
     if (!item) {
       throw new NotFoundException(`Inventory item not found: ${id}`);
     }
-    return this.toDto(item);
+    const product = await this.productRepository.findById(item.productId);
+    return this.toDto(item, product);
   }
 
-  private toDto(item: InventoryItem): InventoryItemResponseDto {
+  private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
+    const uniqueIds = [...new Set(productIds)];
+    const products = await Promise.all(uniqueIds.map((id) => this.productRepository.findById(id)));
+    const map = new Map<string, Product>();
+    uniqueIds.forEach((id, idx) => {
+      const product = products[idx];
+      if (product) {
+        map.set(id, product);
+      }
+    });
+    return map;
+  }
+
+  private toDto(item: InventoryItem, product?: Product | null): InventoryItemResponseDto {
     return {
       id: item.id,
       productId: item.productId,
@@ -85,6 +108,8 @@ export class InventoryController {
       reservedQuantity: item.reservedQuantity,
       locationId: item.locationId,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      productName: product?.name ?? null,
+      productSku: product?.sku ?? null,
     };
   }
 }

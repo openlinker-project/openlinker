@@ -29,4 +29,10 @@ export class InventoryItemResponseDto {
 
   @ApiProperty({ description: 'Last update timestamp (ISO 8601)' })
   updatedAt!: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Product name from the master catalog (null if product not found)' })
+  productName!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Product SKU from the master catalog (null if product not found or no SKU)' })
+  productSku!: string | null;
 }

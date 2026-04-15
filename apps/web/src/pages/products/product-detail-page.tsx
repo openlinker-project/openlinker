@@ -6,7 +6,49 @@ import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
+import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import type { ProductVariant } from '../../features/products/api/products.types';
+import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+
+const STOCK_COLUMNS: DataTableColumn<InventoryItem>[] = [
+  {
+    id: 'productVariantId',
+    header: 'Variant ID',
+    cell: (item) =>
+      item.productVariantId ? (
+        <span className="mono-text">{item.productVariantId}</span>
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+  },
+  {
+    id: 'availableQuantity',
+    header: 'Available',
+    align: 'right',
+    cell: (item) => item.availableQuantity,
+  },
+  {
+    id: 'reservedQuantity',
+    header: 'Reserved',
+    align: 'right',
+    cell: (item) =>
+      item.reservedQuantity > 0 ? (
+        item.reservedQuantity
+      ) : (
+        <span className="text-muted">0</span>
+      ),
+  },
+  {
+    id: 'locationId',
+    header: 'Location',
+    cell: (item) =>
+      item.locationId ? (
+        <span className="mono-text">{item.locationId}</span>
+      ) : (
+        <span className="text-muted">default</span>
+      ),
+  },
+];
 
 const VARIANT_COLUMNS: DataTableColumn<ProductVariant>[] = [
   {
@@ -74,6 +116,7 @@ const VARIANT_COLUMNS: DataTableColumn<ProductVariant>[] = [
 export function ProductDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useProductQuery(id);
+  const inventoryQuery = useInventoryQuery({ productId: id });
 
   if (query.isLoading) {
     return (
@@ -167,6 +210,25 @@ export function ProductDetailPage(): ReactElement {
           />
         ) : (
           <p className="text-muted">No variants found for this product.</p>
+        )}
+      </section>
+
+      {/* Stock */}
+      <section className="detail-section">
+        <h3 className="detail-section__title">Stock</h3>
+        {inventoryQuery.isLoading ? (
+          <p className="text-muted">Loading stock…</p>
+        ) : inventoryQuery.error ? (
+          <p className="text-muted">Unable to load stock data.</p>
+        ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
+          <p className="text-muted">No inventory records found for this product.</p>
+        ) : (
+          <DataTable
+            caption="Stock levels"
+            columns={STOCK_COLUMNS}
+            rows={inventoryQuery.data?.items ?? []}
+            rowKey={(item) => item.id}
+          />
         )}
       </section>
     </PageLayout>
