@@ -57,6 +57,19 @@ export async function startHarness(): Promise<void> {
   process.env.JWT_SECRET = 'test-secret-for-integration-tests';
   process.env.JWT_EXPIRES_IN = '1d';
 
+  // Disable all background schedulers in integration tests.
+  // Cron jobs fire against an empty database and keep the Node.js event loop
+  // alive, causing Jest to hang after tests complete.
+  //
+  // If a future integration test needs to exercise scheduler behaviour, register
+  // the task via SchedulerService.registerTask() and then call scheduleTask()
+  // directly (or re-invoke onModuleInit()) — the env vars below will have already
+  // been evaluated by onModuleInit at boot, so they cannot be overridden mid-test.
+  process.env.OL_ALLEGRO_POLL_SCHEDULER_ENABLED = 'false';
+  process.env.OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED = 'false';
+  process.env.OL_INVENTORY_SYNC_ENABLED = 'false';
+  process.env.OL_PRODUCT_SYNC_ENABLED = 'false';
+
   // Store containers on globalThis for teardown
   globalThis.__API_TEST_HARNESS__ = { postgres, redis };
 }

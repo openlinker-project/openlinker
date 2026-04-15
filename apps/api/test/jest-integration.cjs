@@ -10,6 +10,10 @@ module.exports = {
   },
   maxWorkers: 1,
   testTimeout: 120000,
+  // Prevent CI hangs caused by long-lived timers (e.g. SchedulerService CronJobs)
+  // that are not fully drained even after app.close(). onModuleDestroy stops them,
+  // but forceExit is a safety net for any other handles left open by NestJS internals.
+  forceExit: true,
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),
