@@ -120,6 +120,17 @@ describe('InventoryController', () => {
       );
     });
 
+    it('should deduplicate product lookups when multiple items share the same productId', async () => {
+      const secondItem = new InventoryItem('inv-002', 'prod-001', null, 10, 0, null, new Date('2026-04-01T00:00:00Z'));
+      repository.findMany.mockResolvedValue({ items: [mockItem, secondItem], total: 2 });
+      productRepository.findById.mockResolvedValue(mockProduct);
+
+      await controller.listInventory({ limit: 20, offset: 0 });
+
+      expect(productRepository.findById).toHaveBeenCalledTimes(1);
+      expect(productRepository.findById).toHaveBeenCalledWith('prod-001');
+    });
+
     it('should return empty list when no items match', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 

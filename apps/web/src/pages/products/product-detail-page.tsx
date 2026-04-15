@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
+import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
@@ -217,11 +217,17 @@ export function ProductDetailPage(): ReactElement {
       <section className="detail-section">
         <h3 className="detail-section__title">Stock</h3>
         {inventoryQuery.isLoading ? (
-          <p className="text-muted">Loading stock…</p>
+          <LoadingState liveRegion="off" title="Loading stock" message="Fetching inventory data…" />
         ) : inventoryQuery.error ? (
-          <p className="text-muted">Unable to load stock data.</p>
+          <ErrorState
+            title="Unable to load stock"
+            message={inventoryQuery.error.message}
+            action={
+              <Button onClick={() => { void inventoryQuery.refetch(); }}>Retry</Button>
+            }
+          />
         ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
-          <p className="text-muted">No inventory records found for this product.</p>
+          <EmptyState liveRegion="off" title="No stock records" message="No inventory records found for this product." />
         ) : (
           <DataTable
             caption="Stock levels"

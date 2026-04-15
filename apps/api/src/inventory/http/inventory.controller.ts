@@ -86,6 +86,9 @@ export class InventoryController {
     return this.toDto(item, product);
   }
 
+  // TODO: Replace with a single findByIds(ids) call once ProductRepositoryPort supports batch lookup.
+  // Current implementation issues N individual findById calls (one per unique productId).
+  // For typical page sizes (≤20 items) this is acceptable, but a batch method would be more efficient.
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
     const uniqueIds = [...new Set(productIds)];
     const products = await Promise.all(uniqueIds.map((id) => this.productRepository.findById(id)));

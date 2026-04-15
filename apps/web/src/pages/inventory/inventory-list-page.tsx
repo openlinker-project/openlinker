@@ -21,7 +21,7 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
           <span>
             {item.productName}
             {item.productSku ? (
-              <span className="text-muted" style={{ marginLeft: '0.5rem' }}>
+              <span className="text-muted sku-label">
                 <span className="mono-text">{item.productSku}</span>
               </span>
             ) : null}
