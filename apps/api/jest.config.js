@@ -11,6 +11,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  forceExit: true,
   moduleNameMapper: {
     '^@openlinker/integrations-allegro$': path.resolve(__dirname, '../../libs/integrations/allegro/src/index.ts'),
     '^@openlinker/integrations-allegro/(.*)$': path.resolve(__dirname, '../../libs/integrations/allegro/src/$1'),
