@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/sync/application/services
  */
-import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
@@ -78,7 +78,7 @@ export interface SchedulerTaskConfig {
 }
 
 @Injectable()
-export class SchedulerService implements OnModuleInit {
+export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
   private readonly tasks: SchedulerTaskConfig[] = [];
 
@@ -99,6 +99,25 @@ export class SchedulerService implements OnModuleInit {
 
     // Register all configured tasks (schedules cron jobs)
     this.tasks.forEach((task) => this.scheduleTask(task));
+  }
+
+  onModuleDestroy(): void {
+    // Stop all registered cron jobs so the Node.js event loop can drain cleanly.
+    // This is required for graceful shutdown in production and for integration
+    // tests where app.close() is called — without this, active CronJob timers
+    // keep the process alive indefinitely.
+    // Snapshot entries before iterating — deleteCronJob mutates the internal Map
+    // that getCronJobs() returns a reference to, which is fragile to modify mid-loop.
+    const entries = [...this.schedulerRegistry.getCronJobs().entries()];
+    for (const [name, job] of entries) {
+      try {
+        job.stop();
+        this.schedulerRegistry.deleteCronJob(name);
+        this.logger.debug(`Stopped scheduler task: ${name}`);
+      } catch {
+        // Ignore errors during teardown — the process is shutting down anyway
+      }
+    }
   }
 
   /**

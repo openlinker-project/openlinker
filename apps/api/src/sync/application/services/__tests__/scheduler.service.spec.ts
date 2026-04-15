@@ -57,6 +57,8 @@ describe('SchedulerService', () => {
 
     schedulerRegistry = {
       addCronJob: jest.fn(),
+      getCronJobs: jest.fn().mockReturnValue(new Map()),
+      deleteCronJob: jest.fn(),
     } as unknown as jest.Mocked<SchedulerRegistry>;
 
     service = new SchedulerService(
@@ -122,6 +124,44 @@ describe('SchedulerService', () => {
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-product-sync');
+    });
+  });
+
+  describe('onModuleDestroy', () => {
+    it('should stop and deregister all registered cron jobs', () => {
+      const mockStopA = jest.fn();
+      const mockStopB = jest.fn();
+      const cronJobs = new Map([
+        ['allegro-orders-poll', { stop: mockStopA }],
+        ['master-inventory-sync', { stop: mockStopB }],
+      ]);
+      schedulerRegistry.getCronJobs.mockReturnValue(
+        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>,
+      );
+
+      service.onModuleDestroy();
+
+      expect(mockStopA).toHaveBeenCalledTimes(1);
+      expect(mockStopB).toHaveBeenCalledTimes(1);
+      expect(schedulerRegistry.deleteCronJob).toHaveBeenCalledWith('allegro-orders-poll');
+      expect(schedulerRegistry.deleteCronJob).toHaveBeenCalledWith('master-inventory-sync');
+    });
+
+    it('should not throw when there are no registered cron jobs', () => {
+      schedulerRegistry.getCronJobs.mockReturnValue(new Map());
+
+      expect(() => service.onModuleDestroy()).not.toThrow();
+    });
+
+    it('should not throw when stopping a cron job fails', () => {
+      const cronJobs = new Map([
+        ['bad-job', { stop: jest.fn().mockImplementation(() => { throw new Error('stop failed'); }) }],
+      ]);
+      schedulerRegistry.getCronJobs.mockReturnValue(
+        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>,
+      );
+
+      expect(() => service.onModuleDestroy()).not.toThrow();
     });
   });
 
