@@ -112,8 +112,8 @@ export function ConnectionDetailPage(): ReactElement {
                 <dd>{connection.platformType}</dd>
               </div>
               <div>
-                <dt>Credentials ref</dt>
-                <dd className="mono-text">{connection.credentialsRef}</dd>
+                <dt>Credentials</dt>
+                <dd>{connection.credentialsBacked ? 'DB-managed' : 'Environment variable'}</dd>
               </div>
               <div>
                 <dt>Adapter</dt>

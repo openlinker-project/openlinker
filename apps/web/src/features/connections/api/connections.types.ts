@@ -20,7 +20,8 @@ export interface Connection {
   platformType: PlatformType;
   status: ConnectionStatus;
   config: Record<string, unknown>;
-  credentialsRef: string;
+  /** True when credentials are stored in the database and can be rotated via PUT /credentials. */
+  credentialsBacked: boolean;
   adapterKey?: string;
   enabledCapabilities: Capability[];
   supportedCapabilities: Capability[];

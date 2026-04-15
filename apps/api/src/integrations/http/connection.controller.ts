@@ -196,7 +196,7 @@ export class ConnectionController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Rotate the credentials stored for this connection' })
   @ApiResponse({ status: 204, description: 'Credentials rotated' })
-  @ApiResponse({ status: 400, description: 'Invalid payload or connection not db-backed' })
+  @ApiResponse({ status: 400, description: 'Invalid credential payload, failed shape validation, or connection is not db-backed' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async updateCredentials(

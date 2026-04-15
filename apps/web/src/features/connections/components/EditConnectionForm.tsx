@@ -122,16 +122,15 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 }
 
 function CredentialsPanel({ connection }: { connection: Connection }): ReactElement {
-  const isDbBacked = connection.credentialsRef.startsWith('db:');
   const [showRotate, setShowRotate] = useState(false);
   const [newKey, setNewKey] = useState('');
   const rotate = useUpdateConnectionCredentialsMutation();
   const { showToast } = useToast();
 
-  if (!isDbBacked) {
+  if (!connection.credentialsBacked) {
     return (
-      <FormField label="Credentials reference" name="credentialsRef">
-        <Input value={connection.credentialsRef} disabled />
+      <FormField label="Credentials" name="credentials">
+        <Input value="Environment variable (not editable via UI)" disabled />
       </FormField>
     );
   }

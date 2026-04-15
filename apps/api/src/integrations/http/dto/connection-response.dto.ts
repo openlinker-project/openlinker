@@ -26,8 +26,11 @@ export class ConnectionResponseDto {
   @ApiProperty({ description: 'Connection configuration (JSONB)', example: { baseUrl: 'https://example.com' } })
   config!: Record<string, unknown>;
 
-  @ApiProperty({ description: 'Credentials reference', example: 'cred_abc123' })
-  credentialsRef!: string;
+  @ApiProperty({
+    description: 'Whether credentials are stored in the database (true = editable via PUT /credentials; false = sourced from environment variable)',
+    example: true,
+  })
+  credentialsBacked!: boolean;
 
   @ApiPropertyOptional({ description: 'Adapter key', example: 'prestashop.webservice.v1' })
   adapterKey?: string;
@@ -62,7 +65,7 @@ export class ConnectionResponseDto {
     dto.name = connection.name;
     dto.status = connection.status;
     dto.config = connection.config;
-    dto.credentialsRef = connection.credentialsRef;
+    dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;

@@ -34,8 +34,8 @@ describe('DashboardPage', () => {
     const apiClient = createMockApiClient({
       connections: {
         list: vi.fn().mockResolvedValue([
-          { id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop', config: {}, credentialsRef: 'ref', createdAt: '', updatedAt: '' },
-          { id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro', config: {}, credentialsRef: 'ref', createdAt: '', updatedAt: '' },
+          { id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
+          { id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
         ]),
       },
     });
