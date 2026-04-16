@@ -21,7 +21,7 @@ import { IProductsService } from './products.service.interface';
 import { ProductMasterPort, Product as ProductPortInterface, ProductVariant as ProductVariantPortInterface } from '../../domain/ports/product-master.port';
 import { Product as ProductDomainEntity } from '../../domain/entities/product.entity';
 import { ProductVariant as ProductVariantDomainEntity } from '../../domain/entities/product-variant.entity';
-import { normalizeBarcode } from '../../domain/utils/barcode-normalization';
+import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
 import { IMasterProductSyncService, MasterProductSyncResult } from './master-product-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -104,10 +104,8 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     variant: ProductVariantPortInterface,
     productId: string,
   ): ProductVariantDomainEntity {
-    const normalizedEan = normalizeBarcode(variant.ean ?? null);
-    const normalizedGtin = normalizeBarcode(variant.gtin ?? null);
-    const ean = normalizedEan && normalizedEan.length === 13 ? normalizedEan : null;
-    const gtin = normalizedGtin ?? null;
+    const ean = normalizeToEan13(variant.ean ?? null);
+    const gtin = normalizeBarcode(variant.gtin ?? null);
 
     return new ProductVariantDomainEntity(
       variant.id,

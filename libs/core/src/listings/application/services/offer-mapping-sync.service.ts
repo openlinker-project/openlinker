@@ -68,12 +68,8 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     this.logger.debug(
       `Offer feed loaded (items: ${items.length}, nextCursor: ${feed.nextCursor ?? 'none'})`,
     );
-    if (!masterConnectionId) {
-      this.logger.warn(
-        `masterConnectionId missing for marketplace.offers.sync (connection=${connectionId}); barcode linking disabled`,
-      );
-    }
-    const lookups = await this.buildLookups(items, masterConnectionId);
+    const resolvedMasterConnectionId = masterConnectionId ?? await this.autoResolveMasterConnectionId(connectionId);
+    const lookups = await this.buildLookups(items, resolvedMasterConnectionId);
 
     let linked = 0;
     let skipped = 0;
@@ -166,6 +162,9 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     const gtinVariants = masterConnectionId && gtins.length > 0
       ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, gtins, 'gtin')
       : [];
+    this.logger.debug(
+      `Barcode lookup results (eans: [${eans.join(',')}] → ${eanVariants.length} hit(s), gtins: [${gtins.join(',')}] → ${gtinVariants.length} hit(s))`,
+    );
 
     const eanMap = this.buildUniqueMap(
       eanVariants,
@@ -268,6 +267,37 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
 
   private normalizeBarcodeValue(value: string | null): string | null {
     return normalizeBarcode(value ?? null);
+  }
+
+  /**
+   * Auto-resolve the master catalog connection when not explicitly configured.
+   *
+   * Policy: if exactly one ProductMaster connection exists (excluding the caller),
+   * use it automatically. If zero or multiple exist, barcode linking is disabled.
+   *
+   * To opt out of barcode linking intentionally, set `masterCatalogConnectionId: ""`
+   * in the connection config — getMasterCatalogConnectionId() will return null and
+   * skip this path entirely.
+   */
+  private async autoResolveMasterConnectionId(excludeConnectionId: string): Promise<string | null> {
+    const adapters = await this.integrationsService.listCapabilityAdapters({ capability: 'ProductMaster' });
+    const candidates = (adapters ?? []).filter((a) => a.connection.id !== excludeConnectionId);
+    if (candidates.length === 1) {
+      this.logger.debug(
+        `masterCatalogConnectionId not set on connection ${excludeConnectionId}; auto-resolved to ${candidates[0].connection.id}`,
+      );
+      return candidates[0].connection.id;
+    }
+    if (candidates.length === 0) {
+      this.logger.warn(
+        `masterCatalogConnectionId not set and no ProductMaster connection found; barcode linking disabled`,
+      );
+    } else {
+      this.logger.warn(
+        `masterCatalogConnectionId not set and ${candidates.length} ProductMaster connections found (ambiguous); barcode linking disabled — set masterCatalogConnectionId on the connection config`,
+      );
+    }
+    return null;
   }
 
   private getMasterCatalogConnectionId(config: Record<string, unknown>): string | null {

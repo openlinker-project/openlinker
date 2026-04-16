@@ -35,7 +35,7 @@ export class MasterProductSyncHandler implements SyncJobHandler {
   async execute(job: SyncJob): Promise<void> {
     const payload = this.getPayload(job);
 
-    if (payload.objectType !== 'Product') {
+    if (String(payload.objectType).toLowerCase() !== 'product') {
       throw new SyncJobExecutionError(
         `Invalid objectType for master product sync: ${String(payload.objectType)}. Expected 'Product'.`,
         job.id,

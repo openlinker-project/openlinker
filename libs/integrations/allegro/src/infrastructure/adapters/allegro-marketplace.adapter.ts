@@ -86,8 +86,10 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     };
     // Connection is stored for potential future use but not currently accessed
     void _connection;
-    // Keep deps in constructor for backward compatibility with factory, but do not use
-    // identifier mapping or identity resolution in IncomingOrder (external-only contract).
+    // Kept for backward compatibility with factory — not used inside the adapter.
+    // IncomingOrder is an external-only contract: raw data (including buyer email) is fine
+    // to surface, but calling identity resolution services from the adapter would violate
+    // the CORE/Integration boundary. Identifier mapping and identity resolution belong in core.
     void this.identifierMapping;
     void this.customerIdentityResolver;
   }
@@ -295,6 +297,7 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
         orderNumber: checkoutFormId,
         status,
         customerExternalId: checkoutForm.buyer.id,
+        customerEmail: checkoutForm.buyer.email,
         items: checkoutForm.lineItems.map((lineItem) => ({
           id: lineItem.id,
           productRef: { type: 'offer', externalId: lineItem.offer.id },

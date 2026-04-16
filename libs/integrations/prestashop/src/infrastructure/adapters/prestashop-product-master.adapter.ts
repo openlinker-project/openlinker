@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ProductMasterPort}
  */
-import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode } from '@openlinker/core/products';
+import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from '../mappers/prestashop.mapper.interface';
@@ -260,8 +260,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   private normalizeEan(value?: string | null): string | null {
-    const normalized = normalizeBarcode(value ?? null);
-    return normalized && normalized.length === 13 ? normalized : null;
+    return normalizeToEan13(value ?? null);
   }
 
   private normalizeGtin(value?: string | null): string | null {

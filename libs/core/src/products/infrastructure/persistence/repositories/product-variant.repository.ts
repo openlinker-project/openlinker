@@ -20,7 +20,7 @@ import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity'
 import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
 import { ProductVariant } from '../../../domain/entities/product-variant.entity';
 import { ProductVariantListFilters, ProductPagination, PaginatedProductVariants } from '../../../domain/types/product.types';
-import { normalizeBarcode } from '../../../domain/utils/barcode-normalization';
+import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
 
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {
@@ -81,8 +81,18 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     const normalizedValues = [
       ...new Set(
         values
-          .map((value) => normalizeBarcode(value))
-          .filter((value): value is string => !!value),
+          .flatMap((value) => {
+            if (field === 'ean') {
+              // normalizeToEan13 converts UPC-A (12-digit) → EAN-13; search both forms
+              // so rows inserted before the normalization fix are still found.
+              const ean13 = normalizeToEan13(value);
+              const raw = normalizeBarcode(value);
+              if (!ean13 && !raw) return [];
+              return [...new Set([ean13, raw].filter((v): v is string => !!v))];
+            }
+            const normalized = normalizeBarcode(value);
+            return normalized ? [normalized] : [];
+          }),
       ),
     ];
     if (normalizedValues.length === 0) {

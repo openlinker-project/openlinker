@@ -83,6 +83,23 @@ describe('MasterInventorySyncAllHandler', () => {
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
   });
 
+  it('should skip synthetic variant external IDs (product: prefix)', async () => {
+    // 'product:13' is a synthetic variant mapping created by the PS adapter for simple
+    // products. Its internal ID is a variant ID, not a product ID, so inserting inventory
+    // for it violates the inventory_items.productId FK. Plain '13' covers the same product.
+    identifierMapping.listExternalIdsByConnection.mockResolvedValue(['13', 'product:13', '14']);
+    jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'new-job', isExisting: false });
+
+    await handler.execute(createJob('conn-1'));
+
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
+    const enqueuedIds = jobEnqueue.enqueueJob.mock.calls.map(
+      (call) => (call[0].payload).externalId,
+    );
+    expect(enqueuedIds).toEqual(['13', '14']);
+    expect(enqueuedIds).not.toContain('product:13');
+  });
+
   it('should throw SyncJobExecutionError when listing mappings fails', async () => {
     identifierMapping.listExternalIdsByConnection.mockRejectedValue(new Error('db down'));
 

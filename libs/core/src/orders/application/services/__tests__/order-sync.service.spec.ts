@@ -2,7 +2,7 @@
  * Order Sync Service Tests
  *
  * Unit tests for OrderSyncService. Covers single-destination, multi-destination,
- * partial-failure, self-route exclusion, and env-var override behavior.
+ * partial-failure, and self-route exclusion behavior.
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
@@ -14,14 +14,11 @@ import { Order } from '../../../domain/ports/order-source.port';
 import { OrderRef } from '../../../domain/types/order-processor.types';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
-import { Logger } from '@openlinker/shared/logging';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let mappingConfigService: jest.Mocked<IMappingConfigService>;
-
-  const originalEnv = process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -88,16 +85,10 @@ describe('OrderSyncService', () => {
       resolveAllegroCategory: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;
 
-    delete process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
     service = new OrderSyncService(integrationsService, mappingConfigService);
   });
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = originalEnv;
-    } else {
-      delete process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID;
-    }
     jest.restoreAllMocks();
   });
 
@@ -174,25 +165,6 @@ describe('OrderSyncService', () => {
       }
     });
 
-    it('should warn when the env-var override resolves to zero destinations', async () => {
-      process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = 'dest-missing';
-      const overridden = new OrderSyncService(integrationsService, mappingConfigService);
-      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-
-      registerDestinations([{ connectionId: 'dest-other', adapter: makeAdapter() }]);
-
-      await expect(
-        overridden.syncOrder({
-          order: createOrder(),
-          sourceConnectionId: 'source-1',
-        }),
-      ).rejects.toThrow(NoOrderDestinationsAvailableException);
-
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER_SYNC_DESTINATION_CONNECTION_ID=dest-missing'),
-      );
-    });
-
     it('should isolate partial failures and still report successful destinations', async () => {
       const ok = makeAdapter({ orderId: 'ok-1' });
       const failing = {
@@ -240,28 +212,6 @@ describe('OrderSyncService', () => {
       expect(otherAdapter.createOrder).toHaveBeenCalledTimes(1);
       expect(results).toHaveLength(1);
       expect(results[0].destinationConnectionId).toBe('dest-other');
-    });
-
-    it('should honor the ORDER_SYNC_DESTINATION_CONNECTION_ID override as an allowlist', async () => {
-      process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID = 'dest-only';
-      const overridden = new OrderSyncService(integrationsService, mappingConfigService);
-
-      const picked = makeAdapter({ orderId: 'picked-1' });
-      const skipped = makeAdapter();
-      registerDestinations([
-        { connectionId: 'dest-only', adapter: picked },
-        { connectionId: 'dest-other', adapter: skipped },
-      ]);
-
-      const results = await overridden.syncOrder({
-        order: createOrder(),
-        sourceConnectionId: 'source-1',
-      });
-
-      expect(picked.createOrder).toHaveBeenCalledTimes(1);
-      expect(skipped.createOrder).not.toHaveBeenCalled();
-      expect(results).toHaveLength(1);
-      expect(results[0].destinationConnectionId).toBe('dest-only');
     });
 
     it('should throw when no destinations are available', async () => {

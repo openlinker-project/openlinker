@@ -68,6 +68,10 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         masterConnectionId: payload.masterConnectionId ?? null,
       });
 
+      this.logger.log(
+        `marketplace.offers.sync completed (connection=${job.connectionId}): scanned=${result.scanned}, linked=${result.linked}, skipped=${result.skipped}`,
+      );
+
       const nextCursor = result.nextCursor;
       const cursorAdvanced =
         typeof nextCursor === 'string' && nextCursor !== effectiveCursor;

@@ -22,35 +22,16 @@ import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
-/**
- * Order Sync Service
- *
- * Routes orders from sources (e.g. Allegro) to every configured
- * `OrderProcessorManager` destination (e.g. PrestaShop + secondary WMS).
- *
- * The optional env var `ORDER_SYNC_DESTINATION_CONNECTION_ID` acts as a
- * single-destination allowlist filter (legacy MVP behavior) — when set, only
- * that connection ID is dispatched to, even if more processors are registered.
- */
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
   private readonly logger = new Logger(OrderSyncService.name);
-  private readonly destinationConnectionIdOverride: string | null;
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
     private readonly mappingConfigService: IMappingConfigService,
-  ) {
-    this.destinationConnectionIdOverride = process.env.ORDER_SYNC_DESTINATION_CONNECTION_ID || null;
-
-    if (this.destinationConnectionIdOverride) {
-      this.logger.log(
-        `OrderSyncService: single-destination override active for connection ${this.destinationConnectionIdOverride}`,
-      );
-    }
-  }
+  ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
@@ -143,13 +124,6 @@ export class OrderSyncService implements IOrderSyncService {
     });
   }
 
-  /**
-   * Resolve all active `OrderProcessorManager` destinations for this sync.
-   *
-   * - Excludes the source connection (never route an order back to its origin)
-   * - If `ORDER_SYNC_DESTINATION_CONNECTION_ID` is set, narrows the result to
-   *   that single connection (legacy single-destination override)
-   */
   private async resolveDestinations(
     sourceConnectionId: string,
   ): Promise<Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>> {
@@ -157,21 +131,9 @@ export class OrderSyncService implements IOrderSyncService {
       capability: 'OrderProcessorManager',
     });
 
-    const filtered = resolved
+    return resolved
       .filter(({ connectionId }) => connectionId !== sourceConnectionId)
-      .filter(({ connectionId }) =>
-        this.destinationConnectionIdOverride
-          ? connectionId === this.destinationConnectionIdOverride
-          : true,
-      );
-
-    if (this.destinationConnectionIdOverride && filtered.length === 0) {
-      this.logger.warn(
-        `ORDER_SYNC_DESTINATION_CONNECTION_ID=${this.destinationConnectionIdOverride} is set but no matching active OrderProcessorManager adapter was resolved — check that the connection exists, is active, and is not the source connection`,
-      );
-    }
-
-    return filtered.map(({ connectionId, adapter }) => ({ connectionId, adapter }));
+      .map(({ connectionId, adapter }) => ({ connectionId, adapter }));
   }
 
   /**

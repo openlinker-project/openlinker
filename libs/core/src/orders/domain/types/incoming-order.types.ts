@@ -34,6 +34,14 @@ export interface IncomingOrder {
    */
   customerExternalId?: string;
 
+  /**
+   * Optional buyer email from source platform.
+   *
+   * Used by core to create/update customer projections and enable email-fallback
+   * identity resolution. Adapters should populate this when available.
+   */
+  customerEmail?: string;
+
   items: IncomingOrderItem[];
   totals: IncomingOrderTotals;
 

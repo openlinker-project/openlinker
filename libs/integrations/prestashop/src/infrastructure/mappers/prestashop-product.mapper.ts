@@ -8,7 +8,7 @@
  * @implements {IPrestashopProductMapper}
  */
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from './prestashop.mapper.interface';
-import { Product, ProductVariant, normalizeBarcode } from '@openlinker/core/products';
+import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 
 /**
  * PrestaShop Product Mapper
@@ -38,10 +38,8 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
 
   mapVariant(combination: PrestashopCombination, productId: string): Omit<ProductVariant, 'id'> {
     const attributes: Record<string, string> = {};
-    const normalizedEan = normalizeBarcode(combination.ean13 ?? null);
-    const normalizedGtin = normalizeBarcode(combination.upc ?? null);
-    const ean = normalizedEan && normalizedEan.length === 13 ? normalizedEan : undefined;
-    const gtin = normalizedGtin ?? undefined;
+    const ean = normalizeToEan13(combination.ean13 ?? null) ?? undefined;
+    const gtin = normalizeBarcode(combination.upc ?? null) ?? undefined;
 
     // Extract attributes from product_option_values
     if (combination.associations?.product_option_values?.product_option_value) {

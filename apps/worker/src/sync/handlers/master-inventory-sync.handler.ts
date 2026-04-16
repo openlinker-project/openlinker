@@ -35,7 +35,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
   async execute(job: SyncJob): Promise<void> {
     const payload = this.getPayload(job);
 
-    if (payload.objectType !== 'Inventory' && payload.objectType !== 'Product') {
+    if (!['inventory', 'product'].includes(String(payload.objectType).toLowerCase())) {
       throw new SyncJobExecutionError(
         `Invalid objectType for master inventory sync: ${String(payload.objectType)}. Expected 'Inventory' or 'Product'.`,
         job.id,
