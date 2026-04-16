@@ -15,7 +15,6 @@ import {
   SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
-import { MissingOrderItemMappingError } from '@openlinker/core/orders';
 import { AllegroAuthenticationException } from '@openlinker/integrations-allegro';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
@@ -290,7 +289,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     if (this.isNonRetryableError(error)) {
       await this.jobRepository.markDead(job.id, errorMessage);
       this.logger.warn(
-        `Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error (authentication failure)`,
+        `Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`,
       );
       return;
     }
@@ -331,9 +330,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       if (error.cause instanceof AllegroAuthenticationException) {
         return true;
       }
-      if (error.cause instanceof MissingOrderItemMappingError) {
-        return true;
-      }
     }
 
     // Direct AllegroAuthenticationException (shouldn't happen, but handle it)
@@ -341,10 +337,9 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return true;
     }
 
-    // Direct missing-mapping error (shouldn't happen, but handle it)
-    if (error instanceof MissingOrderItemMappingError) {
-      return true;
-    }
+    // MissingOrderItemMappingError is NOT non-retryable: the offer→variant mapping
+    // may not exist yet when the order arrives (offer sync runs on a separate cadence).
+    // The job will retry with backoff and succeed once the mapping is created.
 
     return false;
   }

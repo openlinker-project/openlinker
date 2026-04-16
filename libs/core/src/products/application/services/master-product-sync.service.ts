@@ -106,7 +106,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   ): ProductVariantDomainEntity {
     const normalizedEan = normalizeBarcode(variant.ean ?? null);
     const normalizedGtin = normalizeBarcode(variant.gtin ?? null);
-    const ean = normalizedEan && normalizedEan.length === 13 ? normalizedEan : null;
+    // UPC-A (12 digits) padded to EAN-13 with a leading zero — standard UPC-A → EAN-13 conversion.
+    const ean = normalizedEan
+      ? normalizedEan.length === 13
+        ? normalizedEan
+        : normalizedEan.length === 12
+          ? `0${normalizedEan}`
+          : null
+      : null;
     const gtin = normalizedGtin ?? null;
 
     return new ProductVariantDomainEntity(

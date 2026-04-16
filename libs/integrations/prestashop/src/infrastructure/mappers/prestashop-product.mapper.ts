@@ -40,7 +40,14 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     const attributes: Record<string, string> = {};
     const normalizedEan = normalizeBarcode(combination.ean13 ?? null);
     const normalizedGtin = normalizeBarcode(combination.upc ?? null);
-    const ean = normalizedEan && normalizedEan.length === 13 ? normalizedEan : undefined;
+    // UPC-A (12 digits) padded to EAN-13 with a leading zero — standard UPC-A → EAN-13 conversion.
+    const ean = normalizedEan
+      ? normalizedEan.length === 13
+        ? normalizedEan
+        : normalizedEan.length === 12
+          ? `0${normalizedEan}`
+          : undefined
+      : undefined;
     const gtin = normalizedGtin ?? undefined;
 
     // Extract attributes from product_option_values

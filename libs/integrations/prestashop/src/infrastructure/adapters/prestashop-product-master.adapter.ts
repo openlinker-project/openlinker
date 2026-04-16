@@ -261,7 +261,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
   private normalizeEan(value?: string | null): string | null {
     const normalized = normalizeBarcode(value ?? null);
-    return normalized && normalized.length === 13 ? normalized : null;
+    if (!normalized) return null;
+    // UPC-A (12 digits) is converted to EAN-13 by prepending a leading zero —
+    // the standard way to represent UPC-A in EAN-13 space.
+    if (normalized.length === 12) return `0${normalized}`;
+    return normalized.length === 13 ? normalized : null;
   }
 
   private normalizeGtin(value?: string | null): string | null {
