@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ProductMasterPort}
  */
-import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode } from '@openlinker/core/products';
+import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from '../mappers/prestashop.mapper.interface';
@@ -260,12 +260,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   private normalizeEan(value?: string | null): string | null {
-    const normalized = normalizeBarcode(value ?? null);
-    if (!normalized) return null;
-    // UPC-A (12 digits) is converted to EAN-13 by prepending a leading zero —
-    // the standard way to represent UPC-A in EAN-13 space.
-    if (normalized.length === 12) return `0${normalized}`;
-    return normalized.length === 13 ? normalized : null;
+    return normalizeToEan13(value ?? null);
   }
 
   private normalizeGtin(value?: string | null): string | null {

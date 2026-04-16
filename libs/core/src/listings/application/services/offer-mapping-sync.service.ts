@@ -271,8 +271,13 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
 
   /**
    * Auto-resolve the master catalog connection when not explicitly configured.
-   * If exactly one ProductMaster connection exists, use it automatically.
-   * If multiple exist, warn and return null (ambiguous — user must configure explicitly).
+   *
+   * Policy: if exactly one ProductMaster connection exists (excluding the caller),
+   * use it automatically. If zero or multiple exist, barcode linking is disabled.
+   *
+   * To opt out of barcode linking intentionally, set `masterCatalogConnectionId: ""`
+   * in the connection config — getMasterCatalogConnectionId() will return null and
+   * skip this path entirely.
    */
   private async autoResolveMasterConnectionId(excludeConnectionId: string): Promise<string | null> {
     const adapters = await this.integrationsService.listCapabilityAdapters({ capability: 'ProductMaster' });

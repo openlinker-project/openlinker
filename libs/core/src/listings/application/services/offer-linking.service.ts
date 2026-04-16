@@ -7,7 +7,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { MarketplaceOfferFeedItem } from '@openlinker/core/integrations';
-import { normalizeBarcode as normalizeBarcodeValue } from '@openlinker/core/products';
+import { normalizeBarcode as normalizeBarcodeValue, normalizeToEan13 } from '@openlinker/core/products';
 
 export type OfferLinkMethod = 'externalRef' | 'sku' | 'ean' | 'gtin';
 
@@ -50,11 +50,9 @@ export class OfferLinkingService {
       }
     }
 
-    const ean = this.normalizeBarcode(item.ean);
+    const ean = normalizeToEan13(item.ean) ?? this.normalizeBarcode(item.ean);
     if (ean) {
-      // UPC-A (12-digit) is stored as EAN-13 — try the padded form if direct miss.
-      const eanKey = ean.length === 12 ? `0${ean}` : ean;
-      const match = lookups.eanToVariantId.get(eanKey) ?? lookups.eanToVariantId.get(ean);
+      const match = lookups.eanToVariantId.get(ean);
       if (match) {
         return { status: 'linked', internalVariantId: match, linkMethod: 'ean' };
       }

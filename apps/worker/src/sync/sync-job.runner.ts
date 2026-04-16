@@ -321,6 +321,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Authentication errors (401) are non-retryable because they require
    * token refresh, which won't happen automatically with retries.
    *
+   * Keep this list minimal. Specifically, MissingOrderItemMappingError is retryable:
+   * offer→variant mappings are created by a separate sync cadence and may simply not
+   * exist yet when the order job first fires.
+   *
    * @param error - Error to check
    * @returns True if error is non-retryable
    */
