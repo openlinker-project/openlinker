@@ -81,8 +81,15 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     const normalizedValues = [
       ...new Set(
         values
-          .map((value) => normalizeBarcode(value))
-          .filter((value): value is string => !!value),
+          .flatMap((value) => {
+            const normalized = normalizeBarcode(value);
+            if (!normalized) return [];
+            // UPC-A (12-digit) is stored as EAN-13 — also search for the padded form.
+            if (field === 'ean' && normalized.length === 12) {
+              return [normalized, `0${normalized}`];
+            }
+            return [normalized];
+          }),
       ),
     ];
     if (normalizedValues.length === 0) {

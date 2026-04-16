@@ -162,6 +162,9 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     const gtinVariants = masterConnectionId && gtins.length > 0
       ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, gtins, 'gtin')
       : [];
+    this.logger.debug(
+      `Barcode lookup results (eans: [${eans.join(',')}] → ${eanVariants.length} hit(s), gtins: [${gtins.join(',')}] → ${gtinVariants.length} hit(s))`,
+    );
 
     const eanMap = this.buildUniqueMap(
       eanVariants,

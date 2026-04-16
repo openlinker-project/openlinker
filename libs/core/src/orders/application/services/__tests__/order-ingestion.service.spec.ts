@@ -14,6 +14,7 @@ import {
   SyncLockPort,
 } from '@openlinker/core/sync';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import { ICustomerIdentityResolverService } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
 
@@ -28,6 +29,7 @@ describe('OrderIngestionService', () => {
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let marketplace: jest.Mocked<MarketplacePort>;
   let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
+  let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -78,6 +80,14 @@ describe('OrderIngestionService', () => {
       syncOrder: jest.fn(),
     } as unknown as jest.Mocked<IOrderSyncService>;
 
+    customerIdentityResolver = {
+      resolveCustomerIdentity: jest.fn().mockResolvedValue({
+        internalCustomerId: 'ol_customer_test',
+        usedEmailFallback: false,
+        collisionDetected: false,
+      }),
+    } as unknown as jest.Mocked<ICustomerIdentityResolverService>;
+
     service = new OrderIngestionService(
       integrationsService,
       cursorRepository,
@@ -86,6 +96,7 @@ describe('OrderIngestionService', () => {
       identifierMapping,
       orderItemRefResolver,
       orderSyncService,
+      customerIdentityResolver,
     );
   });
 
@@ -183,6 +194,68 @@ describe('OrderIngestionService', () => {
 
       expect(result.committed).toBe(false);
       expect(cursorRepository.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncOrderFromMarketplace – customer resolution', () => {
+    const externalOrderId = 'checkout-1';
+
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
+      orderSyncService.syncOrder.mockResolvedValue({} as never);
+    });
+
+    it('should call resolveCustomerIdentity when customerExternalId and customerEmail are present', async () => {
+      marketplace.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerExternalId: 'buyer-ext-1',
+        customerEmail: 'buyer@example.com',
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalBuyerId: 'buyer-ext-1',
+          email: 'buyer@example.com',
+          sourceConnectionId: connectionId,
+        }),
+      );
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        'Customer',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('should fall back to identifierMapping when customerExternalId is present but email is absent', async () => {
+      marketplace.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerExternalId: 'buyer-ext-2',
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(customerIdentityResolver.resolveCustomerIdentity).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'Customer',
+        'buyer-ext-2',
+        connectionId,
+        expect.objectContaining({ parentEntityType: 'Order' }),
+      );
     });
   });
 });

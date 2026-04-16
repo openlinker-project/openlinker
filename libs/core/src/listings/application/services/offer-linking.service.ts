@@ -52,7 +52,9 @@ export class OfferLinkingService {
 
     const ean = this.normalizeBarcode(item.ean);
     if (ean) {
-      const match = lookups.eanToVariantId.get(ean);
+      // UPC-A (12-digit) is stored as EAN-13 — try the padded form if direct miss.
+      const eanKey = ean.length === 12 ? `0${ean}` : ean;
+      const match = lookups.eanToVariantId.get(eanKey) ?? lookups.eanToVariantId.get(ean);
       if (match) {
         return { status: 'linked', internalVariantId: match, linkMethod: 'ean' };
       }

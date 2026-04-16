@@ -30,6 +30,10 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import {
+  ICustomerIdentityResolverService,
+  CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
+} from '@openlinker/core/customers';
 import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
 import {
   IOrderIngestionService,
@@ -63,6 +67,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderItemRefResolver: OrderItemRefResolverService,
     @Inject(ORDER_SYNC_SERVICE_TOKEN)
     private readonly orderSyncService: IOrderSyncService,
+    @Inject(CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN)
+    private readonly customerIdentityResolver: ICustomerIdentityResolverService,
   ) {}
 
   async syncFromMarketplace(
@@ -188,14 +194,25 @@ export class OrderIngestionService implements IOrderIngestionService {
       connectionId,
     );
 
-    const internalCustomerId = incoming.customerExternalId
-      ? await this.identifierMapping.getOrCreateInternalId(
+    let internalCustomerId: string | undefined;
+    if (incoming.customerExternalId) {
+      if (incoming.customerEmail) {
+        // Use identity resolver: creates/updates customer projection with email
+        const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
+          externalBuyerId: incoming.customerExternalId,
+          email: incoming.customerEmail,
+          sourceConnectionId: connectionId,
+        });
+        internalCustomerId = resolution.internalCustomerId;
+      } else {
+        internalCustomerId = await this.identifierMapping.getOrCreateInternalId(
           'Customer',
           incoming.customerExternalId,
           connectionId,
           { parentEntityType: 'Order', parentInternalId: internalOrderId },
-        )
-      : undefined;
+        );
+      }
+    }
 
     const items: Order['items'] = [];
     for (const item of incoming.items) {
