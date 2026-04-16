@@ -54,7 +54,14 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         job.connectionId,
       );
 
-      if (externalIds.length === 0) {
+      // Filter out synthetic variant external IDs (e.g. `product:13`).
+      // These are created by the PrestaShop adapter as stable offer-link targets for
+      // simple products; their internal ID is a variant ID, not a product ID, so
+      // trying to insert inventory for them violates the inventory_items.productId FK.
+      // Inventory for simple products is covered by the plain numeric externalId.
+      const productExternalIds = externalIds.filter((id) => !id.startsWith('product:'));
+
+      if (productExternalIds.length === 0) {
         this.logger.log(
           `No product mappings found for connection ${job.connectionId}. Skipping inventory sync.`,
         );
@@ -62,10 +69,10 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
       }
 
       this.logger.log(
-        `Found ${externalIds.length} product(s) for connection ${job.connectionId}. Enqueuing inventory sync jobs.`,
+        `Found ${productExternalIds.length} product(s) for connection ${job.connectionId}. Enqueuing inventory sync jobs.`,
       );
 
-      const enqueuePromises = externalIds.map(async (externalId) => {
+      const enqueuePromises = productExternalIds.map(async (externalId) => {
         const jobRequest: SyncJobRequest = {
           jobType: 'master.inventory.syncByExternalId',
           connectionId: job.connectionId,
@@ -93,13 +100,13 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
             this.logger.error(
-              `Failed to enqueue inventory sync for externalId ${externalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`,
+              `Failed to enqueue inventory sync for externalId ${productExternalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`,
             );
           }
         });
       } else {
         this.logger.log(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued`,
+          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued (${externalIds.length - productExternalIds.length} synthetic variant IDs skipped)`,
         );
       }
     } catch (error) {

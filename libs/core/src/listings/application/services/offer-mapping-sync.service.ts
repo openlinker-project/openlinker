@@ -68,12 +68,8 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     this.logger.debug(
       `Offer feed loaded (items: ${items.length}, nextCursor: ${feed.nextCursor ?? 'none'})`,
     );
-    if (!masterConnectionId) {
-      this.logger.warn(
-        `masterConnectionId missing for marketplace.offers.sync (connection=${connectionId}); barcode linking disabled`,
-      );
-    }
-    const lookups = await this.buildLookups(items, masterConnectionId);
+    const resolvedMasterConnectionId = masterConnectionId ?? await this.autoResolveMasterConnectionId(connectionId);
+    const lookups = await this.buildLookups(items, resolvedMasterConnectionId);
 
     let linked = 0;
     let skipped = 0;
@@ -268,6 +264,32 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
 
   private normalizeBarcodeValue(value: string | null): string | null {
     return normalizeBarcode(value ?? null);
+  }
+
+  /**
+   * Auto-resolve the master catalog connection when not explicitly configured.
+   * If exactly one ProductMaster connection exists, use it automatically.
+   * If multiple exist, warn and return null (ambiguous — user must configure explicitly).
+   */
+  private async autoResolveMasterConnectionId(excludeConnectionId: string): Promise<string | null> {
+    const adapters = await this.integrationsService.listCapabilityAdapters({ capability: 'ProductMaster' });
+    const candidates = (adapters ?? []).filter((a) => a.connection.id !== excludeConnectionId);
+    if (candidates.length === 1) {
+      this.logger.debug(
+        `masterCatalogConnectionId not set on connection ${excludeConnectionId}; auto-resolved to ${candidates[0].connection.id}`,
+      );
+      return candidates[0].connection.id;
+    }
+    if (candidates.length === 0) {
+      this.logger.warn(
+        `masterCatalogConnectionId not set and no ProductMaster connection found; barcode linking disabled`,
+      );
+    } else {
+      this.logger.warn(
+        `masterCatalogConnectionId not set and ${candidates.length} ProductMaster connections found (ambiguous); barcode linking disabled — set masterCatalogConnectionId on the connection config`,
+      );
+    }
+    return null;
   }
 
   private getMasterCatalogConnectionId(config: Record<string, unknown>): string | null {
