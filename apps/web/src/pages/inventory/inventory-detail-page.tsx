@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useInventoryItemQuery } from '../../features/inventory/hooks/use-inventory-item-query';
 
 export function InventoryDetailPage(): ReactElement {
@@ -95,7 +96,7 @@ export function InventoryDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(item.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={item.updatedAt} /></dd>
           </div>
         </dl>
       </section>

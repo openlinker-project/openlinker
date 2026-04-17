@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useCustomersQuery } from '../../features/customers/hooks/use-customers-query';
 import type { CustomerFilters, CustomerProjection } from '../../features/customers/api/customers.types';
@@ -43,7 +44,7 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
   {
     id: 'lastSeenAt',
     header: 'Last Seen',
-    cell: (c): ReactNode => new Date(c.lastSeenAt).toLocaleDateString(),
+    cell: (c): ReactNode => <TimeDisplay iso={c.lastSeenAt} format="date" />,
   },
   {
     id: 'detail',

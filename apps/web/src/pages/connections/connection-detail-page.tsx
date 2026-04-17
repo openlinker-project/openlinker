@@ -8,6 +8,7 @@ import { ConnectionDiagnosticsPanel } from '../../features/connections/component
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
 
@@ -63,7 +64,7 @@ export function ConnectionDetailPage(): ReactElement {
               <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
             </div>
             <div className="toolbar__group">
-              <span className="muted-text">Created {new Date(connection.createdAt).toLocaleDateString()}</span>
+              <span className="muted-text">Created <TimeDisplay iso={connection.createdAt} format="date" /></span>
             </div>
           </>
         ) : undefined
@@ -134,7 +135,7 @@ export function ConnectionDetailPage(): ReactElement {
               </div>
               <div>
                 <dt>Last updated</dt>
-                <dd>{new Date(connection.updatedAt).toLocaleString()}</dd>
+                <dd><TimeDisplay iso={connection.updatedAt} /></dd>
               </div>
             </dl>
           </div>

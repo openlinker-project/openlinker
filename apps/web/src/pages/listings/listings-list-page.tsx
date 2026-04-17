@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import type { ListingsFilters, OfferMapping } from '../../features/listings/api/listings.types';
@@ -40,7 +41,7 @@ const COLUMNS: DataTableColumn<OfferMapping>[] = [
   {
     id: 'createdAt',
     header: 'Created',
-    cell: (m): ReactNode => new Date(m.createdAt).toLocaleDateString(),
+    cell: (m): ReactNode => <TimeDisplay iso={m.createdAt} format="date" />,
   },
   {
     id: 'detail',

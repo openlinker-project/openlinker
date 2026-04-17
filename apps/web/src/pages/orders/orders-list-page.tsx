@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import type { OrderRecord, OrderFilters, OrderSyncStatusValue } from '../../features/orders/api/orders.types';
@@ -65,7 +66,7 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
   {
     id: 'createdAt',
     header: 'Created',
-    cell: (order) => new Date(order.createdAt).toLocaleDateString(),
+    cell: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
   },
   {
     id: 'detail',

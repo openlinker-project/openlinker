@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useOrderQuery } from '../../features/orders/hooks/use-order-query';
 import type { OrderSyncStatus, OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 
@@ -55,7 +56,7 @@ const SYNC_COLUMNS: DataTableColumn<OrderSyncStatus>[] = [
     header: 'Synced At',
     cell: (s) =>
       s.syncedAt ? (
-        new Date(s.syncedAt).toLocaleString()
+        <TimeDisplay iso={s.syncedAt} />
       ) : (
         <span className="text-muted">—</span>
       ),
@@ -146,11 +147,11 @@ export function OrderDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Created</dt>
-            <dd>{new Date(order.createdAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={order.createdAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(order.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={order.updatedAt} /></dd>
           </div>
         </dl>
       </section>

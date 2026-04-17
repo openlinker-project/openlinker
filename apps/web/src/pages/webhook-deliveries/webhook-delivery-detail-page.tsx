@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useWebhookDeliveryQuery } from '../../features/webhook-deliveries/hooks/use-webhook-delivery-query';
 import type { WebhookDeliveryStatus } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
 
@@ -120,7 +121,7 @@ export function WebhookDeliveryDetailPage(): ReactElement {
           ) : null}
           <div className="detail-list__row">
             <dt>Received</dt>
-            <dd>{new Date(d.receivedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={d.receivedAt} /></dd>
           </div>
         </dl>
       </section>

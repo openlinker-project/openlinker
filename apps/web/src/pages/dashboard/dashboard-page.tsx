@@ -6,11 +6,13 @@ import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-q
 import type { ServiceHealth, ServiceStatus, OverallStatus } from '../../features/health/api/health.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
+import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from '../../shared/config/dashboard-intervals';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+import { TimeDisplay } from '../../shared/ui/time-display';
 
 function toStatusTone(status: string): StatusBadgeTone {
   if (status === 'active' || status === 'succeeded') return 'success';
@@ -20,16 +22,6 @@ function toStatusTone(status: string): StatusBadgeTone {
   return 'neutral';
 }
 
-function formatRelativeTime(iso: string, now: number = Date.now()): string {
-  const diff = now - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 function formatJobType(jobType: string): string {
   return jobType.replaceAll('.', ' › ');
@@ -52,7 +44,7 @@ const updatedAtColumn: DataTableColumn<SyncJob> = {
   id: 'updatedAt',
   header: 'Updated',
   align: 'right',
-  cell: (row) => <span className="muted-text">{formatRelativeTime(row.updatedAt)}</span>,
+  cell: (row) => <span className="muted-text"><TimeDisplay iso={row.updatedAt} format="relative" /></span>,
 };
 
 const recentJobColumns: DataTableColumn<SyncJob>[] = [
@@ -127,11 +119,11 @@ function ConnectionHealthList({ connections }: { connections: Connection[] }): R
 }
 
 export function DashboardPage(): ReactElement {
-  const connectionsQuery = useConnectionsQuery();
-  const healthQuery = useDevStackHealthQuery();
-  const recentJobsQuery = useSyncJobsQuery(undefined, { limit: 5 });
-  const queuedJobsQuery = useSyncJobsQuery({ status: 'queued' }, { limit: 1 });
-  const deadJobsQuery = useSyncJobsQuery({ status: 'dead' }, { limit: 10 });
+  const connectionsQuery = useConnectionsQuery(undefined, { refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
+  const healthQuery = useDevStackHealthQuery({ refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
+  const recentJobsQuery = useSyncJobsQuery(undefined, { limit: 5 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
+  const queuedJobsQuery = useSyncJobsQuery({ status: 'queued' }, { limit: 1 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
+  const deadJobsQuery = useSyncJobsQuery({ status: 'dead' }, { limit: 10 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
 
   const connections = connectionsQuery.data ?? [];
   const activeCount = connections.filter((c) => c.status === 'active').length;

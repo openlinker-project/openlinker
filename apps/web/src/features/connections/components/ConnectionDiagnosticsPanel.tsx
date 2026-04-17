@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useConnectionDiagnosticsQuery } from '../hooks/use-connection-diagnostics-query';
 import type { RecentJobSummary } from '../api/connections.types';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
+import { formatDateTime } from '../../../shared/format/format-date';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -26,7 +27,7 @@ function toJobStatusTone(status: string): StatusBadgeTone {
 
 function formatDate(value: string | null): string {
   if (value === null) return 'Never';
-  return new Date(value).toLocaleString();
+  return formatDateTime(value);
 }
 
 const jobColumns: DataTableColumn<RecentJobSummary>[] = [

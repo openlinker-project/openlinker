@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
 
@@ -78,11 +79,11 @@ export function ListingDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Created</dt>
-            <dd>{new Date(mapping.createdAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={mapping.createdAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(mapping.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={mapping.updatedAt} /></dd>
           </div>
         </dl>
       </section>

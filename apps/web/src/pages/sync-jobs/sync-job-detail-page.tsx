@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-query';
 
@@ -65,15 +66,15 @@ export function SyncJobDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Next run at</dt>
-            <dd>{new Date(job.nextRunAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={job.nextRunAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Created</dt>
-            <dd>{new Date(job.createdAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={job.createdAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(job.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={job.updatedAt} /></dd>
           </div>
           {job.idempotencyKey ? (
             <div className="detail-list__row">
@@ -84,7 +85,7 @@ export function SyncJobDetailPage(): ReactElement {
           {job.lockedAt ? (
             <div className="detail-list__row">
               <dt>Locked at</dt>
-              <dd>{new Date(job.lockedAt).toLocaleString()}</dd>
+              <dd><TimeDisplay iso={job.lockedAt} /></dd>
             </div>
           ) : null}
           {job.lockedBy ? (
