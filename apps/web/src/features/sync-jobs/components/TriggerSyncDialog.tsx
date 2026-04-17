@@ -86,7 +86,6 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         label: 'Cursor key',
         required: false,
         defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
-        placeholder: 'allegro.orders.lastEventId',
       },
       {
         name: 'limit',
