@@ -47,6 +47,7 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText(/1 \/ 3/)).toBeInTheDocument();
+    expect(screen.getAllByText('marketplace.orders.poll').length).toBeGreaterThan(1);
   });
 
   it('should show error state when fetch fails', async () => {
