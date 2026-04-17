@@ -34,13 +34,15 @@ import {
   ICustomerIdentityResolverService,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
-import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
+import { IOrderSyncService, OrderSyncResult } from '../interfaces/order-sync.service.interface';
 import {
   IOrderIngestionService,
   MarketplaceIngestionOptions,
   MarketplaceIngestionResult,
 } from '../interfaces/order-ingestion.service.interface';
-import { ORDER_SYNC_SERVICE_TOKEN } from '../../orders.tokens';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { OrderSyncStatus } from '../../domain/entities/order-record.entity';
+import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { Order } from '../../domain/ports/order-source.port';
 import { Logger } from '@openlinker/shared/logging';
@@ -69,6 +71,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderSyncService: IOrderSyncService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN)
     private readonly customerIdentityResolver: ICustomerIdentityResolverService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService,
   ) {}
 
   async syncFromMarketplace(
@@ -171,7 +175,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
-  ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
+  ): Promise<OrderSyncResult[]> {
     const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
       connectionId,
       'Marketplace',
@@ -179,11 +183,43 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     const incoming = await marketplace.getOrder({ externalOrderId });
     const order = await this.toUnifiedOrder(incoming, connectionId);
-    return await this.orderSyncService.syncOrder({
+
+    // Persist OrderRecord after hydration, before routing.
+    // If hydration itself threw (above), no record is written.
+    await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+
+    const results = await this.orderSyncService.syncOrder({
       order,
       sourceConnectionId: connectionId,
       sourceEventId,
     });
+
+    // Update per-destination sync status; do not let a status-update failure mask the results.
+    await Promise.allSettled(
+      results.map((result) => {
+        const status: OrderSyncStatus =
+          result.status === 'success'
+            ? {
+                destinationConnectionId: result.destinationConnectionId,
+                status: 'synced',
+                syncedAt: new Date(),
+                externalOrderId: result.orderRef.orderId,
+                externalOrderNumber: result.orderRef.orderNumber,
+              }
+            : {
+                destinationConnectionId: result.destinationConnectionId,
+                status: 'failed',
+                error: result.error.message,
+              };
+        return this.orderRecordService.updateSyncStatus(
+          order.id,
+          result.destinationConnectionId,
+          status,
+        );
+      }),
+    );
+
+    return results;
   }
 
   private async toUnifiedOrder(incoming: IncomingOrder, connectionId: string): Promise<Order> {

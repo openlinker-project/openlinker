@@ -16,7 +16,9 @@ import {
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { ICustomerIdentityResolverService } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
+import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
+import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -27,6 +29,7 @@ describe('OrderIngestionService', () => {
   let lock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
   let marketplace: jest.Mocked<MarketplacePort>;
   let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
@@ -88,6 +91,12 @@ describe('OrderIngestionService', () => {
       }),
     } as unknown as jest.Mocked<ICustomerIdentityResolverService>;
 
+    orderRecordService = {
+      persistOrder: jest.fn().mockResolvedValue({}),
+      updateSyncStatus: jest.fn().mockResolvedValue(undefined),
+      getOrderRecord: jest.fn(),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+
     service = new OrderIngestionService(
       integrationsService,
       cursorRepository,
@@ -97,6 +106,7 @@ describe('OrderIngestionService', () => {
       orderItemRefResolver,
       orderSyncService,
       customerIdentityResolver,
+      orderRecordService,
     );
   });
 
@@ -212,7 +222,7 @@ describe('OrderIngestionService', () => {
 
     beforeEach(() => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
-      orderSyncService.syncOrder.mockResolvedValue({} as never);
+      orderSyncService.syncOrder.mockResolvedValue([]);
     });
 
     it('should call resolveCustomerIdentity when customerExternalId and customerEmail are present', async () => {
@@ -256,6 +266,156 @@ describe('OrderIngestionService', () => {
         connectionId,
         expect.objectContaining({ parentEntityType: 'Order' }),
       );
+    });
+  });
+
+  describe('syncOrderFromMarketplace – OrderRecord persistence', () => {
+    const externalOrderId = 'checkout-persist-1';
+    const internalOrderId = 'ol_order_persist_test';
+    const sourceEventId = 'event-persist-1';
+
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue(internalOrderId);
+      marketplace.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+    });
+
+    it('should call persistOrder before syncOrder', async () => {
+      const callOrder: string[] = [];
+      orderRecordService.persistOrder.mockImplementation(() => {
+        callOrder.push('persistOrder');
+        return Promise.resolve({} as never);
+      });
+      orderSyncService.syncOrder.mockImplementation(() => {
+        callOrder.push('syncOrder');
+        return Promise.resolve([]);
+      });
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId);
+
+      expect(callOrder).toEqual(['persistOrder', 'syncOrder']);
+    });
+
+    it('should call persistOrder with correct order id, connectionId, and sourceEventId', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId);
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.persistOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: internalOrderId }),
+        connectionId,
+        sourceEventId,
+      );
+    });
+
+    it('should call updateSyncStatus with status synced for a successful result', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          destinationConnectionId: 'dest-conn-1',
+          status: 'success',
+          orderRef: { orderId: 'ps-order-42', orderNumber: 'ORD-42' },
+        },
+      ]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-conn-1',
+        expect.objectContaining({
+          destinationConnectionId: 'dest-conn-1',
+          status: 'synced',
+          externalOrderId: 'ps-order-42',
+          externalOrderNumber: 'ORD-42',
+        }),
+      );
+    });
+
+    it('should call updateSyncStatus with status failed for a failed result', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          destinationConnectionId: 'dest-conn-2',
+          status: 'failed',
+          error: { message: 'PrestaShop API timeout' },
+        },
+      ]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-conn-2',
+        expect.objectContaining({
+          destinationConnectionId: 'dest-conn-2',
+          status: 'failed',
+          error: 'PrestaShop API timeout',
+        }),
+      );
+    });
+
+    it('should call updateSyncStatus for all destinations on mixed results', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          destinationConnectionId: 'dest-conn-ok',
+          status: 'success',
+          orderRef: { orderId: 'ps-ok-1' },
+        },
+        {
+          destinationConnectionId: 'dest-conn-fail',
+          status: 'failed',
+          error: { message: 'Network error' },
+        },
+      ]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(2);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-conn-ok',
+        expect.objectContaining({ status: 'synced' }),
+      );
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-conn-fail',
+        expect.objectContaining({ status: 'failed', error: 'Network error' }),
+      );
+    });
+
+    it('should persist record but not call updateSyncStatus when syncOrder throws NoOrderDestinationsAvailableException', async () => {
+      orderSyncService.syncOrder.mockRejectedValue(
+        new NoOrderDestinationsAvailableException(internalOrderId, connectionId),
+      );
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId),
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should not call persistOrder when getOrder throws', async () => {
+      marketplace.getOrder.mockRejectedValueOnce(new Error('Marketplace fetch failed'));
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId, sourceEventId),
+      ).rejects.toThrow('Marketplace fetch failed');
+
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
     });
   });
 });
