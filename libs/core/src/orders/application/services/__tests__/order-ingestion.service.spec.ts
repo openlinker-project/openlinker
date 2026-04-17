@@ -288,6 +288,7 @@ describe('OrderIngestionService', () => {
     });
 
     it('should log warning and continue when updateSyncStatus rejects for one destination', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
       orderSyncService.syncOrder.mockResolvedValue([
         {
           status: 'success',
@@ -307,6 +308,12 @@ describe('OrderIngestionService', () => {
       await expect(
         service.syncOrderFromMarketplace(connectionId, externalOrderId),
       ).resolves.not.toThrow();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to update order record sync status',
+        expect.any(Error),
+      );
     });
   });
 
@@ -325,7 +332,7 @@ describe('OrderIngestionService', () => {
 
     beforeEach(() => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
-      orderSyncService.syncOrder.mockResolvedValue([] as never);
+      orderSyncService.syncOrder.mockResolvedValue([]);
     });
 
     it('should call resolveCustomerIdentity when customerExternalId and customerEmail are present', async () => {
