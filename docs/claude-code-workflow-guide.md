@@ -122,6 +122,22 @@ git push -u origin worktree-auth-api
 # Create PR from worktree-auth-api → main
 ```
 
+### Dev Stack in Worktrees
+
+**Never run `pnpm dev:stack:up` from inside a worktree.** The dev stack (Postgres, Redis, MySQL, PrestaShop) is shared across all worktrees — always manage it from the **main repo directory**.
+
+Worktrees connect to the already-running dev stack via localhost ports. For tests, use `pnpm test` (unit, no Docker) or `pnpm test:integration` (Testcontainers, isolated ephemeral containers).
+
+```bash
+# ✅ Correct — run from main repo only
+cd /path/to/openlinker
+pnpm dev:stack:up
+
+# Then start the app from the worktree — it connects to the shared stack
+cd .claude/worktrees/my-feature/
+pnpm start:dev:api
+```
+
 ### Environment Files in Worktrees
 
 Gitignored files (`.env`, `.env.local`) don't copy automatically. The `.worktreeinclude` file in the repo root fixes this — any file matching both `.worktreeinclude` and `.gitignore` gets copied into new worktrees.
