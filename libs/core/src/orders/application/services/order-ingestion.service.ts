@@ -40,7 +40,8 @@ import {
   MarketplaceIngestionOptions,
   MarketplaceIngestionResult,
 } from '../interfaces/order-ingestion.service.interface';
-import { ORDER_SYNC_SERVICE_TOKEN } from '../../orders.tokens';
+import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { Order } from '../../domain/ports/order-source.port';
 import { Logger } from '@openlinker/shared/logging';
@@ -69,6 +70,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderSyncService: IOrderSyncService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN)
     private readonly customerIdentityResolver: ICustomerIdentityResolverService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService,
   ) {}
 
   async syncFromMarketplace(
@@ -179,11 +182,43 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     const incoming = await marketplace.getOrder({ externalOrderId });
     const order = await this.toUnifiedOrder(incoming, connectionId);
-    return await this.orderSyncService.syncOrder({
+
+    // Persist before routing — ensures record exists even if syncOrder throws
+    await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+
+    const results = await this.orderSyncService.syncOrder({
       order,
       sourceConnectionId: connectionId,
       sourceEventId,
     });
+
+    // Update per-destination sync status; allSettled — one failure doesn't block others
+    const settlements = await Promise.allSettled(
+      results.map((result) => {
+        if (result.status === 'success') {
+          return this.orderRecordService.updateSyncStatus(order.id, result.destinationConnectionId, {
+            destinationConnectionId: result.destinationConnectionId,
+            status: 'synced',
+            syncedAt: new Date(),
+            externalOrderId: result.orderRef.orderId,
+            externalOrderNumber: result.orderRef.orderNumber,
+          });
+        } else {
+          return this.orderRecordService.updateSyncStatus(order.id, result.destinationConnectionId, {
+            destinationConnectionId: result.destinationConnectionId,
+            status: 'failed',
+            error: result.error.message,
+          });
+        }
+      }),
+    );
+    for (const settlement of settlements) {
+      if (settlement.status === 'rejected') {
+        this.logger.warn('Failed to update order record sync status', settlement.reason);
+      }
+    }
+
+    return results;
   }
 
   private async toUnifiedOrder(incoming: IncomingOrder, connectionId: string): Promise<Order> {

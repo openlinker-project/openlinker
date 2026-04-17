@@ -16,6 +16,7 @@ import {
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { ICustomerIdentityResolverService } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
+import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
 
 describe('OrderIngestionService', () => {
@@ -27,6 +28,7 @@ describe('OrderIngestionService', () => {
   let lock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
   let marketplace: jest.Mocked<MarketplacePort>;
   let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
@@ -80,6 +82,12 @@ describe('OrderIngestionService', () => {
       syncOrder: jest.fn(),
     } as unknown as jest.Mocked<IOrderSyncService>;
 
+    orderRecordService = {
+      persistOrder: jest.fn().mockResolvedValue({}),
+      updateSyncStatus: jest.fn().mockResolvedValue(undefined),
+      getOrderRecord: jest.fn(),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+
     customerIdentityResolver = {
       resolveCustomerIdentity: jest.fn().mockResolvedValue({
         internalCustomerId: 'ol_customer_test',
@@ -97,6 +105,7 @@ describe('OrderIngestionService', () => {
       orderItemRefResolver,
       orderSyncService,
       customerIdentityResolver,
+      orderRecordService,
     );
   });
 
@@ -197,6 +206,117 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('syncOrderFromMarketplace – order record persistence', () => {
+    const externalOrderId = 'checkout-1';
+
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
+      marketplace.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+    });
+
+    it('should persist order before calling syncOrder', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ol_order_test' }),
+        connectionId,
+        null,
+      );
+      expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        orderSyncService.syncOrder.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should call updateSyncStatus with synced when syncOrder succeeds', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-1',
+          orderRef: { orderId: 'ext-order-1', orderNumber: 'ORD-001' },
+        },
+      ]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({ status: 'synced', externalOrderId: 'ext-order-1' }),
+      );
+    });
+
+    it('should call updateSyncStatus with failed when syncOrder returns a failure result', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'failed',
+          destinationConnectionId: 'dest-conn-1',
+          error: { message: 'destination unavailable' },
+        },
+      ]);
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({ status: 'failed', error: 'destination unavailable' }),
+      );
+    });
+
+    it('should still persist order when syncOrder throws', async () => {
+      orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+      ).rejects.toThrow('no destinations');
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should log warning and continue when updateSyncStatus rejects for one destination', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-1',
+          orderRef: { orderId: 'ext-order-1' },
+        },
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-2',
+          orderRef: { orderId: 'ext-order-2' },
+        },
+      ]);
+      orderRecordService.updateSyncStatus
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('db write failed'));
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+      ).resolves.not.toThrow();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to update order record sync status',
+        expect.any(Error),
+      );
+    });
+  });
+
   describe('syncOrderFromMarketplace – customer resolution', () => {
     const externalOrderId = 'checkout-1';
 
@@ -212,7 +332,7 @@ describe('OrderIngestionService', () => {
 
     beforeEach(() => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
-      orderSyncService.syncOrder.mockResolvedValue({} as never);
+      orderSyncService.syncOrder.mockResolvedValue([]);
     });
 
     it('should call resolveCustomerIdentity when customerExternalId and customerEmail are present', async () => {
