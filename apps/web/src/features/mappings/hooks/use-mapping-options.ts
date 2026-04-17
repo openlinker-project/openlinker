@@ -35,32 +35,26 @@ export function useMappingOptions(connectionId: string): UseMappingOptionsResult
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'allegro-statuses'],
         queryFn: () => apiClient.mappings.getAllegroOrderStatuses(connectionId),
-        retry: false,
       },
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'allegro-delivery'],
         queryFn: () => apiClient.mappings.getAllegroDeliveryMethods(connectionId),
-        retry: false,
       },
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'allegro-payments'],
         queryFn: () => apiClient.mappings.getAllegroPaymentProviders(connectionId),
-        retry: false,
       },
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'ps-statuses'],
         queryFn: () => apiClient.mappings.getPrestashopOrderStatuses(connectionId),
-        retry: false,
       },
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'ps-carriers'],
         queryFn: () => apiClient.mappings.getPrestashopCarriers(connectionId),
-        retry: false,
       },
       {
         queryKey: [...mappingsQueryKeys.options(connectionId), 'ps-payments'],
         queryFn: () => apiClient.mappings.getPrestashopPaymentModules(connectionId),
-        retry: false,
       },
     ],
   });

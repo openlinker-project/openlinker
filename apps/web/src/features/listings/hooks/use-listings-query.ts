@@ -12,6 +12,5 @@ export function useListingsQuery(
   return useQuery({
     queryKey: listingsQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.listings.list(filters, pagination),
-    retry: false,
   });
 }

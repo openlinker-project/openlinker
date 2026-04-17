@@ -9,6 +9,5 @@ export function useDevStackHealthQuery(): UseQueryResult<DevStackHealth> {
   return useQuery({
     queryKey: healthQueryKeys.devStack(),
     queryFn: () => apiClient.health.getDevStackHealth(),
-    retry: false,
   });
 }

@@ -12,6 +12,5 @@ export function useOrdersQuery(
   return useQuery({
     queryKey: ordersQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.orders.list(filters, pagination),
-    retry: false,
   });
 }

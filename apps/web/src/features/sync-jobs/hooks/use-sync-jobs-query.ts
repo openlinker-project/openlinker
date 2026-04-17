@@ -12,6 +12,5 @@ export function useSyncJobsQuery(
   return useQuery({
     queryKey: syncJobsQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.syncJobs.list(filters, pagination),
-    retry: false,
   });
 }

@@ -16,6 +16,5 @@ export function useWebhookDeliveriesQuery(
   return useQuery({
     queryKey: webhookDeliveriesQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.webhookDeliveries.list(filters, pagination),
-    retry: false,
   });
 }

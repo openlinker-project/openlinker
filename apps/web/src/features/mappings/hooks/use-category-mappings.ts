@@ -16,7 +16,6 @@ export function useCategoryMappingsQuery(connectionId: string): UseQueryResult<C
   return useQuery({
     queryKey: mappingsQueryKeys.categories(connectionId),
     queryFn: () => apiClient.mappings.getCategoryMappings(connectionId),
-    retry: false,
   });
 }
 

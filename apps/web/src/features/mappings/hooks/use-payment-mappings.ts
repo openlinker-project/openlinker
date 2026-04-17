@@ -14,7 +14,6 @@ export function usePaymentMappingsQuery(connectionId: string): UseQueryResult<Pa
   return useQuery({
     queryKey: mappingsQueryKeys.payments(connectionId),
     queryFn: () => apiClient.mappings.getPaymentMappings(connectionId),
-    retry: false,
   });
 }
 

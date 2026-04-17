@@ -12,6 +12,5 @@ export function useCustomersQuery(
   return useQuery({
     queryKey: customersQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.customers.list(filters, pagination),
-    retry: false,
   });
 }

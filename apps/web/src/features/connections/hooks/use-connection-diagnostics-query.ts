@@ -12,6 +12,5 @@ export function useConnectionDiagnosticsQuery(
     queryKey: connectionsQueryKeys.diagnostics(connectionId ?? ''),
     queryFn: () => apiClient.connections.getDiagnostics(connectionId!),
     enabled: connectionId !== undefined && connectionId.length > 0,
-    retry: false,
   });
 }
