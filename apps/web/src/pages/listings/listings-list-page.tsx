@@ -15,7 +15,7 @@ const COLUMNS: DataTableColumn<OfferMapping>[] = [
   {
     id: 'externalId',
     header: 'External ID',
-    cell: (m): ReactNode => <span className="mono-text">{m.externalId}</span>,
+    cell: (m): ReactNode => <span className="mono-text" title={m.externalId}>{m.externalId}</span>,
   },
   {
     id: 'internalId',
@@ -117,7 +117,7 @@ export function ListingsListPage(): ReactElement {
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
     >
-      <div className="toolbar" style={{ gap: '0.5rem' }}>
+      <div className="toolbar toolbar--compact">
         <input
           aria-label="Search by external ID"
           placeholder="External ID…"
@@ -171,11 +171,11 @@ export function ListingsListPage(): ReactElement {
             rowKey={(m) => m.id}
           />
 
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="pagination__actions">
               <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
                 Previous
               </Button>
