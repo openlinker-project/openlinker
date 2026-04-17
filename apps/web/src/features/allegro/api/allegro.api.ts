@@ -4,6 +4,7 @@ export interface StartAllegroOAuthInput {
   redirectUri: string;
   environment?: 'sandbox' | 'production';
   connectionName?: string;
+  masterCatalogConnectionId?: string;
 }
 
 export interface StartAllegroOAuthResponse {

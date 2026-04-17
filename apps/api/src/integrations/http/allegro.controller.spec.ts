@@ -118,6 +118,7 @@ describe('AllegroController', () => {
         'sandbox',
         undefined,
         'Test Connection',
+        undefined,
       );
     });
 
@@ -142,6 +143,7 @@ describe('AllegroController', () => {
         'test-client-secret',
         'https://example.com/callback',
         'sandbox',
+        undefined,
         undefined,
         undefined,
       );

@@ -89,6 +89,7 @@ export class AllegroController {
       dto.environment || 'sandbox',
       dto.state,
       dto.connectionName,
+      dto.masterCatalogConnectionId,
     );
 
     return result;
