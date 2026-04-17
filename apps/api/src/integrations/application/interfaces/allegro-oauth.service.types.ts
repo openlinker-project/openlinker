@@ -39,6 +39,7 @@ export interface OAuthStateData {
   redirectUri: string;
   environment: string;
   connectionName?: string;
+  masterCatalogConnectionId?: string;
 }
 
 /**

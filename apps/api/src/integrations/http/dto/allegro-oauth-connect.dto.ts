@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsNotEmpty, IsOptional, IsUrl } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsUrl, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -64,5 +64,13 @@ export class AllegroOAuthConnectDto {
   @IsString()
   @IsOptional()
   connectionName?: string;
+
+  @ApiPropertyOptional({
+    description: 'UUID of the ProductMaster connection to use for offer-product barcode linking',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID()
+  @IsOptional()
+  masterCatalogConnectionId?: string;
 }
 

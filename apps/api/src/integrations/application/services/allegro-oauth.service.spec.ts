@@ -158,6 +158,81 @@ describe('AllegroOAuthService', () => {
     });
   });
 
+  describe('generateAuthorizationUrl', () => {
+    it('should store masterCatalogConnectionId in Redis state when provided', async () => {
+      const masterCatalogConnectionId = '123e4567-e89b-12d3-a456-426614174000';
+
+      await service.generateAuthorizationUrl(
+        'cid',
+        'csec',
+        'https://example.com/cb',
+        'sandbox',
+        undefined,
+        'My Store',
+        masterCatalogConnectionId,
+      );
+
+      expect(redisClient.setEx).toHaveBeenCalledWith(
+        expect.stringMatching(/^allegro:oauth:state:/),
+        600,
+        expect.stringContaining(masterCatalogConnectionId),
+      );
+    });
+
+    it('should not include masterCatalogConnectionId in state when not provided', async () => {
+      await service.generateAuthorizationUrl('cid', 'csec', 'https://example.com/cb');
+
+      const rawCall = (redisClient.setEx).mock.calls[0] as unknown[];
+      const storedJson = JSON.parse(rawCall[2] as string) as Record<string, unknown>;
+
+      expect(storedJson.masterCatalogConnectionId).toBeUndefined();
+    });
+  });
+
+  describe('storeCredentialsAndCreateConnection', () => {
+    it('should set masterCatalogConnectionId in connection config when present in stateData', async () => {
+      const masterCatalogConnectionId = '123e4567-e89b-12d3-a456-426614174000';
+      credentialRepository.create.mockResolvedValue(undefined as never);
+      connectionService.create.mockResolvedValue({ id: 'conn-1', name: 'Test' } as never);
+
+      await service.storeCredentialsAndCreateConnection(
+        { access_token: 'tok', token_type: 'bearer' },
+        {
+          clientId: 'cid',
+          clientSecret: 'csec',
+          redirectUri: 'https://example.com/cb',
+          environment: 'sandbox',
+          masterCatalogConnectionId,
+        },
+      );
+
+      expect(connectionService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ masterCatalogConnectionId }),
+        }),
+      );
+    });
+
+    it('should not include masterCatalogConnectionId in config when absent from stateData', async () => {
+      credentialRepository.create.mockResolvedValue(undefined as never);
+      connectionService.create.mockResolvedValue({ id: 'conn-1', name: 'Test' } as never);
+
+      await service.storeCredentialsAndCreateConnection(
+        { access_token: 'tok', token_type: 'bearer' },
+        {
+          clientId: 'cid',
+          clientSecret: 'csec',
+          redirectUri: 'https://example.com/cb',
+          environment: 'sandbox',
+        },
+      );
+
+      const createCall = (connectionService.create as jest.Mock).mock.calls[0] as unknown[];
+      const createdConfig = (createCall[0] as { config: Record<string, unknown> }).config;
+      expect(createdConfig.masterCatalogConnectionId).toBeUndefined();
+    });
+  });
+
   describe('exchangeCodeForToken', () => {
     it('should throw BadRequestException when token endpoint returns non-OK status', async () => {
       global.fetch = jest.fn().mockResolvedValue({

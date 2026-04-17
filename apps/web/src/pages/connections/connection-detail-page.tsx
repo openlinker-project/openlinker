@@ -9,6 +9,7 @@ import type { ConnectionStatus } from '../../features/connections/api/connection
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
+import { Alert } from '../../shared/ui/alert';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -90,6 +91,14 @@ export function ConnectionDetailPage(): ReactElement {
           title="Connection not found"
           message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
         />
+      ) : null}
+      {connection &&
+      connection.enabledCapabilities.includes('Marketplace') &&
+      typeof connection.config.masterCatalogConnectionId !== 'string' ? (
+        <Alert tone="warning" title="Product catalog not linked">
+          Offer-to-product barcode linking is disabled. Edit this connection to select a ProductMaster
+          catalog connection, or barcode sync will be skipped.
+        </Alert>
       ) : null}
       {connection ? (
         <div className="workspace-grid">

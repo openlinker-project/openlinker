@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react';
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
+import { useProductMasterConnections } from '../../connections/hooks/use-product-master-connections';
 import {
   allegroSetupSchema,
   ALLEGRO_SETUP_DEFAULT_VALUES,
@@ -18,10 +20,18 @@ import { Select } from '../../../shared/ui/select';
 
 export function AllegroSetupForm(): ReactElement {
   const startOAuth = useStartAllegroOAuthMutation();
+  const { connectionsQuery, productMasterConnections, autoSelectedConnectionId } =
+    useProductMasterConnections();
   const form = useForm<AllegroSetupFormValues, undefined, AllegroSetupFormSubmission>({
     defaultValues: ALLEGRO_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(allegroSetupSchema),
   });
+
+  useEffect(() => {
+    if (autoSelectedConnectionId) {
+      form.setValue('masterCatalogConnectionId', autoSelectedConnectionId);
+    }
+  }, [autoSelectedConnectionId, form]);
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -108,6 +118,35 @@ export function AllegroSetupForm(): ReactElement {
             invalid={Boolean(form.formState.errors.clientSecret)}
             autoComplete="off"
           />
+        </FormField>
+
+        <FormField
+          label="Product catalog connection"
+          name="masterCatalogConnectionId"
+          error={form.formState.errors.masterCatalogConnectionId?.message}
+          description="Select the ProductMaster connection to use for offer-product barcode linking. Optional — can be configured later."
+        >
+          {connectionsQuery.isLoading ? (
+            <Select disabled>
+              <option>Loading connections…</option>
+            </Select>
+          ) : connectionsQuery.error ? (
+            <Select disabled>
+              <option>Failed to load connections</option>
+            </Select>
+          ) : (
+            <Select
+              {...form.register('masterCatalogConnectionId')}
+              invalid={Boolean(form.formState.errors.masterCatalogConnectionId)}
+            >
+              <option value="">None (configure later)</option>
+              {productMasterConnections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
         </FormField>
       </div>
 

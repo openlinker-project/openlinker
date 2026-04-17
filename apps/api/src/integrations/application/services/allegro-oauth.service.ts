@@ -55,6 +55,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     environment: string = 'sandbox',
     state?: string,
     connectionName?: string,
+    masterCatalogConnectionId?: string,
   ): Promise<AllegroOAuthAuthorizationResponse> {
     // Generate state if not provided
     const oauthState = state || randomBytes(32).toString('hex');
@@ -67,6 +68,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       redirectUri,
       environment,
       connectionName,
+      masterCatalogConnectionId,
     };
     const stateKey = `allegro:oauth:state:${oauthState}`;
     await this.redisClient.setEx(
@@ -322,6 +324,9 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     // Prepare connection config
     const config: AllegroConnectionConfig = {
       environment: stateData.environment as 'sandbox' | 'production',
+      ...(stateData.masterCatalogConnectionId
+        ? { masterCatalogConnectionId: stateData.masterCatalogConnectionId }
+        : {}),
     };
 
     // Create connection with database credentials reference

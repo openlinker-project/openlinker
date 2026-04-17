@@ -6,6 +6,8 @@ export const allegroSetupSchema = z.object({
   environment: z.enum(['sandbox', 'production']),
   clientId: z.string().trim().min(1, 'Client ID is required'),
   clientSecret: z.string().trim().min(1, 'Client secret is required'),
+  // Empty string is coerced to undefined so the backend IsUUID validator is never sent an empty string
+  masterCatalogConnectionId: z.string().uuid('Invalid connection ID').optional().or(z.literal('')).transform((v) => v || undefined),
 });
 
 export type AllegroSetupFormValues = z.input<typeof allegroSetupSchema>;
@@ -16,6 +18,7 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   environment: 'sandbox',
   clientId: '',
   clientSecret: '',
+  masterCatalogConnectionId: '',
 };
 
 export function toStartOAuthInput(
@@ -28,5 +31,8 @@ export function toStartOAuthInput(
     redirectUri,
     environment: values.environment,
     connectionName: values.name,
+    ...(values.masterCatalogConnectionId
+      ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
+      : {}),
   };
 }
