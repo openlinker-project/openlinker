@@ -58,16 +58,28 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       ? rawExternalId.slice('product:'.length)
       : rawExternalId;
 
-    // Fetch stock_available for product (id_product_attribute = 0 for product stock)
-    const stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+    // First try product-level stock (simple products: id_product_attribute = 0).
+    // If empty, fall back to combination-level stock (psProductId is then a combination ID).
+    let stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
       'stock_availables',
       {
         custom: {
           id_product: psProductId,
-          id_product_attribute: 0, // Product stock, not variant
+          id_product_attribute: 0,
         },
       },
     );
+
+    if (stockRecords.length === 0) {
+      stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+        'stock_availables',
+        {
+          custom: {
+            id_product_attribute: psProductId,
+          },
+        },
+      );
+    }
 
     if (stockRecords.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
@@ -80,7 +92,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       throw error;
     }
 
-    // Use first stock record (should be only one for product stock)
+    // Use first stock record (should be only one for product/combination stock)
     const stockRecord = stockRecords[0];
 
     // Map to OpenLinker schema
