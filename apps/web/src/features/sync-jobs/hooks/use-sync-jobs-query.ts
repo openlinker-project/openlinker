@@ -6,11 +6,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 export function useSyncJobsQuery(
   filters?: SyncJobFilters,
   pagination?: SyncJobPagination,
+  options?: { refetchInterval?: number | false },
 ): UseQueryResult<PaginatedSyncJobs> {
   const apiClient = useApiClient();
 
   return useQuery({
     queryKey: syncJobsQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.syncJobs.list(filters, pagination),
+    ...options,
   });
 }

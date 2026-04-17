@@ -18,6 +18,7 @@ import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-q
 import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retry-sync-job-mutation';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useToast } from '../../shared/ui/toast-provider';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import type { SyncJob, SyncJobFilters } from '../../features/sync-jobs/api/sync-jobs.types';
 
 const PAGE_SIZE = 25;
@@ -75,7 +76,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'updatedAt',
     header: 'Failed At',
-    cell: (job) => new Date(job.updatedAt).toLocaleString(),
+    cell: (job) => <TimeDisplay iso={job.updatedAt} />,
   },
   {
     id: 'lastError',

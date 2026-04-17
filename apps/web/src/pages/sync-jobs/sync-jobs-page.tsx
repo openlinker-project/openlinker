@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import type { SyncJob, SyncJobFilters, JobStatus, JobType } from '../../features/sync-jobs/api/sync-jobs.types';
@@ -48,7 +49,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'createdAt',
     header: 'Created',
-    cell: (job) => new Date(job.createdAt).toLocaleString(),
+    cell: (job) => <TimeDisplay iso={job.createdAt} />,
   },
   {
     id: 'detail',

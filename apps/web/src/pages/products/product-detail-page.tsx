@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
@@ -175,11 +176,11 @@ export function ProductDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Created</dt>
-            <dd>{new Date(product.createdAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={product.createdAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(product.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={product.updatedAt} /></dd>
           </div>
           {product.description ? (
             <div className="detail-list__row">

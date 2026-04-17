@@ -6,6 +6,7 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 import { Button } from '../../shared/ui/button';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
+import { formatDateTime } from '../../shared/format/format-date';
 import { useCursorsQuery } from '../../features/cursors/hooks/use-cursors-query';
 import type { Cursor, CursorFilters } from '../../features/cursors/api/cursors.types';
 
@@ -36,7 +37,7 @@ const COLUMNS: DataTableColumn<Cursor>[] = [
     id: 'updatedAt',
     header: 'Last Updated',
     cell: (cursor) => (
-      <span title={new Date(cursor.updatedAt).toLocaleString()}>
+      <span title={formatDateTime(cursor.updatedAt)}>
         {formatRelativeTime(cursor.updatedAt)}
       </span>
     ),

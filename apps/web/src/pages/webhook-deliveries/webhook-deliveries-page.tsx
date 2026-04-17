@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge } from '../../shared/ui/status-badge';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useWebhookDeliveriesQuery } from '../../features/webhook-deliveries/hooks/use-webhook-deliveries-query';
 import {
   WEBHOOK_DELIVERY_STATUS_VALUES,
@@ -68,7 +69,7 @@ const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
   {
     id: 'receivedAt',
     header: 'Received',
-    cell: (d) => new Date(d.receivedAt).toLocaleString(),
+    cell: (d) => <TimeDisplay iso={d.receivedAt} />,
   },
   {
     id: 'detail',

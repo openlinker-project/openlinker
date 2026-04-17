@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import type { Product, ProductFilters } from '../../features/products/api/products.types';
@@ -37,7 +38,7 @@ const COLUMNS: DataTableColumn<Product>[] = [
   {
     id: 'createdAt',
     header: 'Created',
-    cell: (product) => new Date(product.createdAt).toLocaleDateString(),
+    cell: (product) => <TimeDisplay iso={product.createdAt} format="date" />,
   },
   {
     id: 'detail',

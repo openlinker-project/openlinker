@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useCustomerQuery } from '../../features/customers/hooks/use-customer-query';
 import type { CustomerAddress } from '../../features/customers/api/customers.types';
 
@@ -39,7 +40,7 @@ const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
   {
     id: 'lastSeenAt',
     header: 'Last Seen',
-    cell: (a) => new Date(a.lastSeenAt).toLocaleDateString(),
+    cell: (a) => <TimeDisplay iso={a.lastSeenAt} format="date" />,
   },
 ];
 
@@ -116,15 +117,15 @@ export function CustomerDetailPage(): ReactElement {
           </div>
           <div className="detail-list__row">
             <dt>Last Seen</dt>
-            <dd>{new Date(customer.lastSeenAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={customer.lastSeenAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Created</dt>
-            <dd>{new Date(customer.createdAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={customer.createdAt} /></dd>
           </div>
           <div className="detail-list__row">
             <dt>Updated</dt>
-            <dd>{new Date(customer.updatedAt).toLocaleString()}</dd>
+            <dd><TimeDisplay iso={customer.updatedAt} /></dd>
           </div>
         </dl>
       </section>

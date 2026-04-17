@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import type { InventoryItem, InventoryFilters } from '../../features/inventory/api/inventory.types';
@@ -74,7 +75,7 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
   {
     id: 'updatedAt',
     header: 'Updated',
-    cell: (item) => new Date(item.updatedAt).toLocaleDateString(),
+    cell: (item) => <TimeDisplay iso={item.updatedAt} format="date" />,
   },
   {
     id: 'detail',
