@@ -91,6 +91,46 @@ describe('TriggerSyncDialog', () => {
       expect(screen.getByLabelText(/object type/i)).toBeInTheDocument();
     });
 
+    it('should default cursorKey to platform-scoped value for marketplace.orders.poll', () => {
+      const allegroConnection = {
+        ...sampleConnection,
+        platformType: 'allegro' as const,
+        supportedCapabilities: ['Marketplace' as const],
+        enabledCapabilities: ['Marketplace' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={allegroConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      const select = screen.getByRole('combobox', { name: /job type/i });
+      fireEvent.change(select, { target: { value: 'marketplace.orders.poll' } });
+
+      const cursorKeyInput = screen.getByLabelText(/cursor key/i);
+      expect(cursorKeyInput).toHaveValue('allegro.orders.lastEventId');
+    });
+
+    it('should scope cursorKey default to the connection platform type', () => {
+      const prestashopMarketplaceConnection = {
+        ...sampleConnection,
+        platformType: 'prestashop' as const,
+        supportedCapabilities: ['Marketplace' as const],
+        enabledCapabilities: ['Marketplace' as const],
+      };
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog connection={prestashopMarketplaceConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      const select = screen.getByRole('combobox', { name: /job type/i });
+      fireEvent.change(select, { target: { value: 'marketplace.orders.poll' } });
+
+      const cursorKeyInput = screen.getByLabelText(/cursor key/i);
+      expect(cursorKeyInput).toHaveValue('prestashop.orders.lastEventId');
+    });
+
     it('should clear payload fields when job type changes', () => {
       renderDialog();
       const select = screen.getByRole('combobox', { name: /job type/i });
