@@ -10,6 +10,5 @@ export function useProductQuery(id: string): UseQueryResult<Product> {
     queryKey: productsQueryKeys.detail(id),
     queryFn: () => apiClient.products.getById(id),
     enabled: Boolean(id),
-    retry: false,
   });
 }

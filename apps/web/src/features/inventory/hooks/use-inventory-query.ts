@@ -12,6 +12,5 @@ export function useInventoryQuery(
   return useQuery({
     queryKey: inventoryQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.inventory.list(filters, pagination),
-    retry: false,
   });
 }

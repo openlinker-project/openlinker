@@ -14,7 +14,6 @@ export function useCarrierMappingsQuery(connectionId: string): UseQueryResult<Ca
   return useQuery({
     queryKey: mappingsQueryKeys.carriers(connectionId),
     queryFn: () => apiClient.mappings.getCarrierMappings(connectionId),
-    retry: false,
   });
 }
 

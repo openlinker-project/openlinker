@@ -12,6 +12,5 @@ export function useProductsQuery(
   return useQuery({
     queryKey: productsQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.products.list(filters, pagination),
-    retry: false,
   });
 }

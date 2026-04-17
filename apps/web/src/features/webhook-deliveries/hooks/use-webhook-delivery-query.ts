@@ -12,6 +12,5 @@ export function useWebhookDeliveryQuery(
     queryKey: webhookDeliveriesQueryKeys.detail(id ?? ''),
     queryFn: () => apiClient.webhookDeliveries.getById(id ?? ''),
     enabled: Boolean(id),
-    retry: false,
   });
 }

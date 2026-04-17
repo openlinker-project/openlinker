@@ -31,6 +31,5 @@ export function usePrestashopCategoriesQuery(connectionId: string): UseQueryResu
           depth,
         }));
     },
-    retry: false,
   });
 }

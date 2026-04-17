@@ -16,7 +16,6 @@ export function useStatusMappingsQuery(connectionId: string): UseQueryResult<Sta
   return useQuery({
     queryKey: mappingsQueryKeys.status(connectionId),
     queryFn: () => apiClient.mappings.getStatusMappings(connectionId),
-    retry: false,
   });
 }
 

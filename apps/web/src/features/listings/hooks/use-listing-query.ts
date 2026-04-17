@@ -10,6 +10,5 @@ export function useListingQuery(id: string): UseQueryResult<OfferMapping> {
     queryKey: listingsQueryKeys.detail(id),
     queryFn: () => apiClient.listings.getById(id),
     enabled: id.length > 0,
-    retry: false,
   });
 }

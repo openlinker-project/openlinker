@@ -10,6 +10,5 @@ export function useOrderQuery(internalOrderId: string): UseQueryResult<OrderReco
     queryKey: ordersQueryKeys.detail(internalOrderId),
     queryFn: () => apiClient.orders.getById(internalOrderId),
     enabled: Boolean(internalOrderId),
-    retry: false,
   });
 }
