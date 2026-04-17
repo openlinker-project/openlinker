@@ -663,10 +663,6 @@ textarea {
   background: var(--bg-shell);
 }
 
-.toolbar--spread {
-  justify-content: space-between;
-}
-
 .toolbar--compact {
   gap: 0.5rem;
 }
@@ -908,7 +904,7 @@ textarea {
 }
 
 .data-table td .mono-text {
-  display: block;
+  display: inline-block;
   max-width: 20ch;
   overflow: hidden;
   text-overflow: ellipsis;
