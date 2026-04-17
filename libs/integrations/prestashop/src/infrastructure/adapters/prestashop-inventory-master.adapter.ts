@@ -58,8 +58,10 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       ? rawExternalId.slice('product:'.length)
       : rawExternalId;
 
-    // First try product-level stock (simple products: id_product_attribute = 0).
-    // If empty, fall back to combination-level stock (psProductId is then a combination ID).
+    // The identifier mapping stores combination IDs under entityType='Product', so
+    // psProductId is either a plain product ID (simple products) or a combination ID.
+    // Try product-level stock first (id_product_attribute=0); if empty, the external ID
+    // is a combination ID and its stock record is keyed by id_product_attribute instead.
     let stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
       'stock_availables',
       {

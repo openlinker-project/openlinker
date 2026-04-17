@@ -230,6 +230,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
       await expect(adapter.getInventory(productId)).rejects.toThrow(
         PrestashopResourceNotFoundException,
       );
+      // Both the product-level and combination-level queries must be attempted
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
     });
 
     it('should create internal ID for inventory with parent context', async () => {
