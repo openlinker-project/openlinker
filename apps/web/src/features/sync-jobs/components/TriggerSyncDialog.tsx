@@ -9,7 +9,6 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import type { Capability, Connection } from '../../connections/api/connections.types';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -17,26 +16,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
-
-interface PayloadField {
-  name: string;
-  label: string;
-  required: boolean;
-  placeholder?: string;
-  /** Coerce non-empty string value to number before sending in payload. */
-  type?: 'string' | 'number';
-  /** Pre-populate the field with this value when the dialog opens. */
-  defaultValue?: string;
-}
-
-interface TriggerableJob {
-  jobType: string;
-  label: string;
-  description: string;
-  payloadFields: PayloadField[];
-  /** If set, only show this job when the connection supports this capability. */
-  requiredCapability?: Capability;
-}
+import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
   {
@@ -105,8 +85,7 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         name: 'cursorKey',
         label: 'Cursor key',
         required: false,
-        defaultValue: 'allegro.orders.lastEventId',
-        placeholder: 'allegro.orders.lastEventId',
+        defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
       },
       {
         name: 'limit',
@@ -136,20 +115,19 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
 ];
 
 /** Build initial payload values from field defaults. */
-function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
+function buildDefaultValues(
+  fields: PayloadField[],
+  context: { platformType: string },
+): Record<string, string> {
   const defaults: Record<string, string> = {};
   for (const field of fields) {
-    if (field.defaultValue !== undefined) {
+    if (field.defaultValueFactory !== undefined) {
+      defaults[field.name] = field.defaultValueFactory(context);
+    } else if (field.defaultValue !== undefined) {
       defaults[field.name] = field.defaultValue;
     }
   }
   return defaults;
-}
-
-interface TriggerSyncDialogProps {
-  connection: Connection;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
 }
 
 export function TriggerSyncDialog({
@@ -199,7 +177,9 @@ export function TriggerSyncDialog({
     if (open) {
       const firstJob = triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
-      setPayloadValues(firstJob ? buildDefaultValues(firstJob.payloadFields) : {});
+      setPayloadValues(
+        firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
+      );
       setFieldErrors({});
       enqueueSyncJob.reset();
     }
@@ -224,7 +204,7 @@ export function TriggerSyncDialog({
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields, connection) : {});
     setFieldErrors({});
     enqueueSyncJob.reset();
   };
