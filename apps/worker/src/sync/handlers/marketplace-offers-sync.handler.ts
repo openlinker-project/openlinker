@@ -127,17 +127,10 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         job.connectionId,
       );
     }
-    if (payload.limit === undefined || payload.limit === null || typeof payload.limit !== 'number') {
-      throw new SyncJobExecutionError(
-        `Missing or invalid limit in payload: ${JSON.stringify(job.payload)}`,
-        job.id,
-        job.jobType,
-        job.connectionId,
-      );
-    }
+    const limit = typeof payload.limit === 'number' ? payload.limit : 100;
     return {
       schemaVersion: 1,
-      limit: payload.limit,
+      limit,
       cursor: payload.cursor ?? null,
       cursorKey: payload.cursorKey,
       feedType: payload.feedType,
