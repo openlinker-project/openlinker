@@ -1,3 +1,4 @@
+import { createRef } from 'react';
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { TimeDisplay } from './time-display';
@@ -13,13 +14,12 @@ describe('TimeDisplay', () => {
     const { container } = render(<TimeDisplay iso={ISO} />);
     const el = container.querySelector('time');
     expect(el).not.toBeNull();
-    expect(el?.getAttribute('dateTime')).toBe(ISO);
+    expect(el?.getAttribute('datetime')).toBe(ISO);
   });
 
   it('renders datetime format by default', () => {
     const { container } = render(<TimeDisplay iso={ISO} />);
     const el = container.querySelector('time');
-    // Should contain both date and time portions — not empty
     expect(el?.textContent).toBeTruthy();
   });
 
@@ -35,5 +35,21 @@ describe('TimeDisplay', () => {
     const { container } = render(<TimeDisplay iso={ISO} format="relative" />);
     const el = container.querySelector('time');
     expect(el?.textContent).toBe('5m ago');
+  });
+
+  it('forwards ref to the native <time> element', () => {
+    const ref = createRef<HTMLTimeElement>();
+    render(<TimeDisplay iso={ISO} ref={ref} />);
+    expect(ref.current).toBeInstanceOf(HTMLTimeElement);
+  });
+
+  it('applies the className prop to the <time> element', () => {
+    const { container } = render(<TimeDisplay iso={ISO} className="muted-text" />);
+    expect(container.querySelector('time')).toHaveClass('muted-text');
+  });
+
+  it('spreads extra props (e.g., title) onto the <time> element', () => {
+    const { container } = render(<TimeDisplay iso={ISO} title="Hover me" />);
+    expect(container.querySelector('time')?.getAttribute('title')).toBe('Hover me');
   });
 });

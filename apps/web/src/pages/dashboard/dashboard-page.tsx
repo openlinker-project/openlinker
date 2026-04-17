@@ -6,7 +6,7 @@ import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-q
 import type { ServiceHealth, ServiceStatus, OverallStatus } from '../../features/health/api/health.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
-import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from '../../shared/config/dashboard-intervals';
+import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './intervals';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -44,7 +44,7 @@ const updatedAtColumn: DataTableColumn<SyncJob> = {
   id: 'updatedAt',
   header: 'Updated',
   align: 'right',
-  cell: (row) => <span className="muted-text"><TimeDisplay iso={row.updatedAt} format="relative" /></span>,
+  cell: (row) => <TimeDisplay iso={row.updatedAt} format="relative" className="muted-text" />,
 };
 
 const recentJobColumns: DataTableColumn<SyncJob>[] = [
