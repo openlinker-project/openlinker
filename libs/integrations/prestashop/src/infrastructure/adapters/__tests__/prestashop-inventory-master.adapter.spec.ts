@@ -141,6 +141,76 @@ describe('PrestashopInventoryMasterAdapter', () => {
       );
     });
 
+    it('should fetch inventory for combination product via id_product_attribute fallback', async () => {
+      const productId = 'internal-product-456';
+      const combinationExternalId = '15';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        {
+          connectionId: connection.id,
+          externalId: combinationExternalId,
+          entityType: 'Product',
+        },
+      ]);
+
+      const combinationStockRecord: PrestashopStockAvailable = {
+        id: '201',
+        id_product: '38',
+        id_product_attribute: '15',
+        quantity: '30',
+        out_of_stock: '0',
+      };
+
+      // First call (id_product_attribute=0) returns empty; second call returns combination stock
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([combinationStockRecord]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-inventory-456');
+
+      const result = await adapter.getInventory(productId);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenNthCalledWith(
+        2,
+        'stock_availables',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          custom: expect.objectContaining({ id_product_attribute: combinationExternalId }),
+        }),
+      );
+      expect(result.quantity).toBe(30);
+    });
+
+    it('should throw PrestashopResourceNotFoundException when both product-level and combination-level queries return empty', async () => {
+      const productId = 'internal-product-789';
+      const externalId = '99';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        {
+          connectionId: connection.id,
+          externalId,
+          entityType: 'Product',
+        },
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+      await expect(adapter.getInventory(productId)).rejects.toThrow(
+        PrestashopResourceNotFoundException,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+    });
+
     it('should throw PrestashopResourceNotFoundException when no stock record found', async () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
@@ -160,6 +230,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
       await expect(adapter.getInventory(productId)).rejects.toThrow(
         PrestashopResourceNotFoundException,
       );
+      // Both the product-level and combination-level queries must be attempted
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
     });
 
     it('should create internal ID for inventory with parent context', async () => {
