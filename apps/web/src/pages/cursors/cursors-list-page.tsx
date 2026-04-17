@@ -97,7 +97,7 @@ export function CursorsListPage(): ReactElement {
       description="Sync cursor state per connection — track incremental sync positions."
     >
       {/* Filters */}
-      <div className="toolbar" style={{ gap: '0.5rem' }}>
+      <div className="toolbar toolbar--compact">
         <input
           aria-label="Filter by connection ID"
           placeholder="Connection ID..."
@@ -139,11 +139,11 @@ export function CursorsListPage(): ReactElement {
             rowKey={(cursor) => `${cursor.connectionId}:${cursor.cursorKey}`}
           />
 
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}

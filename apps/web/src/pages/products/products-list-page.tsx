@@ -23,7 +23,7 @@ const COLUMNS: DataTableColumn<Product>[] = [
     header: 'SKU',
     cell: (product) =>
       product.sku ? (
-        <span className="mono-text">{product.sku}</span>
+        <span className="mono-text" title={product.sku}>{product.sku}</span>
       ) : (
         <span className="text-muted">—</span>
       ),
@@ -147,11 +147,11 @@ export function ProductsListPage(): ReactElement {
           />
 
           {/* Pagination */}
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}

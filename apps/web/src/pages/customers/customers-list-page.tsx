@@ -114,7 +114,7 @@ export function CustomersListPage(): ReactElement {
       title="Customers"
       description="Customer identity projections — browse resolved identities and address history."
     >
-      <div className="toolbar" style={{ gap: '0.5rem' }}>
+      <div className="toolbar toolbar--compact">
         <input
           aria-label="Search customers"
           placeholder="Search by email or name…"
@@ -162,11 +162,11 @@ export function CustomersListPage(): ReactElement {
             rowKey={(c) => c.internalCustomerId}
           />
 
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="pagination__actions">
               <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
                 Previous
               </Button>

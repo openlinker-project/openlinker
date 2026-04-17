@@ -37,6 +37,9 @@ describe('FailedOrdersPage', () => {
       syncJobs: {
         list: vi.fn().mockReturnValue(new Promise(() => {})),
       },
+      connections: {
+        list: vi.fn().mockResolvedValue([]),
+      },
     });
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
@@ -48,6 +51,9 @@ describe('FailedOrdersPage', () => {
     const mockApi = createMockApiClient({
       syncJobs: {
         list: vi.fn().mockResolvedValue(sampleData),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([]),
       },
     });
 
@@ -62,6 +68,9 @@ describe('FailedOrdersPage', () => {
     const mockApi = createMockApiClient({
       syncJobs: {
         list: vi.fn().mockRejectedValue(new Error('Network error')),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([]),
       },
     });
 
@@ -80,6 +89,9 @@ describe('FailedOrdersPage', () => {
           offset: 0,
         }),
       },
+      connections: {
+        list: vi.fn().mockResolvedValue([]),
+      },
     });
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
@@ -91,6 +103,9 @@ describe('FailedOrdersPage', () => {
     const mockApi = createMockApiClient({
       syncJobs: {
         list: vi.fn().mockResolvedValue(sampleData),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([]),
       },
     });
 

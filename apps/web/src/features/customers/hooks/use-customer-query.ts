@@ -10,6 +10,5 @@ export function useCustomerQuery(id: string): UseQueryResult<CustomerProjectionD
     queryKey: customersQueryKeys.detail(id),
     queryFn: () => apiClient.customers.getById(id),
     enabled: id.length > 0,
-    retry: false,
   });
 }

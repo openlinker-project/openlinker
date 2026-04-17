@@ -10,6 +10,5 @@ export function useInventoryItemQuery(id: string): UseQueryResult<InventoryItem>
     queryKey: inventoryQueryKeys.detail(id),
     queryFn: () => apiClient.inventory.getById(id),
     enabled: Boolean(id),
-    retry: false,
   });
 }

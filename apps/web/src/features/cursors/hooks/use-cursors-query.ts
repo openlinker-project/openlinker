@@ -12,6 +12,5 @@ export function useCursorsQuery(
   return useQuery({
     queryKey: cursorsQueryKeys.list(filters, pagination),
     queryFn: () => apiClient.cursors.list(filters, pagination),
-    retry: false,
   });
 }

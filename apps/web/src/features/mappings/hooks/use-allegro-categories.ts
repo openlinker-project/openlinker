@@ -21,7 +21,6 @@ export function useAllegroCategoriesQuery(
     queryKey: mappingsQueryKeys.allegroCategories(connectionId, parentId),
     queryFn: () => apiClient.mappings.getAllegroCategories(connectionId, parentId),
     enabled,
-    retry: false,
     staleTime: 1000 * 60 * 60, // 1 hour — categories change infrequently
   });
 }

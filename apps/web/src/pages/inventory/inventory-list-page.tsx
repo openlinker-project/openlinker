@@ -23,16 +23,16 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
             {item.productName}
             {item.productSku ? (
               <span className="text-muted sku-label">
-                <span className="mono-text">{item.productSku}</span>
+                <span className="mono-text" title={item.productSku}>{item.productSku}</span>
               </span>
             ) : null}
           </span>
         );
       }
       if (item.productSku) {
-        return <span className="mono-text">{item.productSku}</span>;
+        return <span className="mono-text" title={item.productSku}>{item.productSku}</span>;
       }
-      return <span className="mono-text text-muted">{item.productId}</span>;
+      return <span className="mono-text text-muted" title={item.productId}>{item.productId}</span>;
     },
   },
   {
@@ -40,7 +40,7 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
     header: 'Variant ID',
     cell: (item) =>
       item.productVariantId ? (
-        <span className="mono-text">{item.productVariantId}</span>
+        <span className="mono-text" title={item.productVariantId}>{item.productVariantId}</span>
       ) : (
         <span className="text-muted">—</span>
       ),
@@ -67,7 +67,7 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
     header: 'Location',
     cell: (item) =>
       item.locationId ? (
-        <span className="mono-text">{item.locationId}</span>
+        <span className="mono-text" title={item.locationId}>{item.locationId}</span>
       ) : (
         <span className="text-muted">default</span>
       ),
@@ -146,7 +146,7 @@ export function InventoryListPage(): ReactElement {
       description="Stock visibility — browse available and reserved quantities."
     >
       {/* Filters */}
-      <div className="toolbar" style={{ gap: '0.5rem' }}>
+      <div className="toolbar toolbar--compact">
         <input
           aria-label="Filter by product ID"
           placeholder="Product ID…"
@@ -194,11 +194,11 @@ export function InventoryListPage(): ReactElement {
             rowKey={(item) => item.id}
           />
 
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="pagination__actions">
               <Button
                 disabled={!hasPrev}
                 onClick={() => { setOffset(offset - PAGE_SIZE); }}

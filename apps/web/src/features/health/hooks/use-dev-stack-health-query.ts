@@ -11,7 +11,6 @@ export function useDevStackHealthQuery(
   return useQuery({
     queryKey: healthQueryKeys.devStack(),
     queryFn: () => apiClient.health.getDevStackHealth(),
-    retry: false,
     ...options,
   });
 }
