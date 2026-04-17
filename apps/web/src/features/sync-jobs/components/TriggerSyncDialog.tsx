@@ -23,6 +23,10 @@ interface PayloadField {
   label: string;
   required: boolean;
   placeholder?: string;
+  /** Coerce non-empty string value to number before sending in payload. */
+  type?: 'string' | 'number';
+  /** Pre-populate the field with this value when the dialog opens. */
+  defaultValue?: string;
 }
 
 interface TriggerableJob {
@@ -80,17 +84,67 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
     jobType: 'marketplace.offers.sync',
     label: 'Sync marketplace offers',
     description: 'Pull offer listings from the marketplace.',
-    payloadFields: [],
+    payloadFields: [
+      {
+        name: 'limit',
+        label: 'Page limit',
+        required: false,
+        type: 'number',
+        defaultValue: '100',
+        placeholder: '100',
+      },
+    ],
+    requiredCapability: 'Marketplace',
+  },
+  {
+    jobType: 'marketplace.orders.poll',
+    label: 'Poll marketplace orders',
+    description: 'Fetch new orders from the marketplace event stream.',
+    payloadFields: [
+      {
+        name: 'cursorKey',
+        label: 'Cursor key',
+        required: false,
+        defaultValue: 'allegro.orders.lastEventId',
+        placeholder: 'allegro.orders.lastEventId',
+      },
+      {
+        name: 'limit',
+        label: 'Page limit',
+        required: false,
+        type: 'number',
+        defaultValue: '100',
+        placeholder: '100',
+      },
+    ],
     requiredCapability: 'Marketplace',
   },
   {
     jobType: 'inventory.propagateToMarketplaces',
     label: 'Propagate inventory to marketplaces',
     description: 'Push current inventory levels to all connected marketplaces.',
-    payloadFields: [],
+    payloadFields: [
+      {
+        name: 'productId',
+        label: 'Product ID',
+        required: true,
+        placeholder: 'ol_product_…',
+      },
+    ],
     // No requiredCapability — this is a cross-connection fan-out job, valid for any active connection.
   },
 ];
+
+/** Build initial payload values from field defaults. */
+function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  for (const field of fields) {
+    if (field.defaultValue !== undefined) {
+      defaults[field.name] = field.defaultValue;
+    }
+  }
+  return defaults;
+}
 
 interface TriggerSyncDialogProps {
   connection: Connection;
@@ -143,8 +197,9 @@ export function TriggerSyncDialog({
   // Reset form state when dialog opens
   useEffect(() => {
     if (open) {
-      setSelectedJobType(triggerableJobs[0]?.jobType ?? '');
-      setPayloadValues({});
+      const firstJob = triggerableJobs[0];
+      setSelectedJobType(firstJob?.jobType ?? '');
+      setPayloadValues(firstJob ? buildDefaultValues(firstJob.payloadFields) : {});
       setFieldErrors({});
       enqueueSyncJob.reset();
     }
@@ -167,8 +222,9 @@ export function TriggerSyncDialog({
   }, [onOpenChange]);
 
   const handleJobTypeChange = (jobType: string): void => {
+    const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues({});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
     enqueueSyncJob.reset();
   };
@@ -190,9 +246,9 @@ export function TriggerSyncDialog({
 
     const payload: Record<string, unknown> = { schemaVersion: 1 };
     for (const field of selectedJob.payloadFields) {
-      const value = payloadValues[field.name]?.trim();
-      if (value) {
-        payload[field.name] = value;
+      const raw = payloadValues[field.name]?.trim();
+      if (raw) {
+        payload[field.name] = field.type === 'number' ? Number(raw) : raw;
       }
     }
 

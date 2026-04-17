@@ -17,6 +17,7 @@ export async function truncateAllTables(dataSource: DataSource): Promise<void> {
   // Truncate in correct order (respecting foreign keys)
   await dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
   await dataSource.query('TRUNCATE TABLE connections CASCADE');
+  await dataSource.query('TRUNCATE TABLE users CASCADE');
 }
 
 /**
@@ -54,4 +55,3 @@ export async function countConnections(
 ): Promise<number> {
   return dataSource.getRepository(ConnectionOrmEntity).count();
 }
-

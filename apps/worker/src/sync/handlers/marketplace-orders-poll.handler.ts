@@ -77,26 +77,15 @@ export class MarketplaceOrdersPollHandler implements SyncJobHandler {
         job.connectionId,
       );
     }
-    if (!payload.cursorKey || typeof payload.cursorKey !== 'string') {
-      throw new SyncJobExecutionError(
-        `Missing or invalid cursorKey in payload: ${JSON.stringify(job.payload)}`,
-        job.id,
-        job.jobType,
-        job.connectionId,
-      );
-    }
-    if (payload.limit === undefined || payload.limit === null || typeof payload.limit !== 'number') {
-      throw new SyncJobExecutionError(
-        `Missing or invalid limit in payload: ${JSON.stringify(job.payload)}`,
-        job.id,
-        job.jobType,
-        job.connectionId,
-      );
-    }
+    const cursorKey =
+      typeof payload.cursorKey === 'string' && payload.cursorKey
+        ? payload.cursorKey
+        : 'allegro.orders.lastEventId';
+    const limit = typeof payload.limit === 'number' ? payload.limit : 100;
     return {
       schemaVersion: 1,
-      cursorKey: payload.cursorKey,
-      limit: payload.limit,
+      cursorKey,
+      limit,
       eventTypes: payload.eventTypes,
     };
   }
