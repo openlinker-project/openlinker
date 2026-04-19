@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1440, initial-scale=1" />
+    <title>Orders · Concept — OpenLinker</title>
+    <link rel="stylesheet" href="./foundation.css" />
+    <style>
+      /* ------------------------------------------------------------------
+       * Orders list page — Variant A direction
+       *
+       * Changes from baseline (#03-orders-list.png):
+       *  - Shell-less empty band gone; content begins near top.
+       *  - Every row resolves UUIDs to human names via EntityLabel pattern.
+       *  - Source connection shown as avatar + name (not raw UUID).
+       *  - Customer: email prefix + masked hash badge; "—" fallback eliminated.
+       *  - Filter chip bar + search replace the single dropdown.
+       *  - Row clickable — no redundant "View" column.
+       *  - Sync status column carries both destination + error hint (was split).
+       *  - Date in compact "dd MMM · HH:mm" mono form.
+       * ----------------------------------------------------------------- */
+
+      .orders-toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: 10px 14px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-bottom: none;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      }
+
+      .chip-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-default);
+        background: var(--bg-surface);
+        font-size: 12.5px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: border-color var(--duration-fast), background var(--duration-fast);
+      }
+
+      .chip-filter:hover {
+        border-color: var(--border-strong);
+        background: var(--bg-surface-muted);
+      }
+
+      .chip-filter svg {
+        width: 12px;
+        height: 12px;
+        color: var(--text-muted);
+      }
+
+      .chip-filter-label {
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+
+      .chip-filter-value {
+        color: var(--text-primary);
+        font-weight: 500;
+      }
+
+      .chip-filter.active {
+        background: var(--accent-primary-soft);
+        border-color: var(--accent-primary-border);
+        color: var(--accent-primary-hover);
+      }
+
+      .chip-filter.active svg {
+        color: var(--accent-primary);
+      }
+
+      .chip-filter .count {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 0 5px;
+        border-radius: 10px;
+        background: var(--text-primary);
+        color: var(--text-inverse);
+        margin-left: 2px;
+        font-weight: 600;
+      }
+
+      .chip-clear {
+        font-size: 12px;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0 8px;
+      }
+
+      .chip-clear:hover {
+        color: var(--text-primary);
+      }
+
+      .toolbar-search {
+        margin-left: auto;
+        position: relative;
+        width: 240px;
+      }
+
+      .toolbar-search-icon {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 12px;
+        height: 12px;
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+
+      .toolbar-search-input {
+        width: 100%;
+        height: 28px;
+        padding: 0 8px 0 26px;
+        border: 1px solid var(--border-default);
+        background: var(--bg-surface);
+        border-radius: var(--radius-md);
+        font-size: 12.5px;
+        color: var(--text-primary);
+      }
+
+      .toolbar-search-input:focus {
+        outline: none;
+        border-color: var(--accent-primary);
+        box-shadow: var(--shadow-focus);
+      }
+
+      .toolbar-sep {
+        width: 1px;
+        height: 18px;
+        background: var(--border-default);
+      }
+
+      /* Orders table — compact but readable */
+      .orders-table {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        overflow: hidden;
+      }
+
+      .orders-table table {
+        width: 100%;
+      }
+
+      .orders-table thead th {
+        text-align: left;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        padding: 8px 16px;
+        background: var(--bg-surface-elevated);
+        border-bottom: 1px solid var(--border-subtle);
+        white-space: nowrap;
+      }
+
+      .orders-table thead th.sort {
+        cursor: pointer;
+      }
+
+      .orders-table thead th.sort svg {
+        width: 10px;
+        height: 10px;
+        margin-left: 4px;
+        vertical-align: baseline;
+        color: var(--text-muted);
+      }
+
+      .orders-table thead th.numeric {
+        text-align: right;
+      }
+
+      .orders-table thead th.right {
+        text-align: right;
+      }
+
+      .orders-table tbody tr {
+        cursor: pointer;
+        transition: background var(--duration-fast) var(--ease-out);
+      }
+
+      .orders-table tbody tr:hover {
+        background: var(--bg-surface-muted);
+      }
+
+      .orders-table tbody td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-subtle);
+        vertical-align: top;
+      }
+
+      .orders-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .orders-table tbody tr.has-failure {
+        box-shadow: inset 2px 0 0 var(--status-error);
+      }
+
+      /* Entity label pattern */
+      .entity {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .entity-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
+        letter-spacing: -0.005em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .entity-id {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        letter-spacing: -0.01em;
+      }
+
+      .entity-id-copy {
+        opacity: 0;
+        transition: opacity var(--duration-fast);
+      }
+
+      tr:hover .entity-id-copy {
+        opacity: 1;
+      }
+
+      .connection-cell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .connection-cell .connection-mark {
+        width: 22px;
+        height: 22px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-surface-muted);
+        border: 1px solid var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 10px;
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+
+      .connection-cell-body {
+        min-width: 0;
+      }
+
+      .connection-cell-name {
+        font-size: 12.5px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .connection-cell-sub {
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--text-muted);
+      }
+
+      /* Sync status cell */
+      .sync-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .sync-cell-err {
+        font-size: 11px;
+        color: var(--status-error-strong);
+        max-width: 260px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sync-cell-sub {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .date-cell {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-secondary);
+        letter-spacing: -0.01em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .date-cell-rel {
+        font-family: var(--font-sans);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .row-action {
+        width: 1%;
+        text-align: right;
+      }
+
+      .row-action-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: var(--radius-sm);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        transition: background var(--duration-fast), color var(--duration-fast);
+      }
+
+      tr:hover .row-action-btn {
+        color: var(--text-primary);
+      }
+
+      tr:hover .row-action-btn:hover {
+        background: var(--bg-surface-hover);
+      }
+
+      .row-action-btn svg {
+        width: 14px;
+        height: 14px;
+        stroke-width: 1.75;
+      }
+
+      /* Pagination */
+      .orders-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-top: 1px solid var(--border-subtle);
+        background: var(--bg-surface);
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .pagination-pages {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .pagination-pages .btn {
+        height: 26px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+
+      /* Breakdown bar under toolbar */
+      .breakdown {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 10px 16px;
+        background: var(--bg-surface);
+        border-left: 1px solid var(--border-subtle);
+        border-right: 1px solid var(--border-subtle);
+        border-bottom: 1px solid var(--border-subtle);
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .breakdown-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .breakdown-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .breakdown-value {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .breakdown-sep {
+        width: 1px;
+        height: 14px;
+        background: var(--border-subtle);
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M3 4h2l2.5 12h12l2-8H6"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8L12 3 3 8v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8M10 12h4"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7" cy="7" r="1"/></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+      <symbol id="i-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 010 8.49M7.8 16.29a6 6 0 010-8.49M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/></symbol>
+      <symbol id="i-bookmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-4M5 9V2M19 9V2M5 9h14v4a5 5 0 01-5 5h-4a5 5 0 01-5-5V9z"/></symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></symbol>
+      <symbol id="i-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M15 9h0M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></symbol>
+      <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-3-2-3 2-3-2-3 2V3l3 2 3-2 3 2 3-2z"/><path d="M8 7h6M8 11h6"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 006 5.3L1 10M3.51 15A9 9 0 0018 18.7l5-4.7"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    </svg>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-mark">OL</div>
+          <div class="brand-name">OpenLinker <span class="brand-env">DEV</span></div>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <div class="nav-group">
+            <div class="nav-group-label">Operations</div>
+            <a class="nav-item" href="./dashboard-a.html"><svg class="nav-icon"><use href="#i-grid"/></svg><span class="nav-item-label">Dashboard</span></a>
+            <a class="nav-item nav-item--active" href="./orders.html"><svg class="nav-icon"><use href="#i-cart"/></svg><span class="nav-item-label">Orders</span><span class="nav-item-count">14</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-box"/></svg><span class="nav-item-label">Products</span><span class="nav-item-count">20</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-archive"/></svg><span class="nav-item-label">Inventory</span><span class="nav-item-count">20</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-users"/></svg><span class="nav-item-label">Customers</span><span class="nav-item-count">1</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-tag"/></svg><span class="nav-item-label">Listings</span><span class="nav-item-count">1</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-label">Diagnostics</div>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-activity"/></svg><span class="nav-item-label">Jobs &amp; Logs</span><span class="nav-item-count">4.7k</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-radio"/></svg><span class="nav-item-label">Webhooks</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-bookmark"/></svg><span class="nav-item-label">Cursors</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-label">Platform</div>
+            <a class="nav-item" href="./connection-detail.html"><svg class="nav-icon"><use href="#i-plug"/></svg><span class="nav-item-label">Integrations</span><span class="nav-item-count">2</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-cpu"/></svg><span class="nav-item-label">Adapters</span></a>
+            <a class="nav-item" href="#"><svg class="nav-icon"><use href="#i-settings"/></svg><span class="nav-item-label">Settings</span></a>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-label">Planned</div>
+            <span class="nav-item nav-item--disabled"><svg class="nav-icon"><use href="#i-wand"/></svg><span class="nav-item-label">Automations</span></span>
+            <span class="nav-item nav-item--disabled"><svg class="nav-icon"><use href="#i-truck"/></svg><span class="nav-item-label">Shipping</span></span>
+            <span class="nav-item nav-item--disabled"><svg class="nav-icon"><use href="#i-receipt"/></svg><span class="nav-item-label">Invoices</span></span>
+          </div>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="workspace-switch">
+            <div class="workspace-mark">DO</div>
+            <div class="workspace-meta">
+              <div class="workspace-name">Default organization</div>
+              <div class="workspace-sub">admin · development</div>
+            </div>
+            <svg class="nav-icon" style="color: var(--text-muted)"><use href="#i-chevron-right"/></svg>
+          </div>
+        </div>
+      </aside>
+
+      <header class="topbar">
+        <div class="topbar-crumbs">
+          <span class="crumb">Operations</span>
+          <span class="crumb-divider">/</span>
+          <span class="crumb crumb--current">Orders</span>
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="topbar-search">
+          <svg class="search-icon"><use href="#i-search"/></svg>
+          <input class="search-input" type="search" placeholder="Search orders, products, jobs, connections…" aria-label="Search"/>
+          <span class="search-kbd">⌘K</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" aria-label="Notifications"><svg><use href="#i-bell"/></svg><span class="icon-btn-dot"></span></button>
+          <button class="btn btn--secondary btn--sm"><svg><use href="#i-plus"/></svg>New connection</button>
+          <div class="user-chip"><div class="user-avatar">A</div><span class="user-name">admin</span></div>
+        </div>
+      </header>
+
+      <main class="main" style="padding: 24px 32px 56px">
+        <div class="page-header">
+          <div class="page-header-main">
+            <h1 class="page-title">Orders</h1>
+            <p class="page-description">
+              Track order sync across every marketplace. Filter by source, destination, or sync status.
+              <strong style="color: var(--status-error-strong); font-weight: 600">14 of 14 orders currently fail to sync</strong> —
+              all blocked on PrestaShop destination.
+            </p>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn--secondary btn--sm"><svg><use href="#i-download"/></svg>Export</button>
+            <button class="btn btn--secondary btn--sm"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+        </div>
+
+        <!-- Filter toolbar -->
+        <div class="orders-toolbar">
+          <span class="chip-filter active">
+            <svg><use href="#i-filter"/></svg>
+            <span class="chip-filter-label">Sync:</span>
+            <span class="chip-filter-value">Failed</span>
+            <span class="count">14</span>
+          </span>
+          <span class="chip-filter">
+            <span class="chip-filter-label">Source:</span>
+            <span class="chip-filter-value">All connections</span>
+            <svg><use href="#i-chevron-down"/></svg>
+          </span>
+          <span class="chip-filter">
+            <span class="chip-filter-label">Destination:</span>
+            <span class="chip-filter-value">PrestaShop store</span>
+            <svg><use href="#i-chevron-down"/></svg>
+          </span>
+          <span class="chip-filter">
+            <svg><use href="#i-calendar"/></svg>
+            <span class="chip-filter-value">Last 30 days</span>
+          </span>
+          <span class="chip-clear">+ Add filter</span>
+          <div class="toolbar-sep"></div>
+          <span class="chip-clear" style="color: var(--status-error-strong)">
+            <svg style="width: 10px; height: 10px; vertical-align: -1px; display: inline-block"><use href="#i-x"/></svg>
+            Clear
+          </span>
+          <div class="toolbar-search">
+            <svg class="toolbar-search-icon"><use href="#i-search"/></svg>
+            <input class="toolbar-search-input" type="search" placeholder="Order number or ID…"/>
+          </div>
+        </div>
+
+        <!-- Status breakdown strip -->
+        <div class="breakdown">
+          <span class="breakdown-item">
+            <span class="breakdown-dot" style="background: var(--status-error)"></span>
+            <strong class="breakdown-value">14</strong>
+            failed
+          </span>
+          <div class="breakdown-sep"></div>
+          <span class="breakdown-item">
+            <span class="breakdown-dot" style="background: var(--status-success)"></span>
+            <strong class="breakdown-value">0</strong>
+            synced
+          </span>
+          <div class="breakdown-sep"></div>
+          <span class="breakdown-item">
+            <span class="breakdown-dot" style="background: var(--status-warning)"></span>
+            <strong class="breakdown-value">0</strong>
+            retrying
+          </span>
+          <div class="breakdown-sep"></div>
+          <span class="breakdown-item">
+            <span class="breakdown-dot" style="background: var(--status-disabled)"></span>
+            <strong class="breakdown-value">0</strong>
+            pending
+          </span>
+          <div style="flex: 1"></div>
+          <span style="color: var(--text-muted); font-size: 11.5px">
+            Showing <strong style="font-family: var(--font-mono); color: var(--text-primary); font-weight: 600">14</strong> of <strong style="font-family: var(--font-mono); color: var(--text-primary); font-weight: 600">14</strong> matching orders
+          </span>
+        </div>
+
+        <!-- Orders table -->
+        <section class="orders-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Source</th>
+                <th>Sync</th>
+                <th class="sort">Created <svg><use href="#i-chevron-down"/></svg></th>
+                <th class="row-action"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 -->
+              <tr class="has-failure">
+                <td>
+                  <div class="entity">
+                    <span class="entity-name">55e40ca0-3b4f-11f1</span>
+                    <span class="entity-id">ol_order_7dc2043b1ce8…</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="entity">
+                    <span class="entity-name">Piotr S.</span>
+                    <span class="entity-id">pa315mqn8b@allegromail.pl</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="connection-cell">
+                    <span class="connection-mark">AL</span>
+                    <div class="connection-cell-body">
+                      <div class="connection-cell-name">Allegro sandbox</div>
+                      <div class="connection-cell-sub">allegro.publicapi.v1</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="sync-cell">
+                    <span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span>
+                    <span class="sync-cell-err">Country ISO2 'PL' exists but…</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="date-cell">
+                    18 Apr · 19:58
+                    <div class="date-cell-rel">2h ago</div>
+                  </div>
+                </td>
+                <td class="row-action">
+                  <span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span>
+                </td>
+              </tr>
+
+              <!-- Row 2 -->
+              <tr class="has-failure">
+                <td>
+                  <div class="entity">
+                    <span class="entity-name">a921b4c0-3b3e-11f1</span>
+                    <span class="entity-id">ol_order_2e7c8a46345e…</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="entity">
+                    <span class="entity-name">Piotr S.</span>
+                    <span class="entity-id">pa315mqn8b@allegromail.pl</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="connection-cell">
+                    <span class="connection-mark">AL</span>
+                    <div class="connection-cell-body">
+                      <div class="connection-cell-name">Allegro sandbox</div>
+                      <div class="connection-cell-sub">allegro.publicapi.v1</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="sync-cell">
+                    <span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span>
+                    <span class="sync-cell-err">Country ISO2 'PL' exists but…</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="date-cell">
+                    18 Apr · 18:44
+                    <div class="date-cell-rel">4h ago</div>
+                  </div>
+                </td>
+                <td class="row-action">
+                  <span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span>
+                </td>
+              </tr>
+
+              <!-- Rows 3-8: compact repeated pattern -->
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">8f3a2d10-3b2c-11f1</span><span class="entity-id">ol_order_9974248fb583…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 17:12<div class="date-cell-rel">5h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">12bd9e80-3b1a-11f1</span><span class="entity-id">ol_order_dfd169021bff…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 16:45<div class="date-cell-rel">6h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">04c8e110-3b0f-11f1</span><span class="entity-id">ol_order_4b74683946724…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 15:22<div class="date-cell-rel">7h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">7ac30d40-3b01-11f1</span><span class="entity-id">ol_order_1d6583ac744c…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 14:08<div class="date-cell-rel">8h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">c21e74e0-3af8-11f1</span><span class="entity-id">ol_order_fad22fc14a30…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 12:33<div class="date-cell-rel">10h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">59f0c270-3ae9-11f1</span><span class="entity-id">ol_order_1327465d34b2…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 11:14<div class="date-cell-rel">11h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">ac6b3180-3ad2-11f1</span><span class="entity-id">ol_order_9fb201f2301e…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 10:52<div class="date-cell-rel">12h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">f14a2990-3ab0-11f1</span><span class="entity-id">ol_order_0233e6d0b099…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 08:27<div class="date-cell-rel">14h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">3b94a120-3a8f-11f1</span><span class="entity-id">ol_order_bbf6eba229cb…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 06:18<div class="date-cell-rel">16h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">92e4f570-3a72-11f1</span><span class="entity-id">ol_order_78cca534d08e…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">18 Apr · 04:42<div class="date-cell-rel">18h ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">c87021f0-3a50-11f1</span><span class="entity-id">ol_order_113ebf2df5af…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">17 Apr · 23:11<div class="date-cell-rel">1d ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+              <tr class="has-failure"><td><div class="entity"><span class="entity-name">05231ab0-3a1f-11f1</span><span class="entity-id">ol_order_f8a0bf168f48…</span></div></td><td><div class="entity"><span class="entity-name">Piotr S.</span><span class="entity-id">pa315mqn8b@allegromail.pl</span></div></td><td><div class="connection-cell"><span class="connection-mark">AL</span><div class="connection-cell-body"><div class="connection-cell-name">Allegro sandbox</div><div class="connection-cell-sub">allegro.publicapi.v1</div></div></div></td><td><div class="sync-cell"><span class="badge badge--error"><span class="badge-dot"></span>failed on PrestaShop</span><span class="sync-cell-err">Country ISO2 'PL' exists but…</span></div></td><td><div class="date-cell">17 Apr · 20:34<div class="date-cell-rel">1d ago</div></div></td><td class="row-action"><span class="row-action-btn"><svg><use href="#i-chevron-right"/></svg></span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="orders-pagination">
+            <span>Showing <strong style="font-family: var(--font-mono); color: var(--text-primary); font-weight: 600">1–14</strong> of <strong style="font-family: var(--font-mono); color: var(--text-primary); font-weight: 600">14</strong></span>
+            <div class="pagination-pages">
+              <span style="margin-right: 8px">Rows</span>
+              <div class="btn-group">
+                <button class="btn" aria-pressed="true">25</button>
+                <button class="btn">50</button>
+                <button class="btn">100</button>
+              </div>
+              <div style="width: 12px"></div>
+              <button class="btn btn--secondary btn--sm" disabled style="opacity: 0.4">← Previous</button>
+              <button class="btn btn--secondary btn--sm" disabled style="opacity: 0.4">Next →</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
