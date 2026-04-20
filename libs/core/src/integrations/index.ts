@@ -60,6 +60,7 @@ export type {
   CreateOfferOverrides,
   CreateOfferResult,
   CreateOfferResultStatus,
+  CreateOfferValidationError,
 } from './domain/types/marketplace-offer-create.types';
 
 // Exceptions
