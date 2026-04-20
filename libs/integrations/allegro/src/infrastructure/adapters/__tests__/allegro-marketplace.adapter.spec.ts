@@ -887,6 +887,55 @@ describe('AllegroMarketplaceAdapter', () => {
       expect(body).not.toHaveProperty('unknownField');
     });
 
+    it('throws AllegroOfferCreateException when overrides.title is missing (precondition)', async () => {
+      const cmd: CreateOfferCommand = {
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, title: undefined },
+      };
+
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(AllegroOfferCreateException);
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('throws AllegroOfferCreateException when overrides.categoryId is missing (precondition)', async () => {
+      const cmd: CreateOfferCommand = {
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, categoryId: undefined },
+      };
+
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(AllegroOfferCreateException);
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('drops malformed parameter entries from platformParams.parameters', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-params', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: {
+            parameters: [
+              { id: 'valid', values: ['a', 'b'] },
+              { id: 'bad-values', values: [1, 2] }, // values must be strings
+              { id: '', values: ['x'] }, // empty id
+              { values: ['y'] }, // missing id
+              { id: 'bad-valuesIds', valuesIds: 'not-an-array' },
+              { id: 'also-valid', valuesIds: ['123'] },
+            ],
+          },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as { parameters?: Array<{ id: string }> };
+      expect(body.parameters).toEqual([
+        { id: 'valid', values: ['a', 'b'] },
+        { id: 'also-valid', valuesIds: ['123'] },
+      ]);
+    });
+
     it('uses cmd.idempotencyKey for external.id when provided', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-6', publication: { status: 'INACTIVE' } }),

@@ -165,11 +165,22 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
     const amount = product.price;
     const currency = product.currency;
-    if (typeof amount !== 'number' || amount <= 0) {
+    if (typeof amount !== 'number') {
       issues.push({
         field: 'price.amount',
         code: 'REQUIRED',
-        message: 'No positive price available from input or master product',
+        message:
+          'Price amount could not be resolved from input or master product; provide input.price explicitly',
+      });
+      return null;
+    }
+    // Marketplaces reject non-positive prices; distinguish "missing" from "zero/negative"
+    // so the caller can see which fix is needed.
+    if (amount <= 0) {
+      issues.push({
+        field: 'price.amount',
+        code: 'NON_POSITIVE',
+        message: `Master product price (${amount}) is not a positive value; provide input.price explicitly`,
       });
       return null;
     }

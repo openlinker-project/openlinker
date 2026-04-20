@@ -58,6 +58,28 @@ import {
 type MarketplaceOrderFeedItem = MarketplaceOrderFeedOutput['items'][number];
 
 /**
+ * Type guard used when filtering untyped `platformParams.parameters` into the
+ * Allegro-accepted shape. Requires `id: string` and, when present, `values` /
+ * `valuesIds` must be arrays of strings. Anything that fails this check is
+ * silently dropped — Allegro would reject it anyway, and keeping the guard
+ * strict means invalid shapes fail fast at the request-build step.
+ */
+function isAllegroOfferParameterShape(
+  candidate: unknown,
+): candidate is { id: string; values?: string[]; valuesIds?: string[] } {
+  if (typeof candidate !== 'object' || candidate === null) return false;
+  const c = candidate as { id?: unknown; values?: unknown; valuesIds?: unknown };
+  if (typeof c.id !== 'string' || c.id.length === 0) return false;
+  if (c.values !== undefined) {
+    if (!Array.isArray(c.values) || !c.values.every((v) => typeof v === 'string')) return false;
+  }
+  if (c.valuesIds !== undefined) {
+    if (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string')) return false;
+  }
+  return true;
+}
+
+/**
  * Polling configuration for Allegro async quantity change commands.
  *
  * Defaults: 5 attempts, 2s initial delay, 30s max delay, 2x backoff multiplier
@@ -797,8 +819,22 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
   private buildCreateOfferRequest(cmd: CreateOfferCommand): AllegroProductOfferCreateRequest {
     const platformParams = (cmd.overrides?.platformParams ?? {});
 
-    const name = cmd.overrides?.title ?? '';
-    const categoryId = cmd.overrides?.categoryId ?? '';
+    // Preconditions: the core `OfferBuilderService` is expected to have resolved
+    // these, but callers *may* bypass the builder. Fail fast with a structured
+    // domain error rather than sending `name: ''` / `category: { id: '' }` to
+    // Allegro and getting a cryptic 400 back.
+    const name = cmd.overrides?.title;
+    const categoryId = cmd.overrides?.categoryId;
+    if (!name || name.trim().length === 0) {
+      throw new AllegroOfferCreateException(0, [
+        { code: 'PRECONDITION_TITLE_REQUIRED', message: 'overrides.title is required for Allegro offer creation' },
+      ]);
+    }
+    if (!categoryId || categoryId.trim().length === 0) {
+      throw new AllegroOfferCreateException(0, [
+        { code: 'PRECONDITION_CATEGORY_REQUIRED', message: 'overrides.categoryId is required for Allegro offer creation' },
+      ]);
+    }
     const externalRef = cmd.idempotencyKey ?? cmd.internalVariantId;
 
     const body: AllegroProductOfferCreateRequest = {
@@ -878,10 +914,7 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
 
     const parameters = platformParams['parameters'];
     if (Array.isArray(parameters)) {
-      body.parameters = parameters.filter(
-        (p): p is { id: string; values?: string[]; valuesIds?: string[] } =>
-          typeof p === 'object' && p !== null && typeof (p as { id?: unknown }).id === 'string',
-      );
+      body.parameters = parameters.filter(isAllegroOfferParameterShape);
     }
   }
 
