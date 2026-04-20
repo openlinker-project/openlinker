@@ -1,6 +1,7 @@
-import { screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { SyncJobDetailPage } from './sync-job-detail-page';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
@@ -32,6 +33,8 @@ function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>): vo
 }
 
 describe('SyncJobDetailPage', () => {
+  afterEach(cleanup);
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       syncJobs: { getById: vi.fn().mockReturnValue(new Promise(() => {})) },
@@ -63,5 +66,57 @@ describe('SyncJobDetailPage', () => {
     renderDetailPage(mockApi);
 
     expect(await screen.findByText('Unable to load job')).toBeInTheDocument();
+  });
+
+  it('surfaces a retry banner with the error preview when the job is dead', async () => {
+    const deadJob: SyncJob = {
+      ...sampleJob,
+      status: 'dead',
+      attempts: 3,
+      lastError: 'insert or update on table inventory_items violates foreign key constraint',
+    };
+    const mockApi = createMockApiClient({
+      syncJobs: { getById: vi.fn().mockResolvedValue(deadJob) },
+    });
+
+    renderDetailPage(mockApi);
+
+    await screen.findByText('Job failed after 3 attempts');
+    expect(screen.getAllByText(/foreign key constraint/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('invokes the retry mutation when the banner Retry button is clicked', async () => {
+    const user = userEvent.setup();
+    const retry = vi.fn().mockResolvedValue({ ...sampleJob, status: 'queued' });
+    const mockApi = createMockApiClient({
+      syncJobs: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleJob,
+          status: 'dead',
+          attempts: 3,
+          lastError: 'timeout',
+        }),
+        retry,
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    await screen.findByText('Job failed after 3 attempts');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(retry).toHaveBeenCalledWith(sampleJob.id);
+  });
+
+  it('does not show the retry banner for succeeded jobs', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { getById: vi.fn().mockResolvedValue(sampleJob) },
+    });
+
+    renderDetailPage(mockApi);
+
+    await screen.findByText('marketplace.orders.poll');
+    expect(screen.queryByText(/Job failed/)).toBeNull();
   });
 });
