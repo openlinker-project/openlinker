@@ -7,6 +7,18 @@
  * @module apps/web/src/features/sync-jobs/api
  */
 
+/**
+ * Maximum page size accepted by the backend `GET /sync/jobs` endpoint.
+ *
+ * The server enforces `@Max(100)` in `apps/api/src/sync/http/dto/list-sync-jobs-query.dto.ts`
+ * (and the same value on every other list DTO in the repo). Requesting `limit`
+ * above this returns HTTP 400 with "limit must not be greater than 100".
+ *
+ * Keep this in sync with the backend validator. Any frontend caller that
+ * pages through sync jobs should clamp to this value or lower.
+ */
+export const SYNC_JOBS_MAX_LIMIT = 100;
+
 export const JOB_STATUS_VALUES = ['queued', 'running', 'succeeded', 'dead'] as const;
 export type JobStatus = (typeof JOB_STATUS_VALUES)[number];
 

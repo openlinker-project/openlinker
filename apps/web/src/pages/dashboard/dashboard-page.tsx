@@ -20,6 +20,7 @@ import type {
 } from '../../features/health/api/health.types';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
 import type { JobStatus, SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
+import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
 import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './intervals';
 import {
   groupFailedJobs,
@@ -36,11 +37,13 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
 
-// Client-side grouping caps at 500 dead jobs. Beyond that we still render the
-// aggregate count correctly (via `total`), but the grouped rows fall back to
-// "first 500 shown" semantics. Operators running 500+ simultaneous dead jobs
-// have a bigger problem than dashboard pagination.
-const DEAD_JOB_GROUPING_LIMIT = 500;
+// Client-side grouping caps at the backend list-endpoint max (`@Max(100)` on
+// GET /sync/jobs). The aggregate count (from `query.data.total`) remains the
+// true server count, and the panel meta already renders "N signatures in
+// first M" honestly whenever the returned page is smaller than the total.
+// Long-term fix: #268 — server-side grouping endpoint that removes the
+// page-limit dependency entirely.
+const DEAD_JOB_GROUPING_LIMIT = SYNC_JOBS_MAX_LIMIT;
 
 type DashboardTone = 'success' | 'warning' | 'error' | 'neutral';
 
