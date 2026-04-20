@@ -1,7 +1,8 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -22,40 +23,39 @@ const COLUMNS: DataTableColumn<OfferMapping>[] = [
     id: 'internalId',
     header: 'Internal ID',
     cell: (m): ReactNode => <span className="mono-text">{m.internalId}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'platformType',
     header: 'Platform',
     cell: (m): ReactNode => <span className="mono-text">{m.platformType}</span>,
+    accessor: (m): string => m.platformType,
+    sortable: true,
   },
   {
     id: 'entityType',
     header: 'Entity Type',
     cell: (m): ReactNode => <span className="mono-text">{m.entityType}</span>,
+    hideBelow: 768,
   },
   {
     id: 'connectionId',
     header: 'Connection',
     cell: (m): ReactNode => <span className="mono-text">{m.connectionId}</span>,
+    hideBelow: 768,
   },
   {
     id: 'createdAt',
     header: 'Created',
     cell: (m): ReactNode => <TimeDisplay iso={m.createdAt} format="date" />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (m): ReactNode => (
-      <Link to={m.id} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (m): string => m.createdAt,
+    sortable: true,
   },
 ];
 
 export function ListingsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('connectionId') ?? '';
@@ -170,6 +170,14 @@ export function ListingsListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(m) => m.id}
+            rowHref={(m) => m.id}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (m) => m.externalId,
+              subtitle: (m) => `${m.platformType} · ${m.entityType}`,
+              meta: (m) => <TimeDisplay iso={m.createdAt} format="date" />,
+            }}
           />
 
           <div className="pagination">

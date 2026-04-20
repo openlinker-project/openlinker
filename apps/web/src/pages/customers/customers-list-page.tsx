@@ -1,7 +1,8 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -22,6 +23,7 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
     id: 'emailHash',
     header: 'Email Hash',
     cell: (c): ReactNode => <span className="mono-text">{c.emailHash}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'name',
@@ -30,6 +32,8 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
       const name = [c.firstName, c.lastName].filter(Boolean).join(' ');
       return name ? <span>{name}</span> : <span className="text-muted">—</span>;
     },
+    accessor: (c) => [c.firstName, c.lastName].filter(Boolean).join(' '),
+    sortable: true,
   },
   {
     id: 'lastSourceConnectionId',
@@ -40,25 +44,20 @@ const COLUMNS: DataTableColumn<CustomerProjection>[] = [
       ) : (
         <span className="text-muted">—</span>
       ),
+    hideBelow: 768,
   },
   {
     id: 'lastSeenAt',
     header: 'Last Seen',
     cell: (c): ReactNode => <TimeDisplay iso={c.lastSeenAt} format="date" />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (c): ReactNode => (
-      <Link to={c.internalCustomerId} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (c) => c.lastSeenAt,
+    sortable: true,
   },
 ];
 
 export function CustomersListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
 
   const urlSearch = searchParams.get('search') ?? '';
   const urlConnectionId = searchParams.get('lastSourceConnectionId') ?? '';
@@ -160,6 +159,14 @@ export function CustomersListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(c) => c.internalCustomerId}
+            rowHref={(c) => c.internalCustomerId}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (c) => c.internalCustomerId,
+              subtitle: (c) => [c.firstName, c.lastName].filter(Boolean).join(' ') || c.emailHash,
+              meta: (c) => <TimeDisplay iso={c.lastSeenAt} format="date" />,
+            }}
           />
 
           <div className="pagination">

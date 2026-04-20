@@ -1266,25 +1266,194 @@ textarea {
 
 .data-table th,
 .data-table td {
-  padding: 0.8rem 0.65rem;
+  padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .data-table thead th {
-  padding-top: 0;
+  padding-top: 6px;
+  padding-bottom: 6px;
   border-top: 0;
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  background: var(--bg-shell);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .data-table tbody td {
   color: var(--text-secondary);
 }
+
+.data-table__row--linked {
+  cursor: pointer;
+}
+
+.data-table__row--linked:hover {
+  background: var(--bg-surface-muted);
+}
+
+.data-table__row--linked:hover .data-table__row-link {
+  color: var(--accent-primary-hover);
+}
+
+.data-table__row-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.data-table__row-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.data-table__header--sortable {
+  cursor: pointer;
+}
+
+.data-table__header-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.data-table__header-button:hover {
+  color: var(--text-primary);
+}
+
+.data-table__header-button:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.data-table__sort-indicator {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.data-table__header--sortable[aria-sort='ascending'] .data-table__sort-indicator,
+.data-table__header--sortable[aria-sort='descending'] .data-table__sort-indicator {
+  color: var(--accent-primary);
+}
+
+.data-table__cell--hide-below-480,
+.data-table__cell--hide-below-768,
+.data-table__cell--hide-below-1024 {
+  /* Visibility toggled below */
+}
+
+@media (max-width: 479.98px) {
+  .data-table__cell--hide-below-480 {
+    display: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .data-table__cell--hide-below-768 {
+    display: none;
+  }
+}
+
+@media (max-width: 1023.98px) {
+  .data-table__cell--hide-below-1024 {
+    display: none;
+  }
+}
+
+/* Mobile card view. The table is still rendered for desktop fallback /
+   screen-reader parity; the cards take over below 768 px. */
+
+.data-table__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.data-table__card {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.data-table__card-link {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.data-table__card-link:hover {
+  background: var(--bg-surface-muted);
+}
+
+.data-table__card-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: -2px;
+}
+
+.data-table__card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.data-table__card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.data-table__card-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.data-table__card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.data-table__cards-empty {
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-default);
+  border-radius: 10px;
+}
+
 
 .timeline-list {
   list-style: none;

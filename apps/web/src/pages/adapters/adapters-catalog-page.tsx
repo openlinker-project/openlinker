@@ -17,11 +17,15 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
         <span className="mono-text muted-text">{adapter.adapterKey}</span>
       </div>
     ),
+    accessor: (adapter) => adapter.displayName ?? adapter.adapterKey,
+    sortable: true,
   },
   {
     id: 'platform',
     header: 'Platform',
     cell: (adapter) => adapter.platformType,
+    accessor: (adapter) => adapter.platformType,
+    sortable: true,
   },
   {
     id: 'capabilities',
@@ -35,6 +39,7 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
         ))}
       </div>
     ),
+    hideBelow: 768,
   },
   {
     id: 'version',
@@ -43,6 +48,7 @@ const COLUMNS: DataTableColumn<AdapterSummary>[] = [
     cell: (adapter) => (
       <span className="mono-text">{adapter.version ?? '—'}</span>
     ),
+    hideBelow: 480,
   },
 ];
 

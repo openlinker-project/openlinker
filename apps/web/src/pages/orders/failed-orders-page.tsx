@@ -10,6 +10,7 @@ import { type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
@@ -62,21 +63,20 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'id',
     header: 'Job ID',
-    cell: (job) => (
-      <Link to={`/sync-jobs/${job.id}`} className="mono-text">
-        {job.id.slice(0, 8)}…
-      </Link>
-    ),
+    cell: (job) => <span className="mono-text">{job.id.slice(0, 8)}…</span>,
   },
   {
     id: 'connectionId',
     header: 'Connection',
     cell: (job) => <span className="mono-text">{job.connectionId.slice(0, 8)}…</span>,
+    hideBelow: 1024,
   },
   {
     id: 'updatedAt',
     header: 'Failed At',
     cell: (job) => <TimeDisplay iso={job.updatedAt} />,
+    accessor: (job) => job.updatedAt,
+    sortable: true,
   },
   {
     id: 'lastError',
@@ -89,12 +89,14 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
         </pre>
       </details>
     ),
+    hideBelow: 768,
   },
   {
     id: 'attempts',
     header: 'Attempts',
     cell: (job) => `${job.attempts}/${job.maxAttempts}`,
     align: 'center',
+    hideBelow: 480,
   },
   {
     id: 'actions',
@@ -106,6 +108,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
 
 export function FailedOrdersPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
 
   const connectionId = searchParams.get('connectionId') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
@@ -212,6 +215,14 @@ export function FailedOrdersPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(job) => job.id}
+            rowHref={(job) => `/sync-jobs/${job.id}`}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (job) => `${job.id.slice(0, 8)}…`,
+              subtitle: (job) => truncateError(job.lastError, 60),
+              meta: (job) => <RetryButton job={job} />,
+            }}
           />
 
           <div className="pagination">

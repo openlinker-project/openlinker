@@ -1,7 +1,8 @@
 import { useState, type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -17,6 +18,8 @@ const COLUMNS: DataTableColumn<Product>[] = [
     id: 'name',
     header: 'Name',
     cell: (product) => product.name,
+    accessor: (product) => product.name,
+    sortable: true,
   },
   {
     id: 'sku',
@@ -27,6 +30,9 @@ const COLUMNS: DataTableColumn<Product>[] = [
       ) : (
         <span className="text-muted">—</span>
       ),
+    accessor: (product) => product.sku,
+    sortable: true,
+    hideBelow: 768,
   },
   {
     id: 'price',
@@ -34,25 +40,23 @@ const COLUMNS: DataTableColumn<Product>[] = [
     align: 'right',
     cell: (product) =>
       product.price !== null ? product.price.toFixed(2) : <span className="text-muted">—</span>,
+    accessor: (product) => product.price,
+    sortable: true,
+    hideBelow: 480,
   },
   {
     id: 'createdAt',
     header: 'Created',
     cell: (product) => <TimeDisplay iso={product.createdAt} format="date" />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (product) => (
-      <Link to={product.id} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (product) => product.createdAt,
+    sortable: true,
+    hideBelow: 1024,
   },
 ];
 
 export function ProductsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
 
   const urlSearch = searchParams.get('search') ?? '';
   const offset = Number(searchParams.get('offset') ?? '0');
@@ -144,6 +148,14 @@ export function ProductsListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(product) => product.id}
+            rowHref={(product) => product.id}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (product) => product.name,
+              subtitle: (product) => product.sku ?? '—',
+              meta: (product) => (product.price !== null ? product.price.toFixed(2) : null),
+            }}
           />
 
           {/* Pagination */}

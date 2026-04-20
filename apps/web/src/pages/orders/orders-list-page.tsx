@@ -2,6 +2,7 @@ import { type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
@@ -30,6 +31,7 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
     id: 'sourceConnectionId',
     header: 'Source Connection',
     cell: (order) => <span className="mono-text">{order.sourceConnectionId}</span>,
+    hideBelow: 768,
   },
   {
     id: 'customerId',
@@ -40,6 +42,7 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
       ) : (
         <span className="text-muted">—</span>
       ),
+    hideBelow: 1024,
   },
   {
     id: 'syncStatus',
@@ -49,7 +52,7 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
         return <span className="text-muted">—</span>;
       }
       return (
-        <span style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+        <span className="data-table__badge-row">
           {order.syncStatus.map((s) => (
             <StatusBadge
               key={s.destinationConnectionId}
@@ -67,20 +70,14 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
     id: 'createdAt',
     header: 'Created',
     cell: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (order) => (
-      <Link to={order.internalOrderId} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (order) => order.createdAt,
+    sortable: true,
   },
 ];
 
 export function OrdersListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const syncStatus = (searchParams.get('syncStatus') as OrderSyncStatusValue | null) ?? undefined;
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
@@ -181,6 +178,19 @@ export function OrdersListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            rowHref={(order) => order.internalOrderId}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (order) => order.internalOrderId,
+              subtitle: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
+              meta: (order) =>
+                order.syncStatus[0] ? (
+                  <StatusBadge tone={SYNC_STATUS_TONES[order.syncStatus[0].status]} compact>
+                    {order.syncStatus[0].status}
+                  </StatusBadge>
+                ) : null,
+            }}
           />
 
           <div className="pagination">
