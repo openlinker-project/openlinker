@@ -18,7 +18,13 @@ import {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
 } from '@openlinker/core/integrations';
-import type { MarketplaceCategory } from '@openlinker/core/integrations';
+import type {
+  CreateOfferCommand,
+  CreateOfferResult,
+  CreateOfferResultStatus,
+  CreateOfferValidationError,
+  MarketplaceCategory,
+} from '@openlinker/core/integrations';
 import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
@@ -36,7 +42,12 @@ import {
   AllegroOfferEventsResponse,
   AllegroOfferFieldsPatchBody,
   AllegroMatchingCategoriesResponse,
+  AllegroProductOfferCreateRequest,
+  AllegroProductOfferCreateResponse,
+  AllegroValidationError,
 } from '../../domain/types/allegro-api.types';
+import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroOfferCreateException } from '../../domain/exceptions/allegro-offer-create.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import {
@@ -709,6 +720,211 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       );
       throw error;
     }
+  }
+
+  /**
+   * Create a new Allegro offer (outbound OL → Allegro).
+   *
+   * Translates the neutral `CreateOfferCommand` into Allegro's
+   * `POST /sale/product-offers` request. Platform-specific fields flow
+   * through `cmd.overrides.platformParams`:
+   * - `deliveryPolicyId` → `delivery.shippingRates.id`
+   * - `handlingTime` → `delivery.handlingTime`
+   * - `returnPolicyId` → `afterSalesServices.returnPolicy.id`
+   * - `warrantyId` → `afterSalesServices.warranty.id`
+   * - `impliedWarrantyId` → `afterSalesServices.impliedWarranty.id`
+   * - `invoice` → `payments.invoice`
+   * - `parameters` → passthrough to request `parameters`
+   * Unknown keys are ignored.
+   *
+   * `external.id` precedence: `cmd.idempotencyKey ?? cmd.internalVariantId` —
+   * callers set the idempotency key per creation attempt so retries get a
+   * unique reference. Allegro's public API does not accept an `Idempotency-Key`
+   * header, so this is the adapter's only use of `cmd.idempotencyKey`.
+   *
+   * Non-2xx responses with structured errors are translated to
+   * `AllegroOfferCreateException`. 2xx responses with inline validation errors
+   * are **not** thrown — the offer exists as a draft on Allegro and the errors
+   * are surfaced through `CreateOfferResult.validationErrors`.
+   */
+  async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
+    const body = this.buildCreateOfferRequest(cmd);
+
+    this.logger.debug(
+      `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
+    );
+
+    let response: AllegroProductOfferCreateResponse;
+    try {
+      const httpResponse = await this.httpClient.post<AllegroProductOfferCreateResponse>(
+        '/sale/product-offers',
+        body as unknown as Record<string, unknown>,
+      );
+      response = httpResponse.data;
+    } catch (error) {
+      if (error instanceof AllegroApiException && error.statusCode !== undefined) {
+        const parsedErrors = this.parseAllegroErrors(error.responseBody);
+        this.logger.error(
+          `Allegro rejected offer creation: connection=${this.connectionId} status=${error.statusCode} errors=${parsedErrors.length}`,
+          error,
+        );
+        throw new AllegroOfferCreateException(error.statusCode, parsedErrors);
+      }
+      throw error;
+    }
+
+    const validationErrors = this.mapValidationErrors(response.validation?.errors ?? []);
+    const status = this.resolveCreateOfferStatus(
+      response.publication?.status,
+      validationErrors.length > 0,
+      cmd.publishImmediately,
+    );
+
+    this.logger.log(
+      `Allegro offer created: connection=${this.connectionId} offerId=${response.id} status=${status} validationErrors=${validationErrors.length}`,
+    );
+
+    const result: CreateOfferResult = {
+      externalOfferId: response.id,
+      status,
+    };
+    if (validationErrors.length > 0) {
+      result.validationErrors = validationErrors;
+    }
+    return result;
+  }
+
+  private buildCreateOfferRequest(cmd: CreateOfferCommand): AllegroProductOfferCreateRequest {
+    const platformParams = (cmd.overrides?.platformParams ?? {});
+
+    const name = cmd.overrides?.title ?? '';
+    const categoryId = cmd.overrides?.categoryId ?? '';
+    const externalRef = cmd.idempotencyKey ?? cmd.internalVariantId;
+
+    const body: AllegroProductOfferCreateRequest = {
+      name,
+      category: { id: categoryId },
+      sellingMode: {
+        price: {
+          amount: cmd.price.amount.toFixed(2),
+          currency: cmd.price.currency,
+        },
+        format: 'BUY_NOW',
+      },
+      stock: { available: cmd.stock, unit: 'UNIT' },
+      publication: { status: cmd.publishImmediately ? 'ACTIVE' : 'INACTIVE' },
+      external: { id: externalRef },
+    };
+
+    if (cmd.overrides?.description) {
+      body.description = {
+        sections: [
+          {
+            items: [{ type: 'TEXT', content: cmd.overrides.description }],
+          },
+        ],
+      };
+    }
+
+    if (cmd.overrides?.imageUrls && cmd.overrides.imageUrls.length > 0) {
+      body.images = cmd.overrides.imageUrls.map((url) => ({ url }));
+    }
+
+    this.applyPlatformParams(body, platformParams);
+
+    return body;
+  }
+
+  private applyPlatformParams(
+    body: AllegroProductOfferCreateRequest,
+    platformParams: Record<string, unknown>,
+  ): void {
+    const deliveryPolicyId = platformParams['deliveryPolicyId'];
+    const handlingTime = platformParams['handlingTime'];
+    if (typeof deliveryPolicyId === 'string' || typeof handlingTime === 'string') {
+      body.delivery = {};
+      if (typeof deliveryPolicyId === 'string') {
+        body.delivery.shippingRates = { id: deliveryPolicyId };
+      }
+      if (typeof handlingTime === 'string') {
+        body.delivery.handlingTime = handlingTime;
+      }
+    }
+
+    const returnPolicyId = platformParams['returnPolicyId'];
+    const warrantyId = platformParams['warrantyId'];
+    const impliedWarrantyId = platformParams['impliedWarrantyId'];
+    if (
+      typeof returnPolicyId === 'string' ||
+      typeof warrantyId === 'string' ||
+      typeof impliedWarrantyId === 'string'
+    ) {
+      body.afterSalesServices = {};
+      if (typeof returnPolicyId === 'string') {
+        body.afterSalesServices.returnPolicy = { id: returnPolicyId };
+      }
+      if (typeof warrantyId === 'string') {
+        body.afterSalesServices.warranty = { id: warrantyId };
+      }
+      if (typeof impliedWarrantyId === 'string') {
+        body.afterSalesServices.impliedWarranty = { id: impliedWarrantyId };
+      }
+    }
+
+    const invoice = platformParams['invoice'];
+    if (invoice === 'VAT' || invoice === 'NO_INVOICE' || invoice === 'VAT_MARGIN') {
+      body.payments = { invoice };
+    }
+
+    const parameters = platformParams['parameters'];
+    if (Array.isArray(parameters)) {
+      body.parameters = parameters.filter(
+        (p): p is { id: string; values?: string[]; valuesIds?: string[] } =>
+          typeof p === 'object' && p !== null && typeof (p as { id?: unknown }).id === 'string',
+      );
+    }
+  }
+
+  private resolveCreateOfferStatus(
+    publicationStatus: string | undefined,
+    hasValidationErrors: boolean,
+    publishImmediately: boolean,
+  ): CreateOfferResultStatus {
+    if (hasValidationErrors) {
+      return 'draft';
+    }
+    if (publicationStatus === 'ACTIVE') {
+      return 'active';
+    }
+    if (publicationStatus === 'ACTIVATING') {
+      return 'validating';
+    }
+    // INACTIVE or unknown
+    if (publishImmediately) {
+      return 'validating';
+    }
+    return 'draft';
+  }
+
+  private mapValidationErrors(errors: AllegroValidationError[]): CreateOfferValidationError[] {
+    return errors.map((err) => ({
+      field: err.path,
+      code: err.code,
+      message: err.userMessage ?? err.message,
+    }));
+  }
+
+  private parseAllegroErrors(responseBody: string | undefined): AllegroValidationError[] {
+    if (!responseBody) return [];
+    try {
+      const parsed = JSON.parse(responseBody) as { errors?: AllegroValidationError[] };
+      if (Array.isArray(parsed.errors)) {
+        return parsed.errors;
+      }
+    } catch {
+      // Response wasn't JSON or didn't match the expected shape.
+    }
+    return [];
   }
 
   /**

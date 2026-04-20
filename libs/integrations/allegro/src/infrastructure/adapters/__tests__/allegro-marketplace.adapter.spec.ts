@@ -15,7 +15,11 @@ import {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommandResponse,
+  AllegroProductOfferCreateResponse,
 } from '../../../domain/types/allegro-api.types';
+import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import { AllegroOfferCreateException } from '../../../domain/exceptions/allegro-offer-create.exception';
+import type { CreateOfferCommand } from '@openlinker/core/integrations';
 
 describe('AllegroMarketplaceAdapter', () => {
   let adapter: AllegroMarketplaceAdapter;
@@ -719,6 +723,190 @@ describe('AllegroMarketplaceAdapter', () => {
       const result = await adapter.matchCategoryByBarcode('5901234123457');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('createOffer', () => {
+    const baseCmd: CreateOfferCommand = {
+      internalVariantId: 'ol_variant_abc',
+      connectionId,
+      price: { amount: 49.99, currency: 'PLN' },
+      stock: 5,
+      publishImmediately: false,
+      overrides: {
+        title: 'Test Offer Title',
+        description: 'Test description',
+        categoryId: 'allegro-cat-100',
+        imageUrls: ['https://example.com/img.jpg'],
+      },
+    };
+
+    const mockHttpResponse = (data: AllegroProductOfferCreateResponse) => ({
+      data,
+      status: 201,
+      headers: {},
+    });
+
+    it('returns draft status when INACTIVE without validation errors', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-1',
+          publication: { status: 'INACTIVE' },
+        }),
+      );
+
+      const result = await adapter.createOffer(baseCmd);
+
+      expect(result).toEqual({ externalOfferId: 'allegro-offer-1', status: 'draft' });
+      const [path, body] = httpClient.post.mock.calls[0];
+      expect(path).toBe('/sale/product-offers');
+      expect(body).toMatchObject({
+        name: 'Test Offer Title',
+        category: { id: 'allegro-cat-100' },
+        sellingMode: {
+          price: { amount: '49.99', currency: 'PLN' },
+          format: 'BUY_NOW',
+        },
+        stock: { available: 5, unit: 'UNIT' },
+        publication: { status: 'INACTIVE' },
+      });
+    });
+
+    it('requests publication.status=ACTIVE when publishImmediately=true and returns active when response is ACTIVE', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-2',
+          publication: { status: 'ACTIVE' },
+        }),
+      );
+
+      const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
+
+      expect(result.status).toBe('active');
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.publication).toEqual({ status: 'ACTIVE' });
+    });
+
+    it('returns validating when publishImmediately=true but response is INACTIVE with no validation errors', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-3',
+          publication: { status: 'INACTIVE' },
+        }),
+      );
+
+      const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
+
+      expect(result.status).toBe('validating');
+    });
+
+    it('returns draft + validationErrors on 2xx with inline validation errors (does NOT throw)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({
+          id: 'allegro-offer-4',
+          publication: { status: 'INACTIVE' },
+          validation: {
+            errors: [
+              {
+                code: 'VALIDATION_REQUIRED',
+                message: 'Parameter EAN is required',
+                path: 'parameters.EAN',
+                userMessage: 'Supply EAN',
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await adapter.createOffer(baseCmd);
+
+      expect(result.externalOfferId).toBe('allegro-offer-4');
+      expect(result.status).toBe('draft');
+      expect(result.validationErrors).toEqual([
+        {
+          field: 'parameters.EAN',
+          code: 'VALIDATION_REQUIRED',
+          message: 'Supply EAN',
+        },
+      ]);
+    });
+
+    it('throws AllegroOfferCreateException on 422 with structured errors', async () => {
+      httpClient.post.mockRejectedValue(
+        new AllegroApiException(
+          'Unprocessable entity',
+          422,
+          JSON.stringify({
+            errors: [
+              { code: 'BAD_CATEGORY', message: 'Category does not exist' },
+            ],
+          }),
+          'https://api.allegro.pl/sale/product-offers',
+        ),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
+        AllegroOfferCreateException,
+      );
+    });
+
+    it('maps platformParams to delivery/return/warranty/invoice/parameters', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-5', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: {
+            deliveryPolicyId: 'deliv-1',
+            handlingTime: 'PT72H',
+            returnPolicyId: 'ret-1',
+            warrantyId: 'war-1',
+            impliedWarrantyId: 'iwar-1',
+            invoice: 'VAT',
+            parameters: [{ id: 'ean-param', values: ['5901234123457'] }],
+            unknownField: 'should be ignored',
+          },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.delivery).toEqual({
+        shippingRates: { id: 'deliv-1' },
+        handlingTime: 'PT72H',
+      });
+      expect(body.afterSalesServices).toEqual({
+        returnPolicy: { id: 'ret-1' },
+        warranty: { id: 'war-1' },
+        impliedWarranty: { id: 'iwar-1' },
+      });
+      expect(body.payments).toEqual({ invoice: 'VAT' });
+      expect(body.parameters).toEqual([{ id: 'ean-param', values: ['5901234123457'] }]);
+      expect(body).not.toHaveProperty('unknownField');
+    });
+
+    it('uses cmd.idempotencyKey for external.id when provided', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-6', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({ ...baseCmd, idempotencyKey: 'idem-xyz' });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.external).toEqual({ id: 'idem-xyz' });
+    });
+
+    it('falls back to cmd.internalVariantId for external.id when no idempotencyKey', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-7', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer(baseCmd);
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.external).toEqual({ id: 'ol_variant_abc' });
     });
   });
 });

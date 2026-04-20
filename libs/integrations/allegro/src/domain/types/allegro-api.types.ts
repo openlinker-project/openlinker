@@ -278,3 +278,80 @@ export interface AllegroMatchingCategoriesResponse {
   }>;
 }
 
+/**
+ * Allegro offer publication status — Allegro's string enum from the
+ * `publication.status` field on the product-offer resource.
+ *
+ * `INACTIVE` — draft, not visible to buyers.
+ * `ACTIVE` — published and visible.
+ * `ACTIVATING` / `INACTIVATING` — transient async state during publication changes.
+ * `ENDED` — publication has ended (historical).
+ */
+export const AllegroOfferPublicationStatusValues = [
+  'INACTIVE',
+  'ACTIVE',
+  'ACTIVATING',
+  'INACTIVATING',
+  'ENDED',
+] as const;
+export type AllegroOfferPublicationStatus = (typeof AllegroOfferPublicationStatusValues)[number];
+
+/**
+ * Validation error returned by Allegro when creating or updating an offer.
+ * Can appear on 2xx responses (offer created but has issues blocking publication)
+ * as well as on 422 responses (offer not created).
+ */
+export interface AllegroValidationError {
+  code: string;
+  message: string;
+  details?: string;
+  path?: string;
+  userMessage?: string;
+}
+
+/**
+ * Minimal body accepted by `POST /sale/product-offers`.
+ *
+ * Many fields are optional for the API itself but may be required by the
+ * target category's validation — Allegro surfaces those as 2xx validation
+ * errors in the response's `validation.errors` array. The adapter lets
+ * callers provide such platform-specific fields through
+ * `CreateOfferCommand.overrides.platformParams` and passes them through here.
+ */
+export interface AllegroProductOfferCreateRequest extends Record<string, unknown> {
+  name: string;
+  category: { id: string };
+  sellingMode: {
+    price: { amount: string; currency: string };
+    format: 'BUY_NOW';
+  };
+  stock: { available: number; unit: 'UNIT' };
+  description?: {
+    sections: Array<{
+      items: Array<{ type: 'TEXT'; content: string }>;
+    }>;
+  };
+  images?: Array<{ url: string }>;
+  parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
+  delivery?: { shippingRates?: { id: string }; handlingTime?: string };
+  afterSalesServices?: {
+    impliedWarranty?: { id: string };
+    returnPolicy?: { id: string };
+    warranty?: { id: string };
+  };
+  payments?: { invoice?: 'VAT' | 'NO_INVOICE' | 'VAT_MARGIN' };
+  publication?: { status: 'INACTIVE' | 'ACTIVE' };
+  external?: { id: string };
+}
+
+/**
+ * Response from `POST /sale/product-offers`.
+ */
+export interface AllegroProductOfferCreateResponse {
+  id: string;
+  name?: string;
+  publication?: { status?: AllegroOfferPublicationStatus };
+  validation?: { errors?: AllegroValidationError[] };
+  external?: { id?: string };
+}
+
