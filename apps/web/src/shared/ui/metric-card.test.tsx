@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MetricCard, MetricCardLink } from './metric-card';
+import { MetricCard, MetricCardLink, MetricCardToneValues } from './metric-card';
 
 function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -35,6 +35,34 @@ describe('MetricCard', () => {
     const { container } = render(<MetricCard label="Orders" value={42} />);
     expect(container.querySelector('.metric-card--neutral')).not.toBeNull();
     expect(container.querySelector('.metric-card--interactive')).toBeNull();
+  });
+
+  it('renders a warning icon for tone="warning" with aria-hidden on the wrapping span', () => {
+    const { container } = render(<MetricCard label="Integration health" value="3 / 4" tone="warning" />);
+    const icon = container.querySelector('.metric-card__icon');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders an error icon for tone="error" with aria-hidden on the wrapping span', () => {
+    const { container } = render(<MetricCard label="Failed jobs" value={42} tone="error" />);
+    const icon = container.querySelector('.metric-card__icon');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('svg')).not.toBeNull();
+  });
+
+  it.each(['neutral', 'success', 'info'] as const)(
+    'does not render a tone icon for tone="%s"',
+    (tone) => {
+      const { container } = render(<MetricCard label="Orders" value={42} tone={tone} />);
+      expect(container.querySelector('.metric-card__icon')).toBeNull();
+    },
+  );
+
+  it('MetricCardToneValues exposes all five supported tones', () => {
+    expect([...MetricCardToneValues]).toEqual(['neutral', 'success', 'warning', 'error', 'info']);
   });
 });
 
