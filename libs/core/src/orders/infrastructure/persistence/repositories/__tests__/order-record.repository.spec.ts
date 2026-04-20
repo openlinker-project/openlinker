@@ -19,10 +19,21 @@ describe('OrderRecordRepository', () => {
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
 
   beforeEach(async () => {
+    const qb = {
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+
     const mockOrmRepository = {
       findOne: jest.fn(),
       save: jest.fn(),
-    } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>>;
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>> & { _qb: typeof qb };
+
+    (mockOrmRepository as unknown as { _qb: typeof qb })._qb = qb;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -54,6 +65,7 @@ describe('OrderRecordRepository', () => {
       status: 'pending',
     };
     entity.syncStatus = [];
+    entity.recordStatus = 'ready';
     entity.createdAt = new Date('2025-01-01T10:00:00Z');
     entity.updatedAt = new Date('2025-01-01T10:00:00Z');
     return entity;
@@ -71,6 +83,7 @@ describe('OrderRecordRepository', () => {
         status: 'pending',
       },
       [],
+      'ready',
       new Date('2025-01-01T10:00:00Z'),
       new Date('2025-01-01T10:00:00Z'),
     );
@@ -171,6 +184,7 @@ describe('OrderRecordRepository', () => {
           status: 'pending',
         },
         syncStatus,
+        'ready',
         new Date('2025-01-01T10:00:00Z'),
         new Date('2025-01-01T10:00:00Z'),
       );
@@ -184,6 +198,66 @@ describe('OrderRecordRepository', () => {
       expect(callArg.syncStatus[0].destinationConnectionId).toBe('dest-connection-789');
       expect(callArg.syncStatus[0].status).toBe('synced');
       expect(callArg.syncStatus[0].syncedAt).toBe('2025-01-01T11:00:00.000Z');
+    });
+
+    it('should map recordStatus to ORM entity on toOrm path', async () => {
+      const domainEntity = new OrderRecord(
+        'order-123',
+        null,
+        'conn-123',
+        null,
+        {},
+        [],
+        'awaiting_mapping',
+        new Date(),
+        new Date(),
+      );
+      const savedEntity = createOrmEntity();
+      ormRepository.save.mockResolvedValue(savedEntity);
+
+      await repository.upsert(domainEntity);
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.recordStatus).toBe('awaiting_mapping');
+    });
+  });
+
+  describe('findMany', () => {
+    it('should return all records when no recordStatus filter is provided', async () => {
+      const entity = createOrmEntity();
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toHaveLength(1);
+      const calls = andWhere.mock.calls.map((c: unknown[]) => c[0] as string);
+      expect(calls.some((c) => c.includes('recordStatus'))).toBe(false);
+    });
+
+    it('should add recordStatus WHERE clause when filter is provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ recordStatus: 'awaiting_mapping' }, { limit: 20, offset: 0 });
+
+      expect(andWhere).toHaveBeenCalledWith(
+        'rec.recordStatus = :recordStatus',
+        { recordStatus: 'awaiting_mapping' },
+      );
     });
   });
 
@@ -233,6 +307,16 @@ describe('OrderRecordRepository', () => {
       const savedEntity = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
       expect(savedEntity.syncStatus).toHaveLength(1);
       expect(savedEntity.syncStatus[0].destinationConnectionId).toBe('dest-connection-789');
+    });
+
+    it('should map recordStatus from ORM to domain on toDomain path', async () => {
+      const entity = createOrmEntity();
+      entity.recordStatus = 'awaiting_mapping';
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const result = await repository.findById('order-123');
+
+      expect(result?.recordStatus).toBe('awaiting_mapping');
     });
 
     it('should throw OrderRecordNotFoundException if order record not found', async () => {

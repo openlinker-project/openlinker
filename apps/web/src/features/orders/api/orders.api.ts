@@ -29,6 +29,7 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.customerId) params.set('customerId', filters.customerId);
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
+  if (filters?.recordStatus) params.set('recordStatus', filters.recordStatus);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();

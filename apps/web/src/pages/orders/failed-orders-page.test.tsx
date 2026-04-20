@@ -1,31 +1,29 @@
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { FailedOrdersPage } from './failed-orders-page';
-import type { PaginatedSyncJobs, SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
+import type { PaginatedOrders, OrderRecord } from '../../features/orders/api/orders.types';
 
-function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
+function makeOrderRecord(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
-    id: 'aabbccdd-1111-2222-3333-444444444444',
-    jobType: 'marketplace.order.sync',
-    connectionId: 'conn-1111-2222-3333-444444444444',
-    status: 'dead',
-    attempts: 10,
-    maxAttempts: 10,
-    nextRunAt: '2026-04-10T10:00:00.000Z',
-    lastError: 'MissingOrderItemMappingError: No product mapping found for offer abc123',
-    payloadJson: { allegroOrderId: 'order-1' },
-    idempotencyKey: 'key-1',
-    lockedAt: null,
-    lockedBy: null,
+    internalOrderId: 'ol_order_aabbccdd1122334455',
+    customerId: null,
+    sourceConnectionId: 'conn-1111-2222-3333-444444444444',
+    sourceEventId: 'evt-001',
+    orderSnapshot: {
+      externalOrderId: 'EXT-123',
+      items: [{ id: 'item-1', productRef: { type: 'offer', externalId: 'offer-a' }, quantity: 1, price: 9.99 }],
+    },
+    syncStatus: [],
+    recordStatus: 'awaiting_mapping',
     createdAt: '2026-04-10T08:00:00.000Z',
     updatedAt: '2026-04-10T10:00:00.000Z',
     ...overrides,
   };
 }
 
-const sampleData: PaginatedSyncJobs = {
-  items: [makeSyncJob()],
+const sampleData: PaginatedOrders = {
+  items: [makeOrderRecord()],
   total: 1,
   limit: 25,
   offset: 0,
@@ -34,7 +32,7 @@ const sampleData: PaginatedSyncJobs = {
 describe('FailedOrdersPage', () => {
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
-      syncJobs: {
+      orders: {
         list: vi.fn().mockReturnValue(new Promise(() => {})),
       },
       connections: {
@@ -44,78 +42,58 @@ describe('FailedOrdersPage', () => {
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading failed orders')).toBeInTheDocument();
+    expect(screen.getByText('Loading orders')).toBeInTheDocument();
   });
 
-  it('should show failed jobs table when data loads', async () => {
+  it('should fetch orders with recordStatus=awaiting_mapping filter', async () => {
+    const list = vi.fn().mockResolvedValue(sampleData);
     const mockApi = createMockApiClient({
-      syncJobs: {
-        list: vi.fn().mockResolvedValue(sampleData),
-      },
-      connections: {
-        list: vi.fn().mockResolvedValue([]),
-      },
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('aabbccdd…')).toBeInTheDocument();
-    expect(screen.getByText('10/10')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    await screen.findByText(/ol_order_aabbccd/);
+
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ recordStatus: 'awaiting_mapping' }),
+      expect.any(Object),
+    );
+  });
+
+  it('should show awaiting-mapping orders table when data loads', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleData) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText(/ol_order_aabbccd/)).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
-      syncJobs: {
-        list: vi.fn().mockRejectedValue(new Error('Network error')),
-      },
-      connections: {
-        list: vi.fn().mockResolvedValue([]),
-      },
+      orders: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('Unable to load failed orders')).toBeInTheDocument();
+    expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
   });
 
-  it('should show empty state when no failed jobs', async () => {
+  it('should show empty state when no orders awaiting mapping', async () => {
     const mockApi = createMockApiClient({
-      syncJobs: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 25,
-          offset: 0,
-        }),
+      orders: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 25, offset: 0 }),
       },
-      connections: {
-        list: vi.fn().mockResolvedValue([]),
-      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('No failed orders')).toBeInTheDocument();
-  });
-
-  it('should render retry button scoped to each job row', async () => {
-    const mockApi = createMockApiClient({
-      syncJobs: {
-        list: vi.fn().mockResolvedValue(sampleData),
-      },
-      connections: {
-        list: vi.fn().mockResolvedValue([]),
-      },
-    });
-
-    renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
-
-    const jobIdLink = await screen.findByText('aabbccdd…');
-    const row = jobIdLink.closest('tr')!;
-    const retryButton = within(row).getByRole('button', { name: 'Retry' });
-
-    expect(retryButton).toBeInTheDocument();
-    expect(retryButton).not.toBeDisabled();
+    expect(await screen.findByText('No orders awaiting mapping')).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/domain/entities
  */
+import type { OrderRecordStatus } from '../types/order-record.types';
 
 /**
  * Sync status for a destination connection
@@ -31,6 +32,9 @@ export interface OrderSyncStatus {
  *
  * Stores minimal order data for retry/debug support. Order snapshot contains
  * the full order data (PII-aware), and syncStatus tracks sync state per destination.
+ *
+ * recordStatus='awaiting_mapping': snapshot holds raw IncomingOrder (external refs, no internal IDs).
+ * recordStatus='ready': snapshot holds resolved Order (internal product/variant IDs).
  */
 export class OrderRecord {
   constructor(
@@ -40,6 +44,7 @@ export class OrderRecord {
     public readonly sourceEventId: string | null,
     public readonly orderSnapshot: Record<string, unknown>,
     public readonly syncStatus: OrderSyncStatus[],
+    public readonly recordStatus: OrderRecordStatus,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}

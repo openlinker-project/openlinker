@@ -20,6 +20,11 @@ export interface OrderSyncStatus {
   error: string | null;
 }
 
+// Mirrors the backend `OrderRecordStatusValues` in `@openlinker/core/orders`.
+// Hand-written transport type per FE-001 contract strategy — keep in sync with backend.
+export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
+export type OrderRecordStatusValue = (typeof OrderRecordStatusValues)[number];
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -27,6 +32,7 @@ export interface OrderRecord {
   sourceEventId: string | null;
   orderSnapshot: Record<string, unknown>;
   syncStatus: OrderSyncStatus[];
+  recordStatus: OrderRecordStatusValue;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +43,7 @@ export interface OrderFilters {
   customerId?: string;
   createdFrom?: string;
   createdTo?: string;
+  recordStatus?: OrderRecordStatusValue;
 }
 
 export interface OrderPagination {

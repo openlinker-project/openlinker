@@ -18,6 +18,7 @@ import { ICustomerIdentityResolverService } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
+import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -76,6 +77,7 @@ describe('OrderIngestionService', () => {
 
     orderItemRefResolver = {
       resolve: jest.fn(),
+      tryResolve: jest.fn(),
     } as unknown as jest.Mocked<OrderItemRefResolverService>;
 
     orderSyncService = {
@@ -84,6 +86,7 @@ describe('OrderIngestionService', () => {
 
     orderRecordService = {
       persistOrder: jest.fn().mockResolvedValue({}),
+      persistIncomingSnapshot: jest.fn().mockResolvedValue({}),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
@@ -225,15 +228,25 @@ describe('OrderIngestionService', () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
     });
 
-    it('should persist order before calling syncOrder', async () => {
+    it('should call persistIncomingSnapshot before item resolution, then persistOrder before syncOrder', async () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
 
       await service.syncOrderFromMarketplace(connectionId, externalOrderId);
 
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        baseIncoming,
+        'ol_order_test',
+        null,
+        connectionId,
+        null,
+      );
       expect(orderRecordService.persistOrder).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'ol_order_test' }),
         connectionId,
         null,
+      );
+      expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
+        orderRecordService.persistOrder.mock.invocationCallOrder[0],
       );
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0],
@@ -276,13 +289,14 @@ describe('OrderIngestionService', () => {
       );
     });
 
-    it('should still persist order when syncOrder throws', async () => {
+    it('should persist snapshot and order even when syncOrder throws', async () => {
       orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
 
       await expect(
         service.syncOrderFromMarketplace(connectionId, externalOrderId),
       ).rejects.toThrow('no destinations');
 
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
     });
@@ -376,6 +390,69 @@ describe('OrderIngestionService', () => {
         connectionId,
         expect.objectContaining({ parentEntityType: 'Order' }),
       );
+    });
+  });
+
+  describe('syncOrderFromMarketplace – item resolution', () => {
+    const externalOrderId = 'checkout-item-test';
+
+    const incomingWithItems = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        { id: 'item-1', productRef: { type: 'offer' as const, externalId: 'offer-a' }, quantity: 1, price: 9.99 },
+        { id: 'item-2', productRef: { type: 'offer' as const, externalId: 'offer-b' }, quantity: 2, price: 4.99 },
+      ],
+      totals: { subtotal: 19.97, tax: 0, shipping: 0, total: 19.97, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_item_test');
+      marketplace.getOrder.mockResolvedValue(incomingWithItems);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+    });
+
+    it('happy path: all items resolve — persistIncomingSnapshot then persistOrder called', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping' });
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+    });
+
+    it('all unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-a' }, reason: 'no mapping a' })
+        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping b' });
+
+      await expect(
+        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
     });
   });
 });

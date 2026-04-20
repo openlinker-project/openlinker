@@ -9,6 +9,7 @@
  */
 import { Order } from '../../domain/ports/order-source.port';
 import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
+import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 
 export interface IOrderRecordService {
   /**
@@ -44,6 +45,24 @@ export interface IOrderRecordService {
     destinationConnectionId: string,
     status: OrderSyncStatus,
   ): Promise<void>;
+
+  /**
+   * Persist raw incoming snapshot before item resolution.
+   *
+   * Called immediately after ID resolution but before offer→variant mapping.
+   * Sets recordStatus='awaiting_mapping'. On retry, once all items resolve,
+   * persistOrder() upserts with recordStatus='ready'.
+   *
+   * The orderSnapshot stores the raw IncomingOrder — items retain external offer
+   * refs and do NOT contain internal product/variant IDs.
+   */
+  persistIncomingSnapshot(
+    incoming: IncomingOrder,
+    internalOrderId: string,
+    customerId: string | null,
+    sourceConnectionId: string,
+    sourceEventId: string | null,
+  ): Promise<OrderRecord>;
 
   /**
    * Get order record by ID

@@ -15,7 +15,7 @@ import { OrderRecordOrmEntity, OrderSyncStatusJson } from '../entities/order-rec
 import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
-import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords } from '../../../domain/types/order-record.types';
+import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords, OrderRecordStatus } from '../../../domain/types/order-record.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -77,6 +77,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `rec."syncStatus" @> :syncStatusFilter::jsonb`,
         { syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]) },
       );
+    }
+
+    if (filters.recordStatus) {
+      qb.andWhere('rec.recordStatus = :recordStatus', { recordStatus: filters.recordStatus });
     }
 
     const [entities, total] = await qb.getManyAndCount();
@@ -150,6 +154,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.sourceEventId,
       entity.orderSnapshot,
       syncStatus,
+      (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
       entity.updatedAt,
     );
@@ -173,6 +178,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
     }));
+    entity.recordStatus = orderRecord.recordStatus;
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

@@ -103,5 +103,52 @@ describe('OrderItemRefResolverService', () => {
       service.resolve(connectionId, { type: 'sku', externalId: 'SKU-2' }),
     ).resolves.toEqual({ internalProductId: 'ol_product_1' });
   });
+
+  describe('tryResolve', () => {
+    it('should return resolved=true with IDs when offer mapping exists', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      variantRepository.findById.mockResolvedValueOnce(
+        new ProductVariantEntity('ol_variant_1', 'ol_product_1', null, null, new Date(), new Date()),
+      );
+
+      const result = await service.tryResolve(connectionId, { type: 'offer', externalId: 'offer-1' });
+
+      expect(result.resolved).toBe(true);
+      if (result.resolved) {
+        expect(result.internalProductId).toBe('ol_product_1');
+        expect(result.internalVariantId).toBe('ol_variant_1');
+      }
+    });
+
+    it('should return resolved=false with reason when offer mapping is missing', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null);
+
+      const productRef = { type: 'offer' as const, externalId: 'offer-404' };
+      const result = await service.tryResolve(connectionId, productRef);
+
+      expect(result.resolved).toBe(false);
+      if (!result.resolved) {
+        expect(result.productRef).toEqual(productRef);
+        expect(result.reason).toBeTruthy();
+      }
+    });
+
+    it('should return resolved=false when variant lookup fails after offer mapping', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_missing');
+      variantRepository.findById.mockResolvedValueOnce(null);
+
+      const result = await service.tryResolve(connectionId, { type: 'offer', externalId: 'offer-x' });
+
+      expect(result.resolved).toBe(false);
+    });
+
+    it('should re-throw non-MissingOrderItemMappingError errors', async () => {
+      identifierMapping.getInternalId.mockRejectedValueOnce(new Error('DB connection lost'));
+
+      await expect(
+        service.tryResolve(connectionId, { type: 'offer', externalId: 'offer-1' }),
+      ).rejects.toThrow('DB connection lost');
+    });
+  });
 });
 

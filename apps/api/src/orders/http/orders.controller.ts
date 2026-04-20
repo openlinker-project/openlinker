@@ -48,7 +48,7 @@ export class OrdersController {
   @ApiResponse({ status: 200, description: 'Paginated order list', type: PaginatedOrdersResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listOrders(@Query() query: ListOrdersQueryDto): Promise<PaginatedOrdersResponseDto> {
-    const { sourceConnectionId, syncStatus, customerId, createdFrom, createdTo, limit = 20, offset = 0 } = query;
+    const { sourceConnectionId, syncStatus, customerId, createdFrom, createdTo, recordStatus, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.orderRecordRepository.findMany(
       {
@@ -57,6 +57,7 @@ export class OrdersController {
         customerId,
         createdFrom: createdFrom ? new Date(createdFrom) : undefined,
         createdTo: createdTo ? new Date(createdTo) : undefined,
+        recordStatus,
       },
       { limit, offset },
     );
@@ -91,6 +92,7 @@ export class OrdersController {
       sourceEventId: order.sourceEventId,
       orderSnapshot: order.orderSnapshot,
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
+      recordStatus: order.recordStatus,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
     };

@@ -16,11 +16,12 @@ import {
 import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import type {
+  ItemResolutionResult,
+  ResolvedOrderItemProduct,
+} from './order-item-ref-resolver.types';
 
-export interface ResolvedOrderItemProduct {
-  internalProductId: string;
-  internalVariantId?: string;
-}
+export type { ItemResolutionResult, ResolvedOrderItemProduct };
 
 @Injectable()
 export class OrderItemRefResolverService {
@@ -30,6 +31,21 @@ export class OrderItemRefResolverService {
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly variantRepository: ProductVariantRepositoryPort,
   ) {}
+
+  async tryResolve(
+    connectionId: string,
+    productRef: IncomingOrderItemRef,
+  ): Promise<ItemResolutionResult> {
+    try {
+      const result = await this.resolve(connectionId, productRef);
+      return { resolved: true, ...result };
+    } catch (error) {
+      if (error instanceof MissingOrderItemMappingError) {
+        return { resolved: false, productRef, reason: error.message };
+      }
+      throw error;
+    }
+  }
 
   async resolve(
     connectionId: string,

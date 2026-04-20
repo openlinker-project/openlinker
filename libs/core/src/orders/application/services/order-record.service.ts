@@ -13,6 +13,7 @@ import { Order } from '../../domain/ports/order-source.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
@@ -77,6 +78,50 @@ export class OrderRecordService implements IOrderRecordService {
       sourceEventId,
       orderSnapshot,
       syncStatus,
+      'ready',
+      now,
+      now,
+    );
+
+    return this.repository.upsert(orderRecord);
+  }
+
+  async persistIncomingSnapshot(
+    incoming: IncomingOrder,
+    internalOrderId: string,
+    customerId: string | null,
+    sourceConnectionId: string,
+    sourceEventId: string | null,
+  ): Promise<OrderRecord> {
+    const piiConfig = getPiiConfig();
+    const now = new Date();
+
+    const snapshot: Record<string, unknown> = {
+      externalOrderId: incoming.externalOrderId,
+      orderNumber: incoming.orderNumber,
+      status: incoming.status,
+      customerExternalId: incoming.customerExternalId,
+      items: incoming.items,
+      totals: incoming.totals,
+      shippingAddress: piiConfig.storePii
+        ? incoming.shippingAddress
+        : this.sanitizeAddress(incoming.shippingAddress),
+      billingAddress: piiConfig.storePii
+        ? incoming.billingAddress
+        : this.sanitizeAddress(incoming.billingAddress),
+      createdAt: incoming.createdAt,
+      updatedAt: incoming.updatedAt,
+      metadata: incoming.metadata,
+    };
+
+    const orderRecord = new OrderRecord(
+      internalOrderId,
+      customerId,
+      sourceConnectionId,
+      sourceEventId,
+      snapshot,
+      [],
+      'awaiting_mapping',
       now,
       now,
     );
@@ -121,7 +166,7 @@ export class OrderRecordService implements IOrderRecordService {
    * while keeping structural information (hash can be computed separately).
    */
   private sanitizeAddress(
-    address: Order['shippingAddress'],
+    address: { address1?: string; city?: string; postalCode?: string; country?: string } | null | undefined,
   ): { address1: string; city: string; postalCode: string; country: string } | undefined {
     if (!address) {
       return undefined;
@@ -131,7 +176,7 @@ export class OrderRecordService implements IOrderRecordService {
       address1: '[REDACTED]',
       city: '[REDACTED]',
       postalCode: '[REDACTED]',
-      country: address.country, // Country code is not PII
+      country: address.country ?? '', // Country code is not PII
     };
   }
 }

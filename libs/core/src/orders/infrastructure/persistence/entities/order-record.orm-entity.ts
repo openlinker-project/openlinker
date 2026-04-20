@@ -59,6 +59,10 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'jsonb' })
   syncStatus!: OrderSyncStatusJson[];
 
+  @Column({ type: 'varchar', default: 'ready' })
+  @Index()
+  recordStatus!: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

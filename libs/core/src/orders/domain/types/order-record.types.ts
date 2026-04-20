@@ -19,6 +19,16 @@ export const OrderSyncStatusFilterValues = ['pending', 'syncing', 'synced', 'fai
 export type OrderSyncStatusFilter = (typeof OrderSyncStatusFilterValues)[number];
 
 /**
+ * Record status values — tracks whether all item refs have been resolved
+ */
+export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
+
+/**
+ * Record status type
+ */
+export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
+
+/**
  * Order record filters for list queries
  */
 export interface OrderRecordFilters {
@@ -27,6 +37,7 @@ export interface OrderRecordFilters {
   customerId?: string;
   createdFrom?: Date;
   createdTo?: Date;
+  recordStatus?: OrderRecordStatus;
 }
 
 /**
