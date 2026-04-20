@@ -7,6 +7,7 @@ import { ConnectionConfigPanel } from '../../features/connections/components/Con
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -112,32 +113,29 @@ export function ConnectionDetailPage(): ReactElement {
               <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
             </div>
 
-            <dl className="definition-list">
-              <div>
-                <dt>Name</dt>
-                <dd>{connection.name}</dd>
-              </div>
-              <div>
-                <dt>Platform</dt>
-                <dd>{connection.platformType}</dd>
-              </div>
-              <div>
-                <dt>Credentials</dt>
-                <dd>{connection.credentialsBacked ? 'DB-managed' : 'Environment variable'}</dd>
-              </div>
-              <div>
-                <dt>Adapter</dt>
-                <dd className="mono-text">{connection.adapterKey ?? 'default adapter'}</dd>
-              </div>
-              <div>
-                <dt>Connection ID</dt>
-                <dd className="mono-text">{connection.id}</dd>
-              </div>
-              <div>
-                <dt>Last updated</dt>
-                <dd><TimeDisplay iso={connection.updatedAt} /></dd>
-              </div>
-            </dl>
+            <KeyValueList
+              items={[
+                { id: 'name', label: 'Name', value: connection.name },
+                { id: 'platform', label: 'Platform', value: connection.platformType },
+                {
+                  id: 'credentials',
+                  label: 'Credentials',
+                  value: connection.credentialsBacked ? 'DB-managed' : 'Environment variable',
+                },
+                {
+                  id: 'adapter',
+                  label: 'Adapter',
+                  value: connection.adapterKey ?? 'default adapter',
+                  mono: true,
+                },
+                { id: 'id', label: 'Connection ID', value: connection.id, mono: true },
+                {
+                  id: 'updatedAt',
+                  label: 'Last updated',
+                  value: <TimeDisplay iso={connection.updatedAt} />,
+                },
+              ]}
+            />
           </div>
 
           <ConnectionConfigPanel config={connection.config} />

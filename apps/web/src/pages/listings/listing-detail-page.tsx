@@ -3,9 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { KeyValueList } from '../../shared/ui/key-value-list';
+import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 
 export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -52,48 +55,27 @@ export function ListingDetailPage(): ReactElement {
       }
     >
       <section className="detail-section">
-        <dl className="detail-list">
-          <div className="detail-list__row">
-            <dt>Mapping ID</dt>
-            <dd><span className="mono-text">{mapping.id}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Entity Type</dt>
-            <dd><span className="mono-text">{mapping.entityType}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>External ID</dt>
-            <dd><span className="mono-text">{mapping.externalId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Internal ID</dt>
-            <dd><span className="mono-text">{mapping.internalId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Platform Type</dt>
-            <dd><span className="mono-text">{mapping.platformType}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Connection ID</dt>
-            <dd><span className="mono-text">{mapping.connectionId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Created</dt>
-            <dd><TimeDisplay iso={mapping.createdAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Updated</dt>
-            <dd><TimeDisplay iso={mapping.updatedAt} /></dd>
-          </div>
-        </dl>
+        <KeyValueList
+          items={[
+            { id: 'mappingId', label: 'Mapping ID', value: mapping.id, mono: true },
+            { id: 'entityType', label: 'Entity Type', value: mapping.entityType, mono: true },
+            { id: 'externalId', label: 'External ID', value: mapping.externalId, mono: true },
+            { id: 'internalId', label: 'Internal ID', value: mapping.internalId, mono: true },
+            { id: 'platform', label: 'Platform Type', value: mapping.platformType, mono: true },
+            {
+              id: 'connection',
+              label: 'Connection',
+              value: <ConnectionEntityLabel connectionId={mapping.connectionId} />,
+            },
+            { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={mapping.createdAt} /> },
+            { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={mapping.updatedAt} /> },
+          ]}
+        />
       </section>
 
       {mapping.context !== null ? (
         <section className="detail-section">
-          <h2 className="detail-section__title">Context</h2>
-          <pre className="raw-payload">
-            {JSON.stringify(mapping.context, null, 2)}
-          </pre>
+          <RawPayloadPanel title="Context" payload={mapping.context} />
         </section>
       ) : null}
 

@@ -4,9 +4,57 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
+import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useCustomerQuery } from '../../features/customers/hooks/use-customer-query';
 import type { CustomerAddress } from '../../features/customers/api/customers.types';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+
+function buildCustomerItems(customer: {
+  internalCustomerId: string;
+  emailHash: string;
+  normalizedEmail: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  lastSourceConnectionId: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    { id: 'id', label: 'Customer ID', value: customer.internalCustomerId, mono: true },
+    { id: 'emailHash', label: 'Email Hash', value: customer.emailHash, mono: true },
+  ];
+
+  if (customer.normalizedEmail) {
+    items.push({
+      id: 'normalizedEmail',
+      label: 'Normalized Email',
+      value: customer.normalizedEmail,
+      mono: true,
+    });
+  }
+
+  items.push(
+    { id: 'firstName', label: 'First Name', value: customer.firstName ?? <EmptyValue /> },
+    { id: 'lastName', label: 'Last Name', value: customer.lastName ?? <EmptyValue /> },
+    {
+      id: 'lastSource',
+      label: 'Last Source Connection',
+      value: customer.lastSourceConnectionId ? (
+        <ConnectionEntityLabel connectionId={customer.lastSourceConnectionId} />
+      ) : (
+        <EmptyValue />
+      ),
+    },
+    { id: 'lastSeen', label: 'Last Seen', value: <TimeDisplay iso={customer.lastSeenAt} /> },
+    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={customer.createdAt} /> },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={customer.updatedAt} /> },
+  );
+
+  return items;
+}
 
 const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
   {
@@ -19,23 +67,23 @@ const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
     header: 'Address',
     cell: (a) => {
       const parts = [a.address1, a.address2].filter(Boolean).join(', ');
-      return parts ? <span>{parts}</span> : <span className="text-muted">—</span>;
+      return parts ? <span>{parts}</span> : <EmptyValue />;
     },
   },
   {
     id: 'city',
     header: 'City',
-    cell: (a) => a.city ?? <span className="text-muted">—</span>,
+    cell: (a) => a.city ?? <EmptyValue />,
   },
   {
     id: 'postcode',
     header: 'Postcode',
-    cell: (a) => a.postcode ?? <span className="text-muted">—</span>,
+    cell: (a) => a.postcode ?? <EmptyValue />,
   },
   {
     id: 'countryIso2',
     header: 'Country',
-    cell: (a) => a.countryIso2 ?? <span className="text-muted">—</span>,
+    cell: (a) => a.countryIso2 ?? <EmptyValue />,
   },
   {
     id: 'lastSeenAt',
@@ -82,52 +130,7 @@ export function CustomerDetailPage(): ReactElement {
       }
     >
       <section className="detail-section">
-        <dl className="detail-list">
-          <div className="detail-list__row">
-            <dt>Customer ID</dt>
-            <dd><span className="mono-text">{customer.internalCustomerId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Email Hash</dt>
-            <dd><span className="mono-text">{customer.emailHash}</span></dd>
-          </div>
-          {customer.normalizedEmail ? (
-            <div className="detail-list__row">
-              <dt>Normalized Email</dt>
-              <dd><span className="mono-text">{customer.normalizedEmail}</span></dd>
-            </div>
-          ) : null}
-          <div className="detail-list__row">
-            <dt>First Name</dt>
-            <dd>{customer.firstName ?? <span className="text-muted">—</span>}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Last Name</dt>
-            <dd>{customer.lastName ?? <span className="text-muted">—</span>}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Last Source Connection</dt>
-            <dd>
-              {customer.lastSourceConnectionId ? (
-                <span className="mono-text">{customer.lastSourceConnectionId}</span>
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Last Seen</dt>
-            <dd><TimeDisplay iso={customer.lastSeenAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Created</dt>
-            <dd><TimeDisplay iso={customer.createdAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Updated</dt>
-            <dd><TimeDisplay iso={customer.updatedAt} /></dd>
-          </div>
-        </dl>
+        <KeyValueList items={buildCustomerItems(customer)} />
       </section>
 
       <section className="detail-section">

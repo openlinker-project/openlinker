@@ -3,8 +3,40 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
+import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useInventoryItemQuery } from '../../features/inventory/hooks/use-inventory-item-query';
+import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+
+function buildInventoryItems(item: InventoryItem): KeyValueItem[] {
+  const items: KeyValueItem[] = [{ id: 'itemId', label: 'Item ID', value: item.id, mono: true }];
+  if (item.productName) {
+    items.push({ id: 'productName', label: 'Product', value: item.productName });
+  }
+  if (item.productSku) {
+    items.push({ id: 'productSku', label: 'Product SKU', value: item.productSku, mono: true });
+  }
+  items.push(
+    { id: 'productId', label: 'Product ID', value: item.productId, mono: true },
+    {
+      id: 'variantId',
+      label: 'Variant ID',
+      value: item.productVariantId ?? <EmptyValue />,
+      mono: Boolean(item.productVariantId),
+    },
+    { id: 'available', label: 'Available Quantity', value: item.availableQuantity },
+    { id: 'reserved', label: 'Reserved Quantity', value: item.reservedQuantity },
+    {
+      id: 'location',
+      label: 'Location',
+      value: item.locationId ?? <EmptyValue label="Default location" />,
+      mono: Boolean(item.locationId),
+    },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={item.updatedAt} /> },
+  );
+  return items;
+}
 
 export function InventoryDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -45,60 +77,7 @@ export function InventoryDetailPage(): ReactElement {
       }
     >
       <section className="detail-section">
-        <dl className="detail-list">
-          <div className="detail-list__row">
-            <dt>Item ID</dt>
-            <dd><span className="mono-text">{item.id}</span></dd>
-          </div>
-          {item.productName ? (
-            <div className="detail-list__row">
-              <dt>Product</dt>
-              <dd>{item.productName}</dd>
-            </div>
-          ) : null}
-          {item.productSku ? (
-            <div className="detail-list__row">
-              <dt>Product SKU</dt>
-              <dd><span className="mono-text">{item.productSku}</span></dd>
-            </div>
-          ) : null}
-          <div className="detail-list__row">
-            <dt>Product ID</dt>
-            <dd><span className="mono-text">{item.productId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Variant ID</dt>
-            <dd>
-              {item.productVariantId ? (
-                <span className="mono-text">{item.productVariantId}</span>
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Available Quantity</dt>
-            <dd>{item.availableQuantity}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Reserved Quantity</dt>
-            <dd>{item.reservedQuantity}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Location</dt>
-            <dd>
-              {item.locationId ? (
-                <span className="mono-text">{item.locationId}</span>
-              ) : (
-                <span className="text-muted">default</span>
-              )}
-            </dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Updated</dt>
-            <dd><TimeDisplay iso={item.updatedAt} /></dd>
-          </div>
-        </dl>
+        <KeyValueList items={buildInventoryItems(item)} />
       </section>
     </PageLayout>
   );
