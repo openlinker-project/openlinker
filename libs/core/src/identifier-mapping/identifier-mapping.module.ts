@@ -55,33 +55,12 @@ export {
       provide: CONNECTION_PORT_TOKEN,
       useExisting: ConnectionRepository,
     },
-    {
-      provide: 'ConnectionPort',
-      useExisting: CONNECTION_PORT_TOKEN,
-    },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'IIdentifierMappingService',
-      useExisting: IDENTIFIER_MAPPING_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IdentifierMappingPort',
-      useExisting: IDENTIFIER_MAPPING_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IdentifierMappingRepositoryPort',
-      useExisting: IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
-    },
   ],
   exports: [
     IDENTIFIER_MAPPING_SERVICE_TOKEN,
     IDENTIFIER_MAPPING_PORT_TOKEN,
     IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
     CONNECTION_PORT_TOKEN,
-    'IIdentifierMappingService',
-    'IdentifierMappingPort',
-    'IdentifierMappingRepositoryPort',
-    'ConnectionPort',
   ],
 })
 export class IdentifierMappingModule {}

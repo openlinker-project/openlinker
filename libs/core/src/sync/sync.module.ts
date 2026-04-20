@@ -59,29 +59,12 @@ export {
       provide: CONNECTION_CURSOR_REPOSITORY_TOKEN,
       useExisting: ConnectionCursorRepository,
     },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'JobEnqueuePort',
-      useExisting: JOB_ENQUEUE_TOKEN,
-    },
-    {
-      provide: 'SyncJobRepositoryPort',
-      useExisting: SYNC_JOB_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'ConnectionCursorRepositoryPort',
-      useExisting: CONNECTION_CURSOR_REPOSITORY_TOKEN,
-    },
 
     // Sync job queue abstraction (application-level)
     SyncJobQueueService,
     {
       provide: SYNC_JOB_QUEUE_TOKEN,
       useExisting: SyncJobQueueService,
-    },
-    {
-      provide: 'SyncJobQueuePort',
-      useExisting: SYNC_JOB_QUEUE_TOKEN,
     },
 
     // Retry service (application-level)
@@ -97,10 +80,6 @@ export {
       provide: SYNC_LOCK_TOKEN,
       useExisting: RedisSyncLockService,
     },
-    {
-      provide: 'SyncLockPort',
-      useExisting: SYNC_LOCK_TOKEN,
-    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -109,15 +88,10 @@ export {
     RedisStreamsJobEnqueueService,
     SyncJobRepository,
     ConnectionCursorRepository,
-    'JobEnqueuePort',
-    'SyncJobRepositoryPort',
-    'ConnectionCursorRepositoryPort',
     SYNC_JOB_QUEUE_TOKEN,
     SyncJobQueueService,
-    'SyncJobQueuePort',
     SYNC_LOCK_TOKEN,
     RedisSyncLockService,
-    'SyncLockPort',
     SYNC_JOB_RETRY_SERVICE_TOKEN,
     SyncJobRetryService,
   ],

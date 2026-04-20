@@ -56,23 +56,6 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
       provide: CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
       useExisting: CustomerIdentityResolverService,
     },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'CustomerProjectionRepositoryPort',
-      useExisting: CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'ICustomerProjectionService',
-      useExisting: CUSTOMER_PROJECTION_SERVICE_TOKEN,
-    },
-    {
-      provide: 'ICustomerIdentityResolverService',
-      useExisting: CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
-    },
-    {
-      provide: 'CustomerIdentityResolverPort',
-      useExisting: CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
-    },
   ],
   exports: [
     OrderCustomerProjectionUpdaterService, // Export service class for direct injection
@@ -80,10 +63,6 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
     CUSTOMER_PROJECTION_SERVICE_TOKEN,
     CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
     CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
-    'CustomerProjectionRepositoryPort',
-    'ICustomerProjectionService',
-    'ICustomerIdentityResolverService',
-    'CustomerIdentityResolverPort',
   ],
 })
 export class CustomersModule {}
