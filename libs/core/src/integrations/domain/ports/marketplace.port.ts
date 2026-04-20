@@ -24,6 +24,7 @@ import {
 } from '../types/marketplace-quantity-update.types';
 import type { UpdateOfferFieldsCommand } from '../types/marketplace-offer-update.types';
 import type { MarketplaceCategory } from '../types/marketplace-category.types';
+import type { CreateOfferCommand, CreateOfferResult } from '../types/marketplace-offer-create.types';
 
 export interface MarketplacePort {
   /**
@@ -79,5 +80,18 @@ export interface MarketplacePort {
    * given barcode, or null if no match / ambiguous.
    */
   matchCategoryByBarcode?(barcode: string): Promise<string | null>;
+
+  /**
+   * Create a new offer on the marketplace — optional capability (outbound, OL → marketplace).
+   *
+   * Adapters that implement this translate the neutral `CreateOfferCommand` into
+   * their platform-specific create-offer API call (e.g. Allegro POST /sale/product-offers).
+   * Platform-specific fields (policy IDs, shipping classes, etc.) are carried in
+   * `cmd.overrides.platformParams`.
+   *
+   * Returns momentary status (`draft` / `validating` / `active`). For marketplaces that
+   * validate asynchronously (Allegro), callers must poll to observe the final outcome.
+   */
+  createOffer?(cmd: CreateOfferCommand): Promise<CreateOfferResult>;
 }
 
