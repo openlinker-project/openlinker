@@ -7,6 +7,13 @@ interface UseTableSortResult {
   sort: SortingState;
 }
 
+/**
+ * Syncs a single-column sort to the URL as `?sort=field:asc|desc`.
+ *
+ * Multi-column sort (a `SortingState` with more than one entry) is not
+ * supported — only the first entry is serialized. Pages that need
+ * multi-column sort should serialize their own param.
+ */
 export function useTableSort(defaultSort: SortingState = []): UseTableSortResult {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('sort');
