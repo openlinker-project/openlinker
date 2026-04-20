@@ -15,10 +15,13 @@ import { OfferLinkingService } from './application/services/offer-linking.servic
 import { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
+import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
+import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
@@ -27,12 +30,13 @@ export {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([IdentifierMappingOrmEntity]),
+    TypeOrmModule.forFeature([IdentifierMappingOrmEntity, OfferCreationRecordOrmEntity]),
     IntegrationsModule,
     IdentifierMappingModule,
     ProductsModule,
@@ -43,6 +47,7 @@ export {
     OfferMappingSyncService,
     CategoryResolutionService,
     OfferMappingRepository,
+    OfferCreationRecordRepository,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -54,6 +59,10 @@ export {
     {
       provide: OFFER_MAPPING_REPOSITORY_TOKEN,
       useExisting: OfferMappingRepository,
+    },
+    {
+      provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+      useExisting: OfferCreationRecordRepository,
     },
     {
       provide: 'OfferLinkingService',
@@ -75,11 +84,16 @@ export {
       provide: 'OfferMappingRepositoryPort',
       useExisting: OFFER_MAPPING_REPOSITORY_TOKEN,
     },
+    // Note: no string-token fallback for OfferCreationRecordRepositoryPort.
+    // Engineering Standards §Repository Ports Pattern deprecates string tokens
+    // as fragile; new ports opt into Symbol-only DI. Existing string fallbacks
+    // (above) are kept for compatibility and tracked for removal in #264.
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
     OFFER_MAPPING_SYNC_SERVICE_TOKEN,
     OFFER_MAPPING_REPOSITORY_TOKEN,
+    OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     'ICategoryResolutionService',
     'OfferLinkingService',

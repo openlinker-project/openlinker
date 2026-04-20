@@ -9,6 +9,7 @@ export {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 export { OfferLinkingService } from './application/services/offer-linking.service';
@@ -39,3 +40,12 @@ export type {
   OfferDescriptionUpdate,
   OfferFieldUpdate,
 } from './domain/types/offer-update.types';
+export { OfferCreationRecord } from './domain/entities/offer-creation-record.entity';
+export { OfferCreationStatusValues } from './domain/types/offer-creation-record.types';
+export type {
+  OfferCreationStatus,
+  OfferCreationError,
+  CreateOfferCreationRecordInput,
+} from './domain/types/offer-creation-record.types';
+export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
+export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
