@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useId,
   useMemo,
   useState,
   type ComponentPropsWithoutRef,
@@ -21,8 +22,14 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
   ) {
     const [open, setOpen] = useState(defaultOpen);
     const [copied, setCopied] = useState(false);
+    const bodyId = useId();
 
     const formatted = useMemo(() => formatPayload(payload), [payload]);
+    const isJson = useMemo(() => payloadIsJson(payload), [payload]);
+    const tinted = useMemo(
+      () => (isJson ? tintJson(formatted) : null),
+      [formatted, isJson],
+    );
 
     const handleCopy = useCallback(() => {
       void navigator.clipboard?.writeText(formatted).then(() => {
@@ -56,20 +63,28 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
               className="raw-payload__action"
               onClick={() => setOpen((prev) => !prev)}
               aria-expanded={open}
+              aria-controls={bodyId}
             >
               {open ? 'Collapse' : 'Expand'}
             </button>
           </div>
         </header>
-        {open ? (
-          <pre className="raw-payload__body mono-text" aria-label="Payload content">
-            {formatted}
-          </pre>
-        ) : null}
+        <pre
+          id={bodyId}
+          className="raw-payload__body mono-text"
+          aria-label="Payload content"
+          hidden={!open}
+        >
+          {tinted ?? formatted}
+        </pre>
       </section>
     );
   },
 );
+
+function payloadIsJson(payload: unknown): boolean {
+  return typeof payload === 'object' && payload !== null;
+}
 
 function formatPayload(payload: unknown): string {
   if (typeof payload === 'string') return payload;
@@ -79,4 +94,59 @@ function formatPayload(payload: unknown): string {
   } catch {
     return String(payload);
   }
+}
+
+const TINT_PATTERN =
+  /("(?:\\.|[^"\\])*")(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false|null)\b/g;
+
+function tintJson(source: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let keyIndex = 0;
+
+  for (const match of source.matchAll(TINT_PATTERN)) {
+    const start = match.index ?? 0;
+    if (start > cursor) {
+      nodes.push(source.slice(cursor, start));
+    }
+
+    const [full, stringPart, colonPart, numberPart, literalPart] = match;
+
+    if (stringPart) {
+      if (colonPart) {
+        nodes.push(
+          <span key={`k-${keyIndex++}`} className="raw-payload__token-key">
+            {stringPart}
+          </span>,
+        );
+        nodes.push(colonPart);
+      } else {
+        nodes.push(
+          <span key={`s-${keyIndex++}`} className="raw-payload__token-string">
+            {stringPart}
+          </span>,
+        );
+      }
+    } else if (numberPart) {
+      nodes.push(
+        <span key={`n-${keyIndex++}`} className="raw-payload__token-number">
+          {numberPart}
+        </span>,
+      );
+    } else if (literalPart) {
+      nodes.push(
+        <span key={`l-${keyIndex++}`} className="raw-payload__token-literal">
+          {literalPart}
+        </span>,
+      );
+    }
+
+    cursor = start + full.length;
+  }
+
+  if (cursor < source.length) {
+    nodes.push(source.slice(cursor));
+  }
+
+  return nodes;
 }

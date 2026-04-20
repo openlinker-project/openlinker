@@ -48,4 +48,17 @@ describe('Dialog (Radix wrapper)', () => {
     await user.click(screen.getByText('Cancel'));
     expect(screen.queryByText('Confirm action')).toBeNull();
   });
+
+  it('wires aria-labelledby from the content to the DialogTitle', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByText('Open'));
+
+    const content = screen.getByRole('dialog');
+    const labelledby = content.getAttribute('aria-labelledby');
+    expect(labelledby).toBeTruthy();
+
+    const title = screen.getByText('Confirm action');
+    expect(title).toHaveAttribute('id', labelledby!);
+  });
 });

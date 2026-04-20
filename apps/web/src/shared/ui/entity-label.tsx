@@ -57,13 +57,21 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
         onClick={handleCopy}
         aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
       >
-        {copied ? '✓' : '📋'}
+        {copied ? 'Copied' : 'Copy'}
       </button>
     </span>
   );
 });
 
+const OL_ID_PATTERN = /^(ol_[a-z][a-z0-9-]*_)(.+)$/;
+
 function shortenId(id: string): string {
+  const match = OL_ID_PATTERN.exec(id);
+  if (match) {
+    const [, prefix, rest] = match;
+    if (rest.length <= 6) return id;
+    return `${prefix}${rest.slice(0, 4)}…${rest.slice(-2)}`;
+  }
   if (id.length <= 14) return id;
   return `${id.slice(0, 8)}…${id.slice(-4)}`;
 }

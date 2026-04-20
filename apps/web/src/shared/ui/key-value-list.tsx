@@ -1,7 +1,7 @@
-import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { forwardRef, Fragment, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 
 export interface KeyValueItem {
-  key: string;
+  id: string;
   label: ReactNode;
   mono?: boolean;
   value: ReactNode;
@@ -20,7 +20,7 @@ export const KeyValueList = forwardRef<HTMLDListElement, KeyValueListProps>(func
   return (
     <dl ref={ref} className={classes} {...props}>
       {items.map((item) => (
-        <div key={item.key} className="key-value-list__row">
+        <Fragment key={item.id}>
           <dt className="key-value-list__label">{item.label}</dt>
           <dd
             className={
@@ -31,7 +31,7 @@ export const KeyValueList = forwardRef<HTMLDListElement, KeyValueListProps>(func
           >
             {item.value}
           </dd>
-        </div>
+        </Fragment>
       ))}
     </dl>
   );

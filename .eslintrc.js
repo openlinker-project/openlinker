@@ -95,6 +95,11 @@ module.exports = {
                 group: ['**/pages/**'],
                 message: 'Feature modules must not import page modules.',
               },
+              {
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                message:
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable) instead of the library directly.',
+              },
             ],
           },
         ],
@@ -126,6 +131,11 @@ module.exports = {
                 group: ['**/app/**'],
                 message: 'Page modules must not import app modules.',
               },
+              {
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                message:
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable) instead of the library directly.',
+              },
             ],
           },
         ],
@@ -134,6 +144,24 @@ module.exports = {
           {
             name: 'fetch',
             message: 'Use API client modules from shared/api instead of raw fetch().',
+          },
+        ],
+      },
+    },
+    {
+      // Same rule for app/ — TooltipProvider etc. must come from shared/ui wrappers.
+      files: ['apps/web/src/app/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                message:
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
+              },
+            ],
           },
         ],
       },

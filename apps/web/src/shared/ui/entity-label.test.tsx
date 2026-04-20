@@ -15,14 +15,19 @@ describe('EntityLabel', () => {
     expect(screen.getByText('Allegro sandbox')).toBeInTheDocument();
   });
 
-  it('shows a shortened ID when the ID is long', () => {
+  it('keeps the ol_{type}_ prefix intact when shortening', () => {
     renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
-    expect(screen.getByText(/ol_conne…f456/)).toBeInTheDocument();
+    expect(screen.getByText(/ol_connection_abc1…56/)).toBeInTheDocument();
   });
 
-  it('shows the ID verbatim when it is short', () => {
+  it('shows the full ID verbatim when the tail is short enough', () => {
     renderWithRouter(<EntityLabel id="ol_c_123" name="Store" />);
     expect(screen.getByText('ol_c_123')).toBeInTheDocument();
+  });
+
+  it('shortens non-OL IDs with a generic strategy', () => {
+    renderWithRouter(<EntityLabel id="raw-uuid-abcdef0123456789" name="Legacy" />);
+    expect(screen.getByText(/raw-uuid…6789/)).toBeInTheDocument();
   });
 
   it('renders a link when to is provided', () => {
@@ -47,6 +52,12 @@ describe('EntityLabel', () => {
   it('hides the ID when showId={false}', () => {
     renderWithRouter(<EntityLabel id="ol_connection_abc123" name="Store" showId={false} />);
     expect(screen.queryByText(/ol_conn/)).toBeNull();
+  });
+
+  it('renders the copy control as an explicit type=button', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc" name="Store" />);
+    const copy = screen.getByRole('button', { name: /Copy ol_connection/ });
+    expect(copy).toHaveAttribute('type', 'button');
   });
 
   it('copies the full ID to the clipboard when the copy button is pressed', () => {

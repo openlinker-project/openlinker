@@ -8,25 +8,55 @@ describe('RawPayloadPanel', () => {
   it('is collapsed by default and expands on click', () => {
     render(<RawPayloadPanel payload={{ foo: 'bar' }} />);
 
-    expect(screen.queryByLabelText('Payload content')).toBeNull();
+    const body = screen.getByLabelText('Payload content');
+    expect(body).toHaveAttribute('hidden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
-    expect(screen.getByLabelText('Payload content')).toHaveTextContent('"foo": "bar"');
+    expect(body).not.toHaveAttribute('hidden');
+    expect(body).toHaveTextContent('"foo": "bar"');
+  });
+
+  it('toggles aria-expanded on the disclosure button', () => {
+    render(<RawPayloadPanel payload={{ a: 1 }} />);
+    const button = screen.getByRole('button', { name: 'Expand' });
+
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(button);
+    expect(screen.getByRole('button', { name: 'Collapse' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('wires aria-controls to the body id', () => {
+    render(<RawPayloadPanel payload={{ a: 1 }} />);
+    const button = screen.getByRole('button', { name: 'Expand' });
+    const controls = button.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    expect(screen.getByLabelText('Payload content')).toHaveAttribute('id', controls!);
   });
 
   it('can start expanded via defaultOpen', () => {
     render(<RawPayloadPanel payload={{ a: 1 }} defaultOpen />);
-    expect(screen.getByLabelText('Payload content')).toHaveTextContent('"a": 1');
+    const body = screen.getByLabelText('Payload content');
+    expect(body).not.toHaveAttribute('hidden');
+    expect(body).toHaveTextContent('"a": 1');
   });
 
-  it('renders string payloads verbatim', () => {
+  it('renders string payloads verbatim without syntax tinting', () => {
     render(<RawPayloadPanel payload={'plain error text'} defaultOpen />);
-    expect(screen.getByLabelText('Payload content')).toHaveTextContent('plain error text');
+    const body = screen.getByLabelText('Payload content');
+    expect(body).toHaveTextContent('plain error text');
+    expect(body.querySelector('.raw-payload__token-key')).toBeNull();
   });
 
-  it('renders an empty body for null payloads', () => {
-    render(<RawPayloadPanel payload={null} defaultOpen />);
-    expect(screen.getByLabelText('Payload content').textContent).toBe('');
+  it('applies syntax tinting for JSON payloads', () => {
+    render(<RawPayloadPanel payload={{ count: 42, label: 'ok', flag: null }} defaultOpen />);
+    const body = screen.getByLabelText('Payload content');
+
+    expect(body.querySelector('.raw-payload__token-key')).not.toBeNull();
+    expect(body.querySelector('.raw-payload__token-number')).not.toBeNull();
+    expect(body.querySelector('.raw-payload__token-literal')).not.toBeNull();
   });
 
   it('copies the formatted payload via the copy button', () => {

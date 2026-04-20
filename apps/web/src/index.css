@@ -125,6 +125,7 @@
 
   /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --shadow-soft-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.08);
   --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
   --overlay-scrim: rgba(16, 24, 40, 0.45);
 
@@ -2184,7 +2185,7 @@ textarea {
 
 .metric-card--interactive:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.08);
+  box-shadow: var(--shadow-soft-hover);
 }
 
 .metric-card--interactive:focus-visible {
@@ -2244,10 +2245,6 @@ textarea {
     column-gap: 24px;
     row-gap: 10px;
   }
-}
-
-.key-value-list__row {
-  display: contents;
 }
 
 .key-value-list__label {
@@ -2350,6 +2347,27 @@ textarea {
   max-height: 520px;
   white-space: pre;
   tab-size: 2;
+}
+
+.raw-payload__body[hidden] {
+  display: none;
+}
+
+.raw-payload__token-key {
+  color: var(--status-info-strong);
+}
+
+.raw-payload__token-string {
+  color: var(--status-success-strong);
+}
+
+.raw-payload__token-number {
+  color: var(--status-warning-strong);
+}
+
+.raw-payload__token-literal {
+  color: var(--status-review-strong);
+  font-style: italic;
 }
 
 /* Radix Dialog wrapper --------------------------------------------- */

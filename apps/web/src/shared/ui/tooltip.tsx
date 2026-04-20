@@ -9,6 +9,10 @@ interface TooltipProviderProps extends ComponentPropsWithoutRef<typeof RadixTool
   children: ReactNode;
 }
 
+/**
+ * Mount once near the app root (e.g. in `App` alongside `ToastProvider`) so
+ * the delay-group behavior works across every tooltip in the tree.
+ */
 export function TooltipProvider({
   children,
   delayDuration = 250,

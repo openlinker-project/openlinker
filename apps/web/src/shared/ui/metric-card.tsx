@@ -1,33 +1,27 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, type LinkProps } from 'react-router-dom';
 
 export type MetricCardTone = 'neutral' | 'success' | 'warning' | 'error' | 'info';
 
-interface MetricCardProps extends ComponentPropsWithoutRef<'div'> {
+interface MetricCardBody {
   description?: ReactNode;
   label: string;
-  to?: string;
   tone?: MetricCardTone;
   trend?: ReactNode;
   value: ReactNode;
 }
 
-export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(function MetricCard(
-  {
-    description,
-    label,
-    to,
-    tone = 'neutral',
-    trend,
-    value,
-    className = '',
-    ...props
-  },
-  ref,
-) {
-  const classes = ['metric-card', `metric-card--${tone}`, className].filter(Boolean).join(' ');
+interface MetricCardProps extends MetricCardBody, Omit<ComponentPropsWithoutRef<'div'>, 'children'> {}
 
-  const body = (
+interface MetricCardLinkProps
+  extends MetricCardBody,
+    Omit<LinkProps, 'children' | 'className' | 'to'> {
+  className?: string;
+  to: LinkProps['to'];
+}
+
+function renderBody({ description, label, trend, value }: MetricCardBody): ReactNode {
+  return (
     <>
       <span className="metric-card__label">{label}</span>
       <span className="metric-card__value">{value}</span>
@@ -35,23 +29,39 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(function M
       {description ? <span className="metric-card__description">{description}</span> : null}
     </>
   );
+}
 
-  if (to) {
-    return (
-      <Link
-        ref={ref as never}
-        to={to}
-        className={`${classes} metric-card--interactive`}
-        {...(props as ComponentPropsWithoutRef<'a'>)}
-      >
-        {body}
-      </Link>
-    );
-  }
+function buildClasses(tone: MetricCardTone, extra: string, interactive: boolean): string {
+  return [
+    'metric-card',
+    `metric-card--${tone}`,
+    interactive ? 'metric-card--interactive' : '',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
 
+export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(function MetricCard(
+  { description, label, tone = 'neutral', trend, value, className = '', ...props },
+  ref,
+) {
   return (
-    <div ref={ref} className={classes} {...props}>
-      {body}
+    <div ref={ref} className={buildClasses(tone, className, false)} {...props}>
+      {renderBody({ description, label, trend, value })}
     </div>
   );
 });
+
+export const MetricCardLink = forwardRef<HTMLAnchorElement, MetricCardLinkProps>(
+  function MetricCardLink(
+    { description, label, to, tone = 'neutral', trend, value, className = '', ...props },
+    ref,
+  ) {
+    return (
+      <Link ref={ref} to={to} className={buildClasses(tone, className, true)} {...props}>
+        {renderBody({ description, label, trend, value })}
+      </Link>
+    );
+  },
+);

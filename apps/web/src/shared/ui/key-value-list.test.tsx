@@ -9,8 +9,8 @@ describe('KeyValueList', () => {
     render(
       <KeyValueList
         items={[
-          { key: 'name', label: 'Name', value: 'Allegro sandbox' },
-          { key: 'status', label: 'Status', value: 'active' },
+          { id: 'name', label: 'Name', value: 'Allegro sandbox' },
+          { id: 'status', label: 'Status', value: 'active' },
         ]}
       />,
     );
@@ -22,7 +22,7 @@ describe('KeyValueList', () => {
 
   it('applies the mono variant to items flagged mono', () => {
     render(
-      <KeyValueList items={[{ key: 'id', label: 'ID', value: 'ol_connection_abc', mono: true }]} />,
+      <KeyValueList items={[{ id: 'id', label: 'ID', value: 'ol_connection_abc', mono: true }]} />,
     );
 
     expect(screen.getByText('ol_connection_abc')).toHaveClass('key-value-list__value--mono');
@@ -33,7 +33,7 @@ describe('KeyValueList', () => {
       <KeyValueList
         items={[
           {
-            key: 'badge',
+            id: 'badge',
             label: 'Status',
             value: <span data-testid="badge">active</span>,
           },
@@ -48,7 +48,7 @@ describe('KeyValueList', () => {
     const { container } = render(
       <KeyValueList
         className="custom"
-        items={[{ key: 'a', label: 'a', value: 'b' }]}
+        items={[{ id: 'a', label: 'a', value: 'b' }]}
       />,
     );
 
