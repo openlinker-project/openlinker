@@ -27,6 +27,15 @@ export interface SyncJobResponse {
 
 export interface SyncJobsApi {
   enqueue: (input: EnqueueSyncJobInput) => Promise<SyncJobResponse>;
+  /**
+   * List sync jobs with optional filters and pagination.
+   *
+   * NOTE: The backend enforces `pagination.limit` <= `SYNC_JOBS_MAX_LIMIT`
+   * (100); values above that return HTTP 400 with
+   * "limit must not be greater than 100". Callers that need a higher page
+   * size should import `SYNC_JOBS_MAX_LIMIT` from `./sync-jobs.types` and
+   * clamp explicitly, or paginate via `offset`.
+   */
   list: (filters?: SyncJobFilters, pagination?: SyncJobPagination) => Promise<PaginatedSyncJobs>;
   getById: (id: string) => Promise<SyncJob>;
   retry: (id: string) => Promise<SyncJob>;

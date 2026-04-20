@@ -9,9 +9,14 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import type { SyncJob, SyncJobFilters, JobStatus, JobType } from '../../features/sync-jobs/api/sync-jobs.types';
-import { JOB_STATUS_VALUES, JOB_TYPE_VALUES } from '../../features/sync-jobs/api/sync-jobs.types';
+import {
+  JOB_STATUS_VALUES,
+  JOB_TYPE_VALUES,
+  SYNC_JOBS_MAX_LIMIT,
+} from '../../features/sync-jobs/api/sync-jobs.types';
 
-const PAGE_SIZE = 200;
+// Capped by the backend validator on GET /sync/jobs (@Max(100)).
+const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
 
 const COLUMNS: DataTableColumn<SyncJob>[] = [
   {

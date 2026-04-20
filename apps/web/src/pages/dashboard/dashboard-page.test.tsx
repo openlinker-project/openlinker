@@ -7,7 +7,9 @@ import type {
   PaginatedSyncJobs,
   SyncJob,
   SyncJobFilters,
+  SyncJobPagination,
 } from '../../features/sync-jobs/api/sync-jobs.types';
+import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
 
 function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
   return {
@@ -169,7 +171,7 @@ describe('DashboardPage', () => {
         return Promise.resolve({
           items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
           total: 3,
-          limit: 500,
+          limit: 100,
           offset: 0,
         });
       }
@@ -220,6 +222,25 @@ describe('DashboardPage', () => {
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('requests dead jobs with limit capped at SYNC_JOBS_MAX_LIMIT (regression guard for #270)', async () => {
+    const listMock = vi.fn().mockResolvedValue({ items: [], total: 0, limit: SYNC_JOBS_MAX_LIMIT, offset: 0 });
+    const apiClient = createMockApiClient({ syncJobs: { list: listMock } });
+    renderWithProviders(<DashboardPage />, { apiClient });
+
+    await waitFor(() => {
+      const deadCall = listMock.mock.calls.find((call) => {
+        const filters = call[0] as unknown as SyncJobFilters | undefined;
+        return filters !== undefined && filters.status === 'dead';
+      });
+      expect(deadCall).toBeDefined();
+      // The backend caps this at SYNC_JOBS_MAX_LIMIT (=100). Requesting any
+      // higher value returns HTTP 400 and breaks the incidents panel.
+      const pagination = (deadCall as unknown[])[1] as SyncJobPagination;
+      expect(pagination.limit).toBeLessThanOrEqual(SYNC_JOBS_MAX_LIMIT);
+      expect(pagination.limit).toBe(SYNC_JOBS_MAX_LIMIT);
+    });
+  });
+
   it('shows error state when sync jobs fail to load', async () => {
     const apiClient = createMockApiClient({
       syncJobs: {
@@ -254,7 +275,7 @@ describe('DashboardPage', () => {
           return Promise.resolve({
             items: deadJobs,
             total: deadJobs.length,
-            limit: 500,
+            limit: 100,
             offset: 0,
           });
         }
@@ -405,7 +426,7 @@ describe('DashboardPage', () => {
               return Promise.resolve({
                 items: deadJobs,
                 total: 1234,
-                limit: 500,
+                limit: 100,
                 offset: 0,
               });
             }
@@ -442,7 +463,7 @@ describe('DashboardPage', () => {
         syncJobs: {
           list: vi.fn().mockImplementation((filters?: { status?: string }) => {
             if (filters?.status === 'dead') {
-              return Promise.resolve({ items: deadJobs, total: 2, limit: 500, offset: 0 });
+              return Promise.resolve({ items: deadJobs, total: 2, limit: 100, offset: 0 });
             }
             return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
           }),

@@ -1,8 +1,13 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { SyncJobsPage } from './sync-jobs-page';
-import type { PaginatedSyncJobs } from '../../features/sync-jobs/api/sync-jobs.types';
+import type {
+  PaginatedSyncJobs,
+  SyncJobFilters,
+  SyncJobPagination,
+} from '../../features/sync-jobs/api/sync-jobs.types';
+import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
 
 const sampleJobs: PaginatedSyncJobs = {
   items: [
@@ -69,5 +74,22 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No jobs found')).toBeInTheDocument();
+  });
+
+  // Regression guard for #270: the backend rejects `limit > 100` with HTTP 400
+  // ("limit must not be greater than 100"). The page previously requested 200
+  // and broke every load.
+  it('requests sync jobs with limit capped at SYNC_JOBS_MAX_LIMIT', async () => {
+    const listMock = vi.fn().mockResolvedValue(sampleJobs);
+    const mockApi = createMockApiClient({ syncJobs: { list: listMock } });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenCalled();
+    });
+    const [, pagination] = listMock.mock.calls[0] as [SyncJobFilters, SyncJobPagination];
+    expect(pagination.limit).toBeLessThanOrEqual(SYNC_JOBS_MAX_LIMIT);
+    expect(pagination.limit).toBe(SYNC_JOBS_MAX_LIMIT);
   });
 });
