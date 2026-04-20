@@ -46,6 +46,7 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { Order } from '../../domain/ports/order-source.port';
 import { Logger } from '@openlinker/shared/logging';
 import { OrderItemRefResolverService } from './order-item-ref-resolver.service';
+import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -181,9 +182,58 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
 
     const incoming = await marketplace.getOrder({ externalOrderId });
-    const order = await this.toUnifiedOrder(incoming, connectionId);
 
-    // Persist before routing — ensures record exists even if syncOrder throws
+    // Step 1: resolve order + customer IDs (no item mapping yet)
+    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+      'Order',
+      incoming.externalOrderId,
+      connectionId,
+    );
+
+    const internalCustomerId = await this.resolveCustomerId(incoming, connectionId, internalOrderId);
+
+    // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
+    await this.orderRecordService.persistIncomingSnapshot(
+      incoming,
+      internalOrderId,
+      internalCustomerId ?? null,
+      connectionId,
+      sourceEventId ?? null,
+    );
+
+    // Step 3: attempt item resolution (non-throwing)
+    const resolvedItems: Order['items'] = [];
+    const unresolvedRefs: Array<{ itemId: string; reason: string }> = [];
+
+    for (const item of incoming.items) {
+      const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
+      if (result.resolved) {
+        resolvedItems.push({
+          id: item.id,
+          productId: result.internalProductId,
+          variantId: result.internalVariantId,
+          quantity: item.quantity,
+          price: item.price,
+          sku: item.sku,
+        });
+      } else {
+        unresolvedRefs.push({ itemId: item.id, reason: result.reason });
+      }
+    }
+
+    // Step 4: if any unresolved, throw so the job runner retries with backoff
+    if (unresolvedRefs.length > 0) {
+      const first = unresolvedRefs[0];
+      const firstItem = incoming.items.find((i) => i.id === first.itemId);
+      throw new MissingOrderItemMappingError(
+        connectionId,
+        firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },
+        first.reason,
+      );
+    }
+
+    // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
+    const order = this.buildUnifiedOrder(incoming, internalOrderId, internalCustomerId, resolvedItems);
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
 
     const results = await this.orderSyncService.syncOrder({
@@ -221,62 +271,48 @@ export class OrderIngestionService implements IOrderIngestionService {
     return results;
   }
 
-  private async toUnifiedOrder(incoming: IncomingOrder, connectionId: string): Promise<Order> {
-    // Order id: map marketplace externalOrderId -> internal OpenLinker order id
-    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-      'Order',
-      incoming.externalOrderId,
-      connectionId,
-    );
-
-    let internalCustomerId: string | undefined;
-    if (incoming.customerExternalId) {
-      if (incoming.customerEmail) {
-        // Use identity resolver: creates/updates customer projection with email
-        const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
-          externalBuyerId: incoming.customerExternalId,
-          email: incoming.customerEmail,
-          sourceConnectionId: connectionId,
-        });
-        internalCustomerId = resolution.internalCustomerId;
-      } else {
-        internalCustomerId = await this.identifierMapping.getOrCreateInternalId(
-          'Customer',
-          incoming.customerExternalId,
-          connectionId,
-          { parentEntityType: 'Order', parentInternalId: internalOrderId },
-        );
-      }
+  private async resolveCustomerId(
+    incoming: IncomingOrder,
+    connectionId: string,
+    internalOrderId: string,
+  ): Promise<string | undefined> {
+    if (!incoming.customerExternalId) {
+      return undefined;
     }
-
-    const items: Order['items'] = [];
-    for (const item of incoming.items) {
-      const resolved = await this.orderItemRefResolver.resolve(connectionId, item.productRef);
-
-      items.push({
-        id: item.id,
-        productId: resolved.internalProductId,
-        variantId: resolved.internalVariantId,
-        quantity: item.quantity,
-        price: item.price,
-        sku: item.sku,
+    if (incoming.customerEmail) {
+      const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
+        externalBuyerId: incoming.customerExternalId,
+        email: incoming.customerEmail,
+        sourceConnectionId: connectionId,
       });
+      return resolution.internalCustomerId;
     }
+    return this.identifierMapping.getOrCreateInternalId(
+      'Customer',
+      incoming.customerExternalId,
+      connectionId,
+      { parentEntityType: 'Order', parentInternalId: internalOrderId },
+    );
+  }
 
-    const order: Order = {
+  private buildUnifiedOrder(
+    incoming: IncomingOrder,
+    internalOrderId: string,
+    internalCustomerId: string | undefined,
+    resolvedItems: Order['items'],
+  ): Order {
+    return {
       id: internalOrderId,
       orderNumber: incoming.orderNumber,
       status: incoming.status,
       customerId: internalCustomerId,
-      items,
+      items: resolvedItems,
       totals: incoming.totals,
       shippingAddress: incoming.shippingAddress,
       billingAddress: incoming.billingAddress,
       createdAt: new Date(incoming.createdAt),
       updatedAt: new Date(incoming.updatedAt),
     };
-
-    return order;
   }
 }
 

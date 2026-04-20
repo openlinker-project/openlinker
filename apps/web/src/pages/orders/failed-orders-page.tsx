@@ -1,8 +1,9 @@
 /**
  * Failed Orders Page
  *
- * Displays dead order-sync jobs with inline retry capability. Allows operators
- * to diagnose and remediate failed order synchronizations.
+ * Displays order records with awaiting_mapping status — orders where one or more
+ * offer→variant mappings were missing at ingestion time. The job runner retries
+ * these automatically once the mapping is created via marketplace.offers.sync.
  *
  * @module apps/web/src/pages/orders
  */
@@ -15,112 +16,58 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
-import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retry-sync-job-mutation';
+import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
-import { useToast } from '../../shared/ui/toast-provider';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import type { SyncJob, SyncJobFilters } from '../../features/sync-jobs/api/sync-jobs.types';
+import type { OrderRecord } from '../../features/orders/api/orders.types';
 
 const PAGE_SIZE = 25;
 
-const ORDER_JOB_TYPES = ['marketplace.order.sync'] as const;
-
-function RetryButton({ job }: { job: SyncJob }): ReactElement {
-  const mutation = useRetrySyncJobMutation();
-  const { showToast } = useToast();
-
-  function handleRetry(): void {
-    mutation.mutate(job.id, {
-      onSuccess: () => {
-        showToast({ tone: 'success', title: 'Retrying', description: `Job ${job.id.slice(0, 8)}… requeued.` });
-      },
-      onError: (error) => {
-        showToast({ tone: 'error', title: 'Retry failed', description: error.message });
-      },
-    });
-  }
-
-  const isPending = mutation.isPending && mutation.variables === job.id;
-
-  return (
-    <Button
-      onClick={handleRetry}
-      disabled={isPending}
-      className="button--compact"
-    >
-      {isPending ? 'Retrying…' : 'Retry'}
-    </Button>
-  );
+function snapshotItemCount(snapshot: Record<string, unknown>): number {
+  const items = snapshot['items'];
+  if (Array.isArray(items)) return items.length;
+  return 0;
 }
 
-function truncateError(error: string | null, maxLength = 80): string {
-  if (!error) return '—';
-  return error.length > maxLength ? `${error.slice(0, maxLength)}…` : error;
-}
-
-const COLUMNS: DataTableColumn<SyncJob>[] = [
+const COLUMNS: DataTableColumn<OrderRecord>[] = [
   {
-    id: 'id',
-    header: 'Job ID',
-    cell: (job) => <span className="mono-text">{job.id.slice(0, 8)}…</span>,
+    id: 'internalOrderId',
+    header: 'Order ID',
+    cell: (order) => <span className="mono-text">{order.internalOrderId.slice(0, 16)}…</span>,
   },
   {
-    id: 'connectionId',
+    id: 'sourceConnectionId',
     header: 'Connection',
-    cell: (job) => <span className="mono-text">{job.connectionId.slice(0, 8)}…</span>,
+    cell: (order) => <span className="mono-text">{order.sourceConnectionId.slice(0, 8)}…</span>,
     hideBelow: 1024,
   },
   {
-    id: 'updatedAt',
-    header: 'Failed At',
-    cell: (job) => <TimeDisplay iso={job.updatedAt} />,
-    accessor: (job) => job.updatedAt,
-    sortable: true,
-  },
-  {
-    id: 'lastError',
-    header: 'Error',
-    cell: (job) => (
-      <details>
-        <summary style={{ cursor: 'pointer' }}>{truncateError(job.lastError)}</summary>
-        <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8em', marginTop: '0.5rem' }}>
-          {job.lastError ?? '—'}
-        </pre>
-      </details>
-    ),
-    hideBelow: 768,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    cell: (job) => `${job.attempts}/${job.maxAttempts}`,
+    id: 'items',
+    header: 'Items',
+    cell: (order) => snapshotItemCount(order.orderSnapshot),
     align: 'center',
     hideBelow: 480,
   },
   {
-    id: 'actions',
-    header: '',
-    cell: (job) => <RetryButton job={job} />,
-    align: 'right',
+    id: 'createdAt',
+    header: 'First Seen',
+    cell: (order) => <TimeDisplay iso={order.createdAt} />,
+    accessor: (order) => order.createdAt,
+    sortable: true,
   },
 ];
 
 export function FailedOrdersPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
+  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const connectionId = searchParams.get('connectionId') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
-  const filters: SyncJobFilters = {
-    status: 'dead',
-    jobType: ORDER_JOB_TYPES[0],
-    connectionId: connectionId || undefined,
-  };
-  const pagination = { limit: PAGE_SIZE, offset };
-
-  const query = useSyncJobsQuery(filters, pagination);
+  const query = useOrdersQuery(
+    { recordStatus: 'awaiting_mapping', sourceConnectionId: connectionId },
+    { limit: PAGE_SIZE, offset },
+  );
   const connectionsQuery = useConnectionsQuery();
 
   function handleConnectionFilterChange(value: string): void {
@@ -156,15 +103,14 @@ export function FailedOrdersPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Orders"
-      title="Failed Orders"
-      description="Order sync failures — diagnose errors and retry failed jobs."
+      title="Awaiting Mapping"
+      description="Orders with unresolved offer→variant mappings. These retry automatically once the mapping is created."
       actions={
         <Link to="/orders" className="button button--ghost">
           ← All Orders
         </Link>
       }
     >
-      {/* Filter bar */}
       <div className="toolbar">
         <Select
           aria-label="Filter by connection"
@@ -179,20 +125,20 @@ export function FailedOrdersPage(): ReactElement {
           ))}
         </Select>
 
-        <StatusBadge tone="error" compact>
-          {total} failed
+        <StatusBadge tone="warning" compact>
+          {total} awaiting mapping
         </StatusBadge>
       </div>
 
       {query.isLoading ? (
         <LoadingState
           liveRegion="off"
-          title="Loading failed orders"
-          message="Fetching failed order sync jobs…"
+          title="Loading orders"
+          message="Fetching orders awaiting mapping…"
         />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load failed orders"
+          title="Unable to load orders"
           message={query.error.message}
           action={
             <Button onClick={() => { void query.refetch(); }}>Retry</Button>
@@ -201,27 +147,25 @@ export function FailedOrdersPage(): ReactElement {
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No failed orders"
+          title="No orders awaiting mapping"
           message={
             connectionId
-              ? 'No failed order sync jobs for the selected connection.'
-              : 'No failed order sync jobs found. All orders are syncing successfully.'
+              ? 'No orders with missing mappings for the selected connection.'
+              : 'All orders have been fully resolved. No mapping issues detected.'
           }
         />
       ) : (
         <>
           <DataTable
-            caption="Failed order sync jobs"
+            caption="Orders awaiting offer→variant mapping"
             columns={COLUMNS}
             rows={query.data?.items ?? []}
-            rowKey={(job) => job.id}
-            rowHref={(job) => `/sync-jobs/${job.id}`}
+            rowKey={(order) => order.internalOrderId}
             sort={sort}
             onSortChange={setSort}
             cardView={{
-              title: (job) => `${job.id.slice(0, 8)}…`,
-              subtitle: (job) => truncateError(job.lastError, 60),
-              meta: (job) => <RetryButton job={job} />,
+              title: (order) => `${order.internalOrderId.slice(0, 16)}…`,
+              subtitle: (order) => `${snapshotItemCount(order.orderSnapshot)} item(s)`,
             }}
           />
 

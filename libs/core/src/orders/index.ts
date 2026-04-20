@@ -27,6 +27,8 @@ export {
   PaginatedOrderRecords,
   OrderSyncStatusFilter,
   OrderSyncStatusFilterValues,
+  OrderRecordStatus,
+  OrderRecordStatusValues,
 } from './domain/types/order-record.types';
 
 // Services

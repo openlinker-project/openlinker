@@ -31,6 +31,7 @@ describe('OrdersController', () => {
         externalOrderNumber: '000456',
       },
     ],
+    'ready',
     new Date('2026-04-01T00:00:00Z'),
     new Date('2026-04-01T12:00:00Z'),
   );
@@ -125,6 +126,7 @@ describe('OrdersController', () => {
         null,
         {},
         [{ destinationConnectionId: 'conn-dest-001', status: 'pending' }],
+        'ready',
         new Date('2026-04-01T00:00:00Z'),
         new Date('2026-04-01T00:00:00Z'),
       );

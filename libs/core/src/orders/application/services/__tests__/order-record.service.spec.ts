@@ -11,6 +11,7 @@ import { OrderRecordService } from '../order-record.service';
 import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { Order } from '../../../domain/ports/order-source.port';
+import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../../orders.tokens';
 
 describe('OrderRecordService', () => {
@@ -21,7 +22,6 @@ describe('OrderRecordService', () => {
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
 
   beforeEach(async () => {
-    // Set required environment variable for PII config
     process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
     repository = {
       findById: jest.fn(),
@@ -102,10 +102,37 @@ describe('OrderRecordService', () => {
     updatedAt: new Date('2025-01-01T10:00:00Z'),
   });
 
+  const createMockIncomingOrder = (): IncomingOrder => ({
+    externalOrderId: 'ext-order-789',
+    orderNumber: 'ORD-001',
+    status: 'pending',
+    customerExternalId: 'ext-customer-456',
+    customerEmail: 'buyer@example.com',
+    items: [
+      {
+        id: 'item-1',
+        productRef: { type: 'offer', externalId: 'offer-abc' },
+        quantity: 2,
+        price: 10.99,
+        sku: 'SKU-001',
+      },
+    ],
+    totals: { subtotal: 21.98, tax: 4.40, shipping: 5.00, total: 31.38, currency: 'USD' },
+    shippingAddress: {
+      firstName: 'John',
+      lastName: 'Doe',
+      address1: '123 Main St',
+      city: 'New York',
+      postalCode: '10001',
+      country: 'US',
+    },
+    createdAt: '2025-01-01T10:00:00Z',
+    updatedAt: '2025-01-01T10:00:00Z',
+  });
+
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      // Recreate service to pick up new env var
       service = new OrderRecordService(repository);
     });
 
@@ -126,6 +153,7 @@ describe('OrderRecordService', () => {
           billingAddress: order.billingAddress,
         }),
         [],
+        'ready',
         expect.any(Date),
         expect.any(Date),
       );
@@ -139,13 +167,13 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot.shippingAddress).toEqual(order.shippingAddress);
       expect(callArg.orderSnapshot.billingAddress).toEqual(order.billingAddress);
+      expect(callArg.recordStatus).toBe('ready');
     });
   });
 
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      // Recreate service to pick up new env var
       service = new OrderRecordService(repository);
     });
 
@@ -164,6 +192,7 @@ describe('OrderRecordService', () => {
           orderNumber: order.orderNumber,
         }),
         [],
+        'ready',
         expect.any(Date),
         expect.any(Date),
       );
@@ -179,7 +208,7 @@ describe('OrderRecordService', () => {
         address1: '[REDACTED]',
         city: '[REDACTED]',
         postalCode: '[REDACTED]',
-        country: 'US', // Country code is not PII
+        country: 'US',
       });
       expect(callArg.orderSnapshot.billingAddress).toEqual({
         address1: '[REDACTED]',
@@ -206,6 +235,7 @@ describe('OrderRecordService', () => {
           id: order.id,
         }),
         [],
+        'ready',
         expect.any(Date),
         expect.any(Date),
       );
@@ -218,6 +248,78 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot.shippingAddress).toBeUndefined();
       expect(callArg.orderSnapshot.billingAddress).toBeUndefined();
+    });
+  });
+
+  describe('persistIncomingSnapshot', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(repository);
+    });
+
+    it('should persist incoming snapshot with awaiting_mapping status', async () => {
+      const incoming = createMockIncomingOrder();
+      const internalOrderId = 'ol_order_abc123';
+      const customerId = 'ol_customer_xyz';
+      const sourceConnectionId = 'conn-123';
+      const sourceEventId = 'event-456';
+
+      const expectedRecord = new OrderRecord(
+        internalOrderId,
+        customerId,
+        sourceConnectionId,
+        sourceEventId,
+        expect.objectContaining({ externalOrderId: incoming.externalOrderId }),
+        [],
+        'awaiting_mapping',
+        expect.any(Date),
+        expect.any(Date),
+      );
+
+      repository.upsert.mockResolvedValue(expectedRecord);
+
+      const result = await service.persistIncomingSnapshot(
+        incoming,
+        internalOrderId,
+        customerId,
+        sourceConnectionId,
+        sourceEventId,
+      );
+
+      expect(result).toBe(expectedRecord);
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.recordStatus).toBe('awaiting_mapping');
+      expect(callArg.orderSnapshot['externalOrderId']).toBe(incoming.externalOrderId);
+      expect(callArg.orderSnapshot['items']).toEqual(incoming.items);
+    });
+
+    it('should sanitize addresses in snapshot when PII is disabled', async () => {
+      process.env.OL_STORE_PII = 'false';
+      service = new OrderRecordService(repository);
+
+      const incoming = createMockIncomingOrder();
+      const expectedRecord = new OrderRecord(
+        'ol_order_abc',
+        null,
+        'conn-123',
+        null,
+        expect.objectContaining({}),
+        [],
+        'awaiting_mapping',
+        expect.any(Date),
+        expect.any(Date),
+      );
+      repository.upsert.mockResolvedValue(expectedRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['shippingAddress']).toEqual({
+        address1: '[REDACTED]',
+        city: '[REDACTED]',
+        postalCode: '[REDACTED]',
+        country: 'US',
+      });
     });
   });
 
@@ -275,6 +377,7 @@ describe('OrderRecordService', () => {
         'event-456',
         { id: internalOrderId },
         [],
+        'ready',
         new Date(),
         new Date(),
       );
