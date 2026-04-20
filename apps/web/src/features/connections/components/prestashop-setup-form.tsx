@@ -3,7 +3,9 @@
  *
  * Multi-step wizard for creating a PrestaShop connection. Steps:
  *   1. Credentials — shop URL, webservice key, optional shop ID
- *   2. Test connection — review the values the operator entered
+ *   2. Verify credentials — human review of entered values (the API-side
+ *      `/test` endpoint requires a saved connection, so this step is a
+ *      pre-save checkpoint, not a live probe)
  *   3. Capabilities — which roles this connection will fulfil
  *   4. Review & connect — final summary before submit
  *
@@ -43,7 +45,10 @@ const CAPABILITY_HELP: Record<Capability, string> = {
   Marketplace: 'Manage offers and listings on this marketplace.',
 };
 
-const STEP_LABELS = ['Credentials', 'Test connection', 'Capabilities', 'Review & connect'] as const;
+// "Verify credentials" rather than "Test connection": the PrestaShop `/test`
+// endpoint is only reachable after the connection is saved, so this step is a
+// human-review of the entered URL + masked key, not a live probe.
+const STEP_LABELS = ['Credentials', 'Verify credentials', 'Capabilities', 'Review & connect'] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<PrestashopSetupFormValues>>> = [
   ['name', 'baseUrl', 'webserviceKey', 'shopId'],
@@ -201,8 +206,8 @@ export function PrestashopSetupForm(): ReactElement {
         <div className="wizard-test-result">
           <Alert tone="info" title="Verify the credentials">
             OpenLinker will use the values below to reach your PrestaShop admin. Make sure the shop
-            URL resolves and the webservice key is active before you continue. You can rotate the
-            key later from the connection detail page.
+            URL resolves and the webservice key is active before you continue. After the connection
+            is saved you can run a live test from the connection detail page.
           </Alert>
           <dl className="wizard-review-list">
             <dt>Shop URL</dt>

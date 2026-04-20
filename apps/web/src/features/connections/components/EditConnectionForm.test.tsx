@@ -66,4 +66,86 @@ describe('EditConnectionForm', () => {
 
     expect(await screen.findByText('Server error')).toBeInTheDocument();
   });
+
+  describe('structured PrestaShop inputs + raw JSON toggle', () => {
+    it('renders Shop URL / Shop ID inputs for a PrestaShop connection', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      expect(screen.getByLabelText('Shop URL')).toHaveValue('https://example.com');
+      expect(screen.getByLabelText('Shop ID (optional)')).toHaveValue('');
+    });
+
+    it('keeps the raw JSON textarea hidden by default and reveals it via the toggle', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      expect(screen.queryByLabelText('Config JSON')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Show raw config JSON' }));
+
+      expect(screen.getByLabelText('Config JSON')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide raw config JSON' })).toBeInTheDocument();
+    });
+
+    it('syncs structured Shop URL edits into the underlying Config JSON payload', async () => {
+      const updateFn = vi.fn().mockResolvedValue(sampleConnection);
+      const apiClient = createMockApiClient({ connections: { update: updateFn } });
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+      fireEvent.change(screen.getByLabelText('Shop URL'), {
+        target: { value: 'https://new.example.com' },
+      });
+      fireEvent.change(screen.getByLabelText('Shop ID (optional)'), {
+        target: { value: '7' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(updateFn).toHaveBeenCalledWith(
+          sampleConnection.id,
+          expect.objectContaining({
+            config: { baseUrl: 'https://new.example.com', shopId: '7' },
+          }),
+        );
+      });
+    });
+
+    it('preserves unknown config keys when structured inputs are edited', async () => {
+      const connectionWithExtras = {
+        ...sampleConnection,
+        config: { baseUrl: 'https://example.com', customFlag: true, nested: { ok: 1 } },
+      };
+      const updateFn = vi.fn().mockResolvedValue(connectionWithExtras);
+      const apiClient = createMockApiClient({ connections: { update: updateFn } });
+      renderWithProviders(<EditConnectionForm connection={connectionWithExtras} />, { apiClient });
+
+      fireEvent.change(screen.getByLabelText('Shop URL'), {
+        target: { value: 'https://rotated.example.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(updateFn).toHaveBeenCalledWith(
+          sampleConnection.id,
+          expect.objectContaining({
+            config: {
+              baseUrl: 'https://rotated.example.com',
+              customFlag: true,
+              nested: { ok: 1 },
+            },
+          }),
+        );
+      });
+    });
+
+    it('locks the structured inputs and surfaces a warning when raw JSON is invalid', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show raw config JSON' }));
+
+      fireEvent.change(screen.getByLabelText('Config JSON'), {
+        target: { value: '{ not: valid json' },
+      });
+
+      expect(screen.getByText('Raw JSON is invalid')).toBeInTheDocument();
+      expect(screen.getByLabelText('Shop URL')).toBeDisabled();
+      expect(screen.getByLabelText('Shop ID (optional)')).toBeDisabled();
+    });
+  });
 });

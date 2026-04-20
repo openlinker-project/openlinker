@@ -98,6 +98,9 @@ export function AllegroSetupForm(): ReactElement {
       const { authorizationUrl } = await startOAuth.mutateAsync(
         toStartOAuthInput(values, redirectUri),
       );
+      // Clear the dirty flag so abandon-prevention doesn't pop a native
+      // "leave page?" confirm when we navigate to Allegro's consent screen.
+      form.reset(values, { keepValues: true, keepDirty: false });
       window.location.assign(authorizationUrl);
     } catch {
       return;

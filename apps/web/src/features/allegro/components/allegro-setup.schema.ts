@@ -1,16 +1,26 @@
 import { z } from 'zod';
 import type { StartAllegroOAuthInput } from '../api/allegro.api';
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const allegroSetupSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   environment: z.enum(['sandbox', 'production']),
   clientId: z.string().trim().min(1, 'Client ID is required'),
   clientSecret: z.string().trim().min(1, 'Client secret is required'),
-  // Empty string is coerced to undefined so the backend IsUUID validator is never sent an empty string
-  masterCatalogConnectionId: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim().length === 0 ? undefined : val),
-    z.string().uuid('Invalid connection ID').optional(),
-  ),
+  // The <select> registers a string value (empty string when "None" is picked),
+  // so the input type stays `string | undefined` and per-step `form.trigger`
+  // can validate cleanly. The transform coerces the empty string to undefined
+  // so the API payload never carries an empty UUID.
+  masterCatalogConnectionId: z
+    .string()
+    .optional()
+    .refine(
+      (value) => !value || UUID_REGEX.test(value),
+      'Invalid connection ID',
+    )
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 export type AllegroSetupFormValues = z.input<typeof allegroSetupSchema>;

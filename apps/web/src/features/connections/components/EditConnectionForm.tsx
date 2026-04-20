@@ -29,6 +29,15 @@ function readString(config: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+function isParseableJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function EditConnectionForm({ connection }: EditConnectionFormProps): ReactElement {
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
@@ -52,19 +61,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
   const hasStructuredInputs = connection.platformType === 'prestashop';
 
+  // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
+  // structured inputs so typing in them can't silently drop custom keys that
+  // the user added in raw mode — the user must fix the JSON first.
+  const configText = form.watch('configText');
+  const configIsParseable = isParseableJson(configText);
+
   // Keep the raw configText in sync with structured inputs so the power-user
   // JSON view always reflects the live form state, and submission goes through
-  // a single JSON payload.
+  // a single JSON payload. Refuses to write when the JSON is unparseable so we
+  // never discard the user's in-progress raw edits.
   function syncStructuredToJson(field: 'baseUrl' | 'shopId', value: string): void {
     form.setValue(field, value, { shouldDirty: true });
-    const currentText = form.getValues('configText');
-    let parsed: Record<string, unknown> = {};
-    try {
-      parsed = JSON.parse(currentText) as Record<string, unknown>;
-    } catch {
-      // ignore parse errors — keep an empty base and let validation surface
-      // the issue if the user toggles into raw mode with broken JSON
-    }
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, { [field]: value });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -134,6 +144,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
       {hasStructuredInputs ? (
         <>
+          {!configIsParseable ? (
+            <Alert tone="warning" title="Raw JSON is invalid">
+              Fix the raw config JSON below before editing Shop URL / Shop ID — the structured
+              inputs are locked so your custom JSON keys are not silently lost.
+            </Alert>
+          ) : null}
           <FormField
             label="Shop URL"
             name="baseUrl"
@@ -144,6 +160,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
               value={form.watch('baseUrl') ?? ''}
               onChange={(event) => syncStructuredToJson('baseUrl', event.target.value)}
               placeholder="https://shop.example.com"
+              disabled={!configIsParseable}
               invalid={Boolean(form.formState.errors.baseUrl)}
             />
           </FormField>
@@ -158,6 +175,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
               value={form.watch('shopId') ?? ''}
               onChange={(event) => syncStructuredToJson('shopId', event.target.value)}
               placeholder="1"
+              disabled={!configIsParseable}
               invalid={Boolean(form.formState.errors.shopId)}
             />
           </FormField>

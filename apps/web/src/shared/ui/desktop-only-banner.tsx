@@ -11,14 +11,17 @@ import type { ReactElement, ReactNode } from 'react';
 interface DesktopOnlyBannerProps {
   title?: string;
   children?: ReactNode;
+  className?: string;
 }
 
 export function DesktopOnlyBanner({
   title = 'Open on a desktop screen to edit',
   children = 'This editor needs a wider screen to show both sides side by side. The view below is read-only on this viewport.',
+  className,
 }: DesktopOnlyBannerProps): ReactElement {
+  const classes = ['desktop-only-banner', className].filter(Boolean).join(' ');
   return (
-    <div className="desktop-only-banner" role="note">
+    <div className={classes} role="note">
       <div>
         <p className="desktop-only-banner__title">{title}</p>
         <p>{children}</p>
