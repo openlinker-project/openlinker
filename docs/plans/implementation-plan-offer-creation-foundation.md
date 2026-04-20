@@ -47,7 +47,7 @@ Lay the groundwork for the `MarketplacePort.createOffer()` capability and the `O
 - Class: `{PascalDescription}{Timestamp} implements MigrationInterface` with `name` field matching class name.
 - `up()` checks `queryRunner.getTable(...)` before `CREATE TABLE` (defensive against re-runs).
 - `down()` drops indexes then table.
-- Latest migration timestamp in repo: `1782000000000`. **New timestamp for this plan: `1783000000000`.**
+- Latest migration timestamp in repo: `1782000000000`. **Initial timestamp was `1783000000000`; bumped to `1784000000000` after rebasing on `origin/main` which had merged a separate `1783000000000-add-order-record-status.ts` migration from PR #262.**
 
 ### Reference entity/repo pair (`Connection` + `connection.orm-entity.ts` + `connection.repository.ts`)
 - Domain entity: plain class, readonly constructor params, no framework imports.
@@ -275,7 +275,7 @@ No unique constraint on `(variantId, connectionId)` — a variant may have multi
 - **Acceptance:** `pnpm --filter @openlinker/api migration:show` runs without complaining.
 
 ### Step 13 — Migration
-- **File:** `apps/api/src/migrations/1783000000000-add-offer-creation-records-table.ts` (new)
+- **File:** `apps/api/src/migrations/1784000000000-add-offer-creation-records-table.ts` (new)
 - **Action:**
   - `up()`: check `getTable('offer_creation_records')`; if absent, CREATE TABLE with all columns, PK on `id` with `uuid_generate_v4()` default, plus three indexes.
   - `down()`: drop three indexes, then DROP TABLE.

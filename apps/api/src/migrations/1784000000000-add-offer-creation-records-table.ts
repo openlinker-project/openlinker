@@ -13,10 +13,15 @@
  */
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOfferCreationRecordsTable1783000000000 implements MigrationInterface {
-  name = 'AddOfferCreationRecordsTable1783000000000';
+export class AddOfferCreationRecordsTable1784000000000 implements MigrationInterface {
+  name = 'AddOfferCreationRecordsTable1784000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Ensure uuid_generate_v4() is available. Defensive: existing tables also
+    // rely on uuid-ossp but no prior migration creates it, so fresh databases
+    // (CI, new environments) must have it provisioned before this DDL runs.
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+
     const table = await queryRunner.getTable('offer_creation_records');
 
     if (!table) {

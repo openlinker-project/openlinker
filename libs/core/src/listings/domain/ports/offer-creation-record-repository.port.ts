@@ -44,6 +44,11 @@ export interface OfferCreationRecordRepositoryPort {
   /**
    * Update status (and optionally errors) for an existing record.
    *
+   * `errors` semantics:
+   * - Omit the argument to preserve any previously-recorded errors.
+   * - Pass `null` to explicitly clear previously-recorded errors.
+   * - Pass an array to replace previously-recorded errors.
+   *
    * Throws `OfferCreationRecordNotFoundException` if the record does not exist.
    */
   updateStatus(
