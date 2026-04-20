@@ -75,11 +75,38 @@ export const CreateOfferResultStatusValues = ['draft', 'validating', 'active'] a
 export type CreateOfferResultStatus = (typeof CreateOfferResultStatusValues)[number];
 
 /**
+ * Validation error reported by the marketplace during offer creation.
+ *
+ * Neutral shape mapped from platform-specific error formats by the adapter.
+ * Adapters that do not surface validation errors (WooCommerce, direct-API
+ * platforms) leave `validationErrors` unset on the result.
+ */
+export interface CreateOfferValidationError {
+  /** Dotted field path reported by the platform, when available (e.g. `parameters.EAN`). */
+  field?: string;
+  /** Platform-specific or OL-normalized error code (e.g. `PARAMETER_REQUIRED`). */
+  code: string;
+  /** Human-readable message suitable for displaying to an operator. */
+  message: string;
+}
+
+/**
  * Result returned by `MarketplacePort.createOffer`.
+ *
+ * A non-throwing response means the offer was successfully *created* on the
+ * platform (the `externalOfferId` exists) even if `validationErrors` is
+ * populated — that represents "created as draft but with issues blocking
+ * publication," which is a valid, recoverable state. Adapters only throw on
+ * non-2xx responses where no offer was created.
  */
 export interface CreateOfferResult {
   /** Marketplace-native id of the newly created offer. */
   externalOfferId: string;
   /** Adapter-reported status immediately after the create call. */
   status: CreateOfferResultStatus;
+  /**
+   * Structured validation errors the platform reported inline (2xx response
+   * with validation issues). Omitted when empty.
+   */
+  validationErrors?: CreateOfferValidationError[];
 }

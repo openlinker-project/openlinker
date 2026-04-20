@@ -11,6 +11,7 @@ export {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  OFFER_BUILDER_SERVICE_TOKEN,
 } from './listings.tokens';
 export { OfferLinkingService } from './application/services/offer-linking.service';
 export { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
@@ -49,3 +50,13 @@ export type {
 } from './domain/types/offer-creation-record.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
+export { OfferBuilderService } from './application/services/offer-builder.service';
+export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
+export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
+export {
+  OfferBuilderValidationException,
+} from './domain/exceptions/offer-builder-validation.exception';
+export type {
+  OfferBuilderValidationIssue,
+} from './domain/exceptions/offer-builder-validation.exception';
+export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
