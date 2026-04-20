@@ -1,7 +1,8 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
+import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 
 function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
@@ -24,6 +25,24 @@ function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
   };
 }
 
+function makeConnection(overrides: Partial<Connection>): Connection {
+  return { ...sampleConnection, ...overrides };
+}
+
+function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
+  const labels = Array.from(container.querySelectorAll<HTMLElement>('.metric-card__label')).filter(
+    (el) => el.textContent === label,
+  );
+  if (labels.length !== 1) {
+    throw new Error(`Expected one .metric-card__label "${label}", found ${labels.length}`);
+  }
+  const card = labels[0].closest('.metric-card');
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`No .metric-card ancestor for label: ${label}`);
+  }
+  return card;
+}
+
 describe('DashboardPage', () => {
   afterEach(cleanup);
 
@@ -36,8 +55,8 @@ describe('DashboardPage', () => {
     const apiClient = createMockApiClient({
       connections: {
         list: vi.fn().mockResolvedValue([
-          { id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
-          { id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
+          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
+          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
         ]),
       },
     });
@@ -159,26 +178,30 @@ describe('DashboardPage', () => {
     const { container } = renderWithProviders(<DashboardPage />, { apiClient });
 
     await screen.findByText('3 jobs need attention');
-    const errorCard = container.querySelector('.metric-card--error');
-    expect(errorCard).not.toBeNull();
-    expect(errorCard).toHaveAttribute('href', '/orders/failed');
+    const failedCard = findCardByLabel(container, 'Failed jobs');
+    expect(failedCard).toHaveClass('metric-card--error');
+    expect(failedCard).toHaveAttribute('href', '/orders/failed');
   });
 
-  it('leaves the Failed jobs card in the success tone when there are no failures', async () => {
+  it('keeps the Failed jobs card neutral when there are no failures', async () => {
     const { container } = renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(container.querySelector('.metric-card--error')).toBeNull();
+      const failedCard = findCardByLabel(container, 'Failed jobs');
+      expect(failedCard).toHaveClass('metric-card--neutral');
     });
-    expect(container.querySelector('.metric-card--success')).not.toBeNull();
+    const failedCard = findCardByLabel(container, 'Failed jobs');
+    expect(failedCard.tagName).toBe('DIV');
+    expect(failedCard).not.toHaveClass('metric-card--error');
+    expect(failedCard).not.toHaveClass('metric-card--success');
   });
 
   it('tints the Integration health card warning when a connection is in error', async () => {
     const apiClient = createMockApiClient({
       connections: {
         list: vi.fn().mockResolvedValue([
-          { id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '', enabledCapabilities: [], supportedCapabilities: [] },
-          { id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '', enabledCapabilities: [], supportedCapabilities: [] },
+          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
+          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
         ]),
       },
     });
@@ -186,7 +209,8 @@ describe('DashboardPage', () => {
     const { container } = renderWithProviders(<DashboardPage />, { apiClient });
 
     await screen.findByText('1 / 2');
-    expect(container.querySelector('.metric-card--warning')).not.toBeNull();
+    const integrationCard = findCardByLabel(container, 'Integration health');
+    expect(integrationCard).toHaveClass('metric-card--warning');
   });
 
   it('shows error state when sync jobs fail to load', async () => {
