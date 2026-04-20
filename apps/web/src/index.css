@@ -125,6 +125,8 @@
 
   /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
+  --overlay-scrim: rgba(16, 24, 40, 0.45);
 
   color-scheme: light;
   font-family: var(--font-sans);
@@ -488,11 +490,11 @@ textarea {
   height: 100vh;
   max-height: 100vh;
   background: var(--bg-shell);
-  box-shadow: 0 8px 32px rgba(16, 24, 40, 0.18);
+  box-shadow: var(--shadow-overlay);
 }
 
 .shell-drawer::backdrop {
-  background: rgba(16, 24, 40, 0.45);
+  background: var(--overlay-scrim);
 }
 
 .shell-drawer__inner {

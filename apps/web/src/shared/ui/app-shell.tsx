@@ -37,18 +37,6 @@ interface PlannedNavGroup {
 
 type NavGroup = LiveNavGroup | PlannedNavGroup;
 
-/**
- * Nav IA (FE-002 / #238)
- *
- * Three active groups sorted by frequency of use, plus a disabled Planned
- * footer. "Live"/"Planned" pills removed from live items; Planned items are
- * non-interactive and carry a tooltip.
- *
- * Naming contract: we use "Connections" everywhere (nav, URL, page title,
- * API) to resolve the legacy "Integrations vs Connections" drift.
- *
- * See docs/frontend-ui-style-guide.md §Shell Layout → Left Navigation.
- */
 const navGroups: NavGroup[] = [
   {
     kind: 'live',
@@ -91,15 +79,6 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-/**
- * Topbar crumb resolution.
- *
- * Static map for known routes; simple fallbacks for dynamic detail routes
- * (`/orders/:id`, `/connections/:id`, etc.). Keeps the topbar grounded
- * in the current route without requiring every page to publish its own
- * crumb — Phase 3's PageHeader primitive can replace this with a more
- * declarative API if needed.
- */
 const staticCrumbs: Record<string, { group: string; title: string }> = {
   '/': { group: 'Operations', title: 'Dashboard' },
   '/orders': { group: 'Operations', title: 'Orders' },
@@ -135,9 +114,14 @@ function resolveCrumbs(pathname: string): { group: string; title: string } {
   return { group: 'OpenLinker', title: '' };
 }
 
-function SidebarNav({ onNavigate }: { onNavigate?: () => void }): ReactElement {
+interface SidebarNavProps {
+  ariaLabel: string;
+  onNavigate?: () => void;
+}
+
+function SidebarNav({ ariaLabel, onNavigate }: SidebarNavProps): ReactElement {
   return (
-    <nav className="shell-nav" aria-label="Primary">
+    <nav className="shell-nav" aria-label={ariaLabel}>
       {navGroups.map((group) => (
         <section key={group.label} className="shell-nav__group">
           <p className="shell-nav__label">{group.label}</p>
@@ -161,7 +145,9 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }): ReactElement {
                   <li key={item.label}>
                     <span
                       className="shell-nav__link shell-nav__link--disabled"
+                      role="link"
                       aria-disabled="true"
+                      tabIndex={-1}
                       title={item.reason}
                     >
                       {item.label}
@@ -227,7 +213,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     drawerRef.current?.showModal();
   }, []);
 
-  // Auto-close the drawer when the route changes (mobile navigation UX).
   useEffect(() => {
     closeDrawer();
   }, [location.pathname, closeDrawer]);
@@ -243,15 +228,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <div className="shell">
-      <aside className="shell-sidebar" aria-label="Primary navigation">
+      <div className="shell-sidebar">
         <SidebarBrand />
-        <SidebarNav />
+        <SidebarNav ariaLabel="Primary" />
         <WorkspaceFooter username={username} onLogout={username ? handleLogout : undefined} />
-      </aside>
+      </div>
 
-      {/* Mobile drawer — hidden above 1024 px via CSS; native <dialog> handles
-          focus trap, esc, and backdrop click. Same nav content as the sidebar. */}
-      <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation">
+      <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
         <div className="shell-drawer__inner">
           <div className="shell-drawer__header">
             <SidebarBrand />
@@ -264,7 +247,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
               ✕
             </Button>
           </div>
-          <SidebarNav onNavigate={closeDrawer} />
+          <SidebarNav ariaLabel="Primary (mobile)" onNavigate={closeDrawer} />
           <WorkspaceFooter username={username} onLogout={username ? handleLogout : undefined} />
         </div>
       </dialog>
@@ -299,8 +282,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
             <Input type="search" placeholder="Search orders, products, jobs…" />
           </label>
 
-          <Button tone="ghost" className="shell-topbar__alerts" aria-label="Alerts (0 new)">
-            Alerts 0
+          <Button tone="ghost" className="shell-topbar__alerts">
+            Alerts <span aria-hidden="true">0</span>
+            <span className="sr-only">(0 new)</span>
           </Button>
         </header>
 

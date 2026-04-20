@@ -36,14 +36,13 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 }),
     ).toBeInTheDocument();
-    const primaryNavigation = within(view.container).getAllByRole('navigation', {
+    const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',
-    })[0];
+    });
     expect(within(primaryNavigation).getByText('Connections').closest('a')).toHaveAttribute(
       'href',
       '/connections',
     );
-    // Env badge moved to sidebar workspace footer; still present somewhere.
     expect(screen.getAllByText(/^(Dev|Development)$/)).not.toHaveLength(0);
   });
 
@@ -51,9 +50,9 @@ describe('App', () => {
     const view = renderApp(['/orders']);
 
     expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    const primaryNavigation = within(view.container).getAllByRole('navigation', {
+    const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',
-    })[0];
+    });
     expect(within(primaryNavigation).getByText('Orders').closest('a')).toHaveAttribute(
       'href',
       '/orders',
