@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
 import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
@@ -25,9 +25,35 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   }
 }
 
+const TAB_VALUES = ['overview', 'health', 'actions', 'config'] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
+function isTabValue(value: string | null): value is TabValue {
+  return value !== null && (TAB_VALUES as readonly string[]).includes(value);
+}
+
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const tabParam = searchParams.get('tab');
+  const activeTab: TabValue = isTabValue(tabParam) ? tabParam : 'overview';
+
+  const handleTabChange = (value: string): void => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (value === 'overview') {
+          params.delete('tab');
+        } else {
+          params.set('tab', value);
+        }
+        return params;
+      },
+      { replace: true },
+    );
+  };
 
   const connection = connectionQuery.data;
 
@@ -104,7 +130,7 @@ export function ConnectionDetailPage(): ReactElement {
         </Alert>
       ) : null}
       {connection ? (
-        <Tabs defaultValue="overview">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="health">Health</TabsTrigger>

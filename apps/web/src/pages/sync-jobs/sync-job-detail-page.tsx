@@ -127,7 +127,7 @@ export function SyncJobDetailPage(): ReactElement {
 
       {job.lastError ? (
         <section className="detail-section">
-          <RawPayloadPanel title="Last error" payload={job.lastError} defaultOpen />
+          <RawPayloadPanel title="Last error" payload={job.lastError} defaultOpen={!isDead} />
         </section>
       ) : null}
 

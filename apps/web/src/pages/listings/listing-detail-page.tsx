@@ -9,23 +9,29 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import {
+  KNOWN_MAPPING_ENTITY_TYPES,
+  type KnownMappingEntityType,
+} from '../../features/listings/api/listings.types';
+
+const ENTITY_TYPE_ROUTES: Record<KnownMappingEntityType, (id: string) => string> = {
+  Product: (id) => `/products/${id}`,
+  ProductVariant: (id) => `/products/${id}`,
+  InventoryItem: (id) => `/inventory/${id}`,
+};
+
+function isKnownEntityType(value: string): value is KnownMappingEntityType {
+  return (KNOWN_MAPPING_ENTITY_TYPES as readonly string[]).includes(value);
+}
 
 function renderInternalIdValue(entityType: string, internalId: string): ReactNode {
-  if (entityType === 'Product' || entityType === 'ProductVariant') {
-    return (
-      <Link to={`/products/${internalId}`} className="mono-text">
-        {internalId}
-      </Link>
-    );
-  }
-  if (entityType === 'InventoryItem') {
-    return (
-      <Link to={`/inventory/${internalId}`} className="mono-text">
-        {internalId}
-      </Link>
-    );
-  }
-  return internalId;
+  if (!isKnownEntityType(entityType)) return internalId;
+  const to = ENTITY_TYPE_ROUTES[entityType](internalId);
+  return (
+    <Link to={to} className="mono-text">
+      {internalId}
+    </Link>
+  );
 }
 
 export function ListingDetailPage(): ReactElement {

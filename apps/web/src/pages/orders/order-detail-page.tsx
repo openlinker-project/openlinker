@@ -126,7 +126,10 @@ export function OrderDetailPage(): ReactElement {
             failedDestinations.length > 1 ? 's' : ''
           } failed`}
           action={
-            <Link to="/orders/failed" className="button button--primary button--compact">
+            <Link
+              to={`/orders/failed?connectionId=${encodeURIComponent(order.sourceConnectionId)}`}
+              className="button button--primary button--compact"
+            >
               View failed orders
             </Link>
           }

@@ -2798,6 +2798,12 @@ textarea {
   outline-offset: 2px;
 }
 
+.tabs__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .tabs__content:focus-visible {
   outline: none;
 }

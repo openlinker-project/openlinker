@@ -103,7 +103,7 @@ describe('OrderDetailPage', () => {
     expect(screen.getAllByText(/foreign key constraint/).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'View failed orders' })).toHaveAttribute(
       'href',
-      '/orders/failed',
+      `/orders/failed?connectionId=${sampleConnection.id}`,
     );
   });
 });

@@ -62,4 +62,18 @@ describe('ConnectionDetailPage', () => {
     );
     expect(screen.getByText('Connection config')).toBeInTheDocument();
   });
+
+  it('honors ?tab=config in the URL on first render', async () => {
+    const apiClient = createMockApiClient();
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+      </Routes>,
+      { apiClient, route: `/connections/${sampleConnection.id}?tab=config` },
+    );
+
+    const configTab = await screen.findByRole('tab', { name: 'Config' });
+    expect(configTab).toHaveAttribute('aria-selected', 'true');
+  });
 });

@@ -8,6 +8,14 @@
  * @module apps/web/src/features/listings/api
  */
 
+/**
+ * Known mapping entity types. The wire value is a plain string — unknown
+ * values pass through unchanged (UI falls back to non-linkified text) so this
+ * list stays forward-compatible with new backend entity kinds.
+ */
+export const KNOWN_MAPPING_ENTITY_TYPES = ['Product', 'ProductVariant', 'InventoryItem'] as const;
+export type KnownMappingEntityType = (typeof KNOWN_MAPPING_ENTITY_TYPES)[number];
+
 export interface OfferMapping {
   id: string;
   entityType: string;
