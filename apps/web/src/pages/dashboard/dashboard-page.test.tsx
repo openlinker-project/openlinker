@@ -211,6 +211,9 @@ describe('DashboardPage', () => {
     await screen.findByText('1 / 2');
     const integrationCard = findCardByLabel(container, 'Integration health');
     expect(integrationCard).toHaveClass('metric-card--warning');
+    const icon = integrationCard.querySelector('.metric-card__icon');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('shows error state when sync jobs fail to load', async () => {
