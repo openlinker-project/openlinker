@@ -66,7 +66,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi);
 
     expect(await screen.findByText('Test Product')).toBeInTheDocument();
-    expect(screen.getByText('ol_product_abc123')).toBeInTheDocument();
+    expect(screen.getAllByText('ol_product_abc123').length).toBeGreaterThan(0);
     expect(screen.getByText('SKU-001')).toBeInTheDocument();
     expect(screen.getByText('29.99')).toBeInTheDocument();
     expect(screen.getByText('A test product')).toBeInTheDocument();

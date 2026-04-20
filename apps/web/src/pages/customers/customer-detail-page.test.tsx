@@ -38,7 +38,7 @@ describe('CustomerDetailPage', () => {
 
     renderDetail(api);
 
-    await screen.findByText('ol_customer_abc');
+    expect((await screen.findAllByText('ol_customer_abc')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Jane').length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText('No value').length).toBeGreaterThan(0);
 
@@ -54,7 +54,7 @@ describe('CustomerDetailPage', () => {
 
     renderDetail(api);
 
-    await screen.findByText('ol_customer_abc');
+    expect((await screen.findAllByText('ol_customer_abc')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: sampleConnection.name })).toBeNull();
     expect(screen.getAllByLabelText('No value').length).toBeGreaterThanOrEqual(2);
   });
