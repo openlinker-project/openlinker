@@ -322,4 +322,81 @@ describe('DataTable', () => {
     fireEvent.click(screen.getByRole('button', { name: /Name/ }));
     expect(onSortChange).toHaveBeenCalledTimes(1);
   });
+
+  it('mounts a fixed-height scroll container and keeps rendered rows far below the row count when virtualize=true', () => {
+    const manyRows: TestRow[] = Array.from({ length: 1000 }, (_, i) => ({
+      id: `row-${i}`,
+      name: `Row ${i}`,
+      createdAt: '2026-01-01',
+    }));
+
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        caption="Large list"
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={manyRows}
+        virtualize
+        containerHeight={360}
+        estimateRowHeight={36}
+      />,
+    );
+
+    const scroller = container.querySelector('.data-table__virtual-scroller');
+    expect(scroller).not.toBeNull();
+    expect(scroller).toHaveStyle({ height: '360px' });
+
+    const bodyRows = container.querySelectorAll('tbody tr:not([aria-hidden="true"])');
+    expect(bodyRows.length).toBeLessThan(100);
+  });
+
+  it('exposes the virtual scroller as a keyboard-accessible scrollable region', () => {
+    const manyRows: TestRow[] = Array.from({ length: 50 }, (_, i) => ({
+      id: `row-${i}`,
+      name: `Row ${i}`,
+      createdAt: '2026-01-01',
+    }));
+
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        caption="Sync jobs"
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={manyRows}
+        virtualize
+      />,
+    );
+
+    const scroller = container.querySelector('.data-table__virtual-scroller');
+    expect(scroller).toHaveAttribute('tabindex', '0');
+    expect(scroller).toHaveAttribute('role', 'region');
+    expect(scroller).toHaveAttribute('aria-label', 'Sync jobs (scrollable)');
+  });
+
+  it('skips the virtual scroller when the row set is empty', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={[]}
+        virtualize
+        emptyState={<p>No rows</p>}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+    expect(screen.getByText('No rows')).toBeInTheDocument();
+  });
+
+  it('does not wrap the table in a scroll container when virtualize is false', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+  });
 });

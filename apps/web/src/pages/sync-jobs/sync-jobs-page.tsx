@@ -11,7 +11,7 @@ import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-q
 import type { SyncJob, SyncJobFilters, JobStatus, JobType } from '../../features/sync-jobs/api/sync-jobs.types';
 import { JOB_STATUS_VALUES, JOB_TYPE_VALUES } from '../../features/sync-jobs/api/sync-jobs.types';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 200;
 
 const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
@@ -185,6 +185,8 @@ export function SyncJobsPage(): ReactElement {
             rowHref={(job) => job.id}
             sort={sort}
             onSortChange={setSort}
+            virtualize
+            containerHeight={600}
             cardView={{
               title: (job) => job.jobType,
               subtitle: (job) => job.connectionId,

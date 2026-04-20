@@ -5,12 +5,16 @@ import {
   useReactTable,
   type ColumnDef,
   type OnChangeFn,
+  type Row as TanStackRow,
   type SortingState,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type Key,
   type MouseEvent,
   type ReactElement,
@@ -47,12 +51,24 @@ interface DataTableProps<Row> {
   cardView?: DataTableCardView<Row>;
   className?: string;
   columns: DataTableColumn<Row>[];
+  /** Fixed scroll-container height when virtualize is enabled. Default 560. */
+  containerHeight?: number;
   emptyState?: ReactNode;
+  /** Per-row height estimate used by the virtualizer. Default 36. */
+  estimateRowHeight?: number;
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
   rowKey: (row: Row) => Key;
   rows: Row[];
   sort?: SortingState;
+  /**
+   * When true, the table body renders only rows visible inside a fixed-height
+   * scroll container. Use for lists that commonly exceed ~200 rows.
+   *
+   * Rows are forced to `estimateRowHeight` pixels — content taller than that
+   * clips. Only enable on surfaces whose row content you control.
+   */
+  virtualize?: boolean;
 }
 
 const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, details, summary, [role="button"]';
@@ -71,14 +87,18 @@ export function DataTable<Row>({
   cardView,
   className = '',
   columns,
+  containerHeight = 560,
   emptyState,
+  estimateRowHeight = 36,
   onSortChange,
   rowHref,
   rowKey,
   rows,
   sort,
+  virtualize = false,
 }: DataTableProps<Row>): ReactElement {
   const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const defs = useMemo(() => buildColumnDefs(columns), [columns]);
   const columnById = useMemo(() => {
     const map = new Map<string, DataTableColumn<Row>>();
@@ -103,9 +123,11 @@ export function DataTable<Row>({
 
   const tableRows = table.getRowModel().rows;
   const isEmpty = tableRows.length === 0;
+  const virtualizeActive = virtualize && !renderCards && !isEmpty;
   const containerClasses = [
     'data-table__container',
     cardView ? 'data-table__container--with-cards' : '',
+    virtualizeActive ? 'data-table__container--virtual' : '',
     className,
   ]
     .filter(Boolean)
@@ -127,107 +149,165 @@ export function DataTable<Row>({
     [navigate],
   );
 
+  const virtualizer = useVirtualizer({
+    count: virtualizeActive ? tableRows.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimateRowHeight,
+    overscan: 8,
+  });
+
+  const renderBodyRow = (tanstackRow: TanStackRow<Row>, style?: CSSProperties): ReactElement => {
+    const row = tanstackRow.original;
+    const href = rowHref?.(row);
+    return (
+      <tr
+        key={rowKey(row)}
+        className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
+        onClick={href ? makeRowClickHandler(href) : undefined}
+        style={style}
+      >
+        {columns.map((column, index) => {
+          const cellClasses = [
+            column.align ? `data-table__cell--${column.align}` : '',
+            column.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          const content =
+            href && index === 0 ? (
+              <Link to={href} className="data-table__row-link">
+                {column.cell(row)}
+              </Link>
+            ) : (
+              column.cell(row)
+            );
+
+          return (
+            <td key={column.id} className={cellClasses || undefined}>
+              {content}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
+  const renderTable = (): ReactElement => (
+    <table className="data-table">
+      {caption ? <caption className="sr-only">{caption}</caption> : null}
+      <thead>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <tr key={headerGroup.id}>
+            {headerGroup.headers.map((header) => {
+              const column = columnById.get(header.column.id);
+              const canSort = column?.sortable ?? false;
+              const sortDir = header.column.getIsSorted();
+              const classes = [
+                column?.align ? `data-table__cell--${column.align}` : '',
+                column?.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
+                canSort ? 'data-table__header--sortable' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+
+              return (
+                <th
+                  key={header.id}
+                  scope="col"
+                  className={classes || undefined}
+                  aria-sort={
+                    canSort
+                      ? sortDir === 'asc'
+                        ? 'ascending'
+                        : sortDir === 'desc'
+                          ? 'descending'
+                          : 'none'
+                      : undefined
+                  }
+                >
+                  {canSort ? (
+                    <button
+                      type="button"
+                      className="data-table__header-button"
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      <span className="data-table__sort-indicator" aria-hidden="true">
+                        {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}
+                      </span>
+                    </button>
+                  ) : (
+                    flexRender(header.column.columnDef.header, header.getContext())
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        ))}
+      </thead>
+      <tbody>
+        {isEmpty ? (
+          <tr className="data-table__empty-row">
+            <td className="data-table__empty-cell" colSpan={columns.length}>
+              {emptyNode}
+            </td>
+          </tr>
+        ) : virtualizeActive ? (
+          renderVirtualRows()
+        ) : (
+          tableRows.map((tanstackRow) => renderBodyRow(tanstackRow))
+        )}
+      </tbody>
+    </table>
+  );
+
+  function renderVirtualRows(): ReactElement[] {
+    const virtualItems = virtualizer.getVirtualItems();
+    const totalSize = virtualizer.getTotalSize();
+    const paddingTop = virtualItems[0]?.start ?? 0;
+    const paddingBottom =
+      virtualItems.length > 0 ? totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0) : 0;
+
+    const rows: ReactElement[] = [];
+    if (paddingTop > 0) {
+      rows.push(
+        <tr key="__padding_top" aria-hidden="true" style={{ height: paddingTop }}>
+          <td colSpan={columns.length} />
+        </tr>,
+      );
+    }
+    for (const virtualItem of virtualItems) {
+      const tanstackRow = tableRows[virtualItem.index];
+      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }));
+    }
+    if (paddingBottom > 0) {
+      rows.push(
+        <tr key="__padding_bottom" aria-hidden="true" style={{ height: paddingBottom }}>
+          <td colSpan={columns.length} />
+        </tr>,
+      );
+    }
+    return rows;
+  }
+
   return (
     <div className={containerClasses}>
       {!renderCards ? (
-        <table className="data-table">
-          {caption ? <caption className="sr-only">{caption}</caption> : null}
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  const column = columnById.get(header.column.id);
-                  const canSort = column?.sortable ?? false;
-                  const sortDir = header.column.getIsSorted();
-                  const classes = [
-                    column?.align ? `data-table__cell--${column.align}` : '',
-                    column?.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
-                    canSort ? 'data-table__header--sortable' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ');
-
-                  return (
-                    <th
-                      key={header.id}
-                      scope="col"
-                      className={classes || undefined}
-                      aria-sort={
-                        canSort
-                          ? sortDir === 'asc'
-                            ? 'ascending'
-                            : sortDir === 'desc'
-                              ? 'descending'
-                              : 'none'
-                          : undefined
-                      }
-                    >
-                      {canSort ? (
-                        <button
-                          type="button"
-                          className="data-table__header-button"
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          <span className="data-table__sort-indicator" aria-hidden="true">
-                            {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}
-                          </span>
-                        </button>
-                      ) : (
-                        flexRender(header.column.columnDef.header, header.getContext())
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {isEmpty ? (
-              <tr className="data-table__empty-row">
-                <td className="data-table__empty-cell" colSpan={columns.length}>
-                  {emptyNode}
-                </td>
-              </tr>
-            ) : (
-              tableRows.map((tanstackRow) => {
-                const row = tanstackRow.original;
-                const href = rowHref?.(row);
-                return (
-                  <tr
-                    key={rowKey(row)}
-                    className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
-                    onClick={href ? makeRowClickHandler(href) : undefined}
-                  >
-                    {columns.map((column, index) => {
-                      const cellClasses = [
-                        column.align ? `data-table__cell--${column.align}` : '',
-                        column.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ');
-
-                      const content =
-                        href && index === 0 ? (
-                          <Link to={href} className="data-table__row-link">
-                            {column.cell(row)}
-                          </Link>
-                        ) : (
-                          column.cell(row)
-                        );
-
-                      return (
-                        <td key={column.id} className={cellClasses || undefined}>
-                          {content}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+        virtualizeActive ? (
+          <div
+            ref={scrollRef}
+            className="data-table__virtual-scroller"
+            style={{ height: containerHeight }}
+            tabIndex={0}
+            role="region"
+            aria-label={typeof caption === 'string' ? `${caption} (scrollable)` : 'Scrollable table'}
+          >
+            {renderTable()}
+          </div>
+        ) : (
+          renderTable()
+        )
       ) : null}
 
       {renderCards && cardView ? (
