@@ -1211,6 +1211,13 @@ textarea {
   overflow-x: auto;
 }
 
+.data-table__virtual-scroller {
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  contain: strict;
+}
+
 .data-table__cell--right {
   text-align: right;
 }

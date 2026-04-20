@@ -5,12 +5,16 @@ import {
   useReactTable,
   type ColumnDef,
   type OnChangeFn,
+  type Row as TanStackRow,
   type SortingState,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type Key,
   type MouseEvent,
   type ReactElement,
@@ -47,12 +51,21 @@ interface DataTableProps<Row> {
   cardView?: DataTableCardView<Row>;
   className?: string;
   columns: DataTableColumn<Row>[];
+  /** Fixed scroll-container height when virtualize is enabled. Default 560. */
+  containerHeight?: number;
   emptyState?: ReactNode;
+  /** Per-row height estimate used by the virtualizer. Default 36. */
+  estimateRowHeight?: number;
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
   rowKey: (row: Row) => Key;
   rows: Row[];
   sort?: SortingState;
+  /**
+   * When true, the table body renders only rows visible inside a fixed-height
+   * scroll container. Use for lists that commonly exceed ~200 rows.
+   */
+  virtualize?: boolean;
 }
 
 const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, details, summary, [role="button"]';
@@ -71,14 +84,18 @@ export function DataTable<Row>({
   cardView,
   className = '',
   columns,
+  containerHeight = 560,
   emptyState,
+  estimateRowHeight = 36,
   onSortChange,
   rowHref,
   rowKey,
   rows,
   sort,
+  virtualize = false,
 }: DataTableProps<Row>): ReactElement {
   const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const defs = useMemo(() => buildColumnDefs(columns), [columns]);
   const columnById = useMemo(() => {
     const map = new Map<string, DataTableColumn<Row>>();
@@ -127,9 +144,51 @@ export function DataTable<Row>({
     [navigate],
   );
 
-  return (
-    <div className={containerClasses}>
-      {!renderCards ? (
+  const virtualizer = useVirtualizer({
+    count: virtualize && !renderCards ? tableRows.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimateRowHeight,
+    overscan: 8,
+  });
+
+  const renderBodyRow = (tanstackRow: TanStackRow<Row>, style?: CSSProperties): ReactElement => {
+    const row = tanstackRow.original;
+    const href = rowHref?.(row);
+    return (
+      <tr
+        key={rowKey(row)}
+        className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
+        onClick={href ? makeRowClickHandler(href) : undefined}
+        style={style}
+      >
+        {columns.map((column, index) => {
+          const cellClasses = [
+            column.align ? `data-table__cell--${column.align}` : '',
+            column.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          const content =
+            href && index === 0 ? (
+              <Link to={href} className="data-table__row-link">
+                {column.cell(row)}
+              </Link>
+            ) : (
+              column.cell(row)
+            );
+
+          return (
+            <td key={column.id} className={cellClasses || undefined}>
+              {content}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
+  const renderTable = (): ReactElement => (
         <table className="data-table">
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <thead>
@@ -189,45 +248,58 @@ export function DataTable<Row>({
                   {emptyNode}
                 </td>
               </tr>
+            ) : virtualize ? (
+              renderVirtualRows()
             ) : (
-              tableRows.map((tanstackRow) => {
-                const row = tanstackRow.original;
-                const href = rowHref?.(row);
-                return (
-                  <tr
-                    key={rowKey(row)}
-                    className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
-                    onClick={href ? makeRowClickHandler(href) : undefined}
-                  >
-                    {columns.map((column, index) => {
-                      const cellClasses = [
-                        column.align ? `data-table__cell--${column.align}` : '',
-                        column.hideBelow ? `data-table__cell--hide-below-${column.hideBelow}` : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ');
-
-                      const content =
-                        href && index === 0 ? (
-                          <Link to={href} className="data-table__row-link">
-                            {column.cell(row)}
-                          </Link>
-                        ) : (
-                          column.cell(row)
-                        );
-
-                      return (
-                        <td key={column.id} className={cellClasses || undefined}>
-                          {content}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
+              tableRows.map((tanstackRow) => renderBodyRow(tanstackRow))
             )}
           </tbody>
         </table>
+  );
+
+  function renderVirtualRows(): ReactElement[] {
+    const virtualItems = virtualizer.getVirtualItems();
+    const totalSize = virtualizer.getTotalSize();
+    const paddingTop = virtualItems[0]?.start ?? 0;
+    const paddingBottom =
+      virtualItems.length > 0 ? totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0) : 0;
+
+    const rows: ReactElement[] = [];
+    if (paddingTop > 0) {
+      rows.push(
+        <tr key="__padding_top" aria-hidden="true" style={{ height: paddingTop }}>
+          <td colSpan={columns.length} />
+        </tr>,
+      );
+    }
+    for (const virtualItem of virtualItems) {
+      const tanstackRow = tableRows[virtualItem.index];
+      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }));
+    }
+    if (paddingBottom > 0) {
+      rows.push(
+        <tr key="__padding_bottom" aria-hidden="true" style={{ height: paddingBottom }}>
+          <td colSpan={columns.length} />
+        </tr>,
+      );
+    }
+    return rows;
+  }
+
+  return (
+    <div className={containerClasses}>
+      {!renderCards ? (
+        virtualize ? (
+          <div
+            ref={scrollRef}
+            className="data-table__virtual-scroller"
+            style={{ height: containerHeight }}
+          >
+            {renderTable()}
+          </div>
+        ) : (
+          renderTable()
+        )
       ) : null}
 
       {renderCards && cardView ? (

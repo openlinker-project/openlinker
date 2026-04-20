@@ -19,3 +19,33 @@ HTMLDialogElement.prototype.close = function (this: HTMLDialogElement): void {
   this.removeAttribute('open');
   previouslyFocused.get(this)?.focus();
 };
+
+// happy-dom does not compute layout, so elementless dimensions are always 0.
+// TanStack Virtual reads clientHeight / scrollHeight from its scroll element to
+// decide which rows to render; without measurable dimensions it returns zero
+// virtual items and the virtualized DataTable body appears empty in tests.
+// Seed non-zero dimensions on every element so virtualization yields rows.
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+  configurable: true,
+  get() {
+    return 800;
+  },
+});
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+  configurable: true,
+  get() {
+    return 800;
+  },
+});
+Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get() {
+    return 800;
+  },
+});
+Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+  configurable: true,
+  get() {
+    return 800;
+  },
+});

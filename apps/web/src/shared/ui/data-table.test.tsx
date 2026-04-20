@@ -322,4 +322,42 @@ describe('DataTable', () => {
     fireEvent.click(screen.getByRole('button', { name: /Name/ }));
     expect(onSortChange).toHaveBeenCalledTimes(1);
   });
+
+  it('mounts a fixed-height scroll container and keeps rendered rows far below the row count when virtualize=true', () => {
+    const manyRows: TestRow[] = Array.from({ length: 1000 }, (_, i) => ({
+      id: `row-${i}`,
+      name: `Row ${i}`,
+      createdAt: '2026-01-01',
+    }));
+
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={manyRows}
+        virtualize
+        containerHeight={360}
+        estimateRowHeight={36}
+      />,
+    );
+
+    const scroller = container.querySelector('.data-table__virtual-scroller');
+    expect(scroller).not.toBeNull();
+    expect(scroller).toHaveStyle({ height: '360px' });
+
+    const bodyRows = container.querySelectorAll('tbody tr:not([aria-hidden="true"])');
+    expect(bodyRows.length).toBeLessThan(100);
+  });
+
+  it('does not wrap the table in a scroll container when virtualize is false', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+  });
 });
