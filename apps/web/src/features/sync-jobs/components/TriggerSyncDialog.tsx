@@ -7,11 +7,18 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../../shared/ui/dialog';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -135,11 +142,6 @@ export function TriggerSyncDialog({
   open,
   onOpenChange,
 }: TriggerSyncDialogProps): ReactElement {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const baseId = useId();
-  const titleId = `${baseId}-title`;
-  const descriptionId = `${baseId}-description`;
-
   const triggerableJobs = useMemo(
     () =>
       ALL_TRIGGERABLE_JOBS.filter(
@@ -157,22 +159,8 @@ export function TriggerSyncDialog({
   const enqueueSyncJob = useEnqueueSyncJobMutation();
   const { showToast } = useToast();
 
-  // selectedJobType is always sourced from triggerableJobs, so the find always succeeds.
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
 
-  // showModal/close handle focus trapping, Escape key, and focus restoration natively
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (open) {
-      dialog.showModal();
-    } else if (dialog.open) {
-      dialog.close();
-    }
-  }, [open]);
-
-  // Reset form state when dialog opens
   useEffect(() => {
     if (open) {
       const firstJob = triggerableJobs[0];
@@ -184,22 +172,6 @@ export function TriggerSyncDialog({
       enqueueSyncJob.reset();
     }
   }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
-
-  // Sync controlled state with native cancel event (Escape key)
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    const handleCancel = (event: Event): void => {
-      event.preventDefault();
-      onOpenChange(false);
-    };
-
-    dialog.addEventListener('cancel', handleCancel);
-    return () => {
-      dialog.removeEventListener('cancel', handleCancel);
-    };
-  }, [onOpenChange]);
 
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
@@ -252,86 +224,74 @@ export function TriggerSyncDialog({
   };
 
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      className="dialog trigger-sync-dialog"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onOpenChange(false);
-        }
-      }}
-    >
-      <div className="dialog__header">
-        <h2 id={titleId} className="dialog__title">
-          Trigger sync
-        </h2>
-        <p id={descriptionId} className="dialog__subtitle muted-text">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="trigger-sync-dialog">
+        <DialogTitle>Trigger sync</DialogTitle>
+        <DialogDescription>
           Manually enqueue a sync job for <strong>{connection.name}</strong>.{' '}
           <Link to="/jobs-logs" onClick={() => onOpenChange(false)} className="link">
             View all jobs
           </Link>
-        </p>
-      </div>
+        </DialogDescription>
 
-      <div className="dialog__body">
-        {enqueueSyncJob.error ? (
-          <Alert tone="error" title="Failed to enqueue job">
-            {enqueueSyncJob.error.message}
-          </Alert>
-        ) : null}
+        <div className="trigger-sync-dialog__body">
+          {enqueueSyncJob.error ? (
+            <Alert tone="error" title="Failed to enqueue job">
+              {enqueueSyncJob.error.message}
+            </Alert>
+          ) : null}
 
-        <FormField label="Job type" name="jobType">
-          <Select
-            value={selectedJobType}
-            onChange={(e) => handleJobTypeChange(e.target.value)}
+          <FormField label="Job type" name="jobType">
+            <Select
+              value={selectedJobType}
+              onChange={(e) => handleJobTypeChange(e.target.value)}
+              disabled={enqueueSyncJob.isPending}
+            >
+              {triggerableJobs.map((job) => (
+                <option key={job.jobType} value={job.jobType}>
+                  {job.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {selectedJob?.description ? (
+            <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
+          ) : null}
+
+          {selectedJob?.payloadFields.map((field) => (
+            <FormField
+              key={field.name}
+              label={field.required ? `${field.label} *` : field.label}
+              name={field.name}
+              error={fieldErrors[field.name]}
+            >
+              <Input
+                value={payloadValues[field.name] ?? ''}
+                onChange={(e) =>
+                  setPayloadValues((prev) => ({ ...prev, [field.name]: e.target.value }))
+                }
+                placeholder={field.placeholder}
+                disabled={enqueueSyncJob.isPending}
+                invalid={Boolean(fieldErrors[field.name])}
+              />
+            </FormField>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
+            Cancel
+          </Button>
+          <Button
+            tone="primary"
+            onClick={() => void handleSubmit()}
             disabled={enqueueSyncJob.isPending}
           >
-            {triggerableJobs.map((job) => (
-              <option key={job.jobType} value={job.jobType}>
-                {job.label}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-
-        {selectedJob?.description ? (
-          <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
-        ) : null}
-
-        {selectedJob?.payloadFields.map((field) => (
-          <FormField
-            key={field.name}
-            label={field.required ? `${field.label} *` : field.label}
-            name={field.name}
-            error={fieldErrors[field.name]}
-          >
-            <Input
-              value={payloadValues[field.name] ?? ''}
-              onChange={(e) =>
-                setPayloadValues((prev) => ({ ...prev, [field.name]: e.target.value }))
-              }
-              placeholder={field.placeholder}
-              disabled={enqueueSyncJob.isPending}
-              invalid={Boolean(fieldErrors[field.name])}
-            />
-          </FormField>
-        ))}
-      </div>
-
-      <div className="dialog__actions">
-        <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
-          Cancel
-        </Button>
-        <Button
-          tone="primary"
-          onClick={() => void handleSubmit()}
-          disabled={enqueueSyncJob.isPending}
-        >
-          {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
-        </Button>
-      </div>
-    </dialog>
+            {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

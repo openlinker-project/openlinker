@@ -109,4 +109,36 @@ describe('ConfirmDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Confirm' })).toHaveClass('button--danger');
   });
+
+  it('fires onOpenChange(false) when Escape is pressed', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    render(
+      <ConfirmDialog
+        open
+        onConfirm={vi.fn()}
+        onOpenChange={onOpenChange}
+        title="Delete item?"
+        description="This action cannot be undone."
+      />,
+    );
+
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('focuses the Confirm button (not Cancel) when the dialog opens', () => {
+    render(
+      <ConfirmDialog
+        open
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+        title="Delete item?"
+        description="This action cannot be undone."
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm' })).toHaveFocus();
+  });
 });

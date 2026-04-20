@@ -1512,13 +1512,13 @@ textarea {
 }
 
 .trigger-sync-dialog {
-  min-width: 28rem;
-  max-width: 36rem;
+  width: min(36rem, 92vw);
 }
 
-.trigger-sync-dialog .dialog__body {
+.trigger-sync-dialog__body {
   display: grid;
   gap: 1rem;
+  margin: 12px 0;
 }
 
 .trigger-sync-dialog__description {
@@ -1569,6 +1569,57 @@ textarea {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+}
+
+.toast[data-state='open'] {
+  animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast[data-state='closed'] {
+  animation: toast-fade-out 120ms ease-in;
+}
+
+.toast[data-swipe='move'] {
+  transform: translateX(var(--radix-toast-swipe-move-x, 0));
+}
+
+.toast[data-swipe='cancel'] {
+  transform: translateX(0);
+  transition: transform 160ms ease-out;
+}
+
+.toast[data-swipe='end'] {
+  animation: toast-swipe-out 120ms ease-out forwards;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(calc(100% + 1rem));
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-swipe-out {
+  from {
+    transform: translateX(var(--radix-toast-swipe-end-x, 0));
+  }
+  to {
+    transform: translateX(calc(100% + 1rem));
+    opacity: 0;
+  }
 }
 
 .timeline-list__description {

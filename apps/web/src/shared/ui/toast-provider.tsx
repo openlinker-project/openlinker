@@ -15,7 +15,6 @@ interface Toast {
   description: string;
   durationMs: number;
   id: number;
-  open: boolean;
   title?: string;
   tone: AlertTone;
 }
@@ -28,7 +27,6 @@ interface ShowToastOptions {
 }
 
 interface ToastContextValue {
-  dismissToast: (id: number) => void;
   showToast: (options: ShowToastOptions) => void;
 }
 
@@ -38,10 +36,6 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
 
-  const dismissToast = useCallback((id: number) => {
-    setToasts((current) => current.map((t) => (t.id === id ? { ...t, open: false } : t)));
-  }, []);
-
   const removeToast = useCallback((id: number) => {
     setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
@@ -49,30 +43,25 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   const showToast = useCallback(
     ({ description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
       const id = nextIdRef.current++;
-      setToasts((current) => [...current, { description, durationMs, id, open: true, title, tone }]);
+      setToasts((current) => [...current, { description, durationMs, id, title, tone }]);
     },
     [],
   );
 
-  const value = useMemo<ToastContextValue>(
-    () => ({ dismissToast, showToast }),
-    [dismissToast, showToast],
-  );
+  const value = useMemo<ToastContextValue>(() => ({ showToast }), [showToast]);
 
   return (
     <ToastContext.Provider value={value}>
+      {/* swipeDirection assumes LTR. Revisit when/if OpenLinker ships an RTL locale. */}
       <RadixToast.Provider swipeDirection="right">
         {children}
         {toasts.map((toast) => (
           <RadixToast.Root
             key={toast.id}
             className={`toast toast--${toast.tone}`}
-            open={toast.open}
             duration={toast.durationMs}
-            onOpenChange={(nextOpen) => {
-              if (!nextOpen) {
-                removeToast(toast.id);
-              }
+            onOpenChange={(open) => {
+              if (!open) removeToast(toast.id);
             }}
           >
             <div className="toast__content">
