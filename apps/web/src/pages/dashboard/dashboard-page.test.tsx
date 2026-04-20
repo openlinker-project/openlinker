@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
+import type { Connection } from '../../features/connections/api/connections.types';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 
 function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
@@ -24,7 +25,27 @@ function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
   };
 }
 
+function makeConnection(overrides: Partial<Connection>): Connection {
+  return { ...sampleConnection, ...overrides };
+}
+
+function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
+  const labels = Array.from(container.querySelectorAll<HTMLElement>('.metric-card__label')).filter(
+    (el) => el.textContent === label,
+  );
+  if (labels.length !== 1) {
+    throw new Error(`Expected one .metric-card__label "${label}", found ${labels.length}`);
+  }
+  const card = labels[0].closest('.metric-card');
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`No .metric-card ancestor for label: ${label}`);
+  }
+  return card;
+}
+
 describe('DashboardPage', () => {
+  afterEach(cleanup);
+
   it('renders the operations overview heading', () => {
     renderWithProviders(<DashboardPage />);
     expect(screen.getByRole('heading', { name: 'Operations overview' })).toBeInTheDocument();
@@ -34,8 +55,8 @@ describe('DashboardPage', () => {
     const apiClient = createMockApiClient({
       connections: {
         list: vi.fn().mockResolvedValue([
-          { id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
-          { id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro', config: {}, credentialsBacked: true, createdAt: '', updatedAt: '' },
+          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
+          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
         ]),
       },
     });
@@ -136,6 +157,60 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />, { apiClient });
 
     expect(await screen.findByText('1 job needs attention')).toBeInTheDocument();
+  });
+
+  it('tints the Failed jobs card red and links to /orders/failed when there are failures', async () => {
+    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
+      if (filters?.status === 'dead') {
+        return Promise.resolve({
+          items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
+          total: 3,
+          limit: 10,
+          offset: 0,
+        });
+      }
+      return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
+    });
+    const apiClient = createMockApiClient({
+      syncJobs: { list: listMock },
+    });
+
+    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+
+    await screen.findByText('3 jobs need attention');
+    const failedCard = findCardByLabel(container, 'Failed jobs');
+    expect(failedCard).toHaveClass('metric-card--error');
+    expect(failedCard).toHaveAttribute('href', '/orders/failed');
+  });
+
+  it('keeps the Failed jobs card neutral when there are no failures', async () => {
+    const { container } = renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      const failedCard = findCardByLabel(container, 'Failed jobs');
+      expect(failedCard).toHaveClass('metric-card--neutral');
+    });
+    const failedCard = findCardByLabel(container, 'Failed jobs');
+    expect(failedCard.tagName).toBe('DIV');
+    expect(failedCard).not.toHaveClass('metric-card--error');
+    expect(failedCard).not.toHaveClass('metric-card--success');
+  });
+
+  it('tints the Integration health card warning when a connection is in error', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
+          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
+        ]),
+      },
+    });
+
+    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+
+    await screen.findByText('1 / 2');
+    const integrationCard = findCardByLabel(container, 'Integration health');
+    expect(integrationCard).toHaveClass('metric-card--warning');
   });
 
   it('shows error state when sync jobs fail to load', async () => {

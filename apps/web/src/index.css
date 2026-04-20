@@ -858,43 +858,12 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
-.metric-card,
 .panel,
 .list-card,
 .form-card,
 .empty-state,
 .state-card {
   padding: 1rem;
-}
-
-.metric-card {
-  gap: 0.25rem;
-  min-height: 0;
-}
-
-.metric-card__label {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-
-.metric-card__value {
-  font-size: 1.4rem;
-  color: var(--text-primary);
-}
-
-.metric-card p {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.metric-card--warning {
-  border-color: var(--status-warning-border);
-}
-
-.metric-card--review {
-  border-color: var(--status-review-border);
 }
 
 .workspace-grid {
