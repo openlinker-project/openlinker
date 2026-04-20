@@ -262,8 +262,8 @@ No unique constraint on `(variantId, connectionId)` — a variant may have multi
   - Import `OfferCreationRecordOrmEntity` and add to `TypeOrmModule.forFeature([...])`.
   - Import `OfferCreationRecordRepository`.
   - Register token binding: `{ provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useExisting: OfferCreationRecordRepository }`.
-  - Add string fallback: `{ provide: 'OfferCreationRecordRepositoryPort', useExisting: OFFER_CREATION_RECORD_REPOSITORY_TOKEN }`.
-  - Add to `exports` array.
+  - **No string-token fallback** — Engineering Standards §Repository Ports Pattern deprecates string tokens as fragile. Existing string fallbacks in this module (e.g. `'OfferMappingRepositoryPort'`) are kept for compatibility and tracked for removal in a follow-up issue. New ports are Symbol-only.
+  - Add to `exports` array (Symbol token only).
   - Re-export token at top of file (match existing pattern).
 
 ### Step 11 — Barrel exports

@@ -84,10 +84,10 @@ export {
       provide: 'OfferMappingRepositoryPort',
       useExisting: OFFER_MAPPING_REPOSITORY_TOKEN,
     },
-    {
-      provide: 'OfferCreationRecordRepositoryPort',
-      useExisting: OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-    },
+    // Note: no string-token fallback for OfferCreationRecordRepositoryPort.
+    // Engineering Standards §Repository Ports Pattern deprecates string tokens
+    // as fragile; new ports opt into Symbol-only DI. Existing string fallbacks
+    // (above) are kept for compatibility and tracked for removal in #264.
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
@@ -99,7 +99,6 @@ export {
     'OfferLinkingService',
     'IOfferMappingSyncService',
     'OfferMappingRepositoryPort',
-    'OfferCreationRecordRepositoryPort',
   ],
 })
 export class ListingsModule {}
