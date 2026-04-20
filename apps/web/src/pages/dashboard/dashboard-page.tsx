@@ -10,6 +10,7 @@ import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './inte
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { MetricCard, MetricCardLink, type MetricCardTone } from '../../shared/ui/metric-card';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -81,6 +82,25 @@ function toHealthTone(status: ServiceStatus | OverallStatus): StatusBadgeTone {
   if (status === 'ok') return 'success';
   if (status === 'warning' || status === 'degraded') return 'warning';
   return 'error';
+}
+
+function systemHealthTone(status: OverallStatus | undefined, hasError: boolean): MetricCardTone {
+  if (hasError || status === 'error') return 'error';
+  if (status === 'degraded') return 'warning';
+  if (status === 'ok') return 'success';
+  return 'neutral';
+}
+
+function renderHealthValue(
+  status: OverallStatus | undefined,
+  isLoading: boolean,
+  hasError: boolean,
+): ReactElement | string {
+  if (isLoading) return '—';
+  if (hasError) return 'unreachable';
+  return (
+    <StatusBadge tone={toHealthTone(status ?? 'error')}>{status ?? 'unknown'}</StatusBadge>
+  );
 }
 
 function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealth }): ReactElement {
@@ -156,51 +176,49 @@ export function DashboardPage(): ReactElement {
     >
       {/* ── Metric strip ─────────────────────────────────────────── */}
       <section className="status-strip">
-        <article className={errorCount > 0 ? 'metric-card metric-card--warning' : 'metric-card'}>
-          <span className="metric-card__label">Integration health</span>
-          {connectionsQuery.isLoading ? (
-            <strong className="metric-card__value">—</strong>
-          ) : (
-            <strong className="metric-card__value">{activeCount} / {connections.length}</strong>
-          )}
-          <p>{errorCount > 0 ? `${errorCount} connection${errorCount > 1 ? 's' : ''} in error` : 'All channels active'}</p>
-        </article>
+        <MetricCard
+          label="Integration health"
+          value={connectionsQuery.isLoading ? '—' : `${activeCount} / ${connections.length}`}
+          tone={errorCount > 0 ? 'warning' : 'neutral'}
+          description={
+            errorCount > 0
+              ? `${errorCount} connection${errorCount > 1 ? 's' : ''} in error`
+              : 'All channels active'
+          }
+        />
 
-        <article className="metric-card">
-          <span className="metric-card__label">System health</span>
-          {healthQuery.isLoading ? (
-            <strong className="metric-card__value">—</strong>
-          ) : healthQuery.error ? (
-            <strong className="metric-card__value">!</strong>
-          ) : (
-            <strong className="metric-card__value">
-              <StatusBadge tone={toHealthTone(healthQuery.data?.status ?? 'error')}>
-                {healthQuery.data?.status ?? 'unknown'}
-              </StatusBadge>
-            </strong>
-          )}
-          <p>Postgres · Redis · PrestaShop · Worker</p>
-        </article>
+        <MetricCard
+          label="System health"
+          value={renderHealthValue(healthQuery.data?.status, healthQuery.isLoading, Boolean(healthQuery.error))}
+          tone={systemHealthTone(healthQuery.data?.status, Boolean(healthQuery.error))}
+          description="Postgres · Redis · PrestaShop · Worker"
+        />
 
-        <article className={deadCount > 0 ? 'metric-card metric-card--warning' : 'metric-card'}>
-          <span className="metric-card__label">Failed jobs</span>
-          {deadJobsQuery.isLoading ? (
-            <strong className="metric-card__value">—</strong>
-          ) : (
-            <strong className="metric-card__value">{deadCount}</strong>
-          )}
-          <p>{deadCount > 0 ? `${deadCount} job${deadCount === 1 ? '' : 's'} need${deadCount === 1 ? 's' : ''} attention` : 'No failures'}</p>
-        </article>
+        {deadCount > 0 ? (
+          <MetricCardLink
+            label="Failed jobs"
+            value={deadJobsQuery.isLoading ? '—' : deadCount}
+            tone="error"
+            to="/orders/failed"
+            description={`${deadCount} job${deadCount === 1 ? '' : 's'} need${deadCount === 1 ? 's' : ''} attention`}
+          />
+        ) : (
+          <MetricCard
+            label="Failed jobs"
+            value={deadJobsQuery.isLoading ? '—' : 0}
+            tone="success"
+            description="No failures"
+          />
+        )}
 
-        <article className="metric-card">
-          <span className="metric-card__label">Queued jobs</span>
-          {queuedJobsQuery.isLoading ? (
-            <strong className="metric-card__value">—</strong>
-          ) : (
-            <strong className="metric-card__value">{queuedCount}</strong>
-          )}
-          <p>{queuedCount > 0 ? `${queuedCount} job${queuedCount > 1 ? 's' : ''} waiting` : 'Queue empty'}</p>
-        </article>
+        <MetricCard
+          label="Queued jobs"
+          value={queuedJobsQuery.isLoading ? '—' : queuedCount}
+          tone={queuedCount > 0 ? 'info' : 'neutral'}
+          description={
+            queuedCount > 0 ? `${queuedCount} job${queuedCount > 1 ? 's' : ''} waiting` : 'Queue empty'
+          }
+        />
       </section>
 
       <div className="workspace-grid workspace-grid--primary">
