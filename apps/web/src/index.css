@@ -797,6 +797,42 @@ textarea {
   flex-shrink: 0;
 }
 
+/* Order detail — failed-destinations banner list */
+.order-detail__failed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-detail__failed-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.order-detail__failed-error {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--status-error-strong);
+  word-break: break-word;
+}
+
+@media (max-width: 767.98px) {
+  .alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alert__actions {
+    display: flex;
+  }
+}
+
 .connection-list,
 .activity-list,
 .check-list {

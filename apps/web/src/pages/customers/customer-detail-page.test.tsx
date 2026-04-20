@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { CustomerDetailPage } from './customer-detail-page';
 import type { CustomerProjectionDetail } from '../../features/customers/api/customers.types';
+import type { OrderRecord } from '../../features/orders/api/orders.types';
 
 const sampleCustomer: CustomerProjectionDetail = {
   internalCustomerId: 'ol_customer_abc',
@@ -56,5 +57,39 @@ describe('CustomerDetailPage', () => {
     await screen.findByText('ol_customer_abc');
     expect(screen.queryByRole('link', { name: sampleConnection.name })).toBeNull();
     expect(screen.getAllByLabelText('No value').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renders the customer orders list below the details', async () => {
+    const order: OrderRecord = {
+      internalOrderId: 'ol_order_xyz789',
+      customerId: sampleCustomer.internalCustomerId,
+      sourceConnectionId: sampleConnection.id,
+      sourceEventId: null,
+      orderSnapshot: {},
+      syncStatus: [
+        {
+          destinationConnectionId: sampleConnection.id,
+          status: 'synced',
+          syncedAt: '2026-04-20T10:00:00.000Z',
+          externalOrderId: '99',
+          externalOrderNumber: null,
+          error: null,
+        },
+      ],
+      createdAt: '2026-04-20T09:00:00.000Z',
+      updatedAt: '2026-04-20T10:00:00.000Z',
+    };
+
+    const api = createMockApiClient({
+      customers: { getById: vi.fn().mockResolvedValue(sampleCustomer) },
+      orders: {
+        list: vi.fn().mockResolvedValue({ items: [order], total: 1, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText(/Orders \(1\)/);
+    expect(screen.getByText('ol_order_xyz789')).toBeInTheDocument();
   });
 });

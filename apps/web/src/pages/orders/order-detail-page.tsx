@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { Alert } from '../../shared/ui/alert';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
@@ -106,6 +107,7 @@ export function OrderDetailPage(): ReactElement {
   }
 
   const order = query.data;
+  const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   return (
     <PageLayout
@@ -117,6 +119,38 @@ export function OrderDetailPage(): ReactElement {
         </Link>
       }
     >
+      {failedDestinations.length > 0 ? (
+        <Alert
+          tone="error"
+          title={`${failedDestinations.length} destination${
+            failedDestinations.length > 1 ? 's' : ''
+          } failed`}
+          action={
+            <Link to="/orders/failed" className="button button--primary button--compact">
+              View failed orders
+            </Link>
+          }
+        >
+          <ul className="order-detail__failed-list">
+            {failedDestinations.map((status) => (
+              <li key={status.destinationConnectionId}>
+                <ConnectionEntityLabel
+                  connectionId={status.destinationConnectionId}
+                  showId={false}
+                />
+                {status.error ? (
+                  <span className="order-detail__failed-error">
+                    {status.error.length > 120
+                      ? `${status.error.slice(0, 120)}…`
+                      : status.error}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
+
       {/* Order metadata */}
       <section className="detail-section">
         <h3 className="detail-section__title">Details</h3>

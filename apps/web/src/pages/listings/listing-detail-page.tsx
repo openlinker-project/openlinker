@@ -1,4 +1,4 @@
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -9,6 +9,24 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+
+function renderInternalIdValue(entityType: string, internalId: string): ReactNode {
+  if (entityType === 'Product' || entityType === 'ProductVariant') {
+    return (
+      <Link to={`/products/${internalId}`} className="mono-text">
+        {internalId}
+      </Link>
+    );
+  }
+  if (entityType === 'InventoryItem') {
+    return (
+      <Link to={`/inventory/${internalId}`} className="mono-text">
+        {internalId}
+      </Link>
+    );
+  }
+  return internalId;
+}
 
 export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -60,7 +78,12 @@ export function ListingDetailPage(): ReactElement {
             { id: 'mappingId', label: 'Mapping ID', value: mapping.id, mono: true },
             { id: 'entityType', label: 'Entity Type', value: mapping.entityType, mono: true },
             { id: 'externalId', label: 'External ID', value: mapping.externalId, mono: true },
-            { id: 'internalId', label: 'Internal ID', value: mapping.internalId, mono: true },
+            {
+              id: 'internalId',
+              label: 'Internal ID',
+              value: renderInternalIdValue(mapping.entityType, mapping.internalId),
+              mono: true,
+            },
             { id: 'platform', label: 'Platform Type', value: mapping.platformType, mono: true },
             {
               id: 'connection',

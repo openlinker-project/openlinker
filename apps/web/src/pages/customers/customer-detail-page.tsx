@@ -6,9 +6,15 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 import { Button } from '../../shared/ui/button';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useCustomerQuery } from '../../features/customers/hooks/use-customer-query';
+import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import type { CustomerAddress } from '../../features/customers/api/customers.types';
+import type {
+  OrderRecord,
+  OrderSyncStatusValue,
+} from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 
 function buildCustomerItems(customer: {
@@ -56,6 +62,49 @@ function buildCustomerItems(customer: {
   return items;
 }
 
+const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
+  pending: 'info',
+  syncing: 'warning',
+  synced: 'success',
+  failed: 'error',
+};
+
+const CUSTOMER_ORDER_COLUMNS: DataTableColumn<OrderRecord>[] = [
+  {
+    id: 'internalOrderId',
+    header: 'Order ID',
+    cell: (order) => <span className="mono-text">{order.internalOrderId}</span>,
+  },
+  {
+    id: 'syncStatus',
+    header: 'Status',
+    cell: (order) => {
+      const first = order.syncStatus[0];
+      if (!first) return <EmptyValue />;
+      return (
+        <StatusBadge tone={SYNC_STATUS_TONES[first.status]} compact>
+          {first.status}
+        </StatusBadge>
+      );
+    },
+  },
+  {
+    id: 'sourceConnection',
+    header: 'Source',
+    cell: (order) => (
+      <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
+    ),
+    hideBelow: 768,
+  },
+  {
+    id: 'createdAt',
+    header: 'Created',
+    cell: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
+    accessor: (order) => order.createdAt,
+    sortable: true,
+  },
+];
+
 const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
   {
     id: 'addressType',
@@ -95,6 +144,7 @@ const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
 export function CustomerDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useCustomerQuery(id);
+  const ordersQuery = useOrdersQuery(id ? { customerId: id } : undefined, { limit: 20 });
 
   if (query.isLoading) {
     return (
@@ -131,6 +181,39 @@ export function CustomerDetailPage(): ReactElement {
     >
       <section className="detail-section">
         <KeyValueList items={buildCustomerItems(customer)} />
+      </section>
+
+      <section className="detail-section">
+        <h2 className="detail-section__title">
+          Orders{ordersQuery.data ? ` (${ordersQuery.data.total})` : ''}
+        </h2>
+        {ordersQuery.isLoading ? (
+          <LoadingState
+            liveRegion="off"
+            title="Loading orders"
+            message="Fetching orders placed by this customer…"
+          />
+        ) : ordersQuery.error ? (
+          <ErrorState
+            title="Unable to load customer orders"
+            message={ordersQuery.error.message}
+            action={<Button onClick={() => { void ordersQuery.refetch(); }}>Retry</Button>}
+          />
+        ) : (ordersQuery.data?.items.length ?? 0) === 0 ? (
+          <EmptyState
+            liveRegion="off"
+            title="No orders yet"
+            message="This customer has no orders on record."
+          />
+        ) : (
+          <DataTable
+            caption="Customer orders"
+            columns={CUSTOMER_ORDER_COLUMNS}
+            rows={ordersQuery.data?.items ?? []}
+            rowKey={(order) => order.internalOrderId}
+            rowHref={(order) => `/orders/${order.internalOrderId}`}
+          />
+        )}
       </section>
 
       <section className="detail-section">

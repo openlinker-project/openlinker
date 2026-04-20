@@ -1,6 +1,8 @@
 import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionDetailPage } from './connection-detail-page';
 
 // Note: renderWithProviders uses MemoryRouter. The page reads connectionId via
@@ -31,5 +33,33 @@ describe('ConnectionDetailPage', () => {
 
     // With no route params, connectionId defaults to '' and query is disabled
     expect(await screen.findByRole('heading', { name: 'Connection not found' })).toBeInTheDocument();
+  });
+
+  it('organizes the detail surface into Overview / Health / Actions / Config tabs', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient();
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+      </Routes>,
+      { apiClient, route: `/connections/${sampleConnection.id}` },
+    );
+
+    await screen.findByRole('heading', { name: 'Overview' });
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: 'Health' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Config' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Config' }));
+    expect(screen.getByRole('tab', { name: 'Config' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Connection config')).toBeInTheDocument();
   });
 });

@@ -66,4 +66,44 @@ describe('OrderDetailPage', () => {
     fireEvent.click(expandButton);
     expect(screen.getByLabelText('Payload content').textContent).toContain('SKU-1');
   });
+
+  it('does not render the failed-destinations banner when every destination is synced', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.queryByText(/destination.*failed/i)).toBeNull();
+  });
+
+  it('elevates failed destinations into an alert banner with retry action', async () => {
+    const orderWithFailure: OrderRecord = {
+      ...sampleOrder,
+      syncStatus: [
+        {
+          destinationConnectionId: sampleConnection.id,
+          status: 'failed',
+          syncedAt: null,
+          externalOrderId: null,
+          externalOrderNumber: null,
+          error: 'insert or update on table inventory_items violates foreign key constraint',
+        },
+      ],
+    };
+
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(orderWithFailure) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('1 destination failed');
+    expect(screen.getAllByText(/foreign key constraint/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'View failed orders' })).toHaveAttribute(
+      'href',
+      '/orders/failed',
+    );
+  });
 });

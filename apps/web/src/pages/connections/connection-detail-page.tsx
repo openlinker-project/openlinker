@@ -9,6 +9,7 @@ import type { ConnectionStatus } from '../../features/connections/api/connection
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
@@ -103,46 +104,66 @@ export function ConnectionDetailPage(): ReactElement {
         </Alert>
       ) : null}
       {connection ? (
-        <div className="workspace-grid">
-          <div className="panel panel--dense">
-            <div className="panel__header">
-              <div>
-                <p className="eyebrow">Connection summary</p>
-                <h3 className="section-title">Overview</h3>
+        <Tabs defaultValue="overview">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="health">Health</TabsTrigger>
+            <TabsTrigger value="actions">Actions</TabsTrigger>
+            <TabsTrigger value="config">Config</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview">
+            <div className="panel panel--dense">
+              <div className="panel__header">
+                <div>
+                  <p className="eyebrow">Connection summary</p>
+                  <h3 className="section-title">Overview</h3>
+                </div>
+                <StatusBadge tone={toStatusTone(connection.status)}>
+                  {connection.status}
+                </StatusBadge>
               </div>
-              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+
+              <KeyValueList
+                items={[
+                  { id: 'name', label: 'Name', value: connection.name },
+                  { id: 'platform', label: 'Platform', value: connection.platformType },
+                  {
+                    id: 'credentials',
+                    label: 'Credentials',
+                    value: connection.credentialsBacked ? 'DB-managed' : 'Environment variable',
+                  },
+                  {
+                    id: 'adapter',
+                    label: 'Adapter',
+                    value: connection.adapterKey ?? 'default adapter',
+                    mono: true,
+                  },
+                  { id: 'id', label: 'Connection ID', value: connection.id, mono: true },
+                  {
+                    id: 'updatedAt',
+                    label: 'Last updated',
+                    value: <TimeDisplay iso={connection.updatedAt} />,
+                  },
+                ]}
+              />
             </div>
 
-            <KeyValueList
-              items={[
-                { id: 'name', label: 'Name', value: connection.name },
-                { id: 'platform', label: 'Platform', value: connection.platformType },
-                {
-                  id: 'credentials',
-                  label: 'Credentials',
-                  value: connection.credentialsBacked ? 'DB-managed' : 'Environment variable',
-                },
-                {
-                  id: 'adapter',
-                  label: 'Adapter',
-                  value: connection.adapterKey ?? 'default adapter',
-                  mono: true,
-                },
-                { id: 'id', label: 'Connection ID', value: connection.id, mono: true },
-                {
-                  id: 'updatedAt',
-                  label: 'Last updated',
-                  value: <TimeDisplay iso={connection.updatedAt} />,
-                },
-              ]}
-            />
-          </div>
+            <ConnectionCapabilitiesPanel connection={connection} />
+          </TabsContent>
 
-          <ConnectionConfigPanel config={connection.config} />
-          <ConnectionCapabilitiesPanel connection={connection} />
-          <ConnectionDiagnosticsPanel connectionId={connection.id} />
-          <ConnectionActionsPanel connection={connection} />
-        </div>
+          <TabsContent value="health">
+            <ConnectionDiagnosticsPanel connectionId={connection.id} />
+          </TabsContent>
+
+          <TabsContent value="actions">
+            <ConnectionActionsPanel connection={connection} />
+          </TabsContent>
+
+          <TabsContent value="config">
+            <ConnectionConfigPanel config={connection.config} />
+          </TabsContent>
+        </Tabs>
       ) : null}
     </PageLayout>
   );
