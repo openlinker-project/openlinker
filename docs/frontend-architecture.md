@@ -253,6 +253,32 @@ Naming conventions:
 - route modules: `*.route.tsx`
 - tests: `*.test.tsx`
 
+### UI Library Policy
+
+No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Design). Visual opinions are ours — every pixel is vanilla CSS against the tokens in `apps/web/src/index.css`.
+
+**Headless** libraries are permitted when they contribute only behavior and accessibility — never visuals — and are always wrapped by a project primitive in `shared/ui/`:
+
+| Library | Purpose | Wrapped as |
+|---|---|---|
+| `@tanstack/react-table` | sorting / filtering / column model for `DataTable` | `shared/ui/data-table.tsx` |
+| `@tanstack/react-virtual` | row virtualization for long lists (Jobs & Logs) | used inside `DataTable` |
+| `@radix-ui/react-dialog` | focus trap + a11y for modals | `shared/ui/dialog.tsx` |
+| `@radix-ui/react-dropdown-menu` | menu keyboard behavior | `shared/ui/dropdown-menu.tsx` |
+| `@radix-ui/react-select` | custom-styled select with keyboard/screen-reader parity | `shared/ui/select.tsx` |
+| `@radix-ui/react-tabs` | tab keyboard/roving-tabindex semantics | `shared/ui/tabs.tsx` |
+| `@radix-ui/react-tooltip` | hover + focus tooltip with delay group | `shared/ui/tooltip.tsx` |
+| `@radix-ui/react-popover` | popover positioning + dismissal | `shared/ui/popover.tsx` |
+| `@radix-ui/react-toast` | toast queue + swipe-to-dismiss | `shared/ui/toast-provider.tsx` |
+
+Rules:
+
+- A headless library may only be imported from the wrapping primitive in `shared/ui/` — never from a page or feature module directly.
+- The wrapper is responsible for all CSS. No library-shipped CSS gets imported.
+- When a native HTML element covers the use case (`<dialog>`, `<select>`, `<details>`), prefer it over a Radix wrapper.
+
+See [`docs/ui-audit/library-analysis.md`](./ui-audit/library-analysis.md) for the decision record.
+
 ## Dependency Rules
 
 Dependency direction must remain simple and enforceable:
