@@ -3119,3 +3119,51 @@ textarea {
   gap: 0.5rem;
 }
 
+/*
+ * ── Phase 6 — Dashboard triage ──────────────────────────────────────
+ * KPI strip responsive matrix per style guide §Responsive:
+ *   mobile (<768)  → 1×4 vertical stack
+ *   tablet (768–1023) → 2×2 grid
+ *   desktop (≥1024) → 1×4 horizontal
+ * Overrides the default `repeat(auto-fit, minmax(180px, 1fr))` on
+ * `.status-strip` so the dashboard gets the exact reflow the audit specs.
+ */
+.status-strip {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+  .status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .status-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/*
+ * "What's broken right now" — primary triage surface. Stacks the retry /
+ * view actions below the row body on mobile so neither button wraps off-
+ * screen on narrow viewports.
+ */
+.dashboard-incidents__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-incidents__actions {
+    justify-content: stretch;
+  }
+  .dashboard-incidents__actions .button,
+  .dashboard-incidents__actions a.button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
