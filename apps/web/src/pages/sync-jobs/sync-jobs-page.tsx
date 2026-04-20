@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -17,22 +18,30 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     id: 'status',
     header: 'Status',
     cell: (job) => <SyncJobStatusBadge status={job.status} />,
+    accessor: (job) => job.status,
+    sortable: true,
   },
   {
     id: 'jobType',
     header: 'Job type',
     cell: (job) => <span className="mono-text">{job.jobType}</span>,
+    accessor: (job) => job.jobType,
+    sortable: true,
   },
   {
     id: 'connectionId',
     header: 'Connection',
     cell: (job) => <span className="mono-text">{job.connectionId}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'attempts',
     header: 'Attempts',
     align: 'right',
     cell: (job) => `${job.attempts} / ${job.maxAttempts}`,
+    accessor: (job) => job.attempts,
+    sortable: true,
+    hideBelow: 768,
   },
   {
     id: 'lastError',
@@ -45,25 +54,20 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
       ) : (
         <span className="text-muted">—</span>
       ),
+    hideBelow: 1024,
   },
   {
     id: 'createdAt',
     header: 'Created',
     cell: (job) => <TimeDisplay iso={job.createdAt} />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (job) => (
-      <Link to={job.id} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (job) => job.createdAt,
+    sortable: true,
   },
 ];
 
 export function SyncJobsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const status = (searchParams.get('status') as JobStatus | null) ?? undefined;
   const jobType = (searchParams.get('jobType') as JobType | null) ?? undefined;
@@ -178,6 +182,14 @@ export function SyncJobsPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(job) => job.id}
+            rowHref={(job) => job.id}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (job) => job.jobType,
+              subtitle: (job) => job.connectionId,
+              meta: (job) => <SyncJobStatusBadge status={job.status} />,
+            }}
           />
 
           {/* Pagination */}

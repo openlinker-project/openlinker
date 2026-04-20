@@ -1,7 +1,8 @@
 import { useState, type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -44,12 +45,15 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
       ) : (
         <span className="text-muted">—</span>
       ),
+    hideBelow: 1024,
   },
   {
     id: 'availableQuantity',
     header: 'Available',
     align: 'right',
     cell: (item) => item.availableQuantity,
+    accessor: (item) => item.availableQuantity,
+    sortable: true,
   },
   {
     id: 'reservedQuantity',
@@ -61,6 +65,9 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
       ) : (
         <span className="text-muted">0</span>
       ),
+    accessor: (item) => item.reservedQuantity,
+    sortable: true,
+    hideBelow: 768,
   },
   {
     id: 'locationId',
@@ -71,25 +78,21 @@ const COLUMNS: DataTableColumn<InventoryItem>[] = [
       ) : (
         <span className="text-muted">default</span>
       ),
+    hideBelow: 768,
   },
   {
     id: 'updatedAt',
     header: 'Updated',
     cell: (item) => <TimeDisplay iso={item.updatedAt} format="date" />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (item) => (
-      <Link to={item.id} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (item) => item.updatedAt,
+    sortable: true,
+    hideBelow: 1024,
   },
 ];
 
 export function InventoryListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
 
   const urlProductId = searchParams.get('productId') ?? '';
   const urlVariantId = searchParams.get('productVariantId') ?? '';
@@ -192,6 +195,14 @@ export function InventoryListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(item) => item.id}
+            rowHref={(item) => item.id}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (item) => item.productName ?? item.productSku ?? item.productId,
+              subtitle: (item) => item.productVariantId ?? '',
+              meta: (item) => `${item.availableQuantity} avail`,
+            }}
           />
 
           <div className="pagination">

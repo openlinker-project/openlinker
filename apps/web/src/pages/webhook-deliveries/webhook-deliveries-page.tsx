@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge } from '../../shared/ui/status-badge';
@@ -37,21 +38,27 @@ const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
     id: 'status',
     header: 'Status',
     cell: (d) => <StatusBadge tone={statusTone(d.status)}>{d.status}</StatusBadge>,
+    accessor: (d) => d.status,
+    sortable: true,
   },
   {
     id: 'provider',
     header: 'Provider',
     cell: (d) => <span className="mono-text">{d.provider}</span>,
+    accessor: (d) => d.provider,
+    sortable: true,
   },
   {
     id: 'eventType',
     header: 'Event type',
     cell: (d) => <span className="mono-text">{d.eventType ?? '—'}</span>,
+    hideBelow: 768,
   },
   {
     id: 'connectionId',
     header: 'Connection',
     cell: (d) => <span className="mono-text">{d.connectionId}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'reason',
@@ -65,25 +72,20 @@ const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
         </span>
       );
     },
+    hideBelow: 1024,
   },
   {
     id: 'receivedAt',
     header: 'Received',
     cell: (d) => <TimeDisplay iso={d.receivedAt} />,
-  },
-  {
-    id: 'detail',
-    header: '',
-    cell: (d) => (
-      <Link to={d.id} className="button button--ghost button--compact">
-        View
-      </Link>
-    ),
+    accessor: (d) => d.receivedAt,
+    sortable: true,
   },
 ];
 
 export function WebhookDeliveriesPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'receivedAt', desc: true }]);
 
   const provider = searchParams.get('provider') ?? undefined;
   const connectionId = searchParams.get('connectionId') ?? undefined;
@@ -180,6 +182,14 @@ export function WebhookDeliveriesPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(d) => d.id}
+            rowHref={(d) => d.id}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (d) => d.provider,
+              subtitle: (d) => d.eventType ?? '—',
+              meta: (d) => <StatusBadge tone={statusTone(d.status)} compact>{d.status}</StatusBadge>,
+            }}
           />
 
           <div className="pagination">

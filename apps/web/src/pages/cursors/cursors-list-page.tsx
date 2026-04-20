@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
@@ -18,6 +19,8 @@ const COLUMNS: DataTableColumn<Cursor>[] = [
     id: 'cursorKey',
     header: 'Cursor Key',
     cell: (cursor) => <span className="mono-text">{cursor.cursorKey}</span>,
+    accessor: (cursor) => cursor.cursorKey,
+    sortable: true,
   },
   {
     id: 'value',
@@ -27,11 +30,13 @@ const COLUMNS: DataTableColumn<Cursor>[] = [
         {cursor.value.length > 40 ? `${cursor.value.slice(0, 40)}...` : cursor.value}
       </span>
     ),
+    hideBelow: 768,
   },
   {
     id: 'connectionId',
     header: 'Connection ID',
     cell: (cursor) => <span className="mono-text">{cursor.connectionId}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'updatedAt',
@@ -41,11 +46,14 @@ const COLUMNS: DataTableColumn<Cursor>[] = [
         {formatRelativeTime(cursor.updatedAt)}
       </span>
     ),
+    accessor: (cursor) => cursor.updatedAt,
+    sortable: true,
   },
 ];
 
 export function CursorsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'updatedAt', desc: true }]);
 
   const urlConnectionId = searchParams.get('connectionId') ?? '';
   const offset = Number(searchParams.get('offset') ?? '0');
@@ -137,6 +145,13 @@ export function CursorsListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(cursor) => `${cursor.connectionId}:${cursor.cursorKey}`}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (cursor) => cursor.cursorKey,
+              subtitle: (cursor) => cursor.connectionId,
+              meta: (cursor) => formatRelativeTime(cursor.updatedAt),
+            }}
           />
 
           <div className="pagination">

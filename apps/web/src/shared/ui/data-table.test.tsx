@@ -1,15 +1,46 @@
-import { render, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DataTable } from './data-table';
 
 interface TestRow {
+  createdAt: string;
   id: string;
   name: string;
 }
 
+const ROWS: TestRow[] = [
+  { id: 'row-b', name: 'Bravo', createdAt: '2026-01-02' },
+  { id: 'row-a', name: 'Alpha', createdAt: '2026-01-01' },
+];
+
+function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+function mockMobileViewport(): { restore: () => void } {
+  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+  return { restore: () => spy.mockRestore() };
+}
+
 describe('DataTable', () => {
+  afterEach(cleanup);
+
   it('renders rows and headers', () => {
-    const view = render(
+    renderWithRouter(
       <DataTable<TestRow>
         caption="Test rows"
         columns={[
@@ -20,34 +51,275 @@ describe('DataTable', () => {
           },
         ]}
         rowKey={(row): string => row.id}
-        rows={[{ id: 'row-1', name: 'First row' }]}
+        rows={ROWS}
       />,
     );
 
-    expect(within(view.container).getByRole('table')).toBeInTheDocument();
-    expect(within(view.container).getByText('Name')).toBeInTheDocument();
-    expect(within(view.container).getByText('First row')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getByText('Bravo')).toBeInTheDocument();
   });
 
   it('renders the provided empty state', () => {
-    const view = render(
+    renderWithRouter(
       <DataTable<TestRow>
-        caption="Empty test rows"
-        columns={[
-          {
-            id: 'name',
-            header: 'Name',
-            cell: (row): string => row.name,
-          },
-        ]}
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
         rowKey={(row): string => row.id}
         rows={[]}
         emptyState={<p>No rows available.</p>}
       />,
     );
 
-    expect(within(view.container).getByRole('table')).toBeInTheDocument();
-    expect(within(view.container).getByText('Name')).toBeInTheDocument();
-    expect(within(view.container).getByText('No rows available.')).toBeInTheDocument();
+    expect(screen.getByText('No rows available.')).toBeInTheDocument();
+  });
+
+  it('marks sortable columns as sortable and exposes aria-sort', () => {
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          { id: 'name', header: 'Name', cell: (row): string => row.name, sortable: true },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    const header = screen.getByRole('columnheader', { name: /Name/ });
+    expect(header).toHaveAttribute('aria-sort', 'none');
+    expect(within(header).getByRole('button', { name: /Name/ })).toBeInTheDocument();
+  });
+
+  it('toggles sort between none → ascending → descending on repeated clicks', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          {
+            id: 'name',
+            header: 'Name',
+            cell: (row): string => row.name,
+            accessor: (row): string => row.name,
+            sortable: true,
+          },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    const header = screen.getByRole('columnheader', { name: /Name/ });
+    await user.click(within(header).getByRole('button', { name: /Name/ }));
+    expect(header).toHaveAttribute('aria-sort', 'ascending');
+
+    let bodyRows = screen.getAllByRole('row').filter((row) => row.querySelector('td'));
+    expect(bodyRows[0]).toHaveTextContent('Alpha');
+
+    await user.click(within(header).getByRole('button', { name: /Name/ }));
+    expect(header).toHaveAttribute('aria-sort', 'descending');
+
+    bodyRows = screen.getAllByRole('row').filter((row) => row.querySelector('td'));
+    expect(bodyRows[0]).toHaveTextContent('Bravo');
+  });
+
+  it('links the first cell when rowHref is provided', () => {
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          { id: 'name', header: 'Name', cell: (row): string => row.name },
+          { id: 'createdAt', header: 'Created', cell: (row): string => row.createdAt },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        rowHref={(row): string => `/things/${row.id}`}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Alpha' });
+    expect(link).toHaveAttribute('href', '/things/row-a');
+  });
+
+  it('emits the hideBelow class on cells and headers for the configured breakpoint', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          { id: 'name', header: 'Name', cell: (row): string => row.name },
+          { id: 'createdAt', header: 'Created', cell: (row): string => row.createdAt, hideBelow: 768 },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    expect(container.querySelectorAll('.data-table__cell--hide-below-768').length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('navigates when the row is clicked anywhere', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DataTable<TestRow>
+                columns={[
+                  { id: 'name', header: 'Name', cell: (row): string => row.name },
+                  { id: 'createdAt', header: 'Created', cell: (row): string => row.createdAt },
+                ]}
+                rowKey={(row): string => row.id}
+                rows={ROWS}
+                rowHref={(row): string => `/things/${row.id}`}
+              />
+            }
+          />
+          <Route path="/things/:id" element={<p>detail page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const nonLinkCell = screen.getByText('2026-01-02');
+    await user.click(nonLinkCell);
+
+    expect(await screen.findByText('detail page')).toBeInTheDocument();
+  });
+
+  it('does not navigate when the click originates from a button inside a cell', async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DataTable<TestRow>
+                columns={[
+                  { id: 'name', header: 'Name', cell: (row): string => row.name },
+                  {
+                    id: 'action',
+                    header: 'Action',
+                    cell: () => (
+                      <button type="button" onClick={onAction}>
+                        Retry
+                      </button>
+                    ),
+                  },
+                ]}
+                rowKey={(row): string => row.id}
+                rows={ROWS}
+                rowHref={(row): string => `/things/${row.id}`}
+              />
+            }
+          />
+          <Route path="/things/:id" element={<p>detail page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const retryButtons = screen.getAllByRole('button', { name: 'Retry' });
+    await user.click(retryButtons[0]);
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('detail page')).toBeNull();
+  });
+
+  it('renders a mobile card view when the viewport is ≤ 767 px and cardView is provided', () => {
+    const viewport = mockMobileViewport();
+
+    try {
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+          rowHref={(row): string => `/things/${row.id}`}
+          cardView={{
+            title: (row): string => row.name,
+            subtitle: (row): string => row.createdAt,
+          }}
+        />,
+      );
+
+      const cards = container.querySelectorAll('.data-table__card');
+      expect(cards.length).toBe(2);
+      expect(cards[0].textContent).toContain('Bravo');
+      expect(container.querySelectorAll('.data-table__card-main--link').length).toBe(2);
+      expect(container.querySelector('table')).toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('keeps the card meta slot outside the detail Link', () => {
+    const viewport = mockMobileViewport();
+
+    try {
+      const onAction = vi.fn();
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+          rowHref={(row): string => `/things/${row.id}`}
+          cardView={{
+            title: (row): string => row.name,
+            meta: () => (
+              <button type="button" onClick={onAction}>
+                Retry
+              </button>
+            ),
+          }}
+        />,
+      );
+
+      const firstCard = container.querySelector('.data-table__card');
+      const retryButton = within(firstCard as HTMLElement).getByRole('button', { name: 'Retry' });
+      expect(retryButton.closest('a')).toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('renders the table (not cards) on desktop even when cardView is provided', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        cardView={{
+          title: (row): string => row.name,
+        }}
+      />,
+    );
+
+    expect(container.querySelector('table')).not.toBeNull();
+    expect(container.querySelector('.data-table__cards')).toBeNull();
+  });
+
+  it('calls onSortChange when the header button is clicked in controlled mode', () => {
+    const onSortChange = vi.fn();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          {
+            id: 'name',
+            header: 'Name',
+            cell: (row): string => row.name,
+            accessor: (row): string => row.name,
+            sortable: true,
+          },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        sort={[]}
+        onSortChange={onSortChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Name/ }));
+    expect(onSortChange).toHaveBeenCalledTimes(1);
   });
 });

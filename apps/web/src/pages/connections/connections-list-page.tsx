@@ -4,6 +4,7 @@ import { useConnectionsQuery } from '../../features/connections/hooks/use-connec
 import type { Connection, ConnectionFilters, ConnectionStatus, PlatformType } from '../../features/connections/api/connections.types';
 import { PLATFORM_TYPES } from '../../features/connections/api/connections.types';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Button } from '../../shared/ui/button';
@@ -43,31 +44,27 @@ const COLUMNS: DataTableColumn<Connection>[] = [
         </span>
       </div>
     ),
+    accessor: (connection) => connection.name,
+    sortable: true,
   },
   {
     id: 'identifier',
     header: 'Identifier',
     cell: (connection) => <span className="mono-text">{connection.id}</span>,
+    hideBelow: 1024,
   },
   {
     id: 'status',
     header: 'Status',
     cell: (connection) => <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>,
-  },
-  {
-    id: 'actions',
-    header: 'Action',
-    cell: (connection) => (
-      <Link className="data-table__action" to={`/connections/${connection.id}`}>
-        View details
-      </Link>
-    ),
-    align: 'right',
+    accessor: (connection) => connection.status,
+    sortable: true,
   },
 ];
 
 export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -164,6 +161,19 @@ export function ConnectionsListPage(): ReactElement {
           columns={COLUMNS}
           rowKey={(connection) => connection.id}
           rows={query.data ?? []}
+          rowHref={(connection) => `/connections/${connection.id}`}
+          sort={sort}
+          onSortChange={setSort}
+          cardView={{
+            title: (connection) => connection.name,
+            subtitle: (connection) =>
+              `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
+            meta: (connection) => (
+              <StatusBadge tone={toStatusTone(connection.status)} compact>
+                {connection.status}
+              </StatusBadge>
+            ),
+          }}
         />
       )}
     </PageLayout>
