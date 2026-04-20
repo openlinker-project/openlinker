@@ -68,7 +68,7 @@ describe('ConnectionMappingsPage', () => {
     renderWithProviders(<ConnectionMappingsPage />, { apiClient: buildApiClient() });
 
     await waitFor(() => {
-      expect(screen.getByText('No mappings configured')).toBeInTheDocument();
+      expect(screen.getByText(/No mappings configured yet/i)).toBeInTheDocument();
     });
   });
 

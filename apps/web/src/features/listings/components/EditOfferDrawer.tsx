@@ -10,6 +10,7 @@
 import { type ReactElement, useCallback, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Button } from '../../../shared/ui/button';
@@ -61,6 +62,10 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
 
   const { dirtyFields } = form.formState;
   const isDirty = Object.keys(dirtyFields).length > 0;
+
+  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
+    error?.message ? [String(error.message)] : [],
+  );
 
   const onSubmit = form.handleSubmit(async (values) => {
     const fields: UpdateOfferFieldsPayload = {};
@@ -148,6 +153,9 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
             onSubmit={(e) => void onSubmit(e)}
             noValidate
           >
+            {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
+              <FormErrorSummary errors={validationMessages} />
+            ) : null}
             <FormField
               label="Title"
               name="title"

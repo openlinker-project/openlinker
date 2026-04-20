@@ -26,6 +26,7 @@ import {
 import { usePrestashopCategoriesQuery } from '../../features/mappings/hooks/use-prestashop-categories';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
 
 const MARKETPLACE_PICK_STORAGE_PREFIX = 'openlinker.categoryMappings.lastMarketplace.';
@@ -197,6 +198,12 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
       description={`${mappedCount} of ${categories.length} categories mapped`}
       actions={backLink}
     >
+      <DesktopOnlyBanner title="Open on a desktop screen to edit categories">
+        The category mapping editor pairs a category tree with a marketplace search side by side
+        and needs a wider viewport. Open this page on a desktop or tablet in landscape mode to
+        assign categories.
+      </DesktopOnlyBanner>
+
       <div className="category-mappings-toolbar">
         <label className="category-mappings-toolbar__label" htmlFor="marketplace-connection-select">
           Marketplace connection

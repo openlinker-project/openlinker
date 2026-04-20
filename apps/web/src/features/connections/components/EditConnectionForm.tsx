@@ -7,6 +7,7 @@ import { useUpdateConnectionMutation } from '../hooks/use-update-connection-muta
 import { useUpdateConnectionCredentialsMutation } from '../hooks/use-update-connection-credentials-mutation';
 import {
   editConnectionSchema,
+  mergeStructuredIntoConfig,
   toUpdateConnectionInput,
   type EditConnectionFormSubmission,
   type EditConnectionFormValues,
@@ -23,14 +24,22 @@ interface EditConnectionFormProps {
   connection: Connection;
 }
 
+function readString(config: Record<string, unknown>, key: string): string {
+  const value = config[key];
+  return typeof value === 'string' ? value : '';
+}
+
 export function EditConnectionForm({ connection }: EditConnectionFormProps): ReactElement {
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [showRawJson, setShowRawJson] = useState(false);
 
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
       name: connection.name,
+      baseUrl: readString(connection.config, 'baseUrl'),
+      shopId: readString(connection.config, 'shopId'),
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
     },
@@ -40,6 +49,25 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
   );
+
+  const hasStructuredInputs = connection.platformType === 'prestashop';
+
+  // Keep the raw configText in sync with structured inputs so the power-user
+  // JSON view always reflects the live form state, and submission goes through
+  // a single JSON payload.
+  function syncStructuredToJson(field: 'baseUrl' | 'shopId', value: string): void {
+    form.setValue(field, value, { shouldDirty: true });
+    const currentText = form.getValues('configText');
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(currentText) as Record<string, unknown>;
+    } catch {
+      // ignore parse errors — keep an empty base and let validation surface
+      // the issue if the user toggles into raw mode with broken JSON
+    }
+    const merged = mergeStructuredIntoConfig(parsed, { [field]: value });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -59,7 +87,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   });
 
   return (
-    <form className="form-card" onSubmit={(event) => void onSubmit(event)} noValidate>
+    <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
       <div className="panel__header">
         <div>
           <p className="eyebrow">Edit connection</p>
@@ -68,46 +96,99 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <span className="panel__meta">Update settings</span>
       </div>
 
-      {form.formState.submitCount > 0 && validationMessages.length > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
+      {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
+        <FormErrorSummary errors={validationMessages} />
+      ) : null}
       {updateConnection.error ? (
         <Alert tone="error" title="Unable to update connection">
           {updateConnection.error.message}
         </Alert>
       ) : null}
 
-      <div className="form-grid">
-        <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
-          <Input {...form.register('name')} placeholder="Main PrestaShop Store" invalid={Boolean(form.formState.errors.name)} />
-        </FormField>
+      <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
+        <Input
+          {...form.register('name')}
+          placeholder="Main PrestaShop Store"
+          invalid={Boolean(form.formState.errors.name)}
+        />
+      </FormField>
 
-        <FormField label="Platform type" name="platformType">
-          <Input value={connection.platformType} disabled />
-        </FormField>
+      <FormField label="Platform type" name="platformType">
+        <Input value={connection.platformType} disabled />
+      </FormField>
 
-        <CredentialsPanel connection={connection} />
-
-        <FormField
-          label="Adapter key"
-          name="adapterKey"
-          error={form.formState.errors.adapterKey?.message}
-          description="Optional when the default adapter can be inferred from the selected platform."
-        >
-          <Input
-            {...form.register('adapterKey')}
-            placeholder="prestashop.webservice.v1"
-            invalid={Boolean(form.formState.errors.adapterKey)}
-          />
-        </FormField>
-      </div>
+      <CredentialsPanel connection={connection} />
 
       <FormField
-        label="Config JSON"
-        name="configText"
-        error={form.formState.errors.configText?.message}
-        description="Provide only safe connection configuration values. Secrets must remain outside the browser."
+        label="Adapter key"
+        name="adapterKey"
+        error={form.formState.errors.adapterKey?.message}
+        description="Optional when the default adapter can be inferred from the selected platform."
       >
-        <Textarea {...form.register('configText')} rows={10} invalid={Boolean(form.formState.errors.configText)} />
+        <Input
+          {...form.register('adapterKey')}
+          placeholder="prestashop.webservice.v1"
+          invalid={Boolean(form.formState.errors.adapterKey)}
+        />
       </FormField>
+
+      {hasStructuredInputs ? (
+        <>
+          <FormField
+            label="Shop URL"
+            name="baseUrl"
+            error={form.formState.errors.baseUrl?.message}
+            description="The public URL of the PrestaShop storefront."
+          >
+            <Input
+              value={form.watch('baseUrl') ?? ''}
+              onChange={(event) => syncStructuredToJson('baseUrl', event.target.value)}
+              placeholder="https://shop.example.com"
+              invalid={Boolean(form.formState.errors.baseUrl)}
+            />
+          </FormField>
+
+          <FormField
+            label="Shop ID (optional)"
+            name="shopId"
+            error={form.formState.errors.shopId?.message}
+            description="Only needed for multi-shop PrestaShop installations."
+          >
+            <Input
+              value={form.watch('shopId') ?? ''}
+              onChange={(event) => syncStructuredToJson('shopId', event.target.value)}
+              placeholder="1"
+              invalid={Boolean(form.formState.errors.shopId)}
+            />
+          </FormField>
+        </>
+      ) : null}
+
+      <div className="config-panel__toggle">
+        <Button
+          tone="secondary"
+          type="button"
+          onClick={() => setShowRawJson((prev) => !prev)}
+          aria-expanded={showRawJson}
+        >
+          {showRawJson ? 'Hide raw config JSON' : 'Show raw config JSON'}
+        </Button>
+      </div>
+
+      {showRawJson || !hasStructuredInputs ? (
+        <FormField
+          label="Config JSON"
+          name="configText"
+          error={form.formState.errors.configText?.message}
+          description="Raw configuration. Edit carefully — secrets must remain outside the browser."
+        >
+          <Textarea
+            {...form.register('configText')}
+            rows={10}
+            invalid={Boolean(form.formState.errors.configText)}
+          />
+        </FormField>
+      ) : null}
 
       <div className="form-actions">
         <Button type="submit" disabled={updateConnection.isPending}>

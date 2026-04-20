@@ -81,7 +81,7 @@ export function CreateConnectionForm(): ReactElement {
 
   return (
     <>
-      <form className="form-card" onSubmit={(event) => void onSubmit(event)}>
+      <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
         <div className="panel__header">
           <div>
             <p className="eyebrow">Setup flow</p>

@@ -7,7 +7,10 @@ export const allegroSetupSchema = z.object({
   clientId: z.string().trim().min(1, 'Client ID is required'),
   clientSecret: z.string().trim().min(1, 'Client secret is required'),
   // Empty string is coerced to undefined so the backend IsUUID validator is never sent an empty string
-  masterCatalogConnectionId: z.string().uuid('Invalid connection ID').optional().or(z.literal('')).transform((v) => v || undefined),
+  masterCatalogConnectionId: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim().length === 0 ? undefined : val),
+    z.string().uuid('Invalid connection ID').optional(),
+  ),
 });
 
 export type AllegroSetupFormValues = z.input<typeof allegroSetupSchema>;
