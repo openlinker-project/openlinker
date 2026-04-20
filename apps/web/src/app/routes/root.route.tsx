@@ -3,7 +3,6 @@ import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
 import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';
-import { automationsRoute } from './automations.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
@@ -12,7 +11,6 @@ import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
 import { dashboardRoute } from './dashboard.route';
-import { invoicesRoute } from './invoices.route';
 import { listingsRoute } from './listings.route';
 import { inventoryRoute } from './inventory.route';
 import { jobsLogsRoute } from './jobs-logs.route';
@@ -22,7 +20,6 @@ import { advancedNewConnectionRoute } from './advanced-new-connection.route';
 import { ordersRoute } from './orders.route';
 import { productsRoute } from './products.route';
 import { settingsRoute } from './settings.route';
-import { shippingRoute } from './shipping.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
 export const rootRoute: RouteObject = {
@@ -49,9 +46,6 @@ export const rootRoute: RouteObject = {
     allegroCallbackRoute,
     jobsLogsRoute,
     webhookDeliveriesRoute,
-    automationsRoute,
-    shippingRoute,
-    invoicesRoute,
     settingsRoute,
   ],
 };

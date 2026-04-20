@@ -33,17 +33,30 @@ describe('App', () => {
   it('renders the authenticated shell for live routes', async () => {
     const view = renderApp(['/']);
 
-    expect(await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 })).toBeInTheDocument();
-    const primaryNavigation = within(view.container).getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNavigation).getByText('Integrations').closest('a')).toHaveAttribute('href', '/connections');
-    expect(screen.getAllByText('Development')).not.toHaveLength(0);
+    expect(
+      await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 }),
+    ).toBeInTheDocument();
+    const primaryNavigation = within(view.container).getAllByRole('navigation', {
+      name: 'Primary',
+    })[0];
+    expect(within(primaryNavigation).getByText('Connections').closest('a')).toHaveAttribute(
+      'href',
+      '/connections',
+    );
+    // Env badge moved to sidebar workspace footer; still present somewhere.
+    expect(screen.getAllByText(/^(Dev|Development)$/)).not.toHaveLength(0);
   });
 
   it('renders orders list page from the primary navigation', async () => {
     const view = renderApp(['/orders']);
 
     expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    const primaryNavigation = within(view.container).getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNavigation).getByText('Orders').closest('a')).toHaveAttribute('href', '/orders');
+    const primaryNavigation = within(view.container).getAllByRole('navigation', {
+      name: 'Primary',
+    })[0];
+    expect(within(primaryNavigation).getByText('Orders').closest('a')).toHaveAttribute(
+      'href',
+      '/orders',
+    );
   });
 });
