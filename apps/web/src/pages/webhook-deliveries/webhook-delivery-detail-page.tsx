@@ -3,12 +3,16 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useWebhookDeliveryQuery } from '../../features/webhook-deliveries/hooks/use-webhook-delivery-query';
-import type { WebhookDeliveryStatus } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
+import type {
+  WebhookDeliveryDetail,
+  WebhookDeliveryStatus,
+} from '../../features/webhook-deliveries/api/webhook-deliveries.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 
 function statusTone(status: WebhookDeliveryStatus): StatusBadgeTone {
@@ -27,34 +31,13 @@ function statusTone(status: WebhookDeliveryStatus): StatusBadgeTone {
   }
 }
 
-export function WebhookDeliveryDetailPage(): ReactElement {
-  const { id = '' } = useParams<{ id: string }>();
-  const query = useWebhookDeliveryQuery(id);
-
-  if (query.isLoading) {
-    return (
-      <PageLayout eyebrow="Webhook Deliveries" title="Delivery detail">
-        <LoadingState liveRegion="off" title="Loading delivery" message="Fetching delivery details…" />
-      </PageLayout>
-    );
-  }
-
-  if (query.error || !query.data) {
-    return (
-      <PageLayout eyebrow="Webhook Deliveries" title="Delivery detail">
-        <ErrorState
-          title="Unable to load delivery"
-          message={query.error?.message ?? 'Delivery not found'}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
-        />
-      </PageLayout>
-    );
-  }
-
-  const d = query.data;
-
+function buildWebhookDeliveryItems(d: WebhookDeliveryDetail): KeyValueItem[] {
   const items: KeyValueItem[] = [
-    { id: 'status', label: 'Status', value: <StatusBadge tone={statusTone(d.status)}>{d.status}</StatusBadge> },
+    {
+      id: 'status',
+      label: 'Status',
+      value: <StatusBadge tone={statusTone(d.status)}>{d.status}</StatusBadge>,
+    },
     { id: 'eventId', label: 'Event ID', value: d.eventId, mono: true },
     { id: 'provider', label: 'Provider', value: d.provider, mono: true },
     {
@@ -72,7 +55,8 @@ export function WebhookDeliveryDetailPage(): ReactElement {
   items.push({
     id: 'sigValid',
     label: 'Signature valid',
-    value: d.signatureValid === null ? '—' : d.signatureValid ? 'yes' : 'no',
+    value:
+      d.signatureValid === null ? <EmptyValue /> : d.signatureValid ? 'yes' : 'no',
   });
   if (d.dedupResult) {
     items.push({ id: 'dedup', label: 'Dedup', value: d.dedupResult });
@@ -102,6 +86,34 @@ export function WebhookDeliveryDetailPage(): ReactElement {
     });
   }
   items.push({ id: 'received', label: 'Received', value: <TimeDisplay iso={d.receivedAt} /> });
+  return items;
+}
+
+export function WebhookDeliveryDetailPage(): ReactElement {
+  const { id = '' } = useParams<{ id: string }>();
+  const query = useWebhookDeliveryQuery(id);
+
+  if (query.isLoading) {
+    return (
+      <PageLayout eyebrow="Webhook Deliveries" title="Delivery detail">
+        <LoadingState liveRegion="off" title="Loading delivery" message="Fetching delivery details…" />
+      </PageLayout>
+    );
+  }
+
+  if (query.error || !query.data) {
+    return (
+      <PageLayout eyebrow="Webhook Deliveries" title="Delivery detail">
+        <ErrorState
+          title="Unable to load delivery"
+          message={query.error?.message ?? 'Delivery not found'}
+          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+        />
+      </PageLayout>
+    );
+  }
+
+  const d = query.data;
 
   return (
     <PageLayout
@@ -114,7 +126,7 @@ export function WebhookDeliveryDetailPage(): ReactElement {
       }
     >
       <section className="detail-section">
-        <KeyValueList items={items} />
+        <KeyValueList items={buildWebhookDeliveryItems(d)} />
       </section>
 
       {d.rejectionReason ? (

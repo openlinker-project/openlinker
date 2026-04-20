@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { useLocation } from 'react-router-dom';
 import { EntityLabel } from '../../../shared/ui/entity-label';
 import { useConnectionQuery } from '../hooks/use-connection-query';
 
@@ -14,8 +15,15 @@ export function ConnectionEntityLabel({
   connectionId,
   linkToDetail = true,
   showId = true,
-}: ConnectionEntityLabelProps): ReactElement {
+}: ConnectionEntityLabelProps): ReactElement | null {
+  const location = useLocation();
   const query = useConnectionQuery(connectionId);
+
+  if (!connectionId) return null;
+
+  const targetPath = `/connections/${connectionId}`;
+  const isSelfPage = location.pathname === targetPath;
+  const shouldLink = linkToDetail && !isSelfPage;
 
   return (
     <EntityLabel
@@ -23,7 +31,7 @@ export function ConnectionEntityLabel({
       name={query.data?.name}
       loading={query.isLoading}
       showId={showId}
-      to={linkToDetail ? `/connections/${connectionId}` : undefined}
+      to={shouldLink ? targetPath : undefined}
       className={className}
     />
   );

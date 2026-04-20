@@ -1,16 +1,15 @@
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useCustomerQuery } from '../../features/customers/hooks/use-customer-query';
 import type { CustomerAddress } from '../../features/customers/api/customers.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
-
-const NONE: ReactNode = <span className="text-muted">—</span>;
 
 function buildCustomerItems(customer: {
   internalCustomerId: string;
@@ -38,15 +37,15 @@ function buildCustomerItems(customer: {
   }
 
   items.push(
-    { id: 'firstName', label: 'First Name', value: customer.firstName ?? NONE },
-    { id: 'lastName', label: 'Last Name', value: customer.lastName ?? NONE },
+    { id: 'firstName', label: 'First Name', value: customer.firstName ?? <EmptyValue /> },
+    { id: 'lastName', label: 'Last Name', value: customer.lastName ?? <EmptyValue /> },
     {
       id: 'lastSource',
       label: 'Last Source Connection',
       value: customer.lastSourceConnectionId ? (
         <ConnectionEntityLabel connectionId={customer.lastSourceConnectionId} />
       ) : (
-        NONE
+        <EmptyValue />
       ),
     },
     { id: 'lastSeen', label: 'Last Seen', value: <TimeDisplay iso={customer.lastSeenAt} /> },
@@ -68,23 +67,23 @@ const ADDRESS_COLUMNS: DataTableColumn<CustomerAddress>[] = [
     header: 'Address',
     cell: (a) => {
       const parts = [a.address1, a.address2].filter(Boolean).join(', ');
-      return parts ? <span>{parts}</span> : <span className="text-muted">—</span>;
+      return parts ? <span>{parts}</span> : <EmptyValue />;
     },
   },
   {
     id: 'city',
     header: 'City',
-    cell: (a) => a.city ?? <span className="text-muted">—</span>,
+    cell: (a) => a.city ?? <EmptyValue />,
   },
   {
     id: 'postcode',
     header: 'Postcode',
-    cell: (a) => a.postcode ?? <span className="text-muted">—</span>,
+    cell: (a) => a.postcode ?? <EmptyValue />,
   },
   {
     id: 'countryIso2',
     header: 'Country',
-    cell: (a) => a.countryIso2 ?? <span className="text-muted">—</span>,
+    cell: (a) => a.countryIso2 ?? <EmptyValue />,
   },
   {
     id: 'lastSeenAt',

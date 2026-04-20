@@ -1,9 +1,10 @@
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -23,7 +24,7 @@ const SYNC_COLUMNS: DataTableColumn<OrderSyncStatus>[] = [
   {
     id: 'destinationConnectionId',
     header: 'Destination',
-    cell: (s) => <span className="mono-text">{s.destinationConnectionId}</span>,
+    cell: (s) => <ConnectionEntityLabel connectionId={s.destinationConnectionId} showId={false} />,
   },
   {
     id: 'status',
@@ -147,8 +148,6 @@ export function OrderDetailPage(): ReactElement {
   );
 }
 
-const NONE: ReactNode = <span className="text-muted">—</span>;
-
 function buildOrderItems(order: {
   internalOrderId: string;
   sourceConnectionId: string;
@@ -167,13 +166,13 @@ function buildOrderItems(order: {
     {
       id: 'customer',
       label: 'Customer ID',
-      value: order.customerId ?? NONE,
+      value: order.customerId ?? <EmptyValue />,
       mono: Boolean(order.customerId),
     },
     {
       id: 'sourceEvent',
       label: 'Source Event ID',
-      value: order.sourceEventId ?? NONE,
+      value: order.sourceEventId ?? <EmptyValue />,
       mono: Boolean(order.sourceEventId),
     },
     { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={order.createdAt} /> },

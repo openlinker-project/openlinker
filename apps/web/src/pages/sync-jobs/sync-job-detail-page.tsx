@@ -8,7 +8,39 @@ import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-query';
+import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+
+function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    { id: 'status', label: 'Status', value: <SyncJobStatusBadge status={job.status} /> },
+    { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
+    {
+      id: 'connection',
+      label: 'Connection',
+      value: <ConnectionEntityLabel connectionId={job.connectionId} />,
+    },
+    { id: 'attempts', label: 'Attempts', value: `${job.attempts} / ${job.maxAttempts}` },
+    { id: 'nextRun', label: 'Next run at', value: <TimeDisplay iso={job.nextRunAt} /> },
+    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={job.createdAt} /> },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={job.updatedAt} /> },
+  ];
+  if (job.idempotencyKey) {
+    items.push({
+      id: 'idempotencyKey',
+      label: 'Idempotency key',
+      value: job.idempotencyKey,
+      mono: true,
+    });
+  }
+  if (job.lockedAt) {
+    items.push({ id: 'lockedAt', label: 'Locked at', value: <TimeDisplay iso={job.lockedAt} /> });
+  }
+  if (job.lockedBy) {
+    items.push({ id: 'lockedBy', label: 'Locked by', value: job.lockedBy, mono: true });
+  }
+  return items;
+}
 
 export function SyncJobDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -38,34 +70,6 @@ export function SyncJobDetailPage(): ReactElement {
 
   const job = query.data;
 
-  const items: KeyValueItem[] = [
-    { id: 'status', label: 'Status', value: <SyncJobStatusBadge status={job.status} /> },
-    { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
-    {
-      id: 'connection',
-      label: 'Connection',
-      value: <ConnectionEntityLabel connectionId={job.connectionId} />,
-    },
-    { id: 'attempts', label: 'Attempts', value: `${job.attempts} / ${job.maxAttempts}` },
-    { id: 'nextRun', label: 'Next run at', value: <TimeDisplay iso={job.nextRunAt} /> },
-    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={job.createdAt} /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={job.updatedAt} /> },
-  ];
-  if (job.idempotencyKey) {
-    items.push({
-      id: 'idempotencyKey',
-      label: 'Idempotency key',
-      value: job.idempotencyKey,
-      mono: true,
-    });
-  }
-  if (job.lockedAt) {
-    items.push({ id: 'lockedAt', label: 'Locked at', value: <TimeDisplay iso={job.lockedAt} /> });
-  }
-  if (job.lockedBy) {
-    items.push({ id: 'lockedBy', label: 'Locked by', value: job.lockedBy, mono: true });
-  }
-
   return (
     <PageLayout
       eyebrow="Sync Jobs"
@@ -76,19 +80,16 @@ export function SyncJobDetailPage(): ReactElement {
         </Link>
       }
     >
-      {/* Status + metadata */}
       <section className="detail-section">
-        <KeyValueList items={items} />
+        <KeyValueList items={buildSyncJobItems(job)} />
       </section>
 
-      {/* Error section */}
       {job.lastError ? (
         <section className="detail-section">
           <RawPayloadPanel title="Last error" payload={job.lastError} defaultOpen />
         </section>
       ) : null}
 
-      {/* Payload section */}
       {job.payloadJson ? (
         <section className="detail-section">
           <RawPayloadPanel title="Payload" payload={job.payloadJson} />
