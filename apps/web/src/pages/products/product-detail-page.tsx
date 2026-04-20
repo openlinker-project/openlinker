@@ -4,6 +4,7 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
@@ -178,7 +179,7 @@ export function ProductDetailPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Products"
-      title={product.name}
+      title={<EntityLabel id={product.id} name={product.name} />}
       actions={
         <Link to=".." relative="path" className="button button--ghost">
           ← Back to products

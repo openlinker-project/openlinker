@@ -2336,6 +2336,12 @@ textarea {
   max-width: 100%;
 }
 
+/* When EntityLabel sits inside a page title, inherit the title weight so the
+   name reads as the heading, not a quieter 500. */
+.page-title .entity-label__name {
+  font-weight: inherit;
+}
+
 .entity-label__name--link {
   color: var(--accent-primary);
   text-decoration: none;

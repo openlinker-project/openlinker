@@ -38,11 +38,11 @@ export function LoadingState({
   );
 }
 
-export function EmptyState({ action, eyebrow = 'Empty state', liveRegion = 'polite', message, title }: EmptyStateProps): ReactElement {
+export function EmptyState({ action, eyebrow, liveRegion = 'polite', message, title }: EmptyStateProps): ReactElement {
   return (
     <div className="state-card empty-state" role="status" aria-live={liveRegion}>
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h2 className="state-card__title">{title}</h2>
       </div>
       <p className="state-card__message">{message}</p>

@@ -7,6 +7,7 @@ import { ConnectionConfigPanel } from '../../features/connections/components/Con
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import type { ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
@@ -60,7 +61,13 @@ export function ConnectionDetailPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Integration detail"
-      title={connection ? connection.name : `Connection ${connectionId}`}
+      title={
+        connection ? (
+          <EntityLabel id={connection.id} name={connection.name} />
+        ) : (
+          `Connection ${connectionId}`
+        )
+      }
       description="Connection overview, configuration, health, and operator actions."
       actions={
         <div className="button-group">

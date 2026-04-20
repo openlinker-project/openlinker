@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { EmptyValue } from '../../shared/ui/empty-value';
+import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -172,7 +173,7 @@ export function CustomerDetailPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Customers"
-      title={name || customer.internalCustomerId}
+      title={<EntityLabel id={customer.internalCustomerId} name={name || null} />}
       actions={
         <Link to=".." relative="path" className="button button--ghost">
           ← Back to customers
