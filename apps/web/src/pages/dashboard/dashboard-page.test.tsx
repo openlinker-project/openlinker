@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
 import type { Connection } from '../../features/connections/api/connections.types';
-import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
+import type {
+  PaginatedSyncJobs,
+  SyncJob,
+  SyncJobFilters,
+} from '../../features/sync-jobs/api/sync-jobs.types';
 
 function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
   return {
@@ -159,13 +163,13 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('1 job needs attention')).toBeInTheDocument();
   });
 
-  it('tints the Failed jobs card red and links to /orders/failed when there are failures', async () => {
+  it('tints the Failed jobs card red and links to /jobs-logs?status=dead when there are failures', async () => {
     const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
       if (filters?.status === 'dead') {
         return Promise.resolve({
           items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
           total: 3,
-          limit: 10,
+          limit: 500,
           offset: 0,
         });
       }
@@ -180,7 +184,7 @@ describe('DashboardPage', () => {
     await screen.findByText('3 jobs need attention');
     const failedCard = findCardByLabel(container, 'Failed jobs');
     expect(failedCard).toHaveClass('metric-card--error');
-    expect(failedCard).toHaveAttribute('href', '/orders/failed');
+    expect(failedCard).toHaveAttribute('href', '/jobs-logs?status=dead');
   });
 
   it('keeps the Failed jobs card neutral when there are no failures', async () => {
@@ -235,6 +239,138 @@ describe('DashboardPage', () => {
     });
     await waitFor(() => {
       expect(screen.queryAllByText('No failed jobs. All clear.').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('"What\'s broken right now" triage surface', () => {
+    function buildListMock(
+      deadJobs: SyncJob[],
+    ): (filters?: SyncJobFilters) => Promise<PaginatedSyncJobs> {
+      return vi.fn().mockImplementation((filters?: { status?: string }) => {
+        if (filters?.status === 'dead') {
+          return Promise.resolve({
+            items: deadJobs,
+            total: deadJobs.length,
+            limit: 500,
+            offset: 0,
+          });
+        }
+        if (filters?.status === 'queued') {
+          return Promise.resolve({ items: [], total: 0, limit: 1, offset: 0 });
+        }
+        return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
+      });
+    }
+
+    it('groups dead jobs that share connection + job type into a single row with a count badge', async () => {
+      const deadJobs: SyncJob[] = Array.from({ length: 3 }, (_, i) =>
+        makeSyncJob({
+          id: `dead_${i}`,
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'master.inventory.syncByExternalId',
+          lastError: 'FK violation',
+          updatedAt: `2026-04-20T10:0${i}:00.000Z`,
+        }),
+      );
+      const apiClient = createMockApiClient({
+        syncJobs: { list: buildListMock(deadJobs) },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      expect(
+        await screen.findByRole('heading', { name: /What\u2019s broken right now/ }),
+      ).toBeInTheDocument();
+      expect(await screen.findByText('master › inventory › syncByExternalId')).toBeInTheDocument();
+      expect(screen.getByText('1 unique signature · 3 total failures')).toBeInTheDocument();
+    });
+
+    it('renders one group per (connection, jobType) pair sorted by count desc', async () => {
+      const deadJobs: SyncJob[] = [
+        makeSyncJob({ id: 'a1', connectionId: 'conn_1', jobType: 'alpha' }),
+        makeSyncJob({ id: 'b1', connectionId: 'conn_2', jobType: 'beta' }),
+        makeSyncJob({ id: 'b2', connectionId: 'conn_2', jobType: 'beta' }),
+      ];
+      const apiClient = createMockApiClient({
+        syncJobs: { list: buildListMock(deadJobs) },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      expect(
+        await screen.findByText('2 unique signatures · 3 total failures'),
+      ).toBeInTheDocument();
+    });
+
+    it('calls the retry mutation for the representative job when Retry is clicked', async () => {
+      const { fireEvent } = await import('@testing-library/react');
+      const deadJobs: SyncJob[] = [
+        makeSyncJob({
+          id: 'rep_1',
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'some.failing.job',
+          updatedAt: '2026-04-20T10:05:00.000Z',
+        }),
+      ];
+      const retryMock = vi.fn().mockResolvedValue(deadJobs[0]);
+      const apiClient = createMockApiClient({
+        syncJobs: { list: buildListMock(deadJobs), retry: retryMock },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      await screen.findByText('some › failing › job');
+      const retryButtons = await screen.findAllByRole('button', { name: 'Retry' });
+      fireEvent.click(retryButtons[0]);
+      await waitFor(() => {
+        expect(retryMock).toHaveBeenCalledWith('rep_1');
+      });
+    });
+  });
+
+  describe('connection health roll-up', () => {
+    it('marks a connection warning even when DB status=active but it has dead jobs', async () => {
+      const healthyConn = makeConnection({
+        id: 'conn_healthy',
+        name: 'Shop A',
+        status: 'active',
+      });
+      const failingConn = makeConnection({
+        id: 'conn_failing',
+        name: 'Shop B',
+        status: 'active',
+      });
+      const deadJobs: SyncJob[] = [
+        makeSyncJob({ id: 'd1', status: 'dead', connectionId: 'conn_failing' }),
+        makeSyncJob({ id: 'd2', status: 'dead', connectionId: 'conn_failing' }),
+      ];
+      const apiClient = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([healthyConn, failingConn]) },
+        syncJobs: {
+          list: vi.fn().mockImplementation((filters?: { status?: string }) => {
+            if (filters?.status === 'dead') {
+              return Promise.resolve({ items: deadJobs, total: 2, limit: 500, offset: 0 });
+            }
+            return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
+          }),
+        },
+      });
+
+      const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+
+      // "Shop B" appears in both the Connection health list and the incidents
+      // table's Connection column — just wait for it to land in the DOM.
+      await waitFor(() => {
+        expect(screen.getAllByText('Shop B').length).toBeGreaterThan(0);
+      });
+      const integrationCard = findCardByLabel(container, 'Integration health');
+      expect(integrationCard).toHaveClass('metric-card--warning');
+      expect(screen.getByText('1 connection with failing jobs')).toBeInTheDocument();
+      // The roll-up attaches a "N failing jobs" link next to the connection name.
+      const failingJobsLink = screen.getByRole('link', { name: /2 failing jobs/ });
+      expect(failingJobsLink).toHaveAttribute(
+        'href',
+        '/jobs-logs?status=dead&connectionId=conn_failing',
+      );
     });
   });
 });
