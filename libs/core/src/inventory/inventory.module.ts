@@ -64,33 +64,12 @@ export {
       provide: MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
       useExisting: MasterInventorySyncService,
     },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'InventoryRepositoryPort',
-      useExisting: INVENTORY_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'IInventoryService',
-      useExisting: INVENTORY_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IInventorySyncService',
-      useExisting: INVENTORY_SYNC_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IMasterInventorySyncService',
-      useExisting: MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
-    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
     INVENTORY_SERVICE_TOKEN,
     INVENTORY_SYNC_SERVICE_TOKEN,
     MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
-    'InventoryRepositoryPort',
-    'IInventoryService',
-    'IInventorySyncService',
-    'IMasterInventorySyncService',
   ],
 })
 export class InventoryModule {}

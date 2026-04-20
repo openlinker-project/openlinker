@@ -68,27 +68,6 @@ export {
       provide: AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
       useExisting: AutoMatchVariantOffersService,
     },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'ProductRepositoryPort',
-      useExisting: PRODUCT_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'ProductVariantRepositoryPort',
-      useExisting: PRODUCT_VARIANT_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'IProductsService',
-      useExisting: PRODUCTS_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IMasterProductSyncService',
-      useExisting: MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IAutoMatchVariantOffersService',
-      useExisting: AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
-    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
@@ -96,11 +75,6 @@ export {
     PRODUCTS_SERVICE_TOKEN,
     MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
     AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
-    'ProductRepositoryPort',
-    'ProductVariantRepositoryPort',
-    'IProductsService',
-    'IMasterProductSyncService',
-    'IAutoMatchVariantOffersService',
   ],
 })
 export class ProductsModule {}

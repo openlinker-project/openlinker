@@ -64,23 +64,6 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_RECORD_SERVICE_TOKEN,
       useExisting: OrderRecordService,
     },
-    // Also provide as string tokens for convenience
-    {
-      provide: 'IOrderSyncService',
-      useExisting: ORDER_SYNC_SERVICE_TOKEN,
-    },
-    {
-      provide: 'IOrderIngestionService',
-      useExisting: ORDER_INGESTION_SERVICE_TOKEN,
-    },
-    {
-      provide: 'OrderRecordRepositoryPort',
-      useExisting: ORDER_RECORD_REPOSITORY_TOKEN,
-    },
-    {
-      provide: 'IOrderRecordService',
-      useExisting: ORDER_RECORD_SERVICE_TOKEN,
-    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -88,10 +71,6 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_INGESTION_SERVICE_TOKEN,
     ORDER_RECORD_REPOSITORY_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
-    'IOrderSyncService',
-    'IOrderIngestionService',
-    'OrderRecordRepositoryPort',
-    'IOrderRecordService',
   ],
 })
 export class OrdersModule {}
