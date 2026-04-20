@@ -1,53 +1,121 @@
+/*
+ * OpenLinker — Frontend design tokens + base styles
+ *
+ * FE-002 refactor · Phase 1 (#237).
+ * See `docs/frontend-ui-style-guide.md` for the canonical tokens, type scale,
+ * spacing scale, and responsive policy.
+ *
+ * ── Responsive breakpoints ───────────────────────────────────────────────
+ *  Mobile-first. Desktop styles nest inside min-width queries.
+ *
+ *   Default                → mobile  ≤ 767 px
+ *   @media (min-width: 768px)  → tablet 768–1023 px
+ *   @media (min-width: 1024px) → desktop ≥ 1024 px
+ *
+ *  CSS cannot put breakpoints in custom properties (media queries don't
+ *  read `var()`), so these values are pinned. Every new media query in
+ *  the codebase must use the exact numbers above.
+ *
+ * ── Token naming (FE-002 canonical vs pre-refactor aliases) ──────────────
+ *  Style-guide canonical names are defined alongside the existing tokens.
+ *  Component CSS migrates to canonical names during Phase 3; the pre-refactor
+ *  aliases remain until migration is complete.
+ */
+
+/* IBM Plex Sans (UI) + IBM Plex Mono (IDs, timestamps, payloads) */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
 :root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans:
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+
+  /* ── Surfaces ─────────────────────────────────────────────────────── */
   --bg-canvas: #f5f7fa;
   --bg-shell: #ffffff;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #f8fafc;
-  --bg-muted: #eef2f6;
+  --bg-muted: #eef2f6; /* pre-refactor — kept for existing component CSS */
+  --bg-surface-muted: #f1f4f8; /* FE-002 canonical — used by new primitives */
+  --bg-surface-hover: #eef2f7; /* FE-002 canonical — hover over muted */
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
   --border-subtle: #e5eaf0;
   --border-default: #d7dee8;
   --border-strong: #c2ccd8;
+  --border-focus: #7ea6ff; /* alias of --accent-focus, per style guide */
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
   --text-primary: #16202b;
   --text-secondary: #4f5f73;
   --text-muted: #728197;
   --text-disabled: #9aa6b5;
+  --text-on-primary: #eff6ff; /* pre-refactor — button text on --accent-primary */
+  --text-inverse: #ffffff; /* FE-002 canonical — use on dark surfaces */
+
+  /* ── Accent ───────────────────────────────────────────────────────── */
   --accent-primary: #2f6fed;
   --accent-primary-hover: #245fd1;
   --accent-primary-soft: #e8f0ff;
+  --accent-primary-border: rgba(79, 140, 255, 0.35);
   --accent-focus: #7ea6ff;
+
+  /* ── Status: success ──────────────────────────────────────────────── */
   --status-success: #1f9d63;
   --status-success-soft: #eaf8f1;
   --status-success-border: #b9e5cd;
+  --status-success-fg: #166643; /* pre-refactor */
+  --status-success-strong: #167049; /* FE-002 canonical — readable on soft surface */
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
   --status-warning: #b7791f;
   --status-warning-soft: #fff6e5;
   --status-warning-border: #f1d39a;
+  --status-warning-fg: #8a5b15; /* pre-refactor */
+  --status-warning-strong: #885a17; /* FE-002 canonical */
+
+  /* ── Status: error ────────────────────────────────────────────────── */
   --status-error: #c24141;
   --status-error-soft: #fdecec;
   --status-error-border: #efb7b7;
+  --status-error-fg: #9f3030; /* pre-refactor */
+  --status-error-strong: #962f2f; /* FE-002 canonical */
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
   --status-info: #2b7de9;
   --status-info-soft: #eaf3ff;
   --status-info-border: #bfd7fb;
+  --status-info-fg: #2456a5; /* pre-refactor */
+  --status-info-strong: #1e5cb3; /* FE-002 canonical */
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: #7c5cc4;
   --status-review-soft: #f2edfb;
   --status-review-border: #d4c5f2;
+  --status-review-fg: #6445ad; /* pre-refactor */
+  --status-review-strong: #5b3fa4; /* FE-002 canonical */
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
   --status-conflict: #cf6d2f;
   --status-conflict-soft: #fdf0e8;
   --status-conflict-border: #efc7ad;
+  --status-conflict-strong: #a05019;
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
   --status-disabled: #7b8695;
   --status-disabled-soft: #f1f4f7;
   --status-disabled-border: #d5dde6;
-  --status-info-fg: #2456a5;
-  --status-success-fg: #166643;
-  --status-warning-fg: #8a5b15;
-  --status-error-fg: #9f3030;
-  --status-review-fg: #6445ad;
-  --status-disabled-fg: #5f6977;
-  --text-on-primary: #eff6ff;
-  --accent-primary-border: rgba(79, 140, 255, 0.35);
+  --status-disabled-fg: #5f6977; /* pre-refactor */
+  --status-disabled-strong: #5f6977; /* FE-002 canonical */
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
+
   color-scheme: light;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color: var(--text-primary);
@@ -899,8 +967,14 @@ textarea {
   color: var(--text-primary);
 }
 
-.mono-text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+.mono-text,
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table td .mono-text {
@@ -943,7 +1017,7 @@ textarea {
 }
 
 .data-table__action {
-  color: #3559d5;
+  color: var(--accent-primary-hover);
   font-weight: 600;
 }
 
@@ -992,7 +1066,7 @@ textarea {
 
 .timeline-list__time {
   color: var(--text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
 }
 
@@ -1712,4 +1786,28 @@ textarea {
 .capability-fieldset__help {
   margin: 0 0 0.75rem 0;
   font-size: 0.8125rem;
+}
+
+/* ── Touch target minimum ────────────────────────────────────────────
+ * Style guide §Responsive: interactive elements are ≥ 44 px on coarse
+ * pointers (phones, tablets). Mouse-driven surfaces keep their existing
+ * 32 / 36 px compact sizes.
+ */
+@media (hover: none) and (pointer: coarse) {
+  button,
+  .button,
+  .nav-link,
+  .control,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  .status-pill,
+  .status-badge,
+  .context-chip,
+  .toolbar-chip {
+    min-height: 28px; /* badges stay compact — not primary tap targets */
+  }
 }

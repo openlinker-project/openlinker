@@ -333,6 +333,36 @@ Recommended defaults:
 - input radius: `6px`
 - avoid more than three visual depth levels on the same screen
 
+### Type scale audit (Phase 1 — 2026-04-20)
+
+Phase 1 did not normalize per-component `font-size` values in `apps/web/src/index.css` — changing 40+ rules without per-component visual QA risks drift. Each primitive migration in Phase 3 (#239) normalizes its own typography to the canonical scale below. This table lists **off-scale values currently in component CSS** so Phase 3 PRs can track their resolution.
+
+Canonical scale (rem):
+
+| Purpose | Canonical | Pixels |
+|---|---|---|
+| Page title | `1.375rem` | 22 |
+| Section title | `1rem` | 16 |
+| Body | `0.875rem` | 14 |
+| Body (small) | `0.8125rem` | 13 |
+| Metadata / labels | `0.75rem` | 12 |
+| Eyebrow / uppercase | `0.6875rem` | 11 |
+
+Off-scale values currently in `index.css` (31 occurrences across 26 rules — to be normalized during Phase 3):
+
+| Current | Nearest canonical | Notes |
+|---|---|---|
+| `0.76rem` | `0.75rem` | page-header eyebrow, table thead, topbar label — ×3 |
+| `0.8rem` | `0.75rem` or `0.8125rem` | metric-card label |
+| `0.82rem` | `0.8125rem` | timeline-list time |
+| `0.92rem` | `0.875rem` | data-table root |
+| `0.9375rem` | `0.875rem` | capability-fieldset legend |
+| `1.125rem` | `1rem` (or `1.125rem` sub-title) | guest-page title |
+| `1.25rem` | `1rem` or `1.375rem` | guest-brand title |
+| `1.4rem` | `1.375rem` | metric-card value |
+
+All other `font-size` usages already sit on the canonical scale. Full grep output archived with PR #244.
+
 ## CSS Implementation Standard
 
 The visual direction above must be enforced in CSS and component markup, not only in mockups.
