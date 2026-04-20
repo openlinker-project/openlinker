@@ -7,7 +7,7 @@
  *
  * @module pages/dashboard
  */
-import { useMemo, type ReactElement } from 'react';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
@@ -157,6 +157,10 @@ export function DashboardPage(): ReactElement {
   );
   const retrySyncJob = useRetrySyncJobMutation();
   const { showToast } = useToast();
+  // Per-group pending state. Retry disables only its own row button so an
+  // operator can fire retries against different groups in parallel without
+  // the whole table freezing on a shared mutation flag.
+  const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
   const connections = connectionsQuery.data ?? [];
   const deadJobs = useMemo<SyncJob[]>(() => deadJobsQuery.data?.items ?? [], [deadJobsQuery.data]);
@@ -203,123 +207,151 @@ export function DashboardPage(): ReactElement {
     return m;
   }, [connections]);
 
-  async function handleRetryGroup(group: FailedJobGroup): Promise<void> {
-    try {
-      await retrySyncJob.mutateAsync(group.representative.id);
-      showToast({
-        tone: 'success',
-        title: 'Retry enqueued',
-        description: `${formatJobType(group.jobType)} will re-run.`,
-      });
-    } catch (error) {
-      showToast({
-        tone: 'error',
-        title: 'Retry failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  }
+  const handleRetryGroup = useCallback(
+    async (group: FailedJobGroup): Promise<void> => {
+      setPendingGroupKey(group.key);
+      try {
+        await retrySyncJob.mutateAsync(group.representative.id);
+        // The backend retry endpoint is per-job, so we only re-queue the
+        // representative (most recently updated) row in the group. Surface
+        // that honestly so an operator doesn't assume all N just re-ran.
+        const remaining = Math.max(0, group.count - 1);
+        showToast({
+          tone: 'success',
+          title: 'Re-queued 1 job',
+          description:
+            remaining === 0
+              ? `${formatJobType(group.jobType)} will re-run.`
+              : `${formatJobType(group.jobType)} — most recent job re-queued. ${remaining} other failure${remaining === 1 ? '' : 's'} still dead; open View jobs to retry the rest.`,
+        });
+      } catch (error) {
+        showToast({
+          tone: 'error',
+          title: 'Retry failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
+      } finally {
+        setPendingGroupKey((current) => (current === group.key ? null : current));
+      }
+    },
+    [retrySyncJob, showToast],
+  );
 
-  const failedGroupColumns: DataTableColumn<FailedJobGroup>[] = [
-    {
-      id: 'jobType',
-      header: 'Job type',
-      cell: (group) => <span className="mono-text">{formatJobType(group.jobType)}</span>,
-    },
-    {
-      id: 'connection',
-      header: 'Connection',
-      cell: (group) => (
-        <span>{connectionNameById.get(group.connectionId) ?? group.connectionId}</span>
-      ),
-      hideBelow: 768,
-    },
-    {
-      id: 'count',
-      header: 'Failures',
-      align: 'right',
-      cell: (group) => (
-        <StatusBadge tone="error" compact>
-          {group.count}
-        </StatusBadge>
-      ),
-    },
-    {
-      id: 'lastError',
-      header: 'Last error',
-      cell: (group) => (
-        <span className="muted-text" title={group.lastError ?? undefined}>
-          {group.lastError
-            ? group.lastError.length > 80
-              ? `${group.lastError.slice(0, 80)}…`
-              : group.lastError
-            : '—'}
-        </span>
-      ),
-      hideBelow: 1024,
-    },
-    {
-      id: 'updatedAt',
-      header: 'Latest',
-      align: 'right',
-      cell: (group) => (
-        <TimeDisplay iso={group.latestUpdatedAt} format="relative" className="muted-text" />
-      ),
-      hideBelow: 768,
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      align: 'right',
-      cell: (group) => (
-        <div className="dashboard-incidents__actions">
-          <Button
-            tone="secondary"
-            onClick={() => void handleRetryGroup(group)}
-            disabled={retrySyncJob.isPending}
-          >
-            Retry
-          </Button>
-          <Link
-            className="button button--ghost"
-            to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(group.connectionId)}&jobType=${encodeURIComponent(group.jobType)}`}
-          >
-            View jobs
-          </Link>
-        </div>
-      ),
-    },
-  ];
+  const failedGroupColumns: DataTableColumn<FailedJobGroup>[] = useMemo(
+    () => [
+      {
+        id: 'jobType',
+        header: 'Job type',
+        cell: (group) => <span className="mono-text">{formatJobType(group.jobType)}</span>,
+      },
+      {
+        id: 'connection',
+        header: 'Connection',
+        cell: (group) => (
+          <span>{connectionNameById.get(group.connectionId) ?? group.connectionId}</span>
+        ),
+        hideBelow: 768,
+      },
+      {
+        id: 'count',
+        header: 'Failures',
+        align: 'right',
+        cell: (group) => (
+          <StatusBadge tone="error" compact>
+            {group.count}
+          </StatusBadge>
+        ),
+      },
+      {
+        id: 'lastError',
+        header: 'Last error',
+        cell: (group) => (
+          <span className="muted-text" title={group.lastError ?? undefined}>
+            {group.lastError
+              ? group.lastError.length > 80
+                ? `${group.lastError.slice(0, 80)}…`
+                : group.lastError
+              : '—'}
+          </span>
+        ),
+        hideBelow: 1024,
+      },
+      {
+        id: 'updatedAt',
+        header: 'Latest',
+        align: 'right',
+        cell: (group) => (
+          <TimeDisplay iso={group.latestUpdatedAt} format="relative" className="muted-text" />
+        ),
+        hideBelow: 768,
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        align: 'right',
+        cell: (group): ReactElement => {
+          const connectionName = connectionNameById.get(group.connectionId) ?? group.connectionId;
+          const signature = `${formatJobType(group.jobType)} on ${connectionName}`;
+          const retryLabel = group.count > 1 ? `Retry 1 of ${group.count}` : 'Retry';
+          return (
+            <div className="dashboard-incidents__actions">
+              <Button
+                tone="secondary"
+                onClick={() => void handleRetryGroup(group)}
+                disabled={pendingGroupKey === group.key}
+                aria-label={`${retryLabel} — ${signature}`}
+              >
+                {pendingGroupKey === group.key ? 'Retrying…' : retryLabel}
+              </Button>
+              <Link
+                className="button button--ghost"
+                to={`/jobs-logs?status=dead&connectionId=${encodeURIComponent(group.connectionId)}&jobType=${encodeURIComponent(group.jobType)}`}
+                aria-label={`View jobs — ${signature}`}
+              >
+                View jobs
+              </Link>
+            </div>
+          );
+        },
+      },
+    ],
+    [connectionNameById, handleRetryGroup, pendingGroupKey],
+  );
 
-  const recentJobColumns: DataTableColumn<SyncJob>[] = [
-    {
-      id: 'jobType',
-      header: 'Job type',
-      cell: (job) => <span className="mono-text">{formatJobType(job.jobType)}</span>,
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      cell: (job) => (
-        <StatusBadge tone={toRowStatusTone(job.status)} compact>
-          {job.status}
-        </StatusBadge>
-      ),
-    },
-    {
-      id: 'attempts',
-      header: 'Attempts',
-      align: 'center',
-      cell: (job) => `${job.attempts}/${job.maxAttempts}`,
-      hideBelow: 768,
-    },
-    {
-      id: 'updatedAt',
-      header: 'Updated',
-      align: 'right',
-      cell: (job) => <TimeDisplay iso={job.updatedAt} format="relative" className="muted-text" />,
-    },
-  ];
+  const recentJobColumns: DataTableColumn<SyncJob>[] = useMemo(
+    () => [
+      {
+        id: 'jobType',
+        header: 'Job type',
+        cell: (job) => <span className="mono-text">{formatJobType(job.jobType)}</span>,
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (job) => (
+          <StatusBadge tone={toRowStatusTone(job.status)} compact>
+            {job.status}
+          </StatusBadge>
+        ),
+      },
+      {
+        id: 'attempts',
+        header: 'Attempts',
+        align: 'center',
+        cell: (job) => `${job.attempts}/${job.maxAttempts}`,
+        hideBelow: 768,
+      },
+      {
+        id: 'updatedAt',
+        header: 'Updated',
+        align: 'right',
+        cell: (job) => (
+          <TimeDisplay iso={job.updatedAt} format="relative" className="muted-text" />
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <PageLayout
@@ -396,7 +428,10 @@ export function DashboardPage(): ReactElement {
           </div>
           {deadTotal > 0 ? (
             <span className="panel__meta">
-              {failedGroups.length} unique signature{failedGroups.length === 1 ? '' : 's'} ·{' '}
+              {deadJobs.length < deadTotal
+                ? `${failedGroups.length} signatures in first ${deadJobs.length}`
+                : `${failedGroups.length} unique signature${failedGroups.length === 1 ? '' : 's'}`}
+              {' · '}
               {deadTotal} total failure{deadTotal === 1 ? '' : 's'}
             </span>
           ) : null}

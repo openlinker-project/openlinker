@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
@@ -302,7 +302,6 @@ describe('DashboardPage', () => {
     });
 
     it('calls the retry mutation for the representative job when Retry is clicked', async () => {
-      const { fireEvent } = await import('@testing-library/react');
       const deadJobs: SyncJob[] = [
         makeSyncJob({
           id: 'rep_1',
@@ -319,11 +318,103 @@ describe('DashboardPage', () => {
       renderWithProviders(<DashboardPage />, { apiClient });
 
       await screen.findByText('some › failing › job');
-      const retryButtons = await screen.findAllByRole('button', { name: 'Retry' });
-      fireEvent.click(retryButtons[0]);
+      // Row action is uniquely labelled via `aria-label` so screen readers
+      // can tell rows apart; use that to target the right button.
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — some › failing › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
       await waitFor(() => {
         expect(retryMock).toHaveBeenCalledWith('rep_1');
       });
+    });
+
+    it('labels the Retry button with the group size when there is more than one failure', async () => {
+      const deadJobs: SyncJob[] = [
+        makeSyncJob({
+          id: 'a1',
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'chatty.failing.job',
+          updatedAt: '2026-04-20T10:01:00.000Z',
+        }),
+        makeSyncJob({
+          id: 'a2',
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'chatty.failing.job',
+          updatedAt: '2026-04-20T10:02:00.000Z',
+        }),
+        makeSyncJob({
+          id: 'a3',
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'chatty.failing.job',
+          updatedAt: '2026-04-20T10:03:00.000Z',
+        }),
+      ];
+      const apiClient = createMockApiClient({
+        syncJobs: { list: buildListMock(deadJobs) },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      expect(
+        await screen.findByRole('button', { name: /Retry 1 of 3 — chatty › failing › job/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('surfaces the remaining-failures caveat in the success toast for a multi-row group', async () => {
+      const deadJobs: SyncJob[] = Array.from({ length: 3 }, (_, i) =>
+        makeSyncJob({
+          id: `bulk_${i}`,
+          status: 'dead',
+          connectionId: 'conn_1',
+          jobType: 'bulk.failing.job',
+          updatedAt: `2026-04-20T10:0${i}:00.000Z`,
+        }),
+      );
+      const retryMock = vi.fn().mockResolvedValue(deadJobs[2]);
+      const apiClient = createMockApiClient({
+        syncJobs: { list: buildListMock(deadJobs), retry: retryMock },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry 1 of 3 — bulk › failing › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
+      expect(
+        await screen.findByText(/2 other failures still dead/i),
+      ).toBeInTheDocument();
+    });
+
+    it('shows "signatures in first N" when the dead-job page is capped below the total', async () => {
+      const deadJobs: SyncJob[] = [
+        makeSyncJob({ id: 'd1', status: 'dead', connectionId: 'conn_1', jobType: 'a.b' }),
+        makeSyncJob({ id: 'd2', status: 'dead', connectionId: 'conn_1', jobType: 'a.b' }),
+      ];
+      const apiClient = createMockApiClient({
+        syncJobs: {
+          list: vi.fn().mockImplementation((filters?: { status?: string }) => {
+            if (filters?.status === 'dead') {
+              // Server reports a higher total than the page returns.
+              return Promise.resolve({
+                items: deadJobs,
+                total: 1234,
+                limit: 500,
+                offset: 0,
+              });
+            }
+            return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
+          }),
+        },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      expect(
+        await screen.findByText('1 signatures in first 2 · 1234 total failures'),
+      ).toBeInTheDocument();
     });
   });
 
