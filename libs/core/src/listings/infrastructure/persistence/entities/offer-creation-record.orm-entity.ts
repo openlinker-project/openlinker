@@ -1,0 +1,55 @@
+/**
+ * Offer Creation Record ORM Entity
+ *
+ * TypeORM entity representing the `offer_creation_records` table in PostgreSQL.
+ * Tracks the lifecycle of OL-initiated offer creation attempts on marketplaces.
+ *
+ * @module libs/core/src/listings/infrastructure/persistence/entities
+ * @see {@link OfferCreationRecord} for the corresponding domain entity
+ */
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
+
+import type {
+  OfferCreationError,
+  OfferCreationStatus,
+} from '../../../domain/types/offer-creation-record.types';
+
+@Entity('offer_creation_records')
+@Index(['internalVariantId', 'connectionId'])
+@Index(['connectionId'])
+@Index(['status'])
+export class OfferCreationRecordOrmEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'text' })
+  internalVariantId!: string;
+
+  @Column({ type: 'uuid' })
+  connectionId!: string;
+
+  @Column({ type: 'text', nullable: true })
+  externalOfferId!: string | null;
+
+  @Column({ type: 'text' })
+  status!: OfferCreationStatus;
+
+  @Column({ type: 'jsonb', nullable: true })
+  errors!: OfferCreationError[] | null;
+
+  @Column({ type: 'boolean', default: false })
+  publishImmediately!: boolean;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
