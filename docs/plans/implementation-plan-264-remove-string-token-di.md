@@ -63,7 +63,7 @@ Both must pass with zero errors. If anything fails, there's a hidden string-toke
 ## 5. Validation
 
 - **Architecture**: Module metadata only; no layer boundaries touched.
-- **Grep coverage**: Two greps establish zero consumers (`@Inject\\('[A-Z]`, `provide: '[A-Z]...(Port|Service)'`). If the quality gate passes, no consumer exists.
+- **Grep coverage**: Three greps establish zero consumers (`@Inject\\('[A-Z]`, `inject: \\[.*'[A-Z]`, `provide: '[A-Z]...(Port|Service)'`) — see §2 for details. If the quality gate passes, no consumer exists.
 - **Risk**: Very low. Delete-only diff on module files.
 - **Integration tests**: Issue acceptance requires `pnpm test:integration` to pass. Docker is up in this session — run locally as part of the quality gate (Step 9).
 
