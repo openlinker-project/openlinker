@@ -70,13 +70,13 @@ describe('CreateConnectionForm', () => {
       target: { value: 'Temporary draft' },
     });
     fireEvent.click(within(view.container).getAllByRole('button', { name: 'Reset draft' })[0]);
-    fireEvent.click(within(view.container).getAllByRole('button', { name: 'Keep editing' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
 
     expect(within(view.container).getAllByLabelText('Connection name')[0]).toHaveValue('Temporary draft');
 
     fireEvent.click(within(view.container).getAllByRole('button', { name: 'Reset draft' })[0]);
     fireEvent.click(
-      within(within(view.container).getAllByRole('dialog', { name: 'Reset connection draft?' })[0]).getByRole('button', {
+      within(screen.getByRole('dialog', { name: 'Reset connection draft?' })).getByRole('button', {
         name: 'Reset draft',
       }),
     );

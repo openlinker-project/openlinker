@@ -1,8 +1,8 @@
+import * as RadixToast from '@radix-ui/react-toast';
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +13,7 @@ import type { AlertTone } from './alert';
 
 interface Toast {
   description: string;
+  durationMs: number;
   id: number;
   title?: string;
   tone: AlertTone;
@@ -26,7 +27,6 @@ interface ShowToastOptions {
 }
 
 interface ToastContextValue {
-  dismissToast: (id: number) => void;
   showToast: (options: ShowToastOptions) => void;
 }
 
@@ -35,74 +35,53 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
-  const timeoutIdsRef = useRef<Map<number, number>>(new Map());
 
-  const dismissToast = useCallback((id: number) => {
-    const timeoutId = timeoutIdsRef.current.get(id);
-
-    if (timeoutId) {
-      window.clearTimeout(timeoutId);
-      timeoutIdsRef.current.delete(id);
-    }
-
-    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
+  const removeToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
 
   const showToast = useCallback(
     ({ description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
       const id = nextIdRef.current++;
-
-      setToasts((currentToasts) => [...currentToasts, { description, id, title, tone }]);
-
-      const timeoutId = window.setTimeout(() => {
-        dismissToast(id);
-      }, durationMs);
-
-      timeoutIdsRef.current.set(id, timeoutId);
+      setToasts((current) => [...current, { description, durationMs, id, title, tone }]);
     },
-    [dismissToast],
+    [],
   );
 
-  useEffect(() => {
-    const timeoutIds = timeoutIdsRef.current;
-
-    return () => {
-      for (const timeoutId of timeoutIds.values()) {
-        window.clearTimeout(timeoutId);
-      }
-      timeoutIds.clear();
-    };
-  }, []);
-
-  const value = useMemo<ToastContextValue>(
-    () => ({
-      dismissToast,
-      showToast,
-    }),
-    [dismissToast, showToast],
-  );
+  const value = useMemo<ToastContextValue>(() => ({ showToast }), [showToast]);
 
   return (
     <ToastContext.Provider value={value}>
-      {children}
-      <div aria-live="polite" className="toast-region">
+      {/* swipeDirection assumes LTR. Revisit when/if OpenLinker ships an RTL locale. */}
+      <RadixToast.Provider swipeDirection="right">
+        {children}
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast--${toast.tone}`} role="status">
+          <RadixToast.Root
+            key={toast.id}
+            className={`toast toast--${toast.tone}`}
+            duration={toast.durationMs}
+            onOpenChange={(open) => {
+              if (!open) removeToast(toast.id);
+            }}
+          >
             <div className="toast__content">
-              {toast.title ? <strong className="toast__title">{toast.title}</strong> : null}
-              <p className="toast__description">{toast.description}</p>
+              {toast.title ? (
+                <RadixToast.Title className="toast__title">{toast.title}</RadixToast.Title>
+              ) : null}
+              <RadixToast.Description className="toast__description">
+                {toast.description}
+              </RadixToast.Description>
             </div>
-            <button
-              type="button"
+            <RadixToast.Close
               aria-label={`Dismiss ${toast.title ?? 'notification'}`}
               className="toast__dismiss"
-              onClick={() => dismissToast(toast.id)}
             >
               Dismiss
-            </button>
-          </div>
+            </RadixToast.Close>
+          </RadixToast.Root>
         ))}
-      </div>
+        <RadixToast.Viewport className="toast-region" />
+      </RadixToast.Provider>
     </ToastContext.Provider>
   );
 }
