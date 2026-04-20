@@ -17,13 +17,25 @@
  *  the codebase must use the exact numbers above.
  *
  * ── Token naming (FE-002 canonical vs pre-refactor aliases) ──────────────
- *  Style-guide canonical names are defined alongside the existing tokens.
- *  Component CSS migrates to canonical names during Phase 3; the pre-refactor
- *  aliases remain until migration is complete.
+ *  The style-guide canonical names are introduced alongside pre-refactor
+ *  names. **Canonical names are true aliases** — they point at the same
+ *  hex value as the existing pre-refactor token, so swapping `var(--a)`
+ *  for `var(--b)` during Phase 3 never changes a pixel.
+ *
+ *  Survives the refactor (canonical, FE-002): --bg-surface-muted,
+ *   --bg-surface-hover, --text-inverse, --border-focus,
+ *   --status-*-strong, --accent-primary-border (rgba form).
+ *
+ *  Removed at end of Phase 3 (pre-refactor, sunset): --bg-muted,
+ *   --text-on-primary, --status-*-fg.
+ *
+ *  Net-new tokens with no pre-refactor equivalent: --font-sans,
+ *   --font-mono, --status-conflict-strong.
+ *
+ * ── Fonts ────────────────────────────────────────────────────────────────
+ *  IBM Plex Sans + IBM Plex Mono are self-hosted via `@fontsource/*` and
+ *  imported from `src/main.tsx`. No external CDN at runtime.
  */
-
-/* IBM Plex Sans (UI) + IBM Plex Mono (IDs, timestamps, payloads) */
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 
 :root {
   /* ── Typography ───────────────────────────────────────────────────── */
@@ -38,15 +50,15 @@
   --bg-shell: #ffffff;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #f8fafc;
-  --bg-muted: #eef2f6; /* pre-refactor — kept for existing component CSS */
-  --bg-surface-muted: #f1f4f8; /* FE-002 canonical — used by new primitives */
-  --bg-surface-hover: #eef2f7; /* FE-002 canonical — hover over muted */
+  --bg-muted: #eef2f6; /* pre-refactor — sunset after Phase 3 */
+  --bg-surface-muted: #eef2f6; /* FE-002 canonical — alias of --bg-muted */
+  --bg-surface-hover: #e3e8ef; /* FE-002 canonical — one step darker than --bg-surface-muted */
 
   /* ── Borders ──────────────────────────────────────────────────────── */
   --border-subtle: #e5eaf0;
   --border-default: #d7dee8;
   --border-strong: #c2ccd8;
-  --border-focus: #7ea6ff; /* alias of --accent-focus, per style guide */
+  --border-focus: #7ea6ff; /* FE-002 canonical — alias of --accent-focus */
 
   /* ── Text ─────────────────────────────────────────────────────────── */
   --text-primary: #16202b;
@@ -54,7 +66,7 @@
   --text-muted: #728197;
   --text-disabled: #9aa6b5;
   --text-on-primary: #eff6ff; /* pre-refactor — button text on --accent-primary */
-  --text-inverse: #ffffff; /* FE-002 canonical — use on dark surfaces */
+  --text-inverse: #eff6ff; /* FE-002 canonical — alias of --text-on-primary */
 
   /* ── Accent ───────────────────────────────────────────────────────── */
   --accent-primary: #2f6fed;
@@ -67,49 +79,49 @@
   --status-success: #1f9d63;
   --status-success-soft: #eaf8f1;
   --status-success-border: #b9e5cd;
-  --status-success-fg: #166643; /* pre-refactor */
-  --status-success-strong: #167049; /* FE-002 canonical — readable on soft surface */
+  --status-success-fg: #166643; /* pre-refactor — sunset after Phase 3 */
+  --status-success-strong: #166643; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: warning ──────────────────────────────────────────────── */
   --status-warning: #b7791f;
   --status-warning-soft: #fff6e5;
   --status-warning-border: #f1d39a;
   --status-warning-fg: #8a5b15; /* pre-refactor */
-  --status-warning-strong: #885a17; /* FE-002 canonical */
+  --status-warning-strong: #8a5b15; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: error ────────────────────────────────────────────────── */
   --status-error: #c24141;
   --status-error-soft: #fdecec;
   --status-error-border: #efb7b7;
   --status-error-fg: #9f3030; /* pre-refactor */
-  --status-error-strong: #962f2f; /* FE-002 canonical */
+  --status-error-strong: #9f3030; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: info ─────────────────────────────────────────────────── */
   --status-info: #2b7de9;
   --status-info-soft: #eaf3ff;
   --status-info-border: #bfd7fb;
   --status-info-fg: #2456a5; /* pre-refactor */
-  --status-info-strong: #1e5cb3; /* FE-002 canonical */
+  --status-info-strong: #2456a5; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: #7c5cc4;
   --status-review-soft: #f2edfb;
   --status-review-border: #d4c5f2;
   --status-review-fg: #6445ad; /* pre-refactor */
-  --status-review-strong: #5b3fa4; /* FE-002 canonical */
+  --status-review-strong: #6445ad; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: conflict ─────────────────────────────────────────────── */
   --status-conflict: #cf6d2f;
   --status-conflict-soft: #fdf0e8;
   --status-conflict-border: #efc7ad;
-  --status-conflict-strong: #a05019;
+  --status-conflict-strong: #a05019; /* net-new — no pre-refactor equivalent */
 
   /* ── Status: disabled ─────────────────────────────────────────────── */
   --status-disabled: #7b8695;
   --status-disabled-soft: #f1f4f7;
   --status-disabled-border: #d5dde6;
   --status-disabled-fg: #5f6977; /* pre-refactor */
-  --status-disabled-strong: #5f6977; /* FE-002 canonical */
+  --status-disabled-strong: #5f6977; /* FE-002 canonical — alias of -fg */
 
   /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
@@ -977,6 +989,17 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * .num — numeric column convenience utility.
+ * Equivalent to .mono.tabular. Used on table cells carrying durations,
+ * counts, timestamps, or any value where column alignment matters.
+ */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 .data-table td .mono-text {
   display: inline-block;
   max-width: 20ch;
@@ -1792,11 +1815,20 @@ textarea {
  * Style guide §Responsive: interactive elements are ≥ 44 px on coarse
  * pointers (phones, tablets). Mouse-driven surfaces keep their existing
  * 32 / 36 px compact sizes.
+ *
+ * Buttons also carry a min-width so icon-only buttons don't stay narrow
+ * slivers. Phase 3 primitives that opt into smaller compact sizes
+ * (.button--sm at 36 px, icon-only at 40 px per style guide) will
+ * override the defaults via more specific selectors.
  */
 @media (hover: none) and (pointer: coarse) {
   button,
   .button,
-  .nav-link,
+  .nav-link {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .control,
   input,
   select,

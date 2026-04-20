@@ -348,18 +348,18 @@ Canonical scale (rem):
 | Metadata / labels | `0.75rem` | 12 |
 | Eyebrow / uppercase | `0.6875rem` | 11 |
 
-Off-scale values currently in `index.css` (31 occurrences across 26 rules — to be normalized during Phase 3):
+Off-scale values currently in `index.css` (~31 occurrences — to be normalized during Phase 3, each resolved by the primitive that owns the affected selector):
 
-| Current | Nearest canonical | Notes |
-|---|---|---|
-| `0.76rem` | `0.75rem` | page-header eyebrow, table thead, topbar label — ×3 |
-| `0.8rem` | `0.75rem` or `0.8125rem` | metric-card label |
-| `0.82rem` | `0.8125rem` | timeline-list time |
-| `0.92rem` | `0.875rem` | data-table root |
-| `0.9375rem` | `0.875rem` | capability-fieldset legend |
-| `1.125rem` | `1rem` (or `1.125rem` sub-title) | guest-page title |
-| `1.25rem` | `1rem` or `1.375rem` | guest-brand title |
-| `1.4rem` | `1.375rem` | metric-card value |
+| Current | Nearest canonical | Affected selectors | Resolved by |
+|---|---|---|---|
+| `0.76rem` | `0.75rem` | `.topbar__label`, `.data-table thead th`, `.eyebrow` | Phase 2 (shell, #238) + Phase 3 (DataTable, #239) |
+| `0.8rem` | `0.75rem` | `.metric-card__label` | Phase 3 (MetricCard, #239) |
+| `0.82rem` | `0.8125rem` | `.timeline-list__time` | Phase 3 (Timeline, #239) |
+| `0.92rem` | `0.875rem` | `.data-table` | Phase 3 (DataTable, #239) |
+| `0.9375rem` | `0.875rem` | `.capability-fieldset__legend` | Phase 5 (wizards, #241) |
+| `1.125rem` | `1rem` | `.guest-page__title` | Phase 2 (shell, #238) — login/guest is part of shell scope |
+| `1.25rem` | `1rem` or `1.375rem` | `.guest-brand__title` | Phase 2 (shell, #238) |
+| `1.4rem` | `1.375rem` | `.metric-card__value` | Phase 3 (MetricCard, #239) |
 
 All other `font-size` usages already sit on the canonical scale. Full grep output archived with PR #244.
 
