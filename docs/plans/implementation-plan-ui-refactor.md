@@ -10,7 +10,9 @@ Transform the OpenLinker frontend from a generic admin template into a commerce-
 
 **Layer**: Frontend only — `apps/web/`. No backend changes except reading existing APIs.
 
-**Non-goals**: Mobile/tablet layouts. Performance work (Lighthouse Best-Practices already 100). i18n. Allegro OAuth callback UX. Full a11y remediation beyond the remaining 4% (already at 96).
+**Non-goals**: Performance work (Lighthouse Best-Practices already 100). i18n. Allegro OAuth callback UX. Full a11y remediation beyond the remaining 4% (already at 96).
+
+**Responsive scope (added 2026-04-20 per review):** mobile (≤ 767 px) and tablet (768–1023 px) layouts are in scope for every page. Desktop (≥ 1024 px) remains the design anchor. See `§5 Cross-cutting concerns · Responsive` for the per-phase acceptance bar.
 
 ---
 
@@ -262,6 +264,42 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ## 5. Cross-cutting concerns
 
+### Responsive (mobile + tablet)
+
+Desktop (≥ 1024 px) is the design anchor. Mobile (≤ 767 px) and tablet (768–1023 px) are first-class: every page ships responsive in the same PR that ships its desktop rewrite. Not a separate phase.
+
+**Breakpoints** (added to `index.css` in Phase 1):
+
+```css
+/* Mobile first. Desktop styles nest inside these min-width queries. */
+@media (min-width: 768px) { /* tablet */ }
+@media (min-width: 1024px) { /* desktop */ }
+```
+
+**Parity rules:**
+
+| Surface | Mobile | Tablet | Desktop |
+|---|---|---|---|
+| Nav | drawer, triggered by hamburger in topbar | drawer OR persistent rail | persistent sidebar 240 px |
+| Topbar | compact: logo + hamburger + search icon + user | full minus workspace crumbs | full |
+| Tables | **card view** (one card per row, key columns stacked) | table with column hiding | full table |
+| Detail pages | single-column stack, everything readable | 1-col stack or 60/40 split | 65/35 grid |
+| KPI strip | 1×4 vertical stack | 2×2 grid | 1×4 horizontal |
+| Complex editors (mapping editor, connection wizards, category mappings) | **read-only view + "open on desktop to edit" banner** | full interactive | full interactive |
+| Forms (single-column already) | full width, `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
+| Raw payload panel | collapsed by default | as desktop | as desktop |
+
+**Per-phase acceptance bar:**
+
+- Phase 1 — breakpoint tokens + mobile base body styles land in `index.css`.
+- Phase 2 — shell drawer nav + responsive topbar; content starts ≤ 120 px from top on every breakpoint.
+- Phase 3 — `DataTable` ships with a mobile card-view mode; `KeyValueList` stacks gracefully; `MetricCard` reflows 4×1 / 2×2 / 1×4.
+- Phase 4 — every detail page verified at 360 / 768 / 1440; status banner + key-value + raw payload readable everywhere.
+- Phase 5 — wizard steps are one-per-screen on mobile; complex editors show the "open on desktop" affordance below 1024.
+- Phase 6 — dashboard KPI strip + incidents list reflow; failed-jobs surface is navigable on phone for triage.
+
+**Capture requirement:** every phase PR includes after-shots at **three widths** — 360 × 812, 768 × 1024, 1440 × 900. Saved under `docs/ui-audit/progress/phase-{N}/`.
+
 ### Regression prevention
 
 - **Before/after screenshots** per phase, committed under `docs/ui-audit/progress/phase-{N}/`. Diff tool: `ImageMagick compare` or eyeballing in the PR.
@@ -351,11 +389,11 @@ Phases 4 and 5 can run in parallel once Phase 3 is merged — different files, n
 
 Same as epic #236:
 
-- Mobile/tablet layouts (style guide targets operator workstations)
 - Performance work (already strong)
 - i18n (English-only in FE-001)
 - Allegro OAuth callback UX (requires live OAuth state)
 - Full a11y remediation beyond the remaining 4%
+- Interactive editing on mobile for complex editors (mapping editors, wizards stay desktop-first with an "open on desktop to edit" affordance)
 
 ---
 

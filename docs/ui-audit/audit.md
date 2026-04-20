@@ -446,6 +446,23 @@ A rough ranking of refactor *value* against *effort*, to inform the phased plan.
 
 - Allegro OAuth callback UX — live token required to capture.
 - Performance optimization — Lighthouse best-practices = 100, no signal that the app is slow.
-- Mobile/tablet layouts — style guide targets operator workstations.
 - Full a11y remediation — Lighthouse a11y = 96 across the board. Address the remaining 4% during the primitives phase (Phase 3).
 - Internationalization — product is English-only for FE-001.
+- Interactive editing on mobile for complex editors (mapping editors, wizards stay desktop-first).
+
+## Scope expansion (2026-04-20)
+
+Per review: **mobile (≤ 767 px) and tablet (768–1023 px) layouts are in scope.** Treat as a 4th cross-cutting theme alongside Shell, Identity, Status. New finding:
+
+### 9. Responsive coverage
+
+**#9.1 — Nothing is responsive below 1024 px.** `P1` • *every page*
+Every baseline screenshot was captured at 1440 × 900 because the app is effectively desktop-only. Below ~1024 px the sidebar consumes too much width, tables overflow horizontally, and the top bar wraps awkwardly. **Operators should be able to triage failures from a phone during off-hours and from an iPad on the shop floor.** Full interactive editing on small screens is explicitly out of scope — but read + triage must work everywhere.
+
+**Parity rules** (codified in `docs/plans/implementation-plan-ui-refactor.md §5`):
+- Mobile: drawer nav, card-view tables, single-column detail pages, KPI strip stacked vertically.
+- Tablet: drawer or persistent rail nav, tables with column hiding, 2×2 KPI grid.
+- Desktop: current design anchor.
+- Complex editors (category mappings, wizards, raw-config JSON): show "open on desktop to edit" below 1024 px.
+
+Each phase PR carries after-shots at **three widths** (360 / 768 / 1440) so responsive regressions are caught in review.

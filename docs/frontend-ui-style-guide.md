@@ -515,6 +515,43 @@ Defaults (FE-002):
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
+## Responsive
+
+Desktop (≥ 1024 px) is the design anchor. **Mobile (≤ 767 px) and tablet (768–1023 px) are first-class** — operators should be able to triage failures from a phone off-hours and from an iPad on the shop floor.
+
+Breakpoints (defined in `index.css`):
+
+```css
+/* Mobile-first. Layer desktop styles inside min-width queries. */
+@media (min-width: 768px) { /* tablet */ }
+@media (min-width: 1024px) { /* desktop */ }
+```
+
+Parity matrix — what changes across sizes:
+
+| Surface | Mobile (≤ 767) | Tablet (768–1023) | Desktop (≥ 1024) |
+|---|---|---|---|
+| Nav | drawer · hamburger trigger in topbar | drawer *or* persistent rail | persistent 240 px sidebar |
+| Topbar | logo + hamburger + search icon + user | full minus workspace crumb | full |
+| Tables | **card view** (one card per row, key columns stacked) | table with column hiding | full table |
+| Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
+| KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
+| `MetricCard` | full width | 2-col grid | 4-col grid |
+| Forms (single-column) | `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
+| Raw payload panel | collapsed by default | as desktop | as desktop |
+| Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
+| Wizards | one step per screen, stepper collapsed | full | full |
+
+Rules:
+
+- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and virtualized tables' column-overflow area.
+- **Tap targets ≥ 44 px** on mobile for every interactive element (`.btn--sm` grows to 36 px min on touch; icon buttons to 40 px).
+- Text must remain readable at `13 px` body — no shrinking below that on mobile.
+- Status banners stack their action buttons below the body on mobile instead of pushing off-screen.
+- Every phase PR captures after-shots at **three widths**: 360 × 812, 768 × 1024, 1440 × 900.
+
+Interactive editing on mobile is out of scope for this refactor. Category mappings, connection wizards, and raw JSON editing all show a "Open on a desktop screen to edit" affordance below 1024 px — the view is still readable, just not editable.
+
 ## Tables
 
 Tables are primary UX elements in OpenLinker.
