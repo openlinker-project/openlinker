@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1440, initial-scale=1" />
+    <title>Dashboard · Variant A — OpenLinker concept</title>
+    <link rel="stylesheet" href="./foundation.css" />
+    <style>
+      /* ------------------------------------------------------------------
+       * Variant A — Restrained cockpit (Linear × shadcn)
+       *
+       * Design choices:
+       *  - Generous spacing, single dominant heading on the page.
+       *  - Severity tinting only where operationally meaningful.
+       *  - Typography does the hierarchy, not chrome.
+       *  - "What's broken" is a single list, one row per incident, each
+       *    with its own slim action row — optimized for triage glance.
+       * ----------------------------------------------------------------- */
+
+      .variant-a {
+        --gap: var(--space-4);
+      }
+
+      .variant-a .main {
+        padding: 28px 40px 64px;
+        max-width: 1280px;
+      }
+
+      .variant-a .page-title {
+        font-size: 24px;
+        line-height: 30px;
+      }
+
+      /* KPI strip */
+      .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--gap);
+        margin-bottom: var(--space-5);
+      }
+
+      /* Incidents card — primary failure surface */
+      .incidents {
+        margin-bottom: var(--space-4);
+      }
+
+      .incident-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: var(--space-4);
+        padding: 14px var(--space-4);
+        border-bottom: 1px solid var(--border-subtle);
+        transition: background var(--duration-fast) var(--ease-out);
+      }
+
+      .incident-row:last-child {
+        border-bottom: none;
+      }
+
+      .incident-row:hover {
+        background: var(--bg-surface-muted);
+      }
+
+      .incident-sev {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-md);
+        flex-shrink: 0;
+      }
+
+      .incident-sev--error {
+        background: var(--status-error-soft);
+        color: var(--status-error-strong);
+        border: 1px solid var(--status-error-border);
+      }
+
+      .incident-sev--warning {
+        background: var(--status-warning-soft);
+        color: var(--status-warning-strong);
+        border: 1px solid var(--status-warning-border);
+      }
+
+      .incident-sev svg {
+        width: 14px;
+        height: 14px;
+        stroke-width: 2;
+      }
+
+      .incident-body {
+        min-width: 0;
+      }
+
+      .incident-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: var(--text-primary);
+        letter-spacing: -0.005em;
+      }
+
+      .incident-title .mono {
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .incident-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .incident-meta strong {
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      .incident-count {
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .incident-count-sub {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 400;
+        font-family: var(--font-sans);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-top: 1px;
+      }
+
+      .incident-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      /* Connection health / System health side-by-side */
+      .dual-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        gap: var(--gap);
+        margin-bottom: var(--space-4);
+      }
+
+      .conn-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: 14px var(--space-4);
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .conn-row:last-child {
+        border-bottom: none;
+      }
+
+      .conn-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--radius-md);
+        background: var(--bg-surface-muted);
+        border: 1px solid var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 11px;
+        color: var(--text-secondary);
+        flex-shrink: 0;
+        letter-spacing: 0;
+      }
+
+      .conn-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .conn-name {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .conn-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .conn-trend {
+        width: 80px;
+        height: 28px;
+        flex-shrink: 0;
+      }
+
+      /* System health pills */
+      .sys-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .sys-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 11px var(--space-4);
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .sys-row:last-child {
+        border-bottom: none;
+      }
+
+      .sys-row-name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        color: var(--text-primary);
+      }
+
+      .sys-row-icon {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+        stroke-width: 1.75;
+      }
+
+      .sys-row-latency {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Recent activity list */
+      .activity {
+        margin-bottom: var(--space-4);
+      }
+
+      .activity-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: var(--space-3);
+        align-items: center;
+        padding: 8px var(--space-4);
+        border-bottom: 1px solid var(--border-subtle);
+        font-size: 12.5px;
+      }
+
+      .activity-row:last-child {
+        border-bottom: none;
+      }
+
+      .activity-row:hover {
+        background: var(--bg-surface-muted);
+      }
+
+      .activity-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .activity-dot--success {
+        background: var(--status-success);
+        box-shadow: 0 0 0 3px var(--status-success-soft);
+      }
+
+      .activity-dot--warning {
+        background: var(--status-warning);
+        box-shadow: 0 0 0 3px var(--status-warning-soft);
+      }
+
+      .activity-type {
+        color: var(--text-primary);
+        font-weight: 500;
+        letter-spacing: -0.005em;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .activity-type .mono {
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+
+      .activity-conn {
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+
+      .activity-time {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        letter-spacing: -0.01em;
+      }
+    </style>
+  </head>
+  <body class="variant-a">
+    <!-- Icon symbol sprite -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+      </symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M3 4h2l2.5 12h12l2-8H6" />
+      </symbol>
+      <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 8L12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8M10 12h4" />
+      </symbol>
+      <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9.5" cy="7" r="4" /><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      </symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><circle cx="7" cy="7" r="1" />
+      </symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      </symbol>
+      <symbol id="i-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 010 8.49M7.8 16.29a6 6 0 010-8.49M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14" />
+      </symbol>
+      <symbol id="i-bookmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+      </symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22v-4M5 9V2M19 9V2M5 9h14v4a5 5 0 01-5 5h-4a5 5 0 01-5-5V9z" />
+      </symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+      </symbol>
+      <symbol id="i-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M15 9h0M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5" />
+      </symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
+      </symbol>
+      <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21l-3-2-3 2-3-2-3 2V3l3 2 3-2 3 2 3-2z" /><path d="M8 7h6M8 11h6" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+      </symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 4v6h-6M1 20v-6h6" /><path d="M20.49 9A9 9 0 006 5.3L1 10M3.51 15A9 9 0 0018 18.7l5-4.7" />
+      </symbol>
+      <symbol id="i-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h0" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6L9 17l-5-5" />
+      </symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" />
+      </symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7" />
+      </symbol>
+      <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+      </symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18l6-6-6-6" />
+      </symbol>
+      <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+      </symbol>
+      <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><path d="M6 6h.01M6 18h.01" />
+      </symbol>
+    </svg>
+
+    <div class="shell">
+      <!-- ================================================================
+           Sidebar
+           ================================================================ -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-mark">OL</div>
+          <div class="brand-name">
+            OpenLinker <span class="brand-env">DEV</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Primary">
+          <div class="nav-group">
+            <div class="nav-group-label">Operations</div>
+            <a class="nav-item nav-item--active" href="#">
+              <svg class="nav-icon"><use href="#i-grid" /></svg>
+              <span class="nav-item-label">Dashboard</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-cart" /></svg>
+              <span class="nav-item-label">Orders</span>
+              <span class="nav-item-count">14</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-box" /></svg>
+              <span class="nav-item-label">Products</span>
+              <span class="nav-item-count">20</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-archive" /></svg>
+              <span class="nav-item-label">Inventory</span>
+              <span class="nav-item-count">20</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-users" /></svg>
+              <span class="nav-item-label">Customers</span>
+              <span class="nav-item-count">1</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-tag" /></svg>
+              <span class="nav-item-label">Listings</span>
+              <span class="nav-item-count">1</span>
+            </a>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-label">Diagnostics</div>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-activity" /></svg>
+              <span class="nav-item-label">Jobs &amp; Logs</span>
+              <span class="nav-item-count">4.7k</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-radio" /></svg>
+              <span class="nav-item-label">Webhooks</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-bookmark" /></svg>
+              <span class="nav-item-label">Cursors</span>
+            </a>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-label">Platform</div>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-plug" /></svg>
+              <span class="nav-item-label">Integrations</span>
+              <span class="nav-item-count">2</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-cpu" /></svg>
+              <span class="nav-item-label">Adapters</span>
+            </a>
+            <a class="nav-item" href="#">
+              <svg class="nav-icon"><use href="#i-settings" /></svg>
+              <span class="nav-item-label">Settings</span>
+            </a>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-label">Planned</div>
+            <span class="nav-item nav-item--disabled">
+              <svg class="nav-icon"><use href="#i-wand" /></svg>
+              <span class="nav-item-label">Automations</span>
+            </span>
+            <span class="nav-item nav-item--disabled">
+              <svg class="nav-icon"><use href="#i-truck" /></svg>
+              <span class="nav-item-label">Shipping</span>
+            </span>
+            <span class="nav-item nav-item--disabled">
+              <svg class="nav-icon"><use href="#i-receipt" /></svg>
+              <span class="nav-item-label">Invoices</span>
+            </span>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="workspace-switch">
+            <div class="workspace-mark">DO</div>
+            <div class="workspace-meta">
+              <div class="workspace-name">Default organization</div>
+              <div class="workspace-sub">admin · development</div>
+            </div>
+            <svg class="nav-icon" style="color: var(--text-muted)"><use href="#i-chevron-right" /></svg>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ================================================================
+           Top bar
+           ================================================================ -->
+      <header class="topbar">
+        <div class="topbar-crumbs">
+          <span class="crumb">Operations</span>
+          <span class="crumb-divider">/</span>
+          <span class="crumb crumb--current">Dashboard</span>
+        </div>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="topbar-search">
+          <svg class="search-icon"><use href="#i-search" /></svg>
+          <input
+            class="search-input"
+            type="search"
+            placeholder="Search orders, products, jobs, connections…"
+            aria-label="Search"
+          />
+          <span class="search-kbd">⌘K</span>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="icon-btn" aria-label="Notifications">
+            <svg><use href="#i-bell" /></svg>
+            <span class="icon-btn-dot" aria-hidden="true"></span>
+          </button>
+          <button class="btn btn--secondary btn--sm">
+            <svg><use href="#i-plus" /></svg>
+            New connection
+          </button>
+          <div class="user-chip">
+            <div class="user-avatar">A</div>
+            <span class="user-name">admin</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ================================================================
+           Main
+           ================================================================ -->
+      <main class="main">
+        <div class="page-header">
+          <div class="page-header-main">
+            <h1 class="page-title">Operations overview</h1>
+            <p class="page-description">
+              Triage failing integrations, monitor connection health, and track dependency status across every marketplace.
+            </p>
+          </div>
+          <div class="page-actions">
+            <div class="page-meta">
+              <span class="page-meta-dot"></span>
+              Updated <strong style="color: var(--text-secondary); font-weight: 500">3m ago</strong>
+            </div>
+            <button class="btn btn--secondary btn--sm">
+              <svg><use href="#i-refresh" /></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI strip -->
+        <section class="kpi-strip">
+          <div class="kpi">
+            <div class="kpi-label">
+              <span class="kpi-label-text">Integration health</span>
+              <svg class="kpi-icon"><use href="#i-plug" /></svg>
+            </div>
+            <div class="kpi-value">
+              2<span class="kpi-value-sub">/ 2 active</span>
+            </div>
+            <div class="kpi-hint">
+              <span style="color: var(--status-success-strong); font-weight: 500">All channels active</span>
+            </div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-label">
+              <span class="kpi-label-text">System health</span>
+              <svg class="kpi-icon"><use href="#i-server" /></svg>
+            </div>
+            <div class="kpi-value">
+              4<span class="kpi-value-sub">/ 4 ok</span>
+            </div>
+            <div class="kpi-hint">Postgres · Redis · PrestaShop · Worker</div>
+          </div>
+
+          <div class="kpi kpi--error">
+            <div class="kpi-label">
+              <span class="kpi-label-text">Failed jobs</span>
+              <svg class="kpi-icon"><use href="#i-alert-triangle" /></svg>
+            </div>
+            <div class="kpi-value">
+              468<span class="kpi-value-sub">jobs</span>
+            </div>
+            <div class="kpi-hint">
+              <strong style="font-weight: 600">4 incident groups</strong> — needs attention
+            </div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-label">
+              <span class="kpi-label-text">Queued jobs</span>
+              <svg class="kpi-icon"><use href="#i-zap" /></svg>
+            </div>
+            <div class="kpi-value">
+              1,140<span class="kpi-value-sub">pending</span>
+            </div>
+            <div class="kpi-hint">Next poll in 2m 14s</div>
+          </div>
+        </section>
+
+        <!-- Incidents — "What's broken right now" -->
+        <section class="card incidents">
+          <header class="card-header">
+            <div class="card-title">
+              What's broken right now
+              <span class="card-subtitle">· 4 incident groups · 468 jobs affected</span>
+            </div>
+            <div class="card-header-meta">
+              <div class="btn-group">
+                <button class="btn btn--primary" aria-pressed="true">Grouped</button>
+                <button class="btn">All jobs</button>
+              </div>
+              <button class="btn btn--ghost btn--sm">
+                View all
+                <svg><use href="#i-arrow-right" /></svg>
+              </button>
+            </div>
+          </header>
+
+          <div class="card-body card-body--flush">
+            <div class="incident-row">
+              <div class="incident-sev incident-sev--error" aria-label="Error">
+                <svg><use href="#i-alert-triangle" /></svg>
+              </div>
+              <div class="incident-body">
+                <div class="incident-title">
+                  <span class="mono">master.inventory.syncByExternalId</span>
+                  <span class="badge badge--error badge--sq">FK violation</span>
+                </div>
+                <div class="incident-meta">
+                  <strong>Prestashop store</strong>
+                  <span class="sep-dot">·</span>
+                  insert or update on <code class="mono">inventory_items</code> violates FK constraint
+                  <code class="mono">FK_4a1e232a660d…</code>
+                </div>
+              </div>
+              <div>
+                <div class="incident-count">221</div>
+                <div class="incident-count-sub">jobs · 9/10 attempts</div>
+              </div>
+              <div class="incident-actions">
+                <button class="btn btn--secondary btn--xs">Retry</button>
+                <button class="btn btn--ghost btn--xs">
+                  View
+                  <svg><use href="#i-arrow-right" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="incident-row">
+              <div class="incident-sev incident-sev--error" aria-label="Error">
+                <svg><use href="#i-alert-triangle" /></svg>
+              </div>
+              <div class="incident-body">
+                <div class="incident-title">
+                  <span class="mono">marketplace.order.sync</span>
+                  <span class="badge badge--error badge--sq">Mapping missing</span>
+                </div>
+                <div class="incident-meta">
+                  <strong>Allegro sandbox</strong>
+                  <span class="sep-dot">·</span>
+                  Missing mapping for order item
+                  <code class="mono">productRef (type=offer)</code>
+                </div>
+              </div>
+              <div>
+                <div class="incident-count">142</div>
+                <div class="incident-count-sub">jobs · 10/10 dead</div>
+              </div>
+              <div class="incident-actions">
+                <button class="btn btn--secondary btn--xs">Retry</button>
+                <button class="btn btn--ghost btn--xs">
+                  View
+                  <svg><use href="#i-arrow-right" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="incident-row">
+              <div class="incident-sev incident-sev--error" aria-label="Error">
+                <svg><use href="#i-alert-triangle" /></svg>
+              </div>
+              <div class="incident-body">
+                <div class="incident-title">
+                  <span class="mono">master.product.syncByExternalId</span>
+                  <span class="badge badge--error badge--sq">Timeout</span>
+                </div>
+                <div class="incident-meta">
+                  <strong>Prestashop store</strong>
+                  <span class="sep-dot">·</span>
+                  Request timed out after <code class="mono">30000ms</code>
+                </div>
+              </div>
+              <div>
+                <div class="incident-count">73</div>
+                <div class="incident-count-sub">jobs · 4/10 attempts</div>
+              </div>
+              <div class="incident-actions">
+                <button class="btn btn--secondary btn--xs">Retry</button>
+                <button class="btn btn--ghost btn--xs">
+                  View
+                  <svg><use href="#i-arrow-right" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="incident-row">
+              <div class="incident-sev incident-sev--warning" aria-label="Warning">
+                <svg><use href="#i-alert-triangle" /></svg>
+              </div>
+              <div class="incident-body">
+                <div class="incident-title">
+                  <span class="mono">marketplace.offerQuantity.update</span>
+                  <span class="badge badge--warning badge--sq">Rate limit</span>
+                </div>
+                <div class="incident-meta">
+                  <strong>Allegro sandbox</strong>
+                  <span class="sep-dot">·</span>
+                  Rate limit reached — backing off
+                </div>
+              </div>
+              <div>
+                <div class="incident-count">32</div>
+                <div class="incident-count-sub">jobs · retrying</div>
+              </div>
+              <div class="incident-actions">
+                <button class="btn btn--ghost btn--xs" disabled style="opacity: 0.5">Retry</button>
+                <button class="btn btn--ghost btn--xs">
+                  View
+                  <svg><use href="#i-arrow-right" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <span>Showing 4 of 4 groups</span>
+            <a href="#" class="btn btn--ghost btn--xs">
+              Open jobs queue
+              <svg><use href="#i-arrow-right" /></svg>
+            </a>
+          </div>
+        </section>
+
+        <!-- Dual row: Connection health | System health -->
+        <section class="dual-row">
+          <div class="card">
+            <header class="card-header">
+              <div class="card-title">
+                Connection health
+                <span class="card-subtitle">· 2 configured</span>
+              </div>
+              <a href="#" class="btn btn--ghost btn--xs">
+                Manage
+                <svg><use href="#i-arrow-right" /></svg>
+              </a>
+            </header>
+
+            <div class="card-body card-body--flush">
+              <div class="conn-row">
+                <div class="conn-avatar">PS</div>
+                <div class="conn-info">
+                  <div class="conn-name">
+                    Prestashop store
+                    <span class="badge badge--warning">
+                      <span class="badge-dot"></span>
+                      Degraded
+                    </span>
+                  </div>
+                  <div class="conn-meta">
+                    <span class="mono">prestashop.webservice.v1</span>
+                    <span class="sep-dot">·</span>
+                    294 jobs failing · last sync 2h ago
+                  </div>
+                </div>
+                <svg class="conn-trend" viewBox="0 0 80 28" preserveAspectRatio="none">
+                  <polyline
+                    fill="none"
+                    stroke="var(--status-warning)"
+                    stroke-width="1.5"
+                    points="0,22 8,20 16,23 24,18 32,15 40,10 48,8 56,11 64,7 72,4 80,6"
+                  />
+                </svg>
+              </div>
+
+              <div class="conn-row">
+                <div class="conn-avatar">AL</div>
+                <div class="conn-info">
+                  <div class="conn-name">
+                    Allegro sandbox
+                    <span class="badge badge--success">
+                      <span class="badge-dot"></span>
+                      Healthy
+                    </span>
+                  </div>
+                  <div class="conn-meta">
+                    <span class="mono">allegro.publicapi.v1</span>
+                    <span class="sep-dot">·</span>
+                    No failures · last poll 5m ago
+                  </div>
+                </div>
+                <svg class="conn-trend" viewBox="0 0 80 28" preserveAspectRatio="none">
+                  <polyline
+                    fill="none"
+                    stroke="var(--status-success)"
+                    stroke-width="1.5"
+                    points="0,18 8,16 16,17 24,15 32,14 40,15 48,13 56,14 64,12 72,13 80,11"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <header class="card-header">
+              <div class="card-title">
+                System health
+                <span class="card-subtitle">· 4 dependencies</span>
+              </div>
+              <span class="badge badge--success">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                All ok
+              </span>
+            </header>
+
+            <div class="card-body card-body--flush">
+              <div class="sys-list">
+                <div class="sys-row">
+                  <div class="sys-row-name">
+                    <svg class="sys-row-icon"><use href="#i-database" /></svg>
+                    PostgreSQL
+                  </div>
+                  <div class="hstack">
+                    <span class="sys-row-latency">12ms</span>
+                    <span class="badge badge--success">
+                      <span class="badge-dot"></span>ok
+                    </span>
+                  </div>
+                </div>
+                <div class="sys-row">
+                  <div class="sys-row-name">
+                    <svg class="sys-row-icon"><use href="#i-zap" /></svg>
+                    Redis
+                  </div>
+                  <div class="hstack">
+                    <span class="sys-row-latency">3ms</span>
+                    <span class="badge badge--success">
+                      <span class="badge-dot"></span>ok
+                    </span>
+                  </div>
+                </div>
+                <div class="sys-row">
+                  <div class="sys-row-name">
+                    <svg class="sys-row-icon"><use href="#i-plug" /></svg>
+                    PrestaShop
+                  </div>
+                  <div class="hstack">
+                    <span class="sys-row-latency">184ms</span>
+                    <span class="badge badge--success">
+                      <span class="badge-dot"></span>ok
+                    </span>
+                  </div>
+                </div>
+                <div class="sys-row">
+                  <div class="sys-row-name">
+                    <svg class="sys-row-icon"><use href="#i-cpu" /></svg>
+                    Worker
+                  </div>
+                  <div class="hstack">
+                    <span class="sys-row-latency">1 replica</span>
+                    <span class="badge badge--success">
+                      <span class="badge-dot"></span>ok
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recent activity -->
+        <section class="card activity">
+          <header class="card-header">
+            <div class="card-title">
+              Recent activity
+              <span class="card-subtitle">· successful sync jobs · last 20m</span>
+            </div>
+            <a href="#" class="btn btn--ghost btn--xs">
+              Open jobs &amp; logs
+              <svg><use href="#i-arrow-right" /></svg>
+            </a>
+          </header>
+
+          <div class="card-body card-body--flush">
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.orders.poll</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">3m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">master.inventory.syncByExternalId</span>
+                <span class="badge badge--success badge--sq">succeeded</span>
+              </div>
+              <div class="activity-conn">Prestashop store</div>
+              <div class="activity-time">5m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.offers.sync</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">7m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.orders.poll</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">8m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--warning"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.order.sync</span>
+                <span class="badge badge--warning badge--sq">retrying</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">10m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.orders.poll</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">13m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">master.product.syncByExternalId</span>
+              </div>
+              <div class="activity-conn">Prestashop store</div>
+              <div class="activity-time">15m ago</div>
+            </div>
+            <div class="activity-row">
+              <span class="activity-dot activity-dot--success"></span>
+              <div class="activity-type">
+                <span class="mono">marketplace.orders.poll</span>
+              </div>
+              <div class="activity-conn">Allegro sandbox</div>
+              <div class="activity-time">18m ago</div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <span>Showing 8 of 2,214 succeeded</span>
+            <a href="#" class="btn btn--ghost btn--xs">
+              View all
+              <svg><use href="#i-arrow-right" /></svg>
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

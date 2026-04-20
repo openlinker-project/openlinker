@@ -29,6 +29,23 @@ OpenLinker should feel less like:
 - a form dump
 - a menu jungle
 
+## Direction (FE-002)
+
+Adopted during the UI refactor epic ([#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236), audit at `docs/ui-audit/audit.md`).
+
+**Aesthetic baseline:** **shadcn/ui** look-and-feel (compact inputs, subdued palette, restrained shadows, clean proportions, small radii) — **implemented in vanilla CSS**, not Tailwind. Reference concepts live in `docs/ui-audit/concepts/`.
+
+**Density posture:** *restrained cockpit* (Linear × Shopify admin). Typography-led hierarchy, generous-but-purposeful spacing, color reserved for operational meaning. Targeted *denser* patterns transplanted from a data-oriented variant: sparklines on KPI cards, filter chip bars above tables, monospace for every timestamp / ID / duration, and a queue-pressure composition widget for triage surfaces.
+
+**Type pairing:** **IBM Plex Sans** for UI, **IBM Plex Mono** for identifiers, timestamps, durations, payload fields, and numeric columns. Loaded via `@import` in `index.css`; fall back to system sans.
+
+**Foundation libraries** (headless only — see `## External Libraries`):
+- `@tanstack/react-table` — `DataTable` state engine
+- `@tanstack/react-virtual` — long lists (e.g., the 4,677-row Jobs & Logs page)
+- `@radix-ui/react-*` — `Dialog`, `Select`, `DropdownMenu`, `Tooltip`, `Popover`, `Toast`, `Tabs`
+
+**Non-goals for this direction:** NOC/Datadog-grade density. Chart-heavy dashboards. Mobile-first layouts. These are explicitly rejected by the audit; OL operators are not 24/7 monitoring staff.
+
 ## Core Principles
 
 ### Status First
@@ -71,22 +88,37 @@ Optional right utility rail
 
 ### Left Navigation
 
-The left navigation is persistent and grouped by domain.
+The left navigation is persistent and grouped into **three sections by frequency of use**, with a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor.
 
-Recommended information architecture:
-
+**Operations** (daily surfaces):
 - Dashboard
 - Orders
 - Products
 - Inventory
-- Integrations
+- Customers
+- Listings
+
+**Diagnostics** (debugging surfaces):
 - Jobs & Logs
+- Webhooks
+- Cursors
+
+**Platform** (configuration):
+- Integrations
+- Adapters
+- Settings
+
+**Planned** (disabled, `--text-disabled` opacity, non-clickable, tooltip "Coming in a future release"):
 - Automations
 - Shipping
 - Invoices
-- Settings
 
-Future modules may appear disabled or hidden before implementation, but the information architecture should anticipate them.
+Rules:
+- No "Live" pills on any live nav item.
+- No CTAs in the nav (`Add connection` belongs on `/connections`, not in the sidebar).
+- Active item: 2px inset accent-primary shadow on the left edge + `--bg-surface-muted` background + semibold weight.
+- Route label, page title, and URL should use the same noun — either "Connections" or "Integrations" throughout, not both.
+- Nav width: `240px`. Group labels are `10px / 600 / 0.11em tracking / uppercase` in `--text-muted`.
 
 ### Top Utility Bar
 
@@ -101,19 +133,23 @@ The top bar should prioritize utility over decoration and may contain:
 
 ### Main Workspace
 
-Every major screen should follow this structure:
+Every major screen follows this structure:
 
 ```text
-Header
-├── title
-├── status summary
-└── contextual actions
+Page header
+├── breadcrumb (if nested)
+├── title (22 px / 600)
+├── description (13 px / --text-secondary)
+└── actions slot
 
 Workspace
-├── filters or search
+├── status banner (only when degraded / incident / warning)
+├── filters or search (chip-based FilterBar)
 ├── primary content
 └── optional detail panel or secondary context
 ```
+
+**Vertical budget:** on a 900 px viewport the topbar consumes 52 px, the page header ~70 px, so primary content must appear within ≤ 120 px of the viewport top. No empty "workspace strip" or duplicated org/env banner. This is enforced; the FE-001 baseline consumed ~22 % of viewport here and broke the cockpit feel.
 
 ## Visual Direction
 
@@ -156,34 +192,44 @@ Recommended FE light theme tokens:
   --bg-shell: #ffffff;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #f8fafc;
+  --bg-surface-muted: #f1f4f8;    /* active nav row, table hover, chip background */
+  --bg-surface-hover: #eef2f7;    /* hover over muted */
 
   --border-subtle: #e5eaf0;
   --border-default: #d7dee8;
   --border-strong: #c2ccd8;
+  --border-focus: #7ea6ff;
 
   --text-primary: #16202b;
   --text-secondary: #4f5f73;
   --text-muted: #728197;
   --text-disabled: #9aa6b5;
+  --text-inverse: #ffffff;
 
   --accent-primary: #2f6fed;
   --accent-primary-hover: #245fd1;
   --accent-primary-soft: #e8f0ff;
+  --accent-primary-border: #bfd4ff;
   --accent-focus: #7ea6ff;
 
+  /* Each status tone ships a 4-variable triple: base (icon/dot) / strong (text on soft surface) / soft (surface tint) / border */
   --status-success: #1f9d63;
+  --status-success-strong: #167049;
   --status-success-soft: #eaf8f1;
   --status-success-border: #b9e5cd;
 
   --status-warning: #b7791f;
+  --status-warning-strong: #885a17;
   --status-warning-soft: #fff6e5;
   --status-warning-border: #f1d39a;
 
   --status-error: #c24141;
+  --status-error-strong: #962f2f;
   --status-error-soft: #fdecec;
   --status-error-border: #efb7b7;
 
   --status-info: #2b7de9;
+  --status-info-strong: #1e5cb3;
   --status-info-soft: #eaf3ff;
   --status-info-border: #bfd7fb;
 
@@ -235,10 +281,11 @@ Color must never be the only signal. Every status must also have text and, where
 
 Typography should prioritize scanning and system clarity.
 
-Use:
+**Adopted pairing (FE-002):**
+- UI sans-serif: **IBM Plex Sans**, weights 400 / 500 / 600 / 700
+- Monospace: **IBM Plex Mono**, weights 400 / 500 / 600
 
-- one main UI sans-serif family
-- one monospaced family for technical data
+IBM Plex was chosen over Inter / Geist / system defaults because it carries operator/technical heritage without feeling generic, and it renders cleanly at the 12–14 px sizes we use heavily. Load via Google Fonts `@import` in `index.css` (tree-shakable when bundled by Vite).
 
 Recommendations:
 
@@ -247,20 +294,23 @@ Recommendations:
 - compact body text
 - consistent metadata style
 
-Suggested type scale:
+Type scale:
 
-- page title: `24 / 30`, semibold
-- section title: `16 / 24`, semibold
-- body: `14 / 20`
+- page title: `22 / 28`, 600, `-0.02em` tracking
+- section title: `14 / 20`, 600
+- body: `13.5 / 20`
 - metadata or labels: `12 / 16`
-- uppercase section labels: `11 / 16`, medium
+- uppercase eyebrows: `10.5 / 16`, 600, `0.09em` tracking
+- table headers: `10.5 / 16`, 600, `0.09em` tracking, uppercase, `--text-muted`
+- mono body: `12 / 18`, `-0.01em` tracking
 
 Use monospace for:
 
-- identifiers
-- payload field labels
-- system references
-- low-level technical values
+- identifiers (`ol_order_…`, connection UUIDs)
+- timestamps and durations (`11:47:22`, `312ms`, `2h 14m`)
+- payload field labels and JSON
+- numeric columns in tables (with `font-variant-numeric: tabular-nums`)
+- system references and cursors
 
 ### Spacing And Shape
 
@@ -338,28 +388,54 @@ These primitives matter more than decorative hero sections or unusual card layou
 
 ## MVP Primitives Standard
 
-The FE-003 baseline should establish a small reusable primitive layer in `apps/web/src/shared/ui`.
+FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive below is owned by us and styled via `index.css`. Where a Radix primitive is wrapped, its role is behavior + a11y only.
 
-Required MVP primitives:
+### Controls (unstyled wrappers over native HTML)
 
-- `Button`
-- `Input`
-- `Select`
-- `Textarea`
-- `StatusBadge`
-- `DataTable`
-- `ConfirmDialog`
-- `Alert`
-- lightweight toast feedback
-- form helpers such as `FormField`, `FieldError`, and `FormErrorSummary`
+- `Button` — tones: `primary` (dark), `secondary` (outlined), `ghost`, `danger`; sizes: `sm` (28px), `md` (32px), `xs` (24px)
+- `Input` / `Textarea` / native `Select`
+- `FormField` — label + control + description + error wiring (`aria-invalid`, `aria-describedby`)
+- `FieldError`, `FormErrorSummary`
+- `Alert` — tonal variants matching status tokens
 
-Implementation rules:
+### Tables
 
-- prefer native HTML semantics first and wrap them with thin React components
-- keep primitives token-driven and aligned with `apps/web/src/index.css`
-- avoid over-generalized APIs; build only the surface the current product needs
-- use the same primitive in real pages immediately after introducing it
-- prefer one explicit primitive over many near-duplicate variants
+- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500.
+
+### Status & data surfaces
+
+- `StatusBadge` — tones: `success` / `warning` / `error` / `info` / `review` / `neutral`. Dot + text; never color alone.
+- `MetricCard` — label + value + hint + optional sparkline. Severity-tinted via `--kpi--error` / `--kpi--warning` modifiers when the metric carries operational alarm.
+- `KeyValueList` — definition list with `120px auto` grid, monospace values where appropriate, inline copy-to-clipboard buttons on hover.
+- `EntityLabel` — **name-first resolver** that takes an internal UUID + entity type and renders human name + monospace ID + copy button. Consumes `useConnectionsQuery` / `useCustomersQuery` / etc. Used on every list row and detail heading where an internal UUID would otherwise leak.
+- `RawPayloadPanel` — JSON viewer: header with title + byte count + copy button + collapse; syntax-highlighted body (mono font, 12 px, 18 px line-height). Replaces every bare `<pre>` block.
+- `Timeline` — vertical timeline with dot + time column + body. Used on order detail, job detail, connection activity.
+
+### Navigation & overlays (wraps Radix headless primitives)
+
+- `Dialog` / `ConfirmDialog` — wraps `@radix-ui/react-dialog`
+- `Select` (enhanced) — wraps `@radix-ui/react-select` when native select's options can't carry rich content
+- `DropdownMenu` — wraps `@radix-ui/react-dropdown-menu`
+- `Tooltip` — wraps `@radix-ui/react-tooltip`
+- `Popover` — wraps `@radix-ui/react-popover`
+- `Tabs` — wraps `@radix-ui/react-tabs`
+- `Toast` — wraps `@radix-ui/react-toast`
+
+### Composition patterns
+
+- `PageHeader` — page title + description + actions slot; page content begins ≤ 100 px from viewport top.
+- `PageShell` — sidebar (240 px) + topbar (52 px) + main. Enforced structure for every authenticated page.
+- `FilterBar` — chip-based filter surface above tables; chips are `{ label: value }` with a remove button each. Paired with `Add filter` affordance at the end.
+- `SetupStepper` — horizontal stepper for integration wizards (Allegro, PrestaShop). Per-step validation; next/back/save.
+
+### Implementation rules
+
+- Prefer native HTML semantics first; wrap them with thin React components.
+- Every shared UI component uses `forwardRef` (required for React Hook Form).
+- Keep primitives token-driven — no raw hex in component CSS.
+- Use `tone` for variant props (not `variant` or `color`).
+- Avoid over-generalized APIs; build only the surface the current product needs.
+- Use the same primitive in a real page immediately after introducing it — no unused abstractions.
 
 ### Buttons
 
@@ -395,6 +471,86 @@ Recommended MVP variants:
 - neutral
 
 Badges must still include status text, not just color or dot indicators.
+
+## External Libraries
+
+**Styled UI libraries are not adopted.** shadcn/ui, MUI, Mantine, Chakra, Ant Design bring visual opinions that conflict with the operator-cockpit direction and the vanilla-CSS / design-token contract. shadcn specifically requires Tailwind, which is explicitly banned.
+
+**Headless libraries are permitted** when wrapped by a project primitive in `shared/ui/` and styled with our own CSS. They contribute behavior and accessibility only — zero visual opinion, zero bundled styles beyond minimal utility classes we can override.
+
+Adopted (FE-002):
+
+| Library | Role | Wrapped by |
+|---|---|---|
+| `@tanstack/react-table` | table state engine: sort, filter, column visibility | `DataTable` |
+| `@tanstack/react-virtual` | row virtualization for large lists | `DataTable` (conditional) |
+| `@radix-ui/react-dialog` | modal focus trap, scroll lock, esc | `Dialog`, `ConfirmDialog` |
+| `@radix-ui/react-select` | keyboard-navigable combobox | `Select` (enhanced) |
+| `@radix-ui/react-dropdown-menu` | menus + submenus | `DropdownMenu` |
+| `@radix-ui/react-tooltip` | positioning + hover delays | `Tooltip` |
+| `@radix-ui/react-popover` | portal + positioning | `Popover` |
+| `@radix-ui/react-toast` | queue + focus management | `Toast` |
+| `@radix-ui/react-tabs` | roving tabindex | `Tabs` |
+
+Decision record: `docs/ui-audit/library-analysis.md`.
+
+**Adding a library requires:** (1) a written rationale in the PR description explaining why the behavior can't be built from native HTML, (2) a wrapping primitive under `shared/ui/` with its own CSS, (3) an update to this section.
+
+## Density & Row Heights
+
+Operators scan, they don't read. Density is budgeted across the product so every row earns its height.
+
+Defaults (FE-002):
+
+| Surface | Row height | Notes |
+|---|---|---|
+| `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
+| Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
+| Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
+| Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
+| Button `md` | `32 px` | Default for page-header actions and forms. |
+| Input / Select | `32 px` | Never taller. |
+| KPI card | auto, ~96 px | Label + value + hint. Sparkline floats top-right. |
+| Status banner | auto, ~64 px | Icon + title + message + actions. |
+
+Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
+
+## Responsive
+
+Desktop (≥ 1024 px) is the design anchor. **Mobile (≤ 767 px) and tablet (768–1023 px) are first-class** — operators should be able to triage failures from a phone off-hours and from an iPad on the shop floor.
+
+Breakpoints (defined in `index.css`):
+
+```css
+/* Mobile-first. Layer desktop styles inside min-width queries. */
+@media (min-width: 768px) { /* tablet */ }
+@media (min-width: 1024px) { /* desktop */ }
+```
+
+Parity matrix — what changes across sizes:
+
+| Surface | Mobile (≤ 767) | Tablet (768–1023) | Desktop (≥ 1024) |
+|---|---|---|---|
+| Nav | drawer · hamburger trigger in topbar | drawer *or* persistent rail | persistent 240 px sidebar |
+| Topbar | logo + hamburger + search icon + user | full minus workspace crumb | full |
+| Tables | **card view** (one card per row, key columns stacked) | table with column hiding | full table |
+| Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
+| KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
+| `MetricCard` | full width | 2-col grid | 4-col grid |
+| Forms (single-column) | `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
+| Raw payload panel | collapsed by default | as desktop | as desktop |
+| Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
+| Wizards | one step per screen, stepper collapsed | full | full |
+
+Rules:
+
+- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and virtualized tables' column-overflow area.
+- **Tap targets ≥ 44 px** on mobile for every interactive element (`.btn--sm` grows to 36 px min on touch; icon buttons to 40 px).
+- Text must remain readable at `13 px` body — no shrinking below that on mobile.
+- Status banners stack their action buttons below the body on mobile instead of pushing off-screen.
+- Every phase PR captures after-shots at **three widths**: 360 × 812, 768 × 1024, 1440 × 900.
+
+Interactive editing on mobile is out of scope for this refactor. Category mappings, connection wizards, and raw JSON editing all show a "Open on a desktop screen to edit" affordance below 1024 px — the view is still readable, just not editable.
 
 ## Tables
 
@@ -509,6 +665,17 @@ Used for:
 - field mappings
 - shipping mappings
 
+### Reference concepts
+
+Concrete renderings of each pattern live in `docs/ui-audit/concepts/`. The gallery at `concepts/index.html` links them with annotated audit-finding coverage.
+
+- Dashboard (triage + KPI strip) — `concepts/dashboard-a.html`
+- List to detail — `concepts/orders.html` + `concepts/order-detail.html`
+- Health drilldown — `concepts/connection-detail.html`
+- Mapping editor — `concepts/category-mappings.html`
+
+These are the measuring stick for implementation. When in doubt about density, composition, or element placement, match the concept.
+
 ## Accessibility
 
 The operations cockpit must remain accessible even when dense.
@@ -531,16 +698,20 @@ Required:
 - do not make settings the center of the product
 - do not optimize for empty whitespace over operational readability
 
-## Current Baseline Application
+## Baselines
 
-The FE-001 app should already reflect this direction in a lightweight way:
+### FE-001 baseline (audited 2026-04-19)
 
-- flat and structured shell
-- grouped left navigation
-- utilitarian top bar
-- status summary in the workspace
-- denser surfaces and panels
-- no decorative hero styling
-- dashboard shaped around triage rather than product-roadmap content
+Captured as 34 screenshots + 5 Lighthouse reports under `docs/ui-audit/baseline/`. Lighthouse scores were already strong (Accessibility 96, Best Practices 100); the refactor targets UX, density, and information hierarchy, not a11y remediation.
+
+Full ranked findings at `docs/ui-audit/audit.md` (4 P0 + 15 P1 findings grouped into 8 themes).
+
+### FE-002 direction (2026-04-19 → in progress)
+
+Tracked by epic [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236) with six phase sub-issues (tokens → shell → primitives → detail pages → forms → dashboard).
+
+This style guide is the measuring stick. Concepts under `docs/ui-audit/concepts/` are the rendering. Every phase PR attaches before/after screenshots against the FE-001 baseline.
+
+---
 
 This style guide complements `docs/frontend-architecture.md`, which remains the source of truth for technical architecture and state boundaries.

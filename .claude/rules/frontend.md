@@ -43,7 +43,12 @@ paths:
 - All shared UI components use `forwardRef` (required for React Hook Form)
 - Extend native element props via `ComponentPropsWithoutRef<'element'>`
 - Accept and merge `className` — never override
-- No external UI library (no shadcn, Radix, MUI) — thin wrappers over native HTML
+- No **styled** external UI library (no shadcn, MUI, Mantine, Chakra) — they bring visual opinions we don't want
+- **Headless** libraries are permitted when wrapped by a project primitive in `shared/ui/` and styled with our own CSS:
+  - `@tanstack/react-table` — `DataTable` state engine
+  - `@tanstack/react-virtual` — virtualized long lists
+  - `@radix-ui/react-*` — `Dialog`, `Select`, `DropdownMenu`, `Tooltip`, `Popover`, `Toast`, `Tabs` (a11y + keyboard behavior only)
+- Rationale: we write every pixel of CSS (vanilla CSS + tokens), libraries only contribute behavior and a11y. See `docs/ui-audit/library-analysis.md` for the decision record.
 - Use `tone` for variant props (not `variant` or `color`)
 - Class construction: `['base', condition ? 'modifier' : '', className].filter(Boolean).join(' ')`
 
