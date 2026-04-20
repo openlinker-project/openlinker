@@ -333,6 +333,36 @@ Recommended defaults:
 - input radius: `6px`
 - avoid more than three visual depth levels on the same screen
 
+### Type scale audit (Phase 1 — 2026-04-20)
+
+Phase 1 did not normalize per-component `font-size` values in `apps/web/src/index.css` — changing 40+ rules without per-component visual QA risks drift. Each primitive migration in Phase 3 (#239) normalizes its own typography to the canonical scale below. This table lists **off-scale values currently in component CSS** so Phase 3 PRs can track their resolution.
+
+Canonical scale (rem):
+
+| Purpose | Canonical | Pixels |
+|---|---|---|
+| Page title | `1.375rem` | 22 |
+| Section title | `1rem` | 16 |
+| Body | `0.875rem` | 14 |
+| Body (small) | `0.8125rem` | 13 |
+| Metadata / labels | `0.75rem` | 12 |
+| Eyebrow / uppercase | `0.6875rem` | 11 |
+
+Off-scale values currently in `index.css` (~31 occurrences — to be normalized during Phase 3, each resolved by the primitive that owns the affected selector):
+
+| Current | Nearest canonical | Affected selectors | Resolved by |
+|---|---|---|---|
+| `0.76rem` | `0.75rem` | `.topbar__label`, `.data-table thead th`, `.eyebrow` | Phase 2 (shell, #238) + Phase 3 (DataTable, #239) |
+| `0.8rem` | `0.75rem` | `.metric-card__label` | Phase 3 (MetricCard, #239) |
+| `0.82rem` | `0.8125rem` | `.timeline-list__time` | Phase 3 (Timeline, #239) |
+| `0.92rem` | `0.875rem` | `.data-table` | Phase 3 (DataTable, #239) |
+| `0.9375rem` | `0.875rem` | `.capability-fieldset__legend` | Phase 5 (wizards, #241) |
+| `1.125rem` | `1rem` | `.guest-page__title` | Phase 2 (shell, #238) — login/guest is part of shell scope |
+| `1.25rem` | `1rem` or `1.375rem` | `.guest-brand__title` | Phase 2 (shell, #238) |
+| `1.4rem` | `1.375rem` | `.metric-card__value` | Phase 3 (MetricCard, #239) |
+
+All other `font-size` usages already sit on the canonical scale. Full grep output archived with PR #244.
+
 ## CSS Implementation Standard
 
 The visual direction above must be enforced in CSS and component markup, not only in mockups.
