@@ -3,7 +3,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AllegroSetupForm } from './AllegroSetupForm';
 
-function fillForm(
+// Allegro tests use an empty connection list so no ProductMaster auto-select
+// fires — auto-selecting the default sampleConnection (id="conn_1") would make
+// the UUID validator on masterCatalogConnectionId trip the Next button on
+// step 3.
+function defaultApiClient(
+  overrides: Parameters<typeof createMockApiClient>[0] = {},
+): ReturnType<typeof createMockApiClient> {
+  return createMockApiClient({
+    ...overrides,
+    connections: {
+      list: vi.fn().mockResolvedValue([]),
+      ...overrides.connections,
+    },
+  });
+}
+
+function fillCredentialsStep(
   container: HTMLElement,
   overrides: { name?: string; clientId?: string; clientSecret?: string } = {},
 ): void {
@@ -16,28 +32,53 @@ function fillForm(
   fireEvent.change(scope.getByLabelText(/client secret/i), { target: { value: clientSecret } });
 }
 
+async function advanceOneStep(container: HTMLElement, expectedStepLabel: string): Promise<void> {
+  fireEvent.click(within(container).getByRole('button', { name: 'Next' }));
+  await within(container).findByText(expectedStepLabel, { selector: '[aria-current="step"] .setup-stepper__label' });
+}
+
 describe('AllegroSetupForm', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('renders all four form fields', () => {
-    const { container } = renderWithProviders(<AllegroSetupForm />);
+  it('renders the credentials step fields first', () => {
+    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
     const scope = within(container);
 
     expect(scope.getByLabelText(/connection name/i)).toBeInTheDocument();
-    expect(scope.getByLabelText(/environment/i)).toBeInTheDocument();
     expect(scope.getByLabelText(/client id/i)).toBeInTheDocument();
     expect(scope.getByLabelText(/client secret/i)).toBeInTheDocument();
+    // Environment belongs to step 2, not the first step
+    expect(scope.queryByLabelText(/environment/i)).toBeNull();
+  });
+
+  it('advances through every step and reveals the environment and catalog inputs', async () => {
+    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
+    fillCredentialsStep(container);
+
+    await advanceOneStep(container, 'Environment');
+    expect(within(container).getByLabelText(/environment/i)).toBeInTheDocument();
+
+    await advanceOneStep(container, 'Product catalog');
+    expect(within(container).getByLabelText(/product catalog connection/i)).toBeInTheDocument();
+
+    await advanceOneStep(container, 'Review & connect');
+    expect(
+      within(container).getByRole('button', { name: /connect with allegro/i }),
+    ).toBeInTheDocument();
   });
 
   it('disables submit button while mutation is pending', async () => {
-    const apiClient = createMockApiClient({
+    const apiClient = defaultApiClient({
       allegro: { startOAuth: vi.fn().mockReturnValue(new Promise(() => {})) },
     });
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
 
-    fillForm(container);
+    fillCredentialsStep(container);
+    await advanceOneStep(container, 'Environment');
+    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
     expect(
@@ -46,12 +87,15 @@ describe('AllegroSetupForm', () => {
   });
 
   it('shows API error when mutation fails', async () => {
-    const apiClient = createMockApiClient({
+    const apiClient = defaultApiClient({
       allegro: { startOAuth: vi.fn().mockRejectedValue(new Error('Invalid client credentials')) },
     });
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
 
-    fillForm(container);
+    fillCredentialsStep(container);
+    await advanceOneStep(container, 'Environment');
+    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
     expect(await screen.findByText('Invalid client credentials')).toBeInTheDocument();
@@ -62,11 +106,14 @@ describe('AllegroSetupForm', () => {
       authorizationUrl: 'https://allegro.pl/auth',
       state: 'abc123',
     });
-    const apiClient = createMockApiClient({ allegro: { startOAuth } });
+    const apiClient = defaultApiClient({ allegro: { startOAuth } });
     vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
 
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
-    fillForm(container);
+    fillCredentialsStep(container);
+    await advanceOneStep(container, 'Environment');
+    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
     await waitFor(() => {
@@ -83,7 +130,7 @@ describe('AllegroSetupForm', () => {
   it('redirects to authorizationUrl on success', async () => {
     const assignMock = vi.fn();
     vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: assignMock });
-    const apiClient = createMockApiClient({
+    const apiClient = defaultApiClient({
       allegro: {
         startOAuth: vi.fn().mockResolvedValue({
           authorizationUrl: 'https://allegro.pl/auth?state=y',
@@ -93,7 +140,10 @@ describe('AllegroSetupForm', () => {
     });
 
     const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
-    fillForm(container);
+    fillCredentialsStep(container);
+    await advanceOneStep(container, 'Environment');
+    await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
     await waitFor(() => {

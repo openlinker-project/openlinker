@@ -10,10 +10,45 @@ function LocationProbe(): ReactElement {
   return <div data-testid="location-pathname">{location.pathname}</div>;
 }
 
+function fillCredentialsStep(
+  container: HTMLElement,
+  values: { name: string; url: string; key: string; shopId?: string },
+): void {
+  fireEvent.change(within(container).getByLabelText('Connection name'), {
+    target: { value: values.name },
+  });
+  fireEvent.change(within(container).getByLabelText('Shop URL'), {
+    target: { value: values.url },
+  });
+  fireEvent.change(within(container).getByLabelText('Webservice key'), {
+    target: { value: values.key },
+  });
+  if (values.shopId !== undefined) {
+    fireEvent.change(within(container).getByLabelText('Shop ID (optional)'), {
+      target: { value: values.shopId },
+    });
+  }
+}
+
+async function advanceOneStep(container: HTMLElement): Promise<void> {
+  const before = container.querySelector('[aria-current="step"]')?.textContent ?? '';
+  fireEvent.click(within(container).getByRole('button', { name: 'Next' }));
+  await waitFor(() => {
+    const after = container.querySelector('[aria-current="step"]')?.textContent ?? '';
+    if (after === before) throw new Error('Step did not advance');
+  });
+}
+
+async function advanceToStep(container: HTMLElement, targetStep: number): Promise<void> {
+  for (let i = 0; i < targetStep; i++) {
+    await advanceOneStep(container);
+  }
+}
+
 describe('PrestashopSetupForm', () => {
   afterEach(cleanup);
 
-  it('submits a PrestaShop connection with the inferred adapter key and config', async () => {
+  it('submits a PrestaShop connection after walking through every step', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });
     const view = renderWithProviders(
@@ -24,15 +59,14 @@ describe('PrestashopSetupForm', () => {
       { apiClient },
     );
 
-    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
-      target: { value: 'Main store' },
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
     });
-    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
-      target: { value: 'WSKEY123' },
-    });
+
+    await advanceToStep(view.container, 3);
+
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Connection created')).toBeInTheDocument();
@@ -54,19 +88,18 @@ describe('PrestashopSetupForm', () => {
     const apiClient = createMockApiClient({ connections: { create } });
     const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
 
-    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
-      target: { value: 'Dest only' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
-      target: { value: 'WSKEY123' },
+    fillCredentialsStep(view.container, {
+      name: 'Dest only',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
     });
 
-    // Uncheck OrderSource (this PrestaShop is order destination, not source)
+    await advanceToStep(view.container, 2); // land on capabilities
+
     fireEvent.click(within(view.container).getByRole('checkbox', { name: /OrderSource/ }));
 
+    // Capabilities → Review
+    await advanceOneStep(view.container);
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     await screen.findByText('Connection created');
@@ -82,18 +115,15 @@ describe('PrestashopSetupForm', () => {
     const apiClient = createMockApiClient({ connections: { create } });
     const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
 
-    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
-      target: { value: 'Shop 2' },
+    fillCredentialsStep(view.container, {
+      name: 'Shop 2',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
+      shopId: '2',
     });
-    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
-      target: { value: 'WSKEY' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Shop ID (optional)'), {
-      target: { value: '2' },
-    });
+
+    await advanceToStep(view.container, 3);
+
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     await screen.findByText('Connection created');
@@ -104,7 +134,7 @@ describe('PrestashopSetupForm', () => {
     );
   });
 
-  it('surfaces API errors in a form-level alert', async () => {
+  it('surfaces API errors in a form-level alert on the review step', async () => {
     const apiClient = createMockApiClient({
       connections: {
         create: vi.fn().mockRejectedValue(new Error('API create failed')),
@@ -112,38 +142,38 @@ describe('PrestashopSetupForm', () => {
     });
     const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
 
-    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
-      target: { value: 'Shop' },
+    fillCredentialsStep(view.container, {
+      name: 'Shop',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
     });
-    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
-      target: { value: 'https://shop.example.com' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
-      target: { value: 'WSKEY' },
-    });
+
+    await advanceToStep(view.container, 3);
+
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
     expect(screen.getByText('API create failed')).toBeInTheDocument();
   });
 
-  it('rejects an invalid shop URL', async () => {
+  it('blocks advancing from the credentials step when the shop URL is invalid', async () => {
     const view = renderWithProviders(<PrestashopSetupForm />);
 
-    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
-      target: { value: 'Shop' },
+    fillCredentialsStep(view.container, {
+      name: 'Shop',
+      url: 'not-a-url',
+      key: 'WSKEY',
     });
-    fireEvent.change(within(view.container).getByLabelText('Shop URL'), {
-      target: { value: 'not-a-url' },
-    });
-    fireEvent.change(within(view.container).getByLabelText('Webservice key'), {
-      target: { value: 'WSKEY' },
-    });
-    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
+
+    // invalid URL keeps us on the credentials step — field stays visible
     expect(
       (await screen.findAllByText('Shop URL must be a valid URL (e.g. https://shop.example.com)'))
         .length,
     ).toBeGreaterThan(0);
+    expect(within(view.container).getByLabelText('Connection name')).toBeInTheDocument();
+    // Still on step 1 — the second step's "Verify the credentials" alert is absent
+    expect(screen.queryByText('Verify the credentials')).toBeNull();
   });
 });

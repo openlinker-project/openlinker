@@ -16,6 +16,7 @@ import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../feature
 import { usePaymentMappingsQuery, useUpsertPaymentMappings } from '../../features/mappings/hooks/use-payment-mappings';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
+import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 
 type TabId = 'status' | 'carriers' | 'payments';
 
@@ -101,6 +102,11 @@ export function ConnectionMappingsPage(): ReactElement {
         </Link>
       }
     >
+      <DesktopOnlyBanner>
+        Mapping editors are designed for desktop. On smaller screens the controls below are still
+        visible but large tables may overflow horizontally.
+      </DesktopOnlyBanner>
+
       {/* Tab navigation */}
       <div role="tablist" aria-label="Mapping types" className="toolbar" style={{ marginBottom: '1.5rem', gap: '0.25rem' }}>
         {TABS.map((tab) => (

@@ -73,7 +73,7 @@ describe('EditOfferDrawer', () => {
     fireEvent.change(titleInput, { target: { value: 'A'.repeat(76) } });
     const saveButton = screen.getByRole('button', { name: /save changes/i });
     fireEvent.click(saveButton);
-    expect(await screen.findByText(/75 characters/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/75 characters/i)).length).toBeGreaterThan(0);
   });
 
   it('should only include dirty fields in the API request payload', async () => {

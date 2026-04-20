@@ -10,7 +10,7 @@
 
 import { useState, useEffect, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
-import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
 
 export interface MappingRow {
@@ -122,11 +122,9 @@ export function MappingPanel({
       <p className="muted-text" style={{ marginBottom: '1rem' }}>{description}</p>
 
       {localRows.length === 0 ? (
-        <EmptyState
-          liveRegion="off"
-          title="No mappings configured"
-          message="Orders may sync with incorrect status/carrier/payment. Add a mapping below."
-        />
+        <p className="muted-text" role="status" aria-live="polite">
+          No mappings configured yet. Orders may sync with default values. Add one below.
+        </p>
       ) : (
         <table className="data-table" aria-label={`${title} mappings`}>
           <thead>
