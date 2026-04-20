@@ -20,11 +20,21 @@ HTMLDialogElement.prototype.close = function (this: HTMLDialogElement): void {
   previouslyFocused.get(this)?.focus();
 };
 
-// happy-dom does not compute layout, so elementless dimensions are always 0.
-// TanStack Virtual reads clientHeight / scrollHeight from its scroll element to
-// decide which rows to render; without measurable dimensions it returns zero
-// virtual items and the virtualized DataTable body appears empty in tests.
-// Seed non-zero dimensions on every element so virtualization yields rows.
+// ────────────────────────────────────────────────────────────────────
+// Layout dimensions stub
+//
+// happy-dom does not compute layout — every element's clientHeight /
+// offsetHeight / clientWidth / offsetWidth is 0. TanStack Virtual reads
+// clientHeight from its scroll element to decide which rows to render,
+// so the virtualized DataTable body comes back empty in tests.
+//
+// These stubs return a fixed 800 px on every element so virtualization
+// yields rows and any other layout-dependent code gets sensible
+// defaults. Consequence: tests asserting "element has zero size" will
+// see 800 and may behave unexpectedly — scope such assertions with
+// `vi.spyOn(el, 'clientHeight').mockReturnValue(0)` inside the test
+// when needed. No existing test depends on observing zero dimensions.
+// ────────────────────────────────────────────────────────────────────
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
   configurable: true,
   get() {

@@ -1211,11 +1211,22 @@ textarea {
   overflow-x: auto;
 }
 
+/* Virtualized mode: the inner scroller owns both axes. Drop the outer
+   container's horizontal overflow to avoid nested scroll containers. */
+.data-table__container--virtual {
+  overflow: visible;
+}
+
 .data-table__virtual-scroller {
   overflow: auto;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  contain: strict;
+  contain: layout paint;
+}
+
+.data-table__virtual-scroller:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
 }
 
 .data-table__cell--right {
