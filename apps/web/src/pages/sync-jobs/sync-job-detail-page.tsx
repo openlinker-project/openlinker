@@ -3,9 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
+import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-query';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 
 export function SyncJobDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -35,6 +38,34 @@ export function SyncJobDetailPage(): ReactElement {
 
   const job = query.data;
 
+  const items: KeyValueItem[] = [
+    { id: 'status', label: 'Status', value: <SyncJobStatusBadge status={job.status} /> },
+    { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
+    {
+      id: 'connection',
+      label: 'Connection',
+      value: <ConnectionEntityLabel connectionId={job.connectionId} />,
+    },
+    { id: 'attempts', label: 'Attempts', value: `${job.attempts} / ${job.maxAttempts}` },
+    { id: 'nextRun', label: 'Next run at', value: <TimeDisplay iso={job.nextRunAt} /> },
+    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={job.createdAt} /> },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={job.updatedAt} /> },
+  ];
+  if (job.idempotencyKey) {
+    items.push({
+      id: 'idempotencyKey',
+      label: 'Idempotency key',
+      value: job.idempotencyKey,
+      mono: true,
+    });
+  }
+  if (job.lockedAt) {
+    items.push({ id: 'lockedAt', label: 'Locked at', value: <TimeDisplay iso={job.lockedAt} /> });
+  }
+  if (job.lockedBy) {
+    items.push({ id: 'lockedBy', label: 'Locked by', value: job.lockedBy, mono: true });
+  }
+
   return (
     <PageLayout
       eyebrow="Sync Jobs"
@@ -47,71 +78,20 @@ export function SyncJobDetailPage(): ReactElement {
     >
       {/* Status + metadata */}
       <section className="detail-section">
-        <dl className="detail-list">
-          <div className="detail-list__row">
-            <dt>Status</dt>
-            <dd><SyncJobStatusBadge status={job.status} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Job ID</dt>
-            <dd><span className="mono-text">{job.id}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Connection</dt>
-            <dd><span className="mono-text">{job.connectionId}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Attempts</dt>
-            <dd>{job.attempts} / {job.maxAttempts}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Next run at</dt>
-            <dd><TimeDisplay iso={job.nextRunAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Created</dt>
-            <dd><TimeDisplay iso={job.createdAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Updated</dt>
-            <dd><TimeDisplay iso={job.updatedAt} /></dd>
-          </div>
-          {job.idempotencyKey ? (
-            <div className="detail-list__row">
-              <dt>Idempotency key</dt>
-              <dd><span className="mono-text">{job.idempotencyKey}</span></dd>
-            </div>
-          ) : null}
-          {job.lockedAt ? (
-            <div className="detail-list__row">
-              <dt>Locked at</dt>
-              <dd><TimeDisplay iso={job.lockedAt} /></dd>
-            </div>
-          ) : null}
-          {job.lockedBy ? (
-            <div className="detail-list__row">
-              <dt>Locked by</dt>
-              <dd><span className="mono-text">{job.lockedBy}</span></dd>
-            </div>
-          ) : null}
-        </dl>
+        <KeyValueList items={items} />
       </section>
 
       {/* Error section */}
       {job.lastError ? (
         <section className="detail-section">
-          <h3 className="detail-section__title">Last error</h3>
-          <pre className="mono-text detail-section__pre">{job.lastError}</pre>
+          <RawPayloadPanel title="Last error" payload={job.lastError} defaultOpen />
         </section>
       ) : null}
 
       {/* Payload section */}
       {job.payloadJson ? (
         <section className="detail-section">
-          <h3 className="detail-section__title">Payload</h3>
-          <pre className="mono-text detail-section__pre">
-            {JSON.stringify(job.payloadJson, null, 2)}
-          </pre>
+          <RawPayloadPanel title="Payload" payload={job.payloadJson} />
         </section>
       ) : null}
     </PageLayout>

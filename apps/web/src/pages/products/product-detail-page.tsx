@@ -4,12 +4,44 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import type { ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+
+function buildProductItems(product: {
+  id: string;
+  sku: string | null;
+  price: number | null;
+  createdAt: string;
+  updatedAt: string;
+  description?: string | null;
+}): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    { id: 'productId', label: 'Product ID', value: product.id, mono: true },
+    {
+      id: 'sku',
+      label: 'SKU',
+      value: product.sku ?? <span className="text-muted">—</span>,
+      mono: Boolean(product.sku),
+    },
+    {
+      id: 'price',
+      label: 'Price',
+      value:
+        product.price !== null ? product.price.toFixed(2) : <span className="text-muted">—</span>,
+    },
+    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={product.createdAt} /> },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={product.updatedAt} /> },
+  ];
+  if (product.description) {
+    items.push({ id: 'description', label: 'Description', value: product.description });
+  }
+  return items;
+}
 
 const STOCK_COLUMNS: DataTableColumn<InventoryItem>[] = [
   {
@@ -155,40 +187,7 @@ export function ProductDetailPage(): ReactElement {
     >
       {/* Product metadata */}
       <section className="detail-section">
-        <dl className="detail-list">
-          <div className="detail-list__row">
-            <dt>Product ID</dt>
-            <dd><span className="mono-text">{product.id}</span></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>SKU</dt>
-            <dd>
-              {product.sku ? (
-                <span className="mono-text">{product.sku}</span>
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Price</dt>
-            <dd>{product.price !== null ? product.price.toFixed(2) : <span className="text-muted">—</span>}</dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Created</dt>
-            <dd><TimeDisplay iso={product.createdAt} /></dd>
-          </div>
-          <div className="detail-list__row">
-            <dt>Updated</dt>
-            <dd><TimeDisplay iso={product.updatedAt} /></dd>
-          </div>
-          {product.description ? (
-            <div className="detail-list__row">
-              <dt>Description</dt>
-              <dd>{product.description}</dd>
-            </div>
-          ) : null}
-        </dl>
+        <KeyValueList items={buildProductItems(product)} />
       </section>
 
       {/* External IDs */}
