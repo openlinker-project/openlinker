@@ -11,6 +11,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule, IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
+import { SyncModule } from '@openlinker/core/sync';
 import { OfferLinkingService } from './application/services/offer-linking.service';
 import { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
@@ -19,6 +20,10 @@ import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entit
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import { OfferBuilderService } from './application/services/offer-builder.service';
 import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
+import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
+import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
+import { SellerPoliciesService } from './application/services/seller-policies.service';
+import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -27,6 +32,9 @@ import {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  SELLER_POLICIES_SERVICE_TOKEN,
+  SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -38,15 +46,23 @@ export {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  SELLER_POLICIES_SERVICE_TOKEN,
+  SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([IdentifierMappingOrmEntity, OfferCreationRecordOrmEntity]),
+    TypeOrmModule.forFeature([
+      IdentifierMappingOrmEntity,
+      OfferCreationRecordOrmEntity,
+      SellerPoliciesCacheOrmEntity,
+    ]),
     IntegrationsModule,
     IdentifierMappingModule,
     ProductsModule,
     MappingsModule,
+    SyncModule,
   ],
   providers: [
     OfferLinkingService,
@@ -56,6 +72,9 @@ export {
     OfferCreationRecordRepository,
     OfferBuilderService,
     OfferCreationExecutionService,
+    OfferCreationEnqueueService,
+    SellerPoliciesCacheRepository,
+    SellerPoliciesService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -84,6 +103,18 @@ export {
       provide: OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
       useExisting: OfferCreationExecutionService,
     },
+    {
+      provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+      useExisting: OfferCreationEnqueueService,
+    },
+    {
+      provide: SELLER_POLICIES_CACHE_TOKEN,
+      useExisting: SellerPoliciesCacheRepository,
+    },
+    {
+      provide: SELLER_POLICIES_SERVICE_TOKEN,
+      useExisting: SellerPoliciesService,
+    },
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
@@ -93,6 +124,9 @@ export {
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+    OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+    SELLER_POLICIES_SERVICE_TOKEN,
+    SELLER_POLICIES_CACHE_TOKEN,
   ],
 })
 export class ListingsModule {}

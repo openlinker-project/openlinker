@@ -25,6 +25,7 @@ import {
 import type { UpdateOfferFieldsCommand } from '../types/marketplace-offer-update.types';
 import type { MarketplaceCategory } from '../types/marketplace-category.types';
 import type { CreateOfferCommand, CreateOfferResult } from '../types/marketplace-offer-create.types';
+import type { SellerPolicies } from '../types/seller-policies.types';
 
 export interface MarketplacePort {
   /**
@@ -93,5 +94,18 @@ export interface MarketplacePort {
    * validate asynchronously (Allegro), callers must poll to observe the final outcome.
    */
   createOffer?(cmd: CreateOfferCommand): Promise<CreateOfferResult>;
+
+  /**
+   * Return the seller-configured policies the marketplace requires when
+   * creating an offer (delivery, return, warranty, implied-warranty) — optional capability.
+   *
+   * Adapters that implement this fetch the operator's platform-native policies
+   * and map them to the neutral `SellerPolicies` shape. Callers (e.g. the FE
+   * offer-creation wizard) surface these in dropdowns so the operator can
+   * choose which policies to attach to the new offer via
+   * `CreateOfferCommand.overrides.platformParams`. Adapters that do not need
+   * policy IDs for offer creation omit this method.
+   */
+  fetchSellerPolicies?(): Promise<SellerPolicies>;
 }
 

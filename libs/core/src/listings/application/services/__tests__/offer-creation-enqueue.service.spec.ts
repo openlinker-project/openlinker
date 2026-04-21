@@ -1,0 +1,190 @@
+/**
+ * Offer Creation Enqueue Service Tests
+ *
+ * Covers the pre-enqueue orchestration: adapter capability check, record
+ * creation, payload construction, idempotency-key handling, and
+ * exception propagation for all connection-failure modes.
+ *
+ * @module libs/core/src/listings/application/services/__tests__
+ */
+
+import { UnprocessableEntityException } from '@nestjs/common';
+
+import type {
+  IIntegrationsService,
+  MarketplacePort,
+} from '@openlinker/core/integrations';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+
+import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
+import { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import { OfferCreationEnqueueService } from '../offer-creation-enqueue.service';
+
+describe('OfferCreationEnqueueService', () => {
+  let service: OfferCreationEnqueueService;
+  let integrations: jest.Mocked<IIntegrationsService>;
+  let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
+  let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+
+  const connectionId = 'conn-xyz';
+  const variantId = 'ol_variant_abc';
+
+  const mockRecord = new OfferCreationRecord(
+    'record-1',
+    variantId,
+    connectionId,
+    null,
+    'pending',
+    null,
+    false,
+    new Date('2026-04-21T10:00:00Z'),
+    new Date('2026-04-21T10:00:00Z'),
+  );
+
+  const adapterWith = (createOffer: jest.Mock | undefined): MarketplacePort =>
+    ({
+      ...(createOffer ? { createOffer } : {}),
+    } as unknown as MarketplacePort);
+
+  beforeEach(() => {
+    integrations = {
+      getAdapter: jest.fn(),
+      getCapabilityAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn(),
+      resolveAdapterMetadata: jest.fn(),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
+    records = {
+      create: jest.fn().mockResolvedValue(mockRecord),
+      findById: jest.fn(),
+      findLatestByVariantAndConnection: jest.fn(),
+      updateStatus: jest.fn(),
+      updateExternalOfferId: jest.fn(),
+      updateExternalIdAndStatus: jest.fn(),
+    };
+
+    jobEnqueue = {
+      enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
+    } as unknown as jest.Mocked<JobEnqueuePort>;
+
+    service = new OfferCreationEnqueueService(integrations, records, jobEnqueue);
+  });
+
+  it('happy path: creates a record then enqueues a job with offerCreationRecordId', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+    const result = await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 5,
+      publishImmediately: false,
+      price: { amount: 99.99, currency: 'PLN' },
+    });
+
+    expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(connectionId, 'Marketplace');
+    expect(records.create).toHaveBeenCalledWith({
+      internalVariantId: variantId,
+      connectionId,
+      externalOfferId: null,
+      status: 'pending',
+      errors: null,
+      publishImmediately: false,
+    });
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+      jobType: 'marketplace.offer.create',
+      connectionId,
+      idempotencyKey: 'offer-create:record-1',
+      payload: expect.objectContaining({
+        schemaVersion: 1,
+        internalVariantId: variantId,
+        stock: 5,
+        publishImmediately: false,
+        offerCreationRecordId: 'record-1',
+        price: { amount: 99.99, currency: 'PLN' },
+      }),
+    });
+    expect(result).toEqual({ jobId: 'job-1', offerCreationRecord: mockRecord });
+  });
+
+  it('uses the caller-supplied idempotency key when provided', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+    await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 1,
+      publishImmediately: true,
+      idempotencyKey: 'client-key-42',
+    });
+
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: 'client-key-42' }),
+    );
+  });
+
+  it('throws UnprocessableEntityException without touching repo or queue when adapter lacks createOffer', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(undefined));
+
+    await expect(
+      service.enqueueCreation({
+        internalVariantId: variantId,
+        connectionId,
+        stock: 1,
+        publishImmediately: false,
+      }),
+    ).rejects.toThrow(UnprocessableEntityException);
+
+    expect(records.create).not.toHaveBeenCalled();
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('propagates exceptions from getCapabilityAdapter (e.g. ConnectionDisabledException)', async () => {
+    integrations.getCapabilityAdapter.mockRejectedValue(new Error('ConnectionDisabledException'));
+
+    await expect(
+      service.enqueueCreation({
+        internalVariantId: variantId,
+        connectionId,
+        stock: 1,
+        publishImmediately: false,
+      }),
+    ).rejects.toThrow('ConnectionDisabledException');
+
+    expect(records.create).not.toHaveBeenCalled();
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('omits price/overrides from the payload when not supplied', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+    await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 1,
+      publishImmediately: false,
+    });
+
+    const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
+    expect(payload).not.toHaveProperty('price');
+    expect(payload).not.toHaveProperty('overrides');
+  });
+
+  it('forwards overrides unchanged when supplied', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+    const overrides = {
+      title: 'Custom title',
+      platformParams: { deliveryPolicyId: 'd-1' },
+    };
+
+    await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 1,
+      publishImmediately: false,
+      overrides,
+    });
+
+    const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
+    expect(payload.overrides).toEqual(overrides);
+  });
+});

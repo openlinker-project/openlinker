@@ -355,3 +355,43 @@ export interface AllegroProductOfferCreateResponse {
   external?: { id?: string };
 }
 
+/**
+ * Seller-configured policy entry returned by the four Allegro after-sales /
+ * delivery endpoints. All four endpoints return entries sharing an `id` +
+ * `name` shape (plus platform-specific metadata the adapter does not need).
+ */
+export interface AllegroSellerPolicyEntry {
+  id: string;
+  name: string;
+}
+
+/**
+ * Response from `GET /sale/delivery-settings`.
+ *
+ * Allegro wraps the policy list under the `deliverySettings` key.
+ */
+export interface AllegroDeliverySettingsResponse {
+  deliverySettings: AllegroSellerPolicyEntry[];
+}
+
+/**
+ * Response from `GET /after-sales-service-conditions/return-policies`.
+ */
+export interface AllegroReturnPoliciesResponse {
+  returnPolicies: AllegroSellerPolicyEntry[];
+}
+
+/**
+ * Response from `GET /after-sales-service-conditions/warranties`.
+ */
+export interface AllegroWarrantiesResponse {
+  warranties: AllegroSellerPolicyEntry[];
+}
+
+/**
+ * Response from `GET /after-sales-service-conditions/implied-warranties`.
+ */
+export interface AllegroImpliedWarrantiesResponse {
+  impliedWarranties: AllegroSellerPolicyEntry[];
+}
+
