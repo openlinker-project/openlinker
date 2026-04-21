@@ -901,6 +901,25 @@ describe('AllegroMarketplaceAdapter', () => {
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
+    it('omits description and images from the body when overrides values are null', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-null', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          description: null,
+          imageUrls: null,
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('description');
+      expect(body).not.toHaveProperty('images');
+    });
+
     it('throws MarketplaceOfferCreateRejectedException when overrides.categoryId is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,

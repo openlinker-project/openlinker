@@ -304,5 +304,48 @@ describe('OfferBuilderService', () => {
       expect(result.overrides?.description).toBe('Custom desc');
       expect(result.overrides?.imageUrls).toEqual(['https://example.com/custom.jpg']);
     });
+
+    it('strips description and imageUrls from command when product has null values and no overrides', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: null,
+        price: 49.99,
+        currency: 'PLN',
+        images: null,
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.overrides).not.toBeUndefined();
+      expect(result.overrides).not.toHaveProperty('description');
+      expect(result.overrides).not.toHaveProperty('imageUrls');
+      // Title + categoryId still populated, so overrides object still exists.
+      expect(result.overrides?.title).toBe('Test Product');
+      expect(result.overrides?.categoryId).toBe('allegro-cat-999');
+    });
+
+    it('treats null overrides.description/imageUrls as "no override" and falls back to product values', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: {
+          description: null,
+          imageUrls: null,
+        },
+      });
+
+      expect(result.overrides?.description).toBe('A test product description.');
+      expect(result.overrides?.imageUrls).toEqual([
+        'https://example.com/img1.jpg',
+        'https://example.com/img2.jpg',
+      ]);
+    });
   });
 });
