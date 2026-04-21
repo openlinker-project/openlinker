@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
@@ -17,7 +18,12 @@ const COLUMNS: DataTableColumn<Product>[] = [
   {
     id: 'name',
     header: 'Name',
-    cell: (product) => product.name,
+    cell: (product) => (
+      <span className="product-row">
+        <ProductThumbnail src={product.images?.[0]} name={product.name} />
+        <span className="product-row__name">{product.name}</span>
+      </span>
+    ),
     accessor: (product) => product.name,
     sortable: true,
   },
@@ -152,7 +158,12 @@ export function ProductsListPage(): ReactElement {
             sort={sort}
             onSortChange={setSort}
             cardView={{
-              title: (product) => product.name,
+              title: (product) => (
+                <span className="product-row">
+                  <ProductThumbnail src={product.images?.[0]} name={product.name} size="sm" />
+                  <span className="product-row__name">{product.name}</span>
+                </span>
+              ),
               subtitle: (product) => product.sku ?? '—',
               meta: (product) => (product.price !== null ? product.price.toFixed(2) : null),
             }}
