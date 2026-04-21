@@ -99,8 +99,11 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
 
     const title = input.overrides?.title ?? product.name;
-    const description = input.overrides?.description ?? product.description;
-    const imageUrls = input.overrides?.imageUrls ?? product.images;
+    // product.description / product.images are `T | null` on the unified Product
+    // interface, but CreateOfferOverrides expects `T | undefined`. Coerce null
+    // back to undefined at this boundary. Follow-up: widen CreateOfferOverrides.
+    const description = input.overrides?.description ?? product.description ?? undefined;
+    const imageUrls = input.overrides?.imageUrls ?? product.images ?? undefined;
 
     const overrides = {
       title,
@@ -157,7 +160,7 @@ export class OfferBuilderService implements IOfferBuilderService {
 
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
-    product: { price?: number; currency?: string },
+    product: { price: number | null; currency?: string },
     issues: OfferBuilderValidationIssue[],
   ): { amount: number; currency: string } | null {
     if (input.price) {

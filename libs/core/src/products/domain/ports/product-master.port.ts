@@ -11,28 +11,12 @@
  * @module libs/core/src/products/domain/ports
  */
 import { ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate } from '../types/product.types';
+import type { Product } from '../entities/product.entity';
 import type { ProductVariant } from '../entities/product-variant.entity';
 
 // Re-exported so existing deep imports from this path keep working.
+export type { Product } from '../entities/product.entity';
 export type { ProductVariant } from '../entities/product-variant.entity';
-
-/**
- * Product domain entity (minimal interface for port)
- * Full entity definition should be in domain/entities/product.entity.ts
- */
-export interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  description?: string;
-  price: number;
-  currency?: string;
-  weight?: number;
-  images?: string[];
-  categories?: string[];
-  createdAt?: Date;
-  updatedAt?: Date;
-}
 
 /**
  * Category domain entity

@@ -26,7 +26,8 @@ import {
 import {
   ProductRepositoryPort,
   PRODUCT_REPOSITORY_TOKEN,
-  ProductEntity as Product,
+  Product,
+  coverImageUrl,
 } from '@openlinker/core/products';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
@@ -113,9 +114,8 @@ export class InventoryController {
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       productName: product?.name ?? null,
       productSku: product?.sku ?? null,
-      // Cover-image rule lives on the Product entity (`coverImageUrl` getter);
-      // the inventory layer does not replicate it.
-      productImageUrl: product?.coverImageUrl ?? null,
+      // Cover-image rule owned by the Products domain; do not replicate here.
+      productImageUrl: product ? coverImageUrl(product) : null,
     };
   }
 }

@@ -28,11 +28,11 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     return {
       name,
       sku: this.getStringField(prestashopProduct.reference) || '',
-      description: description ?? undefined, // Convert null to undefined for port interface
+      description,
       price: this.parseNumber(prestashopProduct.price) || 0,
       currency: 'EUR', // Default, can be configured
       weight: this.parseNumber(prestashopProduct.weight),
-      images: images ?? undefined, // Convert null to undefined for port interface
+      images,
       categories: this.extractCategories(prestashopProduct),
       createdAt: this.parseDate(prestashopProduct.date_add),
       updatedAt: this.parseDate(prestashopProduct.date_upd),

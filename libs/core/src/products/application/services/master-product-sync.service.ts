@@ -18,8 +18,8 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
 import { IProductsService } from './products.service.interface';
-import { ProductMasterPort, Product as ProductPortInterface } from '../../domain/ports/product-master.port';
-import { Product as ProductDomainEntity } from '../../domain/entities/product.entity';
+import { ProductMasterPort } from '../../domain/ports/product-master.port';
+import { Product } from '../../domain/entities/product.entity';
 import { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
 import { IMasterProductSyncService, MasterProductSyncResult } from './master-product-sync.service.interface';
@@ -80,21 +80,21 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   }
 
   /**
-   * Convert port Product to domain Product entity.
+   * Normalize adapter-produced product: coerce nullable fields to null.
    *
-   * Uses nullish coalescing (??) to preserve falsy values like 0.
+   * Adapters may omit createdAt/updatedAt — the repository populates them on
+   * save via TypeORM's @CreateDateColumn/@UpdateDateColumn. Master-derived
+   * fields (currency/weight/categories) spread through untouched; the ORM
+   * has no columns for them, so they're silently dropped on persist.
    */
-  private toDomainProduct(product: ProductPortInterface): ProductDomainEntity {
-    return new ProductDomainEntity(
-      product.id,
-      product.name,
-      product.sku ?? null,
-      product.price ?? null,
-      product.description ?? null,
-      product.images ?? null,
-      product.createdAt ?? new Date(),
-      product.updatedAt ?? new Date(),
-    );
+  private toDomainProduct(product: Product): Product {
+    return {
+      ...product,
+      sku: product.sku ?? null,
+      price: product.price ?? null,
+      description: product.description ?? null,
+      images: product.images ?? null,
+    };
   }
 
   /**
