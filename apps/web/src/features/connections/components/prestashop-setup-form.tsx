@@ -51,7 +51,7 @@ const CAPABILITY_HELP: Record<Capability, string> = {
 const STEP_LABELS = ['Credentials', 'Verify credentials', 'Capabilities', 'Review & connect'] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<PrestashopSetupFormValues>>> = [
-  ['name', 'baseUrl', 'webserviceKey', 'shopId'],
+  ['name', 'baseUrl', 'webserviceKey', 'shopId', 'storefrontBaseUrl'],
   [],
   ['enabledCapabilities'],
   [],
@@ -173,6 +173,19 @@ export function PrestashopSetupForm(): ReactElement {
           </FormField>
 
           <FormField
+            label="Storefront URL (optional)"
+            name="storefrontBaseUrl"
+            error={form.formState.errors.storefrontBaseUrl?.message}
+            description="Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same — defaults to Shop URL."
+          >
+            <Input
+              {...form.register('storefrontBaseUrl')}
+              placeholder="https://shop.example.com"
+              invalid={Boolean(form.formState.errors.storefrontBaseUrl)}
+            />
+          </FormField>
+
+          <FormField
             label="Webservice key"
             name="webserviceKey"
             error={form.formState.errors.webserviceKey?.message}
@@ -212,6 +225,12 @@ export function PrestashopSetupForm(): ReactElement {
           <dl className="wizard-review-list">
             <dt>Shop URL</dt>
             <dd className="mono-text">{values.baseUrl || '—'}</dd>
+            {values.storefrontBaseUrl ? (
+              <>
+                <dt>Storefront URL</dt>
+                <dd className="mono-text">{values.storefrontBaseUrl}</dd>
+              </>
+            ) : null}
             <dt>Webservice key</dt>
             <dd className="mono-text">{values.webserviceKey ? maskKey(values.webserviceKey) : '—'}</dd>
             {values.shopId ? (
@@ -259,6 +278,12 @@ export function PrestashopSetupForm(): ReactElement {
           <dd>{values.name || '—'}</dd>
           <dt>Shop URL</dt>
           <dd className="mono-text">{values.baseUrl || '—'}</dd>
+          {values.storefrontBaseUrl ? (
+            <>
+              <dt>Storefront URL</dt>
+              <dd className="mono-text">{values.storefrontBaseUrl}</dd>
+            </>
+          ) : null}
           <dt>Webservice key</dt>
           <dd className="mono-text">{values.webserviceKey ? maskKey(values.webserviceKey) : '—'}</dd>
           {values.shopId ? (
