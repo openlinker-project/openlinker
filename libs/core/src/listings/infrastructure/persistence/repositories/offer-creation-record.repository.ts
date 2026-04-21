@@ -79,6 +79,25 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return this.toDomain(saved);
   }
 
+  async updateExternalIdAndStatus(
+    id: string,
+    externalOfferId: string,
+    status: OfferCreationStatus,
+    errors?: OfferCreationError[] | null,
+  ): Promise<OfferCreationRecord> {
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new OfferCreationRecordNotFoundException(id);
+    }
+    entity.externalOfferId = externalOfferId;
+    entity.status = status;
+    if (errors !== undefined) {
+      entity.errors = errors;
+    }
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
+  }
+
   private buildOrmEntity(input: CreateOfferCreationRecordInput): OfferCreationRecordOrmEntity {
     const entity = new OfferCreationRecordOrmEntity();
     entity.internalVariantId = input.internalVariantId;

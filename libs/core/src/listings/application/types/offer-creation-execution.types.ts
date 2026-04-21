@@ -4,16 +4,12 @@
  * Input/result contract for `IOfferCreationExecutionService.executeCreation`,
  * the core orchestration step of an OL → marketplace offer creation.
  *
- * Kept in the domain types folder (not application/types) so both the
- * application service and the future REST endpoint that will call it (#259)
- * can depend on these types without cyclic imports.
- *
- * @module libs/core/src/listings/domain/types
+ * @module libs/core/src/listings/application/types
  */
 
 import type { CreateOfferOverrides } from '@openlinker/core/integrations';
 
-import type { OfferCreationRecord } from '../entities/offer-creation-record.entity';
+import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 
 export interface ExecuteOfferCreationInput {
   /** OL internal variant id being listed. */

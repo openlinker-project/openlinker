@@ -59,7 +59,7 @@ export type { IOfferCreationExecutionService } from './application/interfaces/of
 export type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
-} from './domain/types/offer-creation-execution.types';
+} from './application/types/offer-creation-execution.types';
 export {
   OfferBuilderValidationException,
 } from './domain/exceptions/offer-builder-validation.exception';

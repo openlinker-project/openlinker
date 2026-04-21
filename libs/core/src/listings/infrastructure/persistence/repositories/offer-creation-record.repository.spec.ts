@@ -220,6 +220,78 @@ describe('OfferCreationRecordRepository', () => {
     });
   });
 
+  describe('updateExternalIdAndStatus', () => {
+    it('should atomically set externalOfferId, status and errors in one save', async () => {
+      const existing = buildOrm();
+      ormRepository.findOne.mockResolvedValue(existing);
+      const errors: OfferCreationError[] = [
+        { field: 'parameters.EAN', code: 'MISSING', message: 'EAN is required' },
+      ];
+      const saved = buildOrm({
+        externalOfferId: 'allegro-offer-42',
+        status: 'draft',
+        errors,
+      });
+      ormRepository.save.mockResolvedValue(saved);
+
+      const result = await repository.updateExternalIdAndStatus(
+        'rec-uuid',
+        'allegro-offer-42',
+        'draft',
+        errors,
+      );
+
+      expect(ormRepository.save).toHaveBeenCalledTimes(1);
+      const savedArg = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(savedArg.externalOfferId).toBe('allegro-offer-42');
+      expect(savedArg.status).toBe('draft');
+      expect(savedArg.errors).toEqual(errors);
+      expect(result.externalOfferId).toBe('allegro-offer-42');
+      expect(result.status).toBe('draft');
+    });
+
+    it('should preserve existing errors when errors argument is omitted', async () => {
+      const existingErrors: OfferCreationError[] = [{ code: 'OLD', message: 'old error' }];
+      const existing = buildOrm({ errors: existingErrors });
+      ormRepository.findOne.mockResolvedValue(existing);
+      ormRepository.save.mockResolvedValue({
+        ...existing,
+        externalOfferId: 'allegro-offer-1',
+        status: 'active',
+      });
+
+      await repository.updateExternalIdAndStatus('rec-uuid', 'allegro-offer-1', 'active');
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(savedArg.errors).toEqual(existingErrors);
+    });
+
+    it('should clear errors when null is passed explicitly', async () => {
+      const existing = buildOrm({ errors: [{ code: 'OLD', message: 'old' }] });
+      ormRepository.findOne.mockResolvedValue(existing);
+      ormRepository.save.mockResolvedValue({
+        ...existing,
+        externalOfferId: 'allegro-offer-2',
+        status: 'draft',
+        errors: null,
+      });
+
+      await repository.updateExternalIdAndStatus('rec-uuid', 'allegro-offer-2', 'draft', null);
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(savedArg.errors).toBeNull();
+    });
+
+    it('should throw OfferCreationRecordNotFoundException when record is missing', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        repository.updateExternalIdAndStatus('missing', 'x', 'draft'),
+      ).rejects.toBeInstanceOf(OfferCreationRecordNotFoundException);
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('toDomain mapping', () => {
     it('should preserve all fields round-trip', async () => {
       const errors: OfferCreationError[] = [{ code: 'X', message: 'y' }];

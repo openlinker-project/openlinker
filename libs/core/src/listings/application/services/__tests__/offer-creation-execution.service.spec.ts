@@ -17,6 +17,7 @@ import {
   MarketplaceOfferCreateRejectedException,
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 
 import { OfferCreationExecutionService } from '../offer-creation-execution.service';
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
@@ -81,6 +82,13 @@ describe('OfferCreationExecutionService', () => {
       updateExternalOfferId: jest.fn().mockImplementation((id, externalOfferId) =>
         Promise.resolve(buildRecord({ id, externalOfferId })),
       ),
+      updateExternalIdAndStatus: jest
+        .fn()
+        .mockImplementation((id, externalOfferId, status, errors) =>
+          Promise.resolve(
+            buildRecord({ id, externalOfferId, status, errors: errors ?? null }),
+          ),
+        ),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),
@@ -142,8 +150,14 @@ describe('OfferCreationExecutionService', () => {
       CONNECTION_ID,
       VARIANT_ID,
     );
-    expect(records.updateExternalOfferId).toHaveBeenCalledWith('rec-1', EXTERNAL_OFFER_ID);
-    expect(records.updateStatus).toHaveBeenLastCalledWith('rec-1', 'draft', null);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
+    expect(records.updateExternalOfferId).not.toHaveBeenCalled();
+    expect(records.updateStatus).not.toHaveBeenCalled();
     expect(offerCreationRecord.status).toBe('draft');
   });
 
@@ -155,7 +169,12 @@ describe('OfferCreationExecutionService', () => {
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
 
-    expect(records.updateStatus).toHaveBeenLastCalledWith('rec-1', 'active', null);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'active',
+      null,
+    );
     expect(offerCreationRecord.status).toBe('active');
   });
 
@@ -164,18 +183,24 @@ describe('OfferCreationExecutionService', () => {
       externalOfferId: EXTERNAL_OFFER_ID,
       status: 'validating',
     });
-    records.updateStatus.mockResolvedValueOnce(
+    records.updateExternalIdAndStatus.mockResolvedValueOnce(
       buildRecord({ status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
     );
     const warnSpy = jest
-      .spyOn((service as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+      .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    await service.executeCreation(baseInput);
+    try {
+      await service.executeCreation(baseInput);
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain('validating');
-    expect(warnSpy.mock.calls[0][0]).toContain(EXTERNAL_OFFER_ID);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const firstCall = warnSpy.mock.calls[0][0];
+      expect(typeof firstCall).toBe('string');
+      expect(firstCall as string).toContain('validating');
+      expect(firstCall as string).toContain(EXTERNAL_OFFER_ID);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('persists validation errors from a 2xx result', async () => {
@@ -189,9 +214,12 @@ describe('OfferCreationExecutionService', () => {
 
     await service.executeCreation(baseInput);
 
-    expect(records.updateStatus).toHaveBeenLastCalledWith('rec-1', 'draft', [
-      { field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' },
-    ]);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      [{ field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' }],
+    );
   });
 
   it('marks record failed and resolves when builder raises OfferBuilderValidationException', async () => {
@@ -247,7 +275,7 @@ describe('OfferCreationExecutionService', () => {
 
     await expect(service.executeCreation(baseInput)).rejects.toThrow('timeout');
     expect(records.updateStatus).not.toHaveBeenCalled();
-    expect(records.updateExternalOfferId).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
   });
 
   it('throws when the resolved adapter does not support createOffer', async () => {
@@ -259,6 +287,7 @@ describe('OfferCreationExecutionService', () => {
       /does not support Marketplace.createOffer/,
     );
     expect(records.updateStatus).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
   });
 
   it('swallows DuplicateIdentifierMappingError as idempotent success', async () => {
@@ -268,8 +297,12 @@ describe('OfferCreationExecutionService', () => {
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
 
-    expect(records.updateExternalOfferId).toHaveBeenCalledWith('rec-1', EXTERNAL_OFFER_ID);
-    expect(records.updateStatus).toHaveBeenLastCalledWith('rec-1', 'draft', null);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
     expect(offerCreationRecord.status).toBe('draft');
   });
 
@@ -281,7 +314,12 @@ describe('OfferCreationExecutionService', () => {
 
     expect(records.findById).toHaveBeenCalledWith('rec-pre');
     expect(records.create).not.toHaveBeenCalled();
-    expect(records.updateExternalOfferId).toHaveBeenCalledWith('rec-pre', EXTERNAL_OFFER_ID);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-pre',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
   });
 
   it('throws OfferCreationRecordNotFoundException when provided record id does not exist', async () => {
@@ -297,7 +335,7 @@ describe('OfferCreationExecutionService', () => {
     identifierMapping.createMapping.mockRejectedValueOnce(new Error('redis down'));
 
     await expect(service.executeCreation(baseInput)).rejects.toThrow('redis down');
-    expect(records.updateExternalOfferId).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
   });
 
   it('threads price, publishImmediately, overrides, and idempotencyKey to the builder', async () => {

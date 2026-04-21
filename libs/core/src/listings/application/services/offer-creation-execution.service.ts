@@ -49,14 +49,11 @@ import {
 } from '../../domain/exceptions/offer-builder-validation.exception';
 import { OfferCreationRecordNotFoundException } from '../../domain/exceptions/offer-creation-record-not-found.exception';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
+import { OfferCreationError } from '../../domain/types/offer-creation-record.types';
 import {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
-} from '../../domain/types/offer-creation-execution.types';
-import {
-  OfferCreationError,
-  OfferCreationStatus,
-} from '../../domain/types/offer-creation-record.types';
+} from '../types/offer-creation-execution.types';
 import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -142,11 +139,11 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       // createMapping's `externalId → internalId` is exactly what we wanted, so continue.
     }
 
-    await this.offerCreationRecords.updateExternalOfferId(record.id, result.externalOfferId);
     const persistedErrors = this.mapResultValidationErrors(result.validationErrors);
-    const finalRecord = await this.offerCreationRecords.updateStatus(
+    const finalRecord = await this.offerCreationRecords.updateExternalIdAndStatus(
       record.id,
-      this.mapResultStatus(result.status),
+      result.externalOfferId,
+      result.status,
       persistedErrors,
     );
 
@@ -218,9 +215,5 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       code: e.code,
       message: e.message,
     }));
-  }
-
-  private mapResultStatus(status: CreateOfferResult['status']): OfferCreationStatus {
-    return status;
   }
 }

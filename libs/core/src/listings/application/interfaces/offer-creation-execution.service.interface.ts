@@ -15,7 +15,7 @@
 import type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
-} from '../../domain/types/offer-creation-execution.types';
+} from '../types/offer-creation-execution.types';
 
 export interface IOfferCreationExecutionService {
   /**
