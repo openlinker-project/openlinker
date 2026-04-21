@@ -248,8 +248,15 @@ describe('TriggerSyncDialog', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      expect(screen.getByText(/sync job enqueued/i)).toBeInTheDocument();
-      expect(screen.getByText(/job_42/i)).toBeInTheDocument();
+      // Radix Toast renders the title and description twice — once in the
+      // visible `.toast__title`/`.toast__description` and once inside an
+      // `aria-live` announcement span. Scope to the visible toast title/body.
+      expect(
+        screen.getByText(/sync job enqueued/i, { selector: '.toast__title' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/job_42/i, { selector: '.toast__description' }),
+      ).toBeInTheDocument();
     });
   });
 
