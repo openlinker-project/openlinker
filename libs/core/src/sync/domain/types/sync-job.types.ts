@@ -139,6 +139,77 @@ export interface PaginatedSyncJobs {
 }
 
 /**
+ * Sync Job Group
+ *
+ * Aggregated dead-job signature returned by the grouped-jobs endpoint.
+ * Each group collapses all dead jobs with the same (connectionId, jobType)
+ * into one row with a count, a representative job id, and the group's
+ * most recent error message and update timestamp.
+ */
+export interface SyncJobGroup {
+  connectionId: string;
+  jobType: JobType;
+  count: number;
+  /** Most recent `updatedAt` across the group; drives sort order. */
+  latestUpdatedAt: Date;
+  /** ID of the most-recently-updated job in the group; powers Retry/View deep links. */
+  representativeJobId: string;
+  /** Last error from the representative row; usually shared across the group. */
+  lastError: string | null;
+}
+
+/**
+ * Sync Job Groups Result
+ *
+ * Result shape for `SyncJobRepositoryPort.findGroupedByStatus`. `groups`
+ * is capped at the caller's `maxGroups`; `totalGroups` exposes the true
+ * count so the UI can render "top N of M signatures".
+ */
+export interface SyncJobGroupsResult {
+  groups: SyncJobGroup[];
+  totalGroups: number;
+  totalJobs: number;
+}
+
+/**
+ * Sync Job Group Filters
+ *
+ * Filter criteria for `SyncJobRepositoryPort.findGroupedByStatus`.
+ */
+export interface SyncJobGroupFilters {
+  status: JobStatus;
+  connectionId?: string;
+}
+
+/**
+ * Bulk Retry Result
+ *
+ * Result shape for `SyncJobRepositoryPort.requeueDeadJobsInGroup` and
+ * `ISyncJobBulkRetryService.retryGroup`. `skipped` counts jobs that
+ * flipped out of `dead` between our SELECT and UPDATE (another retry
+ * raced us, or the worker picked them up).
+ */
+export interface BulkRetryResult {
+  requeuedJobIds: string[];
+  count: number;
+  skipped: number;
+}
+
+/**
+ * Maximum number of jobs to re-queue in a single bulk-retry call.
+ * UIs that hit the cap can click Retry again to drain the rest.
+ */
+export const BULK_RETRY_MAX_BATCH_SIZE = 1000;
+
+/**
+ * Redis Streams channel for sync-job lifecycle events. Introduced in
+ * this module for `sync.job.bulk-retry-requested`; no consumer is
+ * attached yet (audit-trail / observability only). Future bulk-operation
+ * events should publish to the same stream.
+ */
+export const SYNC_JOBS_EVENT_STREAM = 'events.sync.jobs';
+
+/**
  * Sync Job (Persisted)
  *
  * Represents a persisted sync job in the database. Extends SyncJobRequest

@@ -30,16 +30,21 @@ import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
+  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   InvalidSyncJobStateError,
   SyncJobNotFoundError,
 } from '@openlinker/core/sync';
 import type { SyncJob } from '@openlinker/core/sync';
-import type { ISyncJobRetryService } from '@openlinker/core/sync';
+import type { ISyncJobRetryService, ISyncJobBulkRetryService } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
 import { EnqueueSyncJobResponseDto } from './dto/enqueue-sync-job-response.dto';
 import { ListSyncJobsQueryDto } from './dto/list-sync-jobs-query.dto';
 import { SyncJobResponseDto } from './dto/sync-job-response.dto';
 import { PaginatedSyncJobsResponseDto } from './dto/paginated-sync-jobs-response.dto';
+import { ListGroupedSyncJobsQueryDto } from './dto/list-grouped-sync-jobs-query.dto';
+import { GroupedSyncJobsResponseDto } from './dto/grouped-sync-jobs-response.dto';
+import { RetryGroupedSyncJobsDto } from './dto/retry-grouped-sync-jobs.dto';
+import { RetryGroupedSyncJobsResponseDto } from './dto/retry-grouped-sync-jobs-response.dto';
 import { Logger } from '@openlinker/shared/logging';
 
 @Roles('admin')
@@ -56,6 +61,8 @@ export class SyncController {
     private readonly syncJobRepository: SyncJobRepositoryPort,
     @Inject(SYNC_JOB_RETRY_SERVICE_TOKEN)
     private readonly retryService: ISyncJobRetryService,
+    @Inject(SYNC_JOB_BULK_RETRY_SERVICE_TOKEN)
+    private readonly bulkRetryService: ISyncJobBulkRetryService,
   ) {}
 
   @Post('jobs')
@@ -136,6 +143,59 @@ export class SyncController {
       total,
       limit,
       offset,
+    };
+  }
+
+  @Get('jobs/grouped')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List sync jobs grouped by (connectionId, jobType)',
+    description:
+      'Aggregates jobs matching the status filter into one row per (connectionId, jobType) signature. Returns count, latest updatedAt, a representative job ID, and the group\'s lastError. Sorted by count DESC, then latestUpdatedAt DESC.',
+  })
+  @ApiResponse({ status: 200, description: 'Aggregated group list', type: GroupedSyncJobsResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async listGroupedJobs(
+    @Query() query: ListGroupedSyncJobsQueryDto,
+  ): Promise<GroupedSyncJobsResponseDto> {
+    const { status, connectionId, limit = 100 } = query;
+
+    const { groups, totalGroups, totalJobs } =
+      await this.syncJobRepository.findGroupedByStatus({ status, connectionId }, limit);
+
+    return {
+      groups: groups.map((g) => ({
+        connectionId: g.connectionId,
+        jobType: g.jobType,
+        count: g.count,
+        latestUpdatedAt:
+          g.latestUpdatedAt instanceof Date ? g.latestUpdatedAt.toISOString() : g.latestUpdatedAt,
+        representativeJobId: g.representativeJobId,
+        lastError: g.lastError,
+      })),
+      totalGroups,
+      totalJobs,
+    };
+  }
+
+  @Post('jobs/retry-grouped')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-queue every dead job in a (connectionId, jobType) group',
+    description:
+      'Re-queues every dead sync job matching the group selector, capped at a server-side batch size. Jobs that flipped out of dead between our selection and the update are counted as skipped. Emits one sync.job.bulk-retry-requested event when at least one job is re-queued.',
+  })
+  @ApiResponse({ status: 200, description: 'Bulk retry result', type: RetryGroupedSyncJobsResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid request body' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryGroupedJobs(
+    @Body() dto: RetryGroupedSyncJobsDto,
+  ): Promise<RetryGroupedSyncJobsResponseDto> {
+    const result = await this.bulkRetryService.retryGroup(dto.connectionId, dto.jobType);
+    return {
+      requeuedJobIds: result.requeuedJobIds,
+      count: result.count,
+      skipped: result.skipped,
     };
   }
 

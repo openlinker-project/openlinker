@@ -71,3 +71,43 @@ export interface PaginatedSyncJobs {
   limit: number;
   offset: number;
 }
+
+/**
+ * Aggregated dead-job signature from `GET /sync/jobs/grouped`. Each group
+ * collapses all jobs sharing a `(connectionId, jobType)` signature into a
+ * single row with a count, representative job id, and the group's last
+ * error + most recent update time.
+ */
+export interface SyncJobGroup {
+  connectionId: string;
+  jobType: JobType;
+  count: number;
+  /** ISO 8601 string. */
+  latestUpdatedAt: string;
+  representativeJobId: string;
+  lastError: string | null;
+}
+
+export interface SyncJobGroupsResponse {
+  groups: SyncJobGroup[];
+  totalGroups: number;
+  totalJobs: number;
+}
+
+export interface SyncJobGroupsFilters {
+  status: JobStatus;
+  connectionId?: string;
+  /** Max groups to return (server caps at 100). */
+  limit?: number;
+}
+
+export interface RetryGroupedSyncJobsInput {
+  connectionId: string;
+  jobType: JobType;
+}
+
+export interface RetryGroupedSyncJobsResult {
+  requeuedJobIds: string[];
+  count: number;
+  skipped: number;
+}

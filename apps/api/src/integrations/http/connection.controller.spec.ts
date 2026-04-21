@@ -76,6 +76,8 @@ describe('ConnectionController', () => {
       requeueStuckJobs: jest.fn(),
       requeueDeadJob: jest.fn(),
       findRecentByConnectionId: jest.fn(),
+      findGroupedByStatus: jest.fn(),
+      requeueDeadJobsInGroup: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

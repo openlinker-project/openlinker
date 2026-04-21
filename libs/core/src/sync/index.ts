@@ -36,8 +36,17 @@ export type {
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
+  SyncJobGroup,
+  SyncJobGroupsResult,
+  SyncJobGroupFilters,
+  BulkRetryResult,
 } from './domain/types/sync-job.types';
-export { JobTypeValues, JobStatusValues } from './domain/types/sync-job.types';
+export {
+  JobTypeValues,
+  JobStatusValues,
+  BULK_RETRY_MAX_BATCH_SIZE,
+  SYNC_JOBS_EVENT_STREAM,
+} from './domain/types/sync-job.types';
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
@@ -63,6 +72,7 @@ export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-s
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
+export type { ISyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service.interface';
 
 // Module and tokens
 export { SyncModule } from './sync.module';
@@ -73,6 +83,7 @@ export {
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
+  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)

@@ -9,6 +9,7 @@
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventsModule } from '@openlinker/core/events';
 import { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 import { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
 import { SyncJobRepository } from './infrastructure/persistence/repositories/sync-job.repository';
@@ -17,6 +18,7 @@ import { ConnectionCursorRepository } from './infrastructure/persistence/reposit
 import { SyncJobQueueService } from './application/services/sync-job-queue.service';
 import { RedisSyncLockService } from './application/services/redis-sync-lock.service';
 import { SyncJobRetryService } from './application/services/sync-job-retry.service';
+import { SyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service';
 import {
   JOB_ENQUEUE_TOKEN,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -24,6 +26,7 @@ import {
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
+  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -34,11 +37,13 @@ export {
   SYNC_JOB_QUEUE_TOKEN,
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
+  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
 } from './sync.tokens';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([SyncJobOrmEntity, ConnectionCursorOrmEntity]),
+    EventsModule,
   ],
   providers: [
     // Job enqueue service
@@ -74,6 +79,13 @@ export {
       useExisting: SyncJobRetryService,
     },
 
+    // Bulk retry service (application-level)
+    SyncJobBulkRetryService,
+    {
+      provide: SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
+      useExisting: SyncJobBulkRetryService,
+    },
+
     // Distributed lock (application-level)
     RedisSyncLockService,
     {
@@ -94,6 +106,8 @@ export {
     RedisSyncLockService,
     SYNC_JOB_RETRY_SERVICE_TOKEN,
     SyncJobRetryService,
+    SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
+    SyncJobBulkRetryService,
   ],
 })
 export class SyncModule {}

@@ -10,7 +10,14 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import { SyncJob } from '../entities/sync-job.entity';
-import { SyncJobFilters, SyncJobPagination, PaginatedSyncJobs } from '../types/sync-job.types';
+import {
+  SyncJobFilters,
+  SyncJobPagination,
+  PaginatedSyncJobs,
+  SyncJobGroupFilters,
+  SyncJobGroupsResult,
+  BulkRetryResult,
+} from '../types/sync-job.types';
 
 /**
  * Sync Job Repository Port
@@ -113,5 +120,42 @@ export interface SyncJobRepositoryPort {
    * @returns Array of sync job domain entities, newest first
    */
   findRecentByConnectionId(connectionId: string, limit: number): Promise<SyncJob[]>;
+
+  /**
+   * Aggregate jobs by (connectionId, jobType) for the given status filter.
+   *
+   * Collapses all matching jobs into one row per signature with count,
+   * latest update timestamp, the most-recently-updated job's id as the
+   * representative, and that job's lastError. Groups are sorted by count
+   * DESC, then latestUpdatedAt DESC, and capped at `maxGroups`. `totalGroups`
+   * and `totalJobs` are absolute counts so callers can render "top N of M".
+   *
+   * @param filters - Required status filter plus optional connectionId scope
+   * @param maxGroups - Upper bound on the `groups` array (e.g. 100)
+   * @returns Aggregated result with capped groups and total counts
+   */
+  findGroupedByStatus(
+    filters: SyncJobGroupFilters,
+    maxGroups: number,
+  ): Promise<SyncJobGroupsResult>;
+
+  /**
+   * Re-queue up to `maxBatchSize` dead jobs matching `(connectionId, jobType)`.
+   *
+   * Atomic conditional UPDATE per job (`WHERE id = ANY(:ids) AND status = 'dead'`)
+   * so jobs that flipped out of `dead` between our SELECT and UPDATE are skipped
+   * rather than double-enqueued. `skipped` reflects the difference between the
+   * selected batch size and the actually-updated rowcount.
+   *
+   * @param connectionId - Connection UUID scoping the group
+   * @param jobType - Job type scoping the group
+   * @param maxBatchSize - Upper bound on jobs to re-queue in one call
+   * @returns `requeuedJobIds` (updated), `count` (updated.length), `skipped`
+   */
+  requeueDeadJobsInGroup(
+    connectionId: string,
+    jobType: string,
+    maxBatchSize: number,
+  ): Promise<BulkRetryResult>;
 }
 

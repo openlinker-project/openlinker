@@ -11,6 +11,10 @@ import type {
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
+  SyncJobGroupsResponse,
+  SyncJobGroupsFilters,
+  RetryGroupedSyncJobsInput,
+  RetryGroupedSyncJobsResult,
 } from './sync-jobs.types';
 
 export interface EnqueueSyncJobInput {
@@ -39,6 +43,18 @@ export interface SyncJobsApi {
   list: (filters?: SyncJobFilters, pagination?: SyncJobPagination) => Promise<PaginatedSyncJobs>;
   getById: (id: string) => Promise<SyncJob>;
   retry: (id: string) => Promise<SyncJob>;
+  /**
+   * List sync jobs aggregated by (connectionId, jobType). Server caps the
+   * returned `groups` array at 100 — the full `totalGroups` count is in
+   * the response so the UI can render "top N of M".
+   */
+  listGrouped: (filters: SyncJobGroupsFilters) => Promise<SyncJobGroupsResponse>;
+  /**
+   * Re-queue every dead job matching the group selector. Server caps the
+   * batch size; any jobs that flipped out of `dead` mid-flight are counted
+   * as `skipped` in the response.
+   */
+  retryGrouped: (input: RetryGroupedSyncJobsInput) => Promise<RetryGroupedSyncJobsResult>;
 }
 
 interface ApiRequest {
@@ -54,6 +70,14 @@ function buildQuery(filters?: SyncJobFilters, pagination?: SyncJobPagination): s
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
+}
+
+function buildGroupedQuery(filters: SyncJobGroupsFilters): string {
+  const params = new URLSearchParams();
+  params.set('status', filters.status);
+  if (filters.connectionId) params.set('connectionId', filters.connectionId);
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit));
+  return `?${params.toString()}`;
 }
 
 export function createSyncJobsApi(request: ApiRequest): SyncJobsApi {
@@ -72,6 +96,15 @@ export function createSyncJobsApi(request: ApiRequest): SyncJobsApi {
     },
     retry(id): Promise<SyncJob> {
       return request<SyncJob>(`/sync/jobs/${id}/retry`, { method: 'POST' });
+    },
+    listGrouped(filters): Promise<SyncJobGroupsResponse> {
+      return request<SyncJobGroupsResponse>(`/sync/jobs/grouped${buildGroupedQuery(filters)}`);
+    },
+    retryGrouped(input): Promise<RetryGroupedSyncJobsResult> {
+      return request<RetryGroupedSyncJobsResult>('/sync/jobs/retry-grouped', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
   };
 }
