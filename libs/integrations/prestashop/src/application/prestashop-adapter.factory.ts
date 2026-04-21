@@ -249,7 +249,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Build validated config with defaults
     const validatedConfig: PrestashopConnectionConfig = {
       baseUrl: config.baseUrl,
-      storefrontBaseUrl: config.storefrontBaseUrl as string | undefined,
+      // No cast needed: TypeScript narrows `config.storefrontBaseUrl` to
+      // `string | undefined` via the preceding `typeof` guard + throw branch.
+      // `@typescript-eslint/no-unnecessary-type-assertion` flags the redundant
+      // assertion that symmetry with sibling fields would otherwise suggest.
+      storefrontBaseUrl: config.storefrontBaseUrl,
       shopId: config.shopId as number | undefined,
       langId: (config.langId as number | undefined) ?? 1,
       timeoutMs: (config.timeoutMs as number | undefined) ?? 30000,
