@@ -74,6 +74,7 @@ export async function startHarness(): Promise<void> {
   // helpers. Letting BootstrapAdminService also insert a default `admin`
   // user on app.init() causes the first `loginAsAdmin('admin')` call in
   // every suite to collide on the users.username unique constraint. See #278.
+  // Regression guard: test/integration/bootstrap-admin-disabled.int-spec.ts
   process.env.OL_BOOTSTRAP_ADMIN_ENABLED = 'false';
 
   // Store containers on globalThis for teardown

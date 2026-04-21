@@ -16,7 +16,6 @@
 import {
   getTestHarness,
   IntegrationTestHarness,
-  resetTestHarness,
   teardownTestHarness,
 } from './setup';
 
@@ -24,18 +23,24 @@ describe('Bootstrap admin disabled in integration harness (#278)', () => {
   let harness: IntegrationTestHarness;
 
   beforeAll(async () => {
+    // Force a fresh app boot so this assertion observes the real
+    // post-`onApplicationBootstrap` state. Any cached harness from a
+    // prior suite would mask a re-enabled bootstrap because app.init()
+    // (and therefore the bootstrap hook) only runs once per harness.
+    await teardownTestHarness();
     harness = await getTestHarness();
-    await resetTestHarness();
   });
 
   afterAll(async () => {
     await teardownTestHarness();
   });
 
-  it('leaves the users table empty after app boot', async () => {
-    const result = await harness
+  it('does not seed a default admin user after app boot', async () => {
+    const rows = await harness
       .getDataSource()
-      .query<{ count: string }[]>('SELECT COUNT(*)::text AS count FROM users');
-    expect(result[0].count).toBe('0');
+      .query<
+        { count: string }[]
+      >(`SELECT COUNT(*)::text AS count FROM users WHERE username = 'admin'`);
+    expect(rows[0].count).toBe('0');
   });
 });
