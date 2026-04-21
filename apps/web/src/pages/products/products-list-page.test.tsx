@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
@@ -12,7 +12,7 @@ const sampleProducts: PaginatedProducts = {
       sku: 'SKU-001',
       price: 29.99,
       description: null,
-      images: null,
+      images: ['https://cdn.example.com/test-product.jpg'],
       createdAt: '2026-01-15T10:00:00.000Z',
       updatedAt: '2026-01-15T10:00:00.000Z',
     },
@@ -84,6 +84,41 @@ describe('ProductsListPage', () => {
 
     expect(await screen.findByText('Unable to load products')).toBeInTheDocument();
     expect(screen.getByText('Network error')).toBeInTheDocument();
+  });
+
+  it('should render a thumbnail image for products with an image URL', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue(sampleProducts),
+      },
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await within(container).findByText('Test Product');
+    const image = container.querySelector<HTMLImageElement>(
+      'img[src="https://cdn.example.com/test-product.jpg"]',
+    );
+    expect(image).not.toBeNull();
+  });
+
+  it('should render a placeholder thumbnail for products without an image', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue(sampleProducts),
+      },
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await within(container).findByText('Another Product');
+    const thumbnails = container.querySelectorAll('.product-thumbnail');
+    expect(thumbnails.length).toBeGreaterThanOrEqual(2);
+    const placeholderRow = Array.from(thumbnails).find(
+      (el) => el.querySelector('img') === null,
+    );
+    expect(placeholderRow).not.toBeUndefined();
+    expect(placeholderRow?.textContent).toBe('A');
   });
 
   it('should show empty state when no products exist', async () => {

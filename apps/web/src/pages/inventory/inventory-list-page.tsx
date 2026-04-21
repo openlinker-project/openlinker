@@ -1,10 +1,11 @@
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
@@ -13,27 +14,51 @@ import type { InventoryItem, InventoryFilters } from '../../features/inventory/a
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
+function resolveInventoryLabel(item: InventoryItem): string {
+  return item.productName ?? item.productSku ?? item.productId;
+}
+
+function renderInventoryNameNode(item: InventoryItem): ReactNode {
+  if (item.productName) {
+    return <span className="product-row__name">{item.productName}</span>;
+  }
+  if (item.productSku) {
+    return (
+      <span className="product-row__name mono-text" title={item.productSku}>
+        {item.productSku}
+      </span>
+    );
+  }
+  return (
+    <span className="product-row__name mono-text text-muted" title={item.productId}>
+      {item.productId}
+    </span>
+  );
+}
+
 const COLUMNS: DataTableColumn<InventoryItem>[] = [
   {
     id: 'product',
     header: 'Product',
-    cell: (item) => {
-      if (item.productName) {
-        return (
-          <span>
-            {item.productName}
-            {item.productSku ? (
-              <span className="text-muted sku-label">
-                <span className="mono-text" title={item.productSku}>{item.productSku}</span>
+    cell: (item): ReactNode => {
+      const showSkuSublabel = Boolean(item.productName) && Boolean(item.productSku);
+      return (
+        <span className="product-row">
+          <ProductThumbnail
+            src={item.productImageUrl}
+            name={resolveInventoryLabel(item)}
+            size="sm"
+          />
+          {renderInventoryNameNode(item)}
+          {showSkuSublabel ? (
+            <span className="text-muted">
+              <span className="mono-text" title={item.productSku ?? undefined}>
+                {item.productSku}
               </span>
-            ) : null}
-          </span>
-        );
-      }
-      if (item.productSku) {
-        return <span className="mono-text" title={item.productSku}>{item.productSku}</span>;
-      }
-      return <span className="mono-text text-muted" title={item.productId}>{item.productId}</span>;
+            </span>
+          ) : null}
+        </span>
+      );
     },
   },
   {
@@ -199,7 +224,15 @@ export function InventoryListPage(): ReactElement {
             sort={sort}
             onSortChange={setSort}
             cardView={{
-              title: (item) => item.productName ?? item.productSku ?? item.productId,
+              title: (item) => {
+                const label = resolveInventoryLabel(item);
+                return (
+                  <span className="product-row">
+                    <ProductThumbnail src={item.productImageUrl} name={label} size="sm" />
+                    <span className="product-row__name">{label}</span>
+                  </span>
+                );
+              },
               subtitle: (item) => item.productVariantId ?? '',
               meta: (item) => `${item.availableQuantity} avail`,
             }}
