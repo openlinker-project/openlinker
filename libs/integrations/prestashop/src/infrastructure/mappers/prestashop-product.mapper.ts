@@ -7,9 +7,9 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  * @implements {IPrestashopProductMapper}
  */
+import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from './prestashop.mapper.interface';
 import { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
-import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 
 /**
  * PrestaShop Product Mapper
@@ -366,11 +366,15 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   }
 
   /**
-   * Split a numeric id into a `/`-separated digit path.
+   * Split a numeric id into a `/`-separated character path.
    *
+   * Every character of the input becomes one path segment, separated by `/`.
    * Examples: `'1'` → `'1'`, `'42'` → `'4/2'`, `'123'` → `'1/2/3'`.
-   * Non-digit characters are preserved as-is (PrestaShop ids are numeric in
-   * practice, but this keeps the helper defensive).
+   *
+   * Caller is responsible for supplying numeric ids — PrestaShop image ids
+   * are numeric in practice, and `extractImageId` rejects anything that
+   * isn't `string | number` before reaching this helper. Non-digit input
+   * would still be split character-by-character rather than stripped.
    */
   private splitImageId(id: string): string {
     return id.split('').join('/');
