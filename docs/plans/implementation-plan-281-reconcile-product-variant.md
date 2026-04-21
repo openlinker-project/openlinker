@@ -168,7 +168,7 @@ Will file a follow-up issue after this PR lands so the reviewer can see the shap
 | Question | Decision |
 |---|---|
 | Keep class or use interface? | Interface. Issue recommends it; repositories build plain objects. |
-| Required or optional timestamps? | **Required.** Adapters stamp `new Date()` placeholders; TypeORM handles persistence timestamps. |
+| Required or optional timestamps? | **Optional.** Adapters produce pre-persistence variants without timestamps; TypeORM `@CreateDateColumn`/`@UpdateDateColumn` fills them in on save; repositories populate on load. Required would force adapters to fabricate `new Date()` placeholders that TypeORM discards. Controllers that serialize repository-sourced variants use a non-null assertion (see `apps/api/src/products/http/products.controller.ts`). |
 | `ean`/`gtin` null vs undefined? | **`string \| null`.** Aligns with DB columns; consumers do truthy check in practice. |
 | Keep the `[key: string]: unknown` index signature? | **No.** Issue explicitly calls it out as a bug-hiding escape hatch. |
 | Keep `ProductVariantEntity` alias in the barrel? | **No.** After migrating three test files, it has zero consumers. |

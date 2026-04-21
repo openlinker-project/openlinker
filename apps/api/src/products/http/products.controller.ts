@@ -37,6 +37,28 @@ import { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
 
+/**
+ * Shared variant-to-DTO mapper.
+ *
+ * Timestamps are optional on the ProductVariant interface because adapters
+ * produce pre-persistence variants. In these controllers the variant is always
+ * repository-sourced (see ProductVariantRepository#toDomain), so timestamps are
+ * guaranteed present — non-null assertion crashes loudly if the invariant ever
+ * breaks, which is preferable to silently emitting a 1970 epoch date.
+ */
+function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
+  return {
+    id: variant.id,
+    productId: variant.productId,
+    sku: variant.sku,
+    attributes: variant.attributes,
+    ean: variant.ean ?? null,
+    gtin: variant.gtin ?? null,
+    createdAt: variant.createdAt!.toISOString(),
+    updatedAt: variant.updatedAt!.toISOString(),
+  };
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('products')
@@ -160,20 +182,7 @@ export class ProductsController {
   }
 
   private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
-    // Timestamps are optional on the ProductVariant interface because adapters
-    // produce pre-persistence variants. In this controller the variant is always
-    // repository-sourced (see ProductVariantRepository#toDomain), so they are
-    // guaranteed present — fall back to epoch for compiler's benefit only.
-    return {
-      id: variant.id,
-      productId: variant.productId,
-      sku: variant.sku,
-      attributes: variant.attributes,
-      ean: variant.ean ?? null,
-      gtin: variant.gtin ?? null,
-      createdAt: (variant.createdAt ?? new Date(0)).toISOString(),
-      updatedAt: (variant.updatedAt ?? new Date(0)).toISOString(),
-    };
+    return variantToDto(variant);
   }
 
   private toExternalIdDto(mapping: { externalId: string; platformType: string; connectionId: string }): ExternalIdMappingDto {
@@ -226,19 +235,6 @@ export class VariantsController {
   }
 
   private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
-    // Timestamps are optional on the ProductVariant interface because adapters
-    // produce pre-persistence variants. In this controller the variant is always
-    // repository-sourced (see ProductVariantRepository#toDomain), so they are
-    // guaranteed present — fall back to epoch for compiler's benefit only.
-    return {
-      id: variant.id,
-      productId: variant.productId,
-      sku: variant.sku,
-      attributes: variant.attributes,
-      ean: variant.ean ?? null,
-      gtin: variant.gtin ?? null,
-      createdAt: (variant.createdAt ?? new Date(0)).toISOString(),
-      updatedAt: (variant.updatedAt ?? new Date(0)).toISOString(),
-    };
+    return variantToDto(variant);
   }
 }
