@@ -120,9 +120,10 @@ describe('EditConnectionForm', () => {
   });
 
   describe('structured PrestaShop inputs + raw JSON toggle', () => {
-    it('renders Shop URL / Shop ID inputs for a PrestaShop connection', () => {
+    it('renders Shop URL / Storefront URL / Shop ID inputs for a PrestaShop connection', () => {
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
       expect(screen.getByLabelText('Shop URL')).toHaveValue('https://example.com');
+      expect(screen.getByLabelText('Storefront URL (optional)')).toHaveValue('');
       expect(screen.getByLabelText('Shop ID (optional)')).toHaveValue('');
     });
 
@@ -134,6 +135,57 @@ describe('EditConnectionForm', () => {
 
       expect(screen.getByLabelText('Config JSON')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Hide raw config JSON' })).toBeInTheDocument();
+    });
+
+    it('syncs structured Storefront URL edits into the underlying Config JSON payload', async () => {
+      const connectionWithStorefront: Connection = {
+        ...sampleConnection,
+        config: { baseUrl: 'https://api.example.com', storefrontBaseUrl: 'https://example.com' },
+      };
+      const updateFn = vi.fn().mockResolvedValue(connectionWithStorefront);
+      const apiClient = createMockApiClient({ connections: { update: updateFn } });
+      renderWithProviders(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
+
+      expect(screen.getByLabelText('Storefront URL (optional)')).toHaveValue('https://example.com');
+
+      fireEvent.change(screen.getByLabelText('Storefront URL (optional)'), {
+        target: { value: 'https://new-storefront.example.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(updateFn).toHaveBeenCalledWith(
+          connectionWithStorefront.id,
+          expect.objectContaining({
+            config: {
+              baseUrl: 'https://api.example.com',
+              storefrontBaseUrl: 'https://new-storefront.example.com',
+            },
+          }),
+        );
+      });
+    });
+
+    it('removes storefrontBaseUrl from config when the field is cleared', async () => {
+      const connectionWithStorefront: Connection = {
+        ...sampleConnection,
+        config: { baseUrl: 'https://api.example.com', storefrontBaseUrl: 'https://example.com' },
+      };
+      const updateFn = vi.fn().mockResolvedValue(connectionWithStorefront);
+      const apiClient = createMockApiClient({ connections: { update: updateFn } });
+      renderWithProviders(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
+
+      fireEvent.change(screen.getByLabelText('Storefront URL (optional)'), {
+        target: { value: '' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(updateFn).toHaveBeenCalled();
+      });
+      const [, payload] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+      expect(payload.config).toEqual({ baseUrl: 'https://api.example.com' });
+      expect('storefrontBaseUrl' in payload.config).toBe(false);
     });
 
     it('syncs structured Shop URL edits into the underlying Config JSON payload', async () => {
@@ -197,6 +249,7 @@ describe('EditConnectionForm', () => {
 
       expect(screen.getByText('Raw JSON is invalid')).toBeInTheDocument();
       expect(screen.getByLabelText('Shop URL')).toBeDisabled();
+      expect(screen.getByLabelText('Storefront URL (optional)')).toBeDisabled();
       expect(screen.getByLabelText('Shop ID (optional)')).toBeDisabled();
     });
   });
