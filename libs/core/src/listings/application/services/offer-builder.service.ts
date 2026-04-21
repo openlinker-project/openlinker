@@ -99,27 +99,26 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
 
     const title = input.overrides?.title ?? product.name;
-    // product.description / product.images are `T | null` on the unified Product
-    // interface, but CreateOfferOverrides expects `T | undefined`. Coerce null
-    // back to undefined at this boundary. Follow-up: widen CreateOfferOverrides.
-    const description = input.overrides?.description ?? product.description ?? undefined;
-    const imageUrls = input.overrides?.imageUrls ?? product.images ?? undefined;
+    const description = input.overrides?.description ?? product.description;
+    const imageUrls = input.overrides?.imageUrls ?? product.images;
 
     const overrides = {
       title,
       description,
-      categoryId: categoryId ?? undefined,
+      categoryId,
       imageUrls,
       platformParams: input.overrides?.platformParams,
     };
 
-    // Drop undefined so serialization stays tidy.
+    // Strip both null and undefined so the command shape stays tidy and
+    // adapters see a consistent "absent field" regardless of whether the
+    // source was a missing override or a null Product field.
     const cleanedOverrides: CreateOfferCommand['overrides'] = {};
-    if (overrides.title !== undefined) cleanedOverrides.title = overrides.title;
-    if (overrides.description !== undefined) cleanedOverrides.description = overrides.description;
-    if (overrides.categoryId !== undefined) cleanedOverrides.categoryId = overrides.categoryId;
-    if (overrides.imageUrls !== undefined) cleanedOverrides.imageUrls = overrides.imageUrls;
-    if (overrides.platformParams !== undefined) {
+    if (overrides.title != null) cleanedOverrides.title = overrides.title;
+    if (overrides.description != null) cleanedOverrides.description = overrides.description;
+    if (overrides.categoryId != null) cleanedOverrides.categoryId = overrides.categoryId;
+    if (overrides.imageUrls != null) cleanedOverrides.imageUrls = overrides.imageUrls;
+    if (overrides.platformParams != null) {
       cleanedOverrides.platformParams = overrides.platformParams;
     }
 

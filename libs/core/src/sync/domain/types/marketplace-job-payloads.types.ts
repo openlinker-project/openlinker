@@ -76,7 +76,15 @@ export interface MarketplaceOfferCreatePayloadV1 {
   publishImmediately: boolean;
   /** Optional explicit price; when omitted the builder falls back to master product. */
   price?: { amount: number; currency: string };
-  /** Optional overrides (title, description, category, images, platformParams). */
+  /**
+   * Optional overrides (title, description, category, images, platformParams).
+   *
+   * Callers constructing this payload directly (e.g. the future
+   * POST /listings/connections/:id/offers REST endpoint) should normalize
+   * through `OfferBuilderService.buildCreateOfferCommand`, which strips
+   * null/undefined fields from the overrides. Persisted payloads are not
+   * expected to carry `null` description/imageUrls.
+   */
   overrides?: CreateOfferOverrides;
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;

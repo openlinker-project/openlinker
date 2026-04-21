@@ -14,16 +14,26 @@
  * Overrides for fields that can optionally be customized per-offer.
  * Any field omitted here falls back to a value derived by the core builder
  * service from the OL variant (e.g. variant.name, variant.description).
+ *
+ * For fields typed `T | null | undefined`, the builder strips both `null`
+ * and `undefined` before the command reaches an adapter — both mean "no
+ * override" and fall back to the variant/product value if any.
  */
 export interface CreateOfferOverrides {
   /** Offer title. Falls back to variant name. */
   title?: string;
-  /** Offer description (HTML or rich text depending on platform). Falls back to variant description. */
-  description?: string;
+  /**
+   * Offer description (HTML or rich text depending on platform). Falls back
+   * to variant description. `null` or `undefined` both mean "no override".
+   */
+  description?: string | null;
   /** Platform-specific category id (e.g. Allegro category id). */
   categoryId?: string;
-  /** Image URLs in display order. Falls back to variant images. */
-  imageUrls?: string[];
+  /**
+   * Image URLs in display order. Falls back to variant images. `null` or
+   * `undefined` both mean "no override".
+   */
+  imageUrls?: string[] | null;
   /**
    * Platform-specific parameters the adapter interprets directly.
    *
