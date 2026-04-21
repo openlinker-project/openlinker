@@ -13,6 +13,9 @@ export {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  SELLER_POLICIES_SERVICE_TOKEN,
+  SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
 export { OfferLinkingService } from './application/services/offer-linking.service';
 export { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
@@ -67,3 +70,15 @@ export type {
   OfferBuilderValidationIssue,
 } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
+export { SellerPoliciesService } from './application/services/seller-policies.service';
+export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
+export type {
+  SellerPoliciesCacheRepositoryPort,
+  CachedSellerPolicies,
+} from './domain/ports/seller-policies-cache-repository.port';
+export { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
+export type { IOfferCreationEnqueueService } from './application/interfaces/offer-creation-enqueue.service.interface';
+export type {
+  EnqueueOfferCreationInput,
+  EnqueueOfferCreationResult,
+} from './application/types/offer-creation-enqueue.types';

@@ -1,37 +1,57 @@
 /**
  * Listings Controller
  *
- * HTTP REST API endpoints for offer mapping read operations. Provides endpoints
- * for listing offer-to-variant mappings with filters and retrieving individual
- * offer mapping details.
+ * HTTP REST API endpoints for offer mapping read operations, outbound offer
+ * creation (202-async), offer-creation status polling, and seller-policy
+ * lookup (cached). Validates connection + capability up front for create,
+ * then delegates asynchronous orchestration to the worker via
+ * `marketplace.offer.create`.
  *
  * @module apps/api/src/listings/http
  */
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
   Headers,
-  Query,
-  Param,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Inject,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { OFFER_MAPPING_REPOSITORY_TOKEN } from '@openlinker/core/listings';
-import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
-import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+
+import { Roles } from '../../auth/decorators/roles.decorator';
+import {
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
+  SELLER_POLICIES_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
+import type {
+  IOfferCreationEnqueueService,
+  ISellerPoliciesService,
+  OfferCreationRecord,
+  OfferCreationRecordRepositoryPort,
+  OfferMappingRepositoryPort,
+} from '@openlinker/core/listings';
+import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
 import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
 import { AutoMatchVariantsRequestDto, AutoMatchVariantsResponseDto } from './dto/auto-match-variants.dto';
+import { CreateOfferDto } from './dto/create-offer.dto';
+import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
+import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
+import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -43,6 +63,12 @@ export class ListingsController {
     private readonly offerMappingRepository: OfferMappingRepositoryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(OFFER_CREATION_RECORD_REPOSITORY_TOKEN)
+    private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
+    @Inject(OFFER_CREATION_ENQUEUE_SERVICE_TOKEN)
+    private readonly offerCreationEnqueue: IOfferCreationEnqueueService,
+    @Inject(SELLER_POLICIES_SERVICE_TOKEN)
+    private readonly sellerPolicies: ISellerPoliciesService,
   ) {}
 
   @Get()
@@ -151,6 +177,81 @@ export class ListingsController {
     return { jobId };
   }
 
+  @Post('connections/:connectionId/offers')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Create a marketplace offer from an OpenLinker variant',
+    description:
+      'Validates the connection and adapter capability, pre-creates an OfferCreationRecord (status=pending), and enqueues a marketplace.offer.create job. Poll GET /listings/connections/:connectionId/offers/creation/:offerCreationRecordId for lifecycle updates.',
+  })
+  @ApiResponse({ status: 202, description: 'Creation job dispatched', type: CreateOfferResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support offer creation' })
+  async createOffer(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: CreateOfferDto,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+  ): Promise<CreateOfferResponseDto> {
+    // All orchestration (adapter resolution, capability check, record
+    // creation, job enqueue) lives in the core application service so the
+    // worker's `OfferCreationExecutionService` sibling has a matching
+    // pre-enqueue counterpart. Exceptions propagate unchanged — Nest maps
+    // ConnectionNotFoundException → 404, ConnectionDisabledException → 409,
+    // Capability* → 422, UnprocessableEntityException → 422.
+    const { jobId, offerCreationRecord } = await this.offerCreationEnqueue.enqueueCreation({
+      internalVariantId: dto.internalVariantId,
+      connectionId,
+      stock: dto.stock,
+      publishImmediately: dto.publishImmediately,
+      price: dto.price,
+      overrides: dto.overrides,
+      idempotencyKey: clientIdempotencyKey,
+    });
+
+    return { jobId, offerCreationRecordId: offerCreationRecord.id };
+  }
+
+  @Get('connections/:connectionId/offers/creation/:offerCreationRecordId')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'offerCreationRecordId', description: 'OfferCreationRecord id returned by POST /offers' })
+  @ApiOperation({ summary: 'Get offer-creation record status' })
+  @ApiResponse({ status: 200, description: 'Record detail', type: OfferCreationStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Record not found or belongs to a different connection' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getOfferCreationStatus(
+    @Param('connectionId') connectionId: string,
+    @Param('offerCreationRecordId') offerCreationRecordId: string,
+  ): Promise<OfferCreationStatusResponseDto> {
+    const record = await this.offerCreationRecords.findById(offerCreationRecordId);
+    if (!record || record.connectionId !== connectionId) {
+      // Cross-connection lookups return 404 to avoid leaking record existence.
+      throw new NotFoundException(`Offer creation record not found: ${offerCreationRecordId}`);
+    }
+    return this.toOfferCreationStatusDto(record);
+  }
+
+  @Get('connections/:connectionId/seller-policies')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured marketplace policies',
+    description:
+      'Returns delivery, return, warranty, and implied-warranty policy options for the connection. Cached for 10 minutes.',
+  })
+  @ApiResponse({ status: 200, description: 'Seller policies', type: SellerPoliciesResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 422, description: 'Adapter does not support seller-policy listing' })
+  async getSellerPolicies(
+    @Param('connectionId') connectionId: string,
+  ): Promise<SellerPoliciesResponseDto> {
+    return this.sellerPolicies.getSellerPolicies(connectionId);
+  }
+
   private toDto(mapping: IdentifierMapping): OfferMappingResponseDto {
     return {
       id: mapping.id,
@@ -162,6 +263,20 @@ export class ListingsController {
       context: mapping.context as Record<string, unknown> | null,
       createdAt: mapping.createdAt instanceof Date ? mapping.createdAt.toISOString() : mapping.createdAt,
       updatedAt: mapping.updatedAt instanceof Date ? mapping.updatedAt.toISOString() : mapping.updatedAt,
+    };
+  }
+
+  private toOfferCreationStatusDto(record: OfferCreationRecord): OfferCreationStatusResponseDto {
+    return {
+      id: record.id,
+      internalVariantId: record.internalVariantId,
+      connectionId: record.connectionId,
+      externalOfferId: record.externalOfferId,
+      status: record.status,
+      errors: record.errors,
+      publishImmediately: record.publishImmediately,
+      createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
+      updatedAt: record.updatedAt instanceof Date ? record.updatedAt.toISOString() : record.updatedAt,
     };
   }
 }

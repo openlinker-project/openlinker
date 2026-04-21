@@ -983,5 +983,88 @@ describe('AllegroMarketplaceAdapter', () => {
       expect(body.external).toEqual({ id: 'ol_variant_abc' });
     });
   });
+
+  describe('fetchSellerPolicies', () => {
+    function makeResponse<T>(data: T): { data: T; status: number; headers: Record<string, string> } {
+      return { data, status: 200, headers: {} };
+    }
+
+    it('issues 4 parallel GETs and maps the envelopes to the neutral SellerPolicies shape', async () => {
+      httpClient.get
+        .mockResolvedValueOnce(
+          makeResponse({
+            deliverySettings: [
+              { id: 'd1', name: 'Standard' },
+              { id: 'd2', name: 'Express' },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse({
+            returnPolicies: [{ id: 'r1', name: '14-day returns' }],
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse({
+            warranties: [{ id: 'w1', name: '1-year manufacturer' }],
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse({
+            impliedWarranties: [{ id: 'iw1', name: 'Consumer rights' }],
+          }),
+        );
+
+      const result = await adapter.fetchSellerPolicies();
+
+      expect(result).toEqual({
+        deliveryPolicies: [
+          { id: 'd1', name: 'Standard' },
+          { id: 'd2', name: 'Express' },
+        ],
+        returnPolicies: [{ id: 'r1', name: '14-day returns' }],
+        warranties: [{ id: 'w1', name: '1-year manufacturer' }],
+        impliedWarranties: [{ id: 'iw1', name: 'Consumer rights' }],
+      });
+
+      expect(httpClient.get).toHaveBeenCalledTimes(4);
+      const calledPaths = httpClient.get.mock.calls.map((args) => args[0]).sort();
+      expect(calledPaths).toEqual(
+        [
+          '/after-sales-service-conditions/implied-warranties',
+          '/after-sales-service-conditions/return-policies',
+          '/after-sales-service-conditions/warranties',
+          '/sale/delivery-settings',
+        ].sort(),
+      );
+    });
+
+    it('returns empty arrays when Allegro returns no policies', async () => {
+      httpClient.get
+        .mockResolvedValueOnce(makeResponse({ deliverySettings: [] }))
+        .mockResolvedValueOnce(makeResponse({ returnPolicies: [] }))
+        .mockResolvedValueOnce(makeResponse({ warranties: [] }))
+        .mockResolvedValueOnce(makeResponse({ impliedWarranties: [] }));
+
+      const result = await adapter.fetchSellerPolicies();
+
+      expect(result).toEqual({
+        deliveryPolicies: [],
+        returnPolicies: [],
+        warranties: [],
+        impliedWarranties: [],
+      });
+    });
+
+    it('propagates AllegroApiException when any single endpoint fails', async () => {
+      httpClient.get
+        .mockResolvedValueOnce(makeResponse({ deliverySettings: [] }))
+        .mockRejectedValueOnce(new AllegroApiException('rate limit', 429))
+        .mockResolvedValueOnce(makeResponse({ warranties: [] }))
+        .mockResolvedValueOnce(makeResponse({ impliedWarranties: [] }));
+
+      await expect(adapter.fetchSellerPolicies()).rejects.toBeInstanceOf(AllegroApiException);
+    });
+  });
 });
 

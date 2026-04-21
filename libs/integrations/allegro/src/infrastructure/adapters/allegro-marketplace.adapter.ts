@@ -25,6 +25,7 @@ import type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
   MarketplaceCategory,
+  SellerPolicies,
 } from '@openlinker/core/integrations';
 import type { IncomingOrder } from '@openlinker/core/orders';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -46,6 +47,11 @@ import {
   AllegroProductOfferCreateRequest,
   AllegroProductOfferCreateResponse,
   AllegroValidationError,
+  AllegroDeliverySettingsResponse,
+  AllegroReturnPoliciesResponse,
+  AllegroWarrantiesResponse,
+  AllegroImpliedWarrantiesResponse,
+  AllegroSellerPolicyEntry,
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -822,6 +828,38 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
       result.validationErrors = validationErrors;
     }
     return result;
+  }
+
+  /**
+   * Fetch seller-configured Allegro policies (delivery + return + warranty +
+   * implied-warranty). All four Allegro endpoints are independent; issued in
+   * parallel via Promise.all so total latency tracks the slowest call. Any
+   * non-2xx propagates as `AllegroApiException` from the HTTP client — the
+   * calling service surfaces that to the HTTP layer as a 5xx.
+   */
+  async fetchSellerPolicies(): Promise<SellerPolicies> {
+    this.logger.debug(
+      `Fetching Allegro seller policies (connection: ${this.connectionId})`,
+    );
+
+    const [delivery, returns, warranties, impliedWarranties] = await Promise.all([
+      this.httpClient.get<AllegroDeliverySettingsResponse>('/sale/delivery-settings'),
+      this.httpClient.get<AllegroReturnPoliciesResponse>('/after-sales-service-conditions/return-policies'),
+      this.httpClient.get<AllegroWarrantiesResponse>('/after-sales-service-conditions/warranties'),
+      this.httpClient.get<AllegroImpliedWarrantiesResponse>('/after-sales-service-conditions/implied-warranties'),
+    ]);
+
+    const mapEntry = (p: AllegroSellerPolicyEntry): { id: string; name: string } => ({
+      id: p.id,
+      name: p.name,
+    });
+
+    return {
+      deliveryPolicies: (delivery.data.deliverySettings ?? []).map(mapEntry),
+      returnPolicies: (returns.data.returnPolicies ?? []).map(mapEntry),
+      warranties: (warranties.data.warranties ?? []).map(mapEntry),
+      impliedWarranties: (impliedWarranties.data.impliedWarranties ?? []).map(mapEntry),
+    };
   }
 
   private buildCreateOfferRequest(cmd: CreateOfferCommand): AllegroProductOfferCreateRequest {

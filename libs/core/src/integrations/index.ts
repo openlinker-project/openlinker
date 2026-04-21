@@ -62,6 +62,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
 } from './domain/types/marketplace-offer-create.types';
+export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
 
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';
