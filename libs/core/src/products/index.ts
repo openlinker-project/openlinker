@@ -22,18 +22,18 @@ export {
 // Ports
 export {
   ProductMasterPort,
-  Product,
   Category,
 } from './domain/ports/product-master.port';
 export { ProductRepositoryPort } from './domain/ports/product-repository.port';
 export { ProductVariantRepositoryPort } from './domain/ports/product-variant-repository.port';
 
 // Domain Entities
-export { Product as ProductEntity } from './domain/entities/product.entity';
+export { Product } from './domain/entities/product.entity';
 export { ProductVariant } from './domain/entities/product-variant.entity';
 
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';
+export { coverImageUrl } from './domain/utils/product-cover-image';
 
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';

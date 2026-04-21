@@ -66,23 +66,29 @@ export class ProductRepository implements ProductRepositoryPort {
   }
 
   /**
-   * Map ORM entity to domain entity
+   * Map ORM entity to domain entity.
+   *
+   * TypeORM surfaces `decimal` columns as strings; `!== null` check preserves
+   * `price=0` (previously coerced to `null` via truthy shortcut).
    */
   private toDomain(entity: ProductOrmEntity): Product {
-    return new Product(
-      entity.id,
-      entity.name,
-      entity.sku,
-      entity.price ? Number(entity.price) : null,
-      entity.description,
-      entity.images,
-      entity.createdAt,
-      entity.updatedAt,
-    );
+    return {
+      id: entity.id,
+      name: entity.name,
+      sku: entity.sku,
+      price: entity.price !== null ? Number(entity.price) : null,
+      description: entity.description,
+      images: entity.images,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
   }
 
   /**
-   * Map domain entity to ORM entity
+   * Map domain entity to ORM entity.
+   *
+   * Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
+   * and @UpdateDateColumn populate them in that case.
    */
   private toOrmEntity(product: Product): ProductOrmEntity {
     const entity = new ProductOrmEntity();
@@ -92,8 +98,8 @@ export class ProductRepository implements ProductRepositoryPort {
     entity.price = product.price;
     entity.description = product.description;
     entity.images = product.images;
-    entity.createdAt = product.createdAt;
-    entity.updatedAt = product.updatedAt;
+    if (product.createdAt) entity.createdAt = product.createdAt;
+    if (product.updatedAt) entity.updatedAt = product.updatedAt;
     return entity;
   }
 }

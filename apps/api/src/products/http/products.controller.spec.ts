@@ -10,24 +10,24 @@ import { NotFoundException } from '@nestjs/common';
 import { ProductsController, VariantsController } from './products.controller';
 import {
   PRODUCTS_SERVICE_TOKEN,
-  ProductEntity,
+  Product,
   ProductVariant,
 } from '@openlinker/core/products';
 import type { IProductsService } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
-function makeProduct(overrides: Partial<ProductEntity> = {}): ProductEntity {
-  return new ProductEntity(
-    overrides.id ?? 'ol_product_1',
-    overrides.name ?? 'Test Product',
-    overrides.sku ?? 'SKU-001',
-    overrides.price ?? 29.99,
-    overrides.description ?? 'A test product',
-    overrides.images ?? null,
-    overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
-    overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
-  );
+function makeProduct(overrides: Partial<Product> = {}): Product {
+  return {
+    id: overrides.id ?? 'ol_product_1',
+    name: overrides.name ?? 'Test Product',
+    sku: overrides.sku ?? 'SKU-001',
+    price: overrides.price ?? 29.99,
+    description: overrides.description ?? 'A test product',
+    images: overrides.images ?? null,
+    createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
+    updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+  };
 }
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {

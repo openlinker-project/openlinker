@@ -203,7 +203,7 @@ describe('PrestashopProductMapper', () => {
       const result = mapper.mapProduct(prestashopProduct, 1);
       // Empty string fallback in mapProduct will make it '', but getLocalizedField returns undefined
       expect(result.name).toBe(''); // mapProduct uses || '' fallback
-      expect(result.description).toBeUndefined();
+      expect(result.description).toBeNull();
     });
 
     it('should handle description field with localized content', () => {
@@ -345,7 +345,7 @@ describe('PrestashopProductMapper', () => {
       };
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toBeUndefined();
+      expect(result.images).toBeNull();
     });
 
     it('should return undefined when associations is absent entirely', () => {
@@ -357,7 +357,7 @@ describe('PrestashopProductMapper', () => {
       };
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toBeUndefined();
+      expect(result.images).toBeNull();
     });
 
     it('should extract a single-image object association (PrestaShop collapses solo collections)', () => {
@@ -434,7 +434,7 @@ describe('PrestashopProductMapper', () => {
       });
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toBeUndefined();
+      expect(result.images).toBeNull();
     });
 
     it('should accept a numeric id', () => {

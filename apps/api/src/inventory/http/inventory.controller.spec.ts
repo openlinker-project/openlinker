@@ -13,7 +13,7 @@ import {
 import type { InventoryRepositoryPort } from '@openlinker/core/inventory';
 import {
   PRODUCT_REPOSITORY_TOKEN,
-  ProductEntity as Product,
+  Product,
 } from '@openlinker/core/products';
 import type { ProductRepositoryPort } from '@openlinker/core/products';
 
@@ -32,27 +32,27 @@ describe('InventoryController', () => {
     new Date('2026-04-01T00:00:00Z'),
   );
 
-  const mockProduct = new Product(
-    'prod-001',
-    'Test Product',
-    'SKU-001',
-    99.99,
-    null,
-    ['https://shop.test/img/p/1/1-home_default.jpg', 'https://shop.test/img/p/1/1-medium.jpg'],
-    new Date('2026-01-01T00:00:00Z'),
-    new Date('2026-04-01T00:00:00Z'),
-  );
+  const mockProduct: Product = {
+    id: 'prod-001',
+    name: 'Test Product',
+    sku: 'SKU-001',
+    price: 99.99,
+    description: null,
+    images: ['https://shop.test/img/p/1/1-home_default.jpg', 'https://shop.test/img/p/1/1-medium.jpg'],
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-04-01T00:00:00Z'),
+  };
 
-  const mockProductWithoutImages = new Product(
-    'prod-001',
-    'Test Product',
-    'SKU-001',
-    99.99,
-    null,
-    null,
-    new Date('2026-01-01T00:00:00Z'),
-    new Date('2026-04-01T00:00:00Z'),
-  );
+  const mockProductWithoutImages: Product = {
+    id: 'prod-001',
+    name: 'Test Product',
+    sku: 'SKU-001',
+    price: 99.99,
+    description: null,
+    images: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-04-01T00:00:00Z'),
+  };
 
   beforeEach(async () => {
     const mockRepository: jest.Mocked<InventoryRepositoryPort> = {

@@ -22,7 +22,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { PRODUCTS_SERVICE_TOKEN, ProductEntity, ProductVariant } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, Product, ProductVariant } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -168,7 +168,12 @@ export class ProductsController {
     };
   }
 
-  private toProductDto(product: ProductEntity): ProductResponseDto {
+  private toProductDto(product: Product): ProductResponseDto {
+    // Timestamps are optional on the Product interface because adapters produce
+    // pre-persistence products. In this controller the product is always
+    // repository-sourced (see ProductRepository#toDomain), so timestamps are
+    // guaranteed present — non-null assertion crashes loudly if the invariant
+    // ever breaks, which is preferable to silently emitting a 1970 epoch date.
     return {
       id: product.id,
       name: product.name,
@@ -176,8 +181,8 @@ export class ProductsController {
       price: product.price,
       description: product.description,
       images: product.images,
-      createdAt: product.createdAt.toISOString(),
-      updatedAt: product.updatedAt.toISOString(),
+      createdAt: product.createdAt!.toISOString(),
+      updatedAt: product.updatedAt!.toISOString(),
     };
   }
 
