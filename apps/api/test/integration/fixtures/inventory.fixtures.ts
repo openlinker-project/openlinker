@@ -14,10 +14,14 @@ import { InventoryItemOrmEntity } from '@openlinker/core/inventory';
  * Seed a product + inventory item row.
  *
  * Returns the seeded inventory item.
+ *
+ * @param productOverrides Optional overrides applied to the seeded parent
+ * product (e.g. `images`) — defaults keep the product minimal.
  */
 export async function createTestInventoryItem(
   dataSource: DataSource,
   overrides?: Partial<InventoryItemOrmEntity>,
+  productOverrides?: Partial<ProductOrmEntity>,
 ): Promise<InventoryItemOrmEntity> {
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   const productId = `ol_product_fixture_${suffix}`;
@@ -25,7 +29,13 @@ export async function createTestInventoryItem(
   // Seed parent product (inventory_items has FK to products)
   const productRepo = dataSource.getRepository(ProductOrmEntity);
   await productRepo.save(
-    productRepo.create({ id: productId, name: `Test Product ${suffix}`, sku: null, price: null }),
+    productRepo.create({
+      id: productId,
+      name: `Test Product ${suffix}`,
+      sku: null,
+      price: null,
+      ...productOverrides,
+    }),
   );
 
   const repo = dataSource.getRepository(InventoryItemOrmEntity);

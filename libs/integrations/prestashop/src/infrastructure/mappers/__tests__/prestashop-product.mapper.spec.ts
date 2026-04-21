@@ -9,11 +9,13 @@
 import { PrestashopProductMapper } from '../prestashop-product.mapper';
 import { PrestashopProduct, PrestashopCombination } from '../prestashop.mapper.interface';
 
+const STOREFRONT_BASE_URL = 'https://shop.test';
+
 describe('PrestashopProductMapper', () => {
   let mapper: PrestashopProductMapper;
 
   beforeEach(() => {
-    mapper = new PrestashopProductMapper();
+    mapper = new PrestashopProductMapper({ storefrontBaseUrl: STOREFRONT_BASE_URL });
   });
 
   describe('mapProduct', () => {
@@ -317,6 +319,129 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.categories).toEqual(['5', '10']);
+    });
+  });
+
+  describe('extractImages (via mapProduct)', () => {
+    function makeProductWithImages(images: unknown): PrestashopProduct {
+      return {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {
+          images,
+        },
+      } as unknown as PrestashopProduct;
+    }
+
+    it('should return undefined when associations has no images key', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {},
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toBeUndefined();
+    });
+
+    it('should return undefined when associations is absent entirely', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toBeUndefined();
+    });
+
+    it('should extract a single-image object association (PrestaShop collapses solo collections)', () => {
+      const prestashopProduct = makeProductWithImages({ image: { id: '7' } });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual(['https://shop.test/img/p/7/7-home_default.jpg']);
+    });
+
+    it('should extract a multi-image array and preserve order (cover first)', () => {
+      const prestashopProduct = makeProductWithImages({
+        image: [{ id: '1' }, { id: '2' }, { id: '3' }],
+      });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/1/1-home_default.jpg',
+        'https://shop.test/img/p/2/2-home_default.jpg',
+        'https://shop.test/img/p/3/3-home_default.jpg',
+      ]);
+    });
+
+    it('should accept attribute-style @_id keys from XML parser output', () => {
+      const prestashopProduct = makeProductWithImages({
+        image: [{ '@_id': '42' }, { '@_id': '123' }],
+      });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/4/2/42-home_default.jpg',
+        'https://shop.test/img/p/1/2/3/123-home_default.jpg',
+      ]);
+    });
+
+    it('should split image ids by digit for deep directories', () => {
+      const prestashopProduct = makeProductWithImages({
+        image: [{ id: '1' }, { id: '42' }, { id: '123' }, { id: '1234' }],
+      });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/1/1-home_default.jpg',
+        'https://shop.test/img/p/4/2/42-home_default.jpg',
+        'https://shop.test/img/p/1/2/3/123-home_default.jpg',
+        'https://shop.test/img/p/1/2/3/4/1234-home_default.jpg',
+      ]);
+    });
+
+    it('should tolerate a trailing slash on storefrontBaseUrl', () => {
+      const localMapper = new PrestashopProductMapper({
+        storefrontBaseUrl: 'https://shop.test/',
+      });
+      const prestashopProduct = makeProductWithImages({ image: { id: '1' } });
+
+      const result = localMapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual(['https://shop.test/img/p/1/1-home_default.jpg']);
+    });
+
+    it('should skip entries without a usable id and still return the rest', () => {
+      const prestashopProduct = makeProductWithImages({
+        image: [{ id: '1' }, { notAnId: 'x' }, { id: '' }, { id: '  ' }, { id: '3' }],
+      });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/1/1-home_default.jpg',
+        'https://shop.test/img/p/3/3-home_default.jpg',
+      ]);
+    });
+
+    it('should return undefined when every entry is unusable', () => {
+      const prestashopProduct = makeProductWithImages({
+        image: [{ notAnId: 'x' }, { id: '' }, null],
+      });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toBeUndefined();
+    });
+
+    it('should accept a numeric id', () => {
+      const prestashopProduct = makeProductWithImages({ image: { id: 55 } });
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual(['https://shop.test/img/p/5/5/55-home_default.jpg']);
     });
   });
 

@@ -140,6 +140,49 @@ describe('Inventory Read API Integration', () => {
       const http = harness.getHttp();
       await http.get('/inventory').expect(401);
     });
+
+    it('should surface the cover image URL from the parent product', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const item = await createTestInventoryItem(
+        dataSource,
+        undefined,
+        {
+          images: [
+            'https://shop.test/img/p/1/1-home_default.jpg',
+            'https://shop.test/img/p/1/1-medium_default.jpg',
+          ],
+        },
+      );
+
+      const response = await http
+        .get('/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const body = response.body.items.find((row: { id: string }) => row.id === item.id);
+      expect(body).toBeDefined();
+      expect(body.productImageUrl).toBe('https://shop.test/img/p/1/1-home_default.jpg');
+    });
+
+    it('should return null productImageUrl when the parent product has no images', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const item = await createTestInventoryItem(dataSource, undefined, { images: null });
+
+      const response = await http
+        .get('/inventory')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const body = response.body.items.find((row: { id: string }) => row.id === item.id);
+      expect(body).toBeDefined();
+      expect(body.productImageUrl).toBeNull();
+    });
   });
 
   describe('GET /inventory/:id', () => {

@@ -8,6 +8,7 @@
  * @implements {IPrestashopProductMapper}
  */
 import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from './prestashop.mapper.interface';
+import { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
 import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 
 /**
@@ -16,6 +17,8 @@ import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@op
  * Transforms PrestaShop product data to OpenLinker Product schema.
  */
 export class PrestashopProductMapper implements IPrestashopProductMapper {
+  constructor(private readonly options: PrestashopProductMapperOptions) {}
+
   mapProduct(prestashopProduct: PrestashopProduct, langId: number = 1): Omit<Product, 'id'> {
     // Extract localized fields with fallback to empty string for name (required field)
     const name = this.getLocalizedField(prestashopProduct.name, langId) || '';
@@ -270,20 +273,107 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   }
 
   /**
-   * Extract images from PrestaShop product
+   * Extract public image URLs from a PrestaShop product response.
+   *
+   * PrestaShop serializes `associations.images.image` as either a single object
+   * (when the product has one image) or an array (when it has many). Each image
+   * node carries its numeric id under either `id` or `@_id` depending on the
+   * response format (JSON vs XML). We normalise both shapes, skip entries that
+   * don't yield a usable id, and build one URL per remaining entry. Preserves
+   * PrestaShop's order — the first element is treated as the cover.
+   *
+   * Returns `undefined` when no images can be extracted (no associations, empty
+   * collection, or every entry malformed). `undefined` — not `null` — matches
+   * the rest of this mapper, which relies on downstream consumers to convert
+   * `undefined → null` at persistence boundaries.
    */
   private extractImages(product: PrestashopProduct): string[] | undefined {
-    // PrestaShop images are typically in associations.images
-    // For MVP, we'll handle basic cases
-    if (product.associations && typeof product.associations === 'object') {
-      const associations = product.associations as Record<string, unknown>;
-      if (associations.images) {
-        // Handle image associations if present
-        // Full implementation would fetch image URLs
-        return undefined; // Placeholder
+    if (!product.associations || typeof product.associations !== 'object') {
+      return undefined;
+    }
+
+    const associations = product.associations as Record<string, unknown>;
+    const imagesNode = associations.images;
+    if (!imagesNode || typeof imagesNode !== 'object') {
+      return undefined;
+    }
+
+    const imageField = (imagesNode as Record<string, unknown>).image;
+    if (imageField === undefined || imageField === null) {
+      return undefined;
+    }
+
+    const entries = Array.isArray(imageField) ? imageField : [imageField];
+
+    const urls: string[] = [];
+    for (const entry of entries) {
+      const id = this.extractImageId(entry);
+      if (id === null) {
+        continue;
+      }
+      urls.push(this.buildImageUrl(id));
+    }
+
+    return urls.length > 0 ? urls : undefined;
+  }
+
+  /**
+   * Extract the numeric image id from a single `associations.images.image` entry.
+   *
+   * PrestaShop returns ids under `id` (JSON) or `@_id` (XML parsed by
+   * `fast-xml-parser`). Defensive against primitive entries (the node itself a
+   * string), object entries with either key, and anything else (returns null so
+   * the caller can skip). String/number ids are accepted; other types are
+   * rejected.
+   */
+  private extractImageId(entry: unknown): string | null {
+    if (entry === null || entry === undefined) {
+      return null;
+    }
+
+    if (typeof entry === 'string' || typeof entry === 'number') {
+      const asString = String(entry).trim();
+      return asString.length > 0 ? asString : null;
+    }
+
+    if (typeof entry === 'object') {
+      const node = entry as Record<string, unknown>;
+      const rawId = node.id ?? node['@_id'] ?? node['@id'];
+      if (typeof rawId === 'string' || typeof rawId === 'number') {
+        const asString = String(rawId).trim();
+        return asString.length > 0 ? asString : null;
       }
     }
-    return undefined;
+
+    return null;
+  }
+
+  /**
+   * Build a public front-office image URL for a given PrestaShop image id.
+   *
+   * Uses the numeric path format (`/img/p/{split}/{id}-{type}.jpg`) which
+   * PrestaShop serves regardless of "Friendly URL" configuration. `split` is
+   * the image id with digits separated by `/` (e.g. `123` → `1/2/3`). Digit
+   * splitting handles arbitrarily long ids.
+   *
+   * TODO: image type ('home_default') is fixed for v1. Expose via options
+   * when detail-page or retina sizes land.
+   */
+  private buildImageUrl(imageId: string): string {
+    const base = this.options.storefrontBaseUrl.replace(/\/+$/, '');
+    const split = this.splitImageId(imageId);
+    return `${base}/img/p/${split}/${imageId}-home_default.jpg`;
+  }
+
+  /**
+   * Split a numeric id into a `/`-separated digit path.
+   *
+   * Examples: `'1'` → `'1'`, `'42'` → `'4/2'`, `'123'` → `'1/2/3'`.
+   * Non-digit characters are preserved as-is (PrestaShop ids are numeric in
+   * practice, but this keeps the helper defensive).
+   */
+  private splitImageId(id: string): string {
+    return id.split('').join('/');
   }
 
   /**

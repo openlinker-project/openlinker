@@ -66,8 +66,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       config,
     );
 
-    // Create mappers
-    const productMapper = new PrestashopProductMapper();
+    // Create mappers. `storefrontBaseUrl` falls back to the webservice `baseUrl`
+    // when unset — works for the common case where webservice and storefront
+    // share a host. Operators override it via connection config when they differ.
+    const productMapper = new PrestashopProductMapper({
+      storefrontBaseUrl: config.storefrontBaseUrl ?? config.baseUrl,
+    });
     const inventoryMapper = new PrestashopInventoryMapper();
     const orderMapper = new PrestashopOrderMapper();
 
@@ -158,6 +162,26 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       );
     }
 
+    // Validate storefrontBaseUrl (optional — falls back to baseUrl at use site)
+    if (config.storefrontBaseUrl !== undefined) {
+      if (typeof config.storefrontBaseUrl !== 'string') {
+        throw new PrestashopConfigException(
+          'storefrontBaseUrl must be a string',
+          'storefrontBaseUrl',
+          config.storefrontBaseUrl,
+        );
+      }
+      try {
+        new URL(config.storefrontBaseUrl);
+      } catch (error) {
+        throw new PrestashopConfigException(
+          `Invalid storefrontBaseUrl format: ${config.storefrontBaseUrl}`,
+          'storefrontBaseUrl',
+          config.storefrontBaseUrl,
+        );
+      }
+    }
+
     // Validate shopId (if provided)
     if (config.shopId !== undefined) {
       const shopId = typeof config.shopId === 'number' ? config.shopId : parseInt(String(config.shopId), 10);
@@ -225,6 +249,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Build validated config with defaults
     const validatedConfig: PrestashopConnectionConfig = {
       baseUrl: config.baseUrl,
+      storefrontBaseUrl: config.storefrontBaseUrl,
       shopId: config.shopId as number | undefined,
       langId: (config.langId as number | undefined) ?? 1,
       timeoutMs: (config.timeoutMs as number | undefined) ?? 30000,

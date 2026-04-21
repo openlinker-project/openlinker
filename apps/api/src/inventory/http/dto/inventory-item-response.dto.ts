@@ -35,4 +35,10 @@ export class InventoryItemResponseDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Product SKU from the master catalog (null if product not found or no SKU)' })
   productSku!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Cover image URL from the master catalog (null if product has no images or not found)',
+  })
+  productImageUrl!: string | null;
 }

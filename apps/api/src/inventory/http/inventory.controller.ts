@@ -113,6 +113,9 @@ export class InventoryController {
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       productName: product?.name ?? null,
       productSku: product?.sku ?? null,
+      // Cover-image rule lives on the Product entity (`coverImageUrl` getter);
+      // the inventory layer does not replicate it.
+      productImageUrl: product?.coverImageUrl ?? null,
     };
   }
 }
