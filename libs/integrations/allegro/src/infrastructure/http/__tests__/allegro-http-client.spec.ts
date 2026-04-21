@@ -24,6 +24,9 @@ global.fetch = jest.fn();
 
 describe('AllegroHttpClient', () => {
   let client: AllegroHttpClient;
+  // Sibling of `client` for cases that should fail on the first attempt without burning
+  // retry backoffs (429 immediate surfacing, 5xx shape, JSON parse shape, 30s timeout).
+  let noRetryClient: AllegroHttpClient;
   let connectionId: string;
   let baseUrl: string;
   let credentials: AllegroCredentials;
@@ -40,6 +43,9 @@ describe('AllegroHttpClient', () => {
     };
 
     client = new AllegroHttpClient(connectionId, baseUrl, credentials, config);
+    noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
+      maxRetries: 0,
+    });
     jest.useFakeTimers();
   });
 
@@ -242,11 +248,6 @@ describe('AllegroHttpClient', () => {
     });
 
     it('should throw AllegroRateLimitException on 429', async () => {
-      // Create a client with no retries to test immediate exception
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
-
       const mockHeaders = new Headers();
       mockHeaders.set('retry-after', '5');
 
@@ -274,10 +275,7 @@ describe('AllegroHttpClient', () => {
     });
 
     it('should throw AllegroApiException on 5xx errors', async () => {
-      // Client with no retries so we get the 5xx exception directly without driving sleeps.
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
+      // noRetryClient so we get the 5xx exception directly without driving sleeps.
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -289,11 +287,8 @@ describe('AllegroHttpClient', () => {
     });
 
     it('should throw AllegroApiException on invalid JSON response', async () => {
-      // No-retry client: a JSON-parse throw keeps the status at 200, so the generic retry
+      // noRetryClient: a JSON-parse throw keeps the status at 200, so the generic retry
       // branch would re-attempt up to maxRetries times. We only want the first throw.
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -305,11 +300,7 @@ describe('AllegroHttpClient', () => {
     });
 
     it('should throw AllegroApiException on timeout', async () => {
-      // Client with no retries so we get the timeout exception directly.
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
-
+      // noRetryClient: get the timeout exception directly without a retry storm.
       // Mock fetch to resolve only when its AbortSignal fires.
       (global.fetch as jest.Mock).mockImplementationOnce(
         (_url: string, options?: { signal?: AbortSignal }) => {
@@ -335,15 +326,14 @@ describe('AllegroHttpClient', () => {
         },
       );
 
-      // Attach a catch first so the unhandled-rejection tracker stays quiet while we advance
-      // the clock. The 30s abort fires under fake timers, rejecting the fetch promise, which
-      // the adapter converts to AllegroApiException.
-      const settled = noRetryClient.get('/test').catch((error: unknown) => error);
+      // Attach declarative rejection assertions first, then drive the 30s abort under fake
+      // timers. Both assertions await the same eventual rejection.
+      const promise = noRetryClient.get('/test');
+      const classAssertion = expect(promise).rejects.toThrow(AllegroApiException);
+      const messageAssertion = expect(promise).rejects.toThrow(/Request timeout after/);
       await jest.advanceTimersByTimeAsync(30_000);
-      const error = await settled;
-
-      expect(error).toBeInstanceOf(AllegroApiException);
-      expect((error as AllegroApiException).message).toMatch(/Request timeout after/);
+      await classAssertion;
+      await messageAssertion;
     });
   });
 
