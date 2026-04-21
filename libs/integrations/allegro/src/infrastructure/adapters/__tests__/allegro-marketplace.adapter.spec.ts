@@ -18,8 +18,10 @@ import {
   AllegroProductOfferCreateResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import { AllegroOfferCreateException } from '../../../domain/exceptions/allegro-offer-create.exception';
-import type { CreateOfferCommand } from '@openlinker/core/integrations';
+import {
+  MarketplaceOfferCreateRejectedException,
+  type CreateOfferCommand,
+} from '@openlinker/core/integrations';
 
 describe('AllegroMarketplaceAdapter', () => {
   let adapter: AllegroMarketplaceAdapter;
@@ -831,7 +833,7 @@ describe('AllegroMarketplaceAdapter', () => {
       ]);
     });
 
-    it('throws AllegroOfferCreateException on 422 with structured errors', async () => {
+    it('throws MarketplaceOfferCreateRejectedException on 422 with structured errors', async () => {
       httpClient.post.mockRejectedValue(
         new AllegroApiException(
           'Unprocessable entity',
@@ -846,7 +848,7 @@ describe('AllegroMarketplaceAdapter', () => {
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
-        AllegroOfferCreateException,
+        MarketplaceOfferCreateRejectedException,
       );
     });
 
@@ -887,23 +889,27 @@ describe('AllegroMarketplaceAdapter', () => {
       expect(body).not.toHaveProperty('unknownField');
     });
 
-    it('throws AllegroOfferCreateException when overrides.title is missing (precondition)', async () => {
+    it('throws MarketplaceOfferCreateRejectedException when overrides.title is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,
         overrides: { ...baseCmd.overrides, title: undefined },
       };
 
-      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(AllegroOfferCreateException);
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(
+        MarketplaceOfferCreateRejectedException,
+      );
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
-    it('throws AllegroOfferCreateException when overrides.categoryId is missing (precondition)', async () => {
+    it('throws MarketplaceOfferCreateRejectedException when overrides.categoryId is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,
         overrides: { ...baseCmd.overrides, categoryId: undefined },
       };
 
-      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(AllegroOfferCreateException);
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(
+        MarketplaceOfferCreateRejectedException,
+      );
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
