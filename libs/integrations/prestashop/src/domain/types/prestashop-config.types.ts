@@ -21,6 +21,23 @@ export interface PrestashopConnectionConfig {
   baseUrl: string;
 
   /**
+   * Public storefront URL used to build product-image URLs (optional).
+   *
+   * PrestaShop webservice image endpoints (`/images/products/{id}/{image_id}`)
+   * require an API key and cannot be loaded by a browser. Public storefront
+   * image paths (`{storefrontBaseUrl}/img/p/…`) are unauthenticated and work
+   * for any public PrestaShop storefront.
+   *
+   * If unset, the adapter factory falls back to `baseUrl` — correct for the
+   * common case where the webservice and the storefront share a host.
+   * Provide this override only when they differ (e.g. webservice at
+   * `api.shop.com`, storefront at `shop.com`).
+   *
+   * Example: `'https://shop.example.com'` (no trailing slash).
+   */
+  storefrontBaseUrl?: string;
+
+  /**
    * Shop ID for multi-store PrestaShop installations (optional)
    * Maps to `id_shop` query parameter in PrestaShop API requests
    * If not provided, uses default shop (ID 1)

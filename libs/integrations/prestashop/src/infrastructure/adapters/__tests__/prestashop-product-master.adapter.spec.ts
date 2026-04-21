@@ -31,7 +31,7 @@ describe('PrestashopProductMasterAdapter', () => {
     mockHttpClient = createMockHttpClient();
     mockIdentifierMapping = createMockIdentifierMapping();
     connection = createTestConnection();
-    productMapper = new PrestashopProductMapper();
+    productMapper = new PrestashopProductMapper({ storefrontBaseUrl: 'https://shop.test' });
 
     adapter = new PrestashopProductMasterAdapter(
       mockHttpClient,

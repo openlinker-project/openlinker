@@ -19,5 +19,16 @@ export class Product {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
+
+  /**
+   * First image URL by convention — the cover. Null if the product has no images.
+   *
+   * This is the canonical "which image represents the product" rule for the
+   * Products bounded context. Consumers (e.g. inventory read endpoints) should
+   * call this getter rather than replicating `images?.[0] ?? null` themselves.
+   */
+  get coverImageUrl(): string | null {
+    return this.images?.[0] ?? null;
+  }
 }
 

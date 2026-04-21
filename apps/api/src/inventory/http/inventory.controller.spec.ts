@@ -38,6 +38,17 @@ describe('InventoryController', () => {
     'SKU-001',
     99.99,
     null,
+    ['https://shop.test/img/p/1/1-home_default.jpg', 'https://shop.test/img/p/1/1-medium.jpg'],
+    new Date('2026-01-01T00:00:00Z'),
+    new Date('2026-04-01T00:00:00Z'),
+  );
+
+  const mockProductWithoutImages = new Product(
+    'prod-001',
+    'Test Product',
+    'SKU-001',
+    99.99,
+    null,
     null,
     new Date('2026-01-01T00:00:00Z'),
     new Date('2026-04-01T00:00:00Z'),
@@ -77,7 +88,7 @@ describe('InventoryController', () => {
   });
 
   describe('listInventory', () => {
-    it('should return paginated inventory items with product name and SKU', async () => {
+    it('should return paginated inventory items with product name, SKU, and cover image', async () => {
       repository.findMany.mockResolvedValue({ items: [mockItem], total: 1 });
       productRepository.findById.mockResolvedValue(mockProduct);
 
@@ -91,9 +102,10 @@ describe('InventoryController', () => {
       expect(result.items[0].updatedAt).toBe('2026-04-01T00:00:00.000Z');
       expect(result.items[0].productName).toBe('Test Product');
       expect(result.items[0].productSku).toBe('SKU-001');
+      expect(result.items[0].productImageUrl).toBe('https://shop.test/img/p/1/1-home_default.jpg');
     });
 
-    it('should return null productName and productSku when product not found', async () => {
+    it('should return null product fields when product not found', async () => {
       repository.findMany.mockResolvedValue({ items: [mockItem], total: 1 });
       productRepository.findById.mockResolvedValue(null);
 
@@ -101,6 +113,17 @@ describe('InventoryController', () => {
 
       expect(result.items[0].productName).toBeNull();
       expect(result.items[0].productSku).toBeNull();
+      expect(result.items[0].productImageUrl).toBeNull();
+    });
+
+    it('should return null productImageUrl when product has no images', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockItem], total: 1 });
+      productRepository.findById.mockResolvedValue(mockProductWithoutImages);
+
+      const result = await controller.listInventory({ limit: 20, offset: 0 });
+
+      expect(result.items[0].productName).toBe('Test Product');
+      expect(result.items[0].productImageUrl).toBeNull();
     });
 
     it('should pass filters to repository', async () => {
@@ -142,7 +165,7 @@ describe('InventoryController', () => {
   });
 
   describe('getInventoryItem', () => {
-    it('should return inventory item with product name and SKU when found', async () => {
+    it('should return inventory item with product name, SKU, and cover image when found', async () => {
       repository.findById.mockResolvedValue(mockItem);
       productRepository.findById.mockResolvedValue(mockProduct);
 
@@ -154,6 +177,7 @@ describe('InventoryController', () => {
       expect(result.reservedQuantity).toBe(5);
       expect(result.productName).toBe('Test Product');
       expect(result.productSku).toBe('SKU-001');
+      expect(result.productImageUrl).toBe('https://shop.test/img/p/1/1-home_default.jpg');
     });
 
     it('should throw NotFoundException when item not found', async () => {

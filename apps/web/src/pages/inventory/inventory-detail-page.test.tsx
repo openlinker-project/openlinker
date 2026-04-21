@@ -15,6 +15,7 @@ const sampleItem: InventoryItem = {
   updatedAt: '2026-01-15T10:00:00.000Z',
   productName: 'Test Product',
   productSku: 'SKU-001',
+  productImageUrl: null,
 };
 
 function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>): void {

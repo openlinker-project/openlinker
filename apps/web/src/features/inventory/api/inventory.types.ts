@@ -18,6 +18,7 @@ export interface InventoryItem {
   updatedAt: string;
   productName: string | null;
   productSku: string | null;
+  productImageUrl: string | null;
 }
 
 export interface InventoryFilters {
