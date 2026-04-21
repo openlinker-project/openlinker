@@ -18,9 +18,9 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
 import { IProductsService } from './products.service.interface';
-import { ProductMasterPort, Product as ProductPortInterface, ProductVariant as ProductVariantPortInterface } from '../../domain/ports/product-master.port';
+import { ProductMasterPort, Product as ProductPortInterface } from '../../domain/ports/product-master.port';
 import { Product as ProductDomainEntity } from '../../domain/entities/product.entity';
-import { ProductVariant as ProductVariantDomainEntity } from '../../domain/entities/product-variant.entity';
+import { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
 import { IMasterProductSyncService, MasterProductSyncResult } from './master-product-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
@@ -98,25 +98,20 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   }
 
   /**
-   * Convert port ProductVariant to domain ProductVariant entity.
+   * Normalize adapter-produced variant: coerce barcode fields and pin productId.
+   *
+   * Adapters may omit createdAt/updatedAt — the repository populates them on
+   * save via TypeORM's @CreateDateColumn/@UpdateDateColumn.
    */
-  private toDomainVariant(
-    variant: ProductVariantPortInterface,
-    productId: string,
-  ): ProductVariantDomainEntity {
-    const ean = normalizeToEan13(variant.ean ?? null);
-    const gtin = normalizeBarcode(variant.gtin ?? null);
-
-    return new ProductVariantDomainEntity(
-      variant.id,
+  private toDomainVariant(variant: ProductVariant, productId: string): ProductVariant {
+    return {
+      ...variant,
       productId,
-      variant.sku ?? null,
-      variant.attributes ?? null,
-      new Date(),
-      new Date(),
-      ean,
-      gtin,
-    );
+      sku: variant.sku ?? null,
+      attributes: variant.attributes ?? null,
+      ean: normalizeToEan13(variant.ean ?? null),
+      gtin: normalizeBarcode(variant.gtin ?? null),
+    };
   }
 }
 

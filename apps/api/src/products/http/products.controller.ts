@@ -22,7 +22,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { PRODUCTS_SERVICE_TOKEN, ProductEntity, ProductVariantEntity } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, ProductEntity, ProductVariant } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -36,6 +36,28 @@ import { PaginatedProductVariantsResponseDto } from './dto/paginated-product-var
 import { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
+
+/**
+ * Shared variant-to-DTO mapper.
+ *
+ * Timestamps are optional on the ProductVariant interface because adapters
+ * produce pre-persistence variants. In these controllers the variant is always
+ * repository-sourced (see ProductVariantRepository#toDomain), so timestamps are
+ * guaranteed present — non-null assertion crashes loudly if the invariant ever
+ * breaks, which is preferable to silently emitting a 1970 epoch date.
+ */
+function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
+  return {
+    id: variant.id,
+    productId: variant.productId,
+    sku: variant.sku,
+    attributes: variant.attributes,
+    ean: variant.ean ?? null,
+    gtin: variant.gtin ?? null,
+    createdAt: variant.createdAt!.toISOString(),
+    updatedAt: variant.updatedAt!.toISOString(),
+  };
+}
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -159,17 +181,8 @@ export class ProductsController {
     };
   }
 
-  private toVariantDto(variant: ProductVariantEntity): ProductVariantResponseDto {
-    return {
-      id: variant.id,
-      productId: variant.productId,
-      sku: variant.sku,
-      attributes: variant.attributes,
-      ean: variant.ean ?? null,
-      gtin: variant.gtin ?? null,
-      createdAt: variant.createdAt.toISOString(),
-      updatedAt: variant.updatedAt.toISOString(),
-    };
+  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
+    return variantToDto(variant);
   }
 
   private toExternalIdDto(mapping: { externalId: string; platformType: string; connectionId: string }): ExternalIdMappingDto {
@@ -221,16 +234,7 @@ export class VariantsController {
     };
   }
 
-  private toVariantDto(variant: ProductVariantEntity): ProductVariantResponseDto {
-    return {
-      id: variant.id,
-      productId: variant.productId,
-      sku: variant.sku,
-      attributes: variant.attributes,
-      ean: variant.ean ?? null,
-      gtin: variant.gtin ?? null,
-      createdAt: variant.createdAt.toISOString(),
-      updatedAt: variant.updatedAt.toISOString(),
-    };
+  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
+    return variantToDto(variant);
   }
 }

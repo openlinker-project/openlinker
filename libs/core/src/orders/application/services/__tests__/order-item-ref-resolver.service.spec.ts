@@ -1,8 +1,21 @@
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
-import { ProductVariantEntity } from '@openlinker/core/products';
+import { ProductVariant } from '@openlinker/core/products';
 import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
+
+function makeVariant(id: string, productId: string): ProductVariant {
+  return {
+    id,
+    productId,
+    sku: null,
+    attributes: null,
+    ean: null,
+    gtin: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
 
 describe('OrderItemRefResolverService', () => {
   const connectionId = 'connection-123';
@@ -38,7 +51,7 @@ describe('OrderItemRefResolverService', () => {
   it('resolves offer refs via IdentifierMappingService(Offer)', async () => {
     identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
     variantRepository.findById.mockResolvedValueOnce(
-      new ProductVariantEntity('ol_variant_1', 'ol_product_1', null, null, new Date(), new Date()),
+      makeVariant('ol_variant_1', 'ol_product_1'),
     );
 
     await expect(
@@ -72,7 +85,7 @@ describe('OrderItemRefResolverService', () => {
   it('resolves variant refs via IdentifierMappingService(ProductVariant)', async () => {
     identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
     variantRepository.findById.mockResolvedValueOnce(
-      new ProductVariantEntity('ol_variant_1', 'ol_product_1', null, null, new Date(), new Date()),
+      makeVariant('ol_variant_1', 'ol_product_1'),
     );
 
     await expect(
@@ -85,7 +98,7 @@ describe('OrderItemRefResolverService', () => {
   it('resolves sku refs via IdentifierMappingService(Sku) and variant lookup', async () => {
     identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
     variantRepository.findById.mockResolvedValueOnce(
-      new ProductVariantEntity('ol_variant_1', 'ol_product_1', null, null, new Date(), new Date()),
+      makeVariant('ol_variant_1', 'ol_product_1'),
     );
 
     await expect(
@@ -108,7 +121,7 @@ describe('OrderItemRefResolverService', () => {
     it('should return resolved=true with IDs when offer mapping exists', async () => {
       identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
       variantRepository.findById.mockResolvedValueOnce(
-        new ProductVariantEntity('ol_variant_1', 'ol_product_1', null, null, new Date(), new Date()),
+        makeVariant('ol_variant_1', 'ol_product_1'),
       );
 
       const result = await service.tryResolve(connectionId, { type: 'offer', externalId: 'offer-1' });

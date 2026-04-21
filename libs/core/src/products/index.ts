@@ -23,7 +23,6 @@ export {
 export {
   ProductMasterPort,
   Product,
-  ProductVariant,
   Category,
 } from './domain/ports/product-master.port';
 export { ProductRepositoryPort } from './domain/ports/product-repository.port';
@@ -31,7 +30,7 @@ export { ProductVariantRepositoryPort } from './domain/ports/product-variant-rep
 
 // Domain Entities
 export { Product as ProductEntity } from './domain/entities/product.entity';
-export { ProductVariant as ProductVariantEntity } from './domain/entities/product-variant.entity';
+export { ProductVariant } from './domain/entities/product-variant.entity';
 
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';

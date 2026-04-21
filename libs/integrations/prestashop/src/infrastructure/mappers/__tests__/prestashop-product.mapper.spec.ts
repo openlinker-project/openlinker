@@ -509,8 +509,8 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapVariant(combination, 'internal-product-id');
 
-      expect(result.ean).toBeUndefined();
-      expect(result.gtin).toBeUndefined();
+      expect(result.ean).toBeNull();
+      expect(result.gtin).toBeNull();
     });
   });
 });

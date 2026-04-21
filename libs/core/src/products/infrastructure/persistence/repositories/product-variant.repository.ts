@@ -215,16 +215,16 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
    * Map ORM entity to domain entity
    */
   private toDomain(entity: ProductVariantOrmEntity): ProductVariant {
-    return new ProductVariant(
-      entity.id,
-      entity.productId,
-      entity.sku,
-      entity.attributes,
-      entity.createdAt,
-      entity.updatedAt,
-      entity.ean,
-      entity.gtin,
-    );
+    return {
+      id: entity.id,
+      productId: entity.productId,
+      sku: entity.sku,
+      attributes: entity.attributes,
+      ean: entity.ean,
+      gtin: entity.gtin,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
   }
 
   /**
@@ -238,8 +238,10 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     entity.attributes = variant.attributes;
     entity.ean = variant.ean;
     entity.gtin = variant.gtin;
-    entity.createdAt = variant.createdAt;
-    entity.updatedAt = variant.updatedAt;
+    // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
+    // and @UpdateDateColumn populate them in that case.
+    if (variant.createdAt) entity.createdAt = variant.createdAt;
+    if (variant.updatedAt) entity.updatedAt = variant.updatedAt;
     return entity;
   }
 }

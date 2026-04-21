@@ -59,14 +59,7 @@ export class ProductsService implements IProductsService {
         this.logger.warn(
           `Variant ${variant.id} has productId ${variant.productId}, expected ${productId}. Updating.`,
         );
-        return new ProductVariant(
-          variant.id,
-          productId,
-          variant.sku,
-          variant.attributes,
-          variant.createdAt,
-          variant.updatedAt,
-        );
+        return { ...variant, productId };
       }
       return variant;
     });

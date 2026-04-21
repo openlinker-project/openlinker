@@ -37,6 +37,8 @@ export function createMockPrestashopProductAdapter(): ProductMasterPort {
           productId,
           sku: 'TEST-VARIANT-SKU-001',
           attributes: { size: 'M', color: 'Blue' },
+          ean: null,
+          gtin: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },

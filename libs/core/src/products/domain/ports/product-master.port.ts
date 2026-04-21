@@ -11,6 +11,10 @@
  * @module libs/core/src/products/domain/ports
  */
 import { ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate } from '../types/product.types';
+import type { ProductVariant } from '../entities/product-variant.entity';
+
+// Re-exported so existing deep imports from this path keep working.
+export type { ProductVariant } from '../entities/product-variant.entity';
 
 /**
  * Product domain entity (minimal interface for port)
@@ -31,28 +35,16 @@ export interface Product {
 }
 
 /**
- * Product variant domain entity
- */
-export interface ProductVariant {
-  id: string;
-  productId: string;
-  sku: string;
-  attributes?: Record<string, string>;
-  ean?: string;
-  gtin?: string;
-  price?: number;
-  weight?: number;
-  [key: string]: unknown;
-}
-
-/**
  * Category domain entity
  */
 export interface Category {
   id: string;
   name: string;
   parentId?: string;
-  [key: string]: unknown;
+  /** Tree depth, if the source platform exposes one (PrestaShop, Allegro). */
+  depth?: number;
+  /** Whether the category is active in the source catalog. Defaults to true when absent. */
+  active?: boolean;
 }
 
 /**
