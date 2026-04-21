@@ -10,10 +10,7 @@ import type { ConnectionPort, Connection } from '@openlinker/core/identifier-map
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
-import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
-import { ProductVariantEntity as ProductVariantDomain } from '@openlinker/core/products';
-
-type ProductVariant = ProductVariantDomain;
+import type { ProductVariant, ProductVariantRepositoryPort } from '@openlinker/core/products';
 
 import { OfferBuilderService } from '../offer-builder.service';
 import { CATEGORY_RESOLUTION_SERVICE_TOKEN } from '../../../listings.tokens';
