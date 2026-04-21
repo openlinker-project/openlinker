@@ -12,6 +12,7 @@ export {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
+  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 export { OfferLinkingService } from './application/services/offer-linking.service';
 export { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
@@ -53,6 +54,12 @@ export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-
 export { OfferBuilderService } from './application/services/offer-builder.service';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
+export { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
+export type { IOfferCreationExecutionService } from './application/interfaces/offer-creation-execution.service.interface';
+export type {
+  ExecuteOfferCreationInput,
+  ExecuteOfferCreationResult,
+} from './application/types/offer-creation-execution.types';
 export {
   OfferBuilderValidationException,
 } from './domain/exceptions/offer-builder-validation.exception';

@@ -1,0 +1,361 @@
+/**
+ * Offer Creation Execution Service Tests
+ *
+ * @module libs/core/src/listings/application/services/__tests__
+ */
+import { Test, TestingModule } from '@nestjs/testing';
+
+import {
+  DuplicateIdentifierMappingError,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import {
+  CreateOfferCommand,
+  CreateOfferResult,
+  INTEGRATIONS_SERVICE_TOKEN,
+  MarketplaceOfferCreateRejectedException,
+} from '@openlinker/core/integrations';
+import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
+
+import { OfferCreationExecutionService } from '../offer-creation-execution.service';
+import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
+import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
+import { OfferBuilderValidationException } from '../../../domain/exceptions/offer-builder-validation.exception';
+import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
+import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import {
+  OFFER_BUILDER_SERVICE_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+} from '../../../listings.tokens';
+import type { IOfferBuilderService } from '../../interfaces/offer-builder.service.interface';
+
+const VARIANT_ID = 'ol_variant_123';
+const CONNECTION_ID = 'conn-allegro';
+const EXTERNAL_OFFER_ID = 'allegro-offer-42';
+
+describe('OfferCreationExecutionService', () => {
+  let service: OfferCreationExecutionService;
+  let builder: jest.Mocked<Pick<IOfferBuilderService, 'buildCreateOfferCommand'>>;
+  let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
+  let identifierMapping: jest.Mocked<Pick<IIdentifierMappingService, 'createMapping'>>;
+  let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
+  let adapter: { createOffer: jest.Mock };
+
+  const builtCommand: CreateOfferCommand = {
+    internalVariantId: VARIANT_ID,
+    connectionId: CONNECTION_ID,
+    price: { amount: 49.99, currency: 'PLN' },
+    stock: 3,
+    publishImmediately: false,
+  };
+
+  const buildRecord = (overrides: Partial<OfferCreationRecord> = {}): OfferCreationRecord => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    return new OfferCreationRecord(
+      overrides.id ?? 'rec-1',
+      overrides.internalVariantId ?? VARIANT_ID,
+      overrides.connectionId ?? CONNECTION_ID,
+      overrides.externalOfferId ?? null,
+      overrides.status ?? 'pending',
+      overrides.errors ?? null,
+      overrides.publishImmediately ?? false,
+      overrides.createdAt ?? now,
+      overrides.updatedAt ?? now,
+    );
+  };
+
+  beforeEach(async () => {
+    builder = {
+      buildCreateOfferCommand: jest.fn().mockResolvedValue(builtCommand),
+    };
+    records = {
+      create: jest.fn().mockResolvedValue(buildRecord()),
+      findById: jest.fn(),
+      findLatestByVariantAndConnection: jest.fn(),
+      updateStatus: jest
+        .fn()
+        .mockImplementation((id, status, errors) =>
+          Promise.resolve(buildRecord({ id, status, errors: errors ?? null })),
+        ),
+      updateExternalOfferId: jest.fn().mockImplementation((id, externalOfferId) =>
+        Promise.resolve(buildRecord({ id, externalOfferId })),
+      ),
+      updateExternalIdAndStatus: jest
+        .fn()
+        .mockImplementation((id, externalOfferId, status, errors) =>
+          Promise.resolve(
+            buildRecord({ id, externalOfferId, status, errors: errors ?? null }),
+          ),
+        ),
+    };
+    identifierMapping = {
+      createMapping: jest.fn().mockResolvedValue(undefined),
+    };
+    adapter = {
+      createOffer: jest.fn().mockResolvedValue({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'draft',
+      } satisfies CreateOfferResult),
+    };
+    integrationsService = {
+      getCapabilityAdapter: jest
+        .fn()
+        .mockResolvedValue(adapter as unknown as MarketplacePort),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OfferCreationExecutionService,
+        { provide: OFFER_BUILDER_SERVICE_TOKEN, useValue: builder },
+        { provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useValue: records },
+        { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: identifierMapping },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
+      ],
+    }).compile();
+
+    service = module.get(OfferCreationExecutionService);
+  });
+
+  const baseInput = {
+    internalVariantId: VARIANT_ID,
+    connectionId: CONNECTION_ID,
+    stock: 3,
+    publishImmediately: false,
+  };
+
+  it('creates record, builds command, calls adapter, maps identifier, and persists draft result', async () => {
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(records.create).toHaveBeenCalledWith({
+      internalVariantId: VARIANT_ID,
+      connectionId: CONNECTION_ID,
+      status: 'pending',
+      publishImmediately: false,
+      externalOfferId: null,
+      errors: null,
+    });
+    expect(builder.buildCreateOfferCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ internalVariantId: VARIANT_ID, connectionId: CONNECTION_ID }),
+    );
+    expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      'Marketplace',
+    );
+    expect(adapter.createOffer).toHaveBeenCalledWith(builtCommand);
+    expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+      'Offer',
+      EXTERNAL_OFFER_ID,
+      CONNECTION_ID,
+      VARIANT_ID,
+    );
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
+    expect(records.updateExternalOfferId).not.toHaveBeenCalled();
+    expect(records.updateStatus).not.toHaveBeenCalled();
+    expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('persists status=active when adapter returns active', async () => {
+    adapter.createOffer.mockResolvedValueOnce({
+      externalOfferId: EXTERNAL_OFFER_ID,
+      status: 'active',
+    });
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'active',
+      null,
+    );
+    expect(offerCreationRecord.status).toBe('active');
+  });
+
+  it('logs a warning when the result is validating', async () => {
+    adapter.createOffer.mockResolvedValueOnce({
+      externalOfferId: EXTERNAL_OFFER_ID,
+      status: 'validating',
+    });
+    records.updateExternalIdAndStatus.mockResolvedValueOnce(
+      buildRecord({ status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
+    );
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    try {
+      await service.executeCreation(baseInput);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const firstCall = warnSpy.mock.calls[0][0];
+      expect(typeof firstCall).toBe('string');
+      expect(firstCall as string).toContain('validating');
+      expect(firstCall as string).toContain(EXTERNAL_OFFER_ID);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('persists validation errors from a 2xx result', async () => {
+    adapter.createOffer.mockResolvedValueOnce({
+      externalOfferId: EXTERNAL_OFFER_ID,
+      status: 'draft',
+      validationErrors: [
+        { field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' },
+      ],
+    });
+
+    await service.executeCreation(baseInput);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      [{ field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' }],
+    );
+  });
+
+  it('marks record failed and resolves when builder raises OfferBuilderValidationException', async () => {
+    builder.buildCreateOfferCommand.mockRejectedValueOnce(
+      new OfferBuilderValidationException([
+        { field: 'overrides.categoryId', code: 'REQUIRED', message: 'Category required' },
+      ]),
+    );
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(records.updateStatus).toHaveBeenCalledWith('rec-1', 'failed', [
+      { field: 'overrides.categoryId', code: 'REQUIRED', message: 'Category required' },
+    ]);
+    expect(adapter.createOffer).not.toHaveBeenCalled();
+    expect(offerCreationRecord.status).toBe('failed');
+  });
+
+  it('marks record failed with synthetic error when master catalog is not configured', async () => {
+    builder.buildCreateOfferCommand.mockRejectedValueOnce(
+      new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID),
+    );
+
+    await service.executeCreation(baseInput);
+
+    expect(records.updateStatus).toHaveBeenCalledWith('rec-1', 'failed', [
+      expect.objectContaining({
+        field: 'connection.config.masterCatalogConnectionId',
+        code: 'MASTER_CATALOG_NOT_CONFIGURED',
+      }),
+    ]);
+    expect(adapter.createOffer).not.toHaveBeenCalled();
+  });
+
+  it('marks record failed and resolves when adapter raises MarketplaceOfferCreateRejectedException', async () => {
+    adapter.createOffer.mockRejectedValueOnce(
+      new MarketplaceOfferCreateRejectedException('allegro.publicapi.v1', 422, [
+        { field: 'category.id', code: 'BAD_CATEGORY', message: 'Category does not exist' },
+      ]),
+    );
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(records.updateStatus).toHaveBeenCalledWith('rec-1', 'failed', [
+      { field: 'category.id', code: 'BAD_CATEGORY', message: 'Category does not exist' },
+    ]);
+    expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    expect(offerCreationRecord.status).toBe('failed');
+  });
+
+  it('propagates unknown adapter errors to the caller', async () => {
+    adapter.createOffer.mockRejectedValueOnce(new Error('timeout'));
+
+    await expect(service.executeCreation(baseInput)).rejects.toThrow('timeout');
+    expect(records.updateStatus).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
+  });
+
+  it('throws when the resolved adapter does not support createOffer', async () => {
+    integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
+      {} as unknown as MarketplacePort,
+    );
+
+    await expect(service.executeCreation(baseInput)).rejects.toThrow(
+      /does not support Marketplace.createOffer/,
+    );
+    expect(records.updateStatus).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
+  });
+
+  it('swallows DuplicateIdentifierMappingError as idempotent success', async () => {
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new DuplicateIdentifierMappingError('Offer', EXTERNAL_OFFER_ID, 'allegro', CONNECTION_ID),
+    );
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
+    expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('uses the pre-existing record when offerCreationRecordId is provided', async () => {
+    const existing = buildRecord({ id: 'rec-pre', status: 'pending' });
+    records.findById.mockResolvedValueOnce(existing);
+
+    await service.executeCreation({ ...baseInput, offerCreationRecordId: 'rec-pre' });
+
+    expect(records.findById).toHaveBeenCalledWith('rec-pre');
+    expect(records.create).not.toHaveBeenCalled();
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-pre',
+      EXTERNAL_OFFER_ID,
+      'draft',
+      null,
+    );
+  });
+
+  it('throws OfferCreationRecordNotFoundException when provided record id does not exist', async () => {
+    records.findById.mockResolvedValueOnce(null);
+
+    await expect(
+      service.executeCreation({ ...baseInput, offerCreationRecordId: 'missing' }),
+    ).rejects.toBeInstanceOf(OfferCreationRecordNotFoundException);
+    expect(records.create).not.toHaveBeenCalled();
+  });
+
+  it('propagates non-duplicate errors from identifier mapping', async () => {
+    identifierMapping.createMapping.mockRejectedValueOnce(new Error('redis down'));
+
+    await expect(service.executeCreation(baseInput)).rejects.toThrow('redis down');
+    expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
+  });
+
+  it('threads price, publishImmediately, overrides, and idempotencyKey to the builder', async () => {
+    const overrides = { title: 'Custom', categoryId: 'cat-1' };
+    await service.executeCreation({
+      ...baseInput,
+      publishImmediately: true,
+      price: { amount: 99.5, currency: 'EUR' },
+      overrides,
+      idempotencyKey: 'idem-1',
+    });
+
+    expect(builder.buildCreateOfferCommand).toHaveBeenCalledWith({
+      internalVariantId: VARIANT_ID,
+      connectionId: CONNECTION_ID,
+      stock: 3,
+      publishImmediately: true,
+      price: { amount: 99.5, currency: 'EUR' },
+      overrides,
+      idempotencyKey: 'idem-1',
+    });
+  });
+});

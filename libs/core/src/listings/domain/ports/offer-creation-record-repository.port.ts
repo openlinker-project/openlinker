@@ -63,4 +63,26 @@ export interface OfferCreationRecordRepositoryPort {
    * Throws `OfferCreationRecordNotFoundException` if the record does not exist.
    */
   updateExternalOfferId(id: string, externalOfferId: string): Promise<OfferCreationRecord>;
+
+  /**
+   * Atomically set externalOfferId, status, and errors in a single write.
+   *
+   * Used when the platform create call succeeds and the caller needs the three
+   * fields to land together (avoids the `externalOfferId set but status still
+   * 'pending'` intermediate state that two separate updates would create if
+   * the process died between them).
+   *
+   * `errors` follows the same three-valued semantics as `updateStatus`:
+   * - omit to preserve previously-recorded errors
+   * - pass `null` to explicitly clear them
+   * - pass an array to replace them
+   *
+   * Throws `OfferCreationRecordNotFoundException` if the record does not exist.
+   */
+  updateExternalIdAndStatus(
+    id: string,
+    externalOfferId: string,
+    status: OfferCreationStatus,
+    errors?: OfferCreationError[] | null,
+  ): Promise<OfferCreationRecord>;
 }

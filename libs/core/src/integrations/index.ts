@@ -68,6 +68,7 @@ export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.
 export { CapabilityNotSupportedException } from './domain/exceptions/capability-not-supported.exception';
 export { CapabilityNotEnabledException } from './domain/exceptions/capability-not-enabled.exception';
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
+export { MarketplaceOfferCreateRejectedException } from './domain/exceptions/marketplace-offer-create-rejected.exception';
 
 // Webhook secret
 export { WebhookSecretService } from './application/services/webhook-secret.service';

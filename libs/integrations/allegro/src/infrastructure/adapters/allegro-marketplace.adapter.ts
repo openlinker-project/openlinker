@@ -15,6 +15,7 @@ import {
   MarketplaceOrderEventType,
   MarketplaceOfferFeedInput,
   MarketplaceOfferFeedOutput,
+  MarketplaceOfferCreateRejectedException,
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
 } from '@openlinker/core/integrations';
@@ -47,7 +48,6 @@ import {
   AllegroValidationError,
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
-import { AllegroOfferCreateException } from '../../domain/exceptions/allegro-offer-create.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import {
@@ -56,6 +56,9 @@ import {
 } from '../../index';
 
 type MarketplaceOrderFeedItem = MarketplaceOrderFeedOutput['items'][number];
+
+/** Adapter key registered for the Allegro marketplace integration. */
+const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
 /**
  * Type guard used when filtering untyped `platformParams.parameters` into the
@@ -764,10 +767,11 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
    * unique reference. Allegro's public API does not accept an `Idempotency-Key`
    * header, so this is the adapter's only use of `cmd.idempotencyKey`.
    *
-   * Non-2xx responses with structured errors are translated to
-   * `AllegroOfferCreateException`. 2xx responses with inline validation errors
-   * are **not** thrown — the offer exists as a draft on Allegro and the errors
-   * are surfaced through `CreateOfferResult.validationErrors`.
+   * Non-2xx responses with structured errors are translated to the neutral
+   * `MarketplaceOfferCreateRejectedException` (the core-facing contract).
+   * 2xx responses with inline validation errors are **not** thrown — the
+   * offer exists as a draft on Allegro and the errors are surfaced through
+   * `CreateOfferResult.validationErrors`.
    */
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
     const body = this.buildCreateOfferRequest(cmd);
@@ -790,7 +794,11 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
           `Allegro rejected offer creation: connection=${this.connectionId} status=${error.statusCode} errors=${parsedErrors.length}`,
           error,
         );
-        throw new AllegroOfferCreateException(error.statusCode, parsedErrors);
+        throw new MarketplaceOfferCreateRejectedException(
+          ALLEGRO_ADAPTER_KEY,
+          error.statusCode,
+          this.mapValidationErrors(parsedErrors),
+        );
       }
       throw error;
     }
@@ -826,12 +834,12 @@ export class AllegroMarketplaceAdapter implements MarketplacePort {
     const name = cmd.overrides?.title;
     const categoryId = cmd.overrides?.categoryId;
     if (!name || name.trim().length === 0) {
-      throw new AllegroOfferCreateException(0, [
+      throw new MarketplaceOfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
         { code: 'PRECONDITION_TITLE_REQUIRED', message: 'overrides.title is required for Allegro offer creation' },
       ]);
     }
     if (!categoryId || categoryId.trim().length === 0) {
-      throw new AllegroOfferCreateException(0, [
+      throw new MarketplaceOfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
         { code: 'PRECONDITION_CATEGORY_REQUIRED', message: 'overrides.categoryId is required for Allegro offer creation' },
       ]);
     }

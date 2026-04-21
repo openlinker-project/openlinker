@@ -18,6 +18,7 @@ import { OfferMappingRepository } from './infrastructure/persistence/repositorie
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import { OfferBuilderService } from './application/services/offer-builder.service';
+import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -25,6 +26,7 @@ import {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
+  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -35,6 +37,7 @@ export {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
+  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -52,6 +55,7 @@ export {
     OfferMappingRepository,
     OfferCreationRecordRepository,
     OfferBuilderService,
+    OfferCreationExecutionService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -76,6 +80,10 @@ export {
       provide: OFFER_BUILDER_SERVICE_TOKEN,
       useExisting: OfferBuilderService,
     },
+    {
+      provide: OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+      useExisting: OfferCreationExecutionService,
+    },
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
@@ -84,6 +92,7 @@ export {
     OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
+    OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

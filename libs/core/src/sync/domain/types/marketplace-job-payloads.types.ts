@@ -6,7 +6,10 @@
  * @module libs/core/src/sync/domain/types
  */
 
-import { MarketplaceOrderEventType } from '@openlinker/core/integrations';
+import {
+  CreateOfferOverrides,
+  MarketplaceOrderEventType,
+} from '@openlinker/core/integrations';
 
 export interface MarketplaceOrdersPollPayloadV1 {
   schemaVersion: 1;
@@ -52,4 +55,35 @@ export interface MarketplaceOffersSyncPayloadV1 {
   cursorKey?: string;
   feedType?: 'offers' | 'events';
   masterConnectionId?: string | null;
+}
+
+/**
+ * Payload for `marketplace.offer.create` jobs.
+ *
+ * Connection id is taken from `job.connectionId`, not from the payload.
+ *
+ * `schemaVersion: 1` pins the contract. Future breaking changes bump
+ * `schemaVersion`; handlers must accept all versions they have seen in
+ * persisted jobs until the backlog is drained.
+ */
+export interface MarketplaceOfferCreatePayloadV1 {
+  schemaVersion: 1;
+  /** OL internal variant id being listed. */
+  internalVariantId: string;
+  /** Offered stock quantity. */
+  stock: number;
+  /** Publish immediately after creation. */
+  publishImmediately: boolean;
+  /** Optional explicit price; when omitted the builder falls back to master product. */
+  price?: { amount: number; currency: string };
+  /** Optional overrides (title, description, category, images, platformParams). */
+  overrides?: CreateOfferOverrides;
+  /** Optional idempotency key forwarded to the adapter. */
+  idempotencyKey?: string;
+  /**
+   * Pre-created OfferCreationRecord id, if the caller (e.g. #259 REST endpoint)
+   * wanted the record visible before the job ran. When omitted, the execution
+   * service creates a fresh record with status='pending'.
+   */
+  offerCreationRecordId?: string;
 }
