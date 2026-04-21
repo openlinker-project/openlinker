@@ -1,11 +1,12 @@
 import type { ReactElement } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
 import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
-import type { ConnectionStatus } from '../../features/connections/api/connections.types';
+import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
@@ -33,9 +34,79 @@ function isTabValue(value: string | null): value is TabValue {
   return value !== null && (TAB_VALUES as readonly string[]).includes(value);
 }
 
+interface ProductCatalogLinkBannerProps {
+  connection: Connection;
+  candidates: Connection[];
+  isLoading: boolean;
+  hasError: boolean;
+}
+
+function ProductCatalogLinkBanner({
+  connection,
+  candidates,
+  isLoading,
+  hasError,
+}: ProductCatalogLinkBannerProps): ReactElement | null {
+  if (!connection.enabledCapabilities.includes('Marketplace')) return null;
+
+  const rawMaster = connection.config.masterCatalogConnectionId;
+  const explicitMaster = typeof rawMaster === 'string' ? rawMaster : null;
+  const editHref = `/connections/${connection.id}/edit`;
+
+  if (explicitMaster !== null && explicitMaster.length > 0) {
+    // Linked — no banner.
+    return null;
+  }
+
+  if (explicitMaster === '') {
+    return (
+      <Alert tone="warning" title="Barcode linking disabled">
+        Barcode linking is turned off for this connection. <Link to={editHref}>Edit connection</Link>{' '}
+        to select a catalog.
+      </Alert>
+    );
+  }
+
+  // From here: explicitMaster === null (server never stored the key).
+  // Defer banner render until candidates query settles, and stay silent on
+  // candidate-query errors (advisory banner, not blocking; avoids double
+  // noise when the user already sees global query errors elsewhere).
+  if (isLoading) return null;
+  if (hasError) return null;
+
+  if (candidates.length === 1) {
+    return (
+      <Alert tone="info" title="Product catalog auto-linked">
+        Barcode linking will use <strong>{candidates[0].name}</strong> (the only ProductMaster
+        connection). <Link to={editHref}>Edit connection</Link> to pin this explicitly.
+      </Alert>
+    );
+  }
+
+  if (candidates.length === 0) {
+    return (
+      <Alert tone="warning" title="Product catalog not linked">
+        No active ProductMaster connections to link to.{' '}
+        <Link to="/connections/new?platform=prestashop">Add a PrestaShop connection</Link> first.
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert tone="warning" title="Product catalog not linked">
+      Multiple ProductMaster connections exist — pick one explicitly or barcode sync will be
+      skipped. <Link to={editHref}>Edit connection</Link>.
+    </Alert>
+  );
+}
+
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
+  const {
+    productMasterConnections,
+    connectionsQuery: productMasterConnectionsQuery,
+  } = useProductMasterConnections();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get('tab');
@@ -128,13 +199,13 @@ export function ConnectionDetailPage(): ReactElement {
           message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
         />
       ) : null}
-      {connection &&
-      connection.enabledCapabilities.includes('Marketplace') &&
-      typeof connection.config.masterCatalogConnectionId !== 'string' ? (
-        <Alert tone="warning" title="Product catalog not linked">
-          Offer-to-product barcode linking is disabled. Edit this connection to select a ProductMaster
-          catalog connection, or barcode sync will be skipped.
-        </Alert>
+      {connection ? (
+        <ProductCatalogLinkBanner
+          connection={connection}
+          candidates={productMasterConnections.filter((c) => c.id !== connection.id)}
+          isLoading={productMasterConnectionsQuery.isLoading}
+          hasError={Boolean(productMasterConnectionsQuery.error)}
+        />
       ) : null}
       {connection ? (
         <Tabs value={activeTab} onValueChange={handleTabChange}>

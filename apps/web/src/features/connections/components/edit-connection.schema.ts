@@ -5,6 +5,9 @@ export const editConnectionSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   baseUrl: z.string().trim().optional(),
   shopId: z.string().trim().optional(),
+  masterCatalogConnectionId: z
+    .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
+    .optional(),
   configText: z
     .string()
     .trim()
@@ -38,7 +41,11 @@ export function toUpdateConnectionInput(values: EditConnectionFormSubmission): U
  */
 export function mergeStructuredIntoConfig(
   base: Record<string, unknown>,
-  structured: { baseUrl?: string; shopId?: string },
+  structured: {
+    baseUrl?: string;
+    shopId?: string;
+    masterCatalogConnectionId?: string;
+  },
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...base };
   if (structured.baseUrl !== undefined) {
@@ -54,6 +61,13 @@ export function mergeStructuredIntoConfig(
     } else {
       next.shopId = structured.shopId;
     }
+  }
+  // Unlike baseUrl/shopId, masterCatalogConnectionId uses `""` as an explicit
+  // opt-out signal (see offer-mapping-sync.service.ts:278 — `""` disables
+  // barcode linking, absent key falls back to auto-resolve). So we persist the
+  // value verbatim instead of deleting on empty.
+  if (structured.masterCatalogConnectionId !== undefined) {
+    next.masterCatalogConnectionId = structured.masterCatalogConnectionId;
   }
   return next;
 }
