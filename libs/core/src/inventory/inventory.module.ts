@@ -14,11 +14,13 @@ import { InventoryRepository } from './infrastructure/persistence/repositories/i
 import { InventoryService } from './application/services/inventory.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
+import { InventoryQueryService } from './application/services/inventory-query.service';
 import {
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
   MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
+  INVENTORY_QUERY_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -31,6 +33,7 @@ export {
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
   MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
+  INVENTORY_QUERY_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 @Module({
@@ -47,6 +50,7 @@ export {
     InventoryService,
     InventorySyncService,
     MasterInventorySyncService,
+    InventoryQueryService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -64,12 +68,17 @@ export {
       provide: MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
       useExisting: MasterInventorySyncService,
     },
+    {
+      provide: INVENTORY_QUERY_SERVICE_TOKEN,
+      useExisting: InventoryQueryService,
+    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
     INVENTORY_SERVICE_TOKEN,
     INVENTORY_SYNC_SERVICE_TOKEN,
     MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
+    INVENTORY_QUERY_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

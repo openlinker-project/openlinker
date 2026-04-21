@@ -8,11 +8,10 @@
  */
 import { Module } from '@nestjs/common';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
-import { ProductsModule } from '@openlinker/core/products';
 import { InventoryController } from './http/inventory.controller';
 
 @Module({
-  imports: [CoreInventoryModule, ProductsModule],
+  imports: [CoreInventoryModule],
   controllers: [InventoryController],
 })
 export class InventoryModule {}

@@ -1,8 +1,10 @@
 /**
  * Inventory Controller
  *
- * HTTP REST API endpoints for inventory read operations. Provides endpoints
- * for listing inventory items with filters and retrieving individual items.
+ * HTTP REST API endpoints for inventory read operations. Delegates the
+ * cross-aggregate composition of inventory items with master-catalog product
+ * details to IInventoryQueryService; keeps only transport concerns (pagination
+ * echo, date serialisation, HTTP 404 translation).
  *
  * @module apps/api/src/inventory/http
  */
@@ -19,16 +21,10 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
-  InventoryRepositoryPort,
-  INVENTORY_REPOSITORY_TOKEN,
-  InventoryItemEntity as InventoryItem,
+  IInventoryQueryService,
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  InventoryItemView,
 } from '@openlinker/core/inventory';
-import {
-  ProductRepositoryPort,
-  PRODUCT_REPOSITORY_TOKEN,
-  Product,
-  coverImageUrl,
-} from '@openlinker/core/products';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';
@@ -39,10 +35,8 @@ import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-respons
 @Controller('inventory')
 export class InventoryController {
   constructor(
-    @Inject(INVENTORY_REPOSITORY_TOKEN)
-    private readonly inventoryRepository: InventoryRepositoryPort,
-    @Inject(PRODUCT_REPOSITORY_TOKEN)
-    private readonly productRepository: ProductRepositoryPort,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly queryService: IInventoryQueryService,
   ) {}
 
   @Get()
@@ -57,15 +51,13 @@ export class InventoryController {
   async listInventory(@Query() query: ListInventoryQueryDto): Promise<PaginatedInventoryResponseDto> {
     const { productId, productVariantId, locationId, limit = 20, offset = 0 } = query;
 
-    const { items, total } = await this.inventoryRepository.findMany(
+    const { items, total } = await this.queryService.listInventoryItems(
       { productId, productVariantId, locationId },
       { limit, offset },
     );
 
-    const productMap = await this.buildProductMap(items.map((i) => i.productId));
-
     return {
-      items: items.map((item) => this.toDto(item, productMap.get(item.productId))),
+      items: items.map((view) => this.inventoryViewToDto(view)),
       total,
       limit,
       offset,
@@ -79,31 +71,15 @@ export class InventoryController {
   @ApiResponse({ status: 404, description: 'Inventory item not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getInventoryItem(@Param('id') id: string): Promise<InventoryItemResponseDto> {
-    const item = await this.inventoryRepository.findById(id);
-    if (!item) {
+    const view = await this.queryService.getInventoryItem(id);
+    if (!view) {
       throw new NotFoundException(`Inventory item not found: ${id}`);
     }
-    const product = await this.productRepository.findById(item.productId);
-    return this.toDto(item, product);
+    return this.inventoryViewToDto(view);
   }
 
-  // TODO: Replace with a single findByIds(ids) call once ProductRepositoryPort supports batch lookup.
-  // Current implementation issues N individual findById calls (one per unique productId).
-  // For typical page sizes (≤20 items) this is acceptable, but a batch method would be more efficient.
-  private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
-    const uniqueIds = [...new Set(productIds)];
-    const products = await Promise.all(uniqueIds.map((id) => this.productRepository.findById(id)));
-    const map = new Map<string, Product>();
-    uniqueIds.forEach((id, idx) => {
-      const product = products[idx];
-      if (product) {
-        map.set(id, product);
-      }
-    });
-    return map;
-  }
-
-  private toDto(item: InventoryItem, product?: Product | null): InventoryItemResponseDto {
+  private inventoryViewToDto(view: InventoryItemView): InventoryItemResponseDto {
+    const { item, product } = view;
     return {
       id: item.id,
       productId: item.productId,
@@ -114,8 +90,7 @@ export class InventoryController {
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       productName: product?.name ?? null,
       productSku: product?.sku ?? null,
-      // Cover-image rule owned by the Products domain; do not replicate here.
-      productImageUrl: product ? coverImageUrl(product) : null,
+      productImageUrl: product?.coverImageUrl ?? null,
     };
   }
 }

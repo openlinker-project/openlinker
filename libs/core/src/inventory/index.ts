@@ -16,6 +16,7 @@ export {
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
   MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
+  INVENTORY_QUERY_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 // Ports
@@ -32,6 +33,15 @@ export { IInventorySyncService } from './application/services/inventory-sync.ser
 export { InventorySyncService } from './application/services/inventory-sync.service';
 export { IMasterInventorySyncService, MasterInventorySyncResult } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
+export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
+export { InventoryQueryService } from './application/services/inventory-query.service';
+
+// Application Types
+export {
+  InventoryItemView,
+  InventoryViewProduct,
+  PaginatedInventoryView,
+} from './application/types/inventory-view.types';
 
 // Types
 export {
