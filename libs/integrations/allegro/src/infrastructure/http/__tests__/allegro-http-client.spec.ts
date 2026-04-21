@@ -4,6 +4,10 @@
  * Unit tests for AllegroHttpClient. Tests HTTP requests, authentication,
  * retry logic, rate limiting, error handling, and response parsing.
  *
+ * All tests run under jest fake timers installed in beforeEach. The retry
+ * and timeout paths are driven with jest.advanceTimersByTimeAsync(...) so
+ * the suite completes in ms regardless of host load — see #287 for history.
+ *
  * @module libs/integrations/allegro/src/infrastructure/http/__tests__
  */
 import { AllegroHttpClient } from '../allegro-http-client';
@@ -20,6 +24,9 @@ global.fetch = jest.fn();
 
 describe('AllegroHttpClient', () => {
   let client: AllegroHttpClient;
+  // Sibling of `client` for cases that should fail on the first attempt without burning
+  // retry backoffs (429 immediate surfacing, 5xx shape, JSON parse shape, 30s timeout).
+  let noRetryClient: AllegroHttpClient;
   let connectionId: string;
   let baseUrl: string;
   let credentials: AllegroCredentials;
@@ -36,6 +43,9 @@ describe('AllegroHttpClient', () => {
     };
 
     client = new AllegroHttpClient(connectionId, baseUrl, credentials, config);
+    noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
+      maxRetries: 0,
+    });
     jest.useFakeTimers();
   });
 
@@ -108,9 +118,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       const response = await client.get('/test');
-      jest.useFakeTimers();
 
       expect(response.data).toEqual(mockData);
       expect(response.status).toBe(200);
@@ -136,11 +144,9 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       await client.get('/test', {
         queryParams: { limit: 10, offset: 0 },
       });
-      jest.useFakeTimers();
 
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('limit=10'),
@@ -164,9 +170,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       const response = await client.post('/test', requestBody);
-      jest.useFakeTimers();
 
       expect(response.data).toEqual(mockData);
       expect(global.fetch).toHaveBeenCalledWith(
@@ -189,9 +193,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       await client.get('/test');
-      jest.useFakeTimers();
 
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
@@ -207,9 +209,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       await client.get('/test');
-      jest.useFakeTimers();
 
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
@@ -225,9 +225,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify(mockData)),
       });
 
-      jest.useRealTimers();
       await client.get('/test');
-      jest.useFakeTimers();
 
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
@@ -246,20 +244,13 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('{"error": "invalid_token"}'),
       });
 
-      jest.useRealTimers();
       await expect(client.get('/test')).rejects.toThrow(AllegroAuthenticationException);
-      jest.useFakeTimers();
     });
 
     it('should throw AllegroRateLimitException on 429', async () => {
-      // Create a client with no retries to test immediate exception
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
-
       const mockHeaders = new Headers();
       mockHeaders.set('retry-after', '5');
-      
+
       (global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve({
           ok: false,
@@ -269,9 +260,7 @@ describe('AllegroHttpClient', () => {
         }),
       );
 
-      jest.useRealTimers();
       await expect(noRetryClient.get('/test')).rejects.toThrow(AllegroRateLimitException);
-      jest.useFakeTimers();
     });
 
     it('should throw AllegroApiException on 4xx errors', async () => {
@@ -282,12 +271,11 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('{"error": "bad_request"}'),
       });
 
-      jest.useRealTimers();
       await expect(client.get('/test')).rejects.toThrow(AllegroApiException);
-      jest.useFakeTimers();
     });
 
     it('should throw AllegroApiException on 5xx errors', async () => {
+      // noRetryClient so we get the 5xx exception directly without driving sleeps.
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -295,12 +283,12 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('{"error": "internal_server_error"}'),
       });
 
-      jest.useRealTimers();
-      await expect(client.get('/test')).rejects.toThrow(AllegroApiException);
-      jest.useFakeTimers();
+      await expect(noRetryClient.get('/test')).rejects.toThrow(AllegroApiException);
     });
 
     it('should throw AllegroApiException on invalid JSON response', async () => {
+      // noRetryClient: a JSON-parse throw keeps the status at 200, so the generic retry
+      // branch would re-attempt up to maxRetries times. We only want the first throw.
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -308,52 +296,45 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('invalid json'),
       });
 
-      jest.useRealTimers();
-      await expect(client.get('/test')).rejects.toThrow(AllegroApiException);
-      jest.useFakeTimers();
+      await expect(noRetryClient.get('/test')).rejects.toThrow(AllegroApiException);
     });
 
     it('should throw AllegroApiException on timeout', async () => {
-      // Create a client with no retries to test immediate timeout exception
-      const noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-        maxRetries: 0,
-      });
-
-      // Mock fetch to never resolve, but check for abort signal
+      // noRetryClient: get the timeout exception directly without a retry storm.
+      // Mock fetch to resolve only when its AbortSignal fires.
       (global.fetch as jest.Mock).mockImplementationOnce(
         (_url: string, options?: { signal?: AbortSignal }) => {
           return new Promise((_resolve, reject) => {
-            // Check if signal is already aborted
             if (options?.signal?.aborted) {
               const abortError = new Error('The operation was aborted');
               abortError.name = 'AbortError';
               reject(abortError);
               return;
             }
-
-            // Listen for abort signal - use 'once' to ensure it only fires once
             if (options?.signal) {
-              const abortHandler = (): void => {
-                const abortError = new Error('The operation was aborted');
-                abortError.name = 'AbortError';
-                reject(abortError);
-              };
-              // Use addEventListener with once option
-              options.signal.addEventListener('abort', abortHandler, { once: true });
+              options.signal.addEventListener(
+                'abort',
+                () => {
+                  const abortError = new Error('The operation was aborted');
+                  abortError.name = 'AbortError';
+                  reject(abortError);
+                },
+                { once: true },
+              );
             }
-
-            // Never resolves - will timeout after 30s and trigger abort
           });
         },
       );
 
-      jest.useRealTimers();
+      // Attach declarative rejection assertions first, then drive the 30s abort under fake
+      // timers. Both assertions await the same eventual rejection.
       const promise = noRetryClient.get('/test');
-      // Wait for timeout (30s) plus a small buffer
-      await expect(promise).rejects.toThrow(AllegroApiException);
-      await expect(promise).rejects.toThrow(/Request timeout after/);
-      jest.useFakeTimers();
-    }, 35000); // Increase test timeout to 35s to allow for 30s request timeout
+      const classAssertion = expect(promise).rejects.toThrow(AllegroApiException);
+      const messageAssertion = expect(promise).rejects.toThrow(/Request timeout after/);
+      await jest.advanceTimersByTimeAsync(30_000);
+      await classAssertion;
+      await messageAssertion;
+    });
   });
 
   describe('retry logic', () => {
@@ -373,9 +354,11 @@ describe('AllegroHttpClient', () => {
           text: () => Promise.resolve(JSON.stringify(mockData)),
         });
 
-      jest.useRealTimers();
-      const response = await client.get('/test');
-      jest.useFakeTimers();
+      // Default client: first 5xx triggers a 1s backoff before the retry. Drive the clock
+      // forward past the sleep so the second attempt runs.
+      const promise = client.get('/test');
+      await jest.advanceTimersByTimeAsync(1_000);
+      const response = await promise;
 
       expect(response.data).toEqual(mockData);
       expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -389,9 +372,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('Bad Request'),
       });
 
-      jest.useRealTimers();
       await expect(client.get('/test')).rejects.toThrow(AllegroApiException);
-      jest.useFakeTimers();
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
@@ -404,9 +385,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('Unauthorized'),
       });
 
-      jest.useRealTimers();
       await expect(client.get('/test')).rejects.toThrow(AllegroAuthenticationException);
-      jest.useFakeTimers();
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
@@ -434,14 +413,13 @@ describe('AllegroHttpClient', () => {
           });
         });
 
-      jest.useRealTimers();
-      const response = await client.get('/test');
-      jest.useFakeTimers();
+      // 429 with Retry-After: 1 schedules a 1s sleep before the retry. Drive it forward.
+      const promise = client.get('/test');
+      await jest.advanceTimersByTimeAsync(1_000);
+      const response = await promise;
 
       expect(response.data).toEqual(mockData);
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
   });
 });
-
-
