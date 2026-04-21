@@ -409,6 +409,39 @@ describe('DashboardPage', () => {
         await screen.findByText(/skipped 2 already running/i),
       ).toBeInTheDocument();
     });
+
+    it('shows an honest "nothing re-queued" toast when the bulk endpoint returns count=0', async () => {
+      // Race case: every candidate flipped out of dead between the dashboard
+      // fetch and the retry click. Toast should read as neutral, not success.
+      const retryGrouped = vi.fn().mockResolvedValue({
+        requeuedJobIds: [],
+        count: 0,
+        skipped: 3,
+      });
+      const apiClient = createMockApiClient({
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'racy.job' as JobType,
+                count: 3,
+              }),
+            ]),
+          ),
+          retryGrouped,
+        },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — racy › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
+      expect(await screen.findByText(/Nothing re-queued/i)).toBeInTheDocument();
+      expect(screen.getByText(/no dead jobs remain/i)).toBeInTheDocument();
+    });
   });
 
   describe('connection health roll-up', () => {
