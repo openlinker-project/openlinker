@@ -15,6 +15,7 @@ import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
+  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   SyncJobEntity,
 } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
@@ -58,10 +59,16 @@ describe('SyncController', () => {
     requeueStuckJobs: jest.fn(),
     requeueDeadJob: jest.fn(),
     findRecentByConnectionId: jest.fn(),
+    findGroupedByStatus: jest.fn(),
+    requeueDeadJobsInGroup: jest.fn(),
   };
 
   const mockRetryService = {
     retryJob: jest.fn(),
+  };
+
+  const mockBulkRetryService = {
+    retryGroup: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -71,6 +78,7 @@ describe('SyncController', () => {
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
         { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: mockSyncJobRepository },
         { provide: SYNC_JOB_RETRY_SERVICE_TOKEN, useValue: mockRetryService },
+        { provide: SYNC_JOB_BULK_RETRY_SERVICE_TOKEN, useValue: mockBulkRetryService },
       ],
     }).compile();
 

@@ -197,6 +197,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       getById: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue(null),
+      listGrouped: vi.fn().mockResolvedValue({
+        groups: [],
+        totalGroups: 0,
+        totalJobs: 0,
+      }),
+      retryGrouped: vi.fn().mockResolvedValue({
+        requeuedJobIds: [],
+        count: 0,
+        skipped: 0,
+      }),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
     webhookDeliveries: {

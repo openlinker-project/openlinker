@@ -12,22 +12,16 @@ import { Link } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
-import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retry-sync-job-mutation';
+import { useFailedJobGroupsQuery } from '../../features/sync-jobs/hooks/use-failed-job-groups-query';
+import { useRetryGroupedSyncJobsMutation } from '../../features/sync-jobs/hooks/use-retry-grouped-sync-jobs-mutation';
 import type {
   ServiceHealth,
   ServiceStatus,
   OverallStatus,
 } from '../../features/health/api/health.types';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
-import type { JobStatus, SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
-import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
+import type { JobStatus, SyncJob, SyncJobGroup } from '../../features/sync-jobs/api/sync-jobs.types';
 import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './intervals';
-import {
-  groupFailedJobs,
-  summarizeFailuresByConnection,
-  type ConnectionFailureSignal,
-  type FailedJobGroup,
-} from './failed-job-groups';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -37,15 +31,12 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
 
-// Client-side grouping caps at the backend list-endpoint max (`@Max(100)` on
-// GET /sync/jobs). The aggregate count (from `query.data.total`) remains the
-// true server count, and the panel meta already renders "N signatures in
-// first M" honestly whenever the returned page is smaller than the total.
-// Long-term fix: #268 — server-side grouping endpoint that removes the
-// page-limit dependency entirely.
-const DEAD_JOB_GROUPING_LIMIT = SYNC_JOBS_MAX_LIMIT;
-
 type DashboardTone = 'success' | 'warning' | 'error' | 'neutral';
+
+/** Stable row key for the grouped dead-job table; also used to track per-row pending state. */
+function groupKey(group: Pick<SyncJobGroup, 'connectionId' | 'jobType'>): string {
+  return `${group.connectionId}::${group.jobType}`;
+}
 
 function toRowStatusTone(status: ConnectionStatus | JobStatus): DashboardTone {
   if (status === 'active' || status === 'succeeded') return 'success';
@@ -94,10 +85,38 @@ function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealt
   );
 }
 
+interface ConnectionFailureSignal {
+  connectionId: string;
+  deadJobCount: number;
+}
+
 interface RolledUpConnection {
   connection: Connection;
   deadJobCount: number;
   rollupTone: DashboardTone;
+}
+
+/**
+ * Tally dead-job counts per connection from the server-returned groups.
+ * Every dead job belongs to exactly one (connectionId, jobType) group, so the
+ * per-connection total is `sum(group.count) where group.connectionId = C`.
+ */
+function summarizeFailuresByConnection(
+  groups: SyncJobGroup[],
+): Map<string, ConnectionFailureSignal> {
+  const byConnection = new Map<string, ConnectionFailureSignal>();
+  for (const group of groups) {
+    const existing = byConnection.get(group.connectionId);
+    if (existing) {
+      existing.deadJobCount += group.count;
+    } else {
+      byConnection.set(group.connectionId, {
+        connectionId: group.connectionId,
+        deadJobCount: group.count,
+      });
+    }
+  }
+  return byConnection;
 }
 
 function rollUpConnectionHealth(
@@ -153,12 +172,11 @@ export function DashboardPage(): ReactElement {
   const healthQuery = useDevStackHealthQuery({ refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
   const recentJobsQuery = useSyncJobsQuery(undefined, { limit: 5 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
   const queuedJobsQuery = useSyncJobsQuery({ status: 'queued' }, { limit: 1 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
-  const deadJobsQuery = useSyncJobsQuery(
+  const deadGroupsQuery = useFailedJobGroupsQuery(
     { status: 'dead' },
-    { limit: DEAD_JOB_GROUPING_LIMIT },
     { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS },
   );
-  const retrySyncJob = useRetrySyncJobMutation();
+  const retryGrouped = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
   // Per-group pending state. Retry disables only its own row button so an
   // operator can fire retries against different groups in parallel without
@@ -166,18 +184,24 @@ export function DashboardPage(): ReactElement {
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
   const connections = connectionsQuery.data ?? [];
-  const deadJobs = useMemo<SyncJob[]>(() => deadJobsQuery.data?.items ?? [], [deadJobsQuery.data]);
-  const failureSignals = useMemo(() => summarizeFailuresByConnection(deadJobs), [deadJobs]);
+  const failedGroups = useMemo<SyncJobGroup[]>(
+    () => deadGroupsQuery.data?.groups ?? [],
+    [deadGroupsQuery.data],
+  );
+  const failureSignals = useMemo(
+    () => summarizeFailuresByConnection(failedGroups),
+    [failedGroups],
+  );
   const rolledUpConnections = useMemo(
     () => rollUpConnectionHealth(connections, failureSignals),
     [connections, failureSignals],
   );
-  const failedGroups = useMemo(() => groupFailedJobs(deadJobs), [deadJobs]);
 
   const activeCount = connections.filter((c) => c.status === 'active').length;
   const errorCount = connections.filter((c) => c.status === 'error').length;
   const warningCount = rolledUpConnections.filter((r) => r.rollupTone === 'warning').length;
-  const deadTotal = deadJobsQuery.data?.total ?? 0;
+  const deadTotal = deadGroupsQuery.data?.totalJobs ?? 0;
+  const totalGroups = deadGroupsQuery.data?.totalGroups ?? 0;
   const queuedTotal = queuedJobsQuery.data?.total ?? 0;
 
   const integrationTone: DashboardTone =
@@ -194,14 +218,14 @@ export function DashboardPage(): ReactElement {
     healthQuery.isFetching ||
     recentJobsQuery.isFetching ||
     queuedJobsQuery.isFetching ||
-    deadJobsQuery.isFetching;
+    deadGroupsQuery.isFetching;
 
   function handleRefresh(): void {
     void connectionsQuery.refetch();
     void healthQuery.refetch();
     void recentJobsQuery.refetch();
     void queuedJobsQuery.refetch();
-    void deadJobsQuery.refetch();
+    void deadGroupsQuery.refetch();
   }
 
   const connectionNameById = useMemo(() => {
@@ -211,22 +235,35 @@ export function DashboardPage(): ReactElement {
   }, [connections]);
 
   const handleRetryGroup = useCallback(
-    async (group: FailedJobGroup): Promise<void> => {
-      setPendingGroupKey(group.key);
+    async (group: SyncJobGroup): Promise<void> => {
+      const key = groupKey(group);
+      setPendingGroupKey(key);
       try {
-        await retrySyncJob.mutateAsync(group.representative.id);
-        // The backend retry endpoint is per-job, so we only re-queue the
-        // representative (most recently updated) row in the group. Surface
-        // that honestly so an operator doesn't assume all N just re-ran.
-        const remaining = Math.max(0, group.count - 1);
-        showToast({
-          tone: 'success',
-          title: 'Re-queued 1 job',
-          description:
-            remaining === 0
-              ? `${formatJobType(group.jobType)} will re-run.`
-              : `${formatJobType(group.jobType)} — most recent job re-queued. ${remaining} other failure${remaining === 1 ? '' : 's'} still dead; open View jobs to retry the rest.`,
+        const result = await retryGrouped.mutateAsync({
+          connectionId: group.connectionId,
+          jobType: group.jobType,
         });
+        if (result.count === 0) {
+          // Race case: every candidate flipped out of `dead` between our
+          // group-list fetch and the bulk retry — another operator beat us to
+          // it, or a worker started processing. Not an error, but not a
+          // green-checkmark success either.
+          showToast({
+            tone: 'info',
+            title: 'Nothing re-queued',
+            description: `${formatJobType(group.jobType)} — no dead jobs remain (${result.skipped} already running).`,
+          });
+        } else {
+          const description =
+            result.skipped > 0
+              ? `${formatJobType(group.jobType)} — re-queued ${result.count}, skipped ${result.skipped} already running.`
+              : `${formatJobType(group.jobType)} will re-run.`;
+          showToast({
+            tone: 'success',
+            title: `Re-queued ${result.count} job${result.count === 1 ? '' : 's'}`,
+            description,
+          });
+        }
       } catch (error) {
         showToast({
           tone: 'error',
@@ -234,13 +271,13 @@ export function DashboardPage(): ReactElement {
           description: error instanceof Error ? error.message : 'Unknown error',
         });
       } finally {
-        setPendingGroupKey((current) => (current === group.key ? null : current));
+        setPendingGroupKey((current) => (current === key ? null : current));
       }
     },
-    [retrySyncJob, showToast],
+    [retryGrouped, showToast],
   );
 
-  const failedGroupColumns: DataTableColumn<FailedJobGroup>[] = useMemo(
+  const failedGroupColumns: DataTableColumn<SyncJobGroup>[] = useMemo(
     () => [
       {
         id: 'jobType',
@@ -293,18 +330,18 @@ export function DashboardPage(): ReactElement {
         header: 'Actions',
         align: 'right',
         cell: (group): ReactElement => {
+          const key = groupKey(group);
           const connectionName = connectionNameById.get(group.connectionId) ?? group.connectionId;
           const signature = `${formatJobType(group.jobType)} on ${connectionName}`;
-          const retryLabel = group.count > 1 ? `Retry 1 of ${group.count}` : 'Retry';
           return (
             <div className="dashboard-incidents__actions">
               <Button
                 tone="secondary"
                 onClick={() => void handleRetryGroup(group)}
-                disabled={pendingGroupKey === group.key}
-                aria-label={`${retryLabel} — ${signature}`}
+                disabled={pendingGroupKey === key}
+                aria-label={`Retry — ${signature}`}
               >
-                {pendingGroupKey === group.key ? 'Retrying…' : retryLabel}
+                {pendingGroupKey === key ? 'Retrying…' : 'Retry'}
               </Button>
               <Link
                 className="button button--ghost"
@@ -398,7 +435,7 @@ export function DashboardPage(): ReactElement {
         ) : (
           <MetricCard
             label="Failed jobs"
-            value={deadJobsQuery.isLoading ? '—' : 0}
+            value={deadGroupsQuery.isLoading ? '—' : 0}
             tone="neutral"
             description="No failures"
           />
@@ -431,29 +468,27 @@ export function DashboardPage(): ReactElement {
           </div>
           {deadTotal > 0 ? (
             <span className="panel__meta">
-              {deadJobs.length < deadTotal
-                ? `${failedGroups.length} signatures in first ${deadJobs.length}`
-                : `${failedGroups.length} unique signature${failedGroups.length === 1 ? '' : 's'}`}
+              {totalGroups} unique signature{totalGroups === 1 ? '' : 's'}
               {' · '}
               {deadTotal} total failure{deadTotal === 1 ? '' : 's'}
             </span>
           ) : null}
         </div>
 
-        {deadJobsQuery.isLoading ? (
+        {deadGroupsQuery.isLoading ? (
           <LoadingState title="Loading failures" message="Collecting dead jobs…" liveRegion="off" />
-        ) : deadJobsQuery.error ? (
+        ) : deadGroupsQuery.error ? (
           <ErrorState
             title="Unable to load failures"
-            message={deadJobsQuery.error.message}
-            action={<Button onClick={() => void deadJobsQuery.refetch()}>Retry</Button>}
+            message={deadGroupsQuery.error.message}
+            action={<Button onClick={() => void deadGroupsQuery.refetch()}>Retry</Button>}
           />
         ) : (
           <DataTable
             caption="Failed sync jobs grouped by connection and job type"
             columns={failedGroupColumns}
             rows={failedGroups}
-            rowKey={(group) => group.key}
+            rowKey={(group) => groupKey(group)}
             cardView={{
               title: (group) => (
                 <span className="mono-text">{formatJobType(group.jobType)}</span>

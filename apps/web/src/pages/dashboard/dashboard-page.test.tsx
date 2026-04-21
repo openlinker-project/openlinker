@@ -4,12 +4,11 @@ import { createMockApiClient, renderWithProviders, sampleConnection } from '../.
 import { DashboardPage } from './dashboard-page';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type {
-  PaginatedSyncJobs,
+  JobType,
   SyncJob,
-  SyncJobFilters,
-  SyncJobPagination,
+  SyncJobGroup,
+  SyncJobGroupsResponse,
 } from '../../features/sync-jobs/api/sync-jobs.types';
-import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
 
 function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
   return {
@@ -33,6 +32,26 @@ function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
 
 function makeConnection(overrides: Partial<Connection>): Connection {
   return { ...sampleConnection, ...overrides };
+}
+
+function makeGroup(overrides: Partial<SyncJobGroup> = {}): SyncJobGroup {
+  return {
+    connectionId: 'conn_1',
+    jobType: 'master.inventory.syncByExternalId' as JobType,
+    count: 1,
+    latestUpdatedAt: '2026-04-20T10:00:00.000Z',
+    representativeJobId: 'rep_1',
+    lastError: null,
+    ...overrides,
+  };
+}
+
+function groupsResponse(groups: SyncJobGroup[]): SyncJobGroupsResponse {
+  return {
+    groups,
+    totalGroups: groups.length,
+    totalJobs: groups.reduce((sum, g) => sum + g.count, 0),
+  };
 }
 
 function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
@@ -122,10 +141,7 @@ describe('DashboardPage', () => {
   }, 15000);
 
   it('shows recent sync jobs in a table', async () => {
-    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
-      if (filters?.status === 'dead') {
-        return Promise.resolve({ items: [], total: 0, limit: 10, offset: 0 });
-      }
+    const listMock = vi.fn().mockImplementation(() => {
       return Promise.resolve({
         items: [
           makeSyncJob({ id: 'j1', jobType: 'marketplace.orders.poll', status: 'succeeded' }),
@@ -146,19 +162,14 @@ describe('DashboardPage', () => {
   });
 
   it('shows failed jobs count in metric card', async () => {
-    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
-      if (filters?.status === 'dead') {
-        return Promise.resolve({
-          items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
-          total: 1,
-          limit: 10,
-          offset: 0,
-        });
-      }
-      return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
-    });
     const apiClient = createMockApiClient({
-      syncJobs: { list: listMock },
+      syncJobs: {
+        listGrouped: vi.fn().mockResolvedValue(
+          groupsResponse([
+            makeGroup({ count: 1, lastError: 'Timeout' }),
+          ]),
+        ),
+      },
     });
     renderWithProviders(<DashboardPage />, { apiClient });
 
@@ -166,19 +177,12 @@ describe('DashboardPage', () => {
   });
 
   it('tints the Failed jobs card red and links to /jobs-logs?status=dead when there are failures', async () => {
-    const listMock = vi.fn().mockImplementation((filters?: { status?: string }) => {
-      if (filters?.status === 'dead') {
-        return Promise.resolve({
-          items: [makeSyncJob({ id: 'dead1', status: 'dead', lastError: 'Timeout' })],
-          total: 3,
-          limit: 100,
-          offset: 0,
-        });
-      }
-      return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
-    });
     const apiClient = createMockApiClient({
-      syncJobs: { list: listMock },
+      syncJobs: {
+        listGrouped: vi.fn().mockResolvedValue(
+          groupsResponse([makeGroup({ count: 3, lastError: 'Timeout' })]),
+        ),
+      },
     });
 
     const { container } = renderWithProviders(<DashboardPage />, { apiClient });
@@ -222,25 +226,6 @@ describe('DashboardPage', () => {
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('requests dead jobs with limit capped at SYNC_JOBS_MAX_LIMIT (regression guard for #270)', async () => {
-    const listMock = vi.fn().mockResolvedValue({ items: [], total: 0, limit: SYNC_JOBS_MAX_LIMIT, offset: 0 });
-    const apiClient = createMockApiClient({ syncJobs: { list: listMock } });
-    renderWithProviders(<DashboardPage />, { apiClient });
-
-    await waitFor(() => {
-      const deadCall = listMock.mock.calls.find((call) => {
-        const filters = call[0] as unknown as SyncJobFilters | undefined;
-        return filters !== undefined && filters.status === 'dead';
-      });
-      expect(deadCall).toBeDefined();
-      // The backend caps this at SYNC_JOBS_MAX_LIMIT (=100). Requesting any
-      // higher value returns HTTP 400 and breaks the incidents panel.
-      const pagination = (deadCall as unknown[])[1] as SyncJobPagination;
-      expect(pagination.limit).toBeLessThanOrEqual(SYNC_JOBS_MAX_LIMIT);
-      expect(pagination.limit).toBe(SYNC_JOBS_MAX_LIMIT);
-    });
-  });
-
   it('shows error state when sync jobs fail to load', async () => {
     const apiClient = createMockApiClient({
       syncJobs: {
@@ -267,56 +252,58 @@ describe('DashboardPage', () => {
   });
 
   describe('"What\'s broken right now" triage surface', () => {
-    function buildListMock(
-      deadJobs: SyncJob[],
-    ): (filters?: SyncJobFilters) => Promise<PaginatedSyncJobs> {
-      return vi.fn().mockImplementation((filters?: { status?: string }) => {
-        if (filters?.status === 'dead') {
-          return Promise.resolve({
-            items: deadJobs,
-            total: deadJobs.length,
-            limit: 100,
-            offset: 0,
-          });
-        }
-        if (filters?.status === 'queued') {
-          return Promise.resolve({ items: [], total: 0, limit: 1, offset: 0 });
-        }
-        return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
-      });
-    }
+    it('calls listGrouped with status=dead (regression guard: grouping happens server-side)', async () => {
+      const listGrouped = vi.fn().mockResolvedValue(groupsResponse([]));
+      const apiClient = createMockApiClient({ syncJobs: { listGrouped } });
+      renderWithProviders(<DashboardPage />, { apiClient });
 
-    it('groups dead jobs that share connection + job type into a single row with a count badge', async () => {
-      const deadJobs: SyncJob[] = Array.from({ length: 3 }, (_, i) =>
-        makeSyncJob({
-          id: `dead_${i}`,
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'master.inventory.syncByExternalId',
-          lastError: 'FK violation',
-          updatedAt: `2026-04-20T10:0${i}:00.000Z`,
-        }),
-      );
+      await waitFor(() => {
+        expect(listGrouped).toHaveBeenCalledWith({ status: 'dead' });
+      });
+    });
+
+    it('renders one row per server-returned group with count and total', async () => {
       const apiClient = createMockApiClient({
-        syncJobs: { list: buildListMock(deadJobs) },
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'master.inventory.syncByExternalId' as JobType,
+                count: 3,
+                lastError: 'FK violation',
+              }),
+            ]),
+          ),
+        },
       });
       renderWithProviders(<DashboardPage />, { apiClient });
 
       expect(
-        await screen.findByRole('heading', { name: /What\u2019s broken right now/ }),
+        await screen.findByRole('heading', { name: /What’s broken right now/ }),
       ).toBeInTheDocument();
       expect(await screen.findByText('master › inventory › syncByExternalId')).toBeInTheDocument();
       expect(screen.getByText('1 unique signature · 3 total failures')).toBeInTheDocument();
     });
 
-    it('renders one group per (connection, jobType) pair sorted by count desc', async () => {
-      const deadJobs: SyncJob[] = [
-        makeSyncJob({ id: 'a1', connectionId: 'conn_1', jobType: 'alpha' }),
-        makeSyncJob({ id: 'b1', connectionId: 'conn_2', jobType: 'beta' }),
-        makeSyncJob({ id: 'b2', connectionId: 'conn_2', jobType: 'beta' }),
-      ];
+    it('renders one group per (connection, jobType) pair sorted by the server', async () => {
       const apiClient = createMockApiClient({
-        syncJobs: { list: buildListMock(deadJobs) },
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_2',
+                jobType: 'marketplace.order.sync' as JobType,
+                count: 2,
+              }),
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'marketplace.orders.poll' as JobType,
+                count: 1,
+              }),
+            ]),
+          ),
+        },
       });
       renderWithProviders(<DashboardPage />, { apiClient });
 
@@ -325,120 +312,135 @@ describe('DashboardPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('calls the retry mutation for the representative job when Retry is clicked', async () => {
-      const deadJobs: SyncJob[] = [
-        makeSyncJob({
-          id: 'rep_1',
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'some.failing.job',
-          updatedAt: '2026-04-20T10:05:00.000Z',
-        }),
-      ];
-      const retryMock = vi.fn().mockResolvedValue(deadJobs[0]);
-      const apiClient = createMockApiClient({
-        syncJobs: { list: buildListMock(deadJobs), retry: retryMock },
+    it('calls retryGrouped with the group selector when Retry is clicked', async () => {
+      const retryGrouped = vi.fn().mockResolvedValue({
+        requeuedJobIds: ['rep_1'],
+        count: 1,
+        skipped: 0,
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
-
-      await screen.findByText('some › failing › job');
-      // Row action is uniquely labelled via `aria-label` so screen readers
-      // can tell rows apart; use that to target the right button.
-      const retryButton = await screen.findByRole('button', {
-        name: /Retry — some › failing › job on Main PrestaShop Store/,
-      });
-      fireEvent.click(retryButton);
-      await waitFor(() => {
-        expect(retryMock).toHaveBeenCalledWith('rep_1');
-      });
-    });
-
-    it('labels the Retry button with the group size when there is more than one failure', async () => {
-      const deadJobs: SyncJob[] = [
-        makeSyncJob({
-          id: 'a1',
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'chatty.failing.job',
-          updatedAt: '2026-04-20T10:01:00.000Z',
-        }),
-        makeSyncJob({
-          id: 'a2',
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'chatty.failing.job',
-          updatedAt: '2026-04-20T10:02:00.000Z',
-        }),
-        makeSyncJob({
-          id: 'a3',
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'chatty.failing.job',
-          updatedAt: '2026-04-20T10:03:00.000Z',
-        }),
-      ];
-      const apiClient = createMockApiClient({
-        syncJobs: { list: buildListMock(deadJobs) },
-      });
-      renderWithProviders(<DashboardPage />, { apiClient });
-
-      expect(
-        await screen.findByRole('button', { name: /Retry 1 of 3 — chatty › failing › job/ }),
-      ).toBeInTheDocument();
-    });
-
-    it('surfaces the remaining-failures caveat in the success toast for a multi-row group', async () => {
-      const deadJobs: SyncJob[] = Array.from({ length: 3 }, (_, i) =>
-        makeSyncJob({
-          id: `bulk_${i}`,
-          status: 'dead',
-          connectionId: 'conn_1',
-          jobType: 'bulk.failing.job',
-          updatedAt: `2026-04-20T10:0${i}:00.000Z`,
-        }),
-      );
-      const retryMock = vi.fn().mockResolvedValue(deadJobs[2]);
-      const apiClient = createMockApiClient({
-        syncJobs: { list: buildListMock(deadJobs), retry: retryMock },
-      });
-      renderWithProviders(<DashboardPage />, { apiClient });
-
-      const retryButton = await screen.findByRole('button', {
-        name: /Retry 1 of 3 — bulk › failing › job on Main PrestaShop Store/,
-      });
-      fireEvent.click(retryButton);
-
-      expect(
-        await screen.findByText(/2 other failures still dead/i),
-      ).toBeInTheDocument();
-    });
-
-    it('shows "signatures in first N" when the dead-job page is capped below the total', async () => {
-      const deadJobs: SyncJob[] = [
-        makeSyncJob({ id: 'd1', status: 'dead', connectionId: 'conn_1', jobType: 'a.b' }),
-        makeSyncJob({ id: 'd2', status: 'dead', connectionId: 'conn_1', jobType: 'a.b' }),
-      ];
       const apiClient = createMockApiClient({
         syncJobs: {
-          list: vi.fn().mockImplementation((filters?: { status?: string }) => {
-            if (filters?.status === 'dead') {
-              // Server reports a higher total than the page returns.
-              return Promise.resolve({
-                items: deadJobs,
-                total: 1234,
-                limit: 100,
-                offset: 0,
-              });
-            }
-            return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
-          }),
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'some.failing.job' as JobType,
+                count: 1,
+              }),
+            ]),
+          ),
+          retryGrouped,
         },
       });
       renderWithProviders(<DashboardPage />, { apiClient });
 
+      await screen.findByText('some › failing › job');
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — some › failing › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
+      await waitFor(() => {
+        expect(retryGrouped).toHaveBeenCalledWith({
+          connectionId: 'conn_1',
+          jobType: 'some.failing.job',
+        });
+      });
+    });
+
+    it('shows a success toast with the re-queued count', async () => {
+      const retryGrouped = vi.fn().mockResolvedValue({
+        requeuedJobIds: ['j1', 'j2', 'j3'],
+        count: 3,
+        skipped: 0,
+      });
+      const apiClient = createMockApiClient({
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'bulk.failing.job' as JobType,
+                count: 3,
+              }),
+            ]),
+          ),
+          retryGrouped,
+        },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — bulk › failing › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
+      expect(await screen.findByText(/Re-queued 3 jobs/i)).toBeInTheDocument();
+    });
+
+    it('mentions skipped jobs in the toast when the bulk endpoint skips some', async () => {
+      const retryGrouped = vi.fn().mockResolvedValue({
+        requeuedJobIds: ['j1'],
+        count: 1,
+        skipped: 2,
+      });
+      const apiClient = createMockApiClient({
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'partial.retry.job' as JobType,
+                count: 3,
+              }),
+            ]),
+          ),
+          retryGrouped,
+        },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — partial › retry › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
       expect(
-        await screen.findByText('1 signatures in first 2 · 1234 total failures'),
+        await screen.findByText(/skipped 2 already running/i),
       ).toBeInTheDocument();
+    });
+
+    it('shows an honest "nothing re-queued" toast when the bulk endpoint returns count=0', async () => {
+      // Race case: every candidate flipped out of dead between the dashboard
+      // fetch and the retry click. Toast should read as neutral, not success.
+      const retryGrouped = vi.fn().mockResolvedValue({
+        requeuedJobIds: [],
+        count: 0,
+        skipped: 3,
+      });
+      const apiClient = createMockApiClient({
+        syncJobs: {
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_1',
+                jobType: 'racy.job' as JobType,
+                count: 3,
+              }),
+            ]),
+          ),
+          retryGrouped,
+        },
+      });
+      renderWithProviders(<DashboardPage />, { apiClient });
+
+      const retryButton = await screen.findByRole('button', {
+        name: /Retry — racy › job on Main PrestaShop Store/,
+      });
+      fireEvent.click(retryButton);
+
+      expect(await screen.findByText(/Nothing re-queued/i)).toBeInTheDocument();
+      expect(screen.getByText(/no dead jobs remain/i)).toBeInTheDocument();
     });
   });
 
@@ -454,19 +456,18 @@ describe('DashboardPage', () => {
         name: 'Shop B',
         status: 'active',
       });
-      const deadJobs: SyncJob[] = [
-        makeSyncJob({ id: 'd1', status: 'dead', connectionId: 'conn_failing' }),
-        makeSyncJob({ id: 'd2', status: 'dead', connectionId: 'conn_failing' }),
-      ];
       const apiClient = createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([healthyConn, failingConn]) },
         syncJobs: {
-          list: vi.fn().mockImplementation((filters?: { status?: string }) => {
-            if (filters?.status === 'dead') {
-              return Promise.resolve({ items: deadJobs, total: 2, limit: 100, offset: 0 });
-            }
-            return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0 });
-          }),
+          listGrouped: vi.fn().mockResolvedValue(
+            groupsResponse([
+              makeGroup({
+                connectionId: 'conn_failing',
+                jobType: 'some.job' as JobType,
+                count: 2,
+              }),
+            ]),
+          ),
         },
       });
 

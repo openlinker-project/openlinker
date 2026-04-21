@@ -31,6 +31,10 @@ import {
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
+  SyncJobGroup,
+  SyncJobGroupsResult,
+  SyncJobGroupFilters,
+  BulkRetryResult,
 } from '../../../domain/types/sync-job.types';
 
 @Injectable()
@@ -275,6 +279,133 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       take: limit,
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findGroupedByStatus(
+    filters: SyncJobGroupFilters,
+    maxGroups: number,
+  ): Promise<SyncJobGroupsResult> {
+    // Inputs are DTO-validated upstream (IsEnum JobStatus, IsUUID, @Max(100)).
+    // Raw SQL used because TypeORM QueryBuilder doesn't model window functions cleanly.
+    const groupsSql = `
+      WITH ranked AS (
+        SELECT
+          id,
+          "connectionId",
+          "jobType",
+          "updatedAt",
+          "lastError",
+          COUNT(*) OVER (PARTITION BY "connectionId", "jobType") AS group_count,
+          ROW_NUMBER() OVER (
+            PARTITION BY "connectionId", "jobType"
+            ORDER BY "updatedAt" DESC, id DESC
+          ) AS rn
+        FROM sync_jobs
+        WHERE status = $1
+          AND ($2::uuid IS NULL OR "connectionId" = $2)
+      )
+      SELECT
+        "connectionId" AS connection_id,
+        "jobType" AS job_type,
+        group_count,
+        "updatedAt" AS latest_updated_at,
+        id AS representative_job_id,
+        "lastError" AS last_error
+      FROM ranked
+      WHERE rn = 1
+      ORDER BY group_count DESC, "updatedAt" DESC
+      LIMIT $3
+    `;
+    const totalsSql = `
+      SELECT
+        COUNT(*)::int AS total_jobs,
+        COUNT(DISTINCT ("connectionId", "jobType"))::int AS total_groups
+      FROM sync_jobs
+      WHERE status = $1
+        AND ($2::uuid IS NULL OR "connectionId" = $2)
+    `;
+
+    interface GroupRow {
+      connection_id: string;
+      job_type: string;
+      group_count: string; // Postgres COUNT() returns bigint → serialized as string
+      latest_updated_at: Date;
+      representative_job_id: string;
+      last_error: string | null;
+    }
+    interface TotalsRow {
+      total_jobs: number;
+      total_groups: number;
+    }
+
+    const params = [filters.status, filters.connectionId ?? null, maxGroups];
+    const [rows, totals] = await Promise.all([
+      this.dataSource.query<GroupRow[]>(groupsSql, params),
+      this.dataSource.query<TotalsRow[]>(totalsSql, [filters.status, filters.connectionId ?? null]),
+    ]);
+
+    const groups: SyncJobGroup[] = rows.map((row) => {
+      if (!this.isValidJobType(row.job_type)) {
+        throw new InvalidSyncJobStateError('jobType', row.job_type, row.representative_job_id);
+      }
+      return {
+        connectionId: row.connection_id,
+        jobType: row.job_type,
+        count: Number(row.group_count),
+        latestUpdatedAt: row.latest_updated_at,
+        representativeJobId: row.representative_job_id,
+        lastError: row.last_error,
+      };
+    });
+
+    return {
+      groups,
+      totalGroups: totals[0]?.total_groups ?? 0,
+      totalJobs: totals[0]?.total_jobs ?? 0,
+    };
+  }
+
+  async requeueDeadJobsInGroup(
+    connectionId: string,
+    jobType: string,
+    maxBatchSize: number,
+  ): Promise<BulkRetryResult> {
+    // Two-query approach: SELECT the batch, then UPDATE with status='dead' guard.
+    // The guard tolerates the rare race where a job flipped out of 'dead' between
+    // SELECT and UPDATE; such jobs count as `skipped`, never double-enqueued.
+    const candidates = await this.repository.find({
+      where: { connectionId, jobType, status: 'dead' },
+      select: { id: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+      take: maxBatchSize,
+    });
+
+    if (candidates.length === 0) {
+      return { requeuedJobIds: [], count: 0, skipped: 0 };
+    }
+
+    const candidateIds = candidates.map((c) => c.id);
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(SyncJobOrmEntity)
+      .set({
+        status: 'queued',
+        attempts: 0,
+        nextRunAt: new Date(),
+        lockedAt: null,
+        lockedBy: null,
+      })
+      .where('id IN (:...ids)', { ids: candidateIds })
+      .andWhere('status = :dead', { dead: 'dead' })
+      .returning('id')
+      .execute();
+
+    const requeuedJobIds = (result.raw as Array<{ id: string }>).map((r) => r.id);
+    return {
+      requeuedJobIds,
+      count: requeuedJobIds.length,
+      skipped: candidateIds.length - requeuedJobIds.length,
+    };
   }
 
   /**
