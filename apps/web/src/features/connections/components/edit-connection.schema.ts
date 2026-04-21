@@ -5,6 +5,19 @@ export const editConnectionSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   baseUrl: z.string().trim().optional(),
   shopId: z.string().trim().optional(),
+  // Optional override for the split-host case (webservice host ≠ public storefront).
+  // Accepts a validated URL or an empty string (to unset). See #271 / #283.
+  storefrontBaseUrl: z
+    .union([
+      z
+        .url('Storefront URL must be a valid URL')
+        .refine(
+          (value) => value.startsWith('http://') || value.startsWith('https://'),
+          'Storefront URL must use http:// or https://',
+        ),
+      z.literal(''),
+    ])
+    .optional(),
   masterCatalogConnectionId: z
     .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
     .optional(),
@@ -44,6 +57,7 @@ export function mergeStructuredIntoConfig(
   structured: {
     baseUrl?: string;
     shopId?: string;
+    storefrontBaseUrl?: string;
     masterCatalogConnectionId?: string;
   },
 ): Record<string, unknown> {
@@ -60,6 +74,13 @@ export function mergeStructuredIntoConfig(
       delete next.shopId;
     } else {
       next.shopId = structured.shopId;
+    }
+  }
+  if (structured.storefrontBaseUrl !== undefined) {
+    if (structured.storefrontBaseUrl.length === 0) {
+      delete next.storefrontBaseUrl;
+    } else {
+      next.storefrontBaseUrl = structured.storefrontBaseUrl;
     }
   }
   // Unlike baseUrl/shopId, masterCatalogConnectionId uses `""` as an explicit

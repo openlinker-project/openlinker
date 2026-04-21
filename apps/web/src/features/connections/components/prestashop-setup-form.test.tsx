@@ -134,6 +134,80 @@ describe('PrestashopSetupForm', () => {
     );
   });
 
+  it('persists storefrontBaseUrl in config when provided', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Split host shop',
+      url: 'https://api.shop.example.com',
+      key: 'WSKEY',
+    });
+    fireEvent.change(within(view.container).getByLabelText('Storefront URL (optional)'), {
+      target: { value: 'https://shop.example.com' },
+    });
+
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await screen.findByText('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: {
+          baseUrl: 'https://api.shop.example.com',
+          storefrontBaseUrl: 'https://shop.example.com',
+        },
+      }),
+    );
+  });
+
+  it('omits storefrontBaseUrl from config when left blank', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Same-host shop',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
+    });
+
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await screen.findByText('Connection created');
+    // Blank input must not persist `""` — backend falls back to baseUrl when the key is absent.
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: { baseUrl: 'https://shop.example.com' },
+      }),
+    );
+    const payload = create.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    expect('storefrontBaseUrl' in payload.config).toBe(false);
+  });
+
+  it('blocks advancing from the credentials step when the storefront URL is invalid', async () => {
+    const view = renderWithProviders(<PrestashopSetupForm />);
+
+    fillCredentialsStep(view.container, {
+      name: 'Shop',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
+    });
+    fireEvent.change(within(view.container).getByLabelText('Storefront URL (optional)'), {
+      target: { value: 'not-a-url' },
+    });
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
+
+    expect((await screen.findAllByText('Storefront URL must be a valid URL')).length).toBeGreaterThan(0);
+    expect(within(view.container).getByLabelText('Connection name')).toBeInTheDocument();
+    expect(screen.queryByText('Verify the credentials')).toBeNull();
+  });
+
   it('surfaces API errors in a form-level alert on the review step', async () => {
     const apiClient = createMockApiClient({
       connections: {

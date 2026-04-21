@@ -26,7 +26,7 @@ interface EditConnectionFormProps {
   connection: Connection;
 }
 
-type StructuredField = 'baseUrl' | 'shopId' | 'masterCatalogConnectionId';
+type StructuredField = 'baseUrl' | 'shopId' | 'storefrontBaseUrl' | 'masterCatalogConnectionId';
 type PlatformBranch = 'prestashop' | 'marketplace' | 'raw';
 
 function readString(config: Record<string, unknown>, key: string): string {
@@ -54,6 +54,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       name: connection.name,
       baseUrl: readString(connection.config, 'baseUrl'),
       shopId: readString(connection.config, 'shopId'),
+      storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
       masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
@@ -227,6 +228,21 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
               placeholder="https://shop.example.com"
               disabled={!configIsParseable}
               invalid={Boolean(form.formState.errors.baseUrl)}
+            />
+          </FormField>
+
+          <FormField
+            label="Storefront URL (optional)"
+            name="storefrontBaseUrl"
+            error={form.formState.errors.storefrontBaseUrl?.message}
+            description="Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same — defaults to Shop URL."
+          >
+            <Input
+              value={form.watch('storefrontBaseUrl') ?? ''}
+              onChange={(event) => syncStructuredToJson('storefrontBaseUrl', event.target.value)}
+              placeholder="https://shop.example.com"
+              disabled={!configIsParseable}
+              invalid={Boolean(form.formState.errors.storefrontBaseUrl)}
             />
           </FormField>
 

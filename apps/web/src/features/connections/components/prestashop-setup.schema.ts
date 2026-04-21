@@ -35,6 +35,21 @@ export const prestashopSetupSchema = z.object({
     ),
   webserviceKey: z.string().trim().min(1, 'Webservice key is required'),
   shopId: z.string().trim().optional(),
+  // Optional override for the split-host case (webservice host ≠ public storefront).
+  // Empty string is accepted alongside absent so the form can round-trip a blank input
+  // without surfacing a validation error; the create payload filters `""` out so the
+  // backend falls back to `baseUrl` per #271.
+  storefrontBaseUrl: z
+    .union([
+      z
+        .url('Storefront URL must be a valid URL')
+        .refine(
+          (value) => value.startsWith('http://') || value.startsWith('https://'),
+          'Storefront URL must use http:// or https://',
+        ),
+      z.literal(''),
+    ])
+    .optional(),
   enabledCapabilities: z
     .array(
       z.enum([
@@ -56,6 +71,7 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   baseUrl: '',
   webserviceKey: '',
   shopId: '',
+  storefrontBaseUrl: '',
   enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
 };
 
@@ -65,6 +81,9 @@ export function toCreateConnectionInput(
   const config: Record<string, unknown> = { baseUrl: values.baseUrl };
   if (values.shopId && values.shopId.length > 0) {
     config.shopId = values.shopId;
+  }
+  if (values.storefrontBaseUrl && values.storefrontBaseUrl.length > 0) {
+    config.storefrontBaseUrl = values.storefrontBaseUrl;
   }
   return {
     name: values.name,
