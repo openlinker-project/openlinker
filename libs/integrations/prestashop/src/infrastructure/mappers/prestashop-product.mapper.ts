@@ -41,8 +41,8 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
 
   mapVariant(combination: PrestashopCombination, productId: string): Omit<ProductVariant, 'id'> {
     const attributes: Record<string, string> = {};
-    const ean = normalizeToEan13(combination.ean13 ?? null) ?? undefined;
-    const gtin = normalizeBarcode(combination.upc ?? null) ?? undefined;
+    const ean = normalizeToEan13(combination.ean13 ?? null);
+    const gtin = normalizeBarcode(combination.upc ?? null);
 
     // Extract attributes from product_option_values
     if (combination.associations?.product_option_values?.product_option_value) {
@@ -59,8 +59,8 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
 
     return {
       productId,
-      sku: this.getStringField(combination.reference) || '',
-      attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
+      sku: this.getStringField(combination.reference) || null,
+      attributes: Object.keys(attributes).length > 0 ? attributes : null,
       ean,
       gtin,
       price: this.parseNumber(combination.price),

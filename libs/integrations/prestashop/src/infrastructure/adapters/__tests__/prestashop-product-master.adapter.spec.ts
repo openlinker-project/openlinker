@@ -368,10 +368,10 @@ describe('PrestashopProductMasterAdapter', () => {
       const result = await adapter.getProductVariants(productId);
 
       expect(result).toHaveLength(2);
-      expect(result[0].ean).toBeUndefined();
-      expect(result[0].gtin).toBeUndefined();
-      expect(result[1].ean).toBeUndefined();
-      expect(result[1].gtin).toBeUndefined();
+      expect(result[0].ean).toBeNull();
+      expect(result[0].gtin).toBeNull();
+      expect(result[1].ean).toBeNull();
+      expect(result[1].gtin).toBeNull();
     });
 
     it('should return synthetic variant when no combinations found', async () => {

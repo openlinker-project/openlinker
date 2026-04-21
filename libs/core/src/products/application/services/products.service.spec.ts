@@ -27,16 +27,16 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
 }
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
-  return new ProductVariant(
-    overrides.id ?? 'ol_product_v1',
-    overrides.productId ?? 'ol_product_1',
-    overrides.sku ?? 'SKU-001-S',
-    overrides.attributes ?? { size: 'S' },
-    overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
-    overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
-    overrides.ean ?? '1234567890123',
-    overrides.gtin ?? null,
-  );
+  return {
+    id: overrides.id ?? 'ol_product_v1',
+    productId: overrides.productId ?? 'ol_product_1',
+    sku: overrides.sku ?? 'SKU-001-S',
+    attributes: overrides.attributes ?? { size: 'S' },
+    ean: overrides.ean ?? '1234567890123',
+    gtin: overrides.gtin ?? null,
+    createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
+    updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+  };
 }
 
 describe('ProductsService', () => {

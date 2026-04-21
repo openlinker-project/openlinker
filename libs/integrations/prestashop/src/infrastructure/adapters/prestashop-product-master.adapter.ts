@@ -200,8 +200,9 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
           id: internalId,
           productId,
           sku,
-          ean: productEan ?? undefined,
-          gtin: productGtin ?? undefined,
+          attributes: null,
+          ean: productEan ?? null,
+          gtin: productGtin ?? null,
         },
       ];
     }

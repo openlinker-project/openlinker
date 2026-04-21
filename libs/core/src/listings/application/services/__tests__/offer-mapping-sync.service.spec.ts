@@ -8,7 +8,20 @@ import { OfferLinkingService } from '../offer-linking.service';
 import { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
 import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
-import { ProductVariantEntity } from '@openlinker/core/products';
+import { ProductVariant } from '@openlinker/core/products';
+
+function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
+  return {
+    id: overrides.id ?? 'variant-1',
+    productId: overrides.productId ?? 'product-1',
+    sku: overrides.sku ?? 'SKU-1',
+    attributes: overrides.attributes ?? null,
+    ean: overrides.ean ?? null,
+    gtin: overrides.gtin ?? null,
+    createdAt: overrides.createdAt ?? new Date(),
+    updatedAt: overrides.updatedAt ?? new Date(),
+  };
+}
 
 describe('OfferMappingSyncService', () => {
   let service: OfferMappingSyncService;
@@ -87,8 +100,8 @@ describe('OfferMappingSyncService', () => {
     });
 
     variantRepository.findBySkuIn.mockResolvedValue([
-      new ProductVariantEntity('variant-1', 'product-1', 'SKU-1', null, new Date(), new Date()),
-      new ProductVariantEntity('variant-2', 'product-2', 'SKU-2', null, new Date(), new Date()),
+      makeVariant({ id: 'variant-1', productId: 'product-1', sku: 'SKU-1' }),
+      makeVariant({ id: 'variant-2', productId: 'product-2', sku: 'SKU-2' }),
     ]);
 
     variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
@@ -106,7 +119,7 @@ describe('OfferMappingSyncService', () => {
     });
 
     variantRepository.findBySkuIn.mockResolvedValue([
-      new ProductVariantEntity('variant-1', 'product-1', 'SKU-1', null, new Date(), new Date()),
+      makeVariant({ id: 'variant-1', productId: 'product-1', sku: 'SKU-1' }),
     ]);
     variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
 
@@ -163,16 +176,12 @@ describe('OfferMappingSyncService', () => {
 
     variantRepository.findBySkuIn.mockResolvedValue([]);
     variantRepository.findByEanOrGtinIn.mockResolvedValue([
-      new ProductVariantEntity(
-        'variant-1',
-        'product-1',
-        'SKU-1',
-        null,
-        new Date(),
-        new Date(),
-        '5901234123457',
-        null,
-      ),
+      makeVariant({
+        id: 'variant-1',
+        productId: 'product-1',
+        sku: 'SKU-1',
+        ean: '5901234123457',
+      }),
     ]);
 
     const result = await service.sync('connection-1', { limit: 50, cursor: null });

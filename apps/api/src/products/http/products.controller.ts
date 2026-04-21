@@ -22,7 +22,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { PRODUCTS_SERVICE_TOKEN, ProductEntity, ProductVariantEntity } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, ProductEntity, ProductVariant } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -159,7 +159,11 @@ export class ProductsController {
     };
   }
 
-  private toVariantDto(variant: ProductVariantEntity): ProductVariantResponseDto {
+  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
+    // Timestamps are optional on the ProductVariant interface because adapters
+    // produce pre-persistence variants. In this controller the variant is always
+    // repository-sourced (see ProductVariantRepository#toDomain), so they are
+    // guaranteed present — fall back to epoch for compiler's benefit only.
     return {
       id: variant.id,
       productId: variant.productId,
@@ -167,8 +171,8 @@ export class ProductsController {
       attributes: variant.attributes,
       ean: variant.ean ?? null,
       gtin: variant.gtin ?? null,
-      createdAt: variant.createdAt.toISOString(),
-      updatedAt: variant.updatedAt.toISOString(),
+      createdAt: (variant.createdAt ?? new Date(0)).toISOString(),
+      updatedAt: (variant.updatedAt ?? new Date(0)).toISOString(),
     };
   }
 
@@ -221,7 +225,11 @@ export class VariantsController {
     };
   }
 
-  private toVariantDto(variant: ProductVariantEntity): ProductVariantResponseDto {
+  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
+    // Timestamps are optional on the ProductVariant interface because adapters
+    // produce pre-persistence variants. In this controller the variant is always
+    // repository-sourced (see ProductVariantRepository#toDomain), so they are
+    // guaranteed present — fall back to epoch for compiler's benefit only.
     return {
       id: variant.id,
       productId: variant.productId,
@@ -229,8 +237,8 @@ export class VariantsController {
       attributes: variant.attributes,
       ean: variant.ean ?? null,
       gtin: variant.gtin ?? null,
-      createdAt: variant.createdAt.toISOString(),
-      updatedAt: variant.updatedAt.toISOString(),
+      createdAt: (variant.createdAt ?? new Date(0)).toISOString(),
+      updatedAt: (variant.updatedAt ?? new Date(0)).toISOString(),
     };
   }
 }

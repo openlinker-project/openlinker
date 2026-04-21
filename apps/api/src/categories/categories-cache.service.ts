@@ -85,8 +85,8 @@ export class CategoriesCacheService implements ICategoriesCacheService {
       id: cat.id,
       name: cat.name,
       parentId: cat.parentId ?? null,
-      depth: typeof cat['depth'] === 'number' ? cat['depth'] : 0,
-      active: cat['active'] !== false,
+      depth: cat.depth ?? 0,
+      active: cat.active !== false,
     }));
   }
 
