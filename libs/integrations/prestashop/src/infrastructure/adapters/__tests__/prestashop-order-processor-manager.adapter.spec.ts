@@ -14,7 +14,10 @@ import { createTestConnection } from '../../../__tests__/fixtures/connection.fix
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import { IPrestashopOrderMapper, PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import {
+  IdentifierMappingPort,
+  DuplicateIdentifierMappingError,
+} from '@openlinker/core/identifier-mapping';
 import { OrderCreate } from '@openlinker/core/orders';
 import { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
 import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
@@ -32,10 +35,13 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
   let mockAddressProvisioner: jest.Mocked<PrestashopAddressProvisioner>;
   let connection: ReturnType<typeof createTestConnection>;
 
+  const METADATA_INTERNAL_ORDER_ID = 'ol_order_allegro_abc123';
+
   const createTestOrder = (overrides: Partial<OrderCreate> = {}): OrderCreate => ({
     orderNumber: 'TEST-ORDER-001',
     status: 'pending',
     customerId: 'internal-customer-123',
+    metadata: { internalOrderId: METADATA_INTERNAL_ORDER_ID },
     items: [
       {
         id: 'item-1',
@@ -187,8 +193,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         .mockResolvedValueOnce(createdOrder); // Second call: order creation
 
       // Mock identifier mapping creation
-      const internalOrderId = 'internal-order-999';
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue(internalOrderId);
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       const result = await adapter.createOrder(order);
 
@@ -209,10 +214,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       );
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
-      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
         'Order',
         '999',
         connection.id,
+        METADATA_INTERNAL_ORDER_ID,
         expect.objectContaining({
           metadata: expect.objectContaining({
             orderNumber: order.orderNumber,
@@ -220,7 +226,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         }),
       );
       expect(result).toEqual({
-        orderId: internalOrderId,
+        orderId: METADATA_INTERNAL_ORDER_ID,
         orderNumber: order.orderNumber,
       });
     });
@@ -340,7 +346,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         reference: order.orderNumber,
       };
       mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-order-999');
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       const result = await adapter.createOrder(order);
 
@@ -489,15 +495,15 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       };
       mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
 
-      const internalOrderId = 'internal-order-999';
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue(internalOrderId);
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       await adapter.createOrder(order);
 
-      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
         'Order',
         '999',
         connection.id,
+        METADATA_INTERNAL_ORDER_ID,
         expect.objectContaining({
           metadata: expect.objectContaining({
             orderNumber: order.orderNumber,
@@ -570,21 +576,138 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         reference: 'PS-ORDER-999',
       };
       mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-order-999');
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       const result = await adapter.createOrder(order);
 
       expect(result.orderNumber).toBe('PS-ORDER-999');
-      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
         'Order',
         '999',
         connection.id,
+        METADATA_INTERNAL_ORDER_ID,
         expect.objectContaining({
           metadata: expect.objectContaining({
             orderNumber: 'PS-ORDER-999',
           }),
         }),
       );
+    });
+
+    it('should be idempotent: second call with same metadata.internalOrderId early-returns without PS create', async () => {
+      const order = createTestOrder();
+      const externalCustomerId = '42';
+      const externalProductId1 = '100';
+      const externalProductId2 = '200';
+      const externalVariantId = '300';
+      const externalPsOrderId = '999';
+
+      const resolveExternalIds = (entityType: string, internalId: string) => {
+        if (entityType === 'Order' && internalId === METADATA_INTERNAL_ORDER_ID) {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalPsOrderId, entityType: 'Order' },
+          ]);
+        }
+        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' },
+          ]);
+        }
+        if (entityType === 'Product' && internalId === 'internal-product-456') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalProductId1, entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'Product' && internalId === 'internal-product-789') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalProductId2, entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalVariantId, entityType: 'ProductVariant' },
+          ]);
+        }
+        return Promise.resolve([]);
+      };
+
+      // First call: Step 0 returns nothing (no existing mapping), PS create succeeds.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string, internalId: string) => {
+          if (entityType === 'Order') return Promise.resolve([]);
+          return resolveExternalIds(entityType, internalId);
+        });
+
+      const prestashopOrderData = { id_customer: externalCustomerId, current_state: 1, associations: { order_rows: { order_row: [] } } };
+      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
+
+      const createdCart = { id: '123' };
+      const createdOrder: PrestashopOrder = { id: externalPsOrderId, reference: order.orderNumber };
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce(createdCart)
+        .mockResolvedValueOnce(createdOrder);
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+
+      await adapter.createOrder(order);
+      expect(mockHttpClient.createResource).toHaveBeenCalledTimes(2); // cart + order
+
+      // Second call: Step 0 finds the mapping → early-return.
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation(resolveExternalIds);
+      mockHttpClient.createResource = jest.fn();
+
+      const result = await adapter.createOrder(order);
+
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        orderId: METADATA_INTERNAL_ORDER_ID,
+        orderNumber: expect.any(String),
+      });
+    });
+
+    it('should treat DuplicateIdentifierMappingError from createMapping as idempotent success (concurrent race)', async () => {
+      const order = createTestOrder();
+      const externalCustomerId = '42';
+      const externalProductId1 = '100';
+      const externalProductId2 = '200';
+      const externalVariantId = '300';
+
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType: string, internalId: string) => {
+        if (entityType === 'Order') return Promise.resolve([]);
+        if (entityType === 'Customer' && internalId === 'internal-customer-123')
+          return Promise.resolve([{ connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' }]);
+        if (entityType === 'Product' && internalId === 'internal-product-456')
+          return Promise.resolve([{ connectionId: connection.id, externalId: externalProductId1, entityType: 'Product' }]);
+        if (entityType === 'Product' && internalId === 'internal-product-789')
+          return Promise.resolve([{ connectionId: connection.id, externalId: externalProductId2, entityType: 'Product' }]);
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789')
+          return Promise.resolve([{ connectionId: connection.id, externalId: externalVariantId, entityType: 'ProductVariant' }]);
+        return Promise.resolve([]);
+      });
+
+      const prestashopOrderData = { id_customer: externalCustomerId, current_state: 1, associations: { order_rows: { order_row: [] } } };
+      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
+
+      const createdCart = { id: '123' };
+      const createdOrder: PrestashopOrder = { id: '999', reference: order.orderNumber };
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce(createdCart)
+        .mockResolvedValueOnce(createdOrder);
+
+      // Simulate concurrent-insert race: createMapping throws DuplicateIdentifierMappingError
+      mockIdentifierMapping.createMapping = jest.fn().mockRejectedValue(
+        new DuplicateIdentifierMappingError('Order', '999', 'prestashop', connection.id),
+      );
+
+      const result = await adapter.createOrder(order);
+
+      // Adapter must treat the race as idempotent success
+      expect(result).toEqual({
+        orderId: METADATA_INTERNAL_ORDER_ID,
+        orderNumber: order.orderNumber,
+      });
     });
 
     it('should handle generic errors and wrap in PrestashopApiException', async () => {

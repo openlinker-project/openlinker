@@ -9,7 +9,12 @@
  * @implements {OrderProcessorManagerPort}
  */
 import { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
-import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import {
+  IdentifierMappingPort,
+  Connection,
+  MappingAlreadyExistsError,
+  DuplicateIdentifierMappingError,
+} from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopOrderMapper, PrestashopOrder } from '../mappers/prestashop.mapper.interface';
 import {
@@ -364,22 +369,54 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         }
       }
 
-      // Step 6: Create identifier mapping for the new order
-      // The order ID returned by PrestaShop is external, we need to map it to an internal ID
-      // For order creation, we'll use the order number as the internal identifier if available,
-      // or generate a new internal ID
-      // Note: getOrCreateInternalId handles duplicate key errors (both external key and internal ID collisions)
-      const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-        'Order',
-        externalOrderId,
-        this.connection.id,
-        {
-          metadata: {
-            orderNumber: order.orderNumber || createdOrder.reference,
-            createdAt: new Date().toISOString(),
+      // Step 6: Write identifier mapping using the source-side internal id so that
+      // Step 0's getExternalIds('Order', metadataInternalOrderId) finds this row on retry.
+      let internalOrderId: string;
+      if (metadataInternalOrderId) {
+        try {
+          await this.identifierMapping.createMapping(
+            'Order',
+            externalOrderId,
+            this.connection.id,
+            metadataInternalOrderId,
+            {
+              metadata: {
+                orderNumber: order.orderNumber || createdOrder.reference,
+                createdAt: new Date().toISOString(),
+              },
+            },
+          );
+        } catch (error) {
+          if (
+            error instanceof MappingAlreadyExistsError ||
+            error instanceof DuplicateIdentifierMappingError
+          ) {
+            this.logger.debug(
+              `Destination order mapping already present for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`,
+            );
+          } else {
+            throw error;
+          }
+        }
+        internalOrderId = metadataInternalOrderId;
+      } else {
+        // Defensive fallback: no source id in metadata, mint one (old behavior).
+        // This path should not be reached in production — warn so drift is detectable.
+        this.logger.warn(
+          'createOrder invoked without metadata.internalOrderId — idempotency check will be bypassed',
+        );
+        internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+          'Order',
+          externalOrderId,
+          this.connection.id,
+          {
+            metadata: {
+              orderNumber: order.orderNumber || createdOrder.reference,
+              createdAt: new Date().toISOString(),
+            },
           },
-        },
-      );
+        );
+      }
 
       this.logger.log(
         `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`,
