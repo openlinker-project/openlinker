@@ -157,6 +157,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       }),
       getById: vi.fn().mockResolvedValue(null),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      createOffer: vi.fn().mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
+      // Tests that render the tracker must override with a full-shape response — the `null`
+      // default mirrors the `getById` pattern and forces explicit test setup.
+      getOfferCreationStatus: vi.fn().mockResolvedValue(null),
+      getSellerPolicies: vi.fn().mockResolvedValue({
+        deliveryPolicies: [],
+        returnPolicies: [],
+        warranties: [],
+        impliedWarranties: [],
+      }),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {

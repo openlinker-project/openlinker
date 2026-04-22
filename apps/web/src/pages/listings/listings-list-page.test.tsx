@@ -109,4 +109,63 @@ describe('ListingsListPage', () => {
 
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
+
+  it('should render the Create offer CTA enabled with no pre-filter', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    const cta = await screen.findByRole('button', { name: /create offer/i });
+    expect(cta).toBeInTheDocument();
+    expect(cta).not.toBeDisabled();
+  });
+
+  it('should render OfferCreationTracker when both URL params are present', async () => {
+    const mockApi = createMockApiClient({
+      listings: {
+        list: vi.fn().mockResolvedValue(sampleMappings),
+        getOfferCreationStatus: vi.fn().mockResolvedValue({
+          id: 'rec-1',
+          connectionId: 'conn_allegro_1',
+          internalVariantId: 'ol_variant_abc',
+          externalOfferId: null,
+          status: 'pending',
+          errors: null,
+          publishImmediately: false,
+          createdAt: '2026-04-22T10:00:00Z',
+          updatedAt: '2026-04-22T10:00:00Z',
+        }),
+      },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      route: '/listings?offerCreationRecordId=rec-1&trackedConnectionId=conn_allegro_1',
+    });
+
+    expect(await screen.findByText(/offer creation/i)).toBeInTheDocument();
+    expect(await screen.findByText('Pending')).toBeInTheDocument();
+  });
+
+  it('should not render OfferCreationTracker when only one URL param is present', async () => {
+    const getOfferCreationStatus = vi.fn();
+    const mockApi = createMockApiClient({
+      listings: {
+        list: vi.fn().mockResolvedValue(sampleMappings),
+        getOfferCreationStatus,
+      },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      route: '/listings?offerCreationRecordId=rec-1',
+    });
+
+    // Wait for table to render so the page has mounted fully
+    await screen.findByText('allegro-offer-999');
+    expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
+    expect(getOfferCreationStatus).not.toHaveBeenCalled();
+  });
 });

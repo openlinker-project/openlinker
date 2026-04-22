@@ -9,6 +9,8 @@ import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
+import { CreateOfferWizard } from '../../features/listings/components/CreateOfferWizard';
+import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
 import type { ListingsFilters, OfferMapping } from '../../features/listings/api/listings.types';
 
 const PAGE_SIZE = 20;
@@ -127,12 +129,45 @@ export function ListingsListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
+  const trackedRecordId = searchParams.get('offerCreationRecordId') ?? '';
+  const trackedConnectionId = searchParams.get('trackedConnectionId') ?? '';
+  const hasTracker = Boolean(trackedRecordId && trackedConnectionId);
+
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  function dismissTracker(): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('offerCreationRecordId');
+      next.delete('trackedConnectionId');
+      return next;
+    });
+  }
+
+  function handleOfferSubmitted(offerCreationRecordId: string, connectionId: string): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('offerCreationRecordId', offerCreationRecordId);
+      next.set('trackedConnectionId', connectionId);
+      return next;
+    });
+  }
+
   return (
     <PageLayout
       eyebrow="Operations"
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
+      actions={<Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>}
     >
+      {hasTracker ? (
+        <OfferCreationTracker
+          connectionId={trackedConnectionId}
+          offerCreationRecordId={trackedRecordId}
+          onDismiss={dismissTracker}
+        />
+      ) : null}
+
       <div className="toolbar toolbar--compact">
         <input
           aria-label="Search by external ID"
@@ -215,6 +250,13 @@ export function ListingsListPage(): ReactElement {
           </div>
         </>
       )}
+
+      <CreateOfferWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        defaultConnectionId={debouncedConnectionId || undefined}
+        onSubmitted={handleOfferSubmitted}
+      />
     </PageLayout>
   );
 }
