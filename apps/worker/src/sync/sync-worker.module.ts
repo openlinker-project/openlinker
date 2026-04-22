@@ -20,7 +20,7 @@ import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
-import { MarketplaceOrdersPollHandler } from './handlers/marketplace-orders-poll.handler';
+import { OrdersPollHandler } from './handlers/orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
@@ -50,7 +50,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     SyncJobRunner,
     SyncJobHandlerRegistry,
     InventoryPropagateToMarketplacesHandler,
-    MarketplaceOrdersPollHandler,
+    OrdersPollHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferFieldUpdateHandler,

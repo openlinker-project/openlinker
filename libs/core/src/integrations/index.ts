@@ -19,7 +19,6 @@ export { CredentialsResolverPort } from './domain/ports/credentials-resolver.por
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
-export { MarketplacePort } from './domain/ports/marketplace.port';
 export {
   IntegrationCredentialRepositoryPort,
   CredentialCreate,
@@ -35,41 +34,12 @@ export {
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
-export {
-  MarketplaceOrderEventTypeValues,
-  MarketplaceOrderEventType,
-  MarketplaceOrderFeedInput,
-  MarketplaceOrderFeedOutput,
-} from './domain/types/marketplace-order-feed.types';
-export {
-  MarketplaceOfferFeedInput,
-  MarketplaceOfferFeedItem,
-  MarketplaceOfferFeedOutput,
-} from './domain/types/marketplace-offer-feed.types';
-export {
-  UpdateOfferQuantityCommand,
-  UpdateOfferQuantitiesBatchCommand,
-  UpdateOfferQuantitiesBatchResult,
-  UpdateOfferQuantitiesBatchFailure,
-} from './domain/types/marketplace-quantity-update.types';
-export type { UpdateOfferFieldsCommand } from './domain/types/marketplace-offer-update.types';
-export type { MarketplaceCategory } from './domain/types/marketplace-category.types';
-export { CreateOfferResultStatusValues } from './domain/types/marketplace-offer-create.types';
-export type {
-  CreateOfferCommand,
-  CreateOfferOverrides,
-  CreateOfferResult,
-  CreateOfferResultStatus,
-  CreateOfferValidationError,
-} from './domain/types/marketplace-offer-create.types';
-export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
 
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';
 export { CapabilityNotSupportedException } from './domain/exceptions/capability-not-supported.exception';
 export { CapabilityNotEnabledException } from './domain/exceptions/capability-not-enabled.exception';
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
-export { MarketplaceOfferCreateRejectedException } from './domain/exceptions/marketplace-offer-create-rejected.exception';
 
 // Webhook secret
 export { WebhookSecretService } from './application/services/webhook-secret.service';

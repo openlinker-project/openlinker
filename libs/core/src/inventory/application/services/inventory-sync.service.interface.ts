@@ -7,11 +7,7 @@
  * @module libs/core/src/inventory/application/services
  */
 
-import {
-  UpdateOfferQuantityCommand,
-  UpdateOfferQuantitiesBatchCommand,
-  UpdateOfferQuantitiesBatchResult,
-} from '@openlinker/core/integrations';
+import { UpdateOfferQuantityCommand, UpdateOfferQuantitiesBatchCommand, UpdateOfferQuantitiesBatchResult } from '@openlinker/core/listings';
 
 export interface IInventorySyncService {
   updateOfferQuantity(

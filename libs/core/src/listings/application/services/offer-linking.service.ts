@@ -6,7 +6,7 @@
  * @module libs/core/src/listings/application/services
  */
 import { Injectable } from '@nestjs/common';
-import { MarketplaceOfferFeedItem } from '@openlinker/core/integrations';
+import { OfferFeedItem } from '@openlinker/core/listings';
 import { normalizeBarcode as normalizeBarcodeValue, normalizeToEan13 } from '@openlinker/core/products';
 
 export type OfferLinkMethod = 'externalRef' | 'sku' | 'ean' | 'gtin';
@@ -27,7 +27,7 @@ export interface OfferLinkingResult {
 
 @Injectable()
 export class OfferLinkingService {
-  linkOffer(item: MarketplaceOfferFeedItem, lookups: OfferLinkingLookups): OfferLinkingResult {
+  linkOffer(item: OfferFeedItem, lookups: OfferLinkingLookups): OfferLinkingResult {
     const externalRef = this.normalize(item.externalRef);
     if (externalRef) {
       const match = lookups.externalRefToVariantId.get(externalRef);

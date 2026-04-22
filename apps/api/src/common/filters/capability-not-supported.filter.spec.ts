@@ -16,7 +16,7 @@ describe('CapabilityNotSupportedFilter', () => {
 
   it('should return 400 when adapter does not support capability', () => {
     const { host, status, json } = createHost();
-    const exception = new CapabilityNotSupportedException('prestashop.webservice.v1', 'Marketplace');
+    const exception = new CapabilityNotSupportedException('prestashop.webservice.v1', 'OfferManager');
 
     filter.catch(exception, host);
 
@@ -24,13 +24,13 @@ describe('CapabilityNotSupportedFilter', () => {
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.BAD_REQUEST,
       error: 'CapabilityNotSupportedException',
-      message: expect.stringContaining('does not support capability: Marketplace'),
+      message: expect.stringContaining('does not support capability: OfferManager'),
     });
   });
 
   it('should return 400 when capability is disabled on connection', () => {
     const { host, status, json } = createHost();
-    const exception = new CapabilityNotEnabledException('conn-1', 'prestashop.webservice.v1', 'Marketplace');
+    const exception = new CapabilityNotEnabledException('conn-1', 'prestashop.webservice.v1', 'OfferManager');
 
     filter.catch(exception, host);
 

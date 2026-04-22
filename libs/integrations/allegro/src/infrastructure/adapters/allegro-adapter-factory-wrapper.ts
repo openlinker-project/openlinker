@@ -13,7 +13,7 @@ import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory';
 import { AllegroTokenRefreshService } from '../token-refresh/allegro-token-refresh.service';
 import { AllegroQuantityCommandRepositoryPort } from '../../domain/ports/allegro-quantity-command-repository.port';
-import { QuantityPollConfig } from './allegro-marketplace.adapter';
+import { QuantityPollConfig } from './allegro-offer-manager.adapter';
 // Adapters are created by factory, no need to import here
 
 /**
@@ -53,12 +53,14 @@ export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
 
     // Return the requested capability adapter
     switch (capability) {
-      case 'Marketplace':
-        return adapters.marketplace as unknown as T;
+      case 'OfferManager':
+        return adapters.offerManager as unknown as T;
+      case 'OrderSource':
+        return adapters.orderSource as unknown as T;
       default:
         throw new Error(
           `Allegro adapter does not support capability: ${capability}. ` +
-            `Supported capabilities: Marketplace`,
+            `Supported capabilities: OfferManager, OrderSource`,
         );
     }
   }

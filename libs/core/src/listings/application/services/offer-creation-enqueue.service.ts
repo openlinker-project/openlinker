@@ -18,11 +18,8 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -56,9 +53,9 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     // 1. Resolve the adapter. getCapabilityAdapter handles the connection
     //    existence / status / capability cascade and surfaces the right
     //    exception for each failure mode.
-    const adapter = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       input.connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     // 2. `Marketplace` is supported, but `createOffer` is an optional

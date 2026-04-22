@@ -16,7 +16,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import type { SellerPolicies } from '@openlinker/core/integrations';
+import type { SellerPolicies } from '@openlinker/core/listings';
 
 @Entity('seller_policies_cache')
 export class SellerPoliciesCacheOrmEntity {

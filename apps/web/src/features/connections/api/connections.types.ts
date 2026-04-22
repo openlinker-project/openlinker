@@ -9,7 +9,7 @@ export const CAPABILITY_VALUES = [
   'InventoryMaster',
   'OrderProcessorManager',
   'OrderSource',
-  'Marketplace',
+  'OfferManager',
 ] as const;
 
 export type Capability = (typeof CAPABILITY_VALUES)[number];

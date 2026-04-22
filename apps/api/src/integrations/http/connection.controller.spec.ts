@@ -34,7 +34,7 @@ describe('ConnectionController', () => {
     new Date('2025-01-01'),
   
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
   );
 
   const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
@@ -180,7 +180,7 @@ describe('ConnectionController', () => {
         new Date(),
       
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
 
       service.update.mockResolvedValue(updatedConnection);
@@ -220,7 +220,7 @@ describe('ConnectionController', () => {
         new Date(),
       
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
 
       service.disable.mockResolvedValue(disabledConnection);

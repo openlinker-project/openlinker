@@ -172,7 +172,7 @@ export function CreateOfferWizard({
   const marketplaceConnections = useMemo(
     () =>
       (connectionsQuery.data ?? []).filter(
-        (c) => c.platformType === 'allegro' || c.supportedCapabilities.includes('Marketplace'),
+        (c) => c.platformType === 'allegro' || c.supportedCapabilities.includes('OfferManager'),
       ),
     [connectionsQuery.data],
   );

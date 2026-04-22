@@ -35,7 +35,7 @@ describe('AllegroController', () => {
     new Date('2025-01-01'),
   
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
   );
 
   beforeEach(async () => {

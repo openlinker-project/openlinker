@@ -91,8 +91,8 @@ describe('Allegro Cursor Persistence Integration', () => {
         maxAttempts: 10,
       });
 
-      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
-      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
+      const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
+      const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedJob);
       await jobRepository.markSucceeded(persistedJob.id);
 
@@ -183,8 +183,8 @@ describe('Allegro Cursor Persistence Integration', () => {
         maxAttempts: 10,
       });
 
-      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
-      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
+      const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
+      const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedJob1);
       await jobRepository.markSucceeded(persistedJob1.id);
 

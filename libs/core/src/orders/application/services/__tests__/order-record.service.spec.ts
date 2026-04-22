@@ -10,7 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
-import { Order } from '../../../domain/ports/order-source.port';
+import { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../../orders.tokens';
 

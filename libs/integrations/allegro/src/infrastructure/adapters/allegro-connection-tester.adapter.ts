@@ -11,11 +11,7 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
  */
-import {
-  ConnectionTesterPort,
-  ConnectionTestResult,
-  CredentialsResolverPort,
-} from '@openlinker/core/integrations';
+import { ConnectionTesterPort, ConnectionTestResult, CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { AllegroHttpClient } from '../http/allegro-http-client';
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';

@@ -8,11 +8,19 @@
  */
 
 // Ports
-export { OrderSourcePort, Order, OrderItem, OrderTotals, Address } from './domain/ports/order-source.port';
+export { OrderSourcePort } from './domain/ports/order-source.port';
 export { OrderProcessorManagerPort } from './domain/ports/order-processor-manager.port';
 
 // Types
-export { OrderFilters, OrderStatus, OrderStatusValues } from './domain/types/order.types';
+export {
+  OrderFilters,
+  OrderStatus,
+  OrderStatusValues,
+  Order,
+  OrderItem,
+  OrderTotals,
+  Address,
+} from './domain/types/order.types';
 export { OrderCreate, OrderRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,
@@ -21,6 +29,13 @@ export {
   IncomingOrderTotals,
   IncomingOrderAddress,
 } from './domain/types/incoming-order.types';
+export {
+  OrderFeedEventTypeValues,
+  OrderFeedEventType,
+  OrderFeedInput,
+  OrderFeedItem,
+  OrderFeedOutput,
+} from './domain/types/order-feed.types';
 export {
   OrderRecordFilters,
   OrderRecordPagination,
@@ -35,8 +50,8 @@ export {
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
 export {
   IOrderIngestionService,
-  MarketplaceIngestionOptions,
-  MarketplaceIngestionResult,
+  OrderIngestionOptions,
+  OrderIngestionResult,
 } from './application/interfaces/order-ingestion.service.interface';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';

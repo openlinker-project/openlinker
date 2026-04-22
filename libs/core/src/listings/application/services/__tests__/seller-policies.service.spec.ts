@@ -9,11 +9,9 @@
 
 import { UnprocessableEntityException } from '@nestjs/common';
 
-import type {
-  IIntegrationsService,
-  MarketplacePort,
-  SellerPolicies,
-} from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { SellerPolicies } from '@openlinker/core/listings';
 
 import type {
   CachedSellerPolicies,
@@ -35,9 +33,9 @@ describe('SellerPoliciesService', () => {
 
   const connectionId = 'conn-abc';
 
-  const adapterWith = (fetchSellerPolicies: jest.Mock | undefined): MarketplacePort => ({
+  const adapterWith = (fetchSellerPolicies: jest.Mock | undefined): OfferManagerPort => ({
     ...(fetchSellerPolicies ? { fetchSellerPolicies } : {}),
-  } as unknown as MarketplacePort);
+  } as unknown as OfferManagerPort);
 
   beforeEach(() => {
     jest.useFakeTimers();

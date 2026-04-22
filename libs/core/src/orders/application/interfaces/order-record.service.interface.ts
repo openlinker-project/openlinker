@@ -7,7 +7,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
-import { Order } from '../../domain/ports/order-source.port';
+import { Order } from '../../domain/types/order.types';
 import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 

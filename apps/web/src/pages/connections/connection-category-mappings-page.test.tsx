@@ -23,8 +23,8 @@ const ALLEGRO_CONNECTION: Connection = {
   platformType: 'allegro',
   status: 'active',
   adapterKey: 'allegro.publicapi.v1',
-  enabledCapabilities: ['Marketplace'],
-  supportedCapabilities: ['Marketplace'],
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager'],
 };
 
 describe('ConnectionCategoryMappingsPage', () => {

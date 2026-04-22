@@ -92,7 +92,6 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     const orderSource = new PrestashopOrderSourceAdapter(
       httpClient,
-      identifierMapping,
       orderMapper,
       connection,
     );

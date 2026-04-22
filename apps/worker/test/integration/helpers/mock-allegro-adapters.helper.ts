@@ -1,29 +1,25 @@
 /**
  * Mock Allegro Adapter Helpers
  *
- * Utilities for creating mock Allegro marketplace adapters for integration tests.
- * These mocks return test data without making real API calls.
+ * Utilities for creating mock Allegro adapters for integration tests. Post-#328,
+ * the legacy `MarketplacePort` is split into `OrderSourcePort` (order feed +
+ * hydration) and `OfferManagerPort` (offer CRUD + quantity/field updates);
+ * this helper exposes one factory per capability.
  *
  * @module apps/worker/test/integration/helpers
  */
-import { MarketplacePort, MarketplaceOrderFeedOutput } from '@openlinker/core/integrations';
-import { IncomingOrder } from '@openlinker/core/orders';
+import type { OrderSourcePort, OrderFeedOutput, IncomingOrder } from '@openlinker/core/orders';
+import type { OfferManagerPort } from '@openlinker/core/listings';
 
 /**
- * Create a mock Allegro Marketplace adapter
- *
- * Returns test order data without making real API calls.
+ * Build a canonical test `IncomingOrder` used by both factories.
  */
-export function createMockAllegroMarketplaceAdapter(): MarketplacePort {
-  let cursor = 'initial-cursor';
-  const orders: Map<string, IncomingOrder> = new Map();
-
-  // Create a test order
-  const testOrder: IncomingOrder = {
-    externalOrderId: 'checkout-form-001',
-    orderNumber: 'ALLEGRO-ORDER-001',
+function buildTestOrder(externalOrderId: string = 'checkout-form-001'): IncomingOrder {
+  return {
+    externalOrderId,
+    orderNumber: `ALLEGRO-ORDER-${externalOrderId}`,
     status: 'pending',
-    customerExternalId: 'buyer-001',
+    customerExternalId: `buyer-${externalOrderId}`,
     items: [
       {
         id: 'item-1',
@@ -55,19 +51,30 @@ export function createMockAllegroMarketplaceAdapter(): MarketplacePort {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     metadata: {
-      sourceEventId: 'event-001',
-      sourceCheckoutFormId: 'checkout-form-001',
+      sourceEventId: `event-${externalOrderId}`,
+      sourceCheckoutFormId: externalOrderId,
     },
   };
+}
 
-  orders.set('checkout-form-001', testOrder);
+/**
+ * Create a mock Allegro `OrderSourcePort` adapter.
+ *
+ * Returns two deterministic events from `listOrderFeed` and a synthetic
+ * `IncomingOrder` from `getOrder`. Suitable for order-poll / order-sync
+ * integration-test scenarios.
+ */
+export function createMockAllegroOrderSource(): OrderSourcePort {
+  const seedOrder = buildTestOrder('checkout-form-001');
+  const orders = new Map<string, IncomingOrder>([[seedOrder.externalOrderId, seedOrder]]);
+  let cursor = 'initial-cursor';
 
   return {
-    listOrderFeed: jest.fn().mockImplementation(async (input): Promise<MarketplaceOrderFeedOutput> => {
+    listOrderFeed: jest.fn().mockImplementation(async (input): Promise<OrderFeedOutput> => {
       const limit = input.limit;
       void input.fromCursor;
 
-      const items: MarketplaceOrderFeedOutput['items'] = [
+      const items: OrderFeedOutput['items'] = [
         {
           externalOrderId: 'checkout-form-001',
           eventType: 'updated' as const,
@@ -85,60 +92,39 @@ export function createMockAllegroMarketplaceAdapter(): MarketplacePort {
       ].slice(0, limit);
 
       cursor = `cursor-${Date.now()}`;
-
-      return {
-        items,
-        nextCursor: cursor,
-      };
+      return { items, nextCursor: cursor };
     }),
 
     getOrder: jest.fn().mockImplementation(async ({ externalOrderId }): Promise<IncomingOrder> => {
-      const order = orders.get(externalOrderId);
-      if (order) return order;
-
-      return {
-        externalOrderId,
-        orderNumber: `ALLEGRO-ORDER-${externalOrderId}`,
-        status: 'pending',
-        customerExternalId: `buyer-${externalOrderId}`,
-        items: [
-          {
-            id: 'item-1',
-            productRef: { type: 'offer', externalId: 'offer-2' },
-            quantity: 1,
-            price: 29.99,
-            sku: 'SKU-2',
-          },
-        ],
-        totals: {
-          subtotal: 29.99,
-          shipping: 5.0,
-          tax: 0.0,
-          total: 34.99,
-          currency: 'PLN',
-        },
-        shippingAddress: {
-          address1: 'Test Street 456',
-          city: 'Krakow',
-          postalCode: '30-001',
-          country: 'PL',
-        },
-        billingAddress: {
-          address1: 'Test Street 456',
-          city: 'Krakow',
-          postalCode: '30-001',
-          country: 'PL',
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          sourceEventId: `event-${externalOrderId}`,
-        },
-      };
+      const existing = orders.get(externalOrderId);
+      if (existing) return existing;
+      return buildTestOrder(externalOrderId);
     }),
-
-    updateOfferQuantity: jest.fn().mockResolvedValue(undefined),
-  } as unknown as MarketplacePort;
+  };
 }
 
+/**
+ * Create a mock Allegro `OfferManagerPort` adapter.
+ *
+ * Only wires the methods required by the existing integration specs
+ * (`updateOfferQuantity`). Additional methods are left unset and adapters can
+ * extend the returned object per test when they need them.
+ */
+export function createMockAllegroOfferManager(): OfferManagerPort {
+  return {
+    updateOfferQuantity: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
+/**
+ * @deprecated Legacy combined helper. Kept as a thin compatibility shim so the
+ * in-tree integration specs continue to compile during the #328 split window.
+ * New tests should call `createMockAllegroOrderSource` / `createMockAllegroOfferManager`
+ * directly.
+ */
+export function createMockAllegroMarketplaceAdapter(): OrderSourcePort & OfferManagerPort {
+  return {
+    ...createMockAllegroOrderSource(),
+    ...createMockAllegroOfferManager(),
+  };
+}

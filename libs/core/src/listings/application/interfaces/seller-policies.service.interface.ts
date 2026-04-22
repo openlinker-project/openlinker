@@ -10,7 +10,7 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
-import type { SellerPolicies } from '@openlinker/core/integrations';
+import type { SellerPolicies } from '@openlinker/core/listings';
 
 export interface ISellerPoliciesService {
   /**

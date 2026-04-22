@@ -6,16 +6,14 @@
  * @module libs/core/src/sync/domain/types
  */
 
-import {
-  CreateOfferOverrides,
-  MarketplaceOrderEventType,
-} from '@openlinker/core/integrations';
+import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { OrderFeedEventType } from '@openlinker/core/orders';
 
 export interface MarketplaceOrdersPollPayloadV1 {
   schemaVersion: 1;
   cursorKey: string;
   limit: number;
-  eventTypes?: MarketplaceOrderEventType[];
+  eventTypes?: OrderFeedEventType[];
 }
 
 export interface MarketplaceOrderSyncPayloadV1 {
@@ -30,7 +28,7 @@ export interface MarketplaceOrderSyncPayloadV1 {
    */
   eventKey?: string;
   occurredAt?: string;
-  eventType?: MarketplaceOrderEventType;
+  eventType?: OrderFeedEventType;
 }
 
 export interface MarketplaceOfferQuantityUpdatePayloadV1 {

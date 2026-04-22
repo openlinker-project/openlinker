@@ -23,8 +23,8 @@ import { Logger } from '@openlinker/shared/logging';
 type SyncJob = SyncJobEntity;
 
 @Injectable()
-export class MarketplaceOrdersPollHandler implements SyncJobHandler {
-  private readonly logger = new Logger(MarketplaceOrdersPollHandler.name);
+export class OrdersPollHandler implements SyncJobHandler {
+  private readonly logger = new Logger(OrdersPollHandler.name);
 
   constructor(
     @Inject(ORDER_INGESTION_SERVICE_TOKEN)
@@ -39,7 +39,7 @@ export class MarketplaceOrdersPollHandler implements SyncJobHandler {
     );
 
     try {
-      const result = await this.orderIngestion.syncFromMarketplace(job.connectionId, {
+      const result = await this.orderIngestion.ingestOrders(job.connectionId, {
         cursorKey: payload.cursorKey,
         limit: payload.limit,
         eventTypes: payload.eventTypes,

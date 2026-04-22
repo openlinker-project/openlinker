@@ -59,8 +59,8 @@ describe('TriggerSyncDialog', () => {
       const allegroConnection = {
         ...sampleConnection,
         platformType: 'allegro' as const,
-        supportedCapabilities: ['Marketplace' as const],
-        enabledCapabilities: ['Marketplace' as const],
+        supportedCapabilities: ['OfferManager' as const],
+        enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
       renderWithProviders(
@@ -101,8 +101,8 @@ describe('TriggerSyncDialog', () => {
       const allegroConnection = {
         ...sampleConnection,
         platformType: 'allegro' as const,
-        supportedCapabilities: ['Marketplace' as const],
-        enabledCapabilities: ['Marketplace' as const],
+        supportedCapabilities: ['OfferManager' as const],
+        enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
       renderWithProviders(
@@ -121,8 +121,8 @@ describe('TriggerSyncDialog', () => {
       const prestashopMarketplaceConnection = {
         ...sampleConnection,
         platformType: 'prestashop' as const,
-        supportedCapabilities: ['Marketplace' as const],
-        enabledCapabilities: ['Marketplace' as const],
+        supportedCapabilities: ['OfferManager' as const],
+        enabledCapabilities: ['OfferManager' as const],
       };
       const mockApi = createMockApiClient();
       renderWithProviders(

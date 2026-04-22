@@ -9,7 +9,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CategoriesCacheService } from '../categories-cache.service';
 import { AllegroCategoryCacheOrmEntity } from '../persistence/allegro-category-cache.orm-entity';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { MarketplaceCategory } from '@openlinker/core/integrations';
+import type { OfferCategory } from '@openlinker/core/listings';
 
 const CONNECTION_ID = 'conn-uuid-1';
 
@@ -82,7 +82,7 @@ describe('CategoriesCacheService', () => {
     it('should fetch from API and store when cache is empty', async () => {
       cacheRepo.find.mockResolvedValue([]);
 
-      const apiCategories: MarketplaceCategory[] = [
+      const apiCategories: OfferCategory[] = [
         { id: '10', name: 'Phones', parentId: '1', leaf: true },
       ];
       integrationsService.getCapabilityAdapter.mockResolvedValue({
@@ -91,7 +91,7 @@ describe('CategoriesCacheService', () => {
 
       const result = await service.getAllegroCategories(CONNECTION_ID, '1');
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'Marketplace');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'OfferManager');
       expect(cacheRepo.upsert).toHaveBeenCalled();
       expect(result).toEqual(apiCategories);
     });
@@ -104,7 +104,7 @@ describe('CategoriesCacheService', () => {
         createMockCategory({ fetchedAt: staleDate }),
       ]);
 
-      const freshCategories: MarketplaceCategory[] = [
+      const freshCategories: OfferCategory[] = [
         { id: '100', name: 'Electronics (updated)', parentId: null, leaf: false },
       ];
       integrationsService.getCapabilityAdapter.mockResolvedValue({

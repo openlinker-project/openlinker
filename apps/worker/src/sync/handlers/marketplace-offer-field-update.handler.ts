@@ -18,11 +18,8 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -58,9 +55,9 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
       );
     }
 
-    const adapter = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       job.connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     if (!adapter.updateOfferFields) {

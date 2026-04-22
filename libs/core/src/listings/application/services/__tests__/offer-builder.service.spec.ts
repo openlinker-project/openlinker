@@ -8,7 +8,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
 import type { ProductVariant, ProductVariantRepositoryPort } from '@openlinker/core/products';
 
@@ -63,7 +64,7 @@ describe('OfferBuilderService', () => {
       }),
     };
     integrationsService = {
-      getCapabilityAdapter: jest.fn().mockResolvedValue(productMaster as unknown as MarketplacePort),
+      getCapabilityAdapter: jest.fn().mockResolvedValue(productMaster as unknown as OfferManagerPort),
     };
     categoryResolution = {
       resolveCategory: jest

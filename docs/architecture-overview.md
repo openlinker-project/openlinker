@@ -71,7 +71,9 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 │  │  │         Capability Ports (Interfaces)              │  │   │
 │  │  │  - ProductMasterPort                               │  │   │
 │  │  │  - InventoryMasterPort                             │  │   │
+│  │  │  - OrderSourcePort                                 │  │   │
 │  │  │  - OrderProcessorManagerPort                       │  │   │
+│  │  │  - OfferManagerPort                                │  │   │
 │  │  │  - PricingAuthorityPort (future)                   │  │   │
 │  │  └────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
@@ -87,8 +89,10 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, or
 │  │  │    Adapters Implementing Capability Ports          │  │   │
 │  │  │  - PrestashopProductMasterAdapter                  │  │   │
 │  │  │  - PrestashopInventoryMasterAdapter                │  │   │
+│  │  │  - PrestashopOrderSourceAdapter                    │  │   │
 │  │  │  - PrestashopOrderProcessorAdapter                 │  │   │
-│  │  │  - AllegroMarketplaceAdapter                       │  │   │
+│  │  │  - AllegroOrderSourceAdapter                       │  │   │
+│  │  │  - AllegroOfferManagerAdapter                      │  │   │
 │  │  └────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
@@ -139,10 +143,12 @@ The system is organized into the following core bounded contexts:
 - **Capability**: Uses `InventoryMasterPort` abstraction
 
 ### 4. Orders
-- **Responsibility**: Order synchronization, order lifecycle management
-- **Key Entities**: Order, OrderMapping, OrderStatus
+- **Responsibility**: Order ingestion, synchronization, and lifecycle management
+- **Key Entities**: Order, OrderMapping, OrderStatus, IncomingOrder
 - **Location**: `libs/core/src/orders/`
-- **Capability**: Uses `OrderProcessorManagerPort` abstraction
+- **Capabilities**:
+  - `OrderSourcePort` — cursor-based order-event ingestion from marketplaces *and* shops (`listOrderFeed` + `getOrder({externalOrderId})`)
+  - `OrderProcessorManagerPort` — order lifecycle on the destination shop (create / update-status / cancel / return)
 
 ### 5. Customers
 - **Responsibility**: Customer identity resolution, customer projections, multi-origin identity management
@@ -162,9 +168,9 @@ The system is organized into the following core bounded contexts:
 
 ### 6. Listings (Offers)
 - **Responsibility**: Marketplace offer/listing management, offer lifecycle, offer-to-product mapping
-- **Key Entities**: Offer, Listing, OfferMapping, OfferStatus
+- **Key Entities**: Offer, Listing, OfferMapping, OfferStatus, OfferCreationRecord
 - **Location**: `libs/core/src/listings/`
-- **Capability**: Uses `IMarketplaceIntegration` abstraction for offer operations
+- **Capability**: Uses `OfferManagerPort` abstraction for offer operations (listing, quantity + field updates, offer creation, category directory, seller-policy discovery)
 - **Key Features**:
   - Creating and updating offers on marketplaces
   - Managing offer quantities based on inventory
@@ -386,6 +392,54 @@ interface OrderProcessorManagerPort {
 - `OpenLinkerOrderProcessorAdapter` (OpenLinker's own order system)
 - `ShopifyOrderProcessorAdapter`
 
+### OrderSourcePort
+
+**Purpose**: Read-only, cursor-capable ingestion of orders from any source — marketplaces (Allegro event journal) *and* shops (PrestaShop `date_upd` watermark). Platform-neutral; the cursor is an opaque adapter-defined string.
+
+**Interface**:
+```typescript
+interface OrderSourcePort {
+  /**
+   * List incremental order feed items (event journal).
+   * `fromCursor` null = start from the beginning; `nextCursor` null = no more pages.
+   */
+  listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput>;
+
+  /**
+   * Hydrate a full order by source-native external id.
+   * Returns an IncomingOrder; identifier mapping happens in core services.
+   */
+  getOrder(input: { externalOrderId: string }): Promise<IncomingOrder>;
+}
+```
+
+**Current Implementations**: `AllegroOrderSourceAdapter`, `PrestashopOrderSourceAdapter`
+
+**Future Implementations**: `ShopifyOrderSourceAdapter`, `WooCommerceOrderSourceAdapter`
+
+### OfferManagerPort
+
+**Purpose**: Canonical capability contract for marketplace offer/listing management — offer feed, quantity + field updates, offer creation, category directory, barcode-to-category matching, and seller-policy discovery. Split out of the legacy `MarketplacePort` (#328).
+
+**Interface** (abbreviated — all methods except `updateOfferQuantity` are optional):
+```typescript
+interface OfferManagerPort {
+  listOffers?(input: OfferFeedInput): Promise<OfferFeedOutput>;
+  listOfferEvents?(input: OfferFeedInput): Promise<OfferFeedOutput>;
+  updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void>;
+  updateOfferQuantitiesBatch?(cmd: UpdateOfferQuantitiesBatchCommand): Promise<UpdateOfferQuantitiesBatchResult>;
+  updateOfferFields?(cmd: UpdateOfferFieldsCommand): Promise<void>;
+  fetchCategories?(parentId?: string): Promise<MarketplaceCategory[]>;
+  matchCategoryByBarcode?(barcode: string): Promise<string | null>;
+  createOffer?(cmd: CreateOfferCommand): Promise<CreateOfferResult>;
+  fetchSellerPolicies?(): Promise<SellerPolicies>;
+}
+```
+
+**Current Implementation**: `AllegroOfferManagerAdapter`
+
+**Future Implementations**: `ShopifyOfferManagerAdapter`, `WooCommerceOfferManagerAdapter`, `EbayOfferManagerAdapter`
+
 ### Future Capability Ports
 
 - **PricingAuthorityPort**: Manages pricing rules and catalog pricing
@@ -566,50 +620,41 @@ export class PrestashopProductAdapter implements ProductMasterPort {
 }
 ```
 
-**Example: Allegro Order Adapter**
+**Example: Allegro Order Source Adapter**
 
 ```typescript
 @Injectable()
-export class AllegroOrderAdapter implements IMarketplaceIntegration {
+export class AllegroOrderSourceAdapter implements OrderSourcePort {
   constructor(
-    private readonly identifierMapping: IdentifierMappingService,
-    private readonly connectionId: string, // ✅ Connection ID for this Allegro instance
+    private readonly connectionId: string,
+    private readonly httpClient: IAllegroHttpClient,
+    private readonly identifierMapping: IdentifierMappingPort,
   ) {}
 
-  async getOrder(orderId: string): Promise<Order> {
-    // 1. Fetch order from Allegro API
-    const allegroOrder = await this.fetchFromAllegro(orderId);
+  async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
+    // 1. Fetch incremental order events from Allegro
+    const response = await this.httpClient.get<AllegroOrderEventsResponse>('/order/events', {
+      queryParams: { from: input.fromCursor ?? undefined, limit: input.limit },
+    });
 
-    // 2. Transform to OpenLinker schema
-    const order: Order = {
-      // ... map Allegro order to OpenLinker schema
-      items: allegroOrder.lineItems.map(item => ({
-        // Map each item
-        productId: await this.identifierMapping.getOrCreateInternalId(
-          'Product',
-          item.offerId, // Allegro offer ID
-          this.connectionId, // ✅ Connection ID
-          { parentEntityType: 'Order', parentInternalId: internalOrderId }
-        ),
-        quantity: item.quantity,
-        // ...
-      })),
-    };
+    // 2. Dedupe by checkoutFormId, map to the neutral OrderFeedItem shape
+    const items = this.buildFeedItems(response.data.events);
 
-    // 3. Replace order ID
-    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-      'Order',
-      orderId, // Allegro order ID
-      this.connectionId // ✅ Connection ID
+    // 3. Next cursor is Allegro-assigned (monotonic per seller)
+    const nextCursor = response.data.lastEventId ?? items.at(-1)?.eventKey ?? input.fromCursor ?? null;
+
+    return { items, nextCursor };
+  }
+
+  async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
+    // 1. Hydrate checkout-form from Allegro
+    const checkoutForm = await this.httpClient.get<AllegroCheckoutForm>(
+      `/order/checkout-forms/${input.externalOrderId}`,
     );
 
-    return {
-      ...order,
-      id: internalOrderId,
-      externalIds: {
-        allegro: orderId,
-      },
-    };
+    // 2. Map to the neutral IncomingOrder DTO — identifier mapping happens
+    //    downstream in OrderIngestionService, not in the adapter.
+    return this.toIncomingOrder(checkoutForm.data);
   }
 }
 ```
@@ -1074,7 +1119,7 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
 {
   adapterKey: 'prestashop.webservice.v1',
   platformType: 'prestashop',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
   displayName: 'PrestaShop WebService v1',
   version: '1.0.0'
 }
@@ -1082,7 +1127,7 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
 {
   adapterKey: 'allegro.publicapi.v1',
   platformType: 'allegro',
-  supportedCapabilities: ['Marketplace', 'OrderProcessorManager'],
+  supportedCapabilities: ['OrderSource', 'OfferManager'],
   displayName: 'Allegro Public API v1',
   version: '1.0.0'
 }
@@ -1170,37 +1215,32 @@ export class OrderSyncService {
 Scheduled Job / Controller
     │
     │ @Cron('*/5 * * * *') or HTTP endpoint
-    │ Initiates order synchronization process
+    │ Initiates order ingestion
     ▼
-OrderSyncService.syncOrdersFromMarketplace()
+OrderIngestionService.ingestOrders()
     │
-    │ Gets marketplace adapter(s) dynamically
-    │ Gets OrderProcessorManagerPort adapter
+    │ Gets OrderSourcePort adapter for the connection
+    │ (AllegroOrderSourceAdapter or PrestashopOrderSourceAdapter)
     ▼
-MarketplaceAdapter (AllegroAdapter)
+OrderSourcePort.listOrderFeed({ fromCursor, limit })
     │
-    │ getOrders(filters) - fetches new/updated orders
+    │ cursor is opaque adapter-defined — Allegro event ID, PrestaShop date_upd
     ▼
-Marketplace API (Allegro API)
+Marketplace / Shop API
     │
-    │ Returns orders (with external IDs)
+    │ Returns order-event references (externalOrderId, eventKey, occurredAt)
     ▼
-MarketplaceAdapter (AllegroAdapter)
+OrderIngestionService
     │
-    │ 1. Maps to unified Order schema
-    │ 2. Uses IdentifierMappingService to replace external IDs with internal IDs
-    │    - Order ID: external → internal
-    │    - Product IDs in items: external → internal
-    │    - Customer ID: external → internal
+    │ 1. Enqueues one marketplace.order.sync job per feed item
+    │ 2. Commits nextCursor only after successful enqueue (cursor-safety guard)
     ▼
-OrderSyncService
+OrdersPollHandler → OrderIngestionService.syncOrderFromSource()
     │
-    │ Receives orders with internal IDs only
-    │
-    │ For each order:
-    │   - Uses ProductMappingService
-    │   - Uses StatusMappingService
-    │   - Gets OrderProcessorManagerPort adapter
+    │ 1. OrderSourcePort.getOrder({ externalOrderId }) → IncomingOrder
+    │ 2. Resolves product / variant / customer identifiers via IdentifierMappingService
+    │ 3. Builds unified Order and dispatches via OrderSyncService
+    │ 4. Gets OrderProcessorManagerPort adapter for the destination shop
     ▼
 OrderProcessorManagerPort (PrestashopOrderProcessorAdapter)
     │
@@ -1277,9 +1317,9 @@ InventorySyncService
     ▼
 For each marketplace:
     │
-    │ Gets marketplace adapter
+    │ Gets OfferManagerPort adapter for the target connection
     ▼
-MarketplaceAdapter.updateOfferQuantity(offerId, quantity)
+OfferManagerPort.updateOfferQuantity(cmd)
     │
     ▼
 Allegro API / Amazon API / etc.

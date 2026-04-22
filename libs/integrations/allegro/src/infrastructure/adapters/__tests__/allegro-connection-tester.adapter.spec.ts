@@ -26,7 +26,7 @@ describe('AllegroConnectionTesterAdapter', () => {
     new Date(),
     new Date(),
     undefined,
-    ['Marketplace'],
+    ['OfferManager'],
   );
 
   afterEach(() => {

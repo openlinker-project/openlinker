@@ -42,7 +42,7 @@ const CAPABILITY_HELP: Record<Capability, string> = {
   InventoryMaster: 'Read stock levels from this shop as the inventory source of truth.',
   OrderProcessorManager: 'Create and manage orders in this shop (typically the order destination).',
   OrderSource: 'Fetch new orders from this shop (disable if orders come from a marketplace instead).',
-  Marketplace: 'Manage offers and listings on this marketplace.',
+  OfferManager: 'Manage offers and listings on this marketplace.',
 };
 
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`

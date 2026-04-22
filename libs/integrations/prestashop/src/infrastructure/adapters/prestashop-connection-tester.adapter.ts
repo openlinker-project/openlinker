@@ -11,11 +11,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
  */
-import {
-  ConnectionTesterPort,
-  ConnectionTestResult,
-  CredentialsResolverPort,
-} from '@openlinker/core/integrations';
+import { ConnectionTesterPort, ConnectionTestResult, CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';

@@ -1,5 +1,7 @@
 # Implementation Plan: Allegro MVP Integration (Orders via Event Journal + Inventory Quantity Commands)
 
+> **Superseded in part by #328 (2026-04-22).** The "unified marketplace abstraction" referenced below was split into `OrderSourcePort` (`libs/core/src/orders/domain/ports/`) and `OfferManagerPort` (`libs/core/src/listings/domain/ports/`); the legacy `MarketplacePort` and `AllegroMarketplaceAdapter` names in this document no longer exist. The ingestion + quantity-command flow described here is otherwise still accurate — the port is split but the mechanics are unchanged. This file is kept as a historical record of the original Allegro onboarding plan, not as current spec.
+
 ## 1. Task Summary
 
 Deliver an MVP Allegro integration aligned to OpenLinker's hexagonal architecture:

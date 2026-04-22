@@ -87,3 +87,29 @@ export type {
   EnqueueOfferCreationInput,
   EnqueueOfferCreationResult,
 } from './application/types/offer-creation-enqueue.types';
+
+// OfferManagerPort + its contract types (moved here as part of #328 split)
+export { OfferManagerPort } from './domain/ports/offer-manager.port';
+export type {
+  OfferFeedInput,
+  OfferFeedItem,
+  OfferFeedOutput,
+} from './domain/types/offer-feed.types';
+export type {
+  UpdateOfferQuantityCommand,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+  UpdateOfferQuantitiesBatchFailure,
+} from './domain/types/offer-quantity-update.types';
+export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
+export type { OfferCategory } from './domain/types/category.types';
+export { CreateOfferResultStatusValues } from './domain/types/offer-create.types';
+export type {
+  CreateOfferCommand,
+  CreateOfferOverrides,
+  CreateOfferResult,
+  CreateOfferResultStatus,
+  CreateOfferValidationError,
+} from './domain/types/offer-create.types';
+export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
+export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';

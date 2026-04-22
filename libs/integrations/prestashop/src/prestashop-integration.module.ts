@@ -7,13 +7,7 @@
  * @module libs/integrations/prestashop/src
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
-import {
-  IntegrationsModule,
-  ADAPTER_FACTORY_RESOLVER_TOKEN,
-  AdapterFactoryResolverService,
-  CONNECTION_TESTER_REGISTRY_TOKEN,
-  ConnectionTesterRegistryService,
-} from '@openlinker/core/integrations';
+import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService } from '@openlinker/core/integrations';
 import { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
 import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';

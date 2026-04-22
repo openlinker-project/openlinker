@@ -1,8 +1,10 @@
 # Implementation Plan: Marketplace Offer Mapping Sync (ISSUE_47)
 
 **Date**: 2026-01-25  
-**Status**: Draft  
+**Status**: Superseded (see note)
 **Estimated Effort**: 3-5 days
+
+> **Superseded in part by #328 (2026-04-22).** Every reference below to `MarketplacePort` now resolves to `OfferManagerPort` in `libs/core/src/listings/domain/ports/`; `MarketplacePort.listOffers` is now `OfferManagerPort.listOffers`. The `marketplace.offers.sync` job type string is unchanged. The offer-linking pipeline described here is otherwise still accurate and has shipped. This file is kept as a historical record.
 
 ---
 

@@ -32,7 +32,7 @@ describe('SchedulerService', () => {
       new Date(),
       new Date(),
       undefined,
-      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
     );
 
   beforeEach(() => {

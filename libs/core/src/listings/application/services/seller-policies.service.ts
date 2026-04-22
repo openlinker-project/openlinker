@@ -14,12 +14,9 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
-import type { SellerPolicies } from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { SellerPolicies } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { SellerPoliciesCacheRepositoryPort } from '../../domain/ports/seller-policies-cache-repository.port';
@@ -49,9 +46,9 @@ export class SellerPoliciesService implements ISellerPoliciesService {
 
     // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
     // CapabilityNotSupportedException (422) for upstream connection-level issues.
-    const adapter = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     if (!adapter.fetchSellerPolicies) {

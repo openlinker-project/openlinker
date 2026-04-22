@@ -7,7 +7,8 @@
  */
 
 import { OrderIngestionService } from '../order-ingestion.service';
-import { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { IIntegrationsService } from '@openlinker/core/integrations';
+import type { OrderSourcePort } from '@openlinker/core/orders';
 import {
   ConnectionCursorRepositoryPort,
   SyncJobQueuePort,
@@ -30,7 +31,7 @@ describe('OrderIngestionService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
-  let marketplace: jest.Mocked<MarketplacePort>;
+  let orderSource: jest.Mocked<OrderSourcePort>;
   let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
 
@@ -38,14 +39,14 @@ describe('OrderIngestionService', () => {
   const cursorKey = 'allegro.orders.lastEventId';
 
   beforeEach(() => {
-    marketplace = {
+    orderSource = {
       listOrderFeed: jest.fn(),
       getOrder: jest.fn(),
       updateOfferQuantity: jest.fn(),
-    } as unknown as jest.Mocked<MarketplacePort>;
+    } as unknown as jest.Mocked<OrderSourcePort>;
 
     integrationsService = {
-      getCapabilityAdapter: jest.fn().mockResolvedValue(marketplace),
+      getCapabilityAdapter: jest.fn().mockResolvedValue(orderSource),
       getAdapter: jest.fn(),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
@@ -116,7 +117,7 @@ describe('OrderIngestionService', () => {
     it('skips when lock cannot be acquired', async () => {
       lock.acquire.mockResolvedValueOnce(null);
 
-      const result = await service.syncFromMarketplace(connectionId, { cursorKey, limit: 10 });
+      const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.skippedDueToLock).toBe(true);
       expect(cursorRepository.get).not.toHaveBeenCalled();
@@ -129,7 +130,7 @@ describe('OrderIngestionService', () => {
       lock.release.mockResolvedValueOnce(true);
 
       cursorRepository.get.mockResolvedValueOnce('event-100');
-      marketplace.listOrderFeed.mockResolvedValueOnce({
+      orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
             externalOrderId: 'checkout-1',
@@ -143,7 +144,7 @@ describe('OrderIngestionService', () => {
 
       jobQueue.enqueueBulk.mockResolvedValueOnce([]);
 
-      const result = await service.syncFromMarketplace(connectionId, { cursorKey, limit: 10 });
+      const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.committed).toBe(true);
       expect(cursorRepository.set).toHaveBeenCalledWith(connectionId, cursorKey, 'event-101');
@@ -162,7 +163,7 @@ describe('OrderIngestionService', () => {
       lock.release.mockResolvedValueOnce(true);
 
       cursorRepository.get.mockResolvedValueOnce('event-100');
-      marketplace.listOrderFeed.mockResolvedValueOnce({
+      orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
             externalOrderId: 'checkout-1',
@@ -177,7 +178,7 @@ describe('OrderIngestionService', () => {
       jobQueue.enqueueBulk.mockRejectedValueOnce(new Error('enqueue failed'));
 
       await expect(
-        service.syncFromMarketplace(connectionId, { cursorKey, limit: 10 }),
+        service.ingestOrders(connectionId, { cursorKey, limit: 10 }),
       ).rejects.toThrow('enqueue failed');
 
       expect(cursorRepository.set).not.toHaveBeenCalled();
@@ -188,7 +189,7 @@ describe('OrderIngestionService', () => {
       lock.release.mockResolvedValueOnce(true);
 
       cursorRepository.get.mockResolvedValueOnce('200');
-      marketplace.listOrderFeed.mockResolvedValueOnce({
+      orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
             externalOrderId: 'checkout-1',
@@ -202,7 +203,7 @@ describe('OrderIngestionService', () => {
 
       jobQueue.enqueueBulk.mockResolvedValueOnce([]);
 
-      const result = await service.syncFromMarketplace(connectionId, { cursorKey, limit: 10 });
+      const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.committed).toBe(false);
       expect(cursorRepository.set).not.toHaveBeenCalled();
@@ -224,14 +225,14 @@ describe('OrderIngestionService', () => {
 
     beforeEach(() => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
-      marketplace.getOrder.mockResolvedValue(baseIncoming);
-      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+      orderSource.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
     });
 
     it('should call persistIncomingSnapshot before item resolution, then persistOrder before syncOrder', async () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
         baseIncoming,
@@ -262,7 +263,7 @@ describe('OrderIngestionService', () => {
         },
       ]);
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
         'ol_order_test',
@@ -280,7 +281,7 @@ describe('OrderIngestionService', () => {
         },
       ]);
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
         'ol_order_test',
@@ -293,7 +294,7 @@ describe('OrderIngestionService', () => {
       orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
 
       await expect(
-        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId),
       ).rejects.toThrow('no destinations');
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
@@ -320,7 +321,7 @@ describe('OrderIngestionService', () => {
         .mockRejectedValueOnce(new Error('db write failed'));
 
       await expect(
-        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId),
       ).resolves.not.toThrow();
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -350,14 +351,14 @@ describe('OrderIngestionService', () => {
     });
 
     it('should call resolveCustomerIdentity when customerExternalId and customerEmail are present', async () => {
-      marketplace.getOrder.mockResolvedValueOnce({
+      orderSource.getOrder.mockResolvedValueOnce({
         ...baseIncoming,
         customerExternalId: 'buyer-ext-1',
         customerEmail: 'buyer@example.com',
       });
-      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -375,13 +376,13 @@ describe('OrderIngestionService', () => {
     });
 
     it('should fall back to identifierMapping when customerExternalId is present but email is absent', async () => {
-      marketplace.getOrder.mockResolvedValueOnce({
+      orderSource.getOrder.mockResolvedValueOnce({
         ...baseIncoming,
         customerExternalId: 'buyer-ext-2',
       });
-      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(customerIdentityResolver.resolveCustomerIdentity).not.toHaveBeenCalled();
       expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
@@ -411,8 +412,8 @@ describe('OrderIngestionService', () => {
 
     beforeEach(() => {
       identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_item_test');
-      marketplace.getOrder.mockResolvedValue(incomingWithItems);
-      integrationsService.getCapabilityAdapter.mockResolvedValue(marketplace);
+      orderSource.getOrder.mockResolvedValue(incomingWithItems);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
       orderSyncService.syncOrder.mockResolvedValue([]);
     });
 
@@ -421,7 +422,7 @@ describe('OrderIngestionService', () => {
         .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
         .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
 
-      await service.syncOrderFromMarketplace(connectionId, externalOrderId);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
@@ -434,7 +435,7 @@ describe('OrderIngestionService', () => {
         .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping' });
 
       await expect(
-        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId),
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
@@ -448,7 +449,7 @@ describe('OrderIngestionService', () => {
         .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping b' });
 
       await expect(
-        service.syncOrderFromMarketplace(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId),
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);

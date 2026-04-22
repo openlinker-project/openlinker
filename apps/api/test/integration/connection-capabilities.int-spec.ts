@@ -72,7 +72,7 @@ describe('Connection Capabilities Integration', () => {
 
     const dto = createPrestashopConnectionDto({
       name: 'Bad caps',
-      enabledCapabilities: ['ProductMaster', 'Marketplace'], // Marketplace not supported by prestashop.webservice.v1
+      enabledCapabilities: ['ProductMaster', 'OfferManager'], // Marketplace not supported by prestashop.webservice.v1
     } as Record<string, unknown>);
 
     await http
@@ -125,7 +125,7 @@ describe('Connection Capabilities Integration', () => {
     await http
       .patch(`/connections/${created.id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ enabledCapabilities: ['Marketplace'] })
+      .send({ enabledCapabilities: ['OfferManager'] })
       .expect(400);
   });
 });

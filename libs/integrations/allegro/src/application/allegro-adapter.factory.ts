@@ -15,6 +15,11 @@ import { AllegroConnectionConfig, AllegroEnvironmentValues } from '../domain/typ
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
+import {
+  AllegroOfferManagerAdapter,
+  QuantityPollConfig,
+} from '../infrastructure/adapters/allegro-offer-manager.adapter';
+import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-order-source.adapter';
 import { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
 import { AllegroMarketplaceAdapter, QuantityPollConfig } from '../infrastructure/adapters/allegro-marketplace.adapter';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
@@ -30,11 +35,16 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
   private readonly logger = new Logger(AllegroAdapterFactory.name);
 
   constructor(
-    private readonly customerIdentityResolver?: CustomerIdentityResolverPort,
+    // Retained on the constructor for backwards-compat with existing NestJS
+    // wiring. The post-#328 adapters do not consume the customer identity
+    // resolver directly — identity resolution lives in OrderIngestionService.
+    _customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
     private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
-  ) {}
+  ) {
+    void _customerIdentityResolver;
+  }
 
   async createAdapters(
     connection: Connection,
@@ -79,21 +89,28 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       tokenRefreshCallback,
     );
 
-    // Create marketplace adapter
-    const marketplaceAdapter = new AllegroMarketplaceAdapter(
+    // Both adapters receive the single per-connection HTTP client + identifier-mapping
+    // instance constructed above. This keeps token-refresh + rate-limit coordination
+    // coherent across the offer-side and order-ingestion paths.
+    const offerManagerAdapter = new AllegroOfferManagerAdapter(
       connection.id,
       httpClient,
       identifierMapping,
       connection,
-      this.customerIdentityResolver,
       this.commandRepository,
       this.quantityPollConfig,
+    );
+    const orderSourceAdapter = new AllegroOrderSourceAdapter(
+      connection.id,
+      httpClient,
+      connection,
     );
 
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);
 
     return {
-      marketplace: marketplaceAdapter,
+      offerManager: offerManagerAdapter,
+      orderSource: orderSourceAdapter,
     };
   }
 

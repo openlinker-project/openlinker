@@ -5,12 +5,12 @@
  * internal variant id plus optional overrides. Implementations resolve the
  * parent master product (for name/description/images/price), the target
  * marketplace category (via the existing category resolution chain), and
- * assemble the final command consumed by `MarketplacePort.createOffer`.
+ * assemble the final command consumed by `OfferManagerPort.createOffer`.
  *
  * @module libs/core/src/listings/application/interfaces
  */
 
-import type { CreateOfferCommand } from '@openlinker/core/integrations';
+import type { CreateOfferCommand } from '@openlinker/core/listings';
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 
 export interface IOfferBuilderService {

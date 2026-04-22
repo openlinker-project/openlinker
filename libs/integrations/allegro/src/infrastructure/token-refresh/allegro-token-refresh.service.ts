@@ -10,11 +10,7 @@
 import { Injectable, Inject, Optional } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import {
-  CredentialsResolverPort,
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-} from '@openlinker/core/integrations';
+import { CredentialsResolverPort, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '@openlinker/core/integrations';
 import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../../domain/exceptions/allegro-config.exception';

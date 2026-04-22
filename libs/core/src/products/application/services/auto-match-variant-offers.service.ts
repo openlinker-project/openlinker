@@ -9,11 +9,8 @@
  * @implements {IAutoMatchVariantOffersService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -65,9 +62,9 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
       return { matched: 0, skippedAmbiguous: 0, skippedNoMatch: 0, errors: [] };
     }
 
-    const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     const allOffers = await this.loadAllOffers(marketplace);
@@ -142,7 +139,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     return { matched, skippedAmbiguous, skippedNoMatch, errors };
   }
 
-  private async loadAllOffers(marketplace: MarketplacePort): Promise<OfferIdentifiers[]> {
+  private async loadAllOffers(marketplace: OfferManagerPort): Promise<OfferIdentifiers[]> {
     if (!marketplace.listOffers) {
       throw new Error('Marketplace adapter does not support listOffers');
     }

@@ -7,17 +7,14 @@
  * - Single-flight ingestion per connection (lock)
  * - Cursor read/commit safety
  * - Deterministic dedupe keys for downstream jobs
- * - Hydration of full order via MarketplacePort and routing via OrderSyncService
+ * - Hydration of full order via OrderSourcePort and routing via OrderSyncService
  *
  * @module libs/core/src/orders/application/services
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { OrderSourcePort } from '@openlinker/core/orders';
 import {
   ConnectionCursorRepositoryPort,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
@@ -37,13 +34,13 @@ import {
 import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
 import {
   IOrderIngestionService,
-  MarketplaceIngestionOptions,
-  MarketplaceIngestionResult,
+  OrderIngestionOptions,
+  OrderIngestionResult,
 } from '../interfaces/order-ingestion.service.interface';
 import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
-import { Order } from '../../domain/ports/order-source.port';
+import { Order } from '../../domain/types/order.types';
 import { Logger } from '@openlinker/shared/logging';
 import { OrderItemRefResolverService } from './order-item-ref-resolver.service';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
@@ -75,10 +72,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderRecordService: IOrderRecordService,
   ) {}
 
-  async syncFromMarketplace(
+  async ingestOrders(
     connectionId: string,
-    options: MarketplaceIngestionOptions,
-  ): Promise<MarketplaceIngestionResult> {
+    options: OrderIngestionOptions,
+  ): Promise<OrderIngestionResult> {
     const lockKey = `marketplace:orders:poll:${connectionId}`;
     const token = await this.lock.acquire(lockKey, this.LOCK_TTL_MS);
     if (!token) {
@@ -96,12 +93,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       const { cursorKey, limit, eventTypes } = options;
       const fromCursor = await this.cursorRepository.get(connectionId, cursorKey);
 
-      const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
-        connectionId,
-        'Marketplace',
+      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(connectionId,
+        'OrderSource',
       );
 
-      const feed = await marketplace.listOrderFeed({
+      const feed = await orderSource.listOrderFeed({
         fromCursor,
         limit,
         eventTypes,
@@ -171,17 +167,16 @@ export class OrderIngestionService implements IOrderIngestionService {
     return next < previous;
   }
 
-  async syncOrderFromMarketplace(
+  async syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
-    const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
-      connectionId,
-      'Marketplace',
+    const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(connectionId,
+      'OrderSource',
     );
 
-    const incoming = await marketplace.getOrder({ externalOrderId });
+    const incoming = await orderSource.getOrder({ externalOrderId });
 
     // Step 1: resolve order + customer IDs (no item mapping yet)
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(

@@ -26,19 +26,8 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { randomUUID } from 'crypto';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
-import {
-  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
-  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-  OFFER_MAPPING_REPOSITORY_TOKEN,
-  SELLER_POLICIES_SERVICE_TOKEN,
-} from '@openlinker/core/listings';
-import type {
-  IOfferCreationEnqueueService,
-  ISellerPoliciesService,
-  OfferCreationRecord,
-  OfferCreationRecordRepositoryPort,
-  OfferMappingRepositoryPort,
-} from '@openlinker/core/listings';
+import { OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
+import type { IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecord, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import type { EntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';

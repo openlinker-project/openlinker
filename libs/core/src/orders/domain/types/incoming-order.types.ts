@@ -1,7 +1,7 @@
 /**
  * Incoming Order Types
  *
- * Integration-facing order DTO returned by marketplace adapters via MarketplacePort.
+ * Integration-facing order DTO returned by OrderSourcePort adapters (marketplaces + shops).
  * This is intentionally decoupled from canonical persistence/domain entities so that
  * the plugin contract can remain stable even as core evolves.
  *

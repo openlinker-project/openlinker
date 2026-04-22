@@ -8,7 +8,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
-import { OrderItem, OrderTotals, Address } from '../ports/order-source.port';
+import { OrderItem, OrderTotals, Address } from '../types/order.types';
 import { OrderStatus } from './order.types';
 
 /**

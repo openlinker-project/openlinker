@@ -20,11 +20,8 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
-import {
-  CreateOfferCommand,
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { CreateOfferCommand } from '@openlinker/core/listings';
 import {
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   ProductMasterPort,

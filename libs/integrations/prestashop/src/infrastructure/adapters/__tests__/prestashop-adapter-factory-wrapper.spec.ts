@@ -64,7 +64,7 @@ describe('PrestashopAdapterFactoryWrapper', () => {
 
       expect(adapter).toBeDefined();
       expect(typeof adapter.getOrder).toBe('function');
-      expect(typeof adapter.getOrders).toBe('function');
+      expect(typeof adapter.listOrderFeed).toBe('function');
     });
 
     it('should throw error when creating OrderProcessorManager adapter without dependencies', async () => {

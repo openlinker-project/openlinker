@@ -7,7 +7,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { MarketplaceCategory } from '@openlinker/core/integrations';
+import type { OfferCategory } from '@openlinker/core/listings';
 
 export class AllegroCategoryResponseDto {
   @ApiProperty({ example: '258066' })
@@ -22,7 +22,7 @@ export class AllegroCategoryResponseDto {
   @ApiProperty({ example: true })
   leaf!: boolean;
 
-  static fromDomain(cat: MarketplaceCategory): AllegroCategoryResponseDto {
+  static fromDomain(cat: OfferCategory): AllegroCategoryResponseDto {
     const dto = new AllegroCategoryResponseDto();
     dto.id = cat.id;
     dto.name = cat.name;

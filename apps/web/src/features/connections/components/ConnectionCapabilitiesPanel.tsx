@@ -23,7 +23,7 @@ const CAPABILITY_HELP: Record<Capability, string> = {
   InventoryMaster: 'Read stock levels from this connection as the inventory source of truth.',
   OrderProcessorManager: 'Create and manage orders in this connection (typically the destination shop).',
   OrderSource: 'Fetch new orders from this connection (e.g. a marketplace).',
-  Marketplace: 'Manage offers and listings on this marketplace connection.',
+  OfferManager: 'Manage offers and listings on this marketplace connection.',
 };
 
 export function ConnectionCapabilitiesPanel({

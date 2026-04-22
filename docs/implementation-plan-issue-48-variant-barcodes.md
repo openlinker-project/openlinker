@@ -1,8 +1,10 @@
 # Implementation Plan: Persist Variant EAN/GTIN for Offer Linking (Issue 48)
 
 **Date**: 2026-01-31  
-**Status**: Draft  
+**Status**: Superseded (see note)
 **Estimated Effort**: 2-3 days
+
+> **Superseded in part by #328 (2026-04-22).** Any reference below to the `MarketplacePort` offer feed (EAN/GTIN inputs) now lives on `OfferManagerPort` in `libs/core/src/listings/domain/ports/`. The rest of the barcode-persistence plan is unaffected by the port split. This file is kept as a historical record.
 
 ---
 

@@ -1,54 +1,43 @@
 /**
- * Marketplace Port
+ * Offer Manager Port
  *
- * Canonical capability contract for marketplace integrations.
+ * Canonical capability contract for marketplace offer / listing management —
+ * offer feed, quantity + field updates, offer creation, category directory,
+ * and seller-policy discovery. Implemented by marketplace integration adapters
+ * (Allegro today; eBay / WooCommerce / Shopify future).
  *
- * Domain-only: no framework dependencies.
+ * Split out of the legacy `MarketplacePort` (#328). Order-ingestion methods
+ * previously on the same port now live on `OrderSourcePort` in
+ * `@openlinker/core/orders`.
  *
- * @module libs/core/src/integrations/domain/ports
+ * Domain-only: no framework dependencies, no import from `@openlinker/core/orders`.
+ *
+ * @module libs/core/src/listings/domain/ports
  */
 
-import type { IncomingOrder } from '@openlinker/core/orders/domain/types/incoming-order.types';
-import {
-  MarketplaceOrderFeedInput,
-  MarketplaceOrderFeedOutput,
-} from '../types/marketplace-order-feed.types';
-import {
-  MarketplaceOfferFeedInput,
-  MarketplaceOfferFeedOutput,
-} from '../types/marketplace-offer-feed.types';
-import {
+import type { OfferFeedInput, OfferFeedOutput } from '../types/offer-feed.types';
+import type {
   UpdateOfferQuantityCommand,
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
-} from '../types/marketplace-quantity-update.types';
-import type { UpdateOfferFieldsCommand } from '../types/marketplace-offer-update.types';
-import type { MarketplaceCategory } from '../types/marketplace-category.types';
-import type { CreateOfferCommand, CreateOfferResult } from '../types/marketplace-offer-create.types';
+} from '../types/offer-quantity-update.types';
+import type { UpdateOfferFieldsCommand } from '../types/offer-fields-update.types';
+import type { OfferCategory } from '../types/category.types';
+import type { CreateOfferCommand, CreateOfferResult } from '../types/offer-create.types';
 import type { SellerPolicies } from '../types/seller-policies.types';
 
-export interface MarketplacePort {
-  /**
-   * List incremental order feed items (event journal).
-   */
-  listOrderFeed(input: MarketplaceOrderFeedInput): Promise<MarketplaceOrderFeedOutput>;
-
-  /**
-   * Fetch a full order by marketplace-native id.
-   */
-  getOrder(input: { externalOrderId: string }): Promise<IncomingOrder>;
-
+export interface OfferManagerPort {
   /**
    * List marketplace offers (optional).
    */
-  listOffers?(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput>;
+  listOffers?(input: OfferFeedInput): Promise<OfferFeedOutput>;
 
   /**
    * List incremental marketplace offer events (optional).
    *
    * Uses a cursor-based event journal when supported by the marketplace.
    */
-  listOfferEvents?(input: MarketplaceOfferFeedInput): Promise<MarketplaceOfferFeedOutput>;
+  listOfferEvents?(input: OfferFeedInput): Promise<OfferFeedOutput>;
 
   /**
    * Update a single offer quantity.
@@ -72,7 +61,7 @@ export interface MarketplacePort {
   /**
    * Fetch marketplace categories (optional).
    */
-  fetchCategories?(parentId?: string): Promise<MarketplaceCategory[]>;
+  fetchCategories?(parentId?: string): Promise<OfferCategory[]>;
 
   /**
    * Match a marketplace category by product barcode (EAN/GTIN) — optional capability.
@@ -108,4 +97,3 @@ export interface MarketplacePort {
    */
   fetchSellerPolicies?(): Promise<SellerPolicies>;
 }
-

@@ -29,8 +29,8 @@ function makeAllegro(overrides: Partial<Connection> = {}): Connection {
     name: 'Allegro sandbox',
     platformType: 'allegro',
     config: { environment: 'sandbox' },
-    enabledCapabilities: ['Marketplace', 'OrderProcessorManager'],
-    supportedCapabilities: ['Marketplace', 'OrderProcessorManager'],
+    enabledCapabilities: ['OfferManager', 'OrderProcessorManager'],
+    supportedCapabilities: ['OfferManager', 'OrderProcessorManager'],
     adapterKey: 'allegro.publicapi.v1',
     ...overrides,
   };
@@ -261,7 +261,7 @@ describe('ConnectionDetailPage', () => {
       // ProductMaster candidate by the hook (which doesn't exclude self). The
       // banner must filter self out to avoid auto-linking to itself.
       const dualCap = makeAllegro({
-        enabledCapabilities: ['Marketplace', 'ProductMaster', 'OrderProcessorManager'],
+        enabledCapabilities: ['OfferManager', 'ProductMaster', 'OrderProcessorManager'],
       });
       const apiClient = apiClientForBanner(dualCap, [dualCap]);
       await renderDetailPage(dualCap, apiClient);

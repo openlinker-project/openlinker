@@ -7,7 +7,7 @@
  * @module libs/core/src/orders/application/interfaces
  * @see {@link OrderSyncService} for the implementation
  */
-import { Order } from '../../domain/ports/order-source.port';
+import { Order } from '../../domain/types/order.types';
 
 /**
  * Order sync request metadata

@@ -10,15 +10,7 @@
 import { Module, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import {
-  IntegrationsModule,
-  ADAPTER_FACTORY_RESOLVER_TOKEN,
-  AdapterFactoryResolverService,
-  CONNECTION_TESTER_REGISTRY_TOKEN,
-  ConnectionTesterRegistryService,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
-} from '@openlinker/core/integrations';
+import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';

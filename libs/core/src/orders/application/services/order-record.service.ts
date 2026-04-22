@@ -9,7 +9,7 @@
  * @implements {IOrderRecordService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { Order } from '../../domain/ports/order-source.port';
+import { Order } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';

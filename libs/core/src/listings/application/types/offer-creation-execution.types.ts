@@ -7,7 +7,7 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/integrations';
+import type { CreateOfferOverrides } from '@openlinker/core/listings';
 
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 

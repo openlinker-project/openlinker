@@ -69,7 +69,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const platformBranch: PlatformBranch =
     connection.platformType === 'prestashop'
       ? 'prestashop'
-      : connection.enabledCapabilities.includes('Marketplace')
+      : connection.enabledCapabilities.includes('OfferManager')
         ? 'marketplace'
         : 'raw';
   const hasStructuredInputs = platformBranch !== 'raw';

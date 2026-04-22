@@ -68,7 +68,7 @@ describe('IdentifierMappingService', () => {
       new Date(),
       new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
     );
 
     beforeEach(() => {
@@ -249,7 +249,7 @@ describe('IdentifierMappingService', () => {
       new Date(),
       new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
     );
 
     beforeEach(() => {
@@ -346,7 +346,7 @@ describe('IdentifierMappingService', () => {
       new Date(),
       new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
     );
 
     beforeEach(() => {
@@ -411,7 +411,7 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
       const connection2 = new Connection(
         'connection-2',
@@ -423,7 +423,7 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
 
       // batchGetOrCreateInternalIds deduplicates connectionIds and calls get() once per unique ID

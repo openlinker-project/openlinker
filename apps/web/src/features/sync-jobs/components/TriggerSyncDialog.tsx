@@ -81,7 +81,7 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'Marketplace',
+    requiredCapability: 'OfferManager',
   },
   {
     jobType: 'marketplace.orders.poll',
@@ -103,7 +103,7 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'Marketplace',
+    requiredCapability: 'OfferManager',
   },
   {
     jobType: 'inventory.propagateToMarketplaces',

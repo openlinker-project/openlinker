@@ -6,7 +6,7 @@
  * @module apps/api/src/categories
  */
 
-import type { MarketplaceCategory } from '@openlinker/core/integrations';
+import type { OfferCategory } from '@openlinker/core/listings';
 
 export interface PrestashopCategoryDto {
   id: string;
@@ -24,7 +24,7 @@ export interface ICategoriesCacheService {
    * @param connectionId - Connection UUID
    * @param parentId - Optional parent category ID (omit for root categories)
    */
-  getAllegroCategories(connectionId: string, parentId?: string): Promise<MarketplaceCategory[]>;
+  getAllegroCategories(connectionId: string, parentId?: string): Promise<OfferCategory[]>;
 
   /**
    * Get PrestaShop categories for a connection.
