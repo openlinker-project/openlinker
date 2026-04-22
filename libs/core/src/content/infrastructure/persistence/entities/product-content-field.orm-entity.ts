@@ -8,9 +8,11 @@
  * Index design note: the unique constraint on `(productId, connectionId, fieldKey)`
  * is implemented as **two partial unique indexes** (one for `connectionId IS NULL`,
  * one for `connectionId IS NOT NULL`) to handle Postgres' `NULL ≠ NULL`
- * uniqueness semantics. Those indexes are created in the migration (TypeORM
- * decorator support for partial indexes is fragile across versions). The
- * decorator below only declares the non-unique lookup index on `productId`.
+ * uniqueness semantics. The decorators declare them here so `synchronize: true`
+ * (used only by the integration-test harness) materialises them; production DBs
+ * get the identical indexes via the migration, which remains the source of truth.
+ * They must also exist at runtime because the repository's upsert relies on the
+ * `ON CONFLICT (...) WHERE ...` inference clause matching these partial indexes.
  *
  * @module libs/core/src/content/infrastructure/persistence/entities
  */
@@ -25,6 +27,14 @@ import {
 
 @Entity('product_content_field')
 @Index('ix_pcf_product', ['productId'])
+@Index('ux_pcf_master', ['productId', 'fieldKey'], {
+  unique: true,
+  where: '"connection_id" IS NULL',
+})
+@Index('ux_pcf_channel', ['productId', 'connectionId', 'fieldKey'], {
+  unique: true,
+  where: '"connection_id" IS NOT NULL',
+})
 export class ProductContentFieldOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
