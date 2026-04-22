@@ -1,3 +1,12 @@
+/**
+ * AppShell
+ *
+ * Authenticated-app chrome: persistent left nav (240 px sidebar with mobile
+ * drawer fallback), top utility bar (breadcrumb + alerts), and the main
+ * content slot. Every authenticated route renders inside this shell.
+ *
+ * @module shared/ui
+ */
 import {
   useCallback,
   useEffect,

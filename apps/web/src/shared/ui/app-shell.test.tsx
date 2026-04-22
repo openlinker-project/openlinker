@@ -1,3 +1,12 @@
+/**
+ * AppShell Tests
+ *
+ * Smoke tests for the authenticated-app chrome: nav-group composition,
+ * breadcrumb resolution, mobile-drawer open/close behaviour, and regression
+ * guards against dead UI in the topbar.
+ *
+ * @module shared/ui
+ */
 import type { ReactElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -89,7 +98,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
   });
 
-  it('does not render a dead global search input in the topbar', () => {
+  it('should not render a global search input in the topbar until search is wired', () => {
     // Regression for #220: the topbar previously rendered an <Input type="search">
     // with no handler. Global search isn't implemented yet — no dead UI until it is.
     renderShell('/');
