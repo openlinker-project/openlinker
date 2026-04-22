@@ -21,7 +21,7 @@ paths:
 
 ## Naming
 
-- Components: `PascalCase.tsx`
+- Components: `kebab-case.tsx` (named export stays `PascalCase`, e.g. `kpi-card.tsx` exports `KpiCard`)
 - Hooks: `use-*.ts` (kebab-case)
 - Route modules: `*.route.tsx`
 - Tests: `*.test.tsx` (colocated with source)

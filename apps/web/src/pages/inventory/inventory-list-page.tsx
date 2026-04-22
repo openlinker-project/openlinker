@@ -6,6 +6,7 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
@@ -189,13 +190,13 @@ export function InventoryListPage(): ReactElement {
     >
       {/* Filters */}
       <div className="toolbar toolbar--compact">
-        <input
+        <Input
           aria-label="Filter by product ID"
           placeholder="Product ID…"
           value={productIdInput}
           onChange={(e) => { handleFilterChange('productId', e.target.value); }}
         />
-        <input
+        <Input
           aria-label="Filter by variant ID"
           placeholder="Variant ID…"
           value={variantIdInput}

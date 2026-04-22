@@ -6,6 +6,7 @@ import { createJwtBearerSessionAdapter } from '../../shared/auth/jwt-bearer-sess
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { env } from '../../shared/config/env';
+import { ThemeProvider } from '../../shared/theme';
 
 export function AppProviders({ children }: PropsWithChildren): ReactElement {
   const [queryClient] = useState(
@@ -33,12 +34,14 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
   );
 
   return (
-    <SessionProvider adapter={sessionAdapter}>
-      <ToastProvider>
-        <ApiClientProvider client={apiClient}>
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        </ApiClientProvider>
-      </ToastProvider>
-    </SessionProvider>
+    <ThemeProvider>
+      <SessionProvider adapter={sessionAdapter}>
+        <ToastProvider>
+          <ApiClientProvider client={apiClient}>
+            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </SessionProvider>
+    </ThemeProvider>
   );
 }

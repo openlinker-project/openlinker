@@ -6,6 +6,7 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
@@ -125,7 +126,7 @@ export function ProductsListPage(): ReactElement {
     >
       {/* Search bar */}
       <div className="toolbar">
-        <input
+        <Input
           aria-label="Search products by name or SKU"
           placeholder="Search by name or SKU…"
           value={searchInput}

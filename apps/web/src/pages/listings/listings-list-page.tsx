@@ -6,6 +6,7 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
@@ -200,19 +201,19 @@ export function ListingsListPage(): ReactElement {
       ) : null}
 
       <div className="toolbar toolbar--compact">
-        <input
+        <Input
           aria-label="Search by external ID"
           placeholder="External ID…"
           value={searchInput}
           onChange={(e) => { handleFilterChange('search', e.target.value); }}
         />
-        <input
+        <Input
           aria-label="Filter by connection ID"
           placeholder="Connection ID…"
           value={connectionIdInput}
           onChange={(e) => { handleFilterChange('connectionId', e.target.value); }}
         />
-        <input
+        <Input
           aria-label="Filter by platform type"
           placeholder="Platform type…"
           value={platformTypeInput}

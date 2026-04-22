@@ -8,31 +8,50 @@
  * @module shared/ui
  */
 import type { ReactElement } from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
-import { SessionProvider } from '../auth/session-provider';
-import { ToastProvider } from './toast-provider';
-import { createAuthenticatedSessionAdapter } from '../../test/test-utils';
+import { SessionProvider } from '../shared/auth/session-provider';
+import { ToastProvider } from '../shared/ui/toast-provider';
+import { ApiClientProvider } from './api/api-client-provider';
+import type { ApiClient } from './api/api-client';
+import { ThemeProvider } from '../shared/theme/theme-provider';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+} from '../test/test-utils';
 
-function renderShell(pathname = '/'): ReturnType<typeof render> {
+interface RenderShellOptions {
+  apiClient?: ApiClient;
+  pathname?: string;
+}
+
+function renderShell({
+  apiClient = createMockApiClient(),
+  pathname = '/',
+}: RenderShellOptions = {}): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const adapter = createAuthenticatedSessionAdapter();
 
   return render(
-    <SessionProvider adapter={adapter}>
-      <ToastProvider>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={[pathname]}>
-            <AppShell>
-              <div data-testid="page-content">Page content</div>
-            </AppShell>
-          </MemoryRouter>
-        </QueryClientProvider>
-      </ToastProvider>
-    </SessionProvider>,
+    <ThemeProvider>
+      <SessionProvider adapter={adapter}>
+        <ToastProvider>
+          <ApiClientProvider client={apiClient}>
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter initialEntries={[pathname]}>
+                <AppShell>
+                  <div data-testid="page-content">Page content</div>
+                </AppShell>
+              </MemoryRouter>
+            </QueryClientProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </SessionProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -48,7 +67,7 @@ describe('AppShell', () => {
   afterEach(cleanup);
 
   it('renders the three live nav groups plus a disabled Planned footer', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
 
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).getByText('Operations')).toBeInTheDocument();
@@ -68,50 +87,87 @@ describe('AppShell', () => {
   });
 
   it('uses "Connections" as the nav label (not "Integrations")', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).getByText('Connections')).toBeInTheDocument();
     expect(within(primary).queryByText('Integrations')).toBeNull();
   });
 
   it('does not render any "Live" pill on live nav items', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).queryByText('Live')).toBeNull();
   });
 
   it('shows a breadcrumb reflecting the current route', () => {
-    renderShell('/connections');
+    renderShell({ pathname: '/connections' });
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(crumbs).getByText('Platform')).toBeInTheDocument();
     expect(within(crumbs).getByText('Connections')).toBeInTheDocument();
   });
 
   it('falls back to an OpenLinker crumb for unknown routes', () => {
-    renderShell('/totally-not-a-route');
+    renderShell({ pathname: '/totally-not-a-route' });
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(crumbs).getByText('OpenLinker')).toBeInTheDocument();
   });
 
   it('exposes a hamburger trigger for the mobile drawer', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
   });
 
   it('should not render a global search input in the topbar until search is wired', () => {
     // Regression for #220: the topbar previously rendered an <Input type="search">
     // with no handler. Global search isn't implemented yet — no dead UI until it is.
-    renderShell('/');
+    renderShell({ pathname: '/' });
     expect(screen.queryByRole('searchbox')).toBeNull();
   });
 
   it('renders the child page content', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
     expect(screen.getByTestId('page-content')).toHaveTextContent('Page content');
   });
 
+  it('shows the ⌘K search placeholder in the topbar (visual only — no input)', () => {
+    renderShell({ pathname: '/' });
+    const search = screen.getByRole('button', { name: /Global search/i });
+    expect(search).toBeInTheDocument();
+    expect(search.textContent).toMatch(/⌘K/);
+  });
+
+  it('renders count badges from useNavCounts once queries settle', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([{ id: 'c1' }, { id: 'c2' }]),
+      },
+      orders: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 37, limit: 1, offset: 0 }),
+      },
+    });
+
+    renderShell({ apiClient });
+
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    await waitFor(() => {
+      expect(within(primary).getByText('37')).toBeInTheDocument();
+      expect(within(primary).getByText('2')).toBeInTheDocument();
+    });
+  });
+
+  it('exposes a user chip that opens an account menu with sign out and theme toggle', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    const trigger = await screen.findByRole('button', { name: /Account menu for/i });
+    await user.click(trigger);
+
+    expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+  });
+
   it('opens the mobile drawer when the hamburger is clicked', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
 
     const drawer = getDrawer();
     expect(drawer.open).toBe(false);
@@ -124,7 +180,7 @@ describe('AppShell', () => {
   });
 
   it('closes the drawer when the Close button is clicked', () => {
-    renderShell('/');
+    renderShell({ pathname: '/' });
 
     const drawer = getDrawer();
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
@@ -152,26 +208,31 @@ describe('AppShell', () => {
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const adapter = createAuthenticatedSessionAdapter();
+    const apiClient = createMockApiClient();
 
     render(
-      <SessionProvider adapter={adapter}>
-        <ToastProvider>
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter initialEntries={['/']}>
-              <Routes>
-                <Route
-                  path="*"
-                  element={
-                    <AppShell>
-                      <Redirector to="/orders" />
-                    </AppShell>
-                  }
-                />
-              </Routes>
-            </MemoryRouter>
-          </QueryClientProvider>
-        </ToastProvider>
-      </SessionProvider>,
+      <ThemeProvider>
+        <SessionProvider adapter={adapter}>
+          <ToastProvider>
+            <ApiClientProvider client={apiClient}>
+              <QueryClientProvider client={queryClient}>
+                <MemoryRouter initialEntries={['/']}>
+                  <Routes>
+                    <Route
+                      path="*"
+                      element={
+                        <AppShell>
+                          <Redirector to="/orders" />
+                        </AppShell>
+                      }
+                    />
+                  </Routes>
+                </MemoryRouter>
+              </QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </ThemeProvider>,
     );
 
     const drawer = getDrawer();

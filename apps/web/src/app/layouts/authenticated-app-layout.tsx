@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
-import { AppShell } from '../../shared/ui/app-shell';
+import { AppShell } from '../app-shell';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function AuthenticatedAppLayout(): ReactElement {

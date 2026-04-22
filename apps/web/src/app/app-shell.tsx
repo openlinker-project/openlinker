@@ -2,8 +2,13 @@
  * AppShell
  *
  * Authenticated-app chrome: persistent left nav (240 px sidebar with mobile
- * drawer fallback), top utility bar (breadcrumb + alerts), and the main
- * content slot. Every authenticated route renders inside this shell.
+ * drawer fallback), top utility bar, and the main content slot. Every
+ * authenticated route renders inside this shell.
+ *
+ * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
+ * existing list queries). The topbar hosts breadcrumbs, a visual-only
+ * ⌘K search placeholder (full palette tracked separately in #333), an
+ * alerts trigger, and a user chip dropdown with the theme toggle.
  *
  * @module shared/ui
  */
@@ -15,12 +20,25 @@ import {
   type ReactElement,
 } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useSession } from '../auth/use-session';
-import { Button } from './button';
-import { EnvironmentBadge } from './environment-badge';
-import { useToast } from './toast-provider';
+import { useSession } from '../shared/auth/use-session';
+import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
+import { Button } from '../shared/ui/button';
+import { EnvironmentBadge } from '../shared/ui/environment-badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../shared/ui/dropdown-menu';
+import { ThemeToggle } from '../shared/ui/theme-toggle';
+import { useToast } from '../shared/ui/toast-provider';
+
+type NavCountKey = Exclude<keyof NavCounts, never>;
 
 interface LiveNavItem {
+  countKey?: NavCountKey;
   end?: boolean;
   label: string;
   to: string;
@@ -51,19 +69,19 @@ const navGroups: NavGroup[] = [
     label: 'Operations',
     items: [
       { to: '/', label: 'Dashboard', end: true },
-      { to: '/orders', label: 'Orders' },
+      { to: '/orders', label: 'Orders', countKey: 'orders' },
       { to: '/products', label: 'Products' },
-      { to: '/inventory', label: 'Inventory' },
-      { to: '/customers', label: 'Customers' },
-      { to: '/listings', label: 'Listings' },
+      { to: '/inventory', label: 'Inventory', countKey: 'inventory' },
+      { to: '/customers', label: 'Customers', countKey: 'customers' },
+      { to: '/listings', label: 'Listings', countKey: 'listings' },
     ],
   },
   {
     kind: 'live',
     label: 'Diagnostics',
     items: [
-      { to: '/jobs-logs', label: 'Jobs & Logs' },
-      { to: '/webhook-deliveries', label: 'Webhooks' },
+      { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
+      { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
       { to: '/cursors', label: 'Cursors' },
     ],
   },
@@ -71,7 +89,7 @@ const navGroups: NavGroup[] = [
     kind: 'live',
     label: 'Platform',
     items: [
-      { to: '/connections', label: 'Connections' },
+      { to: '/connections', label: 'Connections', countKey: 'connections' },
       { to: '/adapters', label: 'Adapters' },
       { to: '/settings', label: 'Settings' },
     ],
@@ -122,12 +140,20 @@ function resolveCrumbs(pathname: string): { group: string; title: string } {
   return { group: 'OpenLinker', title: '' };
 }
 
+const COUNT_FORMATTER = new Intl.NumberFormat('en-US');
+
+function formatCount(value: number | null): string | null {
+  if (value === null) return null;
+  return COUNT_FORMATTER.format(value);
+}
+
 interface SidebarNavProps {
   ariaLabel: string;
+  counts: NavCounts;
   onNavigate?: () => void;
 }
 
-function SidebarNav({ ariaLabel, onNavigate }: SidebarNavProps): ReactElement {
+function SidebarNav({ ariaLabel, counts, onNavigate }: SidebarNavProps): ReactElement {
   return (
     <nav className="shell-nav" aria-label={ariaLabel}>
       {navGroups.map((group) => (
@@ -135,20 +161,26 @@ function SidebarNav({ ariaLabel, onNavigate }: SidebarNavProps): ReactElement {
           <p className="shell-nav__label">{group.label}</p>
           <ul className="shell-nav__list">
             {group.kind === 'live'
-              ? group.items.map((item) => (
-                  <li key={item.label}>
-                    <NavLink
-                      to={item.to}
-                      end={item.end}
-                      onClick={onNavigate}
-                      className={({ isActive }) =>
-                        isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
-                      }
-                    >
-                      <span>{item.label}</span>
-                    </NavLink>
-                  </li>
-                ))
+              ? group.items.map((item) => {
+                  const countText = item.countKey ? formatCount(counts[item.countKey]) : null;
+                  return (
+                    <li key={item.label}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
+                        }
+                      >
+                        <span className="shell-nav__link-label">{item.label}</span>
+                        {countText !== null ? (
+                          <span className="shell-nav__link-count mono-text">{countText}</span>
+                        ) : null}
+                      </NavLink>
+                    </li>
+                  );
+                })
               : group.items.map((item) => (
                   <li key={item.label}>
                     <span
@@ -176,6 +208,7 @@ function SidebarBrand(): ReactElement {
         OL
       </span>
       <span className="shell-brand__name">OpenLinker</span>
+      <EnvironmentBadge compact />
     </div>
   );
 }
@@ -190,7 +223,6 @@ function WorkspaceFooter({ onLogout, username }: WorkspaceFooterProps): ReactEle
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">Default organization</strong>
-        <EnvironmentBadge compact />
       </div>
       {username ? (
         <div className="shell-workspace__user">
@@ -206,12 +238,78 @@ function WorkspaceFooter({ onLogout, username }: WorkspaceFooterProps): ReactEle
   );
 }
 
+function TopbarSearchPlaceholder(): ReactElement {
+  return (
+    <button
+      type="button"
+      className="shell-topbar__search"
+      title="Global search — coming soon"
+      aria-label="Global search — coming soon"
+      aria-disabled="true"
+      onClick={(event) => event.preventDefault()}
+    >
+      <span className="shell-topbar__search-icon" aria-hidden="true">
+        ⌕
+      </span>
+      <span className="shell-topbar__search-placeholder">
+        Search orders, products, connections…
+      </span>
+      <kbd className="shell-topbar__search-kbd" aria-hidden="true">
+        ⌘K
+      </kbd>
+    </button>
+  );
+}
+
+function initialsFrom(username: string): string {
+  const parts = username.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+interface UserChipProps {
+  email?: string | null;
+  onLogout: () => void;
+  username: string;
+}
+
+function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="shell-user-chip" aria-label={`Account menu for ${username}`}>
+          <span className="shell-user-chip__avatar" aria-hidden="true">
+            {initialsFrom(username)}
+          </span>
+          <span className="shell-user-chip__name">{username}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={6} className="shell-user-chip__menu">
+        <DropdownMenuLabel>
+          <div className="shell-user-chip__menu-name">{username}</div>
+          {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">Theme</div>
+          <ThemeToggle />
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onLogout}>Sign out</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { session, clearSession } = useSession();
   const { showToast } = useToast();
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
   const username = session.user?.username;
+  const email = session.user?.email ?? null;
+  const counts = useNavCounts();
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -238,8 +336,11 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     <div className="shell">
       <div className="shell-sidebar">
         <SidebarBrand />
-        <SidebarNav ariaLabel="Primary" />
-        <WorkspaceFooter username={username} onLogout={username ? handleLogout : undefined} />
+        <SidebarNav ariaLabel="Primary" counts={counts} />
+        <WorkspaceFooter
+          username={username}
+          onLogout={username ? handleLogout : undefined}
+        />
       </div>
 
       <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
@@ -255,8 +356,11 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
               ✕
             </Button>
           </div>
-          <SidebarNav ariaLabel="Primary (mobile)" onNavigate={closeDrawer} />
-          <WorkspaceFooter username={username} onLogout={username ? handleLogout : undefined} />
+          <SidebarNav ariaLabel="Primary (mobile)" counts={counts} onNavigate={closeDrawer} />
+          <WorkspaceFooter
+            username={username}
+            onLogout={username ? handleLogout : undefined}
+          />
         </div>
       </dialog>
 
@@ -283,14 +387,18 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
             ) : null}
           </nav>
 
-          <div className="shell-topbar__spacer" />
+          <TopbarSearchPlaceholder />
 
-          {/* Global search — planned. See #220. */}
+          <div className="shell-topbar__spacer" />
 
           <Button tone="ghost" className="shell-topbar__alerts">
             Alerts <span aria-hidden="true">0</span>
             <span className="sr-only">(0 new)</span>
           </Button>
+
+          {username ? (
+            <UserChip username={username} email={email} onLogout={handleLogout} />
+          ) : null}
         </header>
 
         <main className="shell-content">{children}</main>

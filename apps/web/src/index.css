@@ -129,6 +129,41 @@
   --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
   --overlay-scrim: rgba(16, 24, 40, 0.45);
 
+  /* FE-002 canonical shadow triplet (aliases onto --shadow-soft family). */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+
+  /* Primary button hover — near-black in light mode. Overridden to
+     near-white in html[data-theme='dark'] so the primary button
+     auto-inverts alongside --text-primary / --text-inverse. */
+  --button-primary-bg-hover: #0b1520;
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
   color-scheme: light;
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -139,6 +174,108 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────
+ * Activated via `data-theme="dark"` on <html> (see ThemeProvider and
+ * the FOUC guard in index.html). Only colour tokens are remapped —
+ * spacing, radii, shadows, and typography stay identical across themes.
+ * Status tones keep the same semantic names but shift to dark-friendly
+ * tints so soft backgrounds don't wash out on dark surfaces.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover — keep contrast against the inverted --text-primary */
+  --button-primary-bg-hover: #f5fafd;
+
+  /* Surfaces */
+  --bg-canvas: #0b1220;
+  --bg-shell: #10192a;
+  --bg-surface: #111c2e;
+  --bg-surface-elevated: #172338;
+  --bg-muted: #1b2740;
+  --bg-surface-muted: #1b2740;
+  --bg-surface-hover: #223057;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --border-focus: #7ea6ff;
+
+  /* Text */
+  --text-primary: #e9eef5;
+  --text-secondary: #b5c1d1;
+  --text-muted: #8998ac;
+  --text-disabled: #596776;
+  --text-on-primary: #0b1220;
+  --text-inverse: #0b1220;
+
+  /* Accent */
+  --accent-primary: #6c96ff;
+  --accent-primary-hover: #87a9ff;
+  --accent-primary-soft: rgba(108, 150, 255, 0.16);
+  --accent-primary-border: rgba(108, 150, 255, 0.4);
+  --accent-focus: #9cbaff;
+
+  /* Status — success */
+  --status-success: #3fbb82;
+  --status-success-soft: rgba(63, 187, 130, 0.16);
+  --status-success-border: rgba(63, 187, 130, 0.35);
+  --status-success-fg: #7ed6ab;
+  --status-success-strong: #7ed6ab;
+
+  /* Status — warning */
+  --status-warning: #d8a347;
+  --status-warning-soft: rgba(216, 163, 71, 0.16);
+  --status-warning-border: rgba(216, 163, 71, 0.35);
+  --status-warning-fg: #efc685;
+  --status-warning-strong: #efc685;
+
+  /* Status — error */
+  --status-error: #e06a6a;
+  --status-error-soft: rgba(224, 106, 106, 0.16);
+  --status-error-border: rgba(224, 106, 106, 0.35);
+  --status-error-fg: #f2a5a5;
+  --status-error-strong: #f2a5a5;
+
+  /* Status — info */
+  --status-info: #5b9df0;
+  --status-info-soft: rgba(91, 157, 240, 0.16);
+  --status-info-border: rgba(91, 157, 240, 0.35);
+  --status-info-fg: #a8c9f7;
+  --status-info-strong: #a8c9f7;
+
+  /* Status — review */
+  --status-review: #9d82d8;
+  --status-review-soft: rgba(157, 130, 216, 0.16);
+  --status-review-border: rgba(157, 130, 216, 0.35);
+  --status-review-fg: #c5b1ea;
+  --status-review-strong: #c5b1ea;
+
+  /* Status — conflict */
+  --status-conflict: #e08a4f;
+  --status-conflict-soft: rgba(224, 138, 79, 0.16);
+  --status-conflict-border: rgba(224, 138, 79, 0.35);
+  --status-conflict-strong: #f2b88a;
+
+  /* Status — disabled */
+  --status-disabled: #8998ac;
+  --status-disabled-soft: rgba(137, 152, 172, 0.14);
+  --status-disabled-border: rgba(137, 152, 172, 0.32);
+  --status-disabled-fg: #b5c1d1;
+  --status-disabled-strong: #b5c1d1;
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-soft-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+  --overlay-scrim: rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -169,25 +306,39 @@ textarea {
   font: inherit;
 }
 
+/* ── Buttons ──────────────────────────────────────────────────────────
+ * Primary is near-black (`--text-primary`) per the Variant A concept,
+ * auto-inverting in dark mode via the same token. `--accent-primary`
+ * (blue) is reserved for links and focus affordances only.
+ */
 button,
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 1px solid var(--accent-primary);
-  border-radius: 0.625rem;
-  padding: 0.7rem 1rem;
-  background: var(--accent-primary);
-  color: var(--text-on-primary);
+  border: 1px solid var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 0 0.875rem;
+  height: 2rem;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   text-decoration: none;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 button:hover,
 .button:hover {
-  background: var(--accent-primary-hover);
-  color: var(--text-on-primary);
+  background: var(--button-primary-bg-hover);
+  border-color: var(--button-primary-bg-hover);
+  color: var(--text-inverse);
 }
 
 button:focus-visible,
@@ -208,25 +359,39 @@ button:focus-visible,
 }
 
 .button--secondary {
-  border-color: var(--border-strong);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .button--secondary:hover {
-  background: var(--bg-muted);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
 .button--danger {
   border-color: var(--status-error);
   background: var(--status-error);
+  color: var(--text-inverse);
+}
+
+.button--danger:hover {
+  background: var(--status-error-strong);
+  border-color: var(--status-error-strong);
+  color: var(--text-inverse);
 }
 
 .button--ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+}
+
+.button--ghost:hover {
+  background: var(--bg-surface-muted);
+  border-color: transparent;
+  color: var(--text-primary);
 }
 
 button:disabled,
@@ -254,13 +419,15 @@ textarea {
 }
 
 .control--select {
-  padding-right: 2.75rem;
+  /* Closes #325 — extra right padding + chevron anchored closer to the edge
+     so the selected option text never clips against the caret at narrow widths. */
+  padding-right: 3rem;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
     linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
   background-position:
-    calc(100% - 18px) calc(50% - 2px),
-    calc(100% - 12px) calc(50% - 2px);
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
 }
@@ -431,6 +598,23 @@ textarea {
 .shell-nav__link--disabled:hover {
   background: transparent;
   color: var(--text-disabled);
+}
+
+.shell-nav__link-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-nav__link-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding-left: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.shell-nav__link--active .shell-nav__link-count {
+  color: var(--text-primary);
 }
 
 /* Workspace footer: org + env + user + sign-out. Desktop only lives at
@@ -621,6 +805,164 @@ textarea {
   color: var(--text-primary);
 }
 
+/* Topbar ⌘K search placeholder — visual-only until the palette lands (#333).
+   Rendered as a button so it has button semantics (no accidental text input);
+   the click handler is a no-op for now. */
+.shell-topbar__search {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-width: 280px;
+  max-width: 420px;
+  flex: 1;
+  padding: 0 10px 0 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: text;
+  position: relative;
+  text-align: left;
+}
+
+@media (min-width: 1024px) {
+  .shell-topbar__search {
+    display: inline-flex;
+  }
+}
+
+.shell-topbar__search:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+}
+
+.shell-topbar__search:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.shell-topbar__search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.shell-topbar__search-placeholder {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.shell-topbar__search-kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+/* User chip: trigger for account dropdown in the topbar right rail. */
+.shell-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  height: 32px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip:hover {
+  background: var(--bg-surface-muted);
+}
+
+.shell-user-chip:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.shell-user-chip__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.shell-user-chip__name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+@media (max-width: 767px) {
+  .shell-user-chip__name {
+    display: none;
+  }
+}
+
+.shell-user-chip__menu {
+  min-width: 240px;
+}
+
+.shell-user-chip__menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shell-user-chip__menu-email {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 2px;
+}
+
+.shell-user-chip__menu-section {
+  padding: 6px 10px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.shell-user-chip__menu-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .shell-content {
   flex: 1;
   padding: 20px 16px 32px;
@@ -722,6 +1064,120 @@ textarea {
   color: var(--status-disabled-fg);
 }
 
+/* ── Chip (interactive filter pill) ─────────────────────────────────
+ * Distinct from `.context-chip` / `.toolbar-chip` — this one is a
+ * native <button> with an active state, used in list-page filter bars.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.chip--active {
+  background: var(--bg-shell);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.chip--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-strong);
+}
+
+.chip--warning {
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+  color: var(--status-warning-strong);
+}
+
+.chip--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  color: var(--status-error-strong);
+}
+
+.chip--info {
+  background: var(--status-info-soft);
+  border-color: var(--status-info-border);
+  color: var(--status-info-strong);
+}
+
+/* ── Theme toggle ───────────────────────────────────────────────────
+ * Three-option radiogroup rendered as a segmented button group. Sits
+ * inside the user-chip dropdown in the topbar (Phase 2 wiring).
+ */
+.theme-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.theme-toggle__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.75rem;
+  min-width: 3.25rem;
+  padding: 0 0.625rem;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.theme-toggle__option:last-child {
+  border-right: none;
+}
+
+.theme-toggle__option:hover {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+
+.theme-toggle__option--active {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 
 .alert {
   display: flex;
@@ -729,29 +1185,34 @@ textarea {
   justify-content: space-between;
   gap: 1rem;
   border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
-  padding: 0.875rem 1rem;
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
   background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
 }
 
 .alert--info {
   border-color: var(--status-info-border);
   background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
 }
 
 .alert--success {
   border-color: var(--status-success-border);
   background: var(--status-success-soft);
+  box-shadow: inset 3px 0 0 var(--status-success);
 }
 
 .alert--warning {
   border-color: var(--status-warning-border);
   background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
 }
 
 .alert--error {
   border-color: var(--status-error-border);
   background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
 }
 
 .alert__content {
@@ -1274,7 +1735,7 @@ textarea {
 
 .data-table th,
 .data-table td {
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
@@ -1283,15 +1744,16 @@ textarea {
 }
 
 .data-table thead th {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: var(--bg-shell);
+  background: var(--bg-surface-elevated);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -2562,6 +3024,147 @@ textarea {
   color: var(--status-info-strong);
 }
 
+/* KpiCard + Sparkline ----------------------------------------------
+ * KpiCard is the severity-aware KPI primitive consumed by the Dashboard
+ * per the Variant A concept. Keeps `.metric-card` alive for non-severity
+ * KPIs elsewhere.
+ */
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+a.kpi-card:hover {
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-sm);
+}
+
+a.kpi-card:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.kpi-card__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kpi-card__label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.kpi-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.kpi-card__value {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  color: var(--text-primary);
+}
+
+.kpi-card__value-suffix {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+}
+
+.kpi-card__description {
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.kpi-card--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+}
+
+.kpi-card--error .kpi-card__label-text,
+.kpi-card--error .kpi-card__value,
+.kpi-card--error .kpi-card__description {
+  color: var(--status-error-strong);
+}
+
+.kpi-card--warning {
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+}
+
+.kpi-card--warning .kpi-card__label-text,
+.kpi-card--warning .kpi-card__value,
+.kpi-card--warning .kpi-card__description {
+  color: var(--status-warning-strong);
+}
+
+.kpi-card--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+}
+
+.kpi-card--success .kpi-card__label-text,
+.kpi-card--success .kpi-card__value,
+.kpi-card--success .kpi-card__description {
+  color: var(--status-success-strong);
+}
+
+.sparkline__line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.sparkline__area {
+  fill: currentColor;
+  opacity: 0.12;
+}
+
+.sparkline--neutral {
+  color: var(--text-muted);
+}
+
+.sparkline--success {
+  color: var(--status-success);
+}
+
+.sparkline--warning {
+  color: var(--status-warning);
+}
+
+.sparkline--error {
+  color: var(--status-error);
+}
+
 /* KeyValueList ------------------------------------------------------ */
 
 .key-value-list {
@@ -2848,34 +3451,44 @@ textarea {
 
 .tabs__list {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-surface-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  align-self: flex-start;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  align-self: stretch;
+  width: 100%;
 }
 
 .tabs__trigger {
-  padding: 6px 12px;
+  padding: 0.5rem 0.875rem;
+  margin-bottom: -1px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .tabs__trigger:hover {
   color: var(--text-primary);
+  background: transparent;
+  border-bottom-color: var(--border-default);
 }
 
 .tabs__trigger[data-state='active'] {
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--text-primary);
-  border-color: var(--border-default);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  border-bottom-color: var(--accent-primary);
+  box-shadow: none;
+  font-weight: 600;
 }
 
 .tabs__trigger:focus-visible {

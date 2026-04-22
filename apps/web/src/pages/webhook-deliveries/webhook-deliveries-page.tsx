@@ -6,6 +6,8 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
+import { Select } from '../../shared/ui/select';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useWebhookDeliveriesQuery } from '../../features/webhook-deliveries/hooks/use-webhook-deliveries-query';
@@ -138,7 +140,7 @@ export function WebhookDeliveriesPage(): ReactElement {
       description="Inbound webhook visibility — signature, dedup, publish, and downstream job linkage."
     >
       <div className="toolbar">
-        <select
+        <Select
           aria-label="Filter by status"
           value={status ?? ''}
           onChange={(e) => { setFilter('status', e.target.value); }}
@@ -149,16 +151,16 @@ export function WebhookDeliveriesPage(): ReactElement {
               {s}
             </option>
           ))}
-        </select>
+        </Select>
 
-        <input
+        <Input
           aria-label="Filter by provider"
           placeholder="Provider (e.g. prestashop)"
           value={provider ?? ''}
           onChange={(e) => { setFilter('provider', e.target.value); }}
         />
 
-        <input
+        <Input
           aria-label="Filter by connection ID"
           placeholder="Connection ID"
           value={connectionId ?? ''}

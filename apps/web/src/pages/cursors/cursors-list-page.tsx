@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
@@ -106,7 +107,7 @@ export function CursorsListPage(): ReactElement {
     >
       {/* Filters */}
       <div className="toolbar toolbar--compact">
-        <input
+        <Input
           aria-label="Filter by connection ID"
           placeholder="Connection ID..."
           value={connectionIdInput}

@@ -61,15 +61,15 @@ function groupsResponse(groups: SyncJobGroup[]): SyncJobGroupsResponse {
 }
 
 function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
-  const labels = Array.from(container.querySelectorAll<HTMLElement>('.metric-card__label')).filter(
-    (el) => el.textContent === label,
-  );
+  const labels = Array.from(
+    container.querySelectorAll<HTMLElement>('.kpi-card__label-text'),
+  ).filter((el) => el.textContent === label);
   if (labels.length !== 1) {
-    throw new Error(`Expected one .metric-card__label "${label}", found ${labels.length}`);
+    throw new Error(`Expected one .kpi-card__label-text "${label}", found ${labels.length}`);
   }
-  const card = labels[0].closest('.metric-card');
+  const card = labels[0].closest('.kpi-card');
   if (!(card instanceof HTMLElement)) {
-    throw new Error(`No .metric-card ancestor for label: ${label}`);
+    throw new Error(`No .kpi-card ancestor for label: ${label}`);
   }
   return card;
 }
@@ -195,7 +195,7 @@ describe('DashboardPage', () => {
 
     await screen.findByText('3 jobs need attention');
     const failedCard = findCardByLabel(container, 'Failed jobs');
-    expect(failedCard).toHaveClass('metric-card--error');
+    expect(failedCard).toHaveClass('kpi-card--error');
     expect(failedCard).toHaveAttribute('href', '/jobs-logs?status=dead');
   });
 
@@ -204,12 +204,12 @@ describe('DashboardPage', () => {
 
     await waitFor(() => {
       const failedCard = findCardByLabel(container, 'Failed jobs');
-      expect(failedCard).toHaveClass('metric-card--neutral');
+      expect(failedCard).toHaveClass('kpi-card');
     });
     const failedCard = findCardByLabel(container, 'Failed jobs');
     expect(failedCard.tagName).toBe('DIV');
-    expect(failedCard).not.toHaveClass('metric-card--error');
-    expect(failedCard).not.toHaveClass('metric-card--success');
+    expect(failedCard).not.toHaveClass('kpi-card--error');
+    expect(failedCard).not.toHaveClass('kpi-card--success');
   });
 
   it('tints the Integration health card warning when a connection is in error', async () => {
@@ -226,8 +226,8 @@ describe('DashboardPage', () => {
 
     await screen.findByText('1 / 2');
     const integrationCard = findCardByLabel(container, 'Integration health');
-    expect(integrationCard).toHaveClass('metric-card--warning');
-    const icon = integrationCard.querySelector('.metric-card__icon');
+    expect(integrationCard).toHaveClass('kpi-card--warning');
+    const icon = integrationCard.querySelector('.kpi-card__icon');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
@@ -483,7 +483,7 @@ describe('DashboardPage', () => {
         expect(screen.getAllByText('Shop B').length).toBeGreaterThan(0);
       });
       const integrationCard = findCardByLabel(container, 'Integration health');
-      expect(integrationCard).toHaveClass('metric-card--warning');
+      expect(integrationCard).toHaveClass('kpi-card--warning');
       expect(screen.getByText('1 connection with failing jobs')).toBeInTheDocument();
       // The roll-up attaches a "N failing jobs" link next to the connection name.
       const failingJobsLink = screen.getByRole('link', { name: /2 failing jobs/ });

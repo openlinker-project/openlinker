@@ -250,10 +250,31 @@ Recommended FE light theme tokens:
 ## Color Usage Rules
 
 - canvas and shell stay neutral
-- blue is reserved for active, selected, focused, and primary CTA usage
+- **the primary CTA is near-black** (`var(--text-primary)`) — it auto-inverts
+  to near-white in dark mode, so primary buttons read as "page foreground,
+  filled" in either theme. Demoted blue (`var(--accent-primary)`) is
+  reserved for **links, focus rings, and the active-nav inset indicator**
+  only — never for buttons.
 - semantic colors appear mainly in badges, icons, row markers, and compact highlights
 - large panels should not use semantic fills unless the whole panel is an alert or incident state
 - neutral borders should dominate the interface
+
+## Dark Mode
+
+Dark mode ships as a user toggle. The `ThemeProvider` reads the user's
+saved choice from `localStorage` (`openlinker.theme`), falling back to
+`prefers-color-scheme`. The resolved theme is written onto
+`<html data-theme="...">` so every token swap cascades automatically.
+An inline FOUC guard in `apps/web/index.html` sets the attribute
+**before React hydrates** to avoid a flash of light theme on first paint.
+
+Dark-mode palette overrides live in `apps/web/src/index.css` under the
+`html[data-theme='dark']` block — only colour tokens are remapped. The
+spacing, radii, shadows, and typography scales are shared across themes.
+
+The theme toggle itself lives in the top-bar user-chip dropdown as a
+three-option radiogroup (Light / Dark / System). It is a shared primitive
+at `apps/web/src/shared/ui/theme-toggle.tsx`.
 
 ### Color
 
@@ -285,7 +306,9 @@ Typography should prioritize scanning and system clarity.
 - UI sans-serif: **IBM Plex Sans**, weights 400 / 500 / 600 / 700
 - Monospace: **IBM Plex Mono**, weights 400 / 500 / 600
 
-IBM Plex was chosen over Inter / Geist / system defaults because it carries operator/technical heritage without feeling generic, and it renders cleanly at the 12–14 px sizes we use heavily. Load via Google Fonts `@import` in `index.css` (tree-shakable when bundled by Vite).
+IBM Plex was chosen over Inter / Geist / system defaults because it carries operator/technical heritage without feeling generic, and it renders cleanly at the 12–14 px sizes we use heavily.
+
+**Loaded via `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono`** imported from `apps/web/src/main.tsx` — self-hosted woff2 bundled by Vite, no Google Fonts CDN at runtime. `font-display: swap` is configured by the packages.
 
 Recommendations:
 
