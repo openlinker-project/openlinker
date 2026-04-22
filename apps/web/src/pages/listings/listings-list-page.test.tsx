@@ -45,7 +45,7 @@ describe('ListingsListPage', () => {
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading listings')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
   });
 
   it('should show mappings table when data loads', async () => {

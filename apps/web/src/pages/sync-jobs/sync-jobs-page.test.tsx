@@ -41,7 +41,7 @@ describe('SyncJobsPage', () => {
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading jobs')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
   });
 
   it('should show jobs table when data loads', async () => {

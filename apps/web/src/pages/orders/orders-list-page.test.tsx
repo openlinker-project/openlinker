@@ -31,7 +31,7 @@ describe('OrdersListPage', () => {
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading orders')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
   });
 
   it('should show orders table when data loads', async () => {

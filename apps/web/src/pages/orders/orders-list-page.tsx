@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
-import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -148,11 +149,7 @@ export function OrdersListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <LoadingState
-          liveRegion="off"
-          title="Loading orders"
-          message="Fetching order records…"
-        />
+        <DataTableSkeleton columns={COLUMNS} />
       ) : query.error ? (
         <ErrorState
           title="Unable to load orders"

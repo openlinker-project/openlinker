@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
-import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -190,11 +191,7 @@ export function InventoryListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <LoadingState
-          liveRegion="off"
-          title="Loading inventory"
-          message="Fetching inventory data…"
-        />
+        <DataTableSkeleton columns={COLUMNS} />
       ) : query.error ? (
         <ErrorState
           title="Unable to load inventory"

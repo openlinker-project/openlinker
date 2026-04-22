@@ -35,7 +35,7 @@ describe('WebhookDeliveriesPage', () => {
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading deliveries')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
   });
 
   it('should render deliveries table when data loads', async () => {

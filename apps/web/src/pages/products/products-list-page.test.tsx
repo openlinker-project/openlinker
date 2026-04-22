@@ -55,7 +55,7 @@ describe('ProductsListPage', () => {
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
-    expect(screen.getByText('Loading products')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
   });
 
   it('should show products table when data loads', async () => {
