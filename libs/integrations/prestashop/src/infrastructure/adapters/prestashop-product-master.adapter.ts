@@ -178,14 +178,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     if (combinations.length === 0) {
       const syntheticExternalId = `product:${prestashopProductId.externalId}`;
       const internalId = await this.identifierMapping.getOrCreateInternalId(
-        'Product',
+        'ProductVariant',
         syntheticExternalId,
         this.connection.id,
         {
           parentEntityType: 'Product',
           parentInternalId: productId,
           metadata: {
-            isVariant: true,
             variantExternalId: syntheticExternalId,
             synthetic: true,
           },
@@ -209,21 +208,20 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Ensure stale synthetic variant mapping is removed once combinations exist
     const syntheticExternalId = `product:${prestashopProductId.externalId}`;
-    await this.identifierMapping.deleteMapping('Product', syntheticExternalId, this.connection.id);
+    await this.identifierMapping.deleteMapping(
+      'ProductVariant',
+      syntheticExternalId,
+      this.connection.id,
+    );
 
-    // Batch identifier mapping for variants
-    // Note: ProductVariant is not a separate EntityType in the core system
-    // We'll use 'Product' entity type with context to indicate it's a variant
-    // The variant ID will be stored in the mapping context metadata
     const mappingRequests = combinations.map((c) => ({
-      entityType: 'Product' as const,
+      entityType: 'ProductVariant' as const,
       externalId: String(c.id),
       connectionId: this.connection.id,
       context: {
         parentEntityType: 'Product',
         parentInternalId: productId,
         metadata: {
-          isVariant: true,
           variantExternalId: String(c.id),
         },
       },

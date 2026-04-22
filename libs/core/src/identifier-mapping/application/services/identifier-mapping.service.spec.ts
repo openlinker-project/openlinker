@@ -211,6 +211,29 @@ describe('IdentifierMappingService', () => {
         'external-123',
       );
     });
+
+    describe('internal ID prefix', () => {
+      beforeEach(() => {
+        repository.findByExternalKey.mockResolvedValue(null);
+        repository.insertMapping.mockImplementation((mapping) => Promise.resolve(mapping));
+      });
+
+      it('should mint ol_product_* IDs for Product (default lowercase prefix)', async () => {
+        const result = await service.getOrCreateInternalId('Product', 'ext', connectionId);
+        expect(result).toMatch(/^ol_product_[a-f0-9]{32}$/);
+      });
+
+      it('should mint ol_variant_* IDs for ProductVariant (explicit override)', async () => {
+        const result = await service.getOrCreateInternalId('ProductVariant', 'ext', connectionId);
+        expect(result).toMatch(/^ol_variant_[a-f0-9]{32}$/);
+        expect(result).not.toMatch(/^ol_productvariant_/);
+      });
+
+      it('should mint ol_order_* IDs for Order (default lowercase prefix, sanity baseline)', async () => {
+        const result = await service.getOrCreateInternalId('Order', 'ext', connectionId);
+        expect(result).toMatch(/^ol_order_[a-f0-9]{32}$/);
+      });
+    });
   });
 
   describe('getInternalId', () => {
