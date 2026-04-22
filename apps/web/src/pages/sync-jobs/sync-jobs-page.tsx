@@ -6,6 +6,8 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
+import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
@@ -142,7 +144,7 @@ export function SyncJobsPage(): ReactElement {
     >
       {/* Filter bar */}
       <div className="toolbar">
-        <select
+        <Select
           aria-label="Filter by status"
           value={status ?? ''}
           onChange={(e) => { setFilter('status', e.target.value); }}
@@ -153,9 +155,9 @@ export function SyncJobsPage(): ReactElement {
               {s}
             </option>
           ))}
-        </select>
+        </Select>
 
-        <select
+        <Select
           aria-label="Filter by job type"
           value={jobType ?? ''}
           onChange={(e) => { setFilter('jobType', e.target.value); }}
@@ -166,9 +168,9 @@ export function SyncJobsPage(): ReactElement {
               {t}
             </option>
           ))}
-        </select>
+        </Select>
 
-        <input
+        <Input
           aria-label="Filter by connection ID"
           placeholder="Connection ID"
           value={connectionId ?? ''}

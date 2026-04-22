@@ -27,6 +27,7 @@ import { usePrestashopCategoriesQuery } from '../../features/mappings/hooks/use-
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
+import { Select } from '../../shared/ui/select';
 import type { AllegroCategory } from '../../features/mappings/api/mappings.types';
 
 const MARKETPLACE_PICK_STORAGE_PREFIX = 'openlinker.categoryMappings.lastMarketplace.';
@@ -208,9 +209,8 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
         <label className="category-mappings-toolbar__label" htmlFor="marketplace-connection-select">
           Marketplace connection
         </label>
-        <select
+        <Select
           id="marketplace-connection-select"
-          className="input"
           value={marketplaceConnectionId}
           onChange={(e) => { handleMarketplaceChange(e.target.value); }}
         >
@@ -222,7 +222,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
               {c.name} ({c.platformType})
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="category-mappings-layout">

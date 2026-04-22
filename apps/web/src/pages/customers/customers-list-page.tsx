@@ -6,6 +6,7 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useCustomersQuery } from '../../features/customers/hooks/use-customers-query';
@@ -128,13 +129,13 @@ export function CustomersListPage(): ReactElement {
       description="Customer identity projections — browse resolved identities and address history."
     >
       <div className="toolbar toolbar--compact">
-        <input
+        <Input
           aria-label="Search customers"
           placeholder="Search by email or name…"
           value={searchInput}
           onChange={(e) => { handleFilterChange('search', e.target.value); }}
         />
-        <input
+        <Input
           aria-label="Filter by source connection ID"
           placeholder="Source connection ID…"
           value={connectionIdInput}
