@@ -481,7 +481,10 @@ describe('CreateOfferWizard', () => {
 
       // Step 2 is visible (not Step 1's search products field).
       expect(await screen.findByLabelText(/^title$/i)).toHaveValue('Original Title');
-      expect(screen.getByLabelText(/allegro category/i)).toHaveValue('12345');
+      // The CategoryPicker renders the pre-filled categoryId in its
+      // "Current category ID" fallback view rather than as an input value.
+      expect(screen.getByText('Current category ID')).toBeInTheDocument();
+      expect(screen.getByText('12345')).toBeInTheDocument();
       expect(screen.getByLabelText<HTMLInputElement>(/^price$/i).value).toBe('99.99');
       expect(screen.getByLabelText<HTMLInputElement>(/^stock$/i).value).toBe('5');
       expect(screen.queryByLabelText(/search products/i)).not.toBeInTheDocument();
@@ -508,7 +511,7 @@ describe('CreateOfferWizard', () => {
       );
 
       await advanceToStep2();
-      fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+      await pickFirstLeafCategory();
       fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
       fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
       fireEvent.click(screen.getByRole('button', { name: /next/i }));

@@ -218,7 +218,10 @@ describe('ListingsListPage', () => {
     // Wizard opens on Step 2 with values drawn from the failed record.
     const title = await screen.findByLabelText<HTMLInputElement>(/^title$/i);
     await waitFor(() => expect(title.value).toBe('Prior Title'));
-    expect(screen.getByLabelText<HTMLInputElement>(/allegro category/i).value).toBe('98765');
+    // CategoryPicker pre-fill fallback: renders the raw id + a Change button
+    // rather than a text input with a value.
+    expect(screen.getByText('Current category ID')).toBeInTheDocument();
+    expect(screen.getByText('98765')).toBeInTheDocument();
     expect(screen.getByLabelText<HTMLInputElement>(/^price$/i).value).toBe('120.50');
     expect(screen.getByLabelText<HTMLInputElement>(/^stock$/i).value).toBe('7');
 
