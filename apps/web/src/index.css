@@ -3216,3 +3216,210 @@ textarea {
   }
 }
 
+
+/*
+ * ── Create Offer Wizard (#261) ──────────────────────────────────────
+ * The wizard itself renders inside the shared `Dialog` primitive, so the
+ * overlay + content sizing is already handled by `.dialog__*`. These
+ * rules cover the inner pieces: the variant picker on Step 1, the
+ * publish-immediately checkbox label, and the inline tracker that shows
+ * on the listings list page once an offer has been submitted.
+ */
+
+.create-offer-form {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.create-offer-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.create-offer-variant-picker {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  padding: 0.25rem;
+  background: var(--bg-surface);
+}
+
+.create-offer-variant-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.create-offer-variant-picker__product-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.create-offer-variant-picker__product-row:hover,
+.create-offer-variant-picker__product-row[aria-expanded='true'] {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+
+.create-offer-variant-picker__variants {
+  list-style: none;
+  margin: 0.25rem 0 0.5rem 0.5rem;
+  padding: 0 0 0 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+  border-left: 2px solid var(--border-subtle);
+}
+
+.create-offer-variant-picker__variant {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.create-offer-variant-picker__variant:hover {
+  background: var(--bg-surface-muted);
+}
+
+.create-offer-variant-picker__variant--picked {
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+}
+
+.create-offer-variant-picker__variant-name {
+  color: var(--text-primary);
+}
+
+/* Structured error rows for the tracker's `failed` state. */
+.offer-creation-errors {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.375rem;
+}
+
+.offer-creation-errors__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--status-error-border);
+  border-radius: 0.375rem;
+  background: var(--status-error-soft);
+  font-size: 0.8125rem;
+}
+
+.offer-creation-errors__field {
+  color: var(--status-error-strong);
+  font-weight: 600;
+}
+
+.offer-creation-errors__message {
+  color: var(--text-primary);
+}
+
+.offer-creation-errors__code {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .offer-creation-errors__item {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
+/* Inline card that polls status after wizard submit. */
+.offer-creation-tracker {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  margin: 0 0 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.offer-creation-tracker--pending {
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+}
+
+.offer-creation-tracker--draft {
+  border-color: var(--status-review-border);
+  background: var(--status-review-soft);
+}
+
+.offer-creation-tracker--validating {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+}
+
+.offer-creation-tracker--active {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+}
+
+.offer-creation-tracker--failed {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+}
+
+.offer-creation-tracker--error {
+  border-color: var(--status-error-border);
+}
+
+.offer-creation-tracker__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.offer-creation-tracker__label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.offer-creation-tracker__id {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  white-space: nowrap;
+}
+
+.offer-creation-tracker__body {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}

@@ -65,3 +65,76 @@ export interface UpdateOfferFieldsPayload {
 export interface UpdateOfferFieldsResult {
   jobId: string;
 }
+
+/**
+ * OL-initiated offer creation lifecycle status.
+ *
+ * Mirrors `OfferCreationStatus` on the backend. Terminal values are
+ * `'active'` and `'failed'` — the tracker stops polling on those.
+ */
+export const OfferCreationStatusValues = [
+  'pending',
+  'draft',
+  'validating',
+  'active',
+  'failed',
+] as const;
+export type OfferCreationStatus = (typeof OfferCreationStatusValues)[number];
+
+export const TERMINAL_OFFER_CREATION_STATUSES: readonly OfferCreationStatus[] = ['active', 'failed'];
+
+export interface OfferCreationError {
+  field?: string;
+  code: string;
+  message: string;
+}
+
+export interface CreateOfferPrice {
+  amount: number;
+  currency: string;
+}
+
+export interface CreateOfferOverrides {
+  title?: string;
+  description?: string | null;
+  categoryId?: string;
+  imageUrls?: string[] | null;
+  platformParams?: Record<string, unknown>;
+}
+
+export interface CreateOfferRequest {
+  internalVariantId: string;
+  stock: number;
+  publishImmediately: boolean;
+  price?: CreateOfferPrice;
+  overrides?: CreateOfferOverrides;
+}
+
+export interface CreateOfferResponse {
+  jobId: string;
+  offerCreationRecordId: string;
+}
+
+export interface OfferCreationStatusResponse {
+  id: string;
+  internalVariantId: string;
+  connectionId: string;
+  externalOfferId: string | null;
+  status: OfferCreationStatus;
+  errors: OfferCreationError[] | null;
+  publishImmediately: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerPolicy {
+  id: string;
+  name: string;
+}
+
+export interface SellerPoliciesResponse {
+  deliveryPolicies: SellerPolicy[];
+  returnPolicies: SellerPolicy[];
+  warranties: SellerPolicy[];
+  impliedWarranties: SellerPolicy[];
+}

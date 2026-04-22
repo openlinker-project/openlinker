@@ -7,18 +7,40 @@
  * @module apps/web/src/features/listings/api
  */
 import type {
+  CreateOfferRequest,
+  CreateOfferResponse,
   ListingsFilters,
   ListingsPagination,
+  OfferCreationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
+  SellerPoliciesResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
+
+export interface CreateOfferOptions {
+  /**
+   * Forwarded as `x-idempotency-key`. Reuse the same key across retries
+   * within one wizard session so duplicate records are never created.
+   */
+  idempotencyKey?: string;
+}
 
 export interface ListingsApi {
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) => Promise<PaginatedOfferMappings>;
   getById: (id: string) => Promise<OfferMapping>;
   updateOfferFields: (connectionId: string, offerId: string, fields: UpdateOfferFieldsPayload) => Promise<UpdateOfferFieldsResult>;
+  createOffer: (
+    connectionId: string,
+    request: CreateOfferRequest,
+    options?: CreateOfferOptions,
+  ) => Promise<CreateOfferResponse>;
+  getOfferCreationStatus: (
+    connectionId: string,
+    offerCreationRecordId: string,
+  ) => Promise<OfferCreationStatusResponse>;
+  getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
 }
 
 interface ApiRequest {
@@ -54,6 +76,25 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
           body: JSON.stringify(fields),
         },
       );
+    },
+    createOffer(connectionId, body, options): Promise<CreateOfferResponse> {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (options?.idempotencyKey) {
+        headers['x-idempotency-key'] = options.idempotencyKey;
+      }
+      return request<CreateOfferResponse>(`/listings/connections/${connectionId}/offers`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    },
+    getOfferCreationStatus(connectionId, offerCreationRecordId): Promise<OfferCreationStatusResponse> {
+      return request<OfferCreationStatusResponse>(
+        `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
+      );
+    },
+    getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
+      return request<SellerPoliciesResponse>(`/listings/connections/${connectionId}/seller-policies`);
     },
   };
 }
