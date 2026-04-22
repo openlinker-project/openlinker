@@ -52,6 +52,16 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByExternalOfferIdAndConnectionId(
+    externalOfferId: string,
+    connectionId: string,
+  ): Promise<OfferCreationRecord | null> {
+    const entity = await this.repository.findOne({
+      where: { externalOfferId, connectionId },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async updateStatus(
     id: string,
     status: OfferCreationStatus,

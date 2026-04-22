@@ -26,6 +26,13 @@ export interface OfferMapping {
   context: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Populated only by the detail endpoint (`GET /listings/:id`) for Offer-type
+   * mappings that originated from an OL-initiated create. Always absent on
+   * list responses — the list endpoint does not fan out lookups per row.
+   * Absent on synced-in offers and on non-Offer entity types.
+   */
+  offerCreation?: OfferCreationStatusResponse | null;
 }
 
 export interface ListingsFilters {

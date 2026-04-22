@@ -25,6 +25,13 @@ import type {
 @Index(['internalVariantId', 'connectionId'])
 @Index(['connectionId'])
 @Index(['status'])
+// Partial composite index for the `findByExternalOfferIdAndConnectionId` lookup.
+// `WHERE "externalOfferId" IS NOT NULL` keeps pre-creation pending rows (which
+// always have a null external id) out of the index. Explicit name so the
+// migration's `down()` can target it deterministically.
+@Index('IDX_offer_creation_records_external_offer_connection', ['externalOfferId', 'connectionId'], {
+  where: '"externalOfferId" IS NOT NULL',
+})
 export class OfferCreationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

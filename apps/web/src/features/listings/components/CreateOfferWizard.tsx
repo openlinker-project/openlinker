@@ -61,6 +61,7 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<CreateOfferFieldsValues>>> =
 ];
 
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
+const VARIANT_PICKER_PAGE_SIZE = 10;
 
 interface CreateOfferWizardProps {
   isOpen: boolean;
@@ -101,6 +102,7 @@ export function CreateOfferWizard({
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
   const [productSearchInput, setProductSearchInput] = useState('');
+  const [productOffset, setProductOffset] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
@@ -113,6 +115,7 @@ export function CreateOfferWizard({
       setStepIndex(0);
       setCompletedSteps(new Set());
       setProductSearchInput('');
+      setProductOffset(0);
       setSelectedProductId(null);
       mutation.reset();
     }
@@ -161,7 +164,7 @@ export function CreateOfferWizard({
 
   const productsQuery = useProductsQuery(
     { search: debouncedProductSearch || undefined },
-    { limit: 10, offset: 0 },
+    { limit: VARIANT_PICKER_PAGE_SIZE, offset: productOffset },
   );
   const productDetailQuery = useProductQuery(selectedProductId ?? '');
 
@@ -301,7 +304,14 @@ export function CreateOfferWizard({
               >
                 <Input
                   value={productSearchInput}
-                  onChange={(e) => setProductSearchInput(e.target.value)}
+                  onChange={(e) => {
+                    setProductSearchInput(e.target.value);
+                    // Reset offset synchronously here (not via a useEffect on the
+                    // debounced value) so the debounced query always fires with a
+                    // fresh offset — narrowing a search can otherwise leave the
+                    // picker on a now-empty page.
+                    setProductOffset(0);
+                  }}
                   placeholder="e.g. T-shirt, SKU-123, 5901234567890"
                 />
               </FormField>
@@ -383,6 +393,40 @@ export function CreateOfferWizard({
                     {form.formState.errors.internalVariantId.message}
                   </p>
                 ) : null}
+                {(() => {
+                  const total = productsQuery.data?.total ?? 0;
+                  if (total <= VARIANT_PICKER_PAGE_SIZE) return null;
+                  const pageEnd = Math.min(productOffset + VARIANT_PICKER_PAGE_SIZE, total);
+                  return (
+                    <div className="create-offer-variant-picker__pagination">
+                      <span className="muted-text">
+                        {productOffset + 1}–{pageEnd} of {total}
+                      </span>
+                      <div className="create-offer-variant-picker__pagination-actions">
+                        <Button
+                          tone="secondary"
+                          type="button"
+                          aria-label="Previous page of products"
+                          disabled={productOffset === 0}
+                          onClick={() =>
+                            setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
+                          }
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          tone="secondary"
+                          type="button"
+                          aria-label="Next page of products"
+                          disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
+                          onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </>
           ) : null}

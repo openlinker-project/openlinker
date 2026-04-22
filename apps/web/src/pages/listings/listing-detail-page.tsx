@@ -8,6 +8,8 @@ import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
+import { OfferCreationStatusBadge } from '../../features/listings/components/OfferCreationStatusBadge';
+import { OfferCreationErrorList } from '../../features/listings/components/OfferCreationErrorList';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import {
   KNOWN_MAPPING_ENTITY_TYPES,
@@ -101,6 +103,44 @@ export function ListingDetailPage(): ReactElement {
           ]}
         />
       </section>
+
+      {mapping.offerCreation ? (
+        <section className="detail-section">
+          <div className="listing-detail-offer-creation__header">
+            <h3 className="listing-detail-offer-creation__title">Offer creation</h3>
+            <OfferCreationStatusBadge status={mapping.offerCreation.status} />
+          </div>
+          <KeyValueList
+            items={[
+              {
+                id: 'offerCreationId',
+                label: 'Record ID',
+                value: mapping.offerCreation.id,
+                mono: true,
+              },
+              {
+                id: 'externalOfferId',
+                label: 'External Offer ID',
+                value: mapping.offerCreation.externalOfferId ?? '—',
+                mono: true,
+              },
+              {
+                id: 'offerCreationCreatedAt',
+                label: 'Created',
+                value: <TimeDisplay iso={mapping.offerCreation.createdAt} />,
+              },
+              {
+                id: 'offerCreationUpdatedAt',
+                label: 'Updated',
+                value: <TimeDisplay iso={mapping.offerCreation.updatedAt} />,
+              },
+            ]}
+          />
+          {mapping.offerCreation.status === 'failed' ? (
+            <OfferCreationErrorList errors={mapping.offerCreation.errors} />
+          ) : null}
+        </section>
+      ) : null}
 
       {mapping.context !== null ? (
         <section className="detail-section">
