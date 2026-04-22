@@ -6,7 +6,7 @@ import { createJwtBearerSessionAdapter } from '../../shared/auth/jwt-bearer-sess
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { env } from '../../shared/config/env';
-import { ThemeProvider } from '../theme';
+import { ThemeProvider } from '../../shared/theme';
 
 export function AppProviders({ children }: PropsWithChildren): ReactElement {
   const [queryClient] = useState(

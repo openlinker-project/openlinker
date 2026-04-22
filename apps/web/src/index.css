@@ -181,6 +181,9 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
+  /* Primary button hover — keep contrast against the inverted --text-primary */
+  --button-primary-bg-hover: #f5fafd;
+
   /* Surfaces */
   --bg-canvas: #0b1220;
   --bg-shell: #10192a;
@@ -298,25 +301,39 @@ textarea {
   font: inherit;
 }
 
+/* ── Buttons ──────────────────────────────────────────────────────────
+ * Primary is near-black (`--text-primary`) per the Variant A concept,
+ * auto-inverting in dark mode via the same token. `--accent-primary`
+ * (blue) is reserved for links and focus affordances only.
+ */
 button,
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 1px solid var(--accent-primary);
-  border-radius: 0.625rem;
-  padding: 0.7rem 1rem;
-  background: var(--accent-primary);
-  color: var(--text-on-primary);
+  border: 1px solid var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 0 0.875rem;
+  height: 2rem;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   text-decoration: none;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 button:hover,
 .button:hover {
-  background: var(--accent-primary-hover);
-  color: var(--text-on-primary);
+  background: var(--button-primary-bg-hover, #0b1520);
+  border-color: var(--button-primary-bg-hover, #0b1520);
+  color: var(--text-inverse);
 }
 
 button:focus-visible,
@@ -337,25 +354,39 @@ button:focus-visible,
 }
 
 .button--secondary {
-  border-color: var(--border-strong);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .button--secondary:hover {
-  background: var(--bg-muted);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
 .button--danger {
   border-color: var(--status-error);
   background: var(--status-error);
+  color: var(--text-inverse);
+}
+
+.button--danger:hover {
+  background: var(--status-error-strong);
+  border-color: var(--status-error-strong);
+  color: var(--text-inverse);
 }
 
 .button--ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+}
+
+.button--ghost:hover {
+  background: var(--bg-surface-muted);
+  border-color: transparent;
+  color: var(--text-primary);
 }
 
 button:disabled,
@@ -383,13 +414,15 @@ textarea {
 }
 
 .control--select {
-  padding-right: 2.75rem;
+  /* Closes #325 — extra right padding + chevron anchored closer to the edge
+     so the selected option text never clips against the caret at narrow widths. */
+  padding-right: 3rem;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
     linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
   background-position:
-    calc(100% - 18px) calc(50% - 2px),
-    calc(100% - 12px) calc(50% - 2px);
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
 }
@@ -849,6 +882,120 @@ textarea {
   border-color: var(--status-disabled-border);
   background: var(--status-disabled-soft);
   color: var(--status-disabled-fg);
+}
+
+/* ── Chip (interactive filter pill) ─────────────────────────────────
+ * Distinct from `.context-chip` / `.toolbar-chip` — this one is a
+ * native <button> with an active state, used in list-page filter bars.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.chip--active {
+  background: var(--bg-shell);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.chip--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-strong);
+}
+
+.chip--warning {
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+  color: var(--status-warning-strong);
+}
+
+.chip--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  color: var(--status-error-strong);
+}
+
+.chip--info {
+  background: var(--status-info-soft);
+  border-color: var(--status-info-border);
+  color: var(--status-info-strong);
+}
+
+/* ── Theme toggle ───────────────────────────────────────────────────
+ * Three-option radiogroup rendered as a segmented button group. Sits
+ * inside the user-chip dropdown in the topbar (Phase 2 wiring).
+ */
+.theme-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.theme-toggle__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.75rem;
+  min-width: 3.25rem;
+  padding: 0 0.625rem;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.theme-toggle__option:last-child {
+  border-right: none;
+}
+
+.theme-toggle__option:hover {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+
+.theme-toggle__option--active {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 
