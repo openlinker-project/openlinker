@@ -595,6 +595,23 @@ textarea {
   color: var(--text-disabled);
 }
 
+.shell-nav__link-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-nav__link-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding-left: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.shell-nav__link--active .shell-nav__link-count {
+  color: var(--text-primary);
+}
+
 /* Workspace footer: org + env + user + sign-out. Desktop only lives at
    the bottom of the sticky sidebar; drawer keeps it inline. */
 .shell-workspace {
@@ -781,6 +798,164 @@ textarea {
 .shell-topbar__alerts:hover {
   background: var(--bg-surface-muted);
   color: var(--text-primary);
+}
+
+/* Topbar ⌘K search placeholder — visual-only until the palette lands (#333).
+   Rendered as a button so it has button semantics (no accidental text input);
+   the click handler is a no-op for now. */
+.shell-topbar__search {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-width: 280px;
+  max-width: 420px;
+  flex: 1;
+  padding: 0 10px 0 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: text;
+  position: relative;
+  text-align: left;
+}
+
+@media (min-width: 1024px) {
+  .shell-topbar__search {
+    display: inline-flex;
+  }
+}
+
+.shell-topbar__search:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+}
+
+.shell-topbar__search:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.shell-topbar__search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.shell-topbar__search-placeholder {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.shell-topbar__search-kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+/* User chip: trigger for account dropdown in the topbar right rail. */
+.shell-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  height: 32px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip:hover {
+  background: var(--bg-surface-muted);
+}
+
+.shell-user-chip:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.shell-user-chip__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.shell-user-chip__name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+@media (max-width: 767px) {
+  .shell-user-chip__name {
+    display: none;
+  }
+}
+
+.shell-user-chip__menu {
+  min-width: 240px;
+}
+
+.shell-user-chip__menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shell-user-chip__menu-email {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 2px;
+}
+
+.shell-user-chip__menu-section {
+  padding: 6px 10px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.shell-user-chip__menu-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .shell-content {
