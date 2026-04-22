@@ -17,6 +17,7 @@ import type {
   CreateOfferCreationRecordInput,
   OfferCreationError,
 } from '../../../domain/types/offer-creation-record.types';
+import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-creation-request-snapshot.types';
 
 describe('OfferCreationRecordRepository', () => {
   let repository: OfferCreationRecordRepository;
@@ -34,8 +35,26 @@ describe('OfferCreationRecordRepository', () => {
     status: 'pending',
     errors: null,
     publishImmediately: false,
+    request: null,
     createdAt: now,
     updatedAt: now,
+    ...overrides,
+  });
+
+  const buildRequestSnapshot = (
+    overrides: Partial<OfferCreationRequestSnapshot> = {},
+  ): OfferCreationRequestSnapshot => ({
+    schemaVersion: 1,
+    internalVariantId: 'ol_variant_123',
+    stock: 5,
+    publishImmediately: true,
+    price: { amount: 99.99, currency: 'PLN' },
+    overrides: {
+      title: 'Shipped title',
+      categoryId: 'allegro-cat-1',
+      description: 'desc',
+      platformParams: { deliveryPolicyId: 'del-1' },
+    },
     ...overrides,
   });
 
@@ -84,6 +103,41 @@ describe('OfferCreationRecordRepository', () => {
       expect(result).toBeInstanceOf(OfferCreationRecord);
       expect(result.id).toBe('rec-uuid');
       expect(result.publishImmediately).toBe(true);
+    });
+
+    it('should persist and round-trip the request snapshot including schemaVersion', async () => {
+      const request = buildRequestSnapshot();
+      const input: CreateOfferCreationRecordInput = {
+        internalVariantId: 'ol_variant_123',
+        connectionId: 'conn-uuid',
+        status: 'pending',
+        publishImmediately: true,
+        request,
+      };
+      ormRepository.save.mockResolvedValue(buildOrm({ publishImmediately: true, request }));
+
+      const result = await repository.create(input);
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(savedArg.request).toEqual(request);
+      expect(savedArg.request?.schemaVersion).toBe(1);
+      expect(result.request).toEqual(request);
+    });
+
+    it('should default request to null when omitted', async () => {
+      const input: CreateOfferCreationRecordInput = {
+        internalVariantId: 'ol_variant_123',
+        connectionId: 'conn-uuid',
+        status: 'pending',
+        publishImmediately: false,
+      };
+      ormRepository.save.mockResolvedValue(buildOrm());
+
+      const result = await repository.create(input);
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(savedArg.request).toBeNull();
+      expect(result.request).toBeNull();
     });
 
     it('should accept optional externalOfferId and errors on create', async () => {
@@ -352,12 +406,14 @@ describe('OfferCreationRecordRepository', () => {
   describe('toDomain mapping', () => {
     it('should preserve all fields round-trip', async () => {
       const errors: OfferCreationError[] = [{ code: 'X', message: 'y' }];
+      const request = buildRequestSnapshot();
       ormRepository.findOne.mockResolvedValue(
         buildOrm({
           externalOfferId: 'external-1',
           status: 'validating',
           errors,
           publishImmediately: true,
+          request,
         }),
       );
 
@@ -374,6 +430,7 @@ describe('OfferCreationRecordRepository', () => {
           true,
           now,
           now,
+          request,
         ),
       );
     });

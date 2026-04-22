@@ -77,6 +77,57 @@ describe('Listings Create-Offer API Integration', () => {
         .expect(404);
     });
 
+    it('round-trips the request snapshot from the jsonb column through to the response', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const snapshot = {
+        schemaVersion: 1,
+        internalVariantId: 'ol_variant_abc123',
+        stock: 7,
+        publishImmediately: true,
+        price: { amount: 49.5, currency: 'PLN' },
+        overrides: {
+          title: 'Shipped title',
+          categoryId: 'allegro-cat-1',
+          description: 'desc',
+          platformParams: { deliveryPolicyId: 'del-1', warrantyId: 'war-1' },
+        },
+      };
+
+      const recordId = await createTestOfferCreationRecord(dataSource, {
+        connectionId: CONN_A,
+        status: 'failed',
+        request: snapshot,
+      });
+
+      const response = await http
+        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.request).toEqual(snapshot);
+    });
+
+    it('returns a null request when the record predates the snapshot column', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const recordId = await createTestOfferCreationRecord(dataSource, {
+        connectionId: CONN_A,
+        request: null,
+      });
+
+      const response = await http
+        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.request).toBeNull();
+    });
+
     it('returns 404 when the record exists but belongs to a different connection', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();

@@ -115,7 +115,18 @@ export interface CreateOfferRequest {
   publishImmediately: boolean;
   price?: CreateOfferPrice;
   overrides?: CreateOfferOverrides;
+  /**
+   * Snapshot schema version. Absent on request submits (the wizard does
+   * not populate it — the backend stamps it at persist time). Present on
+   * the `request` field embedded in `OfferCreationStatusResponse`. FE
+   * consumers must treat any unknown version as "cannot safely pre-fill"
+   * and fall back to an empty wizard.
+   */
+  schemaVersion?: number;
 }
+
+/** The only snapshot schema version this client knows how to read. */
+export const SUPPORTED_OFFER_CREATION_REQUEST_SCHEMA_VERSION = 1;
 
 export interface CreateOfferResponse {
   jobId: string;
@@ -132,6 +143,13 @@ export interface OfferCreationStatusResponse {
   publishImmediately: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Snapshot of the original create-offer request payload. Drives the
+   * wizard retry pre-fill on a failed record. Null when the record
+   * predates this field or when the snapshot schema version is unknown
+   * to this client — consumers must tolerate null and degrade gracefully.
+   */
+  request?: CreateOfferRequest | null;
 }
 
 export interface SellerPolicy {

@@ -292,6 +292,9 @@ export class ListingsController {
       publishImmediately: record.publishImmediately,
       createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
       updatedAt: record.updatedAt instanceof Date ? record.updatedAt.toISOString() : record.updatedAt,
+      // Pass the snapshot through untouched. It's already the on-wire shape
+      // (plain object in jsonb); no date fields or instance conversions to run.
+      request: record.request,
     };
   }
 }

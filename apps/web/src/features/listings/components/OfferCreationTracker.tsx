@@ -17,7 +17,11 @@
 import { type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
-import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
+import {
+  TERMINAL_OFFER_CREATION_STATUSES,
+  type OfferCreationStatusResponse,
+} from '../api/listings.types';
+import { canReadCreateOfferRequestSnapshot } from './create-offer-request-to-form-values';
 import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
 import { OfferCreationErrorList } from './OfferCreationErrorList';
 
@@ -25,12 +29,17 @@ interface OfferCreationTrackerProps {
   connectionId: string;
   offerCreationRecordId: string;
   onDismiss: () => void;
+  /** Invoked when the operator clicks Retry on a failed record. Only
+   *  rendered when the record has a non-null `request` snapshot — without
+   *  the snapshot the wizard cannot pre-fill, so we hide the action. */
+  onRetry?: (record: OfferCreationStatusResponse) => void;
 }
 
 export function OfferCreationTracker({
   connectionId,
   offerCreationRecordId,
   onDismiss,
+  onRetry,
 }: OfferCreationTrackerProps): ReactElement {
   const query = useOfferCreationStatusQuery(connectionId, offerCreationRecordId);
 
@@ -70,6 +79,15 @@ export function OfferCreationTracker({
   }
 
   const isTerminal = TERMINAL_OFFER_CREATION_STATUSES.includes(record.status);
+  // Hide Retry when the snapshot is absent (old records) or carries a
+  // schemaVersion this client does not know how to read. A server newer
+  // than the client can persist v2+ snapshots; we must not silently
+  // map them with v1 semantics.
+  const canRetry =
+    record.status === 'failed' &&
+    onRetry !== undefined &&
+    record.request != null &&
+    canReadCreateOfferRequestSnapshot(record.request);
 
   return (
     <section
@@ -82,6 +100,11 @@ export function OfferCreationTracker({
         <span className="mono-text offer-creation-tracker__id" title={record.id}>
           {record.id}
         </span>
+        {canRetry ? (
+          <Button tone="secondary" onClick={() => onRetry?.(record)}>
+            Retry
+          </Button>
+        ) : null}
         {isTerminal ? (
           <Button tone="ghost" onClick={onDismiss}>
             Dismiss

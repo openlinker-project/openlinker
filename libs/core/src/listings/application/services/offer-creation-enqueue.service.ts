@@ -30,6 +30,10 @@ import {
 } from '@openlinker/core/sync';
 
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
+import {
+  OFFER_CREATION_REQUEST_SNAPSHOT_SCHEMA_VERSION,
+  type OfferCreationRequestSnapshot,
+} from '../../domain/types/offer-creation-request-snapshot.types';
 import { OFFER_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
 import { IOfferCreationEnqueueService } from '../interfaces/offer-creation-enqueue.service.interface';
 import type {
@@ -66,7 +70,20 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
       );
     }
 
-    // 3. Pre-create the record so the HTTP response carries an id clients
+    // 3. Capture a snapshot of the request payload so a failed record can be
+    //    re-opened in the wizard pre-filled. Schema-versioned so a future
+    //    wire-shape change can ship a `v2` mapper without breaking readers of
+    //    old records (#307).
+    const requestSnapshot: OfferCreationRequestSnapshot = {
+      schemaVersion: OFFER_CREATION_REQUEST_SNAPSHOT_SCHEMA_VERSION,
+      internalVariantId: input.internalVariantId,
+      stock: input.stock,
+      publishImmediately: input.publishImmediately,
+      ...(input.price !== undefined && { price: input.price }),
+      ...(input.overrides !== undefined && { overrides: input.overrides }),
+    };
+
+    // 4. Pre-create the record so the HTTP response carries an id clients
     //    can poll immediately.
     const record = await this.offerCreationRecords.create({
       internalVariantId: input.internalVariantId,
@@ -75,9 +92,10 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
       status: 'pending',
       errors: null,
       publishImmediately: input.publishImmediately,
+      request: requestSnapshot,
     });
 
-    // 4. Enqueue. Default idempotency key is per-call-unique (the fresh
+    // 5. Enqueue. Default idempotency key is per-call-unique (the fresh
     //    record id) — a client that wants cross-retry dedupe passes
     //    `input.idempotencyKey`.
     const payload = {

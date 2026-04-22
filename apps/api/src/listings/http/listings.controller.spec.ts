@@ -188,6 +188,7 @@ describe('ListingsController', () => {
         publishImmediately: true,
         createdAt: '2026-04-20T10:00:00.000Z',
         updatedAt: '2026-04-20T11:00:00.000Z',
+        request: null,
       });
     });
 
@@ -301,7 +302,41 @@ describe('ListingsController', () => {
         publishImmediately: false,
         createdAt: '2026-04-20T10:00:00.000Z',
         updatedAt: '2026-04-20T10:00:00.000Z',
+        request: null,
       });
+    });
+
+    it('surfaces the request snapshot when the record carries one', async () => {
+      const request = {
+        schemaVersion: 1 as const,
+        internalVariantId: 'ol_variant_abc123',
+        stock: 3,
+        publishImmediately: true,
+        price: { amount: 19.99, currency: 'PLN' },
+        overrides: {
+          title: 'Retry pre-fill title',
+          categoryId: 'allegro-cat-1',
+          platformParams: { deliveryPolicyId: 'del-1' },
+        },
+      };
+      const recordWithRequest = new OfferCreationRecord(
+        'record-2',
+        'ol_variant_abc123',
+        'conn-1',
+        null,
+        'failed',
+        [{ code: 'VALIDATION', message: 'Invalid category' }],
+        true,
+        new Date('2026-04-22T10:00:00Z'),
+        new Date('2026-04-22T10:00:01Z'),
+        request,
+      );
+      offerCreationRecords.findById.mockResolvedValue(recordWithRequest);
+
+      const result = await controller.getOfferCreationStatus('conn-1', 'record-2');
+
+      expect(result.request).toEqual(request);
+      expect(result.request?.schemaVersion).toBe(1);
     });
 
     it('throws NotFoundException when record does not exist', async () => {

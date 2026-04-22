@@ -52,6 +52,11 @@ export type {
   OfferCreationError,
   CreateOfferCreationRecordInput,
 } from './domain/types/offer-creation-record.types';
+export { OFFER_CREATION_REQUEST_SNAPSHOT_SCHEMA_VERSION } from './domain/types/offer-creation-request-snapshot.types';
+export type {
+  OfferCreationRequestSnapshot,
+  OfferCreationRequestPriceSnapshot,
+} from './domain/types/offer-creation-request-snapshot.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
 export { OfferBuilderService } from './application/services/offer-builder.service';

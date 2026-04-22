@@ -14,6 +14,8 @@ import {
   OfferCreationStatusValues,
 } from '@openlinker/core/listings';
 
+import { OfferCreationRequestPayloadDto } from './offer-creation-request-payload-response.dto';
+
 export class OfferCreationErrorDto {
   @ApiPropertyOptional({ description: 'Dotted field path reported by the platform' })
   field?: string;
@@ -59,4 +61,12 @@ export class OfferCreationStatusResponseDto {
 
   @ApiProperty({ description: 'ISO 8601 timestamp of the last update' })
   updatedAt!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: OfferCreationRequestPayloadDto,
+    description:
+      'Debug-only: snapshot of the original create-offer request payload. Drives the wizard retry pre-fill. Null for records predating this change or for records created through code paths that do not capture the snapshot.',
+  })
+  request?: OfferCreationRequestPayloadDto | null;
 }
