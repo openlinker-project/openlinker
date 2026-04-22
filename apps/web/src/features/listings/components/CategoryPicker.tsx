@@ -37,6 +37,13 @@ interface CategoryPickerProps {
   disabled?: boolean;
   /** Forwarded from `FormField` for `aria-describedby` wiring. */
   id?: string;
+  /**
+   * Required for a11y when the picker is used as a form control — the root
+   * container is a `<div role="group">`, so screen readers need an external
+   * label reference to announce the field name. Pass the `id` of the
+   * `.form-field__label` element above the picker.
+   */
+  'aria-labelledby'?: string;
   /** Forwarded from `FormField`. */
   'aria-describedby'?: string;
   /** Forwarded from `FormField`. */
@@ -55,6 +62,7 @@ export function CategoryPicker({
   invalid,
   disabled,
   id,
+  'aria-labelledby': ariaLabelledBy,
   'aria-describedby': ariaDescribedBy,
   'aria-invalid': ariaInvalid,
 }: CategoryPickerProps): ReactElement {
@@ -75,7 +83,9 @@ export function CategoryPicker({
     return (
       <div
         className={['category-picker', 'category-picker--prefill'].join(' ')}
+        role="group"
         id={id}
+        aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         aria-invalid={isInvalid || undefined}
       >
@@ -99,8 +109,12 @@ export function CategoryPicker({
     setBreadcrumb((prev) => [...prev, { id: category.id, name: category.name }]);
   }
 
-  function navigateTo(index: number): void {
-    // index -1 → back to root; 0+ → keep first N crumbs
+  function navigateToRoot(): void {
+    setBreadcrumb([]);
+  }
+
+  function navigateToCrumb(index: number): void {
+    // Keep crumbs 0..index inclusive; drop anything deeper.
     setBreadcrumb((prev) => prev.slice(0, index + 1));
   }
 
@@ -119,7 +133,9 @@ export function CategoryPicker({
   return (
     <div
       className={pickerClasses}
+      role="group"
       id={id}
+      aria-labelledby={ariaLabelledBy}
       aria-describedby={ariaDescribedBy}
       aria-invalid={isInvalid || undefined}
     >
@@ -127,7 +143,7 @@ export function CategoryPicker({
         <button
           type="button"
           className="category-picker__crumb"
-          onClick={() => navigateTo(-1)}
+          onClick={navigateToRoot}
           disabled={disabled || breadcrumb.length === 0}
         >
           Root
@@ -140,7 +156,7 @@ export function CategoryPicker({
             <button
               type="button"
               className="category-picker__crumb"
-              onClick={() => navigateTo(i)}
+              onClick={() => navigateToCrumb(i)}
               disabled={disabled || i === breadcrumb.length - 1}
             >
               {crumb.name}

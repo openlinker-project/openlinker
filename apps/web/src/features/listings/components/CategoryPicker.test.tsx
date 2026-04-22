@@ -168,4 +168,101 @@ describe('CategoryPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /change/i }));
     await screen.findByText('Electronics');
   });
+
+  it('lets the operator re-pick a different leaf after clicking Change on a pre-filled value', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getAllegroCategories: vi.fn(
+          mockCategoriesEndpoint({
+            root: [{ id: 'cat-new', name: 'Books', parentId: null, leaf: true }],
+          }),
+        ),
+      },
+    });
+    const onChange = vi.fn();
+
+    renderWithProviders(
+      <CategoryPicker
+        connectionId={connectionId}
+        value="cat-prefilled-999"
+        onChange={onChange}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /change/i }));
+    // Browser reveals; the new leaf is available.
+    fireEvent.click(await screen.findByRole('button', { name: /^select$/i }));
+
+    // Controlled component: onChange fires with the new id. The "Selected"
+    // state only renders when the parent re-renders with the new value, which
+    // this test doesn't simulate — the contract we verify is the callback
+    // firing. The wizard test covers the parent-controlled round-trip.
+    expect(onChange).toHaveBeenCalledWith('cat-new');
+  });
+
+  it('disables all interactive elements when `disabled` is true', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getAllegroCategories: vi.fn(
+          mockCategoriesEndpoint({
+            root: [
+              { id: 'cat-1', name: 'Electronics', parentId: null, leaf: false },
+              { id: 'cat-2', name: 'Books', parentId: null, leaf: true },
+            ],
+          }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <CategoryPicker
+        connectionId={connectionId}
+        value={null}
+        onChange={vi.fn()}
+        disabled
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText('Electronics');
+    // Non-leaf browse button
+    expect(screen.getByRole('button', { name: /browse into electronics/i })).toBeDisabled();
+    // Leaf select button
+    expect(screen.getByRole('button', { name: /^select$/i })).toBeDisabled();
+    // Root crumb is always disabled when at root (nothing to navigate back to),
+    // so that alone doesn't prove `disabled` plumbing — cover it via the
+    // leaf button instead.
+  });
+
+  it('forwards aria-labelledby, aria-describedby, and aria-invalid to the root group', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getAllegroCategories: vi.fn(
+          mockCategoriesEndpoint({
+            root: [{ id: 'cat-1', name: 'Electronics', parentId: null, leaf: false }],
+          }),
+        ),
+      },
+    });
+
+    const { container } = renderWithProviders(
+      <CategoryPicker
+        connectionId={connectionId}
+        value={null}
+        onChange={vi.fn()}
+        invalid
+        aria-labelledby="external-label"
+        aria-describedby="external-description"
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText('Electronics');
+    const root = container.querySelector('.category-picker');
+    expect(root).toHaveAttribute('role', 'group');
+    expect(root).toHaveAttribute('aria-labelledby', 'external-label');
+    expect(root).toHaveAttribute('aria-describedby', 'external-description');
+    expect(root).toHaveAttribute('aria-invalid', 'true');
+  });
 });

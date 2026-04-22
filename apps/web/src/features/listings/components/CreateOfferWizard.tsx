@@ -464,6 +464,7 @@ export function CreateOfferWizard({
                       value={field.value || null}
                       onChange={field.onChange}
                       invalid={Boolean(fieldState.error)}
+                      aria-labelledby="categoryId-label"
                       aria-describedby="categoryId-description categoryId-error"
                     />
                   )}

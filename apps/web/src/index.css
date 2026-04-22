@@ -3660,6 +3660,14 @@ textarea {
   border-radius: 0.375rem;
 }
 
+/*
+ * The `.category-picker__item--leaf` and `--non-leaf` modifiers are emitted
+ * by CategoryPicker.tsx as intentional styling hooks but currently have no
+ * rules — the base `.category-picker__item` handles both visual states via
+ * the Select / Browse buttons inside. Kept so future differentiated styling
+ * (icons, subtle dividers, indent) can attach without markup changes.
+ */
+
 .category-picker__name {
   flex: 1;
   min-width: 0;
