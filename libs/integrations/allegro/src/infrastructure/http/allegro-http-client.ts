@@ -209,12 +209,22 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       });
     }
 
-    // Build headers
-    const headers = new Headers(options?.headers);
-    headers.set('Authorization', `Bearer ${this.accessToken}`);
-    headers.set('Content-Type', 'application/json');
+    // Build headers.
+    // Order: defaults → caller overrides → structural (immutable).
+    // Structural headers land last because Authorization is owned by the token-refresh
+    // flow and X-Trace-Id must match the log correlation ID — neither is a caller concern.
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/vnd.allegro.public.v1+json');
     headers.set('Accept', 'application/vnd.allegro.public.v1+json');
-    headers.set('X-Trace-Id', traceId); // Correlation ID for logging
+
+    if (options?.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        headers.set(key, value);
+      }
+    }
+
+    headers.set('Authorization', `Bearer ${this.accessToken}`);
+    headers.set('X-Trace-Id', traceId);
 
     // Convert Headers to plain object for fetch (Node.js fetch may have issues with Headers object)
     const headersObject: Record<string, string> = {};

@@ -15,9 +15,18 @@ import {
   SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
-import { AllegroAuthenticationException } from '@openlinker/integrations-allegro';
+import {
+  AllegroApiException,
+  AllegroAuthenticationException,
+} from '@openlinker/integrations-allegro';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
+
+// Deterministic Allegro 4xx — retrying never helps.
+// Excludes 408/425 (transient by spec), 429 (raised as AllegroRateLimitException
+// and handled with Retry-After inside the HTTP client), and 401 (handled below
+// via AllegroAuthenticationException + token refresh).
+const NON_RETRYABLE_ALLEGRO_STATUS_CODES = new Set([400, 403, 404, 405, 409, 415, 422]);
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
@@ -316,34 +325,38 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Check if error is non-retryable (requires manual intervention)
+   * Check if error is non-retryable (requires manual intervention or a code change).
    *
-   * Authentication errors (401) are non-retryable because they require
-   * token refresh, which won't happen automatically with retries.
+   * Non-retryable cases:
+   * - AllegroAuthenticationException (401) — needs token refresh, not retry.
+   * - AllegroApiException with a status in NON_RETRYABLE_ALLEGRO_STATUS_CODES —
+   *   deterministic 4xx (e.g., 415 unsupported content type, 422 validation) where
+   *   retrying burns worker capacity and masks the real issue.
    *
-   * Keep this list minimal. Specifically, MissingOrderItemMappingError is retryable:
-   * offer→variant mappings are created by a separate sync cadence and may simply not
-   * exist yet when the order job first fires.
+   * Retryable cases intentionally left out:
+   * - MissingOrderItemMappingError — offer→variant mappings are created by a separate
+   *   sync cadence and may simply not exist yet when the order job first fires.
+   * - AllegroApiException with 5xx / 408 / 425 — transient; the HTTP client already
+   *   retries internally, and the runner gives the job more attempts.
    *
    * @param error - Error to check
    * @returns True if error is non-retryable
    */
   private isNonRetryableError(error: unknown): boolean {
-    // Check if it's a SyncJobExecutionError with an AllegroAuthenticationException cause
-    if (error instanceof SyncJobExecutionError && error.cause) {
-      if (error.cause instanceof AllegroAuthenticationException) {
-        return true;
-      }
-    }
+    const cause =
+      error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
 
-    // Direct AllegroAuthenticationException (shouldn't happen, but handle it)
-    if (error instanceof AllegroAuthenticationException) {
+    if (cause instanceof AllegroAuthenticationException) {
       return true;
     }
 
-    // MissingOrderItemMappingError is NOT non-retryable: the offer→variant mapping
-    // may not exist yet when the order arrives (offer sync runs on a separate cadence).
-    // The job will retry with backoff and succeed once the mapping is created.
+    if (
+      cause instanceof AllegroApiException &&
+      cause.statusCode !== undefined &&
+      NON_RETRYABLE_ALLEGRO_STATUS_CODES.has(cause.statusCode)
+    ) {
+      return true;
+    }
 
     return false;
   }

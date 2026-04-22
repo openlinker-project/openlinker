@@ -128,7 +128,7 @@ describe('AllegroHttpClient', () => {
           method: 'GET',
           headers: expect.objectContaining({
             authorization: 'Bearer test-access-token-12345',
-            'content-type': 'application/json',
+            'content-type': 'application/vnd.allegro.public.v1+json',
             accept: 'application/vnd.allegro.public.v1+json',
           }),
         }),
@@ -232,6 +232,66 @@ describe('AllegroHttpClient', () => {
       const traceId = headers['x-trace-id'];
       expect(traceId).toBeDefined();
       expect(traceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    });
+  });
+
+  describe('headers', () => {
+    const TRACE_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    it('should use vendor media type as default Content-Type on PATCH', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.patch('/sale/product-offers/123', { name: 'new-title' });
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['content-type']).toBe('application/vnd.allegro.public.v1+json');
+    });
+
+    it('should honor caller-supplied Content-Type override', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.post(
+        '/test',
+        { foo: 'bar' },
+        { headers: { 'Content-Type': 'application/vnd.allegro.beta.v1+json' } },
+      );
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['content-type']).toBe('application/vnd.allegro.beta.v1+json');
+    });
+
+    it('should not allow caller to override structural headers (Authorization, X-Trace-Id)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.get('/test', {
+        headers: {
+          Authorization: 'Bearer evil',
+          'X-Trace-Id': 'attacker-controlled',
+        },
+      });
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers.authorization).toBe('Bearer test-access-token-12345');
+      expect(headers['x-trace-id']).not.toBe('attacker-controlled');
+      expect(headers['x-trace-id']).toMatch(TRACE_ID_REGEX);
     });
   });
 
