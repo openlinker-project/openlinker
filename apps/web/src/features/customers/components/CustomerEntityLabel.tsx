@@ -1,3 +1,11 @@
+/**
+ * Customer Entity Label
+ *
+ * Name-first resolver that renders a customer's name, shortened internal ID,
+ * and a copy button, linking to the customer detail page. Mirrors
+ * ConnectionEntityLabel; PascalCase filename matches the sibling *EntityLabel
+ * family in features/connections/components.
+ */
 import type { ReactElement } from 'react';
 import { EntityLabel } from '../../../shared/ui/entity-label';
 import { useCustomerQuery } from '../hooks/use-customer-query';

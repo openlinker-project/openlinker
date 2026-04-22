@@ -279,7 +279,6 @@ export function OrderDetailPage(): ReactElement {
         <h3 className="detail-section__title">Activity</h3>
         <OrderActivityTimeline
           createdAt={order.createdAt}
-          updatedAt={order.updatedAt}
           recordStatus={order.recordStatus}
           syncStatus={order.syncStatus}
         />
@@ -287,7 +286,7 @@ export function OrderDetailPage(): ReactElement {
 
       {/* Raw snapshot — collapsed by default */}
       <section className="detail-section">
-        <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} defaultOpen={false} />
+        <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} />
       </section>
     </PageLayout>
   );

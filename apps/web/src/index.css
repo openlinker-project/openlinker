@@ -4460,6 +4460,12 @@ a.kpi-card:focus-visible {
   flex-shrink: 0;
 }
 
+.order-activity__time--pending {
+  font-style: italic;
+  font-family: inherit;
+  color: var(--text-disabled);
+}
+
 @media (max-width: 599px) {
   .order-activity__item {
     grid-template-columns: 1.25rem minmax(0, 1fr);
