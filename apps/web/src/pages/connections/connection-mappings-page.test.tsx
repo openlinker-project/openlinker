@@ -5,6 +5,7 @@
  */
 
 import { cleanup, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { ConnectionMappingsPage } from './connection-mappings-page';
@@ -159,15 +160,16 @@ describe('ConnectionMappingsPage', () => {
   });
 
   it('switches between tabs', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<ConnectionMappingsPage />, { apiClient: buildApiClient() });
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Carriers' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Carriers' }));
+    await user.click(screen.getByRole('tab', { name: 'Carriers' }));
 
     expect(screen.getByRole('tab', { name: 'Carriers' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('Carrier Mappings')).toBeInTheDocument();
+    expect(await screen.findByText('Carrier Mappings')).toBeInTheDocument();
   });
 });
