@@ -11,7 +11,12 @@ import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { CreateOfferWizard } from '../../features/listings/components/CreateOfferWizard';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
-import type { ListingsFilters, OfferMapping } from '../../features/listings/api/listings.types';
+import type {
+  CreateOfferRequest,
+  ListingsFilters,
+  OfferCreationStatusResponse,
+  OfferMapping,
+} from '../../features/listings/api/listings.types';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -134,6 +139,15 @@ export function ListingsListPage(): ReactElement {
   const hasTracker = Boolean(trackedRecordId && trackedConnectionId);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  // Retry-path hints passed to the wizard when the operator clicks Retry
+  // on a failed OfferCreationTracker. These mirror the record's snapshot
+  // so the wizard can pre-fill on open and land directly on Step 2.
+  const [retryInitialValues, setRetryInitialValues] = useState<CreateOfferRequest | undefined>(
+    undefined,
+  );
+  const [retryDefaultConnectionId, setRetryDefaultConnectionId] = useState<string | undefined>(
+    undefined,
+  );
 
   function dismissTracker(): void {
     setSearchParams((prev) => {
@@ -153,6 +167,22 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
+  function handleRetry(record: OfferCreationStatusResponse): void {
+    if (!record.request) return;
+    setRetryInitialValues(record.request);
+    setRetryDefaultConnectionId(record.connectionId);
+    setIsWizardOpen(true);
+    // Drop the old tracker from the URL — the new submit will re-install
+    // a fresh tracker for the new OfferCreationRecord via onSubmitted.
+    dismissTracker();
+  }
+
+  function closeWizard(): void {
+    setIsWizardOpen(false);
+    setRetryInitialValues(undefined);
+    setRetryDefaultConnectionId(undefined);
+  }
+
   return (
     <PageLayout
       eyebrow="Operations"
@@ -165,6 +195,7 @@ export function ListingsListPage(): ReactElement {
           connectionId={trackedConnectionId}
           offerCreationRecordId={trackedRecordId}
           onDismiss={dismissTracker}
+          onRetry={handleRetry}
         />
       ) : null}
 
@@ -253,8 +284,9 @@ export function ListingsListPage(): ReactElement {
 
       <CreateOfferWizard
         isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
-        defaultConnectionId={debouncedConnectionId || undefined}
+        onClose={closeWizard}
+        defaultConnectionId={retryDefaultConnectionId ?? (debouncedConnectionId || undefined)}
+        initialValues={retryInitialValues}
         onSubmitted={handleOfferSubmitted}
       />
     </PageLayout>

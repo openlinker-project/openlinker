@@ -15,6 +15,7 @@ import {
   OfferCreationError,
   OfferCreationStatus,
 } from '../types/offer-creation-record.types';
+import { OfferCreationRequestSnapshot } from '../types/offer-creation-request-snapshot.types';
 
 export class OfferCreationRecord {
   constructor(
@@ -27,5 +28,12 @@ export class OfferCreationRecord {
     public readonly publishImmediately: boolean,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /**
+     * Persisted snapshot of the original create-offer request. Null for records
+     * predating this change and for records created through code paths that do
+     * not pass the snapshot. Surfaced on the status response for retry
+     * pre-fill on the wizard.
+     */
+    public readonly request: OfferCreationRequestSnapshot | null = null,
   ) {}
 }

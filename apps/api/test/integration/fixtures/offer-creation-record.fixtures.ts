@@ -14,6 +14,8 @@ export interface TestOfferCreationRecordOverrides {
   externalOfferId?: string | null;
   status?: 'pending' | 'draft' | 'validating' | 'active' | 'failed';
   publishImmediately?: boolean;
+  /** Seeds the jsonb `request` column. `null` to omit the snapshot. */
+  request?: Record<string, unknown> | null;
 }
 
 /**
@@ -28,10 +30,11 @@ export async function createTestOfferCreationRecord(
   dataSource: DataSource,
   overrides?: TestOfferCreationRecordOverrides,
 ): Promise<string> {
+  const requestValue = overrides?.request === undefined ? null : overrides.request;
   const result = (await dataSource.query(
     `INSERT INTO offer_creation_records
-       ("internalVariantId", "connectionId", "externalOfferId", "status", "errors", "publishImmediately")
-     VALUES ($1, $2, $3, $4, $5, $6)
+       ("internalVariantId", "connectionId", "externalOfferId", "status", "errors", "publishImmediately", "request")
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
      RETURNING id`,
     [
       overrides?.internalVariantId ?? 'ol_variant_abc123',
@@ -40,6 +43,7 @@ export async function createTestOfferCreationRecord(
       overrides?.status ?? 'pending',
       null,
       overrides?.publishImmediately ?? false,
+      requestValue === null ? null : JSON.stringify(requestValue),
     ],
   )) as Array<{ id: string }>;
 

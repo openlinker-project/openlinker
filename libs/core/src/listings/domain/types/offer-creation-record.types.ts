@@ -13,6 +13,8 @@
  * @module libs/core/src/listings/domain/types
  */
 
+import type { OfferCreationRequestSnapshot } from './offer-creation-request-snapshot.types';
+
 /**
  * Persisted lifecycle status for OL-initiated offer creation.
  *
@@ -65,4 +67,11 @@ export interface CreateOfferCreationRecordInput {
   externalOfferId?: string | null;
   /** Structured errors when the initial status is already `'failed'`. Null otherwise. */
   errors?: OfferCreationError[] | null;
+  /**
+   * Persisted snapshot of the original create-offer request payload. Enables
+   * retry pre-fill on the wizard when a record is `'failed'`. Omitted or
+   * `null` for callers that cannot or do not need to supply it; readers must
+   * tolerate null.
+   */
+  request?: OfferCreationRequestSnapshot | null;
 }

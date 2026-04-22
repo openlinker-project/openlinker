@@ -9,7 +9,7 @@ import { renderWithProviders, createMockApiClient } from '../../../test/test-uti
 import { CreateOfferWizard } from './CreateOfferWizard';
 import type { Connection } from '../../connections/api/connections.types';
 import type { Product } from '../../products/api/products.types';
-import type { SellerPoliciesResponse } from '../api/listings.types';
+import type { CreateOfferRequest, SellerPoliciesResponse } from '../api/listings.types';
 
 const allegroConnection: Connection = {
   id: 'conn_allegro_1',
@@ -411,6 +411,148 @@ describe('CreateOfferWizard', () => {
     expect(await screen.findByText(/offer creation failed/i)).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('retry with initialValues (#307)', () => {
+    const initialRequest: CreateOfferRequest = {
+      internalVariantId: 'ol_variant_aaaaaaaa',
+      stock: 5,
+      publishImmediately: false,
+      price: { amount: 99.99, currency: 'PLN' },
+      overrides: {
+        title: 'Original Title',
+        categoryId: '12345',
+        description: null,
+        platformParams: {
+          deliveryPolicyId: 'del-1',
+          returnPolicyId: 'ret-1',
+        },
+      },
+    };
+
+    it('renders the retry hint on Step 1 after Back when opened with initialValues', async () => {
+      const mockApi = defaultMocks();
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          initialValues={initialRequest}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      // Lands on Step 2; no hint yet since Step 1 is not rendered.
+      await screen.findByLabelText(/^title$/i);
+      // Step back to 1 — the hint should now be visible.
+      fireEvent.click(screen.getByRole('button', { name: /back/i }));
+      expect(await screen.findByText(/prior attempt re-loaded/i)).toBeInTheDocument();
+    });
+
+    it('does not render the retry hint on a fresh open', async () => {
+      const mockApi = defaultMocks();
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await screen.findByLabelText(/search products/i);
+      expect(screen.queryByText(/prior attempt re-loaded/i)).not.toBeInTheDocument();
+    });
+
+    it('opens on step 2 with fields pre-filled from initialValues', async () => {
+      const mockApi = defaultMocks();
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          initialValues={initialRequest}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      // Step 2 is visible (not Step 1's search products field).
+      expect(await screen.findByLabelText(/^title$/i)).toHaveValue('Original Title');
+      expect(screen.getByLabelText(/allegro category/i)).toHaveValue('12345');
+      expect(screen.getByLabelText<HTMLInputElement>(/^price$/i).value).toBe('99.99');
+      expect(screen.getByLabelText<HTMLInputElement>(/^stock$/i).value).toBe('5');
+      expect(screen.queryByLabelText(/search products/i)).not.toBeInTheDocument();
+    });
+
+    it('mints a fresh idempotency key on retry open (old failed record untouched)', async () => {
+      const createOffer = vi
+        .fn()
+        .mockResolvedValueOnce({ jobId: 'job-a', offerCreationRecordId: 'rec-a' })
+        .mockResolvedValueOnce({ jobId: 'job-b', offerCreationRecordId: 'rec-b' });
+      const mockApi = defaultMocks({
+        listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) },
+      });
+
+      // First wizard session: normal flow through all four steps.
+      const { rerender } = renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.change(await screen.findByLabelText(/delivery policy/i), {
+        target: { value: 'del-1' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+      await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
+      const firstKey = createOffer.mock.calls[0][2].idempotencyKey;
+
+      // Close the wizard, then reopen it with initialValues (the retry path).
+      rerender(
+        <CreateOfferWizard
+          isOpen={false}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+      );
+      rerender(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          initialValues={initialRequest}
+          onSubmitted={vi.fn()}
+        />,
+      );
+
+      // We land on Step 2 pre-filled; advance through Step 3 → submit.
+      await screen.findByLabelText(/^title$/i);
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      // Delivery policy pre-fills from initialValues; just advance.
+      await screen.findByLabelText(/delivery policy/i);
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+      await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(2));
+
+      const secondKey = createOffer.mock.calls[1][2].idempotencyKey;
+      expect(firstKey).toBeTruthy();
+      expect(secondKey).toBeTruthy();
+      expect(secondKey).not.toBe(firstKey);
+    });
   });
 
   describe('variant picker pagination (#308)', () => {

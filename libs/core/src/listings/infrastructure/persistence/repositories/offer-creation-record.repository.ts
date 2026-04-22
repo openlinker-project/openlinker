@@ -116,6 +116,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     entity.publishImmediately = input.publishImmediately;
     entity.externalOfferId = input.externalOfferId ?? null;
     entity.errors = input.errors ?? null;
+    entity.request = input.request ?? null;
     return entity;
   }
 
@@ -130,6 +131,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
       entity.publishImmediately,
       entity.createdAt,
       entity.updatedAt,
+      entity.request,
     );
   }
 }

@@ -7,7 +7,19 @@ import { screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { OfferCreationTracker } from './OfferCreationTracker';
-import type { OfferCreationStatus, OfferCreationStatusResponse } from '../api/listings.types';
+import type {
+  CreateOfferRequest,
+  OfferCreationStatus,
+  OfferCreationStatusResponse,
+} from '../api/listings.types';
+
+const sampleRequest: CreateOfferRequest = {
+  internalVariantId: 'ol_variant_abc',
+  stock: 5,
+  publishImmediately: false,
+  price: { amount: 99.99, currency: 'PLN' },
+  overrides: { title: 'T', categoryId: '12345' },
+};
 
 function makeRecord(status: OfferCreationStatus, overrides: Partial<OfferCreationStatusResponse> = {}): OfferCreationStatusResponse {
   return {
@@ -20,6 +32,7 @@ function makeRecord(status: OfferCreationStatus, overrides: Partial<OfferCreatio
     publishImmediately: false,
     createdAt: '2026-04-22T10:00:00Z',
     updatedAt: '2026-04-22T10:00:00Z',
+    request: null,
     ...overrides,
   };
 }
@@ -131,5 +144,145 @@ describe('OfferCreationTracker', () => {
     const dismiss = await screen.findByRole('button', { name: /dismiss/i });
     dismiss.click();
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+  });
+
+  describe('retry affordance (#307)', () => {
+    it('renders Retry on a failed record when onRetry is provided and a request snapshot exists', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi
+            .fn()
+            .mockResolvedValue(makeRecord('failed', { request: sampleRequest })),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      expect(await screen.findByRole('button', { name: /retry/i })).toBeInTheDocument();
+    });
+
+    it('invokes onRetry with the record when Retry is clicked', async () => {
+      const onRetry = vi.fn();
+      const record = makeRecord('failed', { request: sampleRequest });
+      const mockApi = createMockApiClient({
+        listings: { getOfferCreationStatus: vi.fn().mockResolvedValue(record) },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+          onRetry={onRetry}
+        />,
+        { apiClient: mockApi },
+      );
+
+      const retry = await screen.findByRole('button', { name: /retry/i });
+      retry.click();
+      await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+      expect(onRetry).toHaveBeenCalledWith(record);
+    });
+
+    it('hides Retry when onRetry is not provided', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi
+            .fn()
+            .mockResolvedValue(makeRecord('failed', { request: sampleRequest })),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await screen.findByText('Failed');
+      expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    it('hides Retry when the failed record has no request snapshot', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi
+            .fn()
+            .mockResolvedValue(makeRecord('failed', { request: null })),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await screen.findByText('Failed');
+      expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    it('hides Retry when the snapshot carries an unknown schemaVersion', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockResolvedValue(
+            makeRecord('failed', {
+              request: { ...sampleRequest, schemaVersion: 99 },
+            }),
+          ),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await screen.findByText('Failed');
+      expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render Retry on a non-failed status', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi
+            .fn()
+            .mockResolvedValue(makeRecord('active', { request: sampleRequest })),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await screen.findByText('Active');
+      expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
+    });
   });
 });

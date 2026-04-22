@@ -51,6 +51,7 @@ import {
   type CreateOfferFieldsSubmission,
   type CreateOfferFieldsValues,
 } from './create-offer-fields.schema';
+import { createOfferRequestToFormValues } from './create-offer-request-to-form-values';
 
 const STEP_LABELS = ['Connection & Variant', 'Offer details', 'Policies', 'Review'] as const;
 
@@ -70,6 +71,10 @@ interface CreateOfferWizardProps {
   /** Pre-fill hint from the listings list filter; the picker is always
    *  visible so the operator can change it. */
   defaultConnectionId?: string;
+  /** Snapshot of a prior request, used by the retry path to reopen the
+   *  wizard pre-populated. Consumed on each open transition; changing it
+   *  while the wizard is already open has no effect. */
+  initialValues?: CreateOfferRequest;
   onSubmitted: (offerCreationRecordId: string, connectionId: string) => void;
 }
 
@@ -88,6 +93,7 @@ export function CreateOfferWizard({
   isOpen,
   onClose,
   defaultConnectionId,
+  initialValues,
   onSubmitted,
 }: CreateOfferWizardProps): ReactElement {
   const mutation = useCreateOfferMutation();
@@ -105,23 +111,51 @@ export function CreateOfferWizard({
   const [productSearchInput, setProductSearchInput] = useState('');
   const [productOffset, setProductOffset] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  // True when the current session was opened via Retry with a snapshot.
+  // Lets Step 1 render a hint explaining why the picker looks empty
+  // despite the form carrying a variant id from the prior attempt.
+  const [wasPrefilled, setWasPrefilled] = useState(false);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
-  // Reset wizard state on open.
+  // Reset wizard state on open. A fresh idempotency key is minted every
+  // time the wizard opens — including the retry flow — so a failed record
+  // stays on the previous key and a retry creates a new OfferCreationRecord
+  // rather than colliding with the old one (issue #307 acceptance).
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       idempotencyKeyRef.current = crypto.randomUUID();
-      form.reset({ ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' });
-      setStepIndex(0);
-      setCompletedSteps(new Set());
+      if (initialValues) {
+        const prefilled = createOfferRequestToFormValues(
+          initialValues,
+          defaultConnectionId ?? '',
+        );
+        form.reset(prefilled);
+        // Jump to Step 2 with Steps 0 and 1 marked as completed so the
+        // operator lands directly on the offer-details form with the
+        // prior values visible. Step 0 is re-traversable via Back.
+        setStepIndex(1);
+        setCompletedSteps(new Set([0, 1]));
+        // Pre-select the product panel so Step 0 shows the correct
+        // expansion if the operator steps back. The variant id format
+        // is `ol_variant_*`; product id cannot be derived from it, so
+        // the picker simply opens empty on Back until the operator
+        // re-searches.
+        setSelectedProductId(null);
+        setWasPrefilled(true);
+      } else {
+        form.reset({ ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' });
+        setStepIndex(0);
+        setCompletedSteps(new Set());
+        setSelectedProductId(null);
+        setWasPrefilled(false);
+      }
       setProductSearchInput('');
       setProductOffset(0);
-      setSelectedProductId(null);
       mutation.reset();
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, defaultConnectionId, form, mutation]);
+  }, [isOpen, defaultConnectionId, initialValues, form, mutation]);
 
   // Abandon-prevention: warn if the operator closes the tab mid-flow.
   useEffect(() => {
@@ -279,6 +313,12 @@ export function CreateOfferWizard({
         >
           {stepIndex === 0 ? (
             <>
+              {wasPrefilled ? (
+                <Alert tone="info" title="Prior attempt re-loaded">
+                  Connection and variant were copied from the failed attempt. Search to change
+                  the variant if the original selection was wrong.
+                </Alert>
+              ) : null}
               <FormField
                 label="Connection"
                 name="connectionId"

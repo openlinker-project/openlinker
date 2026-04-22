@@ -90,6 +90,13 @@ describe('OfferCreationEnqueueService', () => {
       status: 'pending',
       errors: null,
       publishImmediately: false,
+      request: {
+        schemaVersion: 1,
+        internalVariantId: variantId,
+        stock: 5,
+        publishImmediately: false,
+        price: { amount: 99.99, currency: 'PLN' },
+      },
     });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
       jobType: 'marketplace.offer.create',
@@ -187,5 +194,55 @@ describe('OfferCreationEnqueueService', () => {
 
     const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
     expect(payload.overrides).toEqual(overrides);
+  });
+
+  it('persists the full request snapshot including overrides and schemaVersion', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+    const overrides = {
+      title: 'Shipped title',
+      categoryId: 'allegro-cat-1',
+      description: 'desc',
+      platformParams: { deliveryPolicyId: 'del-1', warrantyId: 'war-1' },
+    };
+
+    await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 7,
+      publishImmediately: true,
+      price: { amount: 49.5, currency: 'PLN' },
+      overrides,
+    });
+
+    const createdWith = records.create.mock.calls[0][0];
+    expect(createdWith.request).toEqual({
+      schemaVersion: 1,
+      internalVariantId: variantId,
+      stock: 7,
+      publishImmediately: true,
+      price: { amount: 49.5, currency: 'PLN' },
+      overrides,
+    });
+  });
+
+  it('omits price and overrides from the request snapshot when the caller does not supply them', async () => {
+    integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+    await service.enqueueCreation({
+      internalVariantId: variantId,
+      connectionId,
+      stock: 1,
+      publishImmediately: false,
+    });
+
+    const createdWith = records.create.mock.calls[0][0];
+    expect(createdWith.request).toEqual({
+      schemaVersion: 1,
+      internalVariantId: variantId,
+      stock: 1,
+      publishImmediately: false,
+    });
+    expect(createdWith.request).not.toHaveProperty('price');
+    expect(createdWith.request).not.toHaveProperty('overrides');
   });
 });

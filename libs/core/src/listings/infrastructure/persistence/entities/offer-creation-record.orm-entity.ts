@@ -20,6 +20,7 @@ import type {
   OfferCreationError,
   OfferCreationStatus,
 } from '../../../domain/types/offer-creation-record.types';
+import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-creation-request-snapshot.types';
 
 @Entity('offer_creation_records')
 @Index(['internalVariantId', 'connectionId'])
@@ -53,6 +54,14 @@ export class OfferCreationRecordOrmEntity {
 
   @Column({ type: 'boolean', default: false })
   publishImmediately!: boolean;
+
+  /**
+   * Snapshot of the original create-offer request payload. Nullable because
+   * records predating the 2026-04-22 schema change carry no payload; the
+   * retry-prefill path on the FE degrades gracefully when null.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  request!: OfferCreationRequestSnapshot | null;
 
   @CreateDateColumn()
   createdAt!: Date;
