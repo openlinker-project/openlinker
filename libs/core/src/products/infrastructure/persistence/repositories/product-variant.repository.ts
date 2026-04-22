@@ -110,11 +110,10 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
           mapping.internalId = variant.id
           AND mapping.connectionId = :connectionId
           AND mapping.entityType = :entityType
-          AND (mapping.context -> 'metadata' ->> 'isVariant') = 'true'
         `,
         {
           connectionId,
-          entityType: 'Product',
+          entityType: 'ProductVariant',
         },
       )
       .where(
@@ -152,8 +151,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       qb.innerJoin(
         'identifier_mappings',
         'mapping',
-        `mapping.internalId = variant.id AND mapping.connectionId = :connectionId AND mapping.entityType = :entityType AND (mapping.context -> 'metadata' ->> 'isVariant') = 'true'`,
-        { connectionId: filters.connectionId, entityType: 'Product' },
+        `mapping.internalId = variant.id AND mapping.connectionId = :connectionId AND mapping.entityType = :entityType`,
+        { connectionId: filters.connectionId, entityType: 'ProductVariant' },
       );
     }
 

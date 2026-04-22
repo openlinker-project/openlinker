@@ -319,9 +319,15 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(result[0].id).toBe('internal-variant-1');
       expect(result[1].id).toBe('internal-variant-2');
       expect(mockIdentifierMapping.deleteMapping).toHaveBeenCalledWith(
-        'Product',
+        'ProductVariant',
         `product:${externalProductId}`,
         connection.id,
+      );
+      expect(mockIdentifierMapping.batchGetOrCreateInternalIds).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ entityType: 'ProductVariant', externalId: '101' }),
+          expect.objectContaining({ entityType: 'ProductVariant', externalId: '102' }),
+        ]),
       );
     });
 
@@ -396,11 +402,20 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(result).toHaveLength(1);
       expect(result[0].sku).toBe(samplePrestashopProduct.reference);
       expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
-        'Product',
+        'ProductVariant',
         `product:${externalProductId}`,
         connection.id,
         expect.objectContaining({
-          metadata: expect.objectContaining({ isVariant: true, synthetic: true }),
+          metadata: expect.objectContaining({ synthetic: true }),
+        }),
+      );
+      // isVariant metadata shim is intentionally no longer written — entityType is authoritative.
+      expect(mockIdentifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({
+          metadata: expect.objectContaining({ isVariant: expect.anything() }),
         }),
       );
     });

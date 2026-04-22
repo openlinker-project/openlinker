@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { WebhookDeliveriesPage } from './webhook-deliveries-page';
 import type { WebhookDeliverySummary } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
@@ -26,6 +26,8 @@ const sampleDelivery: WebhookDeliverySummary = {
 };
 
 describe('WebhookDeliveriesPage', () => {
+  afterEach(cleanup);
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       webhookDeliveries: {
@@ -49,6 +51,18 @@ describe('WebhookDeliveriesPage', () => {
 
     expect(await screen.findByText('prestashop')).toBeInTheDocument();
     expect(await screen.findByText('order.created')).toBeInTheDocument();
+  });
+
+  it('renders the Diagnostics eyebrow so the header matches the sidebar group and breadcrumb', async () => {
+    const mockApi = createMockApiClient({
+      webhookDeliveries: {
+        list: vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 }),
+      },
+    });
+
+    renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Diagnostics')).toBeInTheDocument();
   });
 
   it('should show empty state when no deliveries', async () => {

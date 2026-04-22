@@ -18,6 +18,19 @@ export const EntityTypeValues = [
 
 export type EntityType = (typeof EntityTypeValues)[number];
 
+/**
+ * Entity types whose internal-ID prefix diverges from `entityType.toLowerCase()`.
+ *
+ * The default format is `ol_{entityType.toLowerCase()}_{uuid}`. Entries here
+ * override the prefix segment only. `ProductVariant` maps to `variant` so IDs
+ * remain the documented `ol_variant_*` shape (see `docs/architecture-overview.md`
+ * §"Internal Identifier Format") rather than the verbose `ol_productvariant_*`
+ * that the default lowercasing would produce.
+ */
+export const ENTITY_TYPE_ID_PREFIX: Partial<Record<EntityType, string>> = {
+  ProductVariant: 'variant',
+};
+
 export interface MappingContext {
   parentEntityType?: string;
   parentInternalId?: string;

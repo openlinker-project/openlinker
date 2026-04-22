@@ -128,7 +128,7 @@ describe('AllegroHttpClient', () => {
           method: 'GET',
           headers: expect.objectContaining({
             authorization: 'Bearer test-access-token-12345',
-            'content-type': 'application/json',
+            'content-type': 'application/vnd.allegro.public.v1+json',
             accept: 'application/vnd.allegro.public.v1+json',
           }),
         }),
@@ -232,6 +232,66 @@ describe('AllegroHttpClient', () => {
       const traceId = headers['x-trace-id'];
       expect(traceId).toBeDefined();
       expect(traceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    });
+  });
+
+  describe('headers', () => {
+    const TRACE_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    it('should use vendor media type as default Content-Type on PATCH', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.patch('/sale/product-offers/123', { name: 'new-title' });
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['content-type']).toBe('application/vnd.allegro.public.v1+json');
+    });
+
+    it('should honor caller-supplied Content-Type override', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.post(
+        '/test',
+        { foo: 'bar' },
+        { headers: { 'Content-Type': 'application/vnd.allegro.beta.v1+json' } },
+      );
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['content-type']).toBe('application/vnd.allegro.beta.v1+json');
+    });
+
+    it('should not allow caller to override structural headers (Authorization, X-Trace-Id)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.get('/test', {
+        headers: {
+          Authorization: 'Bearer evil',
+          'X-Trace-Id': 'attacker-controlled',
+        },
+      });
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers.authorization).toBe('Bearer test-access-token-12345');
+      expect(headers['x-trace-id']).not.toBe('attacker-controlled');
+      expect(headers['x-trace-id']).toMatch(TRACE_ID_REGEX);
     });
   });
 
@@ -420,6 +480,245 @@ describe('AllegroHttpClient', () => {
 
       expect(response.data).toEqual(mockData);
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('proactive token refresh', () => {
+    const NOW = new Date('2026-04-22T10:00:00.000Z').getTime();
+    // Cooldown constant mirrors AllegroHttpClient.PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS.
+    const COOLDOWN_MS = 5_000;
+    let refreshCallback: jest.Mock;
+
+    beforeEach(() => {
+      jest.setSystemTime(NOW);
+      refreshCallback = jest.fn();
+    });
+
+    // Build a no-retry client with controllable credentials. Skipping retries
+    // keeps the bulk of the suite single-attempt — the reactive-fallback test
+    // below opts into the default retry config explicitly.
+    const buildClient = (opts: {
+      expiresAt?: Date | string;
+      callback?: (connectionId: string) => Promise<{ accessToken: string; expiresAt?: Date | string }>;
+      accessToken?: string;
+    } = {}): AllegroHttpClient => {
+      return new AllegroHttpClient(
+        connectionId,
+        baseUrl,
+        { accessToken: opts.accessToken ?? 'initial-token', expiresAt: opts.expiresAt },
+        config,
+        { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 },
+        opts.callback,
+      );
+    };
+
+    const mockAlways200 = (): void => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+    };
+
+    it('should not trigger proactive refresh when no expiresAt is set (backward compat)', async () => {
+      mockAlways200();
+      const client = buildClient({ callback: refreshCallback });
+
+      await client.get('/test');
+
+      expect(refreshCallback).not.toHaveBeenCalled();
+    });
+
+    it('should not trigger proactive refresh when no refresh callback is provided', async () => {
+      mockAlways200();
+      const client = buildClient({ expiresAt: new Date(NOW - 1_000) });
+
+      await client.get('/test');
+
+      // Can't assert on a callback that doesn't exist — we assert the request
+      // still went through on the initial token.
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should treat a garbage expiresAt string as no expiry (no-op, no refresh)', async () => {
+      mockAlways200();
+      const client = buildClient({ expiresAt: 'not-a-date', callback: refreshCallback });
+
+      await client.get('/test');
+
+      expect(refreshCallback).not.toHaveBeenCalled();
+    });
+
+    it('should not trigger refresh when token is well within validity', async () => {
+      mockAlways200();
+      const client = buildClient({
+        expiresAt: new Date(NOW + 10 * 60_000), // 10 min out
+        callback: refreshCallback,
+      });
+
+      await client.get('/test');
+
+      expect(refreshCallback).not.toHaveBeenCalled();
+    });
+
+    it('should trigger proactive refresh when token is within 60s of expiry', async () => {
+      mockAlways200();
+      refreshCallback.mockResolvedValue({
+        accessToken: 'refreshed-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      const client = buildClient({
+        expiresAt: new Date(NOW + 30_000), // inside the 60s window
+        callback: refreshCallback,
+      });
+
+      await client.get('/test');
+
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+      expect(refreshCallback).toHaveBeenCalledWith(connectionId);
+    });
+
+    it('should use refreshed access token on the outgoing request', async () => {
+      mockAlways200();
+      refreshCallback.mockResolvedValue({
+        accessToken: 'refreshed-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      const client = buildClient({
+        expiresAt: new Date(NOW + 30_000),
+        callback: refreshCallback,
+      });
+
+      await client.get('/test');
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers.authorization).toBe('Bearer refreshed-token');
+    });
+
+    it('should update cached expiresAt from the refresh result so it does not re-refresh immediately', async () => {
+      mockAlways200();
+      refreshCallback.mockResolvedValue({
+        accessToken: 'refreshed-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      const client = buildClient({
+        expiresAt: new Date(NOW + 30_000),
+        callback: refreshCallback,
+      });
+
+      await client.get('/test1');
+      await client.get('/test2');
+
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+    });
+
+    it('should serialize concurrent refresh attempts (single-flight)', async () => {
+      mockAlways200();
+      // Hold the refresh pending until the three requests are suspended on it.
+      let resolveRefresh!: (v: { accessToken: string; expiresAt: string }) => void;
+      refreshCallback.mockReturnValue(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+      );
+      const client = buildClient({
+        expiresAt: new Date(NOW + 30_000),
+        callback: refreshCallback,
+      });
+
+      const p1 = client.get('/test1');
+      const p2 = client.get('/test2');
+      const p3 = client.get('/test3');
+
+      // All three requests are now parked on the same in-flight refresh.
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+
+      resolveRefresh({
+        accessToken: 'refreshed-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+
+      await Promise.all([p1, p2, p3]);
+
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+      for (const call of (global.fetch as jest.Mock).mock.calls as Array<[string, RequestInit]>) {
+        const headers = (call[1]?.headers as Record<string, string>) ?? {};
+        expect(headers.authorization).toBe('Bearer refreshed-token');
+      }
+    });
+
+    it('should fall through to reactive 401 path when proactive refresh throws', async () => {
+      // First callback invocation (proactive): fails → swallowed + cooldown set.
+      // Second invocation (reactive on 401): succeeds → request retries.
+      refreshCallback.mockRejectedValueOnce(new Error('refresh endpoint down'));
+      refreshCallback.mockResolvedValueOnce({
+        accessToken: 'recovered-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          headers: new Headers(),
+          text: () => Promise.resolve('{"error":"expired_token"}'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{}'),
+        });
+
+      // Need default retry config for the TokenRefreshedError → retry loop.
+      const client = new AllegroHttpClient(
+        connectionId,
+        baseUrl,
+        { accessToken: 'initial-token', expiresAt: new Date(NOW + 30_000) },
+        config,
+        undefined,
+        refreshCallback,
+      );
+
+      const response = await client.get('/test');
+
+      expect(response.status).toBe(200);
+      expect(refreshCallback).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      // The retry attempt carries the recovered token from the reactive path.
+      const retryCall = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
+      const retryHeaders = (retryCall[1]?.headers as Record<string, string>) ?? {};
+      expect(retryHeaders.authorization).toBe('Bearer recovered-token');
+    });
+
+    it('should honour proactive-refresh cooldown after a failure', async () => {
+      mockAlways200();
+      refreshCallback.mockRejectedValueOnce(new Error('transient failure'));
+      const client = buildClient({
+        expiresAt: new Date(NOW + 30_000),
+        callback: refreshCallback,
+      });
+
+      // First request: proactive refresh attempt fails (swallowed), request
+      // proceeds with the old token, server returns 200 — one callback invocation.
+      await client.get('/test1');
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+
+      // Still inside the 5s cooldown: no second proactive attempt.
+      jest.setSystemTime(NOW + 1_000);
+      await client.get('/test2');
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+
+      // Past the cooldown: proactive path resumes, this time it succeeds.
+      refreshCallback.mockResolvedValueOnce({
+        accessToken: 'recovered-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      jest.setSystemTime(NOW + COOLDOWN_MS + 1_000);
+      await client.get('/test3');
+      expect(refreshCallback).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -45,20 +45,32 @@ const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
   {
     id: 'provider',
     header: 'Provider',
-    cell: (d) => <span className="mono-text">{d.provider}</span>,
+    cell: (d) => (
+      <span className="mono-text" title={d.provider}>
+        {d.provider}
+      </span>
+    ),
     accessor: (d) => d.provider,
     sortable: true,
   },
   {
     id: 'eventType',
     header: 'Event type',
-    cell: (d) => <span className="mono-text">{d.eventType ?? '—'}</span>,
+    cell: (d) => (
+      <span className="mono-text" title={d.eventType ?? undefined}>
+        {d.eventType ?? '—'}
+      </span>
+    ),
     hideBelow: 768,
   },
   {
     id: 'connectionId',
     header: 'Connection',
-    cell: (d) => <span className="mono-text">{d.connectionId}</span>,
+    cell: (d) => (
+      <span className="mono-text" title={d.connectionId}>
+        {d.connectionId}
+      </span>
+    ),
     hideBelow: 1024,
   },
   {
@@ -121,7 +133,7 @@ export function WebhookDeliveriesPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow="Diagnostics"
       title="Webhook Deliveries"
       description="Inbound webhook visibility — signature, dedup, publish, and downstream job linkage."
     >

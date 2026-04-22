@@ -16,6 +16,7 @@ import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
 import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
+import { AllegroApiException } from '@openlinker/integrations-allegro';
 import { randomUUID } from 'crypto';
 
 describe('SyncJobRunner', () => {
@@ -275,6 +276,71 @@ describe('SyncJobRunner', () => {
         'String error',
         expect.any(Date),
       );
+    });
+
+    it('should mark job as dead when AllegroApiException has deterministic 4xx (415)', async () => {
+      const job = createMockJob(1, 10);
+      const url = 'https://api.allegro.pl/sale/product-offers/1';
+      const cause = new AllegroApiException('Unsupported content type', 415, 'body', url);
+      const error = new SyncJobExecutionError(
+        'Marketplace offer field update failed: Unsupported content type',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause,
+      );
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('should keep retrying when AllegroApiException has 5xx (503)', async () => {
+      const job = createMockJob(1, 10);
+      const url = 'https://api.allegro.pl/sale/product-offers/1';
+      const cause = new AllegroApiException('Service unavailable', 503, 'body', url);
+      const error = new SyncJobExecutionError(
+        'Allegro transient failure',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause,
+      );
+      jobRepository.markFailed.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date),
+      );
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('should keep retrying when AllegroApiException has transient 4xx (408)', async () => {
+      const job = createMockJob(1, 10);
+      const url = 'https://api.allegro.pl/sale/product-offers/1';
+      const cause = new AllegroApiException('Request timeout', 408, 'body', url);
+      const error = new SyncJobExecutionError(
+        'Allegro request timeout',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause,
+      );
+      jobRepository.markFailed.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date),
+      );
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
   });
 
