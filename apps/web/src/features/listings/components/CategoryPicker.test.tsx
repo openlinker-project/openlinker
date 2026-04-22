@@ -259,7 +259,9 @@ describe('CategoryPicker', () => {
     );
 
     await screen.findByText('Electronics');
-    const root = container.querySelector('.category-picker');
+    // In the non-prefill (browser) path, the root is the shared
+    // CategoryTreeBrowser primitive — ARIA wiring is forwarded to it.
+    const root = container.querySelector('.category-tree-browser');
     expect(root).toHaveAttribute('role', 'group');
     expect(root).toHaveAttribute('aria-labelledby', 'external-label');
     expect(root).toHaveAttribute('aria-describedby', 'external-description');

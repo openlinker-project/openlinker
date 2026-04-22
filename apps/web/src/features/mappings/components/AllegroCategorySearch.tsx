@@ -1,12 +1,15 @@
 /**
  * AllegroCategorySearch
  *
- * Browseable Allegro category tree with lazy-loaded children.
- * Shows breadcrumb path, allows selecting a category for mapping,
- * and clearing an existing mapping.
+ * Browseable Allegro category tree with lazy-loaded children for the
+ * PrestaShop↔Allegro category mapping editor. Thin wrapper around the
+ * shared `CategoryTreeBrowser` primitive — adds the current-mapping
+ * row, the staged-pick preview, and the "Save mapping" / "Cancel"
+ * confirmation flow.
  *
- * Selection is staged — clicking "Select" previews the pick. The caller
- * receives the final choice only when the user confirms with "Save mapping".
+ * Selection is staged — clicking Select (at any tree level) previews
+ * the pick. The caller receives the final choice only when the user
+ * confirms with "Save mapping".
  *
  * @module apps/web/src/features/mappings/components
  */
@@ -14,7 +17,12 @@
 import { useState, type ReactElement } from 'react';
 import { useAllegroCategoriesQuery } from '../hooks/use-allegro-categories';
 import { Button } from '../../../shared/ui/button';
-import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
+import {
+  buildCategoryPath,
+  CategoryTreeBrowser,
+  type CategoryTreeCrumb,
+  type CategoryTreeNode,
+} from '../../../shared/ui/category-tree-browser';
 import type { AllegroCategory, CategoryMapping } from '../api/mappings.types';
 
 interface AllegroCategorySearchProps {
@@ -23,11 +31,6 @@ interface AllegroCategorySearchProps {
   onSelect: (category: AllegroCategory, path: string) => void;
   onClear: () => void;
   isSaving: boolean;
-}
-
-interface BreadcrumbItem {
-  id: string;
-  name: string;
 }
 
 interface StagedPick {
@@ -42,28 +45,17 @@ export function AllegroCategorySearch({
   onClear,
   isSaving,
 }: AllegroCategorySearchProps): ReactElement {
-  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [staged, setStaged] = useState<StagedPick | null>(null);
-  const currentParentId = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : undefined;
 
-  const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, currentParentId);
+  const categoriesQuery = useAllegroCategoriesQuery(marketplaceConnectionId, parentId);
 
-  function navigateInto(category: AllegroCategory): void {
-    setBreadcrumbs((prev) => [...prev, { id: category.id, name: category.name }]);
-  }
-
-  function navigateTo(index: number): void {
-    setBreadcrumbs((prev) => prev.slice(0, index));
-  }
-
-  function buildPath(category: AllegroCategory): string {
-    const parts = breadcrumbs.map((b) => b.name);
-    parts.push(category.name);
-    return parts.join(' > ');
-  }
-
-  function handleStage(category: AllegroCategory): void {
-    setStaged({ category, path: buildPath(category) });
+  function handlePrimitiveSelect(
+    node: CategoryTreeNode,
+    breadcrumb: readonly CategoryTreeCrumb[],
+  ): void {
+    // Node shape from primitive is structurally compatible with AllegroCategory.
+    setStaged({ category: node as AllegroCategory, path: buildCategoryPath(breadcrumb, node) });
   }
 
   function handleSave(): void {
@@ -85,11 +77,7 @@ export function AllegroCategorySearch({
           {currentMapping.allegroCategoryPath && (
             <span className="allegro-category-search__path">{currentMapping.allegroCategoryPath}</span>
           )}
-          <Button
-            className="button--ghost button--sm"
-            onClick={onClear}
-            disabled={isSaving}
-          >
+          <Button className="button--ghost button--sm" onClick={onClear} disabled={isSaving}>
             Clear mapping
           </Button>
         </div>
@@ -122,79 +110,21 @@ export function AllegroCategorySearch({
         </div>
       )}
 
-      {/* Breadcrumb navigation */}
-      <nav className="allegro-category-search__breadcrumbs" aria-label="Category breadcrumbs">
-        <button
-          type="button"
-          className="allegro-category-search__crumb"
-          onClick={() => { navigateTo(0); }}
-        >
-          Root
-        </button>
-        {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.id}>
-            <span className="allegro-category-search__separator"> / </span>
-            <button
-              type="button"
-              className="allegro-category-search__crumb"
-              onClick={() => { navigateTo(i + 1); }}
-            >
-              {crumb.name}
-            </button>
-          </span>
-        ))}
-      </nav>
-
-      {/* Category list */}
-      {categoriesQuery.isLoading && (
-        <LoadingState liveRegion="off" title="Loading categories" message="Fetching Allegro categories..." />
-      )}
-
-      {categoriesQuery.error && (
-        <ErrorState
-          title="Unable to load categories"
-          message={categoriesQuery.error.message}
-          action={<Button onClick={() => { void categoriesQuery.refetch(); }}>Retry</Button>}
-        />
-      )}
-
-      {categoriesQuery.data && categoriesQuery.data.length === 0 && (
-        <EmptyState title="No subcategories" message="This category has no children." />
-      )}
-
-      {categoriesQuery.data && categoriesQuery.data.length > 0 && (
-        <ul className="allegro-category-search__list" role="list">
-          {categoriesQuery.data.map((cat) => (
-            <li
-              key={cat.id}
-              className={[
-                'allegro-category-search__item',
-                staged?.category.id === cat.id ? 'allegro-category-search__item--staged' : '',
-              ].filter(Boolean).join(' ')}
-            >
-              <span className="allegro-category-search__name">{cat.name}</span>
-              <span className="allegro-category-search__actions">
-                {!cat.leaf && (
-                  <button
-                    type="button"
-                    className="button button--ghost button--sm"
-                    onClick={() => { navigateInto(cat); }}
-                  >
-                    Browse
-                  </button>
-                )}
-                <Button
-                  className={staged?.category.id === cat.id ? 'button--secondary button--sm' : 'button--primary button--sm'}
-                  onClick={() => { handleStage(cat); }}
-                  disabled={isSaving}
-                >
-                  {staged?.category.id === cat.id ? 'Selected' : 'Select'}
-                </Button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Browse / navigate / select — shared primitive. `key` honors the
+          breadcrumb-reset contract if the caller ever swaps connections
+          without remounting this wrapper. */}
+      <CategoryTreeBrowser
+        key={marketplaceConnectionId}
+        nodes={categoriesQuery.data}
+        isLoading={categoriesQuery.isLoading}
+        error={categoriesQuery.error}
+        onRetry={() => void categoriesQuery.refetch()}
+        onSelect={handlePrimitiveSelect}
+        onNavigate={(pid) => setParentId(pid)}
+        selectedId={staged?.category.id ?? null}
+        canSelect={() => true}
+        disabled={isSaving}
+      />
     </div>
   );
 }
