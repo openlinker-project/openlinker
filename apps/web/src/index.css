@@ -3500,3 +3500,53 @@ textarea {
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
+
+/*
+ * ── Listing detail — Offer creation section (#306) ────────────────
+ * Surfaces the OfferCreationStatus badge (+ errors on failed) next to
+ * the mapping's key-value list. Only renders when the backend embeds
+ * `offerCreation` on the detail response (OL-created offers).
+ */
+.listing-detail-offer-creation {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+}
+
+.listing-detail-offer-creation__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.listing-detail-offer-creation__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/*
+ * ── Variant-picker pagination (#308) ──────────────────────────────
+ * Prev/Next footer inside the variant-picker scroll box. Renders only
+ * when total > VARIANT_PICKER_PAGE_SIZE.
+ */
+.create-offer-variant-picker__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.125rem 0.125rem;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.create-offer-variant-picker__pagination-actions {
+  display: flex;
+  gap: 0.375rem;
+}

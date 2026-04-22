@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ListingDetailPage } from './listing-detail-page';
-import type { OfferMapping } from '../../features/listings/api/listings.types';
+import type { OfferCreationStatusResponse, OfferMapping } from '../../features/listings/api/listings.types';
 
 function buildMapping(overrides: Partial<OfferMapping>): OfferMapping {
   return {
@@ -61,5 +61,54 @@ describe('ListingDetailPage', () => {
 
     await screen.findByText('ol_opaque_42');
     expect(screen.queryByRole('link', { name: 'ol_opaque_42' })).toBeNull();
+  });
+
+  it('renders the offer-creation section with an Active badge when offerCreation is present', async () => {
+    const offerCreation: OfferCreationStatusResponse = {
+      id: 'rec-1',
+      internalVariantId: 'ol_variant_abc',
+      connectionId: sampleConnection.id,
+      externalOfferId: 'ext-42',
+      status: 'active',
+      errors: null,
+      publishImmediately: true,
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:05:00.000Z',
+    };
+    renderDetail(buildMapping({ entityType: 'Offer', offerCreation }));
+
+    expect(await screen.findByRole('heading', { name: /offer creation/i })).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    // Not failed → no error list
+    expect(screen.queryByRole('list', { name: /offer creation errors/i })).toBeNull();
+  });
+
+  it('renders the error list when offerCreation.status is failed', async () => {
+    const offerCreation: OfferCreationStatusResponse = {
+      id: 'rec-2',
+      internalVariantId: 'ol_variant_abc',
+      connectionId: sampleConnection.id,
+      externalOfferId: null,
+      status: 'failed',
+      errors: [
+        { field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' },
+      ],
+      publishImmediately: false,
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:05:00.000Z',
+    };
+    renderDetail(buildMapping({ entityType: 'Offer', offerCreation }));
+
+    expect(await screen.findByText('Failed')).toBeInTheDocument();
+    expect(screen.getByText('parameters.EAN')).toBeInTheDocument();
+    expect(screen.getByText('EAN is required.')).toBeInTheDocument();
+  });
+
+  it('does not render the offer-creation section when offerCreation is absent', async () => {
+    renderDetail(buildMapping({ entityType: 'Offer' }));
+
+    // Wait for the page to fully render by asserting on a known element first
+    await screen.findByText('mapping_1');
+    expect(screen.queryByRole('heading', { name: /offer creation/i })).toBeNull();
   });
 });

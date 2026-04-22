@@ -68,6 +68,7 @@ describe('ListingsController', () => {
       create: jest.fn(),
       findById: jest.fn(),
       findLatestByVariantAndConnection: jest.fn(),
+      findByExternalOfferIdAndConnectionId: jest.fn(),
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
@@ -140,6 +141,7 @@ describe('ListingsController', () => {
   describe('getOfferMapping', () => {
     it('should return offer mapping when found', async () => {
       repository.findById.mockResolvedValue(mockMapping);
+      offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(null);
 
       const result = await controller.getOfferMapping('uuid-1');
 
@@ -153,6 +155,71 @@ describe('ListingsController', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(controller.getOfferMapping('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should embed offerCreation when an Offer mapping has a matching record', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      const linkedRecord = new OfferCreationRecord(
+        'record-42',
+        'ol_variant_abc123',
+        'conn-1',
+        'allegro-offer-456',
+        'active',
+        null,
+        true,
+        new Date('2026-04-20T10:00:00Z'),
+        new Date('2026-04-20T11:00:00Z'),
+      );
+      offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(linkedRecord);
+
+      const result = await controller.getOfferMapping('uuid-1');
+
+      expect(offerCreationRecords.findByExternalOfferIdAndConnectionId).toHaveBeenCalledWith(
+        'allegro-offer-456',
+        'conn-1',
+      );
+      expect(result.offerCreation).toEqual({
+        id: 'record-42',
+        internalVariantId: 'ol_variant_abc123',
+        connectionId: 'conn-1',
+        externalOfferId: 'allegro-offer-456',
+        status: 'active',
+        errors: null,
+        publishImmediately: true,
+        createdAt: '2026-04-20T10:00:00.000Z',
+        updatedAt: '2026-04-20T11:00:00.000Z',
+      });
+    });
+
+    it('should omit offerCreation when an Offer mapping has no matching record (synced-in)', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(null);
+
+      const result = await controller.getOfferMapping('uuid-1');
+
+      expect(offerCreationRecords.findByExternalOfferIdAndConnectionId).toHaveBeenCalledTimes(1);
+      expect(result.offerCreation).toBeUndefined();
+    });
+
+    it('should skip the creation-record lookup entirely for non-Offer entity types', async () => {
+      const productMapping = new IdentifierMapping(
+        'uuid-2',
+        'Product',
+        'ol_product_abc',
+        'prestashop-product-7',
+        'prestashop',
+        'conn-2',
+        null,
+        new Date('2026-01-01T00:00:00Z'),
+        new Date('2026-01-01T00:00:00Z'),
+      );
+      repository.findById.mockResolvedValue(productMapping);
+
+      const result = await controller.getOfferMapping('uuid-2');
+
+      expect(offerCreationRecords.findByExternalOfferIdAndConnectionId).not.toHaveBeenCalled();
+      expect(result.offerCreation).toBeUndefined();
+      expect(result.entityType).toBe('Product');
     });
   });
 

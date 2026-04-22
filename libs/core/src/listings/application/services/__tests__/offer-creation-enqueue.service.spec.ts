@@ -58,6 +58,7 @@ describe('OfferCreationEnqueueService', () => {
       create: jest.fn().mockResolvedValue(mockRecord),
       findById: jest.fn(),
       findLatestByVariantAndConnection: jest.fn(),
+      findByExternalOfferIdAndConnectionId: jest.fn(),
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),

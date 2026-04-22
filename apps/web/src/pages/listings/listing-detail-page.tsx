@@ -8,6 +8,8 @@ import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
+import { OfferCreationStatusBadge } from '../../features/listings/components/OfferCreationStatusBadge';
+import { OfferCreationErrorList } from '../../features/listings/components/OfferCreationErrorList';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import {
   KNOWN_MAPPING_ENTITY_TYPES,
@@ -101,6 +103,20 @@ export function ListingDetailPage(): ReactElement {
           ]}
         />
       </section>
+
+      {mapping.offerCreation ? (
+        <section className="detail-section">
+          <div className="listing-detail-offer-creation">
+            <div className="listing-detail-offer-creation__header">
+              <h3 className="listing-detail-offer-creation__title">Offer creation</h3>
+              <OfferCreationStatusBadge status={mapping.offerCreation.status} />
+            </div>
+            {mapping.offerCreation.status === 'failed' ? (
+              <OfferCreationErrorList errors={mapping.offerCreation.errors} />
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {mapping.context !== null ? (
         <section className="detail-section">

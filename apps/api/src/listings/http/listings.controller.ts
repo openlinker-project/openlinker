@@ -110,7 +110,22 @@ export class ListingsController {
     if (!mapping) {
       throw new NotFoundException(`Offer mapping not found: ${id}`);
     }
-    return this.toDto(mapping);
+
+    const dto = this.toDto(mapping);
+    // Enrich Offer-type mappings with the matching OfferCreationRecord so the
+    // detail page can show creation status + errors for OL-initiated offers
+    // without a second round-trip. Synced-in offers (no matching record) and
+    // non-Offer entity types fall through to a plain DTO.
+    if (mapping.entityType === 'Offer') {
+      const record = await this.offerCreationRecords.findByExternalOfferIdAndConnectionId(
+        mapping.externalId,
+        mapping.connectionId,
+      );
+      if (record) {
+        dto.offerCreation = this.toOfferCreationStatusDto(record);
+      }
+    }
+    return dto;
   }
 
   @Post('connections/:connectionId/offers/:offerId/fields')

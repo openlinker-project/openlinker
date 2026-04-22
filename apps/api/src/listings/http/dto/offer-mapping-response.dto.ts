@@ -7,6 +7,8 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import { OfferCreationStatusResponseDto } from './offer-creation-status-response.dto';
+
 export class OfferMappingResponseDto {
   @ApiProperty({ description: 'Mapping row ID' })
   id!: string;
@@ -34,4 +36,16 @@ export class OfferMappingResponseDto {
 
   @ApiProperty({ description: 'Last update timestamp (ISO 8601)' })
   updatedAt!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: OfferCreationStatusResponseDto,
+    description:
+      'Populated only by `GET /listings/:id` (detail endpoint) for Offer-type ' +
+      'mappings that originated from an OL-initiated create. Always absent on ' +
+      'list responses (`GET /listings`) regardless of creation history — the ' +
+      'list does not fan-out lookups per row. Absent on synced-in offers and ' +
+      'on non-Offer entity types (Product, Inventory, etc.).',
+  })
+  offerCreation?: OfferCreationStatusResponseDto | null;
 }

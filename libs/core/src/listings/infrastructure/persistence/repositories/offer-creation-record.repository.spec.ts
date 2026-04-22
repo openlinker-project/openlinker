@@ -154,6 +154,34 @@ describe('OfferCreationRecordRepository', () => {
     });
   });
 
+  describe('findByExternalOfferIdAndConnectionId', () => {
+    it('should scope the lookup by both externalOfferId and connectionId', async () => {
+      ormRepository.findOne.mockResolvedValue(buildOrm({ externalOfferId: 'allegro-999' }));
+
+      const result = await repository.findByExternalOfferIdAndConnectionId(
+        'allegro-999',
+        'conn-uuid',
+      );
+
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { externalOfferId: 'allegro-999', connectionId: 'conn-uuid' },
+      });
+      expect(result).toBeInstanceOf(OfferCreationRecord);
+      expect(result?.externalOfferId).toBe('allegro-999');
+    });
+
+    it('should return null when no record is linked to the external offer', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+
+      const result = await repository.findByExternalOfferIdAndConnectionId(
+        'allegro-unknown',
+        'conn-uuid',
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('updateStatus', () => {
     it('should update status and errors and return the updated domain entity', async () => {
       const existing = buildOrm();

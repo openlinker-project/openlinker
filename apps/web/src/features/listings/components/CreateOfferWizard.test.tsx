@@ -366,4 +366,117 @@ describe('CreateOfferWizard', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  describe('variant picker pagination (#308)', () => {
+    const page1Product = { ...product, id: 'ol_product_abc', name: 'Test Shirt' };
+    const page2Product = { ...product, id: 'ol_product_def', name: 'Page Two Shirt' };
+
+    it('does not render Prev/Next when total <= page size', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [page1Product], total: 1, limit: 10, offset: 0 });
+      const mockApi = defaultMocks({ products: { list, getById: vi.fn().mockResolvedValue(page1Product) } });
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await waitFor(() => expect(screen.getByText('Test Shirt')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: /previous page of products/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /next page of products/i })).not.toBeInTheDocument();
+    });
+
+    it('paginates forward and disables Next on the last page', async () => {
+      const list = vi
+        .fn()
+        .mockImplementation((_filters, pagination: { limit?: number; offset?: number } = {}) =>
+          Promise.resolve(
+            (pagination.offset ?? 0) === 0
+              ? { items: [page1Product], total: 15, limit: 10, offset: 0 }
+              : { items: [page2Product], total: 15, limit: 10, offset: 10 },
+          ),
+        );
+      const mockApi = defaultMocks({
+        products: { list, getById: vi.fn().mockResolvedValue(page1Product) },
+      });
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      // Page 1: Prev disabled, Next enabled
+      await waitFor(() => expect(screen.getByText('Test Shirt')).toBeInTheDocument());
+      const prev = await screen.findByRole('button', { name: /previous page of products/i });
+      const next = await screen.findByRole('button', { name: /next page of products/i });
+      expect(prev).toBeDisabled();
+      expect(next).not.toBeDisabled();
+
+      // Click Next → page 2
+      fireEvent.click(next);
+      await waitFor(() => expect(screen.getByText('Page Two Shirt')).toBeInTheDocument());
+      expect(list).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ offset: 10 }),
+      );
+
+      // Page 2 of 15: Prev enabled, Next disabled (10 + 10 >= 15)
+      const prevAfter = screen.getByRole('button', { name: /previous page of products/i });
+      const nextAfter = screen.getByRole('button', { name: /next page of products/i });
+      expect(prevAfter).not.toBeDisabled();
+      expect(nextAfter).toBeDisabled();
+    });
+
+    it('resets offset to 0 when the search input changes', async () => {
+      const list = vi
+        .fn()
+        .mockImplementation((filters: { search?: string } = {}, pagination: { offset?: number } = {}) =>
+          Promise.resolve(
+            filters.search
+              ? { items: [page2Product], total: 1, limit: 10, offset: 0 }
+              : (pagination.offset ?? 0) === 0
+                ? { items: [page1Product], total: 15, limit: 10, offset: 0 }
+                : { items: [], total: 15, limit: 10, offset: 10 },
+          ),
+        );
+      const mockApi = defaultMocks({
+        products: { list, getById: vi.fn().mockResolvedValue(page1Product) },
+      });
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      // Advance to page 2
+      await waitFor(() => expect(screen.getByText('Test Shirt')).toBeInTheDocument());
+      fireEvent.click(await screen.findByRole('button', { name: /next page of products/i }));
+      await waitFor(() =>
+        expect(list).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ offset: 10 })),
+      );
+
+      // Type in search — offset must reset to 0 (last call after debounce)
+      const searchInput = screen.getByLabelText(/search products/i);
+      fireEvent.change(searchInput, { target: { value: 'page two' } });
+      await waitFor(
+        () => {
+          const lastCall = list.mock.calls[list.mock.calls.length - 1];
+          expect(lastCall[0]).toEqual(expect.objectContaining({ search: 'page two' }));
+          expect(lastCall[1]).toEqual(expect.objectContaining({ offset: 0 }));
+        },
+        { timeout: 1000 },
+      );
+    });
+  });
 });

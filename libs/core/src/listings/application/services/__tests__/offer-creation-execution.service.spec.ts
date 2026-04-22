@@ -74,6 +74,7 @@ describe('OfferCreationExecutionService', () => {
       create: jest.fn().mockResolvedValue(buildRecord()),
       findById: jest.fn(),
       findLatestByVariantAndConnection: jest.fn(),
+      findByExternalOfferIdAndConnectionId: jest.fn(),
       updateStatus: jest
         .fn()
         .mockImplementation((id, status, errors) =>

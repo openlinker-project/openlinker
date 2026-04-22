@@ -42,6 +42,22 @@ export interface OfferCreationRecordRepositoryPort {
   ): Promise<OfferCreationRecord | null>;
 
   /**
+   * Look up the record that produced a given marketplace offer. Matches by
+   * (externalOfferId, connectionId) so cross-connection collisions do not
+   * return a false positive. Returns null when no record has been linked to
+   * the offer — i.e. the mapping was synced-in rather than OL-created, or the
+   * offer's creation record was never written.
+   *
+   * External offer ids are only assigned once the adapter returns successfully,
+   * so pre-creation rows (status `pending` with null externalOfferId) are
+   * never returned by this method.
+   */
+  findByExternalOfferIdAndConnectionId(
+    externalOfferId: string,
+    connectionId: string,
+  ): Promise<OfferCreationRecord | null>;
+
+  /**
    * Update status (and optionally errors) for an existing record.
    *
    * `errors` semantics:
