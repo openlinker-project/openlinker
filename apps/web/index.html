@@ -23,6 +23,33 @@
         }
       })();
     </script>
+    <!--
+      Preload the hot-path IBM Plex weights so they arrive before the main JS
+      bundle and avoid FOUT on first paint. `crossorigin` is mandatory —
+      without it the preload is treated as a separate request and re-fetched.
+      Full face set + unicode-range declarations live in `src/index.css`.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-sans-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-sans-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-mono-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
   </head>
   <body>
     <div id="root"></div>
