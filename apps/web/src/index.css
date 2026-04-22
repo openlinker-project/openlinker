@@ -607,25 +607,6 @@ textarea {
   flex: 1;
 }
 
-.shell-search {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .shell-search {
-    display: block;
-    flex: 0 1 320px;
-    min-width: 0;
-  }
-
-  .shell-search .control,
-  .shell-search input {
-    height: 32px;
-    padding: 0 10px;
-    font-size: 13px;
-  }
-}
-
 .shell-topbar__alerts {
   padding: 6px 10px;
   font-size: 12.5px;
