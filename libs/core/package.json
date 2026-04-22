@@ -116,6 +116,16 @@
       "types": "./dist/webhooks/*.d.ts",
       "require": "./dist/webhooks/*.js",
       "default": "./dist/webhooks/*.js"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "require": "./dist/ai/index.js",
+      "default": "./dist/ai/index.js"
+    },
+    "./ai/*": {
+      "types": "./dist/ai/*.d.ts",
+      "require": "./dist/ai/*.js",
+      "default": "./dist/ai/*.js"
     }
   },
   "files": ["dist"],
