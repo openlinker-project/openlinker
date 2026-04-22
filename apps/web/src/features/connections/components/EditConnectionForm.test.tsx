@@ -29,8 +29,8 @@ const allegroConnection: Connection = {
   name: 'Allegro sandbox',
   platformType: 'allegro',
   config: { environment: 'sandbox' },
-  enabledCapabilities: ['Marketplace', 'OrderProcessorManager'],
-  supportedCapabilities: ['Marketplace', 'OrderProcessorManager'],
+  enabledCapabilities: ['OfferManager', 'OrderProcessorManager'],
+  supportedCapabilities: ['OfferManager', 'OrderProcessorManager'],
   adapterKey: 'allegro.publicapi.v1',
 };
 

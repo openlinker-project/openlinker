@@ -8,11 +8,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import {
-  OfferCreationError,
-  OfferCreationStatus,
-  OfferCreationStatusValues,
-} from '@openlinker/core/listings';
+import { OfferCreationError, OfferCreationStatus, OfferCreationStatusValues } from '@openlinker/core/listings';
 
 import { OfferCreationRequestPayloadDto } from './offer-creation-request-payload-response.dto';
 

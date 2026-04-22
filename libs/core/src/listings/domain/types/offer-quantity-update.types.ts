@@ -1,11 +1,12 @@
 /**
- * Marketplace Offer Quantity Update Types
+ * Offer Quantity Update Types
  *
- * Canonical command and result types for updating offer quantity on a marketplace.
+ * Canonical command and result types for updating offer quantity via
+ * `OfferManagerPort.updateOfferQuantity` and `updateOfferQuantitiesBatch`.
  *
  * Domain-only: no framework dependencies.
  *
- * @module libs/core/src/integrations/domain/types
+ * @module libs/core/src/listings/domain/types
  */
 
 /**
@@ -46,4 +47,3 @@ export interface UpdateOfferQuantitiesBatchResult {
   succeeded: string[]; // offerIds
   failed: UpdateOfferQuantitiesBatchFailure[];
 }
-

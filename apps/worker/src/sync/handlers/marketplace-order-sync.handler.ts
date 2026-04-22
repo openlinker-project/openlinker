@@ -39,7 +39,7 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
     );
 
     try {
-      await this.orderIngestion.syncOrderFromMarketplace(
+      await this.orderIngestion.syncOrderFromSource(
         job.connectionId,
         payload.externalOrderId,
         payload.sourceEventId,

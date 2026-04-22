@@ -15,10 +15,7 @@ import { RedisClientType } from 'redis';
 import { AllegroConnectionConfig, AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
 import { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
-import {
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
-} from '@openlinker/core/integrations';
+import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
 import { IAllegroOAuthService } from '../interfaces/allegro-oauth.service.interface';
 import type {
   AllegroOAuthAuthorizationResponse,

@@ -18,10 +18,7 @@ import {
   ConnectionCursorRepositoryPort,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
 } from '@openlinker/core/sync';
-import {
-  IOfferMappingSyncService,
-  OFFER_MAPPING_SYNC_SERVICE_TOKEN,
-} from '@openlinker/core/listings';
+import { IOfferMappingSyncService, OFFER_MAPPING_SYNC_SERVICE_TOKEN } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;

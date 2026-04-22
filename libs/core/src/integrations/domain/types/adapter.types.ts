@@ -20,7 +20,7 @@ export const CapabilityValues = [
   'InventoryMaster',
   'OrderProcessorManager',
   'OrderSource',
-  'Marketplace',
+  'OfferManager',
 ] as const;
 
 /**

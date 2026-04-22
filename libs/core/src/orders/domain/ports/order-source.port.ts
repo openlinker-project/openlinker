@@ -1,95 +1,58 @@
 /**
  * Order Source Port
  *
- * Defines the contract for reading orders from external sources (e.g., PrestaShop,
- * Allegro). This is a read-only port for fetching orders from order sources.
- * Order lifecycle management (create, update, cancel) is handled by OrderProcessorManagerPort.
- *
- * This separation enables multiple order sources (PrestaShop website orders + Allegro
- * marketplace orders) while keeping write operations separate.
+ * Defines the contract for reading orders from external sources. Platform-neutral:
+ * implemented by both marketplace adapters (Allegro event feed) and shop adapters
+ * (PrestaShop `date_upd` watermark). Order lifecycle management (create, update,
+ * cancel) is handled by `OrderProcessorManagerPort`.
  *
  * @module libs/core/src/orders/domain/ports
  * @see {@link OrderProcessorManagerPort} for order lifecycle management
  */
-import { OrderFilters } from '../types/order.types';
 
-/**
- * Order domain entity (minimal interface for port)
- * Full entity definition should be in domain/entities/order.entity.ts
- */
-export interface Order {
-  id: string;
-  orderNumber?: string;
-  status: string;
-  customerId?: string;
-  items: OrderItem[];
-  totals: OrderTotals;
-  shippingAddress?: Address;
-  billingAddress?: Address;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface OrderItem {
-  id: string;
-  productId: string;
-  variantId?: string;
-  quantity: number;
-  price: number;
-  sku?: string;
-}
-
-export interface OrderTotals {
-  subtotal: number;
-  tax: number;
-  shipping: number;
-  total: number;
-  currency: string;
-}
-
-export interface Address {
-  firstName?: string;
-  lastName?: string;
-  company?: string;
-  address1: string;
-  address2?: string;
-  city: string;
-  state?: string;
-  postalCode: string;
-  country: string;
-  phone?: string;
-}
+import type { OrderFeedInput, OrderFeedOutput } from '../types/order-feed.types';
+import type { IncomingOrder } from '../types/incoming-order.types';
 
 /**
  * Order Source Port
  *
  * Read-only port for fetching orders from external sources.
+ *
  * Adapters implementing this port are responsible for:
- * - Fetching orders from external platforms
- * - Transforming external order data to OpenLinker unified schema
- * - Replacing external IDs with internal OpenLinker IDs using IdentifierMappingService
+ * - Fetching incremental order events from the external platform
+ * - Transforming external order data to OpenLinker unified `IncomingOrder` schema
+ * - Replacing external IDs with internal OpenLinker IDs using `IdentifierMappingService`
+ *
+ * ## Cursor semantics
+ *
+ * `fromCursor` / `nextCursor` are opaque adapter-defined strings. The caller
+ * persists the value returned by the adapter and replays it unchanged on the
+ * next call.
+ *
+ * - **Allegro**: cursor is the marketplace's event-journal ID (e.g. the last
+ *   `event.id` seen in `GET /sale/order-events`).
+ * - **PrestaShop**: cursor is a `date_upd` watermark (ISO timestamp of the
+ *   most-recently-updated order observed on the previous page).
+ * - `null` input cursor means "start from the beginning" (adapter-defined —
+ *   often the newest N events, or a reasonable lookback window).
+ * - `null` output cursor means "no further pages / no cursor advancement
+ *   possible right now".
  */
 export interface OrderSourcePort {
   /**
-   * Get orders with filters
+   * List incremental order feed items (event journal).
    *
-   * Fetches orders from the external source matching the provided filters.
-   * Returns orders with internal OpenLinker IDs (not external platform IDs).
-   *
-   * @param filters - Filter criteria (date range, status, pagination, etc.)
-   * @returns Array of orders with internal IDs
+   * Returns a page of order-event references with a `nextCursor` for
+   * continuation. The caller hydrates each reference separately via `getOrder`.
    */
-  getOrders(filters: OrderFilters): Promise<Order[]>;
+  listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput>;
 
   /**
-   * Get order by ID
+   * Fetch a full order by source-native external id.
    *
-   * Fetches a single order by its internal OpenLinker ID.
-   * The adapter must resolve the internal ID to external ID using IdentifierMappingService.
-   *
-   * @param orderId - Internal OpenLinker order ID
-   * @returns Order with internal IDs
-   * @throws Error if order not found
+   * Called by `OrderIngestionService` for each feed item to materialize the
+   * full `IncomingOrder` payload from the source. Returns internal IDs where
+   * possible (products, customer) via `IdentifierMappingService`.
    */
-  getOrder(orderId: string): Promise<Order>;
+  getOrder(input: { externalOrderId: string }): Promise<IncomingOrder>;
 }

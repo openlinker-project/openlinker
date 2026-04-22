@@ -60,7 +60,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   const marketplaceConnections = useMemo(
     () =>
       (connectionsQuery.data ?? []).filter(
-        (c) => c.status === 'active' && c.enabledCapabilities.includes('Marketplace'),
+        (c) => c.status === 'active' && c.enabledCapabilities.includes('OfferManager'),
       ),
     [connectionsQuery.data],
   );

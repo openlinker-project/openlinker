@@ -30,15 +30,9 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
-import {
-  CreateOfferCommand,
-  CreateOfferResult,
-  CreateOfferValidationError,
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplaceOfferCreateRejectedException,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { CreateOfferCommand, CreateOfferResult, CreateOfferValidationError, OfferCreateRejectedException } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 import { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
@@ -99,9 +93,9 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       throw error;
     }
 
-    const adapter = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       input.connectionId,
-      'Marketplace',
+      'OfferManager',
     );
     if (!adapter.createOffer) {
       throw new Error(
@@ -113,7 +107,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     try {
       result = await adapter.createOffer(command);
     } catch (error) {
-      if (error instanceof MarketplaceOfferCreateRejectedException) {
+      if (error instanceof OfferCreateRejectedException) {
         const updated = await this.offerCreationRecords.updateStatus(
           record.id,
           'failed',
@@ -196,7 +190,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     return null;
   }
 
-  private mapRejectionErrors(error: MarketplaceOfferCreateRejectedException): OfferCreationError[] {
+  private mapRejectionErrors(error: OfferCreateRejectedException): OfferCreationError[] {
     return error.errors.map((e) => ({
       field: e.field,
       code: e.code,

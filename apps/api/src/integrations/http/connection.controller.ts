@@ -27,10 +27,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
-import {
-  IWebhookSecretService,
-  WEBHOOK_SECRET_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IWebhookSecretService, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -42,11 +39,7 @@ import { ConnectionService } from '../application/services/connection.service';
 import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  Capability,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, Capability } from '@openlinker/core/integrations';
 
 @ApiBearerAuth()
 @ApiTags('connections')

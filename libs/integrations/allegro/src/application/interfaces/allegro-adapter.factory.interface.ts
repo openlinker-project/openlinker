@@ -10,16 +10,20 @@
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations';
 // eslint-disable-next-line no-restricted-imports
-import { AllegroMarketplaceAdapter } from '../../infrastructure/adapters/allegro-marketplace.adapter';
+import { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
+// eslint-disable-next-line no-restricted-imports
+import { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/allegro-order-source.adapter';
 
 /**
  * Allegro adapter instances
  *
  * Container for all capability adapters created from a Connection.
- * For MVP, only Marketplace adapter is implemented.
+ * Both adapters share the same Allegro HTTP client + identifier-mapping
+ * instance constructed once per `createAdapters()` call.
  */
 export interface AllegroAdapters {
-  marketplace: AllegroMarketplaceAdapter;
+  offerManager: AllegroOfferManagerAdapter;
+  orderSource: AllegroOrderSourceAdapter;
 }
 
 /**
@@ -42,5 +46,3 @@ export interface IAllegroAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
   ): Promise<AllegroAdapters>;
 }
-
-

@@ -5,7 +5,7 @@
  * created outbound on a marketplace (OL → Allegro / WooCommerce / eBay / etc.).
  *
  * Not to be confused with `CreateOfferResultStatus` from
- * `integrations/domain/types/marketplace-offer-create.types.ts`, which is the
+ * `listings/domain/types/offer-create.types.ts`, which is the
  * momentary status returned by the adapter right after the platform API call.
  * `OfferCreationStatus` is the broader persisted lifecycle, including `pending`
  * (before the adapter was called) and `failed` (post-validation failure).

@@ -9,10 +9,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,

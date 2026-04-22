@@ -10,10 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { AllegroOAuthService } from './allegro-oauth.service';
 import { ConnectionService } from './connection.service';
-import {
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
-} from '@openlinker/core/integrations';
+import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
 
 describe('AllegroOAuthService', () => {
   let service: AllegroOAuthService;

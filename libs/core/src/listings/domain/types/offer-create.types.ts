@@ -1,13 +1,13 @@
 /**
- * Marketplace Offer Create Types
+ * Offer Create Types
  *
  * Command and result types for creating a new offer on a marketplace (outbound,
- * OpenLinker → marketplace). Command is marketplace-neutral; adapter-specific
- * fields (Allegro delivery policy IDs, eBay shipping options, WooCommerce tax
- * classes, etc.) are carried through `overrides.platformParams` as an opaque
- * record the adapter interprets.
+ * OpenLinker → marketplace) via `OfferManagerPort.createOffer`. Command is
+ * marketplace-neutral; adapter-specific fields (Allegro delivery policy IDs,
+ * eBay shipping options, WooCommerce tax classes, etc.) are carried through
+ * `overrides.platformParams` as an opaque record the adapter interprets.
  *
- * @module libs/core/src/integrations/domain/types
+ * @module libs/core/src/listings/domain/types
  */
 
 /**
@@ -101,7 +101,7 @@ export interface CreateOfferValidationError {
 }
 
 /**
- * Result returned by `MarketplacePort.createOffer`.
+ * Result returned by `OfferManagerPort.createOffer`.
  *
  * A non-throwing response means the offer was successfully *created* on the
  * platform (the `externalOfferId` exists) even if `validationErrors` is

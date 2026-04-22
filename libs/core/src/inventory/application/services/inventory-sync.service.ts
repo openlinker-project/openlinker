@@ -8,14 +8,9 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-  UpdateOfferQuantityCommand,
-  UpdateOfferQuantitiesBatchCommand,
-  UpdateOfferQuantitiesBatchResult,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { UpdateOfferQuantityCommand, UpdateOfferQuantitiesBatchCommand, UpdateOfferQuantitiesBatchResult } from '@openlinker/core/listings';
 import { IInventorySyncService } from './inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -43,9 +38,9 @@ export class InventorySyncService implements IInventorySyncService {
       return { succeeded: [], failed: [] };
     }
 
-    const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     const normalized: UpdateOfferQuantitiesBatchCommand = {

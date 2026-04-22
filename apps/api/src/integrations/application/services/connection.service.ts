@@ -23,17 +23,7 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  ConnectionTesterRegistryService,
-  CONNECTION_TESTER_REGISTRY_TOKEN,
-  CREDENTIALS_RESOLVER_TOKEN,
-  CredentialsResolverPort,
-  ConnectionTestResult,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTestResult } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,

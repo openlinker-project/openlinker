@@ -17,17 +17,7 @@ import {
   ConnectionUpdate,
   ConnectionFilters,
 } from '@openlinker/core/identifier-mapping';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  ConnectionTesterRegistryService,
-  CONNECTION_TESTER_REGISTRY_TOKEN,
-  CREDENTIALS_RESOLVER_TOKEN,
-  CredentialsResolverPort,
-  ConnectionTesterPort,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTesterPort } from '@openlinker/core/integrations';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
@@ -51,7 +41,7 @@ describe('ConnectionService', () => {
     new Date(),
   
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
   );
 
   beforeEach(async () => {
@@ -249,7 +239,7 @@ describe('ConnectionService', () => {
       integrationsService.getAdapter.mockResolvedValue({
         connection: mockConnection,
         adapter: {},
-        metadata: { supportedCapabilities: ['Marketplace'] },
+        metadata: { supportedCapabilities: ['OfferManager'] },
       } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
 
       await service.create(payload);
@@ -320,7 +310,7 @@ describe('ConnectionService', () => {
         new Date(),
       
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
 
       connectionPort.get.mockResolvedValue(mockConnection);
@@ -443,7 +433,7 @@ describe('ConnectionService', () => {
         new Date(),
       
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'Marketplace'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
       );
 
       connectionPort.disable.mockResolvedValue(disabledConnection);

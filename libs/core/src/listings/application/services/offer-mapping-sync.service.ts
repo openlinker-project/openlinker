@@ -6,12 +6,9 @@
  * @module libs/core/src/listings/application/services
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-  MarketplaceOfferFeedItem,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { OfferFeedItem } from '@openlinker/core/listings';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -54,9 +51,9 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     const { connection } = await this.integrationsService.getAdapter(connectionId);
     const masterConnectionId = this.getMasterCatalogConnectionId(connection.config);
 
-    const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'Marketplace',
+      'OfferManager',
     );
     const feed = await this.loadOfferFeed(marketplace, {
       cursor: options.cursor ?? null,
@@ -115,9 +112,9 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
   }
 
   private async loadOfferFeed(
-    marketplace: MarketplacePort,
+    marketplace: OfferManagerPort,
     input: { cursor: string | null; limit: number; feedType: 'offers' | 'events' },
-  ): Promise<{ items: MarketplaceOfferFeedItem[]; nextCursor: string | null }> {
+  ): Promise<{ items: OfferFeedItem[]; nextCursor: string | null }> {
     if (input.feedType === 'events') {
       if (!marketplace.listOfferEvents) {
         this.logger.warn(
@@ -136,7 +133,7 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
   }
 
   private async buildLookups(
-    items: MarketplaceOfferFeedItem[],
+    items: OfferFeedItem[],
     masterConnectionId: string | null,
   ): Promise<OfferLinkingLookups> {
     const externalRefs = this.uniqueValues(items.map((i) => i.externalRef));

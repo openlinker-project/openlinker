@@ -68,7 +68,9 @@ describe('Allegro Order Sync End-to-End Integration', () => {
 
     // Mock IntegrationsService to return our mock adapters
     jest.spyOn(integrationsService, 'getCapabilityAdapter').mockImplementation(async (_connectionId: string, capability: string) => {
-      if (capability === 'Marketplace') {
+      // Post-#328: order ingestion resolves 'OrderSource'; offer-side resolves 'OfferManager'.
+      // The helper factory returns a combined mock so both capabilities share the same shape.
+      if (capability === 'OrderSource' || capability === 'OfferManager') {
         return mockMarketplaceAdapter as any;
       }
       if (capability === 'OrderProcessorManager') {
@@ -128,8 +130,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
 
       // 4. Execute poll handler
-      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
-      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
+      const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
+      const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedPollJob);
 
       // Mark poll job as succeeded
@@ -206,8 +208,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const { MarketplaceOrdersPollHandler } = require('../../src/sync/handlers/marketplace-orders-poll.handler');
-      const pollHandler = harness.get(MarketplaceOrdersPollHandler);
+      const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
+      const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedPollJob);
       await jobRepository.markSucceeded(persistedPollJob.id);
 

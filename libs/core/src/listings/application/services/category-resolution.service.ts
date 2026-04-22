@@ -12,11 +12,8 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import {
@@ -69,9 +66,9 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
   private async tryAutoDetect(connectionId: string, barcode: string): Promise<string | null> {
     try {
-      const marketplace = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+      const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
         connectionId,
-        'Marketplace',
+        'OfferManager',
       );
       if (!marketplace.matchCategoryByBarcode) {
         this.logger.debug(

@@ -108,7 +108,8 @@ All TypeScript projects must use strict mode:
 - Examples:
   - `PrestashopInventoryMasterAdapter`
   - `PrestashopOrderProcessorAdapter`
-  - `AllegroMarketplaceAdapter`
+  - `AllegroOfferManagerAdapter`
+  - `AllegroOrderSourceAdapter`
 
 #### Domain Entities
 
@@ -467,7 +468,8 @@ export const CapabilityValues = [
   'ProductMaster',
   'InventoryMaster',
   'OrderProcessorManager',
-  'Marketplace',
+  'OrderSource',
+  'OfferManager',
 ] as const;
 
 /**

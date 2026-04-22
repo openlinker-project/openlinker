@@ -1,9 +1,11 @@
 /**
- * Marketplace Offer Feed Types
+ * Offer Feed Types
  *
- * Canonical offer feed types for marketplace integrations.
+ * Canonical offer feed types consumed by `OfferManagerPort.listOffers` /
+ * `listOfferEvents`. Platform-neutral; marketplace adapters map their native
+ * offer-listing responses into this shape.
  *
- * @module libs/core/src/integrations/domain/types
+ * @module libs/core/src/listings/domain/types
  */
 
 /**
@@ -11,7 +13,7 @@
  *
  * cursor is opaque and adapter-specific (e.g., offset for Allegro).
  */
-export interface MarketplaceOfferFeedInput {
+export interface OfferFeedInput {
   cursor?: string | null;
   limit: number;
 }
@@ -19,7 +21,7 @@ export interface MarketplaceOfferFeedInput {
 /**
  * Single offer feed item with deterministic linking keys.
  */
-export interface MarketplaceOfferFeedItem {
+export interface OfferFeedItem {
   offerId: string;
   externalRef?: string | null;
   sku?: string | null;
@@ -31,7 +33,7 @@ export interface MarketplaceOfferFeedItem {
 /**
  * Offer feed output.
  */
-export interface MarketplaceOfferFeedOutput {
-  items: MarketplaceOfferFeedItem[];
+export interface OfferFeedOutput {
+  items: OfferFeedItem[];
   nextCursor: string | null;
 }

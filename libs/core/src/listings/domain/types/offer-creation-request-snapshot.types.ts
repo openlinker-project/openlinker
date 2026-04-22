@@ -14,7 +14,7 @@
  * @module libs/core/src/listings/domain/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/integrations';
+import type { CreateOfferOverrides } from '@openlinker/core/listings';
 
 /**
  * Current snapshot schema version. Bump when the shape changes incompatibly;

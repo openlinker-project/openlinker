@@ -9,7 +9,8 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN, SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
@@ -70,9 +71,7 @@ describe('Marketplace Offers Sync End-to-End Integration', () => {
     });
     await variantRepo.save(variant);
 
-    const mockMarketplaceAdapter: MarketplacePort = {
-      listOrderFeed: jest.fn(),
-      getOrder: jest.fn(),
+    const mockMarketplaceAdapter: OfferManagerPort = {
       updateOfferQuantity: jest.fn(),
       listOffers: jest.fn().mockResolvedValue({
         items: [{ offerId: 'offer-1', externalRef: 'SKU-1' }],
@@ -82,8 +81,8 @@ describe('Marketplace Offers Sync End-to-End Integration', () => {
 
     jest.spyOn(integrationsService, 'getCapabilityAdapter').mockImplementation(
       async (_connectionId: string, capability: string) => {
-        if (capability === 'Marketplace') {
-          return mockMarketplaceAdapter as unknown as MarketplacePort;
+        if (capability === 'OfferManager') {
+          return mockMarketplaceAdapter as unknown as OfferManagerPort;
         }
         throw new Error(`Unsupported capability: ${capability}`);
       },

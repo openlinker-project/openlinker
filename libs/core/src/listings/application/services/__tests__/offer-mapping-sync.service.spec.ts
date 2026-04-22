@@ -5,7 +5,8 @@
  */
 import { OfferMappingSyncService } from '../offer-mapping-sync.service';
 import { OfferLinkingService } from '../offer-linking.service';
-import { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
 import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
 import { ProductVariant } from '@openlinker/core/products';
@@ -28,7 +29,7 @@ describe('OfferMappingSyncService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let variantRepository: jest.Mocked<ProductVariantRepositoryPort>;
-  let marketplace: jest.Mocked<MarketplacePort>;
+  let marketplace: jest.Mocked<OfferManagerPort>;
 
   beforeEach(() => {
     marketplace = {
@@ -37,7 +38,7 @@ describe('OfferMappingSyncService', () => {
       updateOfferQuantity: jest.fn(),
       listOffers: jest.fn(),
       listOfferEvents: jest.fn(),
-    } as unknown as jest.Mocked<MarketplacePort>;
+    } as unknown as jest.Mocked<OfferManagerPort>;
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(marketplace),
@@ -55,7 +56,7 @@ describe('OfferMappingSyncService', () => {
         adapter: marketplace,
         metadata: {
           adapterKey: 'allegro',
-          supportedCapabilities: ['Marketplace'],
+          supportedCapabilities: ['OfferManager'],
           platformType: 'allegro',
         },
       }),
@@ -142,14 +143,14 @@ describe('OfferMappingSyncService', () => {
         config: {},
         credentialsRef: 'cred',
         adapterKey: undefined,
-        enabledCapabilities: ['Marketplace'],
+        enabledCapabilities: ['OfferManager'],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
       adapter: marketplace,
       metadata: {
         adapterKey: 'allegro',
-        supportedCapabilities: ['Marketplace'],
+        supportedCapabilities: ['OfferManager'],
         platformType: 'allegro',
       },
     });

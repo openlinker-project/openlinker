@@ -14,10 +14,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 
-import {
-  IOfferCreationExecutionService,
-  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
-} from '@openlinker/core/listings';
+import { IOfferCreationExecutionService, OFFER_CREATION_EXECUTION_SERVICE_TOKEN } from '@openlinker/core/listings';
 import {
   MarketplaceOfferCreatePayloadV1,
   SyncJob as SyncJobEntity,

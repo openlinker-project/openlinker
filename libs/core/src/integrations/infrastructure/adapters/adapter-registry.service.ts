@@ -39,7 +39,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
       {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['Marketplace'] as Capability[],
+        supportedCapabilities: ['OrderSource', 'OfferManager'] as Capability[],
         displayName: 'Allegro Public API v1',
         version: '1.0.0',
       },

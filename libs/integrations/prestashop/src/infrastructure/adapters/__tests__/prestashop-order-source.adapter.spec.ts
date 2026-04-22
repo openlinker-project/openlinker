@@ -1,345 +1,157 @@
 /**
  * PrestaShop Order Source Adapter Tests
  *
- * Unit tests for PrestashopOrderSourceAdapter. Tests order fetching,
- * identifier mapping, and error handling.
+ * Unit tests for PrestashopOrderSourceAdapter post-#328 port reshape.
+ * Covers cursor-based `listOrderFeed` and `getOrder({externalOrderId})`
+ * against the neutral OrderSourcePort surface.
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
-import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-identifier-mapping.factory';
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopOrderMapper } from '../../mappers/prestashop-order.mapper';
-import { PrestashopResourceNotFoundException } from '@openlinker/integrations-prestashop';
+import {
+  PrestashopApiException,
+  PrestashopResourceNotFoundException,
+} from '@openlinker/integrations-prestashop';
 import { PrestashopOrder, PrestashopOrderRow } from '../../mappers/prestashop.mapper.interface';
 import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 describe('PrestashopOrderSourceAdapter', () => {
   let adapter: PrestashopOrderSourceAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
-  let mockIdentifierMapping: jest.Mocked<IdentifierMappingPort>;
   let connection: ReturnType<typeof createTestConnection>;
   let orderMapper: PrestashopOrderMapper;
 
   beforeEach(() => {
     mockHttpClient = createMockHttpClient();
-    mockIdentifierMapping = createMockIdentifierMapping();
     connection = createTestConnection();
     orderMapper = new PrestashopOrderMapper();
+    adapter = new PrestashopOrderSourceAdapter(mockHttpClient, orderMapper, connection);
+  });
 
-    adapter = new PrestashopOrderSourceAdapter(
-      mockHttpClient,
-      mockIdentifierMapping,
-      orderMapper,
-      connection,
-    );
+  describe('listOrderFeed', () => {
+    it('should return feed items with a monotonic cursor advance', async () => {
+      const orders: PrestashopOrder[] = [
+        { id: '1', reference: 'ORDER-1', date_add: '2024-01-01 10:00:00', date_upd: '2024-01-01 10:00:00' },
+        { id: '2', reference: 'ORDER-2', date_add: '2024-01-02 09:00:00', date_upd: '2024-01-02 11:00:00' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toMatchObject({
+        externalOrderId: '1',
+        eventType: 'created',
+        occurredAt: '2024-01-01 10:00:00',
+      });
+      expect(result.items[1]).toMatchObject({
+        externalOrderId: '2',
+        eventType: 'updated',
+        occurredAt: '2024-01-02 11:00:00',
+      });
+      expect(result.nextCursor).toBe('2024-01-02 11:00:00');
+    });
+
+    it('should return input cursor unchanged when the feed is empty', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+      const result = await adapter.listOrderFeed({ fromCursor: '2024-01-01 00:00:00', limit: 10 });
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBe('2024-01-01 00:00:00');
+    });
+
+    it('should filter items by requested eventTypes', async () => {
+      const orders: PrestashopOrder[] = [
+        { id: '1', date_add: '2024-01-01 10:00:00', date_upd: '2024-01-01 10:00:00' },
+        { id: '2', date_add: '2024-01-01 10:00:00', date_upd: '2024-01-02 12:00:00' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10, eventTypes: ['updated'] });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].externalOrderId).toBe('2');
+    });
+
+    it('should advance cursor past filtered-out items so a page of non-matching events is not re-fetched', async () => {
+      const orders: PrestashopOrder[] = [
+        { id: '1', date_add: '2024-01-01 10:00:00', date_upd: '2024-01-01 10:00:00' },
+        { id: '2', date_add: '2024-01-02 09:00:00', date_upd: '2024-01-02 12:00:00' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+      // Filter excludes every order on the page, but the cursor must still
+      // advance to the max observed `date_upd` so the next call does not loop.
+      const result = await adapter.listOrderFeed({
+        fromCursor: '2024-01-01 00:00:00',
+        limit: 10,
+        eventTypes: ['cancelled'],
+      });
+
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBe('2024-01-02 12:00:00');
+    });
   });
 
   describe('getOrder', () => {
-    it('should fetch and map a single order successfully', async () => {
-      const orderId = 'internal-order-123';
-      const externalOrderId = '42';
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
-        {
-          connectionId: connection.id,
-          externalId: externalOrderId,
-          entityType: 'Order',
-        },
-      ]);
-
+    it('should hydrate a full IncomingOrder by external order id', async () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
-        reference: 'ORDER-001',
+        reference: 'ORDER-042',
+        id_customer: '7',
         current_state: '2',
         total_paid: '99.99',
+        total_paid_tax_incl: '99.99',
+        total_paid_tax_excl: '99.99',
+        total_shipping: '0',
         date_add: '2024-01-01 10:00:00',
-        date_upd: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
       };
-
       const orderRows: PrestashopOrderRow[] = [
         {
-          id: '1',
-          id_order: '42',
-          product_id: '10',
+          id: '100',
+          product_id: '5',
           product_attribute_id: '0',
-          product_quantity: '2',
-          product_price: '19.99',
-          product_reference: 'PROD-001',
+          product_quantity: '1',
+          product_price: '99.99',
+          product_reference: 'SKU-5',
         },
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.getResource = jest.fn().mockResolvedValue(prestashopOrder);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest.fn().mockResolvedValue(orderRows);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-product-10');
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orderRows);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrder(orderId);
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Order', orderId);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', externalOrderId);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
-        'order_rows',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          custom: expect.objectContaining({
-            id_order: externalOrderId,
-          }),
-        }),
-      );
-      expect(result.id).toBe(orderId);
-      expect(result.items).toHaveLength(1);
+      expect(incoming.externalOrderId).toBe('42');
+      expect(incoming.customerExternalId).toBe('7');
+      expect(incoming.createdAt).toBe('2024-01-01 10:00:00');
+      expect(incoming.updatedAt).toBe('2024-01-01 12:00:00');
+      expect(incoming.items).toHaveLength(1);
+      expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
 
-    it('should throw PrestashopResourceNotFoundException when order not found', async () => {
-      const orderId = 'internal-order-123';
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      await expect(adapter.getOrder(orderId)).rejects.toThrow(PrestashopResourceNotFoundException);
-    });
-
-    it('should map product IDs to internal IDs', async () => {
-      const orderId = 'internal-order-123';
-      const externalOrderId = '42';
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
-        {
-          connectionId: connection.id,
-          externalId: externalOrderId,
-          entityType: 'Order',
-        },
-      ]);
-
-      const prestashopOrder: PrestashopOrder = {
-        id: '42',
-        reference: 'ORDER-001',
-        current_state: '2',
-        total_paid: '99.99',
-        date_add: '2024-01-01 10:00:00',
-        date_upd: '2024-01-01 10:00:00',
-      };
-
-      const orderRows: PrestashopOrderRow[] = [
-        {
-          id: '1',
-          id_order: '42',
-          product_id: '10',
-          product_attribute_id: '0',
-          product_quantity: '2',
-          product_price: '19.99',
-          product_reference: 'PROD-001',
-        },
-      ];
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.getResource = jest.fn().mockResolvedValue(prestashopOrder);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest.fn().mockResolvedValue(orderRows);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-product-10');
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrder(orderId);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
-        'Product',
-        '10',
-        connection.id,
-        expect.objectContaining({
-          parentEntityType: 'Order',
-          parentInternalId: orderId,
-        }),
-      );
-      expect(result.items[0].productId).toBe('internal-product-10');
-    });
-  });
-
-  describe('getOrders', () => {
-    it('should fetch and map multiple orders', async () => {
-      const prestashopOrders: PrestashopOrder[] = [
-        {
-          id: '42',
-          reference: 'ORDER-001',
-          current_state: '2',
-          total_paid: '99.99',
-          date_add: '2024-01-01 10:00:00',
-          date_upd: '2024-01-01 10:00:00',
-        },
-        {
-          id: '43',
-          reference: 'ORDER-002',
-          current_state: '3',
-          total_paid: '149.99',
-          date_add: '2024-01-02 10:00:00',
-          date_upd: '2024-01-02 10:00:00',
-        },
-      ];
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest
+    it('should translate a 404 from the webservice client into PrestashopResourceNotFoundException', async () => {
+      mockHttpClient.getResource = jest
         .fn()
-        .mockResolvedValueOnce(prestashopOrders) // Orders
-        .mockResolvedValueOnce([]) // Order rows for first order
-        .mockResolvedValueOnce([]); // Order rows for second order
-
-      const idMap = new Map([
-        ['42:test-connection-id', 'internal-order-1'],
-        ['43:test-connection-id', 'internal-order-2'],
-      ]);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrders({});
-
-      expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('internal-order-1');
-      expect(result[1].id).toBe('internal-order-2');
-    });
-
-    it('should return empty array when no orders found', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrders({});
-
-      expect(result).toEqual([]);
-    });
-
-    it('should pass filters to HTTP client', async () => {
-      const prestashopOrders: PrestashopOrder[] = [
-        {
-          id: '42',
-          reference: 'ORDER-001',
-          current_state: '2',
-          total_paid: '99.99',
-          date_add: '2024-01-01 10:00:00',
-          date_upd: '2024-01-01 10:00:00',
-        },
-      ];
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce(prestashopOrders)
-        .mockResolvedValueOnce([]);
-
-      const idMap = new Map([['42:test-connection-id', 'internal-order-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
-
-      const dateFrom = new Date('2024-01-01');
-      const dateTo = new Date('2024-01-31');
-
-      await adapter.getOrders({
-        dateFrom,
-        dateTo,
-        status: 'processing',
-        limit: 50,
-        offset: 100,
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
-        'orders',
-        expect.objectContaining({
-          dateFrom,
-          dateTo,
-          status: ['processing'],
-        }),
-        50,
-        100,
+        .mockRejectedValueOnce(new PrestashopApiException('Not Found', 404));
+      await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toThrow(
+        PrestashopResourceNotFoundException,
       );
     });
 
-    it('should filter out orders without internal ID mapping', async () => {
-      const prestashopOrders: PrestashopOrder[] = [
-        {
-          id: '42',
-          reference: 'ORDER-001',
-          current_state: '2',
-          total_paid: '99.99',
-          date_add: '2024-01-01 10:00:00',
-          date_upd: '2024-01-01 10:00:00',
-        },
-        {
-          id: '43',
-          reference: 'ORDER-002',
-          current_state: '3',
-          total_paid: '149.99',
-          date_add: '2024-01-02 10:00:00',
-          date_upd: '2024-01-02 10:00:00',
-        },
-      ];
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce(prestashopOrders)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
-
-      // Only map first order
-      const idMap = new Map([['42:test-connection-id', 'internal-order-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrders({});
-
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('internal-order-1');
+    it('should propagate non-404 webservice errors unchanged (not mask them as not-found)', async () => {
+      const serverError = new PrestashopApiException('Upstream 500', 500);
+      mockHttpClient.getResource = jest.fn().mockRejectedValueOnce(serverError);
+      await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toBe(serverError);
     });
 
-    it('should handle missing order rows gracefully', async () => {
-      const prestashopOrders: PrestashopOrder[] = [
-        {
-          id: '42',
-          reference: 'ORDER-001',
-          current_state: '2',
-          total_paid: '99.99',
-          date_add: '2024-01-01 10:00:00',
-          date_upd: '2024-01-01 10:00:00',
-        },
-      ];
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce(prestashopOrders) // Orders
-        .mockRejectedValueOnce(new Error('Failed to fetch order rows')); // Order rows fail
-
-      const idMap = new Map([['42:test-connection-id', 'internal-order-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await adapter.getOrders({});
-
-      // Should still return order, but with empty items
-      expect(result).toHaveLength(1);
-      expect(result[0].items).toEqual([]);
+    it('should propagate transport errors (no status code) unchanged', async () => {
+      const networkError = new Error('ECONNREFUSED');
+      mockHttpClient.getResource = jest.fn().mockRejectedValueOnce(networkError);
+      await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toBe(networkError);
     });
   });
 });
-

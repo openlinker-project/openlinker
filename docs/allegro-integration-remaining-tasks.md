@@ -1,5 +1,7 @@
 # Allegro Integration - Remaining Tasks
 
+> **Historical artifact — superseded in part by #328 (2026-04-22).** References to `AllegroMarketplaceAdapter` and the single "marketplace" capability no longer match the codebase. The adapter has been split into `AllegroOrderSourceAdapter` (orders/) and `AllegroOfferManagerAdapter` (listings/); capability `'Marketplace'` was replaced by `'OrderSource'` + `'OfferManager'`. See `docs/architecture-overview.md` for the current shape.
+
 ## Summary
 
 Most of the Allegro MVP integration is complete (Phases 0-9). The following tasks remain to fully complete the issue:

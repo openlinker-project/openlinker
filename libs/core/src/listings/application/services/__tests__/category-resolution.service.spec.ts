@@ -7,7 +7,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CategoryResolutionService } from '../category-resolution.service';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
-import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 
 describe('CategoryResolutionService', () => {
@@ -131,7 +132,7 @@ describe('CategoryResolutionService', () => {
   });
 
   it('should handle adapter without matchCategoryByBarcode support', async () => {
-    const adapterWithoutMethod = {} as MarketplacePort;
+    const adapterWithoutMethod = {} as OfferManagerPort;
     integrationsService.getCapabilityAdapter.mockResolvedValue(adapterWithoutMethod);
     mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-mapped');
 

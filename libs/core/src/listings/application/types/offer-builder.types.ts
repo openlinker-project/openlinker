@@ -4,12 +4,12 @@
  * Input shape for `IOfferBuilderService.buildCreateOfferCommand`. The service
  * resolves the OL variant + parent master product, resolves the Allegro
  * category, and produces a neutral `CreateOfferCommand` consumed by any
- * marketplace adapter implementing `MarketplacePort.createOffer`.
+ * marketplace adapter implementing `OfferManagerPort.createOffer`.
  *
  * @module libs/core/src/listings/application/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/integrations';
+import type { CreateOfferOverrides } from '@openlinker/core/listings';
 
 export interface BuildCreateOfferCommandInput {
   /** OL internal variant id being listed. */

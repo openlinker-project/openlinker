@@ -10,13 +10,10 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
-import {
-  CreateOfferCommand,
-  CreateOfferResult,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplaceOfferCreateRejectedException,
-} from '@openlinker/core/integrations';
-import type { IIntegrationsService, MarketplacePort } from '@openlinker/core/integrations';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { CreateOfferCommand, CreateOfferResult, OfferCreateRejectedException } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 import { OfferCreationExecutionService } from '../offer-creation-execution.service';
@@ -103,7 +100,7 @@ describe('OfferCreationExecutionService', () => {
     integrationsService = {
       getCapabilityAdapter: jest
         .fn()
-        .mockResolvedValue(adapter as unknown as MarketplacePort),
+        .mockResolvedValue(adapter as unknown as OfferManagerPort),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -142,7 +139,7 @@ describe('OfferCreationExecutionService', () => {
     );
     expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
       CONNECTION_ID,
-      'Marketplace',
+      'OfferManager',
     );
     expect(adapter.createOffer).toHaveBeenCalledWith(builtCommand);
     expect(identifierMapping.createMapping).toHaveBeenCalledWith(
@@ -255,9 +252,9 @@ describe('OfferCreationExecutionService', () => {
     expect(adapter.createOffer).not.toHaveBeenCalled();
   });
 
-  it('marks record failed and resolves when adapter raises MarketplaceOfferCreateRejectedException', async () => {
+  it('marks record failed and resolves when adapter raises OfferCreateRejectedException', async () => {
     adapter.createOffer.mockRejectedValueOnce(
-      new MarketplaceOfferCreateRejectedException('allegro.publicapi.v1', 422, [
+      new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
         { field: 'category.id', code: 'BAD_CATEGORY', message: 'Category does not exist' },
       ]),
     );
@@ -281,7 +278,7 @@ describe('OfferCreationExecutionService', () => {
 
   it('throws when the resolved adapter does not support createOffer', async () => {
     integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
-      {} as unknown as MarketplacePort,
+      {} as unknown as OfferManagerPort,
     );
 
     await expect(service.executeCreation(baseInput)).rejects.toThrow(

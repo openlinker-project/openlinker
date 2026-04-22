@@ -10,10 +10,8 @@
 
 import { UnprocessableEntityException } from '@nestjs/common';
 
-import type {
-  IIntegrationsService,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
@@ -41,10 +39,10 @@ describe('OfferCreationEnqueueService', () => {
     new Date('2026-04-21T10:00:00Z'),
   );
 
-  const adapterWith = (createOffer: jest.Mock | undefined): MarketplacePort =>
+  const adapterWith = (createOffer: jest.Mock | undefined): OfferManagerPort =>
     ({
       ...(createOffer ? { createOffer } : {}),
-    } as unknown as MarketplacePort);
+    } as unknown as OfferManagerPort);
 
   beforeEach(() => {
     integrations = {
@@ -82,7 +80,7 @@ describe('OfferCreationEnqueueService', () => {
       price: { amount: 99.99, currency: 'PLN' },
     });
 
-    expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(connectionId, 'Marketplace');
+    expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(connectionId, 'OfferManager');
     expect(records.create).toHaveBeenCalledWith({
       internalVariantId: variantId,
       connectionId,

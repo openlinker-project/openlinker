@@ -1,7 +1,7 @@
 /**
  * Categories Cache Service
  *
- * Fetches Allegro categories via the MarketplacePort adapter and caches
+ * Fetches Allegro categories via the OfferManagerPort adapter and caches
  * them in the allegro_category_cache DB table with a 24-hour TTL.
  * Falls back to live API call when cache is stale or missing.
  *
@@ -14,12 +14,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ICategoriesCacheService, PrestashopCategoryDto } from './categories-cache.service.interface';
 import { AllegroCategoryCacheOrmEntity } from './persistence/allegro-category-cache.orm-entity';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-  MarketplacePort,
-} from '@openlinker/core/integrations';
-import type { MarketplaceCategory } from '@openlinker/core/integrations';
+import { OfferManagerPort } from '@openlinker/core/listings';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { OfferCategory } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -36,7 +33,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
     private readonly integrationsService: IIntegrationsService,
   ) {}
 
-  async getAllegroCategories(connectionId: string, parentId?: string): Promise<MarketplaceCategory[]> {
+  async getAllegroCategories(connectionId: string, parentId?: string): Promise<OfferCategory[]> {
     // Check cache for this parent level
     const cached = await this.findCached(connectionId, parentId);
     if (cached.length > 0) {
@@ -48,9 +45,9 @@ export class CategoriesCacheService implements ICategoriesCacheService {
       `Cache miss for Allegro categories (connection: ${connectionId}, parentId: ${parentId ?? 'root'}), fetching from API`,
     );
 
-    const adapter = await this.integrationsService.getCapabilityAdapter<MarketplacePort>(
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'Marketplace',
+      'OfferManager',
     );
 
     if (!adapter.fetchCategories) {
@@ -122,7 +119,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
 
   private async storeInCache(
     connectionId: string,
-    categories: MarketplaceCategory[],
+    categories: OfferCategory[],
   ): Promise<void> {
     if (categories.length === 0) {
       return;
@@ -144,7 +141,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
     await this.cacheRepo.upsert(entities, ['connectionId', 'allegroCategoryId']);
   }
 
-  private toDomain(entity: AllegroCategoryCacheOrmEntity): MarketplaceCategory {
+  private toDomain(entity: AllegroCategoryCacheOrmEntity): OfferCategory {
     return {
       id: entity.allegroCategoryId,
       name: entity.name,

@@ -28,10 +28,7 @@ import {
   JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
 } from '@openlinker/core/sync';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 

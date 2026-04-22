@@ -1,7 +1,7 @@
 /**
  * Seller Policies Types
  *
- * Canonical shape returned by `MarketplacePort.fetchSellerPolicies?()` —
+ * Canonical shape returned by `OfferManagerPort.fetchSellerPolicies?()` —
  * the neutral view of seller-configured policies (delivery, return,
  * warranty, implied-warranty) that an operator must reference when
  * creating a marketplace offer. Allegro-specific IDs today; other
@@ -11,7 +11,7 @@
  * Framework-free. Interface-layer DTOs decorate these fields with
  * Swagger annotations separately.
  *
- * @module libs/core/src/integrations/domain/types
+ * @module libs/core/src/listings/domain/types
  */
 
 export interface SellerPolicy {

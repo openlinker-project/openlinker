@@ -1,9 +1,10 @@
 /**
  * Order Domain Types
  *
- * Type definitions for order domain operations. Defines order filters,
- * order status values, and other order-related types used across the
- * orders domain.
+ * Type definitions for order domain operations. Defines core order structures
+ * (Order, OrderItem, OrderTotals, Address), status values, and legacy filter
+ * criteria. Consumed by application services that materialize unified orders
+ * after ingestion through `OrderSourcePort`.
  *
  * @module libs/core/src/orders/domain/types
  */
@@ -35,8 +36,9 @@ export type OrderStatus = (typeof OrderStatusValues)[number];
 /**
  * Order filters
  *
- * Filter criteria for querying orders. All fields are optional.
- * Used by OrderSourcePort for filtering orders from external sources.
+ * Legacy filter criteria retained for `OrderProcessorManagerPort.getOrders`
+ * and administrative queries. Not used by `OrderSourcePort`, which uses
+ * cursor-based `OrderFeedInput` instead.
  */
 export interface OrderFilters {
   /**
@@ -70,8 +72,51 @@ export interface OrderFilters {
   offset?: number;
 }
 
+/**
+ * Unified order structure used across the orders domain after ingestion.
+ *
+ * Populated by `OrderIngestionService.buildUnifiedOrder` from an `IncomingOrder`
+ * once all item references are resolved to internal IDs.
+ */
+export interface Order {
+  id: string;
+  orderNumber?: string;
+  status: string;
+  customerId?: string;
+  items: OrderItem[];
+  totals: OrderTotals;
+  shippingAddress?: Address;
+  billingAddress?: Address;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
+export interface OrderItem {
+  id: string;
+  productId: string;
+  variantId?: string;
+  quantity: number;
+  price: number;
+  sku?: string;
+}
 
+export interface OrderTotals {
+  subtotal: number;
+  tax: number;
+  shipping: number;
+  total: number;
+  currency: string;
+}
 
-
-
+export interface Address {
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+  address1: string;
+  address2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  country: string;
+  phone?: string;
+}

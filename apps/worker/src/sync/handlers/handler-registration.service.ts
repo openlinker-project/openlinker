@@ -9,7 +9,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
-import { MarketplaceOrdersPollHandler } from './marketplace-orders-poll.handler';
+import { OrdersPollHandler } from './orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
@@ -26,7 +26,7 @@ export class HandlerRegistrationService implements OnModuleInit {
   constructor(
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
-    private readonly marketplaceOrdersPollHandler: MarketplaceOrdersPollHandler,
+    private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,

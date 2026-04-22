@@ -10,7 +10,7 @@ import { OrderSyncService } from '../order-sync.service';
 import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
 import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
-import { Order } from '../../../domain/ports/order-source.port';
+import { Order } from '../../../domain/types/order.types';
 import { OrderRef } from '../../../domain/types/order-processor.types';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';

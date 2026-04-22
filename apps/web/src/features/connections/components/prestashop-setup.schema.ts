@@ -57,7 +57,7 @@ export const prestashopSetupSchema = z.object({
         'InventoryMaster',
         'OrderProcessorManager',
         'OrderSource',
-        'Marketplace',
+        'OfferManager',
       ]),
     )
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
