@@ -20,6 +20,8 @@ import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integr
 import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
 import { ChannelContentPublishNotSupportedException } from '../../domain/exceptions/channel-content-publish-not-supported.exception';
+import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
+import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
   ContentPublishRequest,
   ContentPublishResult,
@@ -49,9 +51,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
     });
 
     if (masters.length === 0) {
-      throw new Error(
-        `No active ProductMaster adapter available to publish content for productId=${request.productId} fieldKey=${request.fieldKey}.`,
-      );
+      throw new NoProductMasterAdapterException(request.productId, request.fieldKey);
     }
 
     if (masters.length > 1) {
@@ -76,11 +76,15 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     // Use the platform-derived `updatedAt` as the opaque baseVersion. ISO string
     // keeps the comparison purely lexical (we never order versions, only test
-    // equality for divergence detection).
-    const baseVersion = updated.updatedAt
-      ? updated.updatedAt.toISOString()
-      : new Date().toISOString();
+    // equality for divergence detection). Synthesising a local timestamp when
+    // the adapter omits `updatedAt` would corrupt the conflict-detection
+    // invariant — the next inbound reconcile would compare the platform's real
+    // `updatedAt` against our fabricated value and falsely flag a conflict —
+    // so we fail loud here. Adapters MUST populate Product.updatedAt on update.
+    if (!updated.updatedAt) {
+      throw new ContentPublishMissingVersionException(request.productId, request.fieldKey);
+    }
 
-    return { baseVersion };
+    return { baseVersion: updated.updatedAt.toISOString() };
   }
 }

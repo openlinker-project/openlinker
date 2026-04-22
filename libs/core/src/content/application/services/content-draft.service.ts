@@ -10,8 +10,9 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { ProductContentField } from '../../domain/entities/product-content-field.entity';
+import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import { ContentConflictException } from '../../domain/exceptions/content-conflict.exception';
+import { ContentFieldNotFoundException } from '../../domain/exceptions/content-field-not-found.exception';
 import {
   CONTENT_PUBLISHER_PORT_TOKEN,
   PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
@@ -94,34 +95,19 @@ export class ContentDraftService implements IContentDraftService {
       fieldKey: cmd.fieldKey,
     });
 
-    if (!existing || existing.draftValue === null) {
-      // No-op publish: nothing to push. Return whatever the row currently looks like
-      // (or fabricate an empty representation if absent — but absent + publish is unusual,
-      // so we return the existing row to keep the contract simple).
-      if (!existing) {
-        // Not throwing here keeps publishDraft idempotent w.r.t. callers that don't
-        // pre-check; if a stricter "must exist" semantic is wanted later, swap to
-        // ContentFieldNotFoundException. For MVP, silently no-op preserves the
-        // "draft buffer is the truth" mental model.
-        this.logger.debug(
-          `[content] publishDraft no-op (no row): productId=${cmd.productId} connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`,
-        );
-      }
-      return (
-        existing ??
-        new ProductContentField(
-          'no-op',
-          cmd.productId,
-          cmd.connectionId,
-          cmd.fieldKey,
-          null,
-          null,
-          null,
-          false,
-          new Date(),
-          null,
-        )
+    if (!existing) {
+      // Publishing requires a row to exist. Callers should saveDraft first.
+      // We throw rather than silently no-op so a misuse (publish-before-save)
+      // is surfaced rather than swallowed.
+      throw new ContentFieldNotFoundException(cmd.productId, cmd.connectionId, cmd.fieldKey);
+    }
+
+    if (existing.draftValue === null) {
+      // Row exists but no draft to publish — idempotent no-op, return as-is.
+      this.logger.debug(
+        `[content] publishDraft no-op (no draft): productId=${cmd.productId} connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`,
       );
+      return existing;
     }
 
     if (existing.hasConflict) {

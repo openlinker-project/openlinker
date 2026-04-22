@@ -10,6 +10,7 @@
 import { ContentDraftService } from './content-draft.service';
 import { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import { ContentConflictException } from '../../domain/exceptions/content-conflict.exception';
+import { ContentFieldNotFoundException } from '../../domain/exceptions/content-field-not-found.exception';
 import type { ContentPublisherPort } from '../../domain/ports/content-publisher.port';
 import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 
@@ -180,7 +181,21 @@ describe('ContentDraftService', () => {
   });
 
   describe('publishDraft', () => {
-    it('should be a no-op when there is no draft to publish', async () => {
+    it('should throw ContentFieldNotFoundException when no row exists', async () => {
+      repo.findByKey.mockResolvedValue(null);
+
+      await expect(
+        service.publishDraft({
+          productId: 'ol_product_abc',
+          connectionId: null,
+          fieldKey: 'description',
+        }),
+      ).rejects.toBeInstanceOf(ContentFieldNotFoundException);
+      expect(publisher.publish).not.toHaveBeenCalled();
+      expect(repo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should be a no-op when the row exists but has no draft to publish', async () => {
       repo.findByKey.mockResolvedValue(buildField({ baseValue: 'b', draftValue: null }));
 
       await service.publishDraft({

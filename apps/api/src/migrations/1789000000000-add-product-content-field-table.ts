@@ -18,6 +18,9 @@ export class AddProductContentFieldTable1789000000000 implements MigrationInterf
   name = 'AddProductContentFieldTable1789000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // gen_random_uuid() is built-in on Postgres ≥ 13. On PG ≤ 12 it requires
+    // `CREATE EXTENSION IF NOT EXISTS pgcrypto`. Testcontainers uses PG 16
+    // and prod is PG 16+, so we rely on the built-in here.
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "product_content_field" (
         "id"            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
