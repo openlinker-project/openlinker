@@ -278,7 +278,7 @@ describe('SyncJobRunner', () => {
       );
     });
 
-    it('should mark job as dead on AllegroApiException with deterministic 4xx (415)', async () => {
+    it('should mark job as dead when AllegroApiException has deterministic 4xx (415)', async () => {
       const job = createMockJob(1, 10);
       const url = 'https://api.allegro.pl/sale/product-offers/1';
       const cause = new AllegroApiException('Unsupported content type', 415, 'body', url);
@@ -297,7 +297,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
-    it('should keep retrying on AllegroApiException with 5xx (503)', async () => {
+    it('should keep retrying when AllegroApiException has 5xx (503)', async () => {
       const job = createMockJob(1, 10);
       const url = 'https://api.allegro.pl/sale/product-offers/1';
       const cause = new AllegroApiException('Service unavailable', 503, 'body', url);
@@ -320,7 +320,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
 
-    it('should keep retrying on AllegroApiException with transient 4xx (408)', async () => {
+    it('should keep retrying when AllegroApiException has transient 4xx (408)', async () => {
       const job = createMockJob(1, 10);
       const url = 'https://api.allegro.pl/sale/product-offers/1';
       const cause = new AllegroApiException('Request timeout', 408, 'body', url);

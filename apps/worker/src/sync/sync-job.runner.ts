@@ -346,6 +346,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     const cause =
       error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
 
+    // AllegroAuthenticationException extends Error directly (not AllegroApiException),
+    // so the two branches are disjoint: a 401 never reaches the status-code set below.
     if (cause instanceof AllegroAuthenticationException) {
       return true;
     }
