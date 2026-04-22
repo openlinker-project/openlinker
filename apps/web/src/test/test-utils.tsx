@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
+import { render, screen, type RenderOptions, type RenderResult } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
@@ -249,6 +249,33 @@ export function createAuthenticatedSessionAdapter(
     async persistSession(): Promise<void> {},
     async clearSession(): Promise<void> {},
   };
+}
+
+/**
+ * Toast text helpers.
+ *
+ * `@radix-ui/react-toast` renders every toast twice — once visibly inside the
+ * Viewport (`.toast__title` / `.toast__description` in our wrapper) and once
+ * inside a hidden `ToastAnnounce` portal for screen readers. The announce
+ * portal hides itself ~1000ms after mount, creating a race window where a
+ * plain `screen.getByText(...)` intermittently matches both copies and throws.
+ * Scope toast-text assertions to the visible `.toast__*` elements to skip the
+ * announce portal entirely.
+ */
+export function findToastTitle(text: string | RegExp): Promise<HTMLElement> {
+  return screen.findByText(text, { selector: '.toast__title' });
+}
+
+export function getToastTitle(text: string | RegExp): HTMLElement {
+  return screen.getByText(text, { selector: '.toast__title' });
+}
+
+export function findToastDescription(text: string | RegExp): Promise<HTMLElement> {
+  return screen.findByText(text, { selector: '.toast__description' });
+}
+
+export function getToastDescription(text: string | RegExp): HTMLElement {
+  return screen.getByText(text, { selector: '.toast__description' });
 }
 
 export function renderWithProviders(ui: ReactElement, options: RenderWithProvidersOptions = {}): RenderResult {

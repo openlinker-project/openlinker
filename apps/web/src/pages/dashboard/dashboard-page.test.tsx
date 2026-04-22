@@ -1,6 +1,12 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import {
+  createMockApiClient,
+  findToastDescription,
+  findToastTitle,
+  renderWithProviders,
+  sampleConnection,
+} from '../../test/test-utils';
 import { DashboardPage } from './dashboard-page';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type {
@@ -375,7 +381,7 @@ describe('DashboardPage', () => {
       });
       fireEvent.click(retryButton);
 
-      expect(await screen.findByText(/Re-queued 3 jobs/i)).toBeInTheDocument();
+      expect(await findToastTitle(/Re-queued 3 jobs/i)).toBeInTheDocument();
     });
 
     it('mentions skipped jobs in the toast when the bulk endpoint skips some', async () => {
@@ -405,9 +411,7 @@ describe('DashboardPage', () => {
       });
       fireEvent.click(retryButton);
 
-      expect(
-        await screen.findByText(/skipped 2 already running/i),
-      ).toBeInTheDocument();
+      expect(await findToastDescription(/skipped 2 already running/i)).toBeInTheDocument();
     });
 
     it('shows an honest "nothing re-queued" toast when the bulk endpoint returns count=0', async () => {
@@ -439,8 +443,8 @@ describe('DashboardPage', () => {
       });
       fireEvent.click(retryButton);
 
-      expect(await screen.findByText(/Nothing re-queued/i)).toBeInTheDocument();
-      expect(screen.getByText(/no dead jobs remain/i)).toBeInTheDocument();
+      expect(await findToastTitle(/Nothing re-queued/i)).toBeInTheDocument();
+      expect(await findToastDescription(/no dead jobs remain/i)).toBeInTheDocument();
     });
   });
 

@@ -5,7 +5,11 @@
  */
 import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  findToastTitle,
+  renderWithProviders,
+} from '../../../test/test-utils';
 import { EditOfferDrawer } from './EditOfferDrawer';
 import type { OfferMapping } from '../api/listings.types';
 
@@ -116,7 +120,7 @@ describe('EditOfferDrawer', () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
     });
-    expect(await screen.findByText(/update dispatched/i)).toBeInTheDocument();
+    expect(await findToastTitle(/update dispatched/i)).toBeInTheDocument();
   });
 
   it('should show inline error and not close drawer on API failure', async () => {

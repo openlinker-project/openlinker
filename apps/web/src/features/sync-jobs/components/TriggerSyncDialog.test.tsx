@@ -9,7 +9,13 @@
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  getToastDescription,
+  getToastTitle,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import { TriggerSyncDialog } from './TriggerSyncDialog';
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
@@ -248,15 +254,8 @@ describe('TriggerSyncDialog', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
       });
 
-      // Radix Toast renders the title and description twice — once in the
-      // visible `.toast__title`/`.toast__description` and once inside an
-      // `aria-live` announcement span. Scope to the visible toast title/body.
-      expect(
-        screen.getByText(/sync job enqueued/i, { selector: '.toast__title' }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/job_42/i, { selector: '.toast__description' }),
-      ).toBeInTheDocument();
+      expect(getToastTitle(/sync job enqueued/i)).toBeInTheDocument();
+      expect(getToastDescription(/job_42/i)).toBeInTheDocument();
     });
   });
 
