@@ -457,7 +457,9 @@ describe('PrestashopProductMapper', () => {
       ]);
     });
 
-    it('should return undefined for an empty JSON-shape images array', () => {
+    it('should map images to null when JSON-shape images array is empty', () => {
+      // mapProduct normalises extractImages' `undefined` to `null` so the
+      // public contract exposes `null` for "no images".
       const prestashopProduct = makeProductWithImages([]);
 
       const result = mapper.mapProduct(prestashopProduct, 1);

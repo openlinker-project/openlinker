@@ -52,12 +52,9 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       'product_option_value',
     );
     optionValues.forEach((ov, index) => {
-      if (ov && typeof ov === 'object') {
-        const node = ov as Record<string, unknown>;
-        const id = node.id ?? node['@_id'] ?? node['@id'];
-        if (id !== null && id !== undefined) {
-          attributes[`option_${index}`] = String(id);
-        }
+      const id = this.readAssociationId(ov);
+      if (id !== null) {
+        attributes[`option_${index}`] = id;
       }
     });
 
@@ -303,7 +300,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
 
     const urls: string[] = [];
     for (const entry of entries) {
-      const id = this.extractImageId(entry);
+      const id = this.readAssociationId(entry);
       if (id === null) {
         continue;
       }
@@ -349,15 +346,18 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   }
 
   /**
-   * Extract the numeric image id from a single `associations.images.image` entry.
+   * Extract a string id from a single association entry.
    *
-   * PrestaShop returns ids under `id` (JSON) or `@_id` (XML parsed by
-   * `fast-xml-parser`). Defensive against primitive entries (the node itself a
-   * string), object entries with either key, and anything else (returns null so
-   * the caller can skip). String/number ids are accepted; other types are
-   * rejected.
+   * PrestaShop returns ids under `id` (JSON) or `@_id` / `@id` (XML parsed by
+   * `fast-xml-parser`, depending on attribute-prefix config). Defensive against
+   * primitive entries (the node itself a string/number), object entries with
+   * any of the id keys, and anything else (returns null so the caller can
+   * skip). String/number ids are accepted; other types are rejected.
+   *
+   * Shared across `extractImages`, `extractCategories`, and `mapVariant` so the
+   * set of accepted id keys stays in one place.
    */
-  private extractImageId(entry: unknown): string | null {
+  private readAssociationId(entry: unknown): string | null {
     if (entry === null || entry === undefined) {
       return null;
     }
@@ -403,7 +403,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
    * Examples: `'1'` → `'1'`, `'42'` → `'4/2'`, `'123'` → `'1/2/3'`.
    *
    * Caller is responsible for supplying numeric ids — PrestaShop image ids
-   * are numeric in practice, and `extractImageId` rejects anything that
+   * are numeric in practice, and `readAssociationId` rejects anything that
    * isn't `string | number` before reaching this helper. Non-digit input
    * would still be split character-by-character rather than stripped.
    */
@@ -427,13 +427,14 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     if (entries.length === 0) {
       return undefined;
     }
-    return entries.map((cat) => {
-      if (cat && typeof cat === 'object') {
-        const catObj = cat as Record<string, unknown>;
-        return String(catObj.id ?? catObj['@_id'] ?? '');
+    const ids: string[] = [];
+    for (const entry of entries) {
+      const id = this.readAssociationId(entry);
+      if (id !== null) {
+        ids.push(id);
       }
-      return String(cat);
-    });
+    }
+    return ids.length > 0 ? ids : undefined;
   }
 
   /**
