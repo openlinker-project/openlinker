@@ -3,7 +3,12 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { CreateConnectionForm } from './create-connection-form';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  findToastDescription,
+  findToastTitle,
+  renderWithProviders,
+} from '../../../test/test-utils';
 
 function LocationProbe(): ReactElement {
   const location = useLocation();
@@ -54,9 +59,9 @@ describe('CreateConnectionForm', () => {
     });
     fireEvent.click(within(view.container).getAllByRole('button', { name: 'Create connection' })[0]);
 
-    expect(await screen.findByText('Connection created')).toBeInTheDocument();
+    expect(await findToastTitle('Connection created')).toBeInTheDocument();
     expect(
-      screen.getByText('Connection "Main PrestaShop Store" was created.'),
+      await findToastDescription('Connection "Main PrestaShop Store" was created.'),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
@@ -82,7 +87,7 @@ describe('CreateConnectionForm', () => {
     );
 
     expect(within(view.container).getAllByLabelText('Connection name')[0]).toHaveValue('');
-    expect(await screen.findByText('Draft reset')).toBeInTheDocument();
+    expect(await findToastTitle('Draft reset')).toBeInTheDocument();
   });
 
   it('shows a form-level API error alert', async () => {
