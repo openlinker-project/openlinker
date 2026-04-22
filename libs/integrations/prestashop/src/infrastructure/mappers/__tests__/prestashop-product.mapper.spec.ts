@@ -443,6 +443,90 @@ describe('PrestashopProductMapper', () => {
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual(['https://shop.test/img/p/5/5/55-home_default.jpg']);
     });
+
+    it('should extract images from JSON shape (flat array, no image wrapper)', () => {
+      // PS JSON endpoint (`output_format=JSON`) collapses `<images><image>…` into
+      // a flat array at `associations.images`. This is the shape that regressed
+      // before the fix and caused every synced product to store `images=null`.
+      const prestashopProduct = makeProductWithImages([{ id: 1 }, { id: 2 }]);
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/1/1-home_default.jpg',
+        'https://shop.test/img/p/2/2-home_default.jpg',
+      ]);
+    });
+
+    it('should map images to null when JSON-shape images array is empty', () => {
+      // mapProduct normalises extractImages' `undefined` to `null` so the
+      // public contract exposes `null` for "no images".
+      const prestashopProduct = makeProductWithImages([]);
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toBeNull();
+    });
+  });
+
+  describe('extractCategories (via mapProduct)', () => {
+    it('should extract categories from XML shape ({ category: [...] })', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {
+          categories: { category: [{ id: '2' }, { id: '3' }] },
+        },
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.categories).toEqual(['2', '3']);
+    });
+
+    it('should extract categories from XML single-object shape ({ category: {...} })', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {
+          categories: { category: { id: '2' } },
+        },
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.categories).toEqual(['2']);
+    });
+
+    it('should extract categories from JSON shape (flat array)', () => {
+      // Same PS JSON-endpoint quirk as images — the `<category>` wrapper is
+      // collapsed into a flat array at `associations.categories`.
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {
+          categories: [{ id: 2 }, { id: 3 }, { id: 4 }],
+        },
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.categories).toEqual(['2', '3', '4']);
+    });
+
+    it('should return undefined when categories are absent', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test',
+        reference: 'TEST-001',
+        price: '19.99',
+        associations: {},
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+      expect(result.categories).toBeUndefined();
+    });
   });
 
   describe('mapVariant', () => {
@@ -463,7 +547,7 @@ describe('PrestashopProductMapper', () => {
       expect(result.weight).toBe(0.1);
     });
 
-    it('should extract attributes from product_option_values', () => {
+    it('should extract attributes from product_option_values (XML shape with array)', () => {
       const combination: PrestashopCombination = {
         id: '100',
         id_product: '1',
@@ -479,8 +563,50 @@ describe('PrestashopProductMapper', () => {
       };
 
       const result = mapper.mapVariant(combination, 'internal-product-id');
-      expect(result.attributes).toBeDefined();
-      expect(Object.keys(result.attributes || {}).length).toBeGreaterThan(0);
+      expect(result.attributes).toEqual({ option_0: '20', option_1: '30' });
+    });
+
+    it('should extract attributes from product_option_values (XML shape with single object)', () => {
+      const combination: PrestashopCombination = {
+        id: '100',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        associations: {
+          product_option_values: {
+            product_option_value: { id: '20' },
+          },
+        },
+      };
+
+      const result = mapper.mapVariant(combination, 'internal-product-id');
+      expect(result.attributes).toEqual({ option_0: '20' });
+    });
+
+    it('should extract attributes from product_option_values (JSON shape, flat array)', () => {
+      // PS JSON endpoint collapses the `<product_option_value>` wrapper into
+      // a flat array at `associations.product_option_values`.
+      const combination: PrestashopCombination = {
+        id: '100',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        associations: {
+          product_option_values: [{ id: 1 }, { id: 8 }],
+        },
+      };
+
+      const result = mapper.mapVariant(combination, 'internal-product-id');
+      expect(result.attributes).toEqual({ option_0: '1', option_1: '8' });
+    });
+
+    it('should return null attributes when product_option_values is absent', () => {
+      const combination: PrestashopCombination = {
+        id: '100',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+      };
+
+      const result = mapper.mapVariant(combination, 'internal-product-id');
+      expect(result.attributes).toBeNull();
     });
 
     it('should map ean13 and upc to ean/gtin', () => {

@@ -39,9 +39,16 @@ export interface PrestashopCombination {
   price?: string | number;
   weight?: string | number;
   associations?: {
-    product_option_values?: {
-      product_option_value?: Array<{ id: string | number }> | { id: string | number };
-    };
+    // PrestaShop serializes associations in one of two shapes depending on the
+    // response format:
+    //   - XML (parsed by fast-xml-parser): { product_option_values: { product_option_value: [...] | {...} } }
+    //   - JSON (`output_format=JSON`):     { product_option_values: [...] }
+    // Both must be accepted by the mapper.
+    product_option_values?:
+      | Array<{ id: string | number }>
+      | {
+          product_option_value?: Array<{ id: string | number }> | { id: string | number };
+        };
   };
   [key: string]: unknown;
 }

@@ -44,18 +44,19 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     const ean = normalizeToEan13(combination.ean13 ?? null);
     const gtin = normalizeBarcode(combination.upc ?? null);
 
-    // Extract attributes from product_option_values
-    if (combination.associations?.product_option_values?.product_option_value) {
-      const optionValues = Array.isArray(combination.associations.product_option_values.product_option_value)
-        ? combination.associations.product_option_values.product_option_value
-        : [combination.associations.product_option_values.product_option_value];
-
-      // Note: In a full implementation, we'd need to fetch option value names
-      // For MVP, we'll use the IDs as attribute keys
-      optionValues.forEach((ov, index) => {
-        attributes[`option_${index}`] = String(ov.id);
-      });
-    }
+    // Extract attributes from product_option_values.
+    // Handles both XML-parsed shape ({ product_option_value: [...] | {...} })
+    // and JSON shape ([...] directly) — see unwrapAssociationEntries.
+    const optionValues = this.unwrapAssociationEntries(
+      combination.associations?.product_option_values,
+      'product_option_value',
+    );
+    optionValues.forEach((ov, index) => {
+      const id = this.readAssociationId(ov);
+      if (id !== null) {
+        attributes[`option_${index}`] = id;
+      }
+    });
 
     return {
       productId,
@@ -275,12 +276,14 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   /**
    * Extract public image URLs from a PrestaShop product response.
    *
-   * PrestaShop serializes `associations.images.image` as either a single object
-   * (when the product has one image) or an array (when it has many). Each image
-   * node carries its numeric id under either `id` or `@_id` depending on the
-   * response format (JSON vs XML). We normalise both shapes, skip entries that
-   * don't yield a usable id, and build one URL per remaining entry. Preserves
-   * PrestaShop's order — the first element is treated as the cover.
+   * PrestaShop serializes `associations.images` in one of two shapes depending
+   * on the response format:
+   *   - XML (parsed by fast-xml-parser): `{ image: [...] | {...} }`
+   *   - JSON (`output_format=JSON`):     `[...]` directly (the `<image>` wrapper
+   *     is collapsed into a flat array)
+   * `unwrapAssociationEntries` normalises both into a single list. Each entry
+   * carries its numeric id under either `id` or `@_id`. Preserves PrestaShop's
+   * order — the first element is treated as the cover.
    *
    * Returns `undefined` when no images can be extracted (no associations, empty
    * collection, or every entry malformed). `undefined` — not `null` — matches
@@ -293,21 +296,11 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     }
 
     const associations = product.associations as Record<string, unknown>;
-    const imagesNode = associations.images;
-    if (!imagesNode || typeof imagesNode !== 'object') {
-      return undefined;
-    }
-
-    const imageField = (imagesNode as Record<string, unknown>).image;
-    if (imageField === undefined || imageField === null) {
-      return undefined;
-    }
-
-    const entries = Array.isArray(imageField) ? imageField : [imageField];
+    const entries = this.unwrapAssociationEntries(associations.images, 'image');
 
     const urls: string[] = [];
     for (const entry of entries) {
-      const id = this.extractImageId(entry);
+      const id = this.readAssociationId(entry);
       if (id === null) {
         continue;
       }
@@ -318,15 +311,53 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   }
 
   /**
-   * Extract the numeric image id from a single `associations.images.image` entry.
+   * Normalise a PrestaShop association node into a flat list of entries.
    *
-   * PrestaShop returns ids under `id` (JSON) or `@_id` (XML parsed by
-   * `fast-xml-parser`). Defensive against primitive entries (the node itself a
-   * string), object entries with either key, and anything else (returns null so
-   * the caller can skip). String/number ids are accepted; other types are
-   * rejected.
+   * PrestaShop serializes associations in two different shapes depending on the
+   * response format requested:
+   *   - XML (parsed by fast-xml-parser) preserves the `<singularKey>` wrapper:
+   *     `{ [singularKey]: [...] | {...} }`
+   *   - JSON (`output_format=JSON`) collapses the wrapper into a flat array at
+   *     the plural node: `[...]`
+   *
+   * This helper accepts either shape and always returns an array (possibly
+   * empty). Callers can then iterate uniformly.
    */
-  private extractImageId(entry: unknown): string | null {
+  private unwrapAssociationEntries(node: unknown, singularKey: string): unknown[] {
+    if (node === null || node === undefined) {
+      return [];
+    }
+
+    // JSON shape: the plural node is already a flat array of entries.
+    if (Array.isArray(node)) {
+      return node;
+    }
+
+    // XML shape: the plural node is an object with the singular key inside.
+    if (typeof node === 'object') {
+      const inner = (node as Record<string, unknown>)[singularKey];
+      if (inner === null || inner === undefined) {
+        return [];
+      }
+      return Array.isArray(inner) ? inner : [inner];
+    }
+
+    return [];
+  }
+
+  /**
+   * Extract a string id from a single association entry.
+   *
+   * PrestaShop returns ids under `id` (JSON) or `@_id` / `@id` (XML parsed by
+   * `fast-xml-parser`, depending on attribute-prefix config). Defensive against
+   * primitive entries (the node itself a string/number), object entries with
+   * any of the id keys, and anything else (returns null so the caller can
+   * skip). String/number ids are accepted; other types are rejected.
+   *
+   * Shared across `extractImages`, `extractCategories`, and `mapVariant` so the
+   * set of accepted id keys stays in one place.
+   */
+  private readAssociationId(entry: unknown): string | null {
     if (entry === null || entry === undefined) {
       return null;
     }
@@ -372,7 +403,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
    * Examples: `'1'` → `'1'`, `'42'` → `'4/2'`, `'123'` → `'1/2/3'`.
    *
    * Caller is responsible for supplying numeric ids — PrestaShop image ids
-   * are numeric in practice, and `extractImageId` rejects anything that
+   * are numeric in practice, and `readAssociationId` rejects anything that
    * isn't `string | number` before reaching this helper. Non-digit input
    * would still be split character-by-character rather than stripped.
    */
@@ -381,31 +412,29 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   }
 
   /**
-   * Extract categories from PrestaShop product
+   * Extract categories from PrestaShop product.
+   *
+   * Handles both response shapes via `unwrapAssociationEntries`:
+   *   - XML: `associations.categories = { category: [...] | {...} }`
+   *   - JSON: `associations.categories = [...]`
    */
   private extractCategories(product: PrestashopProduct): string[] | undefined {
-    // PrestaShop categories are in associations.categories
-    if (product.associations && typeof product.associations === 'object') {
-      const associations = product.associations as Record<string, unknown>;
-      if (associations.categories) {
-        const categories = associations.categories as Record<string, unknown>;
-        const categoryList = categories.category;
-
-        if (Array.isArray(categoryList)) {
-          return categoryList.map((cat) => {
-            if (cat && typeof cat === 'object') {
-              const catObj = cat as Record<string, unknown>;
-              return String(catObj.id || catObj['@_id'] || '');
-            }
-            return String(cat);
-          });
-        } else if (categoryList && typeof categoryList === 'object') {
-          const catObj = categoryList as Record<string, unknown>;
-          return [String(catObj.id || catObj['@_id'] || '')];
-        }
+    if (!product.associations || typeof product.associations !== 'object') {
+      return undefined;
+    }
+    const associations = product.associations as Record<string, unknown>;
+    const entries = this.unwrapAssociationEntries(associations.categories, 'category');
+    if (entries.length === 0) {
+      return undefined;
+    }
+    const ids: string[] = [];
+    for (const entry of entries) {
+      const id = this.readAssociationId(entry);
+      if (id !== null) {
+        ids.push(id);
       }
     }
-    return undefined;
+    return ids.length > 0 ? ids : undefined;
   }
 
   /**
