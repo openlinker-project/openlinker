@@ -2,11 +2,19 @@
  * ThemeToggle
  *
  * Three-option theme switcher (Light / Dark / System) wrapping `useTheme`.
- * Ships as a radiogroup of native buttons so keyboard and screen-reader
- * semantics come for free. Intended to live in the user-chip dropdown
- * once AppShell is rebuilt in Phase 2; callers can also place it elsewhere.
+ * Ships as an ARIA radiogroup of native buttons with full keyboard parity:
+ *
+ *   - Tab enters/exits the group at the currently-selected radio (roving
+ *     tabindex: only the checked option is in the tab order).
+ *   - ArrowLeft / ArrowUp moves to the previous option and selects it.
+ *   - ArrowRight / ArrowDown moves to the next option and selects it.
+ *   - Home / End jump to the first / last option.
+ *   - Enter / Space on a focused radio selects it (native button behaviour).
+ *
+ * Intended to live in the user-chip dropdown once AppShell is rebuilt;
+ * callers can also place it elsewhere.
  */
-import type { ReactElement } from 'react';
+import { useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useTheme } from '../theme/use-theme';
 import { ThemeValues, type Theme } from '../theme/theme.types';
 
@@ -39,26 +47,61 @@ export function ThemeToggle({
   label = 'Theme',
 }: ThemeToggleProps): ReactElement {
   const { theme, setTheme } = useTheme();
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const classes = ['theme-toggle', className].filter(Boolean).join(' ');
 
+  function moveTo(nextIndex: number): void {
+    const option = THEME_OPTIONS[nextIndex];
+    setTheme(option.value);
+    optionRefs.current[nextIndex]?.focus();
+  }
+
+  function handleKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ): void {
+    const total = THEME_OPTIONS.length;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault();
+        moveTo((currentIndex - 1 + total) % total);
+        break;
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault();
+        moveTo((currentIndex + 1) % total);
+        break;
+      case 'Home':
+        event.preventDefault();
+        moveTo(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        moveTo(total - 1);
+        break;
+    }
+  }
+
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className={classes}
-    >
-      {THEME_OPTIONS.map((option) => {
+    <div role="radiogroup" aria-label={label} className={classes}>
+      {THEME_OPTIONS.map((option, index) => {
         const selected = theme === option.value;
         return (
           <button
             key={option.value}
+            ref={(el) => {
+              optionRefs.current[index] = el;
+            }}
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
             className={
               selected ? 'theme-toggle__option theme-toggle__option--active' : 'theme-toggle__option'
             }
             onClick={() => setTheme(option.value)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
           >
             {option.label}
           </button>

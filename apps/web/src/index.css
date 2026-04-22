@@ -135,6 +135,11 @@
   --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06);
   --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
 
+  /* Primary button hover — near-black in light mode. Overridden to
+     near-white in html[data-theme='dark'] so the primary button
+     auto-inverts alongside --text-primary / --text-inverse. */
+  --button-primary-bg-hover: #0b1520;
+
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
@@ -331,8 +336,8 @@ button,
 
 button:hover,
 .button:hover {
-  background: var(--button-primary-bg-hover, #0b1520);
-  border-color: var(--button-primary-bg-hover, #0b1520);
+  background: var(--button-primary-bg-hover);
+  border-color: var(--button-primary-bg-hover);
   color: var(--text-inverse);
 }
 

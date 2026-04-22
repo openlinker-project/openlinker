@@ -248,7 +248,7 @@ Component conventions:
 
 Naming conventions:
 
-- components: `PascalCase.tsx`
+- components: `kebab-case.tsx` — the named export stays `PascalCase` (e.g. `shared/ui/kpi-card.tsx` exports `KpiCard`). This matches every existing primitive in `apps/web/src/shared/ui/` and `apps/web/src/features/*/components/`. Where a component needs multiple related files (Zod schema, types, test), they share the same kebab-case stem.
 - hooks: `use-*.ts`
 - route modules: `*.route.tsx`
 - tests: `*.test.tsx`
