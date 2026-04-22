@@ -156,7 +156,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             },
           ]);
         }
-        if (entityType === 'Product' && internalId === 'internal-variant-789') {
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([
             {
               connectionId: connection.id,
@@ -324,7 +324,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             },
           ]);
         }
-        if (entityType === 'Product' && internalId === 'internal-variant-789') {
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([]); // Variant not found - should use 0
         }
         return Promise.resolve([]);
@@ -390,7 +390,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             },
           ]);
         }
-        if (entityType === 'Product' && internalId === 'internal-variant-789') {
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([
             {
               connectionId: connection.id,
@@ -466,7 +466,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             },
           ]);
         }
-        if (entityType === 'Product' && internalId === 'internal-variant-789') {
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([
             {
               connectionId: connection.id,
@@ -548,7 +548,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             },
           ]);
         }
-        if (entityType === 'Product' && internalId === 'internal-variant-789') {
+        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([
             {
               connectionId: connection.id,
