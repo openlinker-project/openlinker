@@ -110,6 +110,18 @@ export function SyncJobsPage(): ReactElement {
     });
   }
 
+  function clearFilters(): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('status');
+      next.delete('jobType');
+      next.delete('connectionId');
+      next.delete('offset');
+      return next;
+    });
+  }
+
+  const filtersActive = Boolean(status || jobType || connectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -172,9 +184,14 @@ export function SyncJobsPage(): ReactElement {
           liveRegion="off"
           title="No jobs found"
           message={
-            status || jobType || connectionId
-              ? 'No jobs match the current filters. Try clearing some filters.'
+            filtersActive
+              ? 'No jobs match the current filters.'
               : 'No sync jobs have been enqueued yet.'
+          }
+          action={
+            filtersActive ? (
+              <Button onClick={clearFilters}>Clear filters</Button>
+            ) : undefined
           }
         />
       ) : (

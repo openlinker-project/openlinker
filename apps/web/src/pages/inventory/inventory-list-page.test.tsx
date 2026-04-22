@@ -1,4 +1,5 @@
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { InventoryListPage } from './inventory-list-page';
@@ -44,6 +45,7 @@ describe('InventoryListPage', () => {
   afterEach(() => {
     vi.runAllTimers();
     vi.useRealTimers();
+    cleanup();
   });
 
   it('should show loading state initially', () => {
@@ -123,7 +125,7 @@ describe('InventoryListPage', () => {
     expect(within(container).getByText('SKU-NO-IMG')).toBeInTheDocument();
   });
 
-  it('should show empty state when no inventory items exist', async () => {
+  it('should show empty state with a Browse products CTA when no inventory items exist', async () => {
     const mockApi = createMockApiClient({
       inventory: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
     });
@@ -131,5 +133,24 @@ describe('InventoryListPage', () => {
     renderWithProviders(<InventoryListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No inventory items found')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Browse products' });
+    expect(cta).toHaveAttribute('href', '/products');
+  });
+
+  it('should show a Clear filters button that clears filters when they are active', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      inventory: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+    });
+
+    renderWithProviders(<InventoryListPage />, {
+      apiClient: mockApi,
+      route: '/inventory?productId=missing',
+    });
+
+    expect(await screen.findByText('No inventory items match the current filters.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(await screen.findByRole('link', { name: 'Browse products' })).toBeInTheDocument();
   });
 });

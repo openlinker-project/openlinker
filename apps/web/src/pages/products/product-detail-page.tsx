@@ -228,6 +228,7 @@ export function ProductDetailPage(): ReactElement {
             }
           />
         ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
+          // No action: stock is sourced from the product master and not editable here.
           <EmptyState liveRegion="off" title="No stock records" message="No inventory records found for this product." />
         ) : (
           <DataTable

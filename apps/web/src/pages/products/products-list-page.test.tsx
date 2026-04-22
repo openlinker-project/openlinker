@@ -1,4 +1,5 @@
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
@@ -44,6 +45,7 @@ describe('ProductsListPage', () => {
     // "window is not defined" unhandled errors from useDebouncedValue.
     vi.runAllTimers();
     vi.useRealTimers();
+    cleanup();
   });
 
   it('should show loading state initially', () => {
@@ -121,20 +123,36 @@ describe('ProductsListPage', () => {
     expect(placeholderRow?.textContent).toBe('A');
   });
 
-  it('should show empty state when no products exist', async () => {
+  it('should show empty state with a Manage connections CTA when no products exist', async () => {
     const mockApi = createMockApiClient({
       products: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 20,
-          offset: 0,
-        }),
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No products found')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Manage connections' });
+    expect(cta).toHaveAttribute('href', '/connections');
+  });
+
+  it('should show a Clear search button that clears the search param when a query is active', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      route: '/products?search=nope',
+    });
+
+    expect(await screen.findByText('No products match the current search.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
 });

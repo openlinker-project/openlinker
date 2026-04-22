@@ -1,5 +1,5 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -164,6 +164,19 @@ export function InventoryListPage(): ReactElement {
     });
   }
 
+  function clearFilters(): void {
+    setProductIdInput('');
+    setVariantIdInput('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('productId');
+      next.delete('productVariantId');
+      next.delete('offset');
+      return next;
+    });
+  }
+
+  const filtersActive = Boolean(debouncedProductId || debouncedVariantId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -205,9 +218,18 @@ export function InventoryListPage(): ReactElement {
           liveRegion="off"
           title="No inventory items found"
           message={
-            debouncedProductId || debouncedVariantId
+            filtersActive
               ? 'No inventory items match the current filters.'
               : 'No inventory records have been synced yet.'
+          }
+          action={
+            filtersActive ? (
+              <Button onClick={clearFilters}>Clear filters</Button>
+            ) : (
+              <Link className="button button--primary" to="/products">
+                Browse products
+              </Link>
+            )
           }
         />
       ) : (

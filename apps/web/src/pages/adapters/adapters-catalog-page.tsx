@@ -75,6 +75,7 @@ export function AdaptersCatalogPage(): ReactElement {
           }
         />
       ) : (query.data ?? []).length === 0 ? (
+        // No action: adapters are system-registered at build time; operators cannot add them from the UI.
         <EmptyState
           title="No adapters available"
           message="No integration adapters are registered in the system."

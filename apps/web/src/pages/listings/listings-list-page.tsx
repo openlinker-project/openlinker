@@ -1,5 +1,5 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -108,6 +108,20 @@ export function ListingsListPage(): ReactElement {
     });
   }
 
+  function clearFilters(): void {
+    setSearchInput('');
+    setConnectionIdInput('');
+    setPlatformTypeInput('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('search');
+      next.delete('connectionId');
+      next.delete('platformType');
+      next.delete('offset');
+      return next;
+    });
+  }
+
   const hasFilters = !!(debouncedSearch || debouncedConnectionId || debouncedPlatformType);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
@@ -158,6 +172,15 @@ export function ListingsListPage(): ReactElement {
             hasFilters
               ? 'No offer mappings match the current filters.'
               : 'No offer mappings have been synced yet.'
+          }
+          action={
+            hasFilters ? (
+              <Button onClick={clearFilters}>Clear filters</Button>
+            ) : (
+              <Link className="button button--primary" to="/connections">
+                Manage connections
+              </Link>
+            )
           }
         />
       ) : (
