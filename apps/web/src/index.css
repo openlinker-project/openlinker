@@ -129,6 +129,36 @@
   --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
   --overlay-scrim: rgba(16, 24, 40, 0.45);
 
+  /* FE-002 canonical shadow triplet (aliases onto --shadow-soft family). */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
   color-scheme: light;
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -139,6 +169,105 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────
+ * Activated via `data-theme="dark"` on <html> (see ThemeProvider and
+ * the FOUC guard in index.html). Only colour tokens are remapped —
+ * spacing, radii, shadows, and typography stay identical across themes.
+ * Status tones keep the same semantic names but shift to dark-friendly
+ * tints so soft backgrounds don't wash out on dark surfaces.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-canvas: #0b1220;
+  --bg-shell: #10192a;
+  --bg-surface: #111c2e;
+  --bg-surface-elevated: #172338;
+  --bg-muted: #1b2740;
+  --bg-surface-muted: #1b2740;
+  --bg-surface-hover: #223057;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --border-focus: #7ea6ff;
+
+  /* Text */
+  --text-primary: #e9eef5;
+  --text-secondary: #b5c1d1;
+  --text-muted: #8998ac;
+  --text-disabled: #596776;
+  --text-on-primary: #0b1220;
+  --text-inverse: #0b1220;
+
+  /* Accent */
+  --accent-primary: #6c96ff;
+  --accent-primary-hover: #87a9ff;
+  --accent-primary-soft: rgba(108, 150, 255, 0.16);
+  --accent-primary-border: rgba(108, 150, 255, 0.4);
+  --accent-focus: #9cbaff;
+
+  /* Status — success */
+  --status-success: #3fbb82;
+  --status-success-soft: rgba(63, 187, 130, 0.16);
+  --status-success-border: rgba(63, 187, 130, 0.35);
+  --status-success-fg: #7ed6ab;
+  --status-success-strong: #7ed6ab;
+
+  /* Status — warning */
+  --status-warning: #d8a347;
+  --status-warning-soft: rgba(216, 163, 71, 0.16);
+  --status-warning-border: rgba(216, 163, 71, 0.35);
+  --status-warning-fg: #efc685;
+  --status-warning-strong: #efc685;
+
+  /* Status — error */
+  --status-error: #e06a6a;
+  --status-error-soft: rgba(224, 106, 106, 0.16);
+  --status-error-border: rgba(224, 106, 106, 0.35);
+  --status-error-fg: #f2a5a5;
+  --status-error-strong: #f2a5a5;
+
+  /* Status — info */
+  --status-info: #5b9df0;
+  --status-info-soft: rgba(91, 157, 240, 0.16);
+  --status-info-border: rgba(91, 157, 240, 0.35);
+  --status-info-fg: #a8c9f7;
+  --status-info-strong: #a8c9f7;
+
+  /* Status — review */
+  --status-review: #9d82d8;
+  --status-review-soft: rgba(157, 130, 216, 0.16);
+  --status-review-border: rgba(157, 130, 216, 0.35);
+  --status-review-fg: #c5b1ea;
+  --status-review-strong: #c5b1ea;
+
+  /* Status — conflict */
+  --status-conflict: #e08a4f;
+  --status-conflict-soft: rgba(224, 138, 79, 0.16);
+  --status-conflict-border: rgba(224, 138, 79, 0.35);
+  --status-conflict-strong: #f2b88a;
+
+  /* Status — disabled */
+  --status-disabled: #8998ac;
+  --status-disabled-soft: rgba(137, 152, 172, 0.14);
+  --status-disabled-border: rgba(137, 152, 172, 0.32);
+  --status-disabled-fg: #b5c1d1;
+  --status-disabled-strong: #b5c1d1;
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-soft-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+  --overlay-scrim: rgba(0, 0, 0, 0.6);
 }
 
 * {
