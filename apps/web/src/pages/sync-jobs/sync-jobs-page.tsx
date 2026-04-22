@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
-import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
@@ -157,11 +158,7 @@ export function SyncJobsPage(): ReactElement {
 
       {/* Table */}
       {query.isLoading ? (
-        <LoadingState
-          liveRegion="off"
-          title="Loading jobs"
-          message="Fetching sync job data…"
-        />
+        <DataTableSkeleton columns={COLUMNS} />
       ) : query.error ? (
         <ErrorState
           title="Unable to load sync jobs"
