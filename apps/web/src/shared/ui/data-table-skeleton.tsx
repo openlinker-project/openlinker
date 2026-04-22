@@ -57,12 +57,7 @@ export function DataTableSkeleton({
   const isMobile = useMediaQuery('(max-width: 767.98px)');
 
   return (
-    <div
-      className="data-table-skeleton"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading table data"
-    >
+    <div className="data-table-skeleton" role="status" aria-live="polite">
       <span className="sr-only">Loading…</span>
       {isMobile ? (
         <ul className="data-table-skeleton__cards" aria-hidden="true">

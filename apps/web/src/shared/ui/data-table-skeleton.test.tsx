@@ -63,7 +63,9 @@ describe('DataTableSkeleton', () => {
     expect(wrapper).not.toBeNull();
     expect(wrapper?.getAttribute('role')).toBe('status');
     expect(wrapper?.getAttribute('aria-live')).toBe('polite');
-    expect(wrapper?.getAttribute('aria-label')).toBe('Loading table data');
+    // No aria-label: the sr-only "Loading…" text carries the announcement,
+    // which avoids double-reads on SRs that prefer aria-label over text content.
+    expect(wrapper?.getAttribute('aria-label')).toBeNull();
   });
 
   it('should include a visually-hidden Loading label and hide the visual skeleton from assistive tech', () => {
@@ -74,13 +76,10 @@ describe('DataTableSkeleton', () => {
     expect(container.querySelector('table')?.parentElement?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('should mark every shimmer bar with the data-table-skeleton__bar class hook used by prefers-reduced-motion', () => {
+  it('should render the shimmer-bar CSS hook used by prefers-reduced-motion for every header and body cell', () => {
     const { container } = render(<DataTableSkeleton columns={3} rows={2} />);
     const bars = selectAll(container, '.data-table-skeleton__bar');
-    // 3 header bars + 3 columns * 2 rows body bars = 9
-    expect(bars.length).toBeGreaterThanOrEqual(9);
-    for (const bar of bars) {
-      expect(bar.classList.contains('data-table-skeleton__bar')).toBe(true);
-    }
+    // 3 header bars + (3 columns × 2 rows) body bars = 9
+    expect(bars).toHaveLength(9);
   });
 });

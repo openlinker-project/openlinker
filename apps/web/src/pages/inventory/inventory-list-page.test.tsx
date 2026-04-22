@@ -53,7 +53,7 @@ describe('InventoryListPage', () => {
 
     renderWithProviders(<InventoryListPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status', { name: 'Loading table data' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('should show inventory table when data loads', async () => {
