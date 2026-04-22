@@ -7,11 +7,17 @@
  * @module libs/integrations/allegro/src/application
  * @implements {IAllegroAdapterFactory}
  */
-import { IAllegroAdapterFactory, AllegroAdapters } from './interfaces/allegro-adapter.factory.interface';
+import {
+  IAllegroAdapterFactory,
+  AllegroAdapters,
+} from './interfaces/allegro-adapter.factory.interface';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
-import { AllegroConnectionConfig, AllegroEnvironmentValues } from '../domain/types/allegro-config.types';
+import {
+  AllegroConnectionConfig,
+  AllegroEnvironmentValues,
+} from '../domain/types/allegro-config.types';
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
@@ -21,7 +27,6 @@ import {
 } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-order-source.adapter';
 import { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
-import { AllegroMarketplaceAdapter, QuantityPollConfig } from '../infrastructure/adapters/allegro-marketplace.adapter';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
 import { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
@@ -41,7 +46,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     _customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
-    private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
+    private readonly quantityPollConfig?: Partial<QuantityPollConfig>
   ) {
     void _customerIdentityResolver;
   }
@@ -49,7 +54,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
   async createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<AllegroAdapters> {
     this.logger.debug(`Creating Allegro adapters for connection: ${connection.id}`);
 
@@ -70,7 +75,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       ? async (_connectionId: string): Promise<TokenRefreshResult> => {
           const refreshResponse = await this.tokenRefreshService!.refreshToken(
             connection,
-            credentialsResolver,
+            credentialsResolver
           );
           return {
             accessToken: refreshResponse.accessToken,
@@ -86,7 +91,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       credentials,
       config,
       undefined, // retryConfig
-      tokenRefreshCallback,
+      tokenRefreshCallback
     );
 
     // Both adapters receive the single per-connection HTTP client + identifier-mapping
@@ -98,13 +103,9 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       identifierMapping,
       connection,
       this.commandRepository,
-      this.quantityPollConfig,
+      this.quantityPollConfig
     );
-    const orderSourceAdapter = new AllegroOrderSourceAdapter(
-      connection.id,
-      httpClient,
-      connection,
-    );
+    const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);
 
@@ -136,7 +137,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     if (!connection.config) {
       throw new AllegroConfigException(
         `Connection ${connection.id} is missing config`,
-        connection.id,
+        connection.id
       );
     }
 
@@ -146,14 +147,14 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       if (!config.environment) {
         throw new AllegroConfigException(
           `Connection ${connection.id} is missing environment in config`,
-          connection.id,
+          connection.id
         );
       }
 
       if (!AllegroEnvironmentValues.includes(config.environment)) {
         throw new AllegroConfigException(
           `Connection ${connection.id} has invalid environment: ${config.environment}. Must be one of: ${AllegroEnvironmentValues.join(', ')}`,
-          connection.id,
+          connection.id
         );
       }
 
@@ -164,7 +165,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       }
       throw new AllegroConfigException(
         `Connection ${connection.id} has invalid config: ${(error as Error).message}`,
-        connection.id,
+        connection.id
       );
     }
   }
@@ -174,24 +175,24 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
    */
   private async resolveCredentials(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<AllegroCredentials> {
     if (!connection.credentialsRef) {
       throw new AllegroConfigException(
         `Connection ${connection.id} is missing credentialsRef`,
-        connection.id,
+        connection.id
       );
     }
 
     try {
       const credentials = await credentialsResolver.get<AllegroCredentials>(
-        connection.credentialsRef,
+        connection.credentialsRef
       );
 
       if (!credentials.accessToken) {
         throw new AllegroConfigException(
           `Connection ${connection.id} credentials are missing accessToken`,
-          connection.id,
+          connection.id
         );
       }
 
@@ -202,9 +203,8 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       }
       throw new AllegroConfigException(
         `Failed to resolve credentials for connection ${connection.id}: ${(error as Error).message}`,
-        connection.id,
+        connection.id
       );
     }
   }
 }
-
