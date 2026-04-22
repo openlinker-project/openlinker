@@ -100,7 +100,7 @@ export function CursorsListPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow="Diagnostics"
       title="Cursors"
       description="Sync cursor state per connection — track incremental sync positions."
     >

@@ -50,7 +50,11 @@ const COLUMNS: DataTableColumn<Connection>[] = [
   {
     id: 'identifier',
     header: 'Identifier',
-    cell: (connection) => <span className="mono-text">{connection.id}</span>,
+    cell: (connection) => (
+      <span className="mono-text" title={connection.id}>
+        {connection.id}
+      </span>
+    ),
     hideBelow: 1024,
   },
   {

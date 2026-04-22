@@ -57,6 +57,16 @@ describe('SyncJobsPage', () => {
     expect(screen.getAllByText('marketplace.orders.poll').length).toBeGreaterThan(1);
   });
 
+  it('renders the Diagnostics eyebrow so the header matches the sidebar group and breadcrumb', async () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Diagnostics')).toBeInTheDocument();
+  });
+
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockRejectedValue(new Error('Service unavailable')) },
