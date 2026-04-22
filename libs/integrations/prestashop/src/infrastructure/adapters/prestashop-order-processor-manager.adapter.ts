@@ -168,10 +168,10 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
 
         // Resolve variant ID if present
         if (item.variantId) {
-          // Note: PrestaShop uses "combinations" for variants, which are mapped as Product entities
-          // with a product_attribute_id. For MVP, we'll try to find the combination ID.
-          // This may need refinement based on how variants are stored in PrestaShop.
-          const variantExternalIds = await this.identifierMapping.getExternalIds('Product', item.variantId);
+          const variantExternalIds = await this.identifierMapping.getExternalIds(
+            'ProductVariant',
+            item.variantId,
+          );
           const prestashopVariantId = variantExternalIds.find(
             (e: { connectionId: string }) => e.connectionId === this.connection.id,
           );

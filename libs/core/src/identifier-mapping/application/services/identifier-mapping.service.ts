@@ -28,6 +28,7 @@ import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-alrea
 import { IdentifierMappingConflictException } from '../../domain/exceptions/identifier-mapping-conflict.exception';
 import {
   EntityType,
+  ENTITY_TYPE_ID_PREFIX,
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
@@ -326,9 +327,11 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   private generateInternalId(entityType: EntityType): string {
-    // Format: ol_{entityTypeLower}_{uuid}
+    // Format: ol_{prefix}_{uuid} — prefix defaults to entityType.toLowerCase()
+    // unless overridden in ENTITY_TYPE_ID_PREFIX (e.g. ProductVariant → 'variant').
     const uuid = randomUUID().replace(/-/g, '');
-    return `ol_${entityType.toLowerCase()}_${uuid}`;
+    const prefix = ENTITY_TYPE_ID_PREFIX[entityType] ?? entityType.toLowerCase();
+    return `ol_${prefix}_${uuid}`;
   }
 }
 

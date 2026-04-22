@@ -508,11 +508,11 @@ interface ExternalIdMapping {
 ### Internal Identifier Format
 
 Internal identifiers are generated from a **single unified seed** across all entity types:
-- Format: `ol_{entityTypeLower}_{uuid}` where `entityTypeLower` is the lowercase version of the EntityType
-- Examples: `ol_product_fce2df4d853f4499b955a6bb1a212bd1`, `ol_order_xyz789`, `ol_offer_def456`
+- Format: `ol_{prefix}_{uuid}` where `prefix` defaults to `entityType.toLowerCase()`
+- Examples: `ol_product_fce2df4d853f4499b955a6bb1a212bd1`, `ol_variant_e4b98e91340a44edb4892905db8810b1`, `ol_order_xyz789`, `ol_offer_def456`
 - Uniqueness: Guaranteed across all entities in the system
 - **Database Storage**: Internal IDs are stored as `TEXT` type in PostgreSQL (not UUID)
-- **Normalization**: EntityType values are normalized to lowercase (e.g., `'Product'` → `'product'`)
+- **Prefix overrides**: A small `ENTITY_TYPE_ID_PREFIX` map in `identifier-mapping.types.ts` overrides the default for entity types where the documented prefix diverges from the lowercased class name. Today: `ProductVariant → variant` (so IDs are `ol_variant_*`, not `ol_productvariant_*`).
 - **Canonical Entities**: Product, ProductVariant, InventoryItem use internal IDs as primary keys
 
 ### Usage by Adapters

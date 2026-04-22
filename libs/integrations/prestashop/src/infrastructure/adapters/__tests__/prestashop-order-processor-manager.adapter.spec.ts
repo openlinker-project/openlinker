@@ -195,7 +195,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Customer', 'internal-customer-123');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-456');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-789');
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-variant-789');
+      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'internal-variant-789');
       expect(mockOrderMapper.mapCartCreate).toHaveBeenCalled();
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
