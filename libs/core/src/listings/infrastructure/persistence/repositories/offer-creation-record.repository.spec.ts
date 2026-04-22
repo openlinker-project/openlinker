@@ -180,6 +180,35 @@ describe('OfferCreationRecordRepository', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should pass connectionId to where clause so same externalOfferId on a different connection is not returned', async () => {
+      // Shared externalOfferId across two connections is valid (different
+      // marketplace tenants can reuse marketplace-side ids). The lookup must
+      // scope by connectionId — only the current connection's record should
+      // come back. Simulate that by returning null when the wrong connection
+      // is queried.
+      ormRepository.findOne.mockResolvedValueOnce(null);
+      const missForWrongConn = await repository.findByExternalOfferIdAndConnectionId(
+        'shared-offer-1',
+        'conn-wrong',
+      );
+      expect(ormRepository.findOne).toHaveBeenLastCalledWith({
+        where: { externalOfferId: 'shared-offer-1', connectionId: 'conn-wrong' },
+      });
+      expect(missForWrongConn).toBeNull();
+
+      ormRepository.findOne.mockResolvedValueOnce(
+        buildOrm({ externalOfferId: 'shared-offer-1', connectionId: 'conn-right' }),
+      );
+      const hit = await repository.findByExternalOfferIdAndConnectionId(
+        'shared-offer-1',
+        'conn-right',
+      );
+      expect(ormRepository.findOne).toHaveBeenLastCalledWith({
+        where: { externalOfferId: 'shared-offer-1', connectionId: 'conn-right' },
+      });
+      expect(hit?.connectionId).toBe('conn-right');
+    });
   });
 
   describe('updateStatus', () => {

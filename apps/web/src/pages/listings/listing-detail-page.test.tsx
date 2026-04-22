@@ -63,7 +63,7 @@ describe('ListingDetailPage', () => {
     expect(screen.queryByRole('link', { name: 'ol_opaque_42' })).toBeNull();
   });
 
-  it('renders the offer-creation section with an Active badge when offerCreation is present', async () => {
+  it('renders the offer-creation section with an Active badge and metadata when offerCreation is present', async () => {
     const offerCreation: OfferCreationStatusResponse = {
       id: 'rec-1',
       internalVariantId: 'ol_variant_abc',
@@ -79,8 +79,29 @@ describe('ListingDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: /offer creation/i })).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
+    // Metadata rendered in KeyValueList
+    expect(screen.getByText('rec-1')).toBeInTheDocument();
+    expect(screen.getAllByText('ext-42').length).toBeGreaterThan(0);
     // Not failed → no error list
     expect(screen.queryByRole('list', { name: /offer creation errors/i })).toBeNull();
+  });
+
+  it('renders an em-dash for externalOfferId when the record has none (pre-creation)', async () => {
+    const offerCreation: OfferCreationStatusResponse = {
+      id: 'rec-pending',
+      internalVariantId: 'ol_variant_abc',
+      connectionId: sampleConnection.id,
+      externalOfferId: null,
+      status: 'pending',
+      errors: null,
+      publishImmediately: true,
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:05:00.000Z',
+    };
+    renderDetail(buildMapping({ entityType: 'Offer', offerCreation }));
+
+    expect(await screen.findByText('rec-pending')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('renders the error list when offerCreation.status is failed', async () => {

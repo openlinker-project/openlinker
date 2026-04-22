@@ -3503,24 +3503,17 @@ textarea {
 
 /*
  * ── Listing detail — Offer creation section (#306) ────────────────
- * Surfaces the OfferCreationStatus badge (+ errors on failed) next to
- * the mapping's key-value list. Only renders when the backend embeds
- * `offerCreation` on the detail response (OL-created offers).
+ * Header row (title + status badge) for the embedded OfferCreation
+ * surface. Visual parity with sibling detail sections — the outer
+ * `.detail-section` already owns spacing, so this only styles the
+ * header row itself plus its sibling gap.
  */
-.listing-detail-offer-creation {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
-  background: var(--bg-surface);
-}
-
 .listing-detail-offer-creation__header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .listing-detail-offer-creation__title {

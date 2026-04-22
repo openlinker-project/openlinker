@@ -393,43 +393,40 @@ export function CreateOfferWizard({
                     {form.formState.errors.internalVariantId.message}
                   </p>
                 ) : null}
-                {(productsQuery.data?.total ?? 0) > VARIANT_PICKER_PAGE_SIZE ? (
-                  <div className="create-offer-variant-picker__pagination">
-                    <span className="muted-text">
-                      {productOffset + 1}–
-                      {Math.min(
-                        productOffset + VARIANT_PICKER_PAGE_SIZE,
-                        productsQuery.data?.total ?? 0,
-                      )}{' '}
-                      of {productsQuery.data?.total ?? 0}
-                    </span>
-                    <div className="create-offer-variant-picker__pagination-actions">
-                      <Button
-                        tone="secondary"
-                        type="button"
-                        aria-label="Previous page of products"
-                        disabled={productOffset === 0}
-                        onClick={() =>
-                          setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
-                        }
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        tone="secondary"
-                        type="button"
-                        aria-label="Next page of products"
-                        disabled={
-                          productOffset + VARIANT_PICKER_PAGE_SIZE >=
-                          (productsQuery.data?.total ?? 0)
-                        }
-                        onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
-                      >
-                        Next
-                      </Button>
+                {(() => {
+                  const total = productsQuery.data?.total ?? 0;
+                  if (total <= VARIANT_PICKER_PAGE_SIZE) return null;
+                  const pageEnd = Math.min(productOffset + VARIANT_PICKER_PAGE_SIZE, total);
+                  return (
+                    <div className="create-offer-variant-picker__pagination">
+                      <span className="muted-text">
+                        {productOffset + 1}–{pageEnd} of {total}
+                      </span>
+                      <div className="create-offer-variant-picker__pagination-actions">
+                        <Button
+                          tone="secondary"
+                          type="button"
+                          aria-label="Previous page of products"
+                          disabled={productOffset === 0}
+                          onClick={() =>
+                            setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
+                          }
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          tone="secondary"
+                          type="button"
+                          aria-label="Next page of products"
+                          disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
+                          onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
+                        >
+                          Next
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  );
+                })()}
               </div>
             </>
           ) : null}

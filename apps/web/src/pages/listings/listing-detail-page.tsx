@@ -106,15 +106,39 @@ export function ListingDetailPage(): ReactElement {
 
       {mapping.offerCreation ? (
         <section className="detail-section">
-          <div className="listing-detail-offer-creation">
-            <div className="listing-detail-offer-creation__header">
-              <h3 className="listing-detail-offer-creation__title">Offer creation</h3>
-              <OfferCreationStatusBadge status={mapping.offerCreation.status} />
-            </div>
-            {mapping.offerCreation.status === 'failed' ? (
-              <OfferCreationErrorList errors={mapping.offerCreation.errors} />
-            ) : null}
+          <div className="listing-detail-offer-creation__header">
+            <h3 className="listing-detail-offer-creation__title">Offer creation</h3>
+            <OfferCreationStatusBadge status={mapping.offerCreation.status} />
           </div>
+          <KeyValueList
+            items={[
+              {
+                id: 'offerCreationId',
+                label: 'Record ID',
+                value: mapping.offerCreation.id,
+                mono: true,
+              },
+              {
+                id: 'externalOfferId',
+                label: 'External Offer ID',
+                value: mapping.offerCreation.externalOfferId ?? '—',
+                mono: true,
+              },
+              {
+                id: 'offerCreationCreatedAt',
+                label: 'Created',
+                value: <TimeDisplay iso={mapping.offerCreation.createdAt} />,
+              },
+              {
+                id: 'offerCreationUpdatedAt',
+                label: 'Updated',
+                value: <TimeDisplay iso={mapping.offerCreation.updatedAt} />,
+              },
+            ]}
+          />
+          {mapping.offerCreation.status === 'failed' ? (
+            <OfferCreationErrorList errors={mapping.offerCreation.errors} />
+          ) : null}
         </section>
       ) : null}
 
