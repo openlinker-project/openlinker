@@ -5,11 +5,21 @@
  * order creation in PrestaShop by mapping unified Order schema to PrestaShop
  * format and using IdentifierMappingService to resolve external IDs.
  *
+ * Idempotency contract: callers must pass the source-side internal order id in
+ * `order.metadata.internalOrderId`. Step 0 uses it to short-circuit on retry,
+ * and Step 6 writes the destination mapping under the same id so future retries
+ * find it.
+ *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderProcessorManagerPort}
  */
 import { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
-import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import {
+  IdentifierMappingPort,
+  Connection,
+  MappingAlreadyExistsError,
+  DuplicateIdentifierMappingError,
+} from '@openlinker/core/identifier-mapping';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopOrderMapper, PrestashopOrder } from '../mappers/prestashop.mapper.interface';
 import {
@@ -364,22 +374,59 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         }
       }
 
-      // Step 6: Create identifier mapping for the new order
-      // The order ID returned by PrestaShop is external, we need to map it to an internal ID
-      // For order creation, we'll use the order number as the internal identifier if available,
-      // or generate a new internal ID
-      // Note: getOrCreateInternalId handles duplicate key errors (both external key and internal ID collisions)
-      const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-        'Order',
-        externalOrderId,
-        this.connection.id,
-        {
-          metadata: {
-            orderNumber: order.orderNumber || createdOrder.reference,
-            createdAt: new Date().toISOString(),
+      // Step 6: Write identifier mapping using the source-side internal id so that
+      // Step 0's getExternalIds('Order', metadataInternalOrderId) finds this row on retry.
+      let internalOrderId: string;
+      if (metadataInternalOrderId) {
+        try {
+          await this.identifierMapping.createMapping(
+            'Order',
+            externalOrderId,
+            this.connection.id,
+            metadataInternalOrderId,
+            {
+              metadata: {
+                orderNumber: order.orderNumber || createdOrder.reference,
+                createdAt: new Date().toISOString(),
+              },
+            },
+          );
+        } catch (error) {
+          if (error instanceof MappingAlreadyExistsError) {
+            // Mapping was read before write (single-worker retry after a
+            // prior successful createMapping).
+            this.logger.debug(
+              `Destination order mapping already present (read-before-write) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`,
+            );
+          } else if (error instanceof DuplicateIdentifierMappingError) {
+            // Unique-constraint race: concurrent worker inserted the same
+            // mapping between our read and our insert.
+            this.logger.debug(
+              `Destination order mapping race resolved (concurrent insert) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`,
+            );
+          } else {
+            throw error;
+          }
+        }
+        internalOrderId = metadataInternalOrderId;
+      } else {
+        // Defensive fallback: no source id in metadata, mint one (old behavior).
+        // This path should not be reached in production — warn so drift is detectable.
+        this.logger.warn(
+          `createOrder invoked without metadata.internalOrderId for externalOrderId=${externalOrderId} connection=${this.connection.id} — idempotency check will be bypassed`,
+        );
+        internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+          'Order',
+          externalOrderId,
+          this.connection.id,
+          {
+            metadata: {
+              orderNumber: order.orderNumber || createdOrder.reference,
+              createdAt: new Date().toISOString(),
+            },
           },
-        },
-      );
+        );
+      }
 
       this.logger.log(
         `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`,
