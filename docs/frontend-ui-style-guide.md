@@ -37,7 +37,7 @@ Adopted during the UI refactor epic ([#236](https://github.com/SilkSoftwareHouse
 
 **Density posture:** *restrained cockpit* (Linear × Shopify admin). Typography-led hierarchy, generous-but-purposeful spacing, color reserved for operational meaning. Targeted *denser* patterns transplanted from a data-oriented variant: sparklines on KPI cards, filter chip bars above tables, monospace for every timestamp / ID / duration, and a queue-pressure composition widget for triage surfaces.
 
-**Type pairing:** **IBM Plex Sans** for UI, **IBM Plex Mono** for identifiers, timestamps, durations, payload fields, and numeric columns. Loaded via `@import` in `index.css`; fall back to system sans.
+**Type pairing:** **IBM Plex Sans** for UI, **IBM Plex Mono** for identifiers, timestamps, durations, payload fields, and numeric columns. Self-hosted under `apps/web/public/fonts/` with SIL OFL `LICENSE.txt` alongside; `@font-face` declarations in `src/index.css` scope the subset to `latin` + `latin-ext`. Falls back to system sans.
 
 **Foundation libraries** (headless only — see `## External Libraries`):
 - `@tanstack/react-table` — `DataTable` state engine
@@ -308,7 +308,7 @@ Typography should prioritize scanning and system clarity.
 
 IBM Plex was chosen over Inter / Geist / system defaults because it carries operator/technical heritage without feeling generic, and it renders cleanly at the 12–14 px sizes we use heavily.
 
-**Loaded via `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono`** imported from `apps/web/src/main.tsx` — self-hosted woff2 bundled by Vite, no Google Fonts CDN at runtime. `font-display: swap` is configured by the packages.
+**Self-hosted woff2 files** live under `apps/web/public/fonts/` with the SIL OFL `LICENSE.txt` alongside. `@font-face` declarations in `src/index.css` scope the subset to `latin` + `latin-ext` (ranges sourced from `@fontsource`'s `unicode.json`) and set `font-display: swap`. The hot-path weights (sans 400, sans 600, mono 400) are `<link rel="preload">`'d from `apps/web/index.html` to eliminate FOUT on first paint. No external font CDN is consulted at runtime.
 
 Recommendations:
 
