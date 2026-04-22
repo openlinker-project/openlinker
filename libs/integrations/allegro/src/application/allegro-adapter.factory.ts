@@ -15,6 +15,7 @@ import { AllegroConnectionConfig, AllegroEnvironmentValues } from '../domain/typ
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
+import { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
 import { AllegroMarketplaceAdapter, QuantityPollConfig } from '../infrastructure/adapters/allegro-marketplace.adapter';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
@@ -51,15 +52,20 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     // Determine API base URL
     const apiBaseUrl = config.apiBaseUrl || this.getDefaultApiBaseUrl(config.environment);
 
-    // Create token refresh callback if token refresh service is available
+    // Create token refresh callback if token refresh service is available.
+    // We forward both accessToken and expiresAt so the HTTP client can update
+    // its cached expiry and avoid immediately re-triggering a proactive
+    // refresh on the next request.
     const tokenRefreshCallback = this.tokenRefreshService
-      ? async (_connectionId: string): Promise<string> => {
-          // Token refresh service uses the connection we have in scope
+      ? async (_connectionId: string): Promise<TokenRefreshResult> => {
           const refreshResponse = await this.tokenRefreshService!.refreshToken(
             connection,
             credentialsResolver,
           );
-          return refreshResponse.accessToken;
+          return {
+            accessToken: refreshResponse.accessToken,
+            expiresAt: refreshResponse.expiresAt,
+          };
         }
       : undefined;
 

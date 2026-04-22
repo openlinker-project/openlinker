@@ -10,6 +10,7 @@
  * @implements {IAllegroHttpClient}
  */
 import { IAllegroHttpClient, AllegroHttpRequestOptions, AllegroHttpResponse } from './allegro-http-client.interface';
+import { TokenRefreshCallback, TokenRefreshResult } from './allegro-http-client.types';
 import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -39,6 +40,15 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
+ * Proactive token-refresh window.
+ *
+ * Refresh proactively when the current access token is within this many
+ * milliseconds of its expiresAt timestamp, so we don't pay a wasted 401
+ * round-trip on the next request after an idle period.
+ */
+const TOKEN_REFRESH_WINDOW_MS = 60_000;
+
+/**
  * Token refreshed error
  *
  * Internal error used to signal that token was refreshed and request should be retried.
@@ -57,12 +67,22 @@ class TokenRefreshedError extends Error {
  * Implements HTTP client for Allegro Public API using native fetch.
  */
 export class AllegroHttpClient implements IAllegroHttpClient {
+  /**
+   * Cooldown after a failed proactive refresh. During this window pre-request
+   * checks short-circuit and rely on the reactive 401 path, preventing a
+   * refresh storm when the refresh endpoint is unhealthy.
+   */
+  private static readonly PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS = 5_000;
+
   private readonly logger = new Logger(AllegroHttpClient.name);
   private readonly baseUrl: string;
   private accessToken: string; // Mutable to support token refresh
+  private tokenExpiresAt: number | undefined; // Epoch ms; undefined disables proactive refresh
+  private refreshInFlight: Promise<void> | null = null; // Per-instance single-flight
+  private proactiveRefreshCooldownUntil: number | undefined; // Epoch ms; set on failure
   private readonly retryConfig: RetryConfig;
   private readonly connectionId: string;
-  private readonly tokenRefreshCallback?: (connectionId: string) => Promise<string>;
+  private readonly tokenRefreshCallback?: TokenRefreshCallback;
 
   constructor(
     connectionId: string,
@@ -70,12 +90,13 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     credentials: AllegroCredentials,
     _config: AllegroConnectionConfig,
     retryConfig?: Partial<RetryConfig>,
-    tokenRefreshCallback?: (connectionId: string) => Promise<string>,
+    tokenRefreshCallback?: TokenRefreshCallback,
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.accessToken = credentials.accessToken;
+    this.tokenExpiresAt = this.normalizeExpiresAt(credentials.expiresAt);
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
     this.tokenRefreshCallback = tokenRefreshCallback;
   }
@@ -201,6 +222,11 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     const startTime = Date.now();
     const traceId = randomUUID();
 
+    // Proactively refresh the token before building Authorization if we're
+    // inside the refresh window. No-op when no callback or no expiresAt,
+    // preserving behavior for connections without expiry metadata.
+    await this.ensureFreshToken(traceId);
+
     // Build URL with query parameters
     const url = new URL(path, this.baseUrl);
     if (options?.queryParams) {
@@ -307,7 +333,12 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       if (
         error instanceof AllegroApiException ||
         error instanceof AllegroAuthenticationException ||
-        error instanceof AllegroRateLimitException
+        error instanceof AllegroRateLimitException ||
+        // TokenRefreshedError is an internal control-flow signal for request()
+        // to retry immediately with the new access token. Without this re-throw
+        // it would get wrapped in AllegroApiException("Network error: ...") and
+        // the `continue` branch in request() would never match.
+        error instanceof TokenRefreshedError
       ) {
         throw error;
       }
@@ -351,8 +382,8 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           this.logger.warn(
             `[${traceId}] Access token expired, attempting refresh (connection: ${this.connectionId})`,
           );
-          const newAccessToken = await this.tokenRefreshCallback(this.connectionId);
-          this.accessToken = newAccessToken;
+          const refreshResult = await this.tokenRefreshCallback(this.connectionId);
+          this.applyRefreshResult(refreshResult);
           this.logger.log(
             `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`,
           );
@@ -415,6 +446,101 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       body.substring(0, 500),
       url,
     );
+  }
+
+  /**
+   * Ensure the access token is fresh before sending a request.
+   *
+   * No-op when the client has no refresh callback or no expiresAt (backward
+   * compat for connections that were created before expiry was persisted).
+   * Short-circuits during the post-failure cooldown so a sick refresh endpoint
+   * can't trigger a refresh storm — the reactive 401 path stays as the
+   * fallback.
+   *
+   * Uses per-instance single-flight: concurrent callers await the same
+   * in-flight refresh promise instead of each triggering their own. Cross-
+   * process / cross-instance serialization is handled by
+   * `AllegroTokenRefreshService`'s Redis lock.
+   */
+  private async ensureFreshToken(traceId: string): Promise<void> {
+    if (!this.tokenRefreshCallback || this.tokenExpiresAt === undefined) {
+      return;
+    }
+    if (
+      this.proactiveRefreshCooldownUntil !== undefined &&
+      Date.now() < this.proactiveRefreshCooldownUntil
+    ) {
+      return;
+    }
+    if (Date.now() < this.tokenExpiresAt - TOKEN_REFRESH_WINDOW_MS) {
+      return;
+    }
+    if (this.refreshInFlight) {
+      await this.refreshInFlight;
+      return;
+    }
+    this.refreshInFlight = this.performProactiveRefresh(traceId).finally(() => {
+      this.refreshInFlight = null;
+    });
+    await this.refreshInFlight;
+  }
+
+  /**
+   * Perform the actual proactive refresh. Updates cached access token and
+   * expiry on success; records a cooldown on failure so subsequent requests
+   * skip the proactive path and rely on the reactive 401 path.
+   */
+  private async performProactiveRefresh(traceId: string): Promise<void> {
+    if (!this.tokenRefreshCallback) {
+      return;
+    }
+    try {
+      this.logger.debug(
+        `[${traceId}] Proactive token refresh (connection: ${this.connectionId})`,
+      );
+      const refreshResult = await this.tokenRefreshCallback(this.connectionId);
+      this.applyRefreshResult(refreshResult);
+      this.logger.log(
+        `[${traceId}] Proactive token refresh succeeded (connection: ${this.connectionId})`,
+      );
+    } catch (error) {
+      // Deliberately swallowed: the reactive 401 path is the documented
+      // fallback (see issue #336 AC). Record a short cooldown so we don't
+      // re-attempt on every request while the endpoint is unhealthy.
+      this.proactiveRefreshCooldownUntil =
+        Date.now() + AllegroHttpClient.PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS;
+      this.logger.warn(
+        `[${traceId}] Proactive token refresh failed, falling back to reactive 401 path: ${(error as Error).message} (connection: ${this.connectionId})`,
+      );
+    }
+  }
+
+  /**
+   * Apply a successful refresh result to cached client state.
+   *
+   * Single place where the access token and cached expiry get updated, so
+   * the proactive and reactive refresh paths can't drift (e.g., one forgetting
+   * to clear the cooldown or update the expiry).
+   */
+  private applyRefreshResult(result: TokenRefreshResult): void {
+    this.accessToken = result.accessToken;
+    this.tokenExpiresAt = this.normalizeExpiresAt(result.expiresAt);
+    this.proactiveRefreshCooldownUntil = undefined;
+  }
+
+  /**
+   * Normalize an `expiresAt` value (Date | string | undefined) to epoch ms.
+   *
+   * Returns `undefined` for absent values, invalid Date objects, or strings
+   * that don't parse — which disables proactive refresh for that client
+   * instance rather than letting NaN silently poison the comparison.
+   */
+  private normalizeExpiresAt(value: Date | string | undefined): number | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(ms) ? ms : undefined;
   }
 
   /**
