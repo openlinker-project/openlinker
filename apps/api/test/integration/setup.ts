@@ -124,6 +124,8 @@ export class IntegrationTestHarness {
     await this.dataSource.query('TRUNCATE TABLE sync_jobs CASCADE');
     await this.dataSource.query('TRUNCATE TABLE inventory_items CASCADE');
     await this.dataSource.query('TRUNCATE TABLE order_records CASCADE');
+    // product_content_field FKs to both products + connections, so it goes before them.
+    await this.dataSource.query('TRUNCATE TABLE product_content_field CASCADE');
     await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
     await this.dataSource.query('TRUNCATE TABLE products CASCADE');
     await this.dataSource.query('TRUNCATE TABLE connections CASCADE');

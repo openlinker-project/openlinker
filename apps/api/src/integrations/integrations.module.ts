@@ -13,6 +13,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
+import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
@@ -29,6 +30,7 @@ import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oa
     RedisConfigModule, // Required for OAuth state storage
     PrestashopIntegrationModule, // Register PrestaShop adapter factory
     AllegroIntegrationModule, // Register Allegro adapter factory
+    AiIntegrationModule.register(), // Register AI completion adapter (Anthropic via Vercel AI SDK; Fake when OL_AI_PROVIDER=fake)
   ],
   controllers: [ConnectionController, AdapterController, AllegroController],
   providers: [

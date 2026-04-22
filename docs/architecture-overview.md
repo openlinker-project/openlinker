@@ -206,6 +206,23 @@ The system is organized into the following core bounded contexts:
 - **Technology**: NestJS Logger, OpenTelemetry (future)
 - **Location**: `libs/shared/src/logging/`
 
+### 11. Content
+- **Responsibility**: Per-product, per-channel (or master) content fields with draft write-through and conflict detection. First field key: `description`.
+- **Key Entities**: `ProductContentField`
+- **Location**: `libs/core/src/content/`
+- **Capability**: Uses `ContentPublisherPort` for outbound publishing (master path resolves `ProductMasterPort` via the integrations registry; channel path is deferred to #339/#342).
+- **Storage**: `product_content_field` table with two partial unique indexes (master vs channel) to honour Postgres' NULL-distinct uniqueness for the nullable `connection_id` column.
+- **Conflict model**: optimistic — inbound reconcile sets `has_conflict=true` when an external version diverges while a draft is pending; re-saving the draft is treated as implicit acknowledgement and clears the flag.
+
+### 12. AI
+- **Responsibility**: Provider-agnostic LLM completions for content generation. No application services live here — the bounded context is a single capability port + types + exceptions.
+- **Key Port**: `AiCompletionPort` (`complete(input) → result`)
+- **Location**: `libs/core/src/ai/`
+- **Adapter package**: `libs/integrations/ai/` (workspace `@openlinker/integrations-ai`) — ships `VercelAiCompletionAdapter` (Anthropic via `ai` + `@ai-sdk/anthropic`, with system-prompt cache control) and `FakeAiCompletionAdapter` for tests / offline dev.
+- **Selection**: `OL_AI_PROVIDER` env (`anthropic` default; `fake` for tests). `AiIntegrationModule` is registered inside `apps/api/src/integrations/integrations.module.ts` alongside the other `@openlinker/integrations-*` modules.
+- **Telemetry**: per-call structured log carrying `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`.
+- **Worker registration**: deferred — no consumer of `AiCompletionPort` lives in `apps/worker/` yet; wiring lands with #341 / #342.
+
 ---
 
 ## Capability Abstractions (Business Roles)
