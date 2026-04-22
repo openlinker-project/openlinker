@@ -52,6 +52,19 @@ export interface CategoryTreeCrumb {
   name: string;
 }
 
+/**
+ * Joins a breadcrumb + a selected node into a display path like `"A > B > C"`.
+ * Exported so consumers don't drift on separator or ordering when composing
+ * the path from `onSelect`'s callback args.
+ */
+export function buildCategoryPath(
+  breadcrumb: readonly CategoryTreeCrumb[],
+  node: CategoryTreeNode,
+  separator = ' > ',
+): string {
+  return [...breadcrumb.map((c) => c.name), node.name].join(separator);
+}
+
 export interface CategoryTreeBrowserProps {
   /** Current level's nodes; `undefined` while the consumer's query is loading. */
   nodes: readonly CategoryTreeNode[] | undefined;

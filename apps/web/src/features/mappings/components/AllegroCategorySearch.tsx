@@ -18,6 +18,7 @@ import { useState, type ReactElement } from 'react';
 import { useAllegroCategoriesQuery } from '../hooks/use-allegro-categories';
 import { Button } from '../../../shared/ui/button';
 import {
+  buildCategoryPath,
   CategoryTreeBrowser,
   type CategoryTreeCrumb,
   type CategoryTreeNode,
@@ -37,10 +38,6 @@ interface StagedPick {
   path: string;
 }
 
-function buildPath(breadcrumb: readonly CategoryTreeCrumb[], node: CategoryTreeNode): string {
-  return [...breadcrumb.map((c) => c.name), node.name].join(' > ');
-}
-
 export function AllegroCategorySearch({
   marketplaceConnectionId,
   currentMapping,
@@ -58,7 +55,7 @@ export function AllegroCategorySearch({
     breadcrumb: readonly CategoryTreeCrumb[],
   ): void {
     // Node shape from primitive is structurally compatible with AllegroCategory.
-    setStaged({ category: node as AllegroCategory, path: buildPath(breadcrumb, node) });
+    setStaged({ category: node as AllegroCategory, path: buildCategoryPath(breadcrumb, node) });
   }
 
   function handleSave(): void {

@@ -1,7 +1,11 @@
 import { createRef } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CategoryTreeBrowser, type CategoryTreeNode } from './category-tree-browser';
+import {
+  buildCategoryPath,
+  CategoryTreeBrowser,
+  type CategoryTreeNode,
+} from './category-tree-browser';
 
 const electronics: CategoryTreeNode = {
   id: 'cat-electronics',
@@ -229,5 +233,29 @@ describe('CategoryTreeBrowser', () => {
     expect(root).toHaveClass('category-tree-browser');
     expect(root).toHaveClass('category-tree-browser--density-compact');
     expect(root).toHaveClass('my-custom-class');
+  });
+});
+
+describe('buildCategoryPath', () => {
+  it('joins a breadcrumb with the selected node using the default separator', () => {
+    expect(
+      buildCategoryPath(
+        [
+          { id: 'cat-electronics', name: 'Electronics' },
+          { id: 'cat-audio', name: 'Audio' },
+        ],
+        phones,
+      ),
+    ).toBe('Electronics > Audio > Phones');
+  });
+
+  it('returns just the node name when the breadcrumb is empty', () => {
+    expect(buildCategoryPath([], books)).toBe('Books');
+  });
+
+  it('honors a custom separator', () => {
+    expect(
+      buildCategoryPath([{ id: 'cat-electronics', name: 'Electronics' }], phones, ' / '),
+    ).toBe('Electronics / Phones');
   });
 });
