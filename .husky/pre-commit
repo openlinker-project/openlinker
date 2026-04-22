@@ -3,22 +3,43 @@
 
 echo "🔍 Running pre-commit checks..."
 
-# Lint check for all apps and libs
+# Lint + type-check always run against all packages. They're fast and
+# catch cross-package import breakage.
 echo "📝 Running linter for all packages..."
 pnpm lint || exit 1
 
-# Type check for all apps and libs
 echo "🔎 Running type check for all packages..."
 pnpm type-check || exit 1
 
-# Unit tests for all apps and libs
-echo "🧪 Running unit tests for all packages..."
-pnpm test || exit 1
+# Tests are scoped to the packages whose files are staged. A libs/** touch
+# still fans out to all tests because shared libs can break any consumer.
+# Docs/config-only changes skip tests entirely. CI runs the full suite
+# regardless — this only speeds up the local loop.
+changed=$(git diff --cached --name-only)
+
+# Keep in sync with the CI job so nothing silently diverges.
+# Unit tests only here; `pnpm test:integration` stays out of the hook.
+if [ -z "$changed" ]; then
+  echo "🧪 Running unit tests for all packages (no staged paths)..."
+  pnpm test || exit 1
+elif printf '%s\n' "$changed" | grep -Eq '^libs/'; then
+  echo "🧪 Running unit tests for all packages (libs/ touched)..."
+  pnpm test || exit 1
+elif ! printf '%s\n' "$changed" | grep -Eqv '^(docs/|\.claude/|\.github/|\.vscode/|README\.md$|\.gitignore$|\.prettierignore$|\.prettierrc|\.editorconfig$)'; then
+  echo "🧪 Skipping tests (docs/config-only change)."
+else
+  filters=""
+  printf '%s\n' "$changed" | grep -q '^apps/web/'    && filters="$filters --filter @openlinker/web"
+  printf '%s\n' "$changed" | grep -q '^apps/api/'    && filters="$filters --filter @openlinker/api"
+  printf '%s\n' "$changed" | grep -q '^apps/worker/' && filters="$filters --filter @openlinker/worker"
+
+  if [ -z "$filters" ]; then
+    echo "🧪 Running unit tests for all packages (unknown path staged)..."
+    pnpm test || exit 1
+  else
+    echo "🧪 Running scoped unit tests:$filters"
+    pnpm $filters test || exit 1
+  fi
+fi
 
 echo "✅ Pre-commit checks passed!"
-
-
-
-
-
-
