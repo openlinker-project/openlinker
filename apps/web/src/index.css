@@ -2199,75 +2199,11 @@ textarea {
   margin-left: auto;
 }
 
-.allegro-category-search__item--staged {
-  background: var(--accent-primary-soft);
-  border-radius: 0.375rem;
-}
-
-.allegro-category-search__breadcrumbs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.125rem;
-  padding: 0.375rem 0;
-  margin-bottom: 0.5rem;
-  font-size: 0.75rem;
-  border-bottom: 1px solid var(--border-default);
-}
-
-.allegro-category-search__crumb {
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--accent-primary);
-  padding: 0.125rem 0.25rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-}
-
-.allegro-category-search__crumb:hover {
-  background: var(--accent-primary-soft);
-}
-
-.allegro-category-search__separator {
-  color: var(--text-muted);
-}
-
-.allegro-category-search__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.allegro-category-search__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.8125rem;
-}
-
-.allegro-category-search__item:last-child {
-  border-bottom: none;
-}
-
-.allegro-category-search__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.allegro-category-search__actions {
-  display: flex;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
+/* Browse / selection surface is now the shared `.category-tree-browser`
+ * primitive (see `shared/ui/category-tree-browser.tsx`). Classes moved
+ * there: `__breadcrumbs`, `__crumb`, `__separator`, `__list`, `__item`,
+ * `__item--staged`, `__name`, `__actions`. Wrapper-specific surfaces
+ * (current mapping, staged preview) remain here. */
 
 @media (max-width: 900px) {
   .category-mappings-layout {
@@ -3585,24 +3521,57 @@ textarea {
   letter-spacing: 0.09em;
 }
 
-.category-picker__breadcrumb {
+/* Browse / list / breadcrumb surface lives in the shared
+ * `.category-tree-browser` primitive (see `shared/ui/category-tree-browser.tsx`).
+ * Only the pre-fill fallback row remains wrapper-specific here. */
+
+/*
+ * ── Category Tree Browser (shared primitive, #304) ───────────────
+ * Hierarchical tree navigation with breadcrumb + per-row Select/Browse
+ * actions. Consumed by `CategoryPicker` (listings, leaf-only mode) and
+ * `AllegroCategorySearch` (mappings, any-level staged mode). Density
+ * `compact` enables overflow-x scroll + tighter spacing for
+ * dialog-bounded usage.
+ */
+.category-tree-browser {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.category-tree-browser--invalid {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+}
+
+.category-tree-browser--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.category-tree-browser__breadcrumb {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.125rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.375rem 0;
+  margin-bottom: 0.25rem;
   font-size: 0.75rem;
-  overflow-x: auto;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.category-picker__crumb-group {
+.category-tree-browser--density-compact .category-tree-browser__breadcrumb {
+  overflow-x: auto;
+  padding: 0.25rem 0;
+  flex-wrap: nowrap;
+}
+
+.category-tree-browser__crumb-group {
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
 }
 
-.category-picker__crumb {
+.category-tree-browser__crumb {
   border: none;
   background: none;
   cursor: pointer;
@@ -3613,27 +3582,27 @@ textarea {
   white-space: nowrap;
 }
 
-.category-picker__crumb:hover:not(:disabled) {
+.category-tree-browser__crumb:hover:not(:disabled) {
   background: var(--accent-primary-soft);
 }
 
-.category-picker__crumb:disabled {
+.category-tree-browser__crumb:disabled {
   color: var(--text-primary);
   cursor: default;
   font-weight: 600;
 }
 
-.category-picker__separator {
+.category-tree-browser__separator {
   color: var(--text-muted);
   padding: 0 0.125rem;
 }
 
-.category-picker__list-container {
+.category-tree-browser__list-container {
   max-height: 20rem;
   overflow-y: auto;
 }
 
-.category-picker__list {
+.category-tree-browser__list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -3641,7 +3610,7 @@ textarea {
   flex-direction: column;
 }
 
-.category-picker__item {
+.category-tree-browser__item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3651,27 +3620,32 @@ textarea {
   font-size: 0.8125rem;
 }
 
-.category-picker__item:last-child {
+.category-tree-browser__item:last-child {
   border-bottom: none;
 }
 
-.category-picker__item--selected {
+.category-tree-browser__item--selected {
   background: var(--accent-primary-soft);
   border-radius: 0.375rem;
 }
 
 /*
- * The `.category-picker__item--leaf` and `--non-leaf` modifiers are emitted
- * by CategoryPicker.tsx as intentional styling hooks but currently have no
- * rules — the base `.category-picker__item` handles both visual states via
- * the Select / Browse buttons inside. Kept so future differentiated styling
- * (icons, subtle dividers, indent) can attach without markup changes.
+ * `__item--leaf` and `__item--non-leaf` modifiers are emitted as
+ * intentional styling hooks but currently have no rules. Kept so future
+ * differentiated styling (icons, indent, dividers) can attach without
+ * markup changes.
  */
 
-.category-picker__name {
+.category-tree-browser__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.category-tree-browser__actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }

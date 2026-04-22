@@ -2,32 +2,28 @@
  * CategoryPicker
  *
  * Leaf-only Allegro category picker for the create-offer wizard (#305).
- * Browses the Allegro category tree level-by-level with a breadcrumb trail;
- * clicking a leaf fires `onChange(id)` — no staged/save intermediate.
+ * Thin wrapper around the shared `CategoryTreeBrowser` primitive — adds
+ * the pre-fill fallback row, wires leaf-only selection via `canSelect`,
+ * and fires `onChange(id)` immediately on leaf click (no staging).
  *
  * Designed to be used inside an RHF `<Controller>` (not `register()`); see
  * usage in `CreateOfferWizard.tsx` Step 2.
  *
- * Data source: reuses `useAllegroCategoriesQuery` from the mappings feature
- * — this is a cross-feature import. It is intentional: the wizard already
- * imports from `products/` and `connections/`, and duplicating the hook
- * under listings would be worse. A future refactor (#304) will extract a
- * shared `CategoryTreeBrowser` primitive into `shared/ui/` once the
- * existing `AllegroCategorySearch` (mappings) and this picker are refactored
- * onto it together.
+ * Data source: reuses `useAllegroCategoriesQuery` from the mappings
+ * feature. The primitive itself is domain-agnostic; only this wrapper
+ * knows about Allegro.
  *
  * Pre-fill fallback: when `value` is non-null and the operator hasn't
- * browsed yet, the picker shows the raw ID + a "Change" button instead of
- * trying to rehydrate the breadcrumb. Real ancestor-walk rehydration is a
- * follow-up tied to #307's retry flow.
+ * browsed yet, the wrapper shows the raw ID + a "Change" button instead
+ * of trying to rehydrate the breadcrumb. Real ancestor-walk rehydration
+ * is a follow-up tied to #307's retry flow.
  *
  * @module apps/web/src/features/listings/components
  */
 import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
-import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
+import { CategoryTreeBrowser } from '../../../shared/ui/category-tree-browser';
 import { useAllegroCategoriesQuery } from '../../mappings/hooks/use-allegro-categories';
-import type { AllegroCategory } from '../../mappings/api/mappings.types';
 
 interface CategoryPickerProps {
   connectionId: string;
@@ -50,11 +46,6 @@ interface CategoryPickerProps {
   'aria-invalid'?: boolean;
 }
 
-interface BreadcrumbItem {
-  id: string;
-  name: string;
-}
-
 export function CategoryPicker({
   connectionId,
   value,
@@ -66,13 +57,12 @@ export function CategoryPicker({
   'aria-describedby': ariaDescribedBy,
   'aria-invalid': ariaInvalid,
 }: CategoryPickerProps): ReactElement {
-  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
+  const [parentId, setParentId] = useState<string | undefined>(undefined);
   // `showBrowser` flips on when: (a) no value is set (always browse), or
   // (b) the operator clicks "Change" on the pre-fill fallback row.
   const [showBrowser, setShowBrowser] = useState<boolean>(value === null);
 
-  const currentParentId = breadcrumb.length > 0 ? breadcrumb[breadcrumb.length - 1].id : undefined;
-  const categoriesQuery = useAllegroCategoriesQuery(connectionId, currentParentId, showBrowser);
+  const categoriesQuery = useAllegroCategoriesQuery(connectionId, parentId, showBrowser);
 
   const isInvalid = Boolean(invalid) || Boolean(ariaInvalid);
 
@@ -105,134 +95,27 @@ export function CategoryPicker({
     );
   }
 
-  function navigateInto(category: AllegroCategory): void {
-    setBreadcrumb((prev) => [...prev, { id: category.id, name: category.name }]);
-  }
-
-  function navigateToRoot(): void {
-    setBreadcrumb([]);
-  }
-
-  function navigateToCrumb(index: number): void {
-    // Keep crumbs 0..index inclusive; drop anything deeper.
-    setBreadcrumb((prev) => prev.slice(0, index + 1));
-  }
-
-  function selectLeaf(category: AllegroCategory): void {
-    onChange(category.id);
-  }
-
-  const pickerClasses = [
-    'category-picker',
-    isInvalid ? 'category-picker--invalid' : '',
-    disabled ? 'category-picker--disabled' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
+  // The `key={connectionId}` honors the primitive's breadcrumb-reset contract:
+  // if the wizard ever lets the operator switch connections without remounting
+  // the picker, React key forces a fresh mount so stale breadcrumb state can't
+  // linger. Today's wizard unmounts per open so this is defensive wiring.
   return (
-    <div
-      className={pickerClasses}
-      role="group"
+    <CategoryTreeBrowser
+      key={connectionId}
+      nodes={categoriesQuery.data}
+      isLoading={categoriesQuery.isLoading}
+      error={categoriesQuery.error}
+      onRetry={() => void categoriesQuery.refetch()}
+      onSelect={(node) => onChange(node.id)}
+      onNavigate={(pid) => setParentId(pid)}
+      selectedId={value}
+      canSelect={(node) => node.leaf}
+      density="compact"
+      disabled={disabled}
+      invalid={isInvalid}
       id={id}
       aria-labelledby={ariaLabelledBy}
       aria-describedby={ariaDescribedBy}
-      aria-invalid={isInvalid || undefined}
-    >
-      <nav className="category-picker__breadcrumb" aria-label="Category path">
-        <button
-          type="button"
-          className="category-picker__crumb"
-          onClick={navigateToRoot}
-          disabled={disabled || breadcrumb.length === 0}
-        >
-          Root
-        </button>
-        {breadcrumb.map((crumb, i) => (
-          <span key={crumb.id} className="category-picker__crumb-group">
-            <span className="category-picker__separator" aria-hidden="true">
-              ›
-            </span>
-            <button
-              type="button"
-              className="category-picker__crumb"
-              onClick={() => navigateToCrumb(i)}
-              disabled={disabled || i === breadcrumb.length - 1}
-            >
-              {crumb.name}
-            </button>
-          </span>
-        ))}
-      </nav>
-
-      <div className="category-picker__list-container">
-        {categoriesQuery.isLoading && (
-          <LoadingState
-            liveRegion="off"
-            title="Loading categories"
-            message="Fetching Allegro categories…"
-          />
-        )}
-
-        {categoriesQuery.error && (
-          <ErrorState
-            title="Unable to load categories"
-            message={categoriesQuery.error.message}
-            action={
-              <Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>
-            }
-          />
-        )}
-
-        {categoriesQuery.data && categoriesQuery.data.length === 0 && (
-          <EmptyState
-            liveRegion="off"
-            title="No subcategories"
-            message="This level has no children. Step back and pick a different branch."
-          />
-        )}
-
-        {categoriesQuery.data && categoriesQuery.data.length > 0 && (
-          <ul className="category-picker__list" role="list">
-            {categoriesQuery.data.map((cat) => {
-              const isSelected = cat.leaf && cat.id === value;
-              const itemClasses = [
-                'category-picker__item',
-                cat.leaf ? 'category-picker__item--leaf' : 'category-picker__item--non-leaf',
-                isSelected ? 'category-picker__item--selected' : '',
-              ]
-                .filter(Boolean)
-                .join(' ');
-              return (
-                <li key={cat.id} className={itemClasses}>
-                  <span className="category-picker__name">{cat.name}</span>
-                  {cat.leaf ? (
-                    <Button
-                      tone={isSelected ? 'secondary' : 'primary'}
-                      type="button"
-                      onClick={() => selectLeaf(cat)}
-                      disabled={disabled}
-                      aria-pressed={isSelected}
-                    >
-                      {isSelected ? 'Selected' : 'Select'}
-                    </Button>
-                  ) : (
-                    <Button
-                      tone="ghost"
-                      type="button"
-                      onClick={() => navigateInto(cat)}
-                      disabled={disabled}
-                      aria-label={`Browse into ${cat.name}`}
-                    >
-                      Browse →
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
+    />
   );
 }
