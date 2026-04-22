@@ -25,7 +25,7 @@ import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './inte
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
-import { MetricCard, MetricCardLink } from '../../shared/ui/metric-card';
+import { KpiCard } from '../../shared/ui/kpi-card';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -406,14 +406,14 @@ export function DashboardPage(): ReactElement {
     >
       {/* ── KPI strip ────────────────────────────────────────────── */}
       <section className="status-strip">
-        <MetricCard
+        <KpiCard
           label="Integration health"
           value={connectionsQuery.isLoading ? '—' : `${activeCount} / ${connections.length}`}
           tone={integrationTone}
           description={integrationDescription}
         />
 
-        <MetricCard
+        <KpiCard
           label="System health"
           value={renderHealthValue(
             healthQuery.data?.status,
@@ -425,7 +425,7 @@ export function DashboardPage(): ReactElement {
         />
 
         {deadTotal > 0 ? (
-          <MetricCardLink
+          <KpiCard
             label="Failed jobs"
             value={deadTotal}
             tone="error"
@@ -433,7 +433,7 @@ export function DashboardPage(): ReactElement {
             description={`${deadTotal} job${deadTotal === 1 ? '' : 's'} need${deadTotal === 1 ? 's' : ''} attention`}
           />
         ) : (
-          <MetricCard
+          <KpiCard
             label="Failed jobs"
             value={deadGroupsQuery.isLoading ? '—' : 0}
             tone="neutral"
@@ -442,7 +442,7 @@ export function DashboardPage(): ReactElement {
         )}
 
         {queuedTotal > 0 ? (
-          <MetricCardLink
+          <KpiCard
             label="Queued jobs"
             value={queuedTotal}
             tone="neutral"
@@ -450,7 +450,7 @@ export function DashboardPage(): ReactElement {
             description={`${queuedTotal} job${queuedTotal > 1 ? 's' : ''} waiting`}
           />
         ) : (
-          <MetricCard
+          <KpiCard
             label="Queued jobs"
             value={queuedJobsQuery.isLoading ? '—' : 0}
             tone="neutral"

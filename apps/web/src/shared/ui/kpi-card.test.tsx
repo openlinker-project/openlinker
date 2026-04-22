@@ -1,6 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { KpiCard } from './kpi-card';
+
+function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 describe('KpiCard', () => {
   afterEach(cleanup);
@@ -18,6 +23,14 @@ describe('KpiCard', () => {
 
   it('renders an anchor when href is provided', () => {
     render(<KpiCard label="Failed jobs" value={42} tone="error" href="/jobs-logs?status=dead" />);
+    const link = screen.getByRole('link', { name: /Failed jobs/i });
+    expect(link).toHaveAttribute('href', '/jobs-logs?status=dead');
+  });
+
+  it('renders a react-router Link when `to` is provided (SPA nav)', () => {
+    renderWithRouter(
+      <KpiCard label="Failed jobs" value={42} tone="error" to="/jobs-logs?status=dead" />,
+    );
     const link = screen.getByRole('link', { name: /Failed jobs/i });
     expect(link).toHaveAttribute('href', '/jobs-logs?status=dead');
   });

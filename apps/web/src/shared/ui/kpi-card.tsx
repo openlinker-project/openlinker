@@ -11,7 +11,57 @@
  * tinting or a sparkline.
  */
 import { forwardRef, type ReactElement, type ReactNode } from 'react';
+import { Link, type LinkProps } from 'react-router-dom';
 import { Sparkline, type SparklineTone } from './sparkline';
+
+/**
+ * Small inline SVG icon paired with error/warning tones so operators have
+ * a non-colour signal alongside the tint (see ui-components.md a11y rule:
+ * "Color is never the only signal"). Neutral/success tones render no icon.
+ */
+function ToneIcon({ tone }: { tone: KpiCardTone }): ReactNode {
+  if (tone === 'warning') {
+    return (
+      <span className="kpi-card__icon" aria-hidden="true">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M8 1.5 L14.5 13 H1.5 Z" />
+          <line x1="8" y1="6" x2="8" y2="9.5" />
+          <circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+    );
+  }
+  if (tone === 'error') {
+    return (
+      <span className="kpi-card__icon" aria-hidden="true">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="8" cy="8" r="6.5" />
+          <line x1="8" y1="4.5" x2="8" y2="8.5" />
+          <circle cx="8" cy="11" r="0.6" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+    );
+  }
+  return null;
+}
 
 export type KpiCardTone = 'error' | 'neutral' | 'success' | 'warning';
 
@@ -27,8 +77,9 @@ interface KpiCardBaseProps {
 }
 
 type KpiCardProps =
-  | (KpiCardBaseProps & { href?: undefined })
-  | (KpiCardBaseProps & { href: string });
+  | (KpiCardBaseProps & { href?: undefined; to?: undefined })
+  | (KpiCardBaseProps & { href: string; to?: undefined })
+  | (KpiCardBaseProps & { href?: undefined; to: LinkProps['to'] });
 
 const TONE_CLASS: Record<KpiCardTone, string> = {
   neutral: '',
@@ -63,7 +114,10 @@ export const KpiCard = forwardRef<HTMLElement, KpiCardProps>(function KpiCard(
   const body = (
     <>
       <div className="kpi-card__label">
-        <span className="kpi-card__label-text">{label}</span>
+        <span className="kpi-card__label-text">
+          <ToneIcon tone={tone} />
+          {label}
+        </span>
         {sparkline && sparkline.length >= 2 ? (
           <Sparkline
             values={sparkline}
@@ -82,6 +136,14 @@ export const KpiCard = forwardRef<HTMLElement, KpiCardProps>(function KpiCard(
       {description ? <div className="kpi-card__description">{description}</div> : null}
     </>
   );
+
+  if ('to' in rest && rest.to !== undefined) {
+    return (
+      <Link ref={ref as React.Ref<HTMLAnchorElement>} to={rest.to} className={classes}>
+        {body}
+      </Link>
+    );
+  }
 
   if ('href' in rest && rest.href) {
     return (
