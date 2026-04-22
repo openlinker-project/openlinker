@@ -36,6 +36,7 @@
     "@nestjs/swagger": "^7.3.0",
     "@nestjs/typeorm": "10.0.2",
     "@openlinker/core": "workspace:*",
+    "@openlinker/integrations-ai": "workspace:*",
     "@openlinker/integrations-allegro": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
     "bcryptjs": "^3.0.3",

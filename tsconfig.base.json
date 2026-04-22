@@ -34,7 +34,9 @@
       "@openlinker/shared": ["libs/shared/src/index.ts"],
       "@openlinker/shared/*": ["libs/shared/src/*"],
       "@openlinker/integrations-allegro": ["libs/integrations/allegro/src/index.ts"],
-      "@openlinker/integrations-allegro/*": ["libs/integrations/allegro/src/*"]
+      "@openlinker/integrations-allegro/*": ["libs/integrations/allegro/src/*"],
+      "@openlinker/integrations-ai": ["libs/integrations/ai/src/index.ts"],
+      "@openlinker/integrations-ai/*": ["libs/integrations/ai/src/*"]
     }
   }
 }

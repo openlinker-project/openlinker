@@ -35,5 +35,13 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/prestashop/src/$1',
     ),
+    '^@openlinker/integrations-ai$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/ai/src/index.ts',
+    ),
+    '^@openlinker/integrations-ai/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/ai/src/$1',
+    ),
   },
 };

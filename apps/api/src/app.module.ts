@@ -17,6 +17,7 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
+import { ContentModule } from '@openlinker/core/content';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -52,6 +53,7 @@ import { MappingsApiModule } from './mappings/mappings.module';
     ListingsApiModule,
     CursorsModule,
     MappingsApiModule,
+    ContentModule, // Product content draft buffer + reconcile + publish (#338)
   ],
   controllers: [AppController],
   providers: [AppService],
