@@ -68,8 +68,27 @@ function defaultMocks(overrides: Parameters<typeof createMockApiClient>[0] = {})
         .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       getSellerPolicies: vi.fn().mockResolvedValue(policies),
     },
+    mappings: {
+      // Single-leaf root tree for simple happy-path coverage. Individual tests
+      // override with deeper trees when they need to exercise drilling.
+      getAllegroCategories: vi.fn().mockResolvedValue([
+        { id: '12345', name: 'Test Category', parentId: null, leaf: true },
+      ]),
+    },
     ...overrides,
   });
+}
+
+/**
+ * Pick the leaf category whose "Select" button is currently visible in the
+ * CategoryPicker. Assumes Step 2 is rendered and the picker has loaded.
+ */
+async function pickFirstLeafCategory(): Promise<void> {
+  const selectButton = await screen.findByRole('button', { name: /^select$/i });
+  fireEvent.click(selectButton);
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+  );
 }
 
 async function advanceToStep2(): Promise<void> {
@@ -87,8 +106,10 @@ async function advanceToStep2(): Promise<void> {
   fireEvent.click(screen.getByRole('radio'));
   fireEvent.click(screen.getByRole('button', { name: /next/i }));
   // Confirm Step 2 has rendered before handing back to the caller so that
-  // downstream `getByLabelText` calls are not racing the advance.
-  await waitFor(() => expect(screen.getByLabelText(/allegro category/i)).toBeInTheDocument());
+  // downstream queries are not racing the advance. The "Allegro category"
+  // label is now a static span (the picker is a custom control, not an
+  // input), so we look for the picker's own markup instead.
+  await waitFor(() => expect(screen.getByText('Allegro category')).toBeInTheDocument());
 }
 
 describe('CreateOfferWizard', () => {
@@ -167,6 +188,31 @@ describe('CreateOfferWizard', () => {
     expect(await screen.findByText(/pick a variant/i)).toBeInTheDocument();
   });
 
+  it('blocks advancement past step 2 until a leaf category is selected', async () => {
+    const mockApi = defaultMocks();
+    renderWithProviders(
+      <CreateOfferWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        defaultConnectionId={allegroConnection.id}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient: mockApi },
+    );
+
+    await advanceToStep2();
+    // Fill the other required Step-2 fields, but leave categoryId unselected.
+    fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+    fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    expect(
+      await screen.findByText(/allegro category id is required/i),
+    ).toBeInTheDocument();
+    // Still on Step 2 — delivery-policy select (Step 3) is not rendered.
+    expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
+  });
+
   it('validates title ≤ 75 chars on step 2', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
@@ -202,7 +248,7 @@ describe('CreateOfferWizard', () => {
 
     await advanceToStep2();
     // Fill the required Step-2 fields
-    fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+    await pickFirstLeafCategory();
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -236,7 +282,7 @@ describe('CreateOfferWizard', () => {
     );
 
     await advanceToStep2();
-    fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+    await pickFirstLeafCategory();
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -261,7 +307,7 @@ describe('CreateOfferWizard', () => {
     );
 
     await advanceToStep2();
-    fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+    await pickFirstLeafCategory();
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -314,7 +360,7 @@ describe('CreateOfferWizard', () => {
     );
 
     await advanceToStep2();
-    fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+    await pickFirstLeafCategory();
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -353,7 +399,7 @@ describe('CreateOfferWizard', () => {
     );
 
     await advanceToStep2();
-    fireEvent.change(screen.getByLabelText(/allegro category/i), { target: { value: '12345' } });
+    await pickFirstLeafCategory();
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));

@@ -24,7 +24,7 @@
  * @module apps/web/src/features/listings/components
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { useForm, type Path } from 'react-hook-form';
+import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -43,6 +43,7 @@ import { useProductsQuery } from '../../products/hooks/use-products-query';
 import type { Product, ProductVariant } from '../../products/api/products.types';
 import { useCreateOfferMutation } from '../hooks/use-create-offer-mutation';
 import { useSellerPoliciesQuery } from '../hooks/use-seller-policies-query';
+import { CategoryPicker } from './CategoryPicker';
 import type { CreateOfferRequest } from '../api/listings.types';
 import {
   CREATE_OFFER_DEFAULT_VALUES,
@@ -446,18 +447,37 @@ export function CreateOfferWizard({
                 />
               </FormField>
 
-              <FormField
-                label="Allegro category ID"
-                name="categoryId"
-                description="Required for Allegro. Paste the numeric category id from the Allegro category tree."
-                error={form.formState.errors.categoryId?.message}
-              >
-                <Input
-                  {...form.register('categoryId')}
-                  placeholder="e.g. 12345"
-                  invalid={Boolean(form.formState.errors.categoryId)}
+              {/* Manual form-field layout — Controller + custom control means we
+                  can't use the shared FormField (which clones a single forwardRef
+                  child to inject ARIA wiring). We keep the same class structure
+                  so visual alignment with other fields is preserved. */}
+              <div className="form-field">
+                <span id="categoryId-label" className="form-field__label">
+                  Allegro category
+                </span>
+                <Controller
+                  control={form.control}
+                  name="categoryId"
+                  render={({ field, fieldState }) => (
+                    <CategoryPicker
+                      connectionId={currentConnectionId}
+                      value={field.value || null}
+                      onChange={field.onChange}
+                      invalid={Boolean(fieldState.error)}
+                      aria-labelledby="categoryId-label"
+                      aria-describedby="categoryId-description categoryId-error"
+                    />
+                  )}
                 />
-              </FormField>
+                <p id="categoryId-description" className="form-field__description">
+                  Browse the Allegro tree and pick a leaf category.
+                </p>
+                {form.formState.errors.categoryId?.message ? (
+                  <p id="categoryId-error" className="form-field__error" role="alert">
+                    {form.formState.errors.categoryId.message}
+                  </p>
+                ) : null}
+              </div>
 
               <div className="form-grid form-grid--2col">
                 <FormField
