@@ -89,6 +89,13 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
   });
 
+  it('does not render a dead global search input in the topbar', () => {
+    // Regression for #220: the topbar previously rendered an <Input type="search">
+    // with no handler. Global search isn't implemented yet — no dead UI until it is.
+    renderShell('/');
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
   it('renders the child page content', () => {
     renderShell('/');
     expect(screen.getByTestId('page-content')).toHaveTextContent('Page content');

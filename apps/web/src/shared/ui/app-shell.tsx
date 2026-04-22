@@ -9,7 +9,6 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useSession } from '../auth/use-session';
 import { Button } from './button';
 import { EnvironmentBadge } from './environment-badge';
-import { Input } from './input';
 import { useToast } from './toast-provider';
 
 interface LiveNavItem {
@@ -277,10 +276,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
           <div className="shell-topbar__spacer" />
 
-          <label className="shell-search">
-            <span className="sr-only">Search</span>
-            <Input type="search" placeholder="Search orders, products, jobs…" />
-          </label>
+          {/* Global search — planned. See #220. */}
 
           <Button tone="ghost" className="shell-topbar__alerts">
             Alerts <span aria-hidden="true">0</span>
