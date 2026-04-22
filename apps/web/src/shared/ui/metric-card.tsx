@@ -1,3 +1,15 @@
+/**
+ * MetricCard
+ *
+ * @deprecated Prefer `KpiCard` (`shared/ui/kpi-card.tsx`) for new
+ * dashboard-style KPIs. `KpiCard` supports severity tinting, severity-
+ * icon a11y, an optional Sparkline slot, and SPA-aware linking (`to`).
+ *
+ * MetricCard stays in the tree for the spots not yet migrated; no new
+ * callers should be added. Migration is mechanical — the prop names
+ * overlap (label, value, tone, description) — the only diff is that
+ * `MetricCardLink` becomes `KpiCard` with a `to` prop.
+ */
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
 
