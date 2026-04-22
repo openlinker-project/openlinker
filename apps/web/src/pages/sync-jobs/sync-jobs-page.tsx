@@ -121,7 +121,7 @@ export function SyncJobsPage(): ReactElement {
     });
   }
 
-  const filtersActive = Boolean(status ?? jobType ?? connectionId);
+  const filtersActive = Boolean(status || jobType || connectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;

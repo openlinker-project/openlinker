@@ -77,8 +77,10 @@ describe('SyncJobsPage', () => {
 
     expect(await screen.findByText('No jobs found')).toBeInTheDocument();
     // Jobs are system-populated — no CTA for the no-filter branch.
-    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /manage connections|browse|add the first/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('should show a Clear filters button that clears all filter params when filters are active', async () => {

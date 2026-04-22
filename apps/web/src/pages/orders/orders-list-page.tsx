@@ -127,7 +127,7 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
-  const filtersActive = Boolean(syncStatus ?? sourceConnectionId);
+  const filtersActive = Boolean(syncStatus || sourceConnectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;

@@ -97,7 +97,7 @@ export function ConnectionsListPage(): ReactElement {
     });
   }
 
-  const filtersActive = Boolean(filters.platformType ?? filters.status);
+  const filtersActive = Boolean(filters.platformType || filters.status);
 
   return (
     <PageLayout
