@@ -1005,29 +1005,34 @@ textarea {
   justify-content: space-between;
   gap: 1rem;
   border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
-  padding: 0.875rem 1rem;
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
   background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
 }
 
 .alert--info {
   border-color: var(--status-info-border);
   background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
 }
 
 .alert--success {
   border-color: var(--status-success-border);
   background: var(--status-success-soft);
+  box-shadow: inset 3px 0 0 var(--status-success);
 }
 
 .alert--warning {
   border-color: var(--status-warning-border);
   background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
 }
 
 .alert--error {
   border-color: var(--status-error-border);
   background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
 }
 
 .alert__content {
@@ -1550,7 +1555,7 @@ textarea {
 
 .data-table th,
 .data-table td {
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
@@ -1559,15 +1564,16 @@ textarea {
 }
 
 .data-table thead th {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: var(--bg-shell);
+  background: var(--bg-surface-elevated);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -3124,34 +3130,44 @@ textarea {
 
 .tabs__list {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-surface-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  align-self: flex-start;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  align-self: stretch;
+  width: 100%;
 }
 
 .tabs__trigger {
-  padding: 6px 12px;
+  padding: 0.5rem 0.875rem;
+  margin-bottom: -1px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .tabs__trigger:hover {
   color: var(--text-primary);
+  background: transparent;
+  border-bottom-color: var(--border-default);
 }
 
 .tabs__trigger[data-state='active'] {
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--text-primary);
-  border-color: var(--border-default);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  border-bottom-color: var(--accent-primary);
+  box-shadow: none;
+  font-weight: 600;
 }
 
 .tabs__trigger:focus-visible {
