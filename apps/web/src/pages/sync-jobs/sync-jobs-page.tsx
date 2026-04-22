@@ -30,14 +30,22 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'jobType',
     header: 'Job type',
-    cell: (job) => <span className="mono-text">{job.jobType}</span>,
+    cell: (job) => (
+      <span className="mono-text" title={job.jobType}>
+        {job.jobType}
+      </span>
+    ),
     accessor: (job) => job.jobType,
     sortable: true,
   },
   {
     id: 'connectionId',
     header: 'Connection',
-    cell: (job) => <span className="mono-text">{job.connectionId}</span>,
+    cell: (job) => (
+      <span className="mono-text" title={job.connectionId}>
+        {job.connectionId}
+      </span>
+    ),
     hideBelow: 1024,
   },
   {
@@ -128,7 +136,7 @@ export function SyncJobsPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow="Diagnostics"
       title="Sync Jobs"
       description="Background processing visibility — filter by status, job type, or connection."
     >

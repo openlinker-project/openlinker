@@ -858,6 +858,10 @@ textarea {
   justify-items: end;
 }
 
+.state-card__actions {
+  justify-items: start;
+}
+
 .page-summary {
   align-items: center;
 }
