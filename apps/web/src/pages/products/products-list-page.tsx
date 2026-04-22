@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -103,6 +103,16 @@ export function ProductsListPage(): ReactElement {
     });
   }
 
+  function clearSearch(): void {
+    setSearchInput('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('search');
+      next.delete('offset');
+      return next;
+    });
+  }
+
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -140,8 +150,17 @@ export function ProductsListPage(): ReactElement {
           title="No products found"
           message={
             debouncedSearch
-              ? 'No products match the current search. Try a different query.'
+              ? 'No products match the current search.'
               : 'No products have been synced yet.'
+          }
+          action={
+            debouncedSearch ? (
+              <Button onClick={clearSearch}>Clear search</Button>
+            ) : (
+              <Link className="button button--primary" to="/connections">
+                Manage connections
+              </Link>
+            )
           }
         />
       ) : (

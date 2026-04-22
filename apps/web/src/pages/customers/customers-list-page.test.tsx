@@ -1,5 +1,6 @@
-import { screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { CustomersListPage } from './customers-list-page';
 import type { PaginatedCustomers } from '../../features/customers/api/customers.types';
@@ -35,6 +36,7 @@ const sampleCustomers: PaginatedCustomers = {
 };
 
 describe('CustomersListPage', () => {
+  afterEach(cleanup);
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       customers: {
@@ -75,32 +77,25 @@ describe('CustomersListPage', () => {
     expect(screen.getByText('Network error')).toBeInTheDocument();
   });
 
-  it('should show empty state when no customers exist', async () => {
+  it('should show empty state with a Browse orders CTA when no customers exist', async () => {
     const mockApi = createMockApiClient({
       customers: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 20,
-          offset: 0,
-        }),
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       },
     });
 
     renderWithProviders(<CustomersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No customers found')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Browse orders' });
+    expect(cta).toHaveAttribute('href', '/orders');
   });
 
-  it('should show empty state with filter message when filters are active', async () => {
+  it('should show a Clear filters button that clears filters when filters are active', async () => {
+    const user = userEvent.setup();
     const mockApi = createMockApiClient({
       customers: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 20,
-          offset: 0,
-        }),
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       },
     });
 
@@ -110,5 +105,8 @@ describe('CustomersListPage', () => {
     });
 
     expect(await screen.findByText('No customer projections match the current filters.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(await screen.findByRole('link', { name: 'Browse orders' })).toBeInTheDocument();
   });
 });

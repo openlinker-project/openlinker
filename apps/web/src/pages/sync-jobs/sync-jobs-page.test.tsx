@@ -1,5 +1,6 @@
-import { screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { SyncJobsPage } from './sync-jobs-page';
 import type {
@@ -34,6 +35,7 @@ const sampleJobs: PaginatedSyncJobs = {
 };
 
 describe('SyncJobsPage', () => {
+  afterEach(cleanup);
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
@@ -66,7 +68,7 @@ describe('SyncJobsPage', () => {
     expect(screen.getByText('Service unavailable')).toBeInTheDocument();
   });
 
-  it('should show empty state when no jobs exist', async () => {
+  it('should show empty state without an action when no jobs exist and no filter is active', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
     });
@@ -74,6 +76,30 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No jobs found')).toBeInTheDocument();
+    // Jobs are system-populated — no CTA for the no-filter branch.
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('should show a Clear filters button that clears all filter params when filters are active', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, {
+      apiClient: mockApi,
+      route: '/sync-jobs?status=failed&jobType=order.sync',
+    });
+
+    expect(await screen.findByText('No jobs match the current filters.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    // After clearing, we're back to the informational empty state — no button.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('No sync jobs have been enqueued yet.')).toBeInTheDocument();
   });
 
   // Regression guard for #270: the backend rejects `limit > 100` with HTTP 400

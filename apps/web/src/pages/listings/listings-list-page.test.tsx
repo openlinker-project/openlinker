@@ -1,4 +1,5 @@
 import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
@@ -76,32 +77,25 @@ describe('ListingsListPage', () => {
     expect(screen.getByText('Network error')).toBeInTheDocument();
   });
 
-  it('should show empty state when no mappings exist', async () => {
+  it('should show empty state with a Manage connections CTA when no mappings exist', async () => {
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 20,
-          offset: 0,
-        }),
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       },
     });
 
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No offer mappings found')).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: 'Manage connections' });
+    expect(cta).toHaveAttribute('href', '/connections');
   });
 
-  it('should show empty state with filter message when filters are active', async () => {
+  it('should show a Clear filters button that clears filters when filters are active', async () => {
+    const user = userEvent.setup();
     const mockApi = createMockApiClient({
       listings: {
-        list: vi.fn().mockResolvedValue({
-          items: [],
-          total: 0,
-          limit: 20,
-          offset: 0,
-        }),
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       },
     });
 
@@ -111,5 +105,8 @@ describe('ListingsListPage', () => {
     });
 
     expect(await screen.findByText('No offer mappings match the current filters.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
 });

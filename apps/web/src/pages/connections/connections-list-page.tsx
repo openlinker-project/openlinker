@@ -88,6 +88,17 @@ export function ConnectionsListPage(): ReactElement {
     });
   }
 
+  function clearFilters(): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('platformType');
+      next.delete('status');
+      return next;
+    });
+  }
+
+  const filtersActive = Boolean(filters.platformType ?? filters.status);
+
   return (
     <PageLayout
       eyebrow="Integrations"
@@ -143,16 +154,18 @@ export function ConnectionsListPage(): ReactElement {
         <EmptyState
           title="No connections found"
           message={
-            filters.platformType || filters.status
-              ? 'No connections match the current filters. Try adjusting your selection.'
+            filtersActive
+              ? 'No connections match the current filters.'
               : 'Create the first connection to start configuring integrations.'
           }
           action={
-            !filters.platformType && !filters.status ? (
-              <Link className="button" to="/connections/new">
+            filtersActive ? (
+              <Button onClick={clearFilters}>Clear filters</Button>
+            ) : (
+              <Link className="button button--primary" to="/connections/new">
                 Add the first connection
               </Link>
-            ) : undefined
+            )
           }
         />
       ) : (

@@ -117,6 +117,17 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  function clearFilters(): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('syncStatus');
+      next.delete('sourceConnectionId');
+      next.delete('offset');
+      return next;
+    });
+  }
+
+  const filtersActive = Boolean(syncStatus ?? sourceConnectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -163,9 +174,18 @@ export function OrdersListPage(): ReactElement {
           liveRegion="off"
           title="No orders found"
           message={
-            syncStatus
-              ? 'No orders match the selected status filter.'
+            filtersActive
+              ? 'No orders match the current filters.'
               : 'No order records have been synced yet.'
+          }
+          action={
+            filtersActive ? (
+              <Button onClick={clearFilters}>Clear filters</Button>
+            ) : (
+              <Link className="button button--primary" to="/connections">
+                Manage connections
+              </Link>
+            )
           }
         />
       ) : (
