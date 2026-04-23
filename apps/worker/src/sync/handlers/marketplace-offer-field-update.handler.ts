@@ -18,7 +18,7 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isOfferFieldUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -60,7 +60,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
       'OfferManager',
     );
 
-    if (!adapter.updateOfferFields) {
+    if (!isOfferFieldUpdater(adapter)) {
       throw new SyncJobExecutionError(
         `Adapter for connection ${job.connectionId} does not support updateOfferFields`,
         job.id,

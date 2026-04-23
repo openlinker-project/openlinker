@@ -18,7 +18,7 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isOfferCreator } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
@@ -61,7 +61,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     // 2. `Marketplace` is supported, but `createOffer` is an optional
     //    sub-capability. Distinct 422 so clients can distinguish
     //    "unknown connection" from "this adapter reads but can't create".
-    if (!adapter.createOffer) {
+    if (!isOfferCreator(adapter)) {
       throw new UnprocessableEntityException(
         `Adapter for connection ${input.connectionId} does not support offer creation`,
       );

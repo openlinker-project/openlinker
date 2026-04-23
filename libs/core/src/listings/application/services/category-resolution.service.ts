@@ -12,7 +12,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isCategoryBarcodeMatcher } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
@@ -70,7 +70,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         connectionId,
         'OfferManager',
       );
-      if (!marketplace.matchCategoryByBarcode) {
+      if (!isCategoryBarcodeMatcher(marketplace)) {
         this.logger.debug(
           `Marketplace adapter does not support matchCategoryByBarcode (connection=${connectionId})`,
         );

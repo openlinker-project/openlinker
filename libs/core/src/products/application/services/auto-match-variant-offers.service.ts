@@ -9,7 +9,12 @@
  * @implements {IAutoMatchVariantOffersService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import type { OfferManagerPort, OfferFeedOutput } from '@openlinker/core/listings';
+// Direct subpath import bypasses the `@openlinker/core/listings` barrel — the
+// barrel re-exports services whose transitive imports loop back through
+// `@openlinker/core/products`, creating a runtime circular require. Importing
+// the guard from its capability file keeps the dependency graph acyclic.
+import { isOfferLister } from '@openlinker/core/listings/domain/ports/capabilities/offer-lister.capability';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
@@ -140,7 +145,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
   }
 
   private async loadAllOffers(marketplace: OfferManagerPort): Promise<OfferIdentifiers[]> {
-    if (!marketplace.listOffers) {
+    if (!isOfferLister(marketplace)) {
       throw new Error('Marketplace adapter does not support listOffers');
     }
 
@@ -148,7 +153,10 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     let cursor: string | null = null;
 
     do {
-      const feed = await marketplace.listOffers({ cursor, limit: OFFER_FEED_PAGE_SIZE });
+      const feed: OfferFeedOutput = await marketplace.listOffers({
+        cursor,
+        limit: OFFER_FEED_PAGE_SIZE,
+      });
       for (const item of feed.items) {
         allOffers.push({
           offerId: item.offerId,

@@ -60,6 +60,7 @@ All TypeScript projects must use strict mode:
 - **Domain Services**: `*.domain-service.ts` (e.g., `product-mapping.domain-service.ts`)
 - **Domain Events**: `*.event.ts` (e.g., `product-created.event.ts`)
 - **Ports (Interfaces)**: `*.port.ts` (e.g., `inventory-master.port.ts`) - interface definition only
+- **Port sub-capabilities**: `*.capability.ts` (e.g., `offer-creator.capability.ts`) - optional capability interface + co-located `is{Capability}` type-guard. Used when a port has optional methods that can be extracted as distinct composable capabilities; lives under `domain/ports/capabilities/`.
 - **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions only
 
 #### Application Layer Files

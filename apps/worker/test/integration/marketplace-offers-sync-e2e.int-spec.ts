@@ -9,7 +9,7 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, OfferLister } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN, SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
@@ -71,7 +71,7 @@ describe('Marketplace Offers Sync End-to-End Integration', () => {
     });
     await variantRepo.save(variant);
 
-    const mockMarketplaceAdapter: OfferManagerPort = {
+    const mockMarketplaceAdapter: OfferManagerPort & OfferLister = {
       updateOfferQuantity: jest.fn(),
       listOffers: jest.fn().mockResolvedValue({
         items: [{ offerId: 'offer-1', externalRef: 'SKU-1' }],

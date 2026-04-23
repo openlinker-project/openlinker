@@ -14,7 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ICategoriesCacheService, PrestashopCategoryDto } from './categories-cache.service.interface';
 import { AllegroCategoryCacheOrmEntity } from './persistence/allegro-category-cache.orm-entity';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isCategoryBrowser } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferCategory } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
@@ -50,7 +50,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
       'OfferManager',
     );
 
-    if (!adapter.fetchCategories) {
+    if (!isCategoryBrowser(adapter)) {
       this.logger.warn(`Marketplace adapter for connection ${connectionId} does not support fetchCategories`);
       return [];
     }
