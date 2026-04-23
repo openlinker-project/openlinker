@@ -6,7 +6,7 @@
  * @module libs/core/src/listings/application/services
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isOfferEventReader, isOfferLister } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { OfferFeedItem } from '@openlinker/core/listings';
 import {
@@ -116,7 +116,7 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     input: { cursor: string | null; limit: number; feedType: 'offers' | 'events' },
   ): Promise<{ items: OfferFeedItem[]; nextCursor: string | null }> {
     if (input.feedType === 'events') {
-      if (!marketplace.listOfferEvents) {
+      if (!isOfferEventReader(marketplace)) {
         this.logger.warn(
           'Marketplace adapter does not support listOfferEvents; falling back to listOffers',
         );
@@ -125,7 +125,7 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
       }
     }
 
-    if (!marketplace.listOffers) {
+    if (!isOfferLister(marketplace)) {
       throw new Error('Marketplace adapter does not support listOffers');
     }
 

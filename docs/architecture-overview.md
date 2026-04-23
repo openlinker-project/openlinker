@@ -436,26 +436,33 @@ interface OrderSourcePort {
 
 ### OfferManagerPort
 
-**Purpose**: Canonical capability contract for marketplace offer/listing management — offer feed, quantity + field updates, offer creation, category directory, barcode-to-category matching, and seller-policy discovery. Split out of the legacy `MarketplacePort` (#328).
+**Purpose**: Base capability contract for marketplace offer/listing management. Split out of the legacy `MarketplacePort` (#328); the previously-optional methods were extracted into distinct capability interfaces (#337). The base port carries only the single method every marketplace adapter must implement.
 
-**Interface** (abbreviated — all methods except `updateOfferQuantity` are optional):
+**Interface**:
 ```typescript
 interface OfferManagerPort {
-  listOffers?(input: OfferFeedInput): Promise<OfferFeedOutput>;
-  listOfferEvents?(input: OfferFeedInput): Promise<OfferFeedOutput>;
   updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void>;
-  updateOfferQuantitiesBatch?(cmd: UpdateOfferQuantitiesBatchCommand): Promise<UpdateOfferQuantitiesBatchResult>;
-  updateOfferFields?(cmd: UpdateOfferFieldsCommand): Promise<void>;
-  fetchCategories?(parentId?: string): Promise<MarketplaceCategory[]>;
-  matchCategoryByBarcode?(barcode: string): Promise<string | null>;
-  createOffer?(cmd: CreateOfferCommand): Promise<CreateOfferResult>;
-  fetchSellerPolicies?(): Promise<SellerPolicies>;
 }
 ```
 
-**Current Implementation**: `AllegroOfferManagerAdapter`
+**Sub-capabilities** (in `libs/core/src/listings/domain/ports/capabilities/`):
 
-**Future Implementations**: `ShopifyOfferManagerAdapter`, `WooCommerceOfferManagerAdapter`, `EbayOfferManagerAdapter`
+Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Adapters declare the capabilities they support via `implements OfferManagerPort, OfferLister, OfferCreator, …`; call sites narrow via the guard before invoking the method — after the guard TypeScript knows the method is present.
+
+| Capability | Method |
+|---|---|
+| `OfferLister` | `listOffers(input)` |
+| `OfferEventReader` | `listOfferEvents(input)` |
+| `OfferQuantityBatchUpdater` | `updateOfferQuantitiesBatch(cmd)` |
+| `OfferFieldUpdater` | `updateOfferFields(cmd)` |
+| `CategoryBrowser` | `fetchCategories(parentId?)` |
+| `CategoryBarcodeMatcher` | `matchCategoryByBarcode(barcode)` |
+| `OfferCreator` | `createOffer(cmd)` |
+| `SellerPoliciesReader` | `fetchSellerPolicies()` |
+
+**Current Implementation**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`).
+
+**Future Implementations**: `ShopifyOfferManagerAdapter`, `WooCommerceOfferManagerAdapter`, `EbayOfferManagerAdapter`.
 
 ### Future Capability Ports
 

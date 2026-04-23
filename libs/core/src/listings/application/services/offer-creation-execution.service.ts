@@ -30,7 +30,7 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isOfferCreator } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { CreateOfferCommand, CreateOfferResult, CreateOfferValidationError, OfferCreateRejectedException } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
@@ -97,7 +97,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       input.connectionId,
       'OfferManager',
     );
-    if (!adapter.createOffer) {
+    if (!isOfferCreator(adapter)) {
       throw new Error(
         `Adapter for connection ${input.connectionId} does not support Marketplace.createOffer`,
       );

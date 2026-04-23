@@ -113,3 +113,24 @@ export type {
 } from './domain/types/offer-create.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
+
+// OfferManagerPort sub-capabilities (#337): optional capabilities extracted into
+// distinct interfaces + co-located type guards. Call sites narrow support via
+// `is{Capability}(adapter)`; see capabilities/offer-lister.capability.ts for the
+// shared naming convention.
+export type { OfferLister } from './domain/ports/capabilities/offer-lister.capability';
+export { isOfferLister } from './domain/ports/capabilities/offer-lister.capability';
+export type { OfferEventReader } from './domain/ports/capabilities/offer-event-reader.capability';
+export { isOfferEventReader } from './domain/ports/capabilities/offer-event-reader.capability';
+export type { OfferQuantityBatchUpdater } from './domain/ports/capabilities/offer-quantity-batch-updater.capability';
+export { isOfferQuantityBatchUpdater } from './domain/ports/capabilities/offer-quantity-batch-updater.capability';
+export type { OfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
+export { isOfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
+export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
+export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
+export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
+export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
+export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
+export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';

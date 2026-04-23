@@ -14,7 +14,7 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isSellerPoliciesReader } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { SellerPolicies } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
@@ -51,7 +51,7 @@ export class SellerPoliciesService implements ISellerPoliciesService {
       'OfferManager',
     );
 
-    if (!adapter.fetchSellerPolicies) {
+    if (!isSellerPoliciesReader(adapter)) {
       throw new UnprocessableEntityException(
         `Adapter for connection ${connectionId} does not support seller-policy listing`,
       );

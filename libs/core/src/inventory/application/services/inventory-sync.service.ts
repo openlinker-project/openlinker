@@ -8,7 +8,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { UpdateOfferQuantityCommand, UpdateOfferQuantitiesBatchCommand, UpdateOfferQuantitiesBatchResult } from '@openlinker/core/listings';
 import { IInventorySyncService } from './inventory-sync.service.interface';
@@ -52,7 +52,7 @@ export class InventorySyncService implements IInventorySyncService {
     };
 
     // Prefer adapter batch API when available and we have more than one item.
-    if (marketplace.updateOfferQuantitiesBatch && normalized.items.length > 1) {
+    if (isOfferQuantityBatchUpdater(marketplace) && normalized.items.length > 1) {
       try {
         return await marketplace.updateOfferQuantitiesBatch(normalized);
       } catch (error) {

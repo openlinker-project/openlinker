@@ -1,0 +1,54 @@
+/**
+ * Offer Manager Capabilities — type guards spec
+ *
+ * Table-driven coverage for every `is{Capability}(adapter)` type guard exposed
+ * under `libs/core/src/listings/domain/ports/capabilities/`. Each guard must
+ * return true when the matching method is a function on the adapter, false
+ * when the method is absent, and false when the method slot exists but is
+ * not callable.
+ *
+ * @module libs/core/src/listings/domain/ports/capabilities/__tests__
+ */
+
+import type { OfferManagerPort } from '../../offer-manager.port';
+import { isOfferLister } from '../offer-lister.capability';
+import { isOfferEventReader } from '../offer-event-reader.capability';
+import { isOfferQuantityBatchUpdater } from '../offer-quantity-batch-updater.capability';
+import { isOfferFieldUpdater } from '../offer-field-updater.capability';
+import { isCategoryBrowser } from '../category-browser.capability';
+import { isCategoryBarcodeMatcher } from '../category-barcode-matcher.capability';
+import { isOfferCreator } from '../offer-creator.capability';
+import { isSellerPoliciesReader } from '../seller-policies-reader.capability';
+
+type Guard = (adapter: OfferManagerPort) => boolean;
+
+const cases: ReadonlyArray<readonly [string, Guard, string]> = [
+  ['OfferLister', isOfferLister, 'listOffers'],
+  ['OfferEventReader', isOfferEventReader, 'listOfferEvents'],
+  ['OfferQuantityBatchUpdater', isOfferQuantityBatchUpdater, 'updateOfferQuantitiesBatch'],
+  ['OfferFieldUpdater', isOfferFieldUpdater, 'updateOfferFields'],
+  ['CategoryBrowser', isCategoryBrowser, 'fetchCategories'],
+  ['CategoryBarcodeMatcher', isCategoryBarcodeMatcher, 'matchCategoryByBarcode'],
+  ['OfferCreator', isOfferCreator, 'createOffer'],
+  ['SellerPoliciesReader', isSellerPoliciesReader, 'fetchSellerPolicies'],
+];
+
+function makeAdapter(extra: Record<string, unknown> = {}): OfferManagerPort {
+  return { updateOfferQuantity: jest.fn(), ...extra } as unknown as OfferManagerPort;
+}
+
+describe('Offer Manager capability type guards', () => {
+  describe.each(cases)('%s', (_name, guard, methodName) => {
+    it(`returns true when \`${methodName}\` is a function`, () => {
+      expect(guard(makeAdapter({ [methodName]: jest.fn() }))).toBe(true);
+    });
+
+    it(`returns false when \`${methodName}\` is absent`, () => {
+      expect(guard(makeAdapter())).toBe(false);
+    });
+
+    it(`returns false when \`${methodName}\` is present but non-function`, () => {
+      expect(guard(makeAdapter({ [methodName]: 'not a function' }))).toBe(false);
+    });
+  });
+});

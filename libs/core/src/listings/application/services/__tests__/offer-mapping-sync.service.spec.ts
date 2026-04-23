@@ -5,7 +5,7 @@
  */
 import { OfferMappingSyncService } from '../offer-mapping-sync.service';
 import { OfferLinkingService } from '../offer-linking.service';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, OfferLister, OfferEventReader } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
 import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
@@ -29,7 +29,7 @@ describe('OfferMappingSyncService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let variantRepository: jest.Mocked<ProductVariantRepositoryPort>;
-  let marketplace: jest.Mocked<OfferManagerPort>;
+  let marketplace: jest.Mocked<OfferManagerPort & OfferLister & OfferEventReader>;
 
   beforeEach(() => {
     marketplace = {
@@ -38,7 +38,7 @@ describe('OfferMappingSyncService', () => {
       updateOfferQuantity: jest.fn(),
       listOffers: jest.fn(),
       listOfferEvents: jest.fn(),
-    } as unknown as jest.Mocked<OfferManagerPort>;
+    } as unknown as jest.Mocked<OfferManagerPort & OfferLister & OfferEventReader>;
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(marketplace),

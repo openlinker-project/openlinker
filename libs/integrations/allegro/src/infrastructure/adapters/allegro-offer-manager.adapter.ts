@@ -9,9 +9,27 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @implements {OfferManagerPort}
  */
-import type { OfferManagerPort } from '@openlinker/core/listings';
-import { OfferFeedInput, OfferFeedOutput, OfferCreateRejectedException, UpdateOfferQuantityCommand, UpdateOfferFieldsCommand } from '@openlinker/core/listings';
-import type { CreateOfferCommand, CreateOfferResult, CreateOfferResultStatus, CreateOfferValidationError, OfferCategory, SellerPolicies } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  OfferLister,
+  OfferEventReader,
+  OfferFieldUpdater,
+  CategoryBrowser,
+  CategoryBarcodeMatcher,
+  OfferCreator,
+  SellerPoliciesReader,
+  OfferFeedInput,
+  OfferFeedOutput,
+  UpdateOfferQuantityCommand,
+  UpdateOfferFieldsCommand,
+  CreateOfferCommand,
+  CreateOfferResult,
+  CreateOfferResultStatus,
+  CreateOfferValidationError,
+  OfferCategory,
+  SellerPolicies,
+} from '@openlinker/core/listings';
+import { OfferCreateRejectedException } from '@openlinker/core/listings';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import {
@@ -86,7 +104,16 @@ export interface QuantityPollConfig {
  * Shares the Allegro HTTP client + identifier-mapping instance with its
  * sibling `AllegroOrderSourceAdapter` through the per-connection factory.
  */
-export class AllegroOfferManagerAdapter implements OfferManagerPort {
+export class AllegroOfferManagerAdapter
+  implements
+    OfferManagerPort,
+    OfferLister,
+    OfferEventReader,
+    OfferFieldUpdater,
+    CategoryBrowser,
+    CategoryBarcodeMatcher,
+    OfferCreator,
+    SellerPoliciesReader {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
   private readonly quantityPollConfig: QuantityPollConfig;

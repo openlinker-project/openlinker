@@ -7,13 +7,13 @@
  */
 
 import { InventorySyncService } from '../inventory-sync.service';
-import { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let marketplace: jest.Mocked<OfferManagerPort>;
+  let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
 
   const connectionId = 'connection-123';
 
@@ -23,7 +23,7 @@ describe('InventorySyncService', () => {
       getOrder: jest.fn(),
       updateOfferQuantity: jest.fn(),
       updateOfferQuantitiesBatch: jest.fn(),
-    } as unknown as jest.Mocked<OfferManagerPort>;
+    } as unknown as jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(marketplace),
