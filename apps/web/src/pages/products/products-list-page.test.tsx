@@ -45,8 +45,8 @@ describe('ProductsListPage', () => {
     // "window is not defined" unhandled errors from useDebouncedValue.
     vi.runAllTimers();
     vi.useRealTimers();
-    cleanup();
   });
+  afterEach(cleanup);
 
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({

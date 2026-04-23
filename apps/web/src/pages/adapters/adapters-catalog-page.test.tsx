@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { AdaptersCatalogPage } from './adapters-catalog-page';
 import type { AdapterSummary } from '../../features/adapters/api/adapters.types';
@@ -13,6 +13,8 @@ const sampleAdapter: AdapterSummary = {
 };
 
 describe('AdaptersCatalogPage', () => {
+  afterEach(cleanup);
+
   it('renders the page heading', () => {
     renderWithProviders(<AdaptersCatalogPage />);
     expect(screen.getByRole('heading', { name: 'Adapter catalog' })).toBeInTheDocument();
@@ -63,6 +65,9 @@ describe('AdaptersCatalogPage', () => {
       adapters: { list: vi.fn().mockResolvedValue([noDisplayName]) },
     });
     renderWithProviders(<AdaptersCatalogPage />, { apiClient });
-    expect(await screen.findByText('prestashop.webservice.v1')).toBeInTheDocument();
+    // Fallback renders the adapter key in both the strong label and the
+    // mono-text subtitle row — assert the strong label specifically.
+    const matches = await screen.findAllByText('prestashop.webservice.v1');
+    expect(matches.some((el) => el.tagName === 'STRONG')).toBe(true);
   });
 });

@@ -1,9 +1,11 @@
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createAuthenticatedSessionAdapter, renderWithProviders } from '../../test/test-utils';
 import { SettingsPage } from './settings-page';
 
 describe('SettingsPage', () => {
+  afterEach(cleanup);
+
   it('shows environment info', () => {
     renderWithProviders(<SettingsPage />);
 
