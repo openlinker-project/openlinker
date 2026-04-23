@@ -37,6 +37,19 @@ describe('PrestashopProductMapper', () => {
       expect(result.weight).toBe(0.5);
     });
 
+    it('should emit currency=null until a real source is wired up (#362)', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test Product',
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+
+      expect(result.currency).toBeNull();
+    });
+
     it('should handle localized name field with array of languages', () => {
       const prestashopProduct: PrestashopProduct = {
         id: '1',

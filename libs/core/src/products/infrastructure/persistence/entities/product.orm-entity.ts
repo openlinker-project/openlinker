@@ -29,6 +29,9 @@ export class ProductOrmEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   price!: number | null;
 
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency!: string | null;
+
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 

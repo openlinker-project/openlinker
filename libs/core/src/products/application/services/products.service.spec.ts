@@ -15,14 +15,16 @@ import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../.
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
-    id: overrides.id ?? 'ol_product_1',
-    name: overrides.name ?? 'Test Product',
-    sku: overrides.sku ?? 'SKU-001',
-    price: overrides.price ?? 29.99,
-    description: overrides.description ?? 'A test product',
-    images: overrides.images ?? null,
-    createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
-    updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+    id: 'ol_product_1',
+    name: 'Test Product',
+    sku: 'SKU-001',
+    price: 29.99,
+    currency: null,
+    description: 'A test product',
+    images: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
   };
 }
 

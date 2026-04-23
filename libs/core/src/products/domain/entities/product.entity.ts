@@ -22,12 +22,16 @@ export interface Product {
   price: number | null;
   description: string | null;
   images: string[] | null;
+  /**
+   * ISO 4217 currency code resolved at sync time by the master adapter.
+   * Null when the adapter did not provide a currency (e.g., before a per-connection
+   * currency setting is configured). Persisted on the products table.
+   */
+  currency: string | null;
   /** Populated by the repository on load; adapters/drafts may omit. */
   createdAt?: Date;
   /** Populated by the repository on load; adapters/drafts may omit. */
   updatedAt?: Date;
-  /** Master-derived, not persisted on the products table. */
-  currency?: string;
   /** Master-derived, not persisted on the products table. */
   weight?: number;
   /** Master-derived (external category IDs), not persisted on the products table. */
