@@ -31,6 +31,7 @@ import { ListingsApiModule } from './listings/listings.module';
 import { CursorsModule } from './cursors/cursors.module';
 import { MappingsApiModule } from './mappings/mappings.module';
 import { AiApiModule } from './ai/ai.module';
+import { ContentApiModule } from './content/content.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AiApiModule } from './ai/ai.module';
     ContentModule, // Product content draft buffer + reconcile + publish (#338)
     CoreAiModule, // Editable prompt-template storage + render service (#341)
     AiApiModule, // REST surface for prompt templates (#341)
+    ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
   ],
   controllers: [AppController],
   providers: [AppService],

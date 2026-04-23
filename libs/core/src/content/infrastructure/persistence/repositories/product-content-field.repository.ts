@@ -91,6 +91,16 @@ export class ProductContentFieldRepository implements ProductContentFieldReposit
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByProduct(productId: string, fieldKey: FieldKey): Promise<ProductContentField[]> {
+    const entities = await this.ormRepository.find({
+      where: { productId, fieldKey },
+      // Deterministic order: the controller composes per-channel summaries in
+      // its own sorted order, but keep a stable row ordering here for tests.
+      order: { connectionId: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async upsert(payload: ProductContentFieldUpsert): Promise<ProductContentField> {
     const rows: UpsertReturningRow[] =
       payload.connectionId === null

@@ -38,6 +38,12 @@ export interface ProductContentFieldUpsert {
 
 export interface ProductContentFieldRepositoryPort {
   findByKey(key: ProductContentFieldKey): Promise<ProductContentField | null>;
+  /**
+   * Return every row (master + channels) for a given product scoped to a
+   * field key. Used by the content-editor read endpoint; the caller joins the
+   * channel rows with the live connection registry to build panel summaries.
+   */
+  findByProduct(productId: string, fieldKey: FieldKey): Promise<ProductContentField[]>;
   upsert(payload: ProductContentFieldUpsert): Promise<ProductContentField>;
   delete(key: ProductContentFieldKey): Promise<void>;
 }

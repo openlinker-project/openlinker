@@ -1,0 +1,119 @@
+/**
+ * Suggestion Dialog — Unit Tests
+ *
+ * Verifies the generate → apply flow, the "not auto-saved" contract (Apply
+ * just calls `onApply(text)` — persistence is the parent's job), and that
+ * tone/extra inputs are forwarded as part of the suggest request payload.
+ */
+import { cleanup, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SuggestionDialog } from './suggestion-dialog';
+import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import type { SuggestionResponse } from '../api/content.types';
+
+function makeSuggestionResponse(suggestion: string): SuggestionResponse {
+  return {
+    suggestion,
+    requestId: 'req_1',
+    templateKey: 'offer.description.suggest',
+    templateVersion: 1,
+    templateChannel: null,
+    modelUsed: 'fake',
+    latencyMs: 12,
+    usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+  };
+}
+
+describe('SuggestionDialog', () => {
+  afterEach(cleanup);
+
+  it('opens the dialog when the trigger is clicked', async () => {
+    const mockApi = createMockApiClient();
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Generate a draft for the/)).toBeInTheDocument();
+  });
+
+  it('forwards tone + extra instructions to the suggest API and previews the result', async () => {
+    const suggest = vi
+      .fn()
+      .mockResolvedValue(makeSuggestionResponse('A concise product description.'));
+    const mockApi = createMockApiClient({ content: { suggest } });
+    const onApply = vi.fn();
+
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel="allegro" onApply={onApply} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+    const dialog = await screen.findByRole('dialog');
+    const within_ = within(dialog);
+
+    await user.type(within_.getByLabelText('Tone'), 'confident');
+    await user.type(within_.getByLabelText('Extra instructions'), 'mention warranty');
+    await user.click(within_.getByRole('button', { name: 'Generate' }));
+
+    expect(await within_.findByText('A concise product description.')).toBeInTheDocument();
+    expect(suggest).toHaveBeenCalledWith('ol_product_1', {
+      channel: 'allegro',
+      tone: 'confident',
+      extraInstructions: 'mention warranty',
+    });
+    // onApply must not fire until the operator explicitly applies.
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('calls onApply with the suggestion when the operator clicks "Apply to editor"', async () => {
+    const suggest = vi.fn().mockResolvedValue(makeSuggestionResponse('Generated text'));
+    const mockApi = createMockApiClient({ content: { suggest } });
+    const onApply = vi.fn();
+
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel={null} onApply={onApply} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+    const dialog = await screen.findByRole('dialog');
+    const within_ = within(dialog);
+
+    await user.click(within_.getByRole('button', { name: 'Generate' }));
+    await within_.findByText('Generated text');
+    await user.click(within_.getByRole('button', { name: 'Apply to editor' }));
+
+    expect(onApply).toHaveBeenCalledWith('Generated text');
+  });
+
+  it('omits empty tone and extraInstructions from the request payload', async () => {
+    const suggest = vi.fn().mockResolvedValue(makeSuggestionResponse(''));
+    const mockApi = createMockApiClient({ content: { suggest } });
+
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+    const dialog = await screen.findByRole('dialog');
+    const within_ = within(dialog);
+    await user.click(within_.getByRole('button', { name: 'Generate' }));
+
+    expect(suggest).toHaveBeenCalledWith('ol_product_1', {
+      channel: null,
+      tone: undefined,
+      extraInstructions: undefined,
+    });
+  });
+});

@@ -51,6 +51,7 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
     };
     jobEnqueue = { enqueueJob: jest.fn() } as unknown as jest.Mocked<JobEnqueuePort>;
     offerCreationRecords = {
