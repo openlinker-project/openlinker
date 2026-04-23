@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
 import { AllegroConnectCallbackPage } from './allegro-connect-callback-page';
@@ -7,6 +7,8 @@ import { AllegroConnectCallbackPage } from './allegro-connect-callback-page';
 const CALLBACK_ROUTE = '/integrations/allegro/connect/callback';
 
 describe('AllegroConnectCallbackPage', () => {
+  afterEach(cleanup);
+
   it('shows error state when Allegro returns ?error param', () => {
     renderWithProviders(<AllegroConnectCallbackPage />, {
       route: `${CALLBACK_ROUTE}?error=access_denied`,

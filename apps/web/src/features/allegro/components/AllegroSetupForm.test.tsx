@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AllegroSetupForm } from './AllegroSetupForm';
@@ -40,6 +40,21 @@ async function advanceOneStep(container: HTMLElement, expectedStepLabel: string)
 describe('AllegroSetupForm', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+  afterEach(cleanup);
+
+  it('renders the "Before you start" info callout on step 1', () => {
+    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
+    const scope = within(container);
+
+    expect(scope.getByText(/before you start/i)).toBeInTheDocument();
+    expect(scope.getByRole('link', { name: /allegro developer portal/i })).toHaveAttribute(
+      'href',
+      'https://developer.allegro.pl/',
+    );
+    // Redirect URI is rendered inside an inline .mono-text span; simplest
+    // cross-node substring assertion is on container.textContent.
+    expect(container.textContent).toContain('/integrations/allegro/connect/callback');
   });
 
   it('renders the credentials step fields first', () => {

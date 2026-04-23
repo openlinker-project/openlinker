@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { FailedOrdersPage } from './failed-orders-page';
 import type { PaginatedOrders, OrderRecord } from '../../features/orders/api/orders.types';
@@ -30,6 +30,8 @@ const sampleData: PaginatedOrders = {
 };
 
 describe('FailedOrdersPage', () => {
+  afterEach(cleanup);
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       orders: {

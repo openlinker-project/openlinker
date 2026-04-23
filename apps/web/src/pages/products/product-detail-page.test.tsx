@@ -1,6 +1,6 @@
-import { screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ProductDetailPage } from './product-detail-page';
 import type { Product } from '../../features/products/api/products.types';
@@ -44,6 +44,8 @@ function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>): vo
 }
 
 describe('ProductDetailPage', () => {
+  afterEach(cleanup);
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       products: {
