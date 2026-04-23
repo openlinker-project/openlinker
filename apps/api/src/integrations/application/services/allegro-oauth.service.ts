@@ -24,6 +24,8 @@ import type {
   CompletedStateData,
 } from '../interfaces/allegro-oauth.service.types';
 
+const ALLEGRO_OAUTH_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class AllegroOAuthService implements IAllegroOAuthService {
   private readonly logger = new Logger(AllegroOAuthService.name);
@@ -161,14 +163,18 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     try {
       this.logger.debug(`Exchanging authorization code for token (environment: ${environment})`);
 
-      const response = await fetch(tokenUrl.toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${credentials}`,
+      const response = await this.fetchWithTimeout(
+        tokenUrl.toString(),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${credentials}`,
+          },
+          body: new URLSearchParams(tokenRequest).toString(),
         },
-        body: new URLSearchParams(tokenRequest).toString(),
-      });
+        ALLEGRO_OAUTH_TIMEOUT_MS,
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -189,7 +195,11 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Error exchanging code for token: ${(error as Error).message}`, error);
+      const formatted = this.formatFetchError(error);
+      this.logger.error(
+        `Error exchanging code for token (environment: ${environment}): ${formatted}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new InternalServerErrorException('Failed to exchange authorization code for token');
     }
   }
@@ -377,14 +387,18 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     try {
       this.logger.debug(`Refreshing access token (environment: ${environment})`);
 
-      const response = await fetch(tokenUrl.toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${credentials}`,
+      const response = await this.fetchWithTimeout(
+        tokenUrl.toString(),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${credentials}`,
+          },
+          body: new URLSearchParams(tokenRequest).toString(),
         },
-        body: new URLSearchParams(tokenRequest).toString(),
-      });
+        ALLEGRO_OAUTH_TIMEOUT_MS,
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -405,7 +419,11 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error(`Error refreshing token: ${(error as Error).message}`, error);
+      const formatted = this.formatFetchError(error);
+      this.logger.error(
+        `Error refreshing token (environment: ${environment}): ${formatted}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new InternalServerErrorException('Failed to refresh access token');
     }
   }
@@ -462,6 +480,70 @@ export class AllegroOAuthService implements IAllegroOAuthService {
         this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
         return 'https://allegro.pl.allegrosandbox.pl';
     }
+  }
+
+  /**
+   * Perform a fetch bounded by a timeout via AbortController.
+   *
+   * Without this, a hung Allegro endpoint pins the request until the OS-level
+   * TCP timeout (~2 minutes). The AbortError surfaced on timeout is formatted
+   * by {@link formatFetchError} with a dedicated phrasing.
+   */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Format a thrown value from `fetch()` into an operator-actionable string.
+   *
+   * For an undici network failure, `error.message` is the literal `"fetch failed"`;
+   * the useful detail (`ECONNREFUSED`, `ENOTFOUND`, `UND_ERR_CONNECT_TIMEOUT`) lives
+   * on `error.cause.code` / `error.cause.message`. DNS fan-out / happy-eyeballs
+   * surface an AggregateError-shaped cause whose codes live on `cause.errors[]`.
+   * AbortErrors raised by {@link fetchWithTimeout} get a dedicated phrasing.
+   */
+  private formatFetchError(error: unknown): string {
+    if (!(error instanceof Error)) {
+      return `non-error thrown: ${String(error)}`;
+    }
+    if (error.name === 'AbortError') {
+      return `request aborted after ${ALLEGRO_OAUTH_TIMEOUT_MS}ms`;
+    }
+    const baseMessage = error.message || 'unknown error';
+    const cause = (error as Error & { cause?: unknown }).cause;
+
+    if (cause && typeof cause === 'object') {
+      const errorsProp = (cause as { errors?: unknown }).errors;
+      if (Array.isArray(errorsProp)) {
+        const codes = errorsProp
+          .map((e) =>
+            e && typeof e === 'object' && 'code' in e
+              ? (e as { code?: unknown }).code
+              : undefined,
+          )
+          .filter((c): c is string => typeof c === 'string');
+        const codeSummary = codes.length > 0 ? codes.join(', ') : 'unknown';
+        return `${baseMessage} (cause: aggregate — ${codeSummary})`;
+      }
+
+      const codeProp = (cause as { code?: unknown }).code;
+      const messageProp = (cause as { message?: unknown }).message;
+      const causeCode = typeof codeProp === 'string' ? codeProp : 'unknown';
+      const causeMessage = typeof messageProp === 'string' ? messageProp : 'n/a';
+      return `${baseMessage} (cause: ${causeCode} — ${causeMessage})`;
+    }
+
+    return `${baseMessage} (cause: unknown — n/a)`;
   }
 }
 
