@@ -44,6 +44,7 @@ const buildField = (overrides: Partial<ProductContentField> = {}): ProductConten
 
 const buildRepoMock = (): jest.Mocked<ProductContentFieldRepositoryPort> => ({
   findByKey: jest.fn(),
+  findByProduct: jest.fn(),
   upsert: jest.fn(),
   delete: jest.fn(),
 });

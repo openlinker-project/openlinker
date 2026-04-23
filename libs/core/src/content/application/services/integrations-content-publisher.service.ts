@@ -1,15 +1,29 @@
 /**
  * Integrations Content Publisher
  *
- * Default `ContentPublisherPort` implementation. Routes master publishes
- * (`connectionId === null`) through `IntegrationsService.listCapabilityAdapters`
- * to the active `ProductMaster` adapter and calls `updateProduct(productId, { [fieldKey]: value })`.
+ * Default `ContentPublisherPort` implementation. Routes publishes to the
+ * correct external system based on whether the target is the master
+ * (`connectionId === null`) or a channel:
  *
- * Channel publishes (`connectionId !== null`) throw
- * `ChannelContentPublishNotSupportedException` until #339 / #342 wire offer
- * discovery + `MarketplacePort.updateOfferFields`. The exception message
- * carries the follow-up issue references so the gap is self-documenting at
- * call sites.
+ *   - **Master path**: resolves a `ProductMaster` adapter via the
+ *     integrations registry and calls `updateProduct(productId, { [fieldKey]: value })`.
+ *     Uses the adapter's response `updatedAt` as the opaque `baseVersion` so
+ *     future inbound reconciles can detect divergence by string inequality.
+ *
+ *   - **Channel path**: resolves an `OfferManager` adapter for the target
+ *     connection, confirms it implements `OfferFieldUpdater`, walks the
+ *     product's variants → `OfferMappingRepository.findMany` to collect the
+ *     distinct `externalOfferId`s linked to the product on that connection,
+ *     and issues one `updateOfferFields` call per distinct offer. The
+ *     returned `baseVersion` is a synthetic publish timestamp — channel-side
+ *     inbound reconcile does not exist yet (tracked as a follow-up); when it
+ *     lands, the strategy here will need to be reconciled with the
+ *     marketplace-provided revision / lastUpdated.
+ *
+ * The `ChannelContentPublishNotSupportedException` class remains in the
+ * domain for future branches (e.g. a connection type that fundamentally
+ * cannot receive content) but is no longer thrown on the default channel
+ * path.
  *
  * @module libs/core/src/content/application/services
  * @implements {ContentPublisherPort}
@@ -19,14 +33,31 @@ import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
 import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
-import { ChannelContentPublishNotSupportedException } from '../../domain/exceptions/channel-content-publish-not-supported.exception';
+import {
+  isOfferFieldUpdater,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
+  type OfferManagerPort,
+  type OfferMappingRepositoryPort,
+} from '@openlinker/core/listings';
+import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exceptions/channel-adapter-lacks-field-updater.exception';
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
+import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
   ContentPublishRequest,
   ContentPublishResult,
   ContentPublisherPort,
 } from '../../domain/ports/content-publisher.port';
+
+// Channel description wrapping. Today's only channel is Allegro, whose
+// description format is a `sections[].items[]` tree of `TEXT` blocks. We
+// wrap the operator-supplied string as a single TEXT item inside a single
+// section — a richer WYSIWYG story is deferred per issue #339.
+function toChannelDescriptionPayload(
+  value: string,
+): { sections: Array<{ items: Array<{ type: 'TEXT'; content: string }> }> } {
+  return { sections: [{ items: [{ type: 'TEXT', content: value }] }] };
+}
 
 @Injectable()
 export class IntegrationsContentPublisher implements ContentPublisherPort {
@@ -35,17 +66,18 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
+    private readonly offerMappings: OfferMappingRepositoryPort,
   ) {}
 
   async publish(request: ContentPublishRequest): Promise<ContentPublishResult> {
-    if (request.connectionId !== null) {
-      throw new ChannelContentPublishNotSupportedException(
-        request.productId,
-        request.connectionId,
-        request.fieldKey,
-      );
+    if (request.connectionId === null) {
+      return this.publishMaster(request);
     }
+    return this.publishChannel(request, request.connectionId);
+  }
 
+  private async publishMaster(request: ContentPublishRequest): Promise<ContentPublishResult> {
     const masters = await this.integrationsService.listCapabilityAdapters<ProductMasterPort>({
       capability: 'ProductMaster',
     });
@@ -66,25 +98,81 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const { adapter } = masters[0];
 
-    // Patch only the requested field — `ProductUpdate` accepts arbitrary string keys
-    // via its index signature (`[key: string]: unknown`). Adapters that don't know
-    // a particular field key simply ignore it; for `description` (the MVP key),
-    // `PrestashopProductMasterAdapter` writes it through to PrestaShop.
     const updated = await adapter.updateProduct(request.productId, {
       [request.fieldKey]: request.value,
     });
 
-    // Use the platform-derived `updatedAt` as the opaque baseVersion. ISO string
-    // keeps the comparison purely lexical (we never order versions, only test
-    // equality for divergence detection). Synthesising a local timestamp when
-    // the adapter omits `updatedAt` would corrupt the conflict-detection
-    // invariant — the next inbound reconcile would compare the platform's real
-    // `updatedAt` against our fabricated value and falsely flag a conflict —
-    // so we fail loud here. Adapters MUST populate Product.updatedAt on update.
     if (!updated.updatedAt) {
       throw new ContentPublishMissingVersionException(request.productId, request.fieldKey);
     }
 
     return { baseVersion: updated.updatedAt.toISOString() };
+  }
+
+  private async publishChannel(
+    request: ContentPublishRequest,
+    connectionId: string,
+  ): Promise<ContentPublishResult> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+    if (!isOfferFieldUpdater(adapter)) {
+      throw new ChannelAdapterLacksFieldUpdaterException(
+        request.productId,
+        connectionId,
+        request.fieldKey,
+      );
+    }
+
+    // Need the product's variants to discover linked offers. Channel publishing
+    // uses the single ProductMaster adapter as a read source regardless of the
+    // target channel — the variant set is master-scoped.
+    const masters = await this.integrationsService.listCapabilityAdapters<ProductMasterPort>({
+      capability: 'ProductMaster',
+    });
+    if (masters.length === 0) {
+      throw new NoProductMasterAdapterException(request.productId, request.fieldKey);
+    }
+    const { adapter: productMaster } = masters[0];
+    const variants = await productMaster.getProductVariants(request.productId);
+
+    const externalOfferIds = new Set<string>();
+    for (const variant of variants) {
+      const page = await this.offerMappings.findMany(
+        { connectionId, internalId: variant.id },
+        { limit: 100, offset: 0 },
+      );
+      for (const mapping of page.items) {
+        externalOfferIds.add(mapping.externalId);
+      }
+    }
+
+    if (externalOfferIds.size === 0) {
+      throw new NoLinkedOffersException(request.productId, connectionId);
+    }
+
+    const publishedAtIso = new Date().toISOString();
+    const payload = toChannelDescriptionPayload(request.value);
+
+    for (const externalOfferId of externalOfferIds) {
+      await adapter.updateOfferFields({
+        externalOfferId,
+        fields: { description: payload },
+        idempotencyKey: `content:${request.productId}:${connectionId}:${publishedAtIso}`,
+      });
+    }
+
+    this.logger.log(
+      `[content] channel publish ok: productId=${request.productId} connectionId=${connectionId} ` +
+        `fieldKey=${request.fieldKey} offers=${externalOfferIds.size} publishedAt=${publishedAtIso}`,
+    );
+
+    // Synthetic baseVersion: the channel side has no inbound-reconcile pipeline
+    // yet, so this timestamp is never compared against a marketplace revision.
+    // When channel reconcile ships (separate issue), this strategy must be
+    // replaced with the marketplace-provided revision to keep the optimistic
+    // conflict model sound.
+    return { baseVersion: publishedAtIso };
   }
 }

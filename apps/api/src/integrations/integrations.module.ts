@@ -38,6 +38,11 @@ import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oa
     AllegroOAuthService,
     { provide: ALLEGRO_OAUTH_SERVICE_TOKEN, useExisting: AllegroOAuthService },
   ],
+  // Re-export `AiIntegrationModule` so downstream modules (e.g. `ContentApiModule`)
+  // can resolve `AI_COMPLETION_PORT_TOKEN` through a single import of the API
+  // IntegrationsModule, without each consumer having to call `.register()`
+  // again (which would duplicate the adapter instance).
+  exports: [AiIntegrationModule],
 })
 export class IntegrationsModule {}
 

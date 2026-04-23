@@ -40,6 +40,7 @@ type DeepPartialApiClient = {
   allegro?: Partial<ApiClient['allegro']>;
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
+  content?: Partial<ApiClient['content']>;
   cursors?: Partial<ApiClient['cursors']>;
   customers?: Partial<ApiClient['customers']>;
   health?: Partial<ApiClient['health']>;
@@ -97,6 +98,55 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       updateCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.connections,
     } as ApiClient['connections'],
+    content: {
+      get: vi.fn().mockResolvedValue({
+        productId: 'prod_1',
+        master: {
+          baseValue: null,
+          draftValue: null,
+          hasConflict: false,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        channels: [],
+      }),
+      saveDraft: vi.fn().mockResolvedValue({
+        id: 'field_1',
+        productId: 'prod_1',
+        connectionId: null,
+        fieldKey: 'description',
+        baseValue: null,
+        draftValue: null,
+        baseVersion: null,
+        hasConflict: false,
+        updatedAt: '2026-04-23T00:00:00.000Z',
+        updatedBy: 'user_1',
+      }),
+      discardDraft: vi.fn().mockResolvedValue(undefined),
+      publish: vi.fn().mockResolvedValue({
+        id: 'field_1',
+        productId: 'prod_1',
+        connectionId: null,
+        fieldKey: 'description',
+        baseValue: null,
+        draftValue: null,
+        baseVersion: null,
+        hasConflict: false,
+        updatedAt: '2026-04-23T00:00:00.000Z',
+        updatedBy: 'user_1',
+      }),
+      suggest: vi.fn().mockResolvedValue({
+        suggestion: '',
+        requestId: 'req_1',
+        templateKey: 'offer.description.suggest',
+        templateVersion: 1,
+        templateChannel: null,
+        modelUsed: 'fake',
+        latencyMs: 0,
+        usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      }),
+      ...overrides.content,
+    } as ApiClient['content'],
     cursors: {
       list: vi.fn().mockResolvedValue({
         items: [],

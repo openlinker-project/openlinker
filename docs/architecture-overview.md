@@ -216,7 +216,8 @@ The system is organized into the following core bounded contexts:
 - **Responsibility**: Per-product, per-channel (or master) content fields with draft write-through and conflict detection. First field key: `description`.
 - **Key Entities**: `ProductContentField`
 - **Location**: `libs/core/src/content/`
-- **Capability**: Uses `ContentPublisherPort` for outbound publishing (master path resolves `ProductMasterPort` via the integrations registry; channel path is deferred to #339/#342).
+- **Capability**: Uses `ContentPublisherPort` for outbound publishing. Master path resolves `ProductMasterPort` via the integrations registry and calls `updateProduct` with a keyed patch. Channel path resolves an `OfferManagerPort` for the target connection, requires the `OfferFieldUpdater` sub-capability, walks the product's variants → `OfferMappingRepositoryPort.findMany` → distinct external offer IDs, and issues one `updateOfferFields` per distinct offer (Allegro TEXT-section payload; idempotency key `content:{productId}:{connectionId}:{publishTimestamp}`).
+- **AI suggestion**: `ContentSuggestionService` composes `IIntegrationsService` (fetch product + variants) + `IPromptTemplateService` (render the `offer.description.suggest` template for the current channel) + `AiCompletionPort` (generate). Bound in the API layer (`apps/api/src/content/content.module.ts`) because `AI_COMPLETION_PORT_TOKEN` is only provided where `AiIntegrationModule.register()` is registered.
 - **Storage**: `product_content_field` table with two partial unique indexes (master vs channel) to honour Postgres' NULL-distinct uniqueness for the nullable `connection_id` column.
 - **Conflict model**: optimistic — inbound reconcile sets `has_conflict=true` when an external version diverges while a draft is pending; re-saving the draft is treated as implicit acknowledgement and clears the flag.
 
@@ -231,7 +232,7 @@ The system is organized into the following core bounded contexts:
 - **Admin surface**: `PromptTemplatesController` at `apps/api/src/ai/http/prompt-templates.controller.ts` (all endpoints `@Roles('admin')`); FE admin UI at `/settings/prompt-templates`.
 - **Storage**: `prompt_templates` table with four partial unique indexes honouring `NULL`-distinct semantics on the nullable `channel` column (version uniqueness + "at most one published per `(key, channel)`").
 - **Telemetry**: per-completion structured log `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`; publish / revert actions log `{ templateId, key, channel, version, actor }`.
-- **Worker registration**: deferred — no consumer of `AiCompletionPort` lives in `apps/worker/` yet; wiring lands with #342.
+- **Worker registration**: not required for #342. The suggestion flow is handled synchronously in-process by the API (`ContentSuggestionService`), so `AiCompletionPort` has no `apps/worker/` consumer yet — wiring will be added if / when a long-running AI job type is introduced.
 
 ---
 

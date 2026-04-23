@@ -12,3 +12,4 @@ export const PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN = Symbol(
 );
 export const CONTENT_PUBLISHER_PORT_TOKEN = Symbol('ContentPublisherPort');
 export const CONTENT_DRAFT_SERVICE_TOKEN = Symbol('IContentDraftService');
+export const CONTENT_SUGGESTION_SERVICE_TOKEN = Symbol('IContentSuggestionService');

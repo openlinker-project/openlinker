@@ -2,6 +2,7 @@ import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api
 import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
+import { createContentApi, type ContentApi } from '../../features/content/api/content.api';
 import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
 import { createCustomersApi, type CustomersApi } from '../../features/customers/api/customers.api';
 import { createHealthApi, type HealthApi } from '../../features/health/api/health.api';
@@ -36,6 +37,7 @@ export interface ApiClient {
   allegro: AllegroApi;
   auth: AuthApi;
   connections: ConnectionsApi;
+  content: ContentApi;
   cursors: CursorsApi;
   customers: CustomersApi;
   health: HealthApi;
@@ -131,6 +133,7 @@ export function createApiClient({
     allegro: createAllegroApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
+    content: createContentApi(request),
     cursors: createCursorsApi(request),
     customers: createCustomersApi(request),
     health: createHealthApi(request),

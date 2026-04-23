@@ -1,17 +1,23 @@
-import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, type ReactElement } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { ContentEditor } from '../../features/content/components/content-editor';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { ExternalIdsList } from '../../features/products/components/ExternalIdsList';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import type { ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+
+const VIEW_PARAM = 'view';
+const VIEW_OVERVIEW = 'overview';
+const VIEW_CONTENT = 'content';
 
 function buildProductItems(product: {
   id: string;
@@ -149,8 +155,23 @@ const VARIANT_COLUMNS: DataTableColumn<ProductVariant>[] = [
 
 export function ProductDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = useProductQuery(id);
   const inventoryQuery = useInventoryQuery({ productId: id });
+
+  const activeView = searchParams.get(VIEW_PARAM) === VIEW_CONTENT ? VIEW_CONTENT : VIEW_OVERVIEW;
+  const setActiveView = useCallback(
+    (value: string): void => {
+      const next = new URLSearchParams(searchParams);
+      if (value === VIEW_OVERVIEW) {
+        next.delete(VIEW_PARAM);
+      } else {
+        next.set(VIEW_PARAM, value);
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   if (query.isLoading) {
     return (
@@ -186,59 +207,80 @@ export function ProductDetailPage(): ReactElement {
         </Link>
       }
     >
-      {/* Product metadata */}
-      <section className="detail-section">
-        <KeyValueList items={buildProductItems(product)} />
-      </section>
+      <Tabs value={activeView} onValueChange={setActiveView}>
+        <TabsList aria-label="Product views">
+          <TabsTrigger value={VIEW_OVERVIEW}>Overview</TabsTrigger>
+          <TabsTrigger value={VIEW_CONTENT}>Content</TabsTrigger>
+        </TabsList>
 
-      {/* External IDs */}
-      <section className="detail-section">
-        <h3 className="detail-section__title">External IDs</h3>
-        <ExternalIdsList mappings={product.externalIds ?? []} />
-      </section>
+        <TabsContent value={VIEW_OVERVIEW}>
+          {/* Product metadata */}
+          <section className="detail-section">
+            <KeyValueList items={buildProductItems(product)} />
+          </section>
 
-      {/* Variants */}
-      <section className="detail-section">
-        <h3 className="detail-section__title">
-          Variants{product.variants ? ` (${product.variants.length})` : ''}
-        </h3>
-        {product.variants && product.variants.length > 0 ? (
-          <DataTable
-            caption="Product variants"
-            columns={VARIANT_COLUMNS}
-            rows={product.variants}
-            rowKey={(v) => v.id}
-          />
-        ) : (
-          <p className="text-muted">No variants found for this product.</p>
-        )}
-      </section>
+          {/* External IDs */}
+          <section className="detail-section">
+            <h3 className="detail-section__title">External IDs</h3>
+            <ExternalIdsList mappings={product.externalIds ?? []} />
+          </section>
 
-      {/* Stock */}
-      <section className="detail-section">
-        <h3 className="detail-section__title">Stock</h3>
-        {inventoryQuery.isLoading ? (
-          <LoadingState liveRegion="off" title="Loading stock" message="Fetching inventory data…" />
-        ) : inventoryQuery.error ? (
-          <ErrorState
-            title="Unable to load stock"
-            message={inventoryQuery.error.message}
-            action={
-              <Button onClick={() => { void inventoryQuery.refetch(); }}>Retry</Button>
-            }
-          />
-        ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
-          // No action: stock is sourced from the product master and not editable here.
-          <EmptyState liveRegion="off" title="No stock records" message="No inventory records found for this product." />
-        ) : (
-          <DataTable
-            caption="Stock levels"
-            columns={STOCK_COLUMNS}
-            rows={inventoryQuery.data?.items ?? []}
-            rowKey={(item) => item.id}
-          />
-        )}
-      </section>
+          {/* Variants */}
+          <section className="detail-section">
+            <h3 className="detail-section__title">
+              Variants{product.variants ? ` (${product.variants.length})` : ''}
+            </h3>
+            {product.variants && product.variants.length > 0 ? (
+              <DataTable
+                caption="Product variants"
+                columns={VARIANT_COLUMNS}
+                rows={product.variants}
+                rowKey={(v) => v.id}
+              />
+            ) : (
+              <p className="text-muted">No variants found for this product.</p>
+            )}
+          </section>
+
+          {/* Stock */}
+          <section className="detail-section">
+            <h3 className="detail-section__title">Stock</h3>
+            {inventoryQuery.isLoading ? (
+              <LoadingState
+                liveRegion="off"
+                title="Loading stock"
+                message="Fetching inventory data…"
+              />
+            ) : inventoryQuery.error ? (
+              <ErrorState
+                title="Unable to load stock"
+                message={inventoryQuery.error.message}
+                action={
+                  <Button onClick={() => { void inventoryQuery.refetch(); }}>Retry</Button>
+                }
+              />
+            ) : (inventoryQuery.data?.items.length ?? 0) === 0 ? (
+              // No action: stock is sourced from the product master and not editable here.
+              <EmptyState
+                liveRegion="off"
+                title="No stock records"
+                message="No inventory records found for this product."
+              />
+            ) : (
+              <DataTable
+                caption="Stock levels"
+                columns={STOCK_COLUMNS}
+                rows={inventoryQuery.data?.items ?? []}
+                rowKey={(item) => item.id}
+              />
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value={VIEW_CONTENT}>
+          <ContentEditor productId={product.id} />
+        </TabsContent>
+      </Tabs>
     </PageLayout>
   );
 }
