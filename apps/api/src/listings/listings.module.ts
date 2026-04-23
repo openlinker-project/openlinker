@@ -7,7 +7,7 @@
  * @module apps/api/src/listings
  */
 import { Module } from '@nestjs/common';
-import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings';
+import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { ListingsController } from './http/listings.controller';
 

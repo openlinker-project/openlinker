@@ -1,10 +1,24 @@
 /**
- * Listings Module Exports
+ * Listings — Pure Public Barrel
+ *
+ * Pure contracts only: ports, types, capability interfaces + guards, domain
+ * entities, exceptions, enumeration consts, Symbol tokens, service interfaces,
+ * and execution input/output types. Nothing exported from this file
+ * transitively reaches back into sibling packages at runtime — it is safe to
+ * value-import from any `@openlinker/core/*` module.
+ *
+ * Runtime wiring lives on the companion subpath `@openlinker/core/listings/services`
+ * (`ListingsModule` + the 7 `@Injectable` service classes). Keeping them split
+ * prevents the runtime circular require that #337 exposed and #359 fixed:
+ * `products → listings → services → products` would resolve one side of the
+ * cycle to a partial module and surface as `Symbol(?)` DI failures in Nest.
+ *
+ * Regression guard: `libs/core/src/listings/__tests__/barrel-purity.spec.ts`
+ * asserts none of the 7 service classes or `ListingsModule` are re-exported here.
  *
  * @module libs/core/src/listings
  */
 
-export { ListingsModule } from './listings.module';
 export {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -17,9 +31,6 @@ export {
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
-export { OfferLinkingService } from './application/services/offer-linking.service';
-export { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
-export { CategoryResolutionService } from './application/services/category-resolution.service';
 export type { ICategoryResolutionService } from './application/interfaces/category-resolution.service.interface';
 export type {
   CategoryResolutionInput,
@@ -59,10 +70,8 @@ export type {
 } from './domain/types/offer-creation-request-snapshot.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
-export { OfferBuilderService } from './application/services/offer-builder.service';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
-export { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
 export type { IOfferCreationExecutionService } from './application/interfaces/offer-creation-execution.service.interface';
 export type {
   ExecuteOfferCreationInput,
@@ -75,13 +84,11 @@ export type {
   OfferBuilderValidationIssue,
 } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
-export { SellerPoliciesService } from './application/services/seller-policies.service';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,
 } from './domain/ports/seller-policies-cache-repository.port';
-export { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 export type { IOfferCreationEnqueueService } from './application/interfaces/offer-creation-enqueue.service.interface';
 export type {
   EnqueueOfferCreationInput,
