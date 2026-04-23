@@ -51,6 +51,7 @@ describe('InventoryQueryService', () => {
     name: 'Product One',
     sku: 'SKU-1',
     price: 99.99,
+    currency: null,
     description: null,
     images: ['https://shop.test/img/1/cover.jpg', 'https://shop.test/img/1/alt.jpg'],
   };
@@ -59,6 +60,7 @@ describe('InventoryQueryService', () => {
     name: 'Product Two',
     sku: null,
     price: null,
+    currency: null,
     description: null,
     images: null,
   };

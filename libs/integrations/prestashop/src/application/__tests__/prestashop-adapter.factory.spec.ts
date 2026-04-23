@@ -175,6 +175,79 @@ describe('PrestashopAdapterFactory', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(result.langId).toBe(1);
     });
+
+    describe('currency', () => {
+      const validateConfig = (config: Record<string, unknown>): unknown => {
+        const factory = new PrestashopAdapterFactory();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+        return (factory as any).validateAndParseConfig(config);
+      };
+
+      it('should accept a valid ISO 4217 code', () => {
+        const result = validateConfig({
+          baseUrl: 'https://shop.example.com',
+          currency: 'PLN',
+        }) as { currency?: string };
+
+        expect(result.currency).toBe('PLN');
+      });
+
+      it('should normalise lowercase codes to uppercase', () => {
+        const result = validateConfig({
+          baseUrl: 'https://shop.example.com',
+          currency: 'pln',
+        }) as { currency?: string };
+
+        expect(result.currency).toBe('PLN');
+      });
+
+      it('should leave currency undefined when absent', () => {
+        const result = validateConfig({
+          baseUrl: 'https://shop.example.com',
+        }) as { currency?: string };
+
+        expect(result.currency).toBeUndefined();
+      });
+
+      it('should reject a code with wrong length', () => {
+        expect(() =>
+          validateConfig({
+            baseUrl: 'https://shop.example.com',
+            currency: 'PL',
+          }),
+        ).toThrow(PrestashopConfigException);
+        expect(() =>
+          validateConfig({
+            baseUrl: 'https://shop.example.com',
+            currency: 'PL',
+          }),
+        ).toThrow(/ISO 4217/);
+      });
+
+      it('should reject a non-string value', () => {
+        expect(() =>
+          validateConfig({
+            baseUrl: 'https://shop.example.com',
+            currency: 123,
+          }),
+        ).toThrow(PrestashopConfigException);
+        expect(() =>
+          validateConfig({
+            baseUrl: 'https://shop.example.com',
+            currency: 123,
+          }),
+        ).toThrow(/must be a string/);
+      });
+
+      it('should treat empty string as unset', () => {
+        const result = validateConfig({
+          baseUrl: 'https://shop.example.com',
+          currency: '',
+        }) as { currency?: string };
+
+        expect(result.currency).toBeUndefined();
+      });
+    });
   });
 });
 

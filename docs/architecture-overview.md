@@ -180,6 +180,7 @@ The system is organized into the following core bounded contexts:
 - Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
 - Allegro offer sync uses `GET /sale/offer-events` with persisted cursor key `allegro.offers.lastEventId`.
 - Offer linking by barcode uses master-catalog scoping and links only on unique matches.
+- **Public surface**: `@openlinker/core/listings` exposes pure contracts (ports, types, capability guards, entities, exceptions, service interfaces, Symbol tokens) safe to value-import from any sibling package. Runtime wiring (`ListingsModule` + the 7 `@Injectable` service classes) lives on the `@openlinker/core/listings/services` subpath — kept separate to prevent runtime circular requires when sibling packages value-import from the main barrel (#337/#359).
 
 ### 7. Sync Manager
 - **Responsibility**: Job scheduling and retry logic; workers execute jobs. **Sync orchestration policies live in core application services** (e.g., order ingestion, inventory propagation), not in worker handlers.

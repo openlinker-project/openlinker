@@ -230,6 +230,52 @@ describe('PrestashopSetupForm', () => {
     expect(screen.getByText('API create failed')).toBeInTheDocument();
   });
 
+  it('persists currency in config when selected', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'PLN store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
+    });
+    fireEvent.change(within(view.container).getByLabelText('Default currency (optional)'), {
+      target: { value: 'PLN' },
+    });
+
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await screen.findByText('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: { baseUrl: 'https://shop.example.com', currency: 'PLN' },
+      }),
+    );
+  });
+
+  it('omits currency from config when left unset', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'No currency',
+      url: 'https://shop.example.com',
+      key: 'WSKEY',
+    });
+
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await screen.findByText('Connection created');
+    const payload = create.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    expect('currency' in payload.config).toBe(false);
+  });
+
   it('blocks advancing from the credentials step when the shop URL is invalid', async () => {
     const view = renderWithProviders(<PrestashopSetupForm />);
 

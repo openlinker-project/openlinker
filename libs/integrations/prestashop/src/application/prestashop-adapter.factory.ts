@@ -71,6 +71,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // share a host. Operators override it via connection config when they differ.
     const productMapper = new PrestashopProductMapper({
       storefrontBaseUrl: config.storefrontBaseUrl ?? config.baseUrl,
+      currency: config.currency,
     });
     const inventoryMapper = new PrestashopInventoryMapper();
     const orderMapper = new PrestashopOrderMapper();
@@ -245,6 +246,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       }
     }
 
+    const currency = this.parseOptionalIsoCurrency(config.currency);
+
     // Build validated config with defaults
     const validatedConfig: PrestashopConnectionConfig = {
       baseUrl: config.baseUrl,
@@ -258,9 +261,41 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       timeoutMs: (config.timeoutMs as number | undefined) ?? 30000,
       pageSize: (config.pageSize as number | undefined) ?? 100,
       responseFormat: (config.responseFormat as 'auto' | 'json' | 'xml' | undefined) ?? 'auto',
+      currency,
     };
 
     return validatedConfig;
+  }
+
+  /**
+   * Parse and validate an optional ISO 4217 currency code.
+   *
+   * Accepts undefined/null/empty-string as "not set" (returns undefined).
+   * Normalises case (e.g. 'pln' -> 'PLN') and enforces the 3-letter alpha
+   * format. Does not validate membership in the real ISO 4217 registry — the
+   * mapper only propagates the value; downstream persistence accepts any short
+   * string and the FE renders an unknown code as the muted fallback glyph.
+   */
+  private parseOptionalIsoCurrency(raw: unknown): string | undefined {
+    if (raw === undefined || raw === null || raw === '') {
+      return undefined;
+    }
+    if (typeof raw !== 'string') {
+      throw new PrestashopConfigException(
+        'currency must be a string',
+        'currency',
+        raw,
+      );
+    }
+    const upper = raw.toUpperCase();
+    if (!/^[A-Z]{3}$/.test(upper)) {
+      throw new PrestashopConfigException(
+        'currency must be a 3-letter ISO 4217 code (e.g., PLN, EUR)',
+        'currency',
+        raw,
+      );
+    }
+    return upper;
   }
 }
 

@@ -30,7 +30,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       sku: this.getStringField(prestashopProduct.reference) || '',
       description,
       price: this.parseNumber(prestashopProduct.price) || 0,
-      currency: 'EUR', // Default, can be configured
+      currency: this.options.currency ?? null,
       weight: this.parseNumber(prestashopProduct.weight),
       images,
       categories: this.extractCategories(prestashopProduct),

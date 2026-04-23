@@ -77,6 +77,7 @@ export class ProductRepository implements ProductRepositoryPort {
       name: entity.name,
       sku: entity.sku,
       price: entity.price !== null ? Number(entity.price) : null,
+      currency: entity.currency,
       description: entity.description,
       images: entity.images,
       createdAt: entity.createdAt,
@@ -96,6 +97,7 @@ export class ProductRepository implements ProductRepositoryPort {
     entity.name = product.name;
     entity.sku = product.sku;
     entity.price = product.price;
+    entity.currency = product.currency;
     entity.description = product.description;
     entity.images = product.images;
     if (product.createdAt) entity.createdAt = product.createdAt;

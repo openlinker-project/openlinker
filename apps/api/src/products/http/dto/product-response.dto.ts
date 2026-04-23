@@ -26,7 +26,7 @@ export class ProductResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'ISO 4217 currency code (e.g., PLN, EUR). Currently always null pending product-level currency persistence; once the follow-up lands, this carries the code resolved from the master catalog.',
+      'ISO 4217 currency code (e.g., PLN, EUR), resolved from the master catalog at sync time. Null when the adapter did not provide a currency.',
   })
   currency!: string | null;
 

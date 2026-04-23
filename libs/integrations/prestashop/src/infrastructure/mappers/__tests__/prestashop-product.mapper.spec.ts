@@ -37,6 +37,36 @@ describe('PrestashopProductMapper', () => {
       expect(result.weight).toBe(0.5);
     });
 
+    it('should emit currency=null when options.currency is undefined', () => {
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test Product',
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = mapper.mapProduct(prestashopProduct, 1);
+
+      expect(result.currency).toBeNull();
+    });
+
+    it('should emit options.currency when set', () => {
+      const plnMapper = new PrestashopProductMapper({
+        storefrontBaseUrl: STOREFRONT_BASE_URL,
+        currency: 'PLN',
+      });
+      const prestashopProduct: PrestashopProduct = {
+        id: '1',
+        name: 'Test Product',
+        reference: 'TEST-001',
+        price: '19.99',
+      };
+
+      const result = plnMapper.mapProduct(prestashopProduct, 1);
+
+      expect(result.currency).toBe('PLN');
+    });
+
     it('should handle localized name field with array of languages', () => {
       const prestashopProduct: PrestashopProduct = {
         id: '1',
