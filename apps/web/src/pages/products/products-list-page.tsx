@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -15,6 +15,22 @@ import type { Product, ProductFilters } from '../../features/products/api/produc
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+
+// When currency is missing, the raw amount is shown muted with a hover-reveal
+// rather than silently emitting a bare decimal — explicit ambiguity is safer.
+function formatPrice(price: number | null, currency: string | null): ReactNode {
+  if (price === null) {
+    return <span className="text-muted">—</span>;
+  }
+  if (currency) {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+  }
+  return (
+    <span className="text-muted" title="Currency unknown">
+      {price.toFixed(2)}
+    </span>
+  );
+}
 
 const COLUMNS: DataTableColumn<Product>[] = [
   {
@@ -46,8 +62,7 @@ const COLUMNS: DataTableColumn<Product>[] = [
     id: 'price',
     header: 'Price',
     align: 'right',
-    cell: (product) =>
-      product.price !== null ? product.price.toFixed(2) : <span className="text-muted">—</span>,
+    cell: (product) => formatPrice(product.price, product.currency),
     accessor: (product) => product.price,
     sortable: true,
     hideBelow: 480,
@@ -182,7 +197,8 @@ export function ProductsListPage(): ReactElement {
                 </span>
               ),
               subtitle: (product) => product.sku ?? '—',
-              meta: (product) => (product.price !== null ? product.price.toFixed(2) : null),
+              meta: (product) =>
+                product.price !== null ? formatPrice(product.price, product.currency) : null,
             }}
           />
 

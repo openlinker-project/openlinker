@@ -19,14 +19,15 @@ import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping'
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
-    id: overrides.id ?? 'ol_product_1',
-    name: overrides.name ?? 'Test Product',
-    sku: overrides.sku ?? 'SKU-001',
-    price: overrides.price ?? 29.99,
-    description: overrides.description ?? 'A test product',
-    images: overrides.images ?? null,
-    createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
-    updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+    id: 'ol_product_1',
+    name: 'Test Product',
+    sku: 'SKU-001',
+    price: 29.99,
+    description: 'A test product',
+    images: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
   };
 }
 
@@ -139,6 +140,7 @@ describe('ProductsController', () => {
       const result = await controller.getProduct('ol_product_1');
 
       expect(result.id).toBe('ol_product_1');
+      expect(result.currency).toBeNull();
       expect(result.variants).toHaveLength(1);
       expect(result.variants![0].id).toBe('ol_product_v1');
       expect(result.externalIds).toHaveLength(1);
@@ -146,6 +148,16 @@ describe('ProductsController', () => {
       // Verify correct entity type passed for product and variant
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_v1');
+    });
+
+    it('should surface currency when the domain entity carries one', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ currency: 'PLN' }));
+      productsService.listVariants.mockResolvedValue({ items: [], total: 0 });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.currency).toBe('PLN');
     });
 
     it('should throw NotFoundException when product not found', async () => {

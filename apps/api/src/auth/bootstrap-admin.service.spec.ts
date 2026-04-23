@@ -49,12 +49,15 @@ describe('BootstrapAdminService', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('seeds an admin and logs a generated password when none is provided', async () => {
+  it('seeds admin/admin in non-production when no password is provided', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
 
-    const service = new BootstrapAdminService(makeConfig(), repo);
+    const service = new BootstrapAdminService(
+      makeConfig({ NODE_ENV: 'development' }),
+      repo,
+    );
     await service.bootstrap();
 
     expect(repo.save).toHaveBeenCalledTimes(1);
@@ -63,10 +66,36 @@ describe('BootstrapAdminService', () => {
     expect(saved.email).toBe('admin@openlinker.local');
     expect(saved.role).toBe('admin');
     const hash: string = saved.passwordHash;
+    expect(await bcrypt.compare('admin', hash)).toBe(true);
     expect(await bcrypt.compare('wrong', hash)).toBe(false);
     expect(warnMessages).toHaveLength(1);
+    expect(warnMessages[0]).toMatch(/literal password `admin`/);
+    expect(warnMessages[0]).toMatch(/password=admin/);
+    expect(warnMessages[0]).toMatch(/before promoting this instance/);
+  });
+
+  it('seeds a random password in production when none is provided', async () => {
+    const repo = makeRepo();
+    repo.findByUsername.mockResolvedValue(null);
+    repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+
+    const service = new BootstrapAdminService(
+      makeConfig({ NODE_ENV: 'production' }),
+      repo,
+    );
+    await service.bootstrap();
+
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    const saved = repo.save.mock.calls[0][0];
+    const hash: string = saved.passwordHash;
+    // Random password: must NOT match the dev literal
+    expect(await bcrypt.compare('admin', hash)).toBe(false);
+    expect(warnMessages).toHaveLength(1);
+    expect(warnMessages[0]).toMatch(/store these credentials now/);
     expect(warnMessages[0]).toMatch(/username=admin/);
     expect(warnMessages[0]).toMatch(/password=/);
+    // Banner must NOT contain the default-admin wording
+    expect(warnMessages[0]).not.toMatch(/literal password `admin`/);
   });
 
   it('seeds with provided password and does NOT log it', async () => {

@@ -179,6 +179,7 @@ export class ProductsController {
       name: product.name,
       sku: product.sku,
       price: product.price,
+      currency: product.currency ?? null,
       description: product.description,
       images: product.images,
       createdAt: product.createdAt!.toISOString(),

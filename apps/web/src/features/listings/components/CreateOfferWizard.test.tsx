@@ -30,6 +30,7 @@ const product: Product = {
   name: 'Test Shirt',
   sku: 'TS-1',
   price: 49.5,
+  currency: null,
   description: null,
   images: null,
   createdAt: '2026-01-01T00:00:00Z',

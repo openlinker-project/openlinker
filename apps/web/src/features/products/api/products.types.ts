@@ -31,6 +31,8 @@ export interface Product {
   name: string;
   sku: string | null;
   price: number | null;
+  /** ISO 4217 currency code (e.g., 'PLN', 'EUR'). Null when the backend has not populated a currency for this product. */
+  currency: string | null;
   description: string | null;
   images: string[] | null;
   createdAt: string;
