@@ -23,4 +23,11 @@ export interface PrestashopProductMapperOptions {
    * Never null. Trailing slashes are tolerated by the mapper.
    */
   storefrontBaseUrl: string;
+
+  /**
+   * Default ISO 4217 currency code assigned to every product produced by the
+   * mapper (e.g. `'PLN'`, `'EUR'`). When undefined, the mapper emits
+   * `currency: null` and downstream persistence treats currency as unknown.
+   */
+  currency?: string;
 }

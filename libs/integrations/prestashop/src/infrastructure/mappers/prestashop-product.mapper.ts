@@ -30,9 +30,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       sku: this.getStringField(prestashopProduct.reference) || '',
       description,
       price: this.parseNumber(prestashopProduct.price) || 0,
-      // Null until a per-connection currency or shop auto-detect lands (#362).
-      // The previous 'EUR' hardcode would persist wrong values for PLN shops.
-      currency: null,
+      currency: this.options.currency ?? null,
       weight: this.parseNumber(prestashopProduct.weight),
       images,
       categories: this.extractCategories(prestashopProduct),

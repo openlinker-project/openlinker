@@ -79,6 +79,15 @@ export interface PrestashopConnectionConfig {
    * - 'xml': Force XML
    */
   responseFormat?: 'auto' | 'json' | 'xml';
+
+  /**
+   * Default ISO 4217 currency code for products synced from this PrestaShop
+   * connection (e.g. 'PLN', 'EUR'). When unset, products persist `currency=null`
+   * and the FE renders a muted "Currency unknown" fallback.
+   *
+   * @see {@link Product.currency} in `@openlinker/core`
+   */
+  currency?: string;
 }
 
 

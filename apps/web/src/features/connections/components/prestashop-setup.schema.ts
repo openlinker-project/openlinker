@@ -50,6 +50,25 @@ export const prestashopSetupSchema = z.object({
       z.literal(''),
     ])
     .optional(),
+  // Optional ISO 4217 currency code. Empty string is accepted alongside absent so the
+  // wizard's `<select>` can round-trip the "— not set —" option without surfacing a
+  // validation error; `toCreateConnectionInput` strips it out so the backend treats
+  // both cases as "no default currency configured" (#362).
+  //
+  // The non-empty branch trims + uppercases before the regex check so the schema
+  // matches the factory's lenient-normaliser behaviour — if a future refactor feeds
+  // it a lowercase value from outside the current `<Select>` options, it still
+  // validates instead of failing.
+  currency: z
+    .union([
+      z
+        .string()
+        .trim()
+        .transform((v) => v.toUpperCase())
+        .pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter ISO 4217 code')),
+      z.literal(''),
+    ])
+    .optional(),
   enabledCapabilities: z
     .array(
       z.enum([
@@ -72,6 +91,7 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   webserviceKey: '',
   shopId: '',
   storefrontBaseUrl: '',
+  currency: '',
   enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
 };
 
@@ -84,6 +104,9 @@ export function toCreateConnectionInput(
   }
   if (values.storefrontBaseUrl && values.storefrontBaseUrl.length > 0) {
     config.storefrontBaseUrl = values.storefrontBaseUrl;
+  }
+  if (values.currency && values.currency.length > 0) {
+    config.currency = values.currency;
   }
   return {
     name: values.name,

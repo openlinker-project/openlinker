@@ -34,6 +34,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 
@@ -51,7 +52,7 @@ const CAPABILITY_HELP: Record<Capability, string> = {
 const STEP_LABELS = ['Credentials', 'Verify credentials', 'Capabilities', 'Review & connect'] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<PrestashopSetupFormValues>>> = [
-  ['name', 'baseUrl', 'webserviceKey', 'shopId', 'storefrontBaseUrl'],
+  ['name', 'baseUrl', 'webserviceKey', 'shopId', 'storefrontBaseUrl', 'currency'],
   [],
   ['enabledCapabilities'],
   [],
@@ -212,6 +213,31 @@ export function PrestashopSetupForm(): ReactElement {
               invalid={Boolean(form.formState.errors.shopId)}
             />
           </FormField>
+
+          <FormField
+            label="Default currency (optional)"
+            name="currency"
+            error={form.formState.errors.currency?.message}
+            description="ISO 4217 code applied to every product synced from this connection. Leave blank to persist currency as unknown."
+          >
+            <Select
+              {...form.register('currency')}
+              invalid={Boolean(form.formState.errors.currency)}
+            >
+              <option value="">— not set —</option>
+              <option value="PLN">PLN — Polish Złoty</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="USD">USD — US Dollar</option>
+              <option value="GBP">GBP — British Pound</option>
+              <option value="CZK">CZK — Czech Koruna</option>
+              <option value="HUF">HUF — Hungarian Forint</option>
+              <option value="RON">RON — Romanian Leu</option>
+              <option value="SEK">SEK — Swedish Krona</option>
+              <option value="NOK">NOK — Norwegian Krone</option>
+              <option value="DKK">DKK — Danish Krone</option>
+              <option value="CHF">CHF — Swiss Franc</option>
+            </Select>
+          </FormField>
         </>
       ) : null}
 
@@ -237,6 +263,12 @@ export function PrestashopSetupForm(): ReactElement {
               <>
                 <dt>Shop ID</dt>
                 <dd className="mono-text">{values.shopId}</dd>
+              </>
+            ) : null}
+            {values.currency ? (
+              <>
+                <dt>Default currency</dt>
+                <dd className="mono-text">{values.currency}</dd>
               </>
             ) : null}
           </dl>
@@ -290,6 +322,12 @@ export function PrestashopSetupForm(): ReactElement {
             <>
               <dt>Shop ID</dt>
               <dd className="mono-text">{values.shopId}</dd>
+            </>
+          ) : null}
+          {values.currency ? (
+            <>
+              <dt>Default currency</dt>
+              <dd className="mono-text">{values.currency}</dd>
             </>
           ) : null}
           <dt>Capabilities</dt>
