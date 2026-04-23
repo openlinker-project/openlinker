@@ -19,6 +19,8 @@ import { prestashopSetupRoute } from './prestashop-setup.route';
 import { advancedNewConnectionRoute } from './advanced-new-connection.route';
 import { ordersRoute } from './orders.route';
 import { productsRoute } from './products.route';
+import { promptTemplateDetailRoute } from './prompt-template-detail.route';
+import { promptTemplatesListRoute } from './prompt-templates-list.route';
 import { settingsRoute } from './settings.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
@@ -47,5 +49,7 @@ export const rootRoute: RouteObject = {
     jobsLogsRoute,
     webhookDeliveriesRoute,
     settingsRoute,
+    promptTemplatesListRoute,
+    promptTemplateDetailRoute,
   ],
 };

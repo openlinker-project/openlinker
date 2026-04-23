@@ -221,13 +221,17 @@ The system is organized into the following core bounded contexts:
 - **Conflict model**: optimistic — inbound reconcile sets `has_conflict=true` when an external version diverges while a draft is pending; re-saving the draft is treated as implicit acknowledgement and clears the flag.
 
 ### 13. AI
-- **Responsibility**: Provider-agnostic LLM completions for content generation. No application services live here — the bounded context is a single capability port + types + exceptions.
-- **Key Port**: `AiCompletionPort` (`complete(input) → result`)
-- **Location**: `libs/core/src/ai/`
+- **Responsibility**: Provider-agnostic LLM completions for content generation, plus editable prompt-template storage (versioned draft/publish lifecycle) consumed by the suggestion flow.
+- **Key Port**: `AiCompletionPort` (`complete(input) → result`).
+- **Key Entity**: `PromptTemplate` (`libs/core/src/ai/domain/entities/prompt-template.entity.ts`) — one row per `(key, channel, version)`, stateful (`draft | published | archived`).
+- **Key Service**: `PromptTemplateService` (`libs/core/src/ai/application/services/prompt-template.service.ts`) — CRUD, publish (archives previous published row transactionally), revert (clones a historical version into a new draft), render (`renderTemplate` pure helper substitutes `{{dotted.path}}` placeholders with strict-required / optional / passthrough semantics).
+- **Location**: `libs/core/src/ai/`.
 - **Adapter package**: `libs/integrations/ai/` (workspace `@openlinker/integrations-ai`) — ships `VercelAiCompletionAdapter` (Anthropic via `ai` + `@ai-sdk/anthropic`, with system-prompt cache control) and `FakeAiCompletionAdapter` for tests / offline dev.
 - **Selection**: `OL_AI_PROVIDER` env (`anthropic` default; `fake` for tests). `AiIntegrationModule` is registered inside `apps/api/src/integrations/integrations.module.ts` alongside the other `@openlinker/integrations-*` modules.
-- **Telemetry**: per-call structured log carrying `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`.
-- **Worker registration**: deferred — no consumer of `AiCompletionPort` lives in `apps/worker/` yet; wiring lands with #341 / #342.
+- **Admin surface**: `PromptTemplatesController` at `apps/api/src/ai/http/prompt-templates.controller.ts` (all endpoints `@Roles('admin')`); FE admin UI at `/settings/prompt-templates`.
+- **Storage**: `prompt_templates` table with four partial unique indexes honouring `NULL`-distinct semantics on the nullable `channel` column (version uniqueness + "at most one published per `(key, channel)`").
+- **Telemetry**: per-completion structured log `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`; publish / revert actions log `{ templateId, key, channel, version, actor }`.
+- **Worker registration**: deferred — no consumer of `AiCompletionPort` lives in `apps/worker/` yet; wiring lands with #342.
 
 ---
 

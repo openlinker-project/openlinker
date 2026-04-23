@@ -9,6 +9,10 @@ import { createInventoryApi, type InventoryApi } from '../../features/inventory/
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
+import {
+  createPromptTemplatesApi,
+  type PromptTemplatesApi,
+} from '../../features/prompt-templates/api/prompt-templates.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
 import { createMappingsApi, type MappingsApi } from '../../features/mappings/api/mappings.api';
 import {
@@ -39,6 +43,7 @@ export interface ApiClient {
   listings: ListingsApi;
   orders: OrdersApi;
   products: ProductsApi;
+  promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   syncJobs: SyncJobsApi;
@@ -134,6 +139,7 @@ export function createApiClient({
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),
     products: createProductsApi(request),
+    promptTemplates: createPromptTemplatesApi(request),
     request,
     syncJobs: createSyncJobsApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
