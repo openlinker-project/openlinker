@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { FailedOrdersPage } from './failed-orders-page';
 import type { PaginatedOrders, OrderRecord } from '../../features/orders/api/orders.types';
+import type { Connection } from '../../features/connections/api/connections.types';
 
 function makeOrderRecord(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
@@ -18,6 +19,22 @@ function makeOrderRecord(overrides: Partial<OrderRecord> = {}): OrderRecord {
     recordStatus: 'awaiting_mapping',
     createdAt: '2026-04-10T08:00:00.000Z',
     updatedAt: '2026-04-10T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeConnection(overrides: Partial<Connection> = {}): Connection {
+  return {
+    id: 'conn-1111-2222-3333-444444444444',
+    name: 'Allegro Europe',
+    platformType: 'allegro',
+    status: 'active',
+    config: {},
+    credentialsBacked: true,
+    enabledCapabilities: [],
+    supportedCapabilities: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -72,7 +89,47 @@ describe('FailedOrdersPage', () => {
 
     renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText(/ol_order_aabbccd/)).toBeInTheDocument();
+    // Full internal order ID now rendered (no manual .slice truncation).
+    expect(await screen.findByText('ol_order_aabbccdd1122334455')).toBeInTheDocument();
+  });
+
+  it('should link each row to the order detail page', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleData) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
+
+    const link = await screen.findByRole('link', { name: /ol_order_aabbccdd1122334455/ });
+    expect(link).toHaveAttribute('href', '/orders/ol_order_aabbccdd1122334455');
+  });
+
+  it('should render the Operations eyebrow to match sibling pages', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleData) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
+
+    await screen.findByText('ol_order_aabbccdd1122334455');
+    expect(screen.getByText('Operations')).toBeInTheDocument();
+  });
+
+  it('should resolve the connection name via ConnectionEntityLabel', async () => {
+    const connection = makeConnection();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleData) },
+      connections: {
+        list: vi.fn().mockResolvedValue([connection]),
+        getById: vi.fn().mockResolvedValue(connection),
+      },
+    });
+
+    renderWithProviders(<FailedOrdersPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Allegro Europe')).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {

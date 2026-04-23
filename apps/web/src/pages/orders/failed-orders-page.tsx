@@ -18,6 +18,7 @@ import { Select } from '../../shared/ui/select';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
 
@@ -33,12 +34,22 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
   {
     id: 'internalOrderId',
     header: 'Order ID',
-    cell: (order) => <span className="mono-text">{order.internalOrderId.slice(0, 16)}…</span>,
+    cell: (order) => (
+      <span className="mono-text" title={order.internalOrderId}>
+        {order.internalOrderId}
+      </span>
+    ),
   },
   {
     id: 'sourceConnectionId',
     header: 'Connection',
-    cell: (order) => <span className="mono-text">{order.sourceConnectionId.slice(0, 8)}…</span>,
+    cell: (order) => (
+      <ConnectionEntityLabel
+        connectionId={order.sourceConnectionId}
+        linkToDetail={false}
+        showId
+      />
+    ),
     hideBelow: 1024,
   },
   {
@@ -102,7 +113,7 @@ export function FailedOrdersPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Orders"
+      eyebrow="Operations"
       title="Awaiting Mapping"
       description="Orders with unresolved offer→variant mappings. These retry automatically once the mapping is created."
       actions={
@@ -161,11 +172,26 @@ export function FailedOrdersPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            rowHref={(order) => `/orders/${order.internalOrderId}`}
             sort={sort}
             onSortChange={setSort}
             cardView={{
-              title: (order) => `${order.internalOrderId.slice(0, 16)}…`,
-              subtitle: (order) => `${snapshotItemCount(order.orderSnapshot)} item(s)`,
+              title: (order) => (
+                <span className="mono-text" title={order.internalOrderId}>
+                  {order.internalOrderId}
+                </span>
+              ),
+              subtitle: (order) => (
+                <>
+                  <ConnectionEntityLabel
+                    connectionId={order.sourceConnectionId}
+                    linkToDetail={false}
+                    showId={false}
+                  />
+                  {' · '}
+                  {snapshotItemCount(order.orderSnapshot)} item(s)
+                </>
+              ),
             }}
           />
 

@@ -9,8 +9,13 @@
  *   - OL_BOOTSTRAP_ADMIN_ENABLED (default: true)
  *   - OL_BOOTSTRAP_ADMIN_USERNAME (default: admin)
  *   - OL_BOOTSTRAP_ADMIN_EMAIL (default: admin@openlinker.local)
- *   - OL_BOOTSTRAP_ADMIN_PASSWORD (optional; if unset, a random one is
- *     generated and printed once to the API log)
+ *   - OL_BOOTSTRAP_ADMIN_PASSWORD (optional). Fallback behaviour when unset:
+ *       • NODE_ENV=production → random 18-byte password, printed once in the
+ *         API log banner (must be captured and rotated).
+ *       • Any other NODE_ENV → literal `admin`, so local/dev/staging boots
+ *         are predictable. Production deployments must set
+ *         OL_BOOTSTRAP_ADMIN_PASSWORD explicitly or disable seeding via
+ *         OL_BOOTSTRAP_ADMIN_ENABLED=false.
  *
  * @module apps/api/src/auth
  */
@@ -22,6 +27,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
 
 const BCRYPT_COST = 10;
+const NON_PROD_DEFAULT_PASSWORD = 'admin';
 
 @Injectable()
 export class BootstrapAdminService implements OnApplicationBootstrap {
@@ -49,14 +55,23 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
       'admin@openlinker.local',
     );
     const providedPassword = this.configService.get<string>('OL_BOOTSTRAP_ADMIN_PASSWORD');
+    const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
+    const isProduction = nodeEnv === 'production';
 
     const existing = await this.userRepository.findByUsername(username);
     if (existing) {
       return;
     }
 
-    const passwordWasGenerated = !providedPassword;
-    const password = providedPassword ?? this.generatePassword();
+    // Fallback policy: non-prod gets the predictable `admin` literal for
+    // dev-loop friction; prod stays secure-by-default with a random password.
+    const fallbackPassword = isProduction ? this.generatePassword() : NON_PROD_DEFAULT_PASSWORD;
+    const password = providedPassword ?? fallbackPassword;
+    const passwordSource: 'provided' | 'default-admin' | 'generated' = providedPassword
+      ? 'provided'
+      : isProduction
+        ? 'generated'
+        : 'default-admin';
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
     try {
@@ -77,10 +92,10 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
       throw error;
     }
 
-    if (passwordWasGenerated) {
-      this.logBootstrapBanner(username, password);
-    } else {
+    if (passwordSource === 'provided') {
       this.logger.log(`Seeded default admin user '${username}' with provided password`);
+    } else {
+      this.logBootstrapBanner(username, password, passwordSource);
     }
   }
 
@@ -88,15 +103,27 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
     return randomBytes(18).toString('base64url');
   }
 
-  private logBootstrapBanner(username: string, password: string): void {
+  private logBootstrapBanner(
+    username: string,
+    password: string,
+    source: 'default-admin' | 'generated',
+  ): void {
     const line = '='.repeat(72);
+    const preamble =
+      source === 'default-admin'
+        ? 'OpenLinker seeded the default admin with the literal password `admin` (non-production default):'
+        : 'OpenLinker default admin user seeded — store these credentials now:';
+    const postamble =
+      source === 'default-admin'
+        ? 'Set OL_BOOTSTRAP_ADMIN_PASSWORD before promoting this instance out of development,'
+        : 'Set OL_BOOTSTRAP_ADMIN_PASSWORD or disable seeding via';
     this.logger.warn(
       [
         line,
-        'OpenLinker default admin user seeded — store these credentials now:',
+        preamble,
         `  username=${username}`,
         `  password=${password}`,
-        'Set OL_BOOTSTRAP_ADMIN_PASSWORD or disable seeding via',
+        postamble,
         'OL_BOOTSTRAP_ADMIN_ENABLED=false in production environments.',
         line,
       ].join('\n'),

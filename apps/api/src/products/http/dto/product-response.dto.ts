@@ -23,6 +23,13 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'Product price' })
   price!: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'ISO 4217 currency code (e.g., PLN, EUR). Currently always null pending product-level currency persistence; once the follow-up lands, this carries the code resolved from the master catalog.',
+  })
+  currency!: string | null;
+
   @ApiPropertyOptional({ nullable: true, description: 'Product description' })
   description!: string | null;
 

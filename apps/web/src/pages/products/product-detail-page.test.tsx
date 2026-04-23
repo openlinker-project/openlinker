@@ -10,6 +10,7 @@ const sampleProduct: Product = {
   name: 'Test Product',
   sku: 'SKU-001',
   price: 29.99,
+  currency: null,
   description: 'A test product',
   images: null,
   createdAt: '2026-01-15T10:00:00.000Z',

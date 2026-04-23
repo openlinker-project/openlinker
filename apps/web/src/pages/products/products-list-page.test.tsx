@@ -12,6 +12,7 @@ const sampleProducts: PaginatedProducts = {
       name: 'Test Product',
       sku: 'SKU-001',
       price: 29.99,
+      currency: 'PLN',
       description: null,
       images: ['https://cdn.example.com/test-product.jpg'],
       createdAt: '2026-01-15T10:00:00.000Z',
@@ -22,6 +23,7 @@ const sampleProducts: PaginatedProducts = {
       name: 'Another Product',
       sku: null,
       price: null,
+      currency: null,
       description: null,
       images: null,
       createdAt: '2026-02-01T10:00:00.000Z',
@@ -71,8 +73,38 @@ describe('ProductsListPage', () => {
 
     expect(await screen.findByText('Test Product')).toBeInTheDocument();
     expect(screen.getByText('SKU-001')).toBeInTheDocument();
-    expect(screen.getByText('29.99')).toBeInTheDocument();
+    // Intl.NumberFormat glyphs vary between runtimes — match amount + ISO code.
+    expect(screen.getByText(/29[.,]99/)).toBeInTheDocument();
+    expect(screen.getByText(/PLN/)).toBeInTheDocument();
     expect(screen.getByText('Another Product')).toBeInTheDocument();
+  });
+
+  it('should show muted price with hover explanation when currency is absent', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          items: [
+            {
+              ...sampleProducts.items[0],
+              id: 'ol_product_nocur',
+              name: 'Currencyless Product',
+              price: 19.99,
+              currency: null,
+            },
+          ],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await within(container).findByText('Currencyless Product');
+    const amount = container.querySelector<HTMLElement>('span[title="Currency unknown"]');
+    expect(amount).not.toBeNull();
+    expect(amount?.textContent).toBe('19.99');
   });
 
   it('should show error state when fetch fails', async () => {
