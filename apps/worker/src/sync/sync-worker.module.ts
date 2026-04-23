@@ -14,7 +14,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
 import { CustomersModule } from '@openlinker/core/customers';
-import { ListingsModule } from '@openlinker/core/listings';
+import { ListingsModule } from '@openlinker/core/listings/services';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';

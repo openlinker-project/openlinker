@@ -82,6 +82,11 @@
       "require": "./dist/listings/index.js",
       "default": "./dist/listings/index.js"
     },
+    "./listings/services": {
+      "types": "./dist/listings/services/index.d.ts",
+      "require": "./dist/listings/services/index.js",
+      "default": "./dist/listings/services/index.js"
+    },
     "./listings/*": {
       "types": "./dist/listings/*.d.ts",
       "require": "./dist/listings/*.js",

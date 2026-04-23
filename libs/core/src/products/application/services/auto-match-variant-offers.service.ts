@@ -9,12 +9,7 @@
  * @implements {IAutoMatchVariantOffersService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import type { OfferManagerPort, OfferFeedOutput } from '@openlinker/core/listings';
-// Direct subpath import bypasses the `@openlinker/core/listings` barrel — the
-// barrel re-exports services whose transitive imports loop back through
-// `@openlinker/core/products`, creating a runtime circular require. Importing
-// the guard from its capability file keeps the dependency graph acyclic.
-import { isOfferLister } from '@openlinker/core/listings/domain/ports/capabilities/offer-lister.capability';
+import { isOfferLister, type OfferManagerPort, type OfferFeedOutput } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
