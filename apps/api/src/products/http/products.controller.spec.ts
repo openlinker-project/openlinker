@@ -23,6 +23,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     name: 'Test Product',
     sku: 'SKU-001',
     price: 29.99,
+    currency: null,
     description: 'A test product',
     images: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),

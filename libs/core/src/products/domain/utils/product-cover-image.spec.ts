@@ -16,6 +16,7 @@ function makeProduct(images: string[] | null): Product {
     name: 'Test Product',
     sku: 'TEST-001',
     price: 19.99,
+    currency: null,
     description: null,
     images,
     createdAt: new Date('2026-01-01T00:00:00Z'),

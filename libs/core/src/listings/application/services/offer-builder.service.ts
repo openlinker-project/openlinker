@@ -156,7 +156,7 @@ export class OfferBuilderService implements IOfferBuilderService {
 
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
-    product: { price: number | null; currency?: string },
+    product: { price: number | null; currency: string | null },
     issues: OfferBuilderValidationIssue[],
   ): { amount: number; currency: string } | null {
     if (input.price) {
