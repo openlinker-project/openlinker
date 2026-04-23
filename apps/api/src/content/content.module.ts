@@ -21,7 +21,7 @@ import {
 } from '@openlinker/core/content';
 import { ContentSuggestionService } from '@openlinker/core/content/application/services/content-suggestion.service';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
-import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings';
+import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ContentController } from './http/content.controller';
 

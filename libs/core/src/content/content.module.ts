@@ -27,7 +27,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
-import { ListingsModule } from '@openlinker/core/listings';
+import { ListingsModule } from '@openlinker/core/listings/services';
 import { ContentDraftService } from './application/services/content-draft.service';
 import { ContentStateReaderService } from './application/services/content-state-reader.service';
 import { IntegrationsContentPublisher } from './application/services/integrations-content-publisher.service';
