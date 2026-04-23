@@ -3914,6 +3914,13 @@ a.kpi-card:focus-visible {
   margin: 0;
 }
 
+.wizard-summary__rows {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  min-width: 0;
+}
+
 .wizard-summary__row {
   display: grid;
   gap: 0.125rem;
@@ -3923,9 +3930,11 @@ a.kpi-card:focus-visible {
 .wizard-summary__label {
   font-size: 0.75rem;
   color: var(--text-muted);
+  margin: 0;
 }
 
 .wizard-summary__value {
+  margin: 0;
   font-size: 0.875rem;
   color: var(--text-primary);
   word-break: break-word;

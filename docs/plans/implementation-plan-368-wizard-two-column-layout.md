@@ -265,7 +265,7 @@ The `Input` primitive is a forwardRef'd `<input>` that already merges `className
   - Remove `<SetupStepper ... />` from inside the `<form>` (it moves into the `stepper` slot).
   - Insert `<Link className="wizard-card__back" to="/connections/new">← Back to connections</Link>` as the first element inside the `<form>`.
   - Add `className="mono-text"` to the four identifier inputs listed above.
-- **Create** `apps/web/src/features/connections/components/prestashop-setup-summary.tsx` — pure component, takes `{ values, stepIndex, capabilities }`, renders the table above. Uses `shared/ui/empty-value`. Capability entries render as plain `mono-text` spans (not `shared/ui/chip`, per the rationale in §3).
+- **Create** `apps/web/src/features/connections/components/prestashop-setup-summary.tsx` — pure component, takes `{ values, stepIndex }`, renders the table above. Uses `shared/ui/empty-value` and `shared/ui/wizard-summary-row` (the shared row primitive). Capability entries render as plain `mono-text` spans (not `shared/ui/chip`, per the rationale in §3). **Amendment (2026-04-23):** the originally-planned `capabilities` prop was dropped at implementation — `values.enabledCapabilities` already defaults to `PRESTASHOP_FALLBACK_CAPABILITIES` via the schema, so the external prop was redundant. Clean-up noted for the plan archive.
 
 ### Step 4 — Allegro form refactor
 

@@ -12,6 +12,7 @@
  */
 import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
+import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { PrestashopSetupFormValues } from './prestashop-setup.schema';
 
 interface PrestashopSetupSummaryProps {
@@ -21,31 +22,6 @@ interface PrestashopSetupSummaryProps {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith('/') ? value.slice(0, -1) : value;
-}
-
-function SummaryRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string | null;
-  mono?: boolean;
-}): ReactElement {
-  return (
-    <div className="wizard-summary__row">
-      <span className="wizard-summary__label">{label}</span>
-      {value ? (
-        <span
-          className={['wizard-summary__value', mono ? 'mono-text' : ''].filter(Boolean).join(' ')}
-        >
-          {value}
-        </span>
-      ) : (
-        <EmptyValue />
-      )}
-    </div>
-  );
 }
 
 export function PrestashopSetupSummary({
@@ -60,19 +36,21 @@ export function PrestashopSetupSummary({
     <>
       <section className="wizard-summary__section">
         <h3 className="wizard-summary__section-title">Connection</h3>
-        <SummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
-        <SummaryRow label="Webservice endpoint" value={webserviceEndpoint} mono />
-        <SummaryRow
-          label="Storefront URL"
-          value={values.storefrontBaseUrl ? values.storefrontBaseUrl : null}
-          mono
-        />
-        <SummaryRow label="Shop ID" value={values.shopId ? values.shopId : null} mono />
-        <SummaryRow
-          label="Default currency"
-          value={values.currency ? values.currency : null}
-          mono
-        />
+        <dl className="wizard-summary__rows">
+          <WizardSummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
+          <WizardSummaryRow label="Webservice endpoint" value={webserviceEndpoint} mono />
+          <WizardSummaryRow
+            label="Storefront URL"
+            value={values.storefrontBaseUrl ? values.storefrontBaseUrl : null}
+            mono
+          />
+          <WizardSummaryRow label="Shop ID" value={values.shopId ? values.shopId : null} mono />
+          <WizardSummaryRow
+            label="Default currency"
+            value={values.currency ? values.currency : null}
+            mono
+          />
+        </dl>
       </section>
 
       {stepIndex === 1 ? (
