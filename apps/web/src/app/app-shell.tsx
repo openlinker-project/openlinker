@@ -123,6 +123,7 @@ const staticCrumbs: Record<string, { group: string; title: string }> = {
   '/connections/new/advanced': { group: 'Platform', title: 'Advanced setup' },
   '/adapters': { group: 'Platform', title: 'Adapters' },
   '/settings': { group: 'Platform', title: 'Settings' },
+  '/settings/prompt-templates': { group: 'Platform', title: 'Prompt templates' },
 };
 
 function resolveCrumbs(pathname: string): { group: string; title: string } {

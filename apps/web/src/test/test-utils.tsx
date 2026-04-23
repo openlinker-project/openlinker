@@ -47,6 +47,7 @@ type DeepPartialApiClient = {
   listings?: Partial<ApiClient['listings']>;
   orders?: Partial<ApiClient['orders']>;
   products?: Partial<ApiClient['products']>;
+  promptTemplates?: Partial<ApiClient['promptTemplates']>;
   mappings?: Partial<ApiClient['mappings']>;
   syncJobs?: Partial<ApiClient['syncJobs']>;
   webhookDeliveries?: Partial<ApiClient['webhookDeliveries']>;
@@ -179,6 +180,19 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.products,
     } as ApiClient['products'],
+    promptTemplates: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      getVersions: vi.fn().mockResolvedValue([]),
+      getLatest: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue(null),
+      publish: vi.fn().mockResolvedValue(null),
+      revert: vi.fn().mockResolvedValue(null),
+      render: vi.fn().mockResolvedValue({ templateId: '', version: 1, systemPrompt: '', userPrompt: '' }),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.promptTemplates,
+    } as ApiClient['promptTemplates'],
     mappings: {
       getStatusMappings: vi.fn().mockResolvedValue([]),
       upsertStatusMappings: vi.fn().mockResolvedValue([]),

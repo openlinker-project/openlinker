@@ -18,6 +18,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
+import { AiModule as CoreAiModule } from '@openlinker/core/ai';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -29,6 +30,7 @@ import { CustomersApiModule } from './customers/customers.module';
 import { ListingsApiModule } from './listings/listings.module';
 import { CursorsModule } from './cursors/cursors.module';
 import { MappingsApiModule } from './mappings/mappings.module';
+import { AiApiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { MappingsApiModule } from './mappings/mappings.module';
     CursorsModule,
     MappingsApiModule,
     ContentModule, // Product content draft buffer + reconcile + publish (#338)
+    CoreAiModule, // Editable prompt-template storage + render service (#341)
+    AiApiModule, // REST surface for prompt templates (#341)
   ],
   controllers: [AppController],
   providers: [AppService],
