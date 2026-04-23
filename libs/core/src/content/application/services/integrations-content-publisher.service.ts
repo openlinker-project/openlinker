@@ -159,7 +159,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
       await adapter.updateOfferFields({
         externalOfferId,
         fields: { description: payload },
-        idempotencyKey: `content:${request.productId}:${connectionId}:${publishedAtIso}`,
+        idempotencyKey: `content:${request.productId}:${connectionId}:${externalOfferId}:${publishedAtIso}`,
       });
     }
 

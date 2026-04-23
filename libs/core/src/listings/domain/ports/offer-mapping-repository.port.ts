@@ -27,4 +27,15 @@ export interface OfferMappingRepositoryPort {
     filters: OfferMappingFilters,
     pagination: OfferMappingPagination,
   ): Promise<PaginatedOfferMappings>;
+
+  /**
+   * Count Offer mappings grouped by `internalId` for a connection.
+   * Returns a `Map<internalId, count>`. Keys with zero mappings are omitted.
+   * Intended for bulk "how many offers does each variant have" queries that
+   * would otherwise fan out to one `findMany` per variant.
+   */
+  countByConnectionAndVariants(
+    connectionId: string,
+    internalIds: ReadonlyArray<string>,
+  ): Promise<Map<string, number>>;
 }

@@ -3,9 +3,10 @@
  *
  * Admin-only REST surface for the product-scoped content editor (#339) and
  * the AI description suggestion flow (#342). Delegates persistence and
- * publish to `IContentDraftService`, suggestion to `IContentSuggestionService`.
- * Reads compose `ContentDraftService` row state + active OfferFieldUpdater
- * connections + linked-offer counts.
+ * publish to `IContentDraftService`, the read-side compose to
+ * `IContentStateReaderService`, and AI completion to
+ * `IContentSuggestionService`. The controller itself only maps transport
+ * concerns + domain exceptions to HTTP.
  *
  * @module apps/api/src/content/http
  */
@@ -28,31 +29,23 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { AiCompletionError } from '@openlinker/core/ai';
 import {
   CONTENT_DRAFT_SERVICE_TOKEN,
+  CONTENT_STATE_READER_SERVICE_TOKEN,
   CONTENT_SUGGESTION_SERVICE_TOKEN,
-  PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
   ChannelAdapterLacksFieldUpdaterException,
   ContentConflictException,
   ContentFieldNotFoundException,
   NoLinkedOffersException,
+  type ContentChannelState,
+  type ContentMasterState,
   type IContentDraftService,
+  type IContentStateReaderService,
   type IContentSuggestionService,
-  type ProductContentField,
-  type ProductContentFieldRepositoryPort,
 } from '@openlinker/core/content';
 import {
   PromptTemplateNotFoundException,
   PromptTemplateRenderException,
   PromptTemplateStateException,
 } from '@openlinker/core/ai';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import {
-  isOfferFieldUpdater,
-  OFFER_MAPPING_REPOSITORY_TOKEN,
-  type OfferManagerPort,
-  type OfferMappingRepositoryPort,
-} from '@openlinker/core/listings';
-import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -68,8 +61,6 @@ import { SaveContentDraftDto } from './dto/save-content-draft.dto';
 import { SuggestContentDto } from './dto/suggest-content.dto';
 import { SuggestionResponseDto } from './dto/suggestion-response.dto';
 
-const DESCRIPTION_KEY = 'description';
-
 @ApiBearerAuth()
 @ApiTags('content')
 @Controller('products/:productId/content')
@@ -77,14 +68,10 @@ export class ContentController {
   constructor(
     @Inject(CONTENT_DRAFT_SERVICE_TOKEN)
     private readonly drafts: IContentDraftService,
+    @Inject(CONTENT_STATE_READER_SERVICE_TOKEN)
+    private readonly stateReader: IContentStateReaderService,
     @Inject(CONTENT_SUGGESTION_SERVICE_TOKEN)
     private readonly suggestions: IContentSuggestionService,
-    @Inject(PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN)
-    private readonly repository: ProductContentFieldRepositoryPort,
-    @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService,
-    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
-    private readonly offerMappings: OfferMappingRepositoryPort,
   ) {}
 
   @Roles('admin')
@@ -95,56 +82,11 @@ export class ContentController {
     @Param('productId') productId: string,
   ): Promise<ContentStateResponseDto> {
     return this.mapExceptions(async () => {
-      // 1. All rows for the product on the single field key.
-      const rows = await this.repository.findByProduct(productId, DESCRIPTION_KEY);
-      const master = rows.find((row) => row.connectionId === null) ?? null;
-      const channelRowsById = new Map<string, ProductContentField>();
-      for (const row of rows) {
-        if (row.connectionId !== null) channelRowsById.set(row.connectionId, row);
-      }
-
-      // 2. Discover content-capable connections.
-      const offerManagers = await this.integrations.listCapabilityAdapters<OfferManagerPort>({
-        capability: 'OfferManager',
-      });
-
-      const masters = await this.integrations.listCapabilityAdapters<ProductMasterPort>({
-        capability: 'ProductMaster',
-      });
-      const productMaster = masters[0]?.adapter ?? null;
-      const variants = productMaster
-        ? await productMaster.getProductVariants(productId).catch(() => [])
-        : [];
-
-      const channels: ContentChannelStateDto[] = [];
-      for (const entry of offerManagers) {
-        if (entry.connection.status !== 'active') continue;
-        if (!isOfferFieldUpdater(entry.adapter)) continue;
-
-        let linkedOfferCount = 0;
-        for (const variant of variants) {
-          const page = await this.offerMappings.findMany(
-            { connectionId: entry.connectionId, internalId: variant.id },
-            { limit: 100, offset: 0 },
-          );
-          linkedOfferCount += page.items.length;
-        }
-        if (linkedOfferCount === 0) continue;
-
-        const row = channelRowsById.get(entry.connectionId);
-        channels.push(this.buildChannelStateDto(entry.connectionId, entry.connection, row, linkedOfferCount));
-      }
-
-      channels.sort(
-        (a, b) =>
-          a.connectionName.localeCompare(b.connectionName) ||
-          a.connectionId.localeCompare(b.connectionId),
-      );
-
+      const state = await this.stateReader.readState(productId);
       const response = new ContentStateResponseDto();
-      response.productId = productId;
-      response.master = this.buildMasterStateDto(master);
-      response.channels = channels;
+      response.productId = state.productId;
+      response.master = toMasterStateDto(state.master);
+      response.channels = state.channels.map(toChannelStateDto);
       return response;
     });
   }
@@ -232,36 +174,6 @@ export class ContentController {
     });
   }
 
-  private buildMasterStateDto(row: ProductContentField | null): ContentMasterStateDto {
-    const dto = new ContentMasterStateDto();
-    dto.baseValue = row?.baseValue ?? null;
-    dto.draftValue = row?.draftValue ?? null;
-    dto.hasConflict = row?.hasConflict ?? false;
-    dto.updatedAt = row?.updatedAt.toISOString() ?? null;
-    dto.updatedBy = row?.updatedBy ?? null;
-    return dto;
-  }
-
-  private buildChannelStateDto(
-    connectionId: string,
-    connection: { name: string; platformType: string; status: string },
-    row: ProductContentField | undefined,
-    linkedOfferCount: number,
-  ): ContentChannelStateDto {
-    const dto = new ContentChannelStateDto();
-    dto.connectionId = connectionId;
-    dto.connectionName = connection.name;
-    dto.platformType = connection.platformType;
-    dto.connectionStatus = connection.status;
-    dto.baseValue = row?.baseValue ?? null;
-    dto.draftValue = row?.draftValue ?? null;
-    dto.hasConflict = row?.hasConflict ?? false;
-    dto.updatedAt = row?.updatedAt.toISOString() ?? null;
-    dto.updatedBy = row?.updatedBy ?? null;
-    dto.linkedOfferCount = linkedOfferCount;
-    return dto;
-  }
-
   private async mapExceptions<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
@@ -293,4 +205,29 @@ export class ContentController {
       throw error;
     }
   }
+}
+
+function toMasterStateDto(state: ContentMasterState): ContentMasterStateDto {
+  const dto = new ContentMasterStateDto();
+  dto.baseValue = state.baseValue;
+  dto.draftValue = state.draftValue;
+  dto.hasConflict = state.hasConflict;
+  dto.updatedAt = state.updatedAt;
+  dto.updatedBy = state.updatedBy;
+  return dto;
+}
+
+function toChannelStateDto(state: ContentChannelState): ContentChannelStateDto {
+  const dto = new ContentChannelStateDto();
+  dto.connectionId = state.connectionId;
+  dto.connectionName = state.connectionName;
+  dto.platformType = state.platformType;
+  dto.connectionStatus = state.connectionStatus;
+  dto.baseValue = state.baseValue;
+  dto.draftValue = state.draftValue;
+  dto.hasConflict = state.hasConflict;
+  dto.updatedAt = state.updatedAt;
+  dto.updatedBy = state.updatedBy;
+  dto.linkedOfferCount = state.linkedOfferCount;
+  return dto;
 }

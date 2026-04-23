@@ -15,11 +15,12 @@ export class SuggestContentDto {
   @ApiProperty({
     enum: PromptTemplateChannelValues,
     nullable: true,
+    required: false,
     description: 'null = master (generic) template; otherwise a channel-specific one.',
   })
   @IsOptional()
   @IsIn(PromptTemplateChannelValues as unknown as string[])
-  channel!: PromptTemplateChannel | null;
+  channel?: PromptTemplateChannel | null;
 
   @ApiProperty({ required: false, maxLength: 64 })
   @IsOptional()

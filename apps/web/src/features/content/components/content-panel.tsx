@@ -11,7 +11,7 @@
  *
  * @module apps/web/src/features/content/components
  */
-import { forwardRef, useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { DesktopOnlyBanner } from '../../../shared/ui/desktop-only-banner';
@@ -47,147 +47,141 @@ function computeEffectiveValue(draft: string | null, base: string | null): strin
   return '';
 }
 
-export const ContentPanel = forwardRef<HTMLTextAreaElement, ContentPanelProps>(
-  function ContentPanel(
-    {
-      title,
-      subtitle,
-      statusSlot,
-      baseValue,
-      draftValue,
-      hasConflict,
-      updatedAt,
-      updatedBy,
-      disabledReason,
-      isDesktop,
-      busy,
-      error,
-      suggestSlot,
-      onSave,
-      onDiscard,
-      onPublish,
-    },
-    ref,
-  ): ReactElement {
-    const initialValue = computeEffectiveValue(draftValue, baseValue);
-    const [value, setValue] = useState(initialValue);
+export function ContentPanel({
+  title,
+  subtitle,
+  statusSlot,
+  baseValue,
+  draftValue,
+  hasConflict,
+  updatedAt,
+  updatedBy,
+  disabledReason,
+  isDesktop,
+  busy,
+  error,
+  suggestSlot,
+  onSave,
+  onDiscard,
+  onPublish,
+}: ContentPanelProps): ReactElement {
+  const initialValue = computeEffectiveValue(draftValue, baseValue);
+  const [value, setValue] = useState(initialValue);
 
-    useEffect(() => {
-      setValue(computeEffectiveValue(draftValue, baseValue));
-    }, [draftValue, baseValue]);
+  useEffect(() => {
+    setValue(computeEffectiveValue(draftValue, baseValue));
+  }, [draftValue, baseValue]);
 
-    const hasDraft = draftValue !== null;
-    const isDirty = value !== (draftValue ?? baseValue ?? '');
-    const readOnly = !isDesktop || Boolean(disabledReason);
-    const overLimit = value.length > MAX_VALUE_LENGTH;
-    const canSave = !readOnly && !busy && isDirty && !overLimit;
-    const canDiscard = !readOnly && !busy && hasDraft;
-    const canPublish = !readOnly && !busy && hasDraft && !isDirty && !hasConflict;
+  const hasDraft = draftValue !== null;
+  const isDirty = value !== (draftValue ?? baseValue ?? '');
+  const readOnly = !isDesktop || Boolean(disabledReason);
+  const overLimit = value.length > MAX_VALUE_LENGTH;
+  const canSave = !readOnly && !busy && isDirty && !overLimit;
+  const canDiscard = !readOnly && !busy && hasDraft;
+  const canPublish = !readOnly && !busy && hasDraft && !isDirty && !hasConflict;
 
-    const titleId = `content-panel-${title.replace(/\s+/g, '-').toLowerCase()}`;
+  const titleId = `content-panel-${title.replace(/\s+/g, '-').toLowerCase()}`;
 
-    return (
-      <section className="content-panel" aria-labelledby={titleId}>
-        <header className="content-panel__header">
-          <div>
-            <h3 id={titleId} className="content-panel__title">
-              {title}
-            </h3>
-            {subtitle && <p className="content-panel__subtitle">{subtitle}</p>}
-          </div>
-          <div className="content-panel__status">{statusSlot}</div>
-        </header>
+  return (
+    <section className="content-panel" aria-labelledby={titleId}>
+      <header className="content-panel__header">
+        <div>
+          <h3 id={titleId} className="content-panel__title">
+            {title}
+          </h3>
+          {subtitle && <p className="content-panel__subtitle">{subtitle}</p>}
+        </div>
+        <div className="content-panel__status">{statusSlot}</div>
+      </header>
 
-        {!isDesktop && (
-          <DesktopOnlyBanner title="Editing available on desktop only">
-            This editor is read-only below 1024 px. Open on a larger viewport to make changes.
-          </DesktopOnlyBanner>
-        )}
+      {!isDesktop && (
+        <DesktopOnlyBanner title="Editing available on desktop only">
+          This editor is read-only below 1024 px. Open on a larger viewport to make changes.
+        </DesktopOnlyBanner>
+      )}
 
-        {disabledReason && <Alert tone="info">{disabledReason}</Alert>}
+      {disabledReason && <Alert tone="info">{disabledReason}</Alert>}
 
-        {hasConflict && (
-          <Alert tone="warning">
-            An external update was detected after your draft was saved. Review the base value and
-            re-save to acknowledge.
-          </Alert>
-        )}
+      {hasConflict && (
+        <Alert tone="warning">
+          An external update was detected after your draft was saved. Review the base value and
+          re-save to acknowledge.
+        </Alert>
+      )}
 
-        {error && <Alert tone="error">{error}</Alert>}
+      {error && <Alert tone="error">{error}</Alert>}
 
-        <Textarea
-          ref={ref}
-          className="content-panel__textarea"
-          rows={12}
-          value={value}
-          readOnly={readOnly}
-          aria-label={`${title} description`}
-          onChange={(e) => {
-            setValue(e.target.value);
-          }}
-        />
+      <Textarea
+        className="content-panel__textarea"
+        rows={12}
+        value={value}
+        readOnly={readOnly}
+        aria-label={`${title} description`}
+        onChange={(e) => {
+          setValue(e.target.value);
+        }}
+      />
 
-        <div className="content-panel__meta">
-          <span>
-            {value.length.toLocaleString()} / {MAX_VALUE_LENGTH.toLocaleString()} characters
-          </span>
-          {overLimit && <span className="text-danger">Over limit</span>}
+      <div className="content-panel__meta">
+        <span>
+          {value.length.toLocaleString()} / {MAX_VALUE_LENGTH.toLocaleString()} characters
+        </span>
+        {overLimit && <span className="text-danger">Over limit</span>}
+      </div>
+
+      <div className="content-panel__footer">
+        <div className="content-panel__footer-status">
+          {hasDraft ? (
+            <StatusBadge tone="review">Draft pending</StatusBadge>
+          ) : baseValue !== null ? (
+            <StatusBadge tone="success">Published</StatusBadge>
+          ) : (
+            <StatusBadge tone="neutral">Empty</StatusBadge>
+          )}
+          {updatedAt && (
+            <span className="text-muted">
+              <time dateTime={updatedAt} title={formatDateTime(updatedAt)}>
+                {formatRelativeTime(updatedAt)}
+              </time>
+              {updatedBy && ` · ${updatedBy}`}
+            </span>
+          )}
         </div>
 
-        <div className="content-panel__footer">
-          <div className="content-panel__footer-status">
-            {hasDraft ? (
-              <StatusBadge tone="review">Draft pending</StatusBadge>
-            ) : baseValue !== null ? (
-              <StatusBadge tone="success">Published</StatusBadge>
-            ) : (
-              <StatusBadge tone="neutral">Empty</StatusBadge>
-            )}
-            {updatedAt && (
-              <span className="text-muted">
-                <time dateTime={updatedAt} title={formatDateTime(updatedAt)}>
-                  {formatRelativeTime(updatedAt)}
-                </time>
-                {updatedBy && ` · ${updatedBy}`}
-              </span>
-            )}
-          </div>
-
-          <div className="content-panel__actions">
-            {suggestSlot}
-            <Button
-              type="button"
-              tone="ghost"
-              disabled={!canDiscard}
-              onClick={() => {
-                onDiscard();
-              }}
-            >
-              Discard draft
-            </Button>
-            <Button
-              type="button"
-              tone="secondary"
-              disabled={!canSave}
-              onClick={() => {
-                onSave(value);
-              }}
-            >
-              Save draft
-            </Button>
-            <Button
-              type="button"
-              tone="primary"
-              disabled={!canPublish}
-              onClick={() => {
-                onPublish();
-              }}
-            >
-              Publish
-            </Button>
-          </div>
+        <div className="content-panel__actions">
+          {suggestSlot}
+          <Button
+            type="button"
+            tone="ghost"
+            disabled={!canDiscard}
+            onClick={() => {
+              onDiscard();
+            }}
+          >
+            Discard draft
+          </Button>
+          <Button
+            type="button"
+            tone="secondary"
+            disabled={!canSave}
+            onClick={() => {
+              onSave(value);
+            }}
+          >
+            Save draft
+          </Button>
+          <Button
+            type="button"
+            tone="primary"
+            disabled={!canPublish}
+            onClick={() => {
+              onPublish();
+            }}
+          >
+            Publish
+          </Button>
         </div>
-      </section>
-    );
-  },
-);
+      </div>
+    </section>
+  );
+}

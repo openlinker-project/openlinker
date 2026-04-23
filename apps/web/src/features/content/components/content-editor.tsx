@@ -9,10 +9,10 @@
  *
  * @module apps/web/src/features/content/components
  */
-import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
-import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../shared/ui/tabs';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -58,7 +58,8 @@ function resolveChannelPromptKey(platformType: string): PromptTemplateChannel | 
     : null;
 }
 
-function formatMutationError(err: unknown): string {
+function formatMutationError(err: unknown): string | null {
+  if (err === null || err === undefined) return null;
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return 'Unknown error';
@@ -74,8 +75,6 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingPublish, setPendingPublish] = useState<ActiveTarget | null>(null);
-  const masterTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const channelTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const channels = useMemo<ContentChannelState[]>(
     () => query.data?.channels ?? [],
@@ -170,9 +169,9 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const master: ContentMasterState = query.data.master;
   const busy = saveMutation.isPending || discardMutation.isPending || publishMutation.isPending;
   const mutationError =
-    formatMutationErrorFor(saveMutation.error) ||
-    formatMutationErrorFor(discardMutation.error) ||
-    formatMutationErrorFor(publishMutation.error);
+    formatMutationError(saveMutation.error) ||
+    formatMutationError(discardMutation.error) ||
+    formatMutationError(publishMutation.error);
 
   return (
     <div className="content-editor">
@@ -210,7 +209,6 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
         <TabsContent value="master">
           <ContentPanel
-            ref={masterTextareaRef}
             title="Master description"
             subtitle="Canonical description. Publishing updates the product master and clears the draft."
             baseValue={master.baseValue}
@@ -243,15 +241,6 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           />
         </TabsContent>
 
-        {channels.length === 0 && (
-          <TabsContent value="__empty_channels__" forceMount asChild>
-            <p className="text-muted content-editor__empty-channels">
-              No eligible channels. Channels appear here when an active connection with the
-              OfferFieldUpdater capability has at least one linked offer for this product.
-            </p>
-          </TabsContent>
-        )}
-
         {channels.map((channel) => {
           const target: ActiveTarget = { kind: 'channel', connectionId: channel.connectionId };
           const promptChannel = resolveChannelPromptKey(channel.platformType);
@@ -262,7 +251,6 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           return (
             <TabsContent key={channel.connectionId} value={channel.connectionId}>
               <ContentPanel
-                ref={channelTextareaRef}
                 title={channel.connectionName}
                 subtitle={
                   <>
@@ -315,6 +303,14 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
         })}
       </Tabs>
 
+      {channels.length === 0 && (
+        <EmptyState
+          liveRegion="off"
+          title="No eligible channels"
+          message="Channels appear here when an active connection with the OfferFieldUpdater capability has at least one linked offer for this product."
+        />
+      )}
+
       <ConfirmDialog
         open={pendingPublish !== null}
         onOpenChange={(open) => {
@@ -335,9 +331,4 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
     </div>
   );
-}
-
-function formatMutationErrorFor(error: unknown): string | null {
-  if (!error) return null;
-  return formatMutationError(error);
 }

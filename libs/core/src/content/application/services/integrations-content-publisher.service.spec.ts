@@ -31,6 +31,7 @@ function buildOfferMappingsMock(): jest.Mocked<OfferMappingRepositoryPort> {
   return {
     findById: jest.fn(),
     findMany: jest.fn(),
+    countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
   };
 }
 
@@ -215,13 +216,20 @@ describe('IntegrationsContentPublisher', () => {
       });
 
       expect(updateOfferFields).toHaveBeenCalledTimes(2);
+      const seenKeys = new Set<string>();
       for (const call of updateOfferFields.mock.calls) {
         const cmd = call[0];
         expect(cmd.fields).toEqual({
           description: { sections: [{ items: [{ type: 'TEXT', content: 'channel text' }] }] },
         });
-        expect(cmd.idempotencyKey).toMatch(/^content:ol_product_abc:conn-allegro-1:/);
+        // Each offer gets a distinct idempotency key scoped by externalOfferId.
+        expect(cmd.idempotencyKey).toMatch(
+          /^content:ol_product_abc:conn-allegro-1:offer-\d:/,
+        );
+        expect(seenKeys.has(cmd.idempotencyKey!)).toBe(false);
+        seenKeys.add(cmd.idempotencyKey!);
       }
+      expect(seenKeys.size).toBe(2);
       expect(result.baseVersion).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO
     });
 

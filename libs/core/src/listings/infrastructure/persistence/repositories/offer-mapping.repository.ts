@@ -80,6 +80,30 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
+  async countByConnectionAndVariants(
+    connectionId: string,
+    internalIds: ReadonlyArray<string>,
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (internalIds.length === 0) return result;
+
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.internalId', 'internalId')
+      .addSelect('COUNT(*)', 'count')
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('mapping.connectionId = :connectionId', { connectionId })
+      .andWhere('mapping.internalId IN (:...internalIds)', { internalIds })
+      .groupBy('mapping.internalId')
+      .getRawMany<{ internalId: string; count: string }>();
+
+    for (const row of rows) {
+      const count = Number(row.count);
+      if (count > 0) result.set(row.internalId, count);
+    }
+    return result;
+  }
+
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
     return new IdentifierMapping(
       entity.id,

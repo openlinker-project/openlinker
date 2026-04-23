@@ -4825,10 +4825,6 @@ a.kpi-card:focus-visible {
   margin-left: 0.5rem;
 }
 
-.content-editor__empty-channels {
-  padding: 1rem 0;
-}
-
 .content-panel {
   display: flex;
   flex-direction: column;
@@ -4847,7 +4843,7 @@ a.kpi-card:focus-visible {
 }
 
 .content-panel__title {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
