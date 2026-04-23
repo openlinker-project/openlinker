@@ -18,9 +18,18 @@ import type {
   CategoryBarcodeMatcher,
   OfferCreator,
   SellerPoliciesReader,
+  OfferFeedInput,
+  OfferFeedOutput,
+  UpdateOfferQuantityCommand,
+  UpdateOfferFieldsCommand,
+  CreateOfferCommand,
+  CreateOfferResult,
+  CreateOfferResultStatus,
+  CreateOfferValidationError,
+  OfferCategory,
+  SellerPolicies,
 } from '@openlinker/core/listings';
-import { OfferFeedInput, OfferFeedOutput, OfferCreateRejectedException, UpdateOfferQuantityCommand, UpdateOfferFieldsCommand } from '@openlinker/core/listings';
-import type { CreateOfferCommand, CreateOfferResult, CreateOfferResultStatus, CreateOfferValidationError, OfferCategory, SellerPolicies } from '@openlinker/core/listings';
+import { OfferCreateRejectedException } from '@openlinker/core/listings';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import {
