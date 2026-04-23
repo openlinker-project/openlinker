@@ -11,6 +11,8 @@ import { Select } from '../../shared/ui/select';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useWebhookDeliveriesQuery } from '../../features/webhook-deliveries/hooks/use-webhook-deliveries-query';
+import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import {
   WEBHOOK_DELIVERY_STATUS_VALUES,
   type WebhookDeliveryFilters,
@@ -69,9 +71,7 @@ const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
     id: 'connectionId',
     header: 'Connection',
     cell: (d) => (
-      <span className="mono-text" title={d.connectionId}>
-        {d.connectionId}
-      </span>
+      <ConnectionEntityLabel connectionId={d.connectionId} linkToDetail={false} showId />
     ),
     hideBelow: 1024,
   },
@@ -109,6 +109,8 @@ export function WebhookDeliveriesPage(): ReactElement {
 
   const filters: WebhookDeliveryFilters = { provider, connectionId, status };
   const query = useWebhookDeliveriesQuery(filters, { limit: PAGE_SIZE, offset });
+  const connectionsQuery = useConnectionsQuery();
+  const connections = connectionsQuery.data ?? [];
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -160,12 +162,18 @@ export function WebhookDeliveriesPage(): ReactElement {
           onChange={(e) => { setFilter('provider', e.target.value); }}
         />
 
-        <Input
-          aria-label="Filter by connection ID"
-          placeholder="Connection ID"
+        <Select
+          aria-label="Filter by connection"
           value={connectionId ?? ''}
           onChange={(e) => { setFilter('connectionId', e.target.value); }}
-        />
+        >
+          <option value="">All connections</option>
+          {connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
       </div>
 
       {query.isLoading ? (

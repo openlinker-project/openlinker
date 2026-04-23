@@ -9,6 +9,23 @@ import type {
   SyncJobPagination,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import { SYNC_JOBS_MAX_LIMIT } from '../../features/sync-jobs/api/sync-jobs.types';
+import type { Connection } from '../../features/connections/api/connections.types';
+
+function makeConnection(overrides: Partial<Connection> = {}): Connection {
+  return {
+    id: 'conn_allegro_1',
+    name: 'Allegro Europe',
+    platformType: 'allegro',
+    status: 'active',
+    config: {},
+    credentialsBacked: true,
+    enabledCapabilities: [],
+    supportedCapabilities: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 const sampleJobs: PaginatedSyncJobs = {
   items: [
@@ -39,6 +56,7 @@ describe('SyncJobsPage', () => {
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
@@ -49,6 +67,7 @@ describe('SyncJobsPage', () => {
   it('should show jobs table when data loads', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
@@ -60,6 +79,7 @@ describe('SyncJobsPage', () => {
   it('renders the Diagnostics eyebrow so the header matches the sidebar group and breadcrumb', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
@@ -70,6 +90,7 @@ describe('SyncJobsPage', () => {
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockRejectedValue(new Error('Service unavailable')) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
@@ -81,6 +102,7 @@ describe('SyncJobsPage', () => {
   it('should show empty state without an action when no jobs exist and no filter is active', async () => {
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
@@ -97,6 +119,7 @@ describe('SyncJobsPage', () => {
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
       syncJobs: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, {
@@ -119,7 +142,10 @@ describe('SyncJobsPage', () => {
   // and broke every load.
   it('requests sync jobs with limit capped at SYNC_JOBS_MAX_LIMIT', async () => {
     const listMock = vi.fn().mockResolvedValue(sampleJobs);
-    const mockApi = createMockApiClient({ syncJobs: { list: listMock } });
+    const mockApi = createMockApiClient({
+      syncJobs: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
@@ -129,5 +155,43 @@ describe('SyncJobsPage', () => {
     const [, pagination] = listMock.mock.calls[0] as [SyncJobFilters, SyncJobPagination];
     expect(pagination.limit).toBeLessThanOrEqual(SYNC_JOBS_MAX_LIMIT);
     expect(pagination.limit).toBe(SYNC_JOBS_MAX_LIMIT);
+  });
+
+  it('should resolve the connection name via ConnectionEntityLabel in the Connection column', async () => {
+    const connection = makeConnection();
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockResolvedValue(sampleJobs) },
+      connections: {
+        list: vi.fn().mockResolvedValue([connection]),
+        getById: vi.fn().mockResolvedValue(connection),
+      },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Allegro Europe')).toBeInTheDocument();
+  });
+
+  it('filters sync jobs by the selected connection when changing the dropdown', async () => {
+    const user = userEvent.setup();
+    const connection = makeConnection();
+    const listMock = vi.fn().mockResolvedValue(sampleJobs);
+    const mockApi = createMockApiClient({
+      syncJobs: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([connection]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    await screen.findByRole('option', { name: 'Allegro Europe' });
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /filter by connection/i }),
+      connection.id,
+    );
+
+    await waitFor(() => {
+      const lastCall = listMock.mock.calls.at(-1) as [SyncJobFilters, SyncJobPagination];
+      expect(lastCall[0].connectionId).toBe(connection.id);
+    });
   });
 });

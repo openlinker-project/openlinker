@@ -6,11 +6,12 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
-import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
+import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import type { SyncJob, SyncJobFilters, JobStatus, JobType } from '../../features/sync-jobs/api/sync-jobs.types';
 import {
   JOB_STATUS_VALUES,
@@ -44,9 +45,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     id: 'connectionId',
     header: 'Connection',
     cell: (job) => (
-      <span className="mono-text" title={job.connectionId}>
-        {job.connectionId}
-      </span>
+      <ConnectionEntityLabel connectionId={job.connectionId} linkToDetail={false} showId />
     ),
     hideBelow: 1024,
   },
@@ -94,6 +93,8 @@ export function SyncJobsPage(): ReactElement {
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useSyncJobsQuery(filters, pagination);
+  const connectionsQuery = useConnectionsQuery();
+  const connections = connectionsQuery.data ?? [];
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -170,12 +171,18 @@ export function SyncJobsPage(): ReactElement {
           ))}
         </Select>
 
-        <Input
-          aria-label="Filter by connection ID"
-          placeholder="Connection ID"
+        <Select
+          aria-label="Filter by connection"
           value={connectionId ?? ''}
           onChange={(e) => { setFilter('connectionId', e.target.value); }}
-        />
+        >
+          <option value="">All connections</option>
+          {connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
       </div>
 
       {/* Table */}
@@ -218,7 +225,13 @@ export function SyncJobsPage(): ReactElement {
             containerHeight={600}
             cardView={{
               title: (job) => job.jobType,
-              subtitle: (job) => job.connectionId,
+              subtitle: (job) => (
+                <ConnectionEntityLabel
+                  connectionId={job.connectionId}
+                  linkToDetail={false}
+                  showId={false}
+                />
+              ),
               meta: (job) => <SyncJobStatusBadge status={job.status} />,
             }}
           />

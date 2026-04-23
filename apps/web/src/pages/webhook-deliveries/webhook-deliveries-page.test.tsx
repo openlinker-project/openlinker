@@ -1,8 +1,26 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { WebhookDeliveriesPage } from './webhook-deliveries-page';
 import type { WebhookDeliverySummary } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
+import type { Connection } from '../../features/connections/api/connections.types';
+
+function makeConnection(overrides: Partial<Connection> = {}): Connection {
+  return {
+    id: 'conn_1',
+    name: 'PrestaShop Main',
+    platformType: 'prestashop',
+    status: 'active',
+    config: {},
+    credentialsBacked: true,
+    enabledCapabilities: [],
+    supportedCapabilities: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 const sampleDelivery: WebhookDeliverySummary = {
   id: 'del_1',
@@ -33,6 +51,7 @@ describe('WebhookDeliveriesPage', () => {
       webhookDeliveries: {
         list: vi.fn().mockReturnValue(new Promise(() => undefined)),
       },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
@@ -45,6 +64,7 @@ describe('WebhookDeliveriesPage', () => {
       webhookDeliveries: {
         list: vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 }),
       },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
@@ -58,6 +78,7 @@ describe('WebhookDeliveriesPage', () => {
       webhookDeliveries: {
         list: vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 }),
       },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
@@ -70,6 +91,7 @@ describe('WebhookDeliveriesPage', () => {
       webhookDeliveries: {
         list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
@@ -82,10 +104,51 @@ describe('WebhookDeliveriesPage', () => {
       webhookDeliveries: {
         list: vi.fn().mockRejectedValue(new Error('Network error')),
       },
+      connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load webhook deliveries')).toBeInTheDocument();
+  });
+
+  it('should resolve the connection name via ConnectionEntityLabel in the Connection column', async () => {
+    const connection = makeConnection();
+    const mockApi = createMockApiClient({
+      webhookDeliveries: {
+        list: vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 }),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([connection]),
+        getById: vi.fn().mockResolvedValue(connection),
+      },
+    });
+
+    renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('PrestaShop Main')).toBeInTheDocument();
+  });
+
+  it('filters deliveries by the selected connection when changing the dropdown', async () => {
+    const user = userEvent.setup();
+    const connection = makeConnection();
+    const listMock = vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 });
+    const mockApi = createMockApiClient({
+      webhookDeliveries: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([connection]) },
+    });
+
+    renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
+
+    await screen.findByRole('option', { name: 'PrestaShop Main' });
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /filter by connection/i }),
+      connection.id,
+    );
+
+    await waitFor(() => {
+      const lastCall = listMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ connectionId: connection.id });
+    });
   });
 });
