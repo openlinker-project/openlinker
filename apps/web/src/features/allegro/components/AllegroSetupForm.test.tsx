@@ -8,7 +8,7 @@ import { AllegroSetupForm } from './AllegroSetupForm';
 // the UUID validator on masterCatalogConnectionId trip the Next button on
 // step 3.
 function defaultApiClient(
-  overrides: Parameters<typeof createMockApiClient>[0] = {},
+  overrides: Parameters<typeof createMockApiClient>[0] = {}
 ): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
     ...overrides,
@@ -21,10 +21,13 @@ function defaultApiClient(
 
 function fillCredentialsStep(
   container: HTMLElement,
-  overrides: { name?: string; clientId?: string; clientSecret?: string } = {},
+  overrides: { name?: string; clientId?: string; clientSecret?: string } = {}
 ): void {
-  const { name = 'Allegro sandbox', clientId = 'test-client-id', clientSecret = 'test-secret' } =
-    overrides;
+  const {
+    name = 'Allegro sandbox',
+    clientId = 'test-client-id',
+    clientSecret = 'test-secret',
+  } = overrides;
   const scope = within(container);
 
   fireEvent.change(scope.getByLabelText(/connection name/i), { target: { value: name } });
@@ -34,7 +37,9 @@ function fillCredentialsStep(
 
 async function advanceOneStep(container: HTMLElement, expectedStepLabel: string): Promise<void> {
   fireEvent.click(within(container).getByRole('button', { name: 'Next' }));
-  await within(container).findByText(expectedStepLabel, { selector: '[aria-current="step"] .setup-stepper__label' });
+  await within(container).findByText(expectedStepLabel, {
+    selector: '[aria-current="step"] .setup-stepper__label',
+  });
 }
 
 describe('AllegroSetupForm', () => {
@@ -44,13 +49,15 @@ describe('AllegroSetupForm', () => {
   afterEach(cleanup);
 
   it('renders the "Before you start" info callout on step 1', () => {
-    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
+    const { container } = renderWithProviders(<AllegroSetupForm />, {
+      apiClient: defaultApiClient(),
+    });
     const scope = within(container);
 
     expect(scope.getByText(/before you start/i)).toBeInTheDocument();
     expect(scope.getByRole('link', { name: /allegro developer portal/i })).toHaveAttribute(
       'href',
-      'https://developer.allegro.pl/',
+      'https://developer.allegro.pl/'
     );
     // Redirect URI is rendered inside an inline .mono-text span; simplest
     // cross-node substring assertion is on container.textContent.
@@ -58,7 +65,9 @@ describe('AllegroSetupForm', () => {
   });
 
   it('renders the credentials step fields first', () => {
-    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
+    const { container } = renderWithProviders(<AllegroSetupForm />, {
+      apiClient: defaultApiClient(),
+    });
     const scope = within(container);
 
     expect(scope.getByLabelText(/connection name/i)).toBeInTheDocument();
@@ -69,7 +78,9 @@ describe('AllegroSetupForm', () => {
   });
 
   it('advances through every step and reveals the environment and catalog inputs', async () => {
-    const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient: defaultApiClient() });
+    const { container } = renderWithProviders(<AllegroSetupForm />, {
+      apiClient: defaultApiClient(),
+    });
     fillCredentialsStep(container);
 
     await advanceOneStep(container, 'Environment');
@@ -80,7 +91,7 @@ describe('AllegroSetupForm', () => {
 
     await advanceOneStep(container, 'Review & connect');
     expect(
-      within(container).getByRole('button', { name: /connect with allegro/i }),
+      within(container).getByRole('button', { name: /connect with allegro/i })
     ).toBeInTheDocument();
   });
 
@@ -96,9 +107,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
-    expect(
-      await within(container).findByRole('button', { name: /connecting/i }),
-    ).toBeDisabled();
+    expect(await within(container).findByRole('button', { name: /connecting/i })).toBeDisabled();
   });
 
   it('shows API error when mutation fails', async () => {
@@ -140,6 +149,27 @@ describe('AllegroSetupForm', () => {
         connectionName: 'Allegro sandbox',
       });
     });
+  });
+
+  it('renders the back-to-connections link inside the wizard card', () => {
+    const { container } = renderWithProviders(<AllegroSetupForm />, {
+      apiClient: defaultApiClient(),
+    });
+    const backLink = within(container).getByRole('link', { name: /Back to connections/ });
+    expect(backLink).toHaveAttribute('href', '/connections/new');
+    expect(backLink).toHaveClass('wizard-card__back');
+  });
+
+  it('live-updates the summary panel from form input', () => {
+    const { container } = renderWithProviders(<AllegroSetupForm />, {
+      apiClient: defaultApiClient(),
+    });
+    const summary = container.querySelector('aside[aria-label="Setup summary"]');
+    expect(summary).not.toBeNull();
+    fireEvent.change(within(container).getByLabelText(/connection name/i), {
+      target: { value: 'Staging Allegro' },
+    });
+    expect(summary).toHaveTextContent('Staging Allegro');
   });
 
   it('redirects to authorizationUrl on success', async () => {

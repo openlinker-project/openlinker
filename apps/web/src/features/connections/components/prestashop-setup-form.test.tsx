@@ -3,7 +3,11 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { PrestashopSetupForm } from './prestashop-setup-form';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 
 function LocationProbe(): ReactElement {
   const location = useLocation();
@@ -12,7 +16,7 @@ function LocationProbe(): ReactElement {
 
 function fillCredentialsStep(
   container: HTMLElement,
-  values: { name: string; url: string; key: string; shopId?: string },
+  values: { name: string; url: string; key: string; shopId?: string }
 ): void {
   fireEvent.change(within(container).getByLabelText('Connection name'), {
     target: { value: values.name },
@@ -56,7 +60,7 @@ describe('PrestashopSetupForm', () => {
         <PrestashopSetupForm />
         <LocationProbe />
       </>,
-      { apiClient },
+      { apiClient }
     );
 
     fillCredentialsStep(view.container, {
@@ -79,7 +83,12 @@ describe('PrestashopSetupForm', () => {
       adapterKey: 'prestashop.webservice.v1',
       credentials: { webserviceApiKey: 'WSKEY123' },
       config: { baseUrl: 'https://shop.example.com' },
-      enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+      enabledCapabilities: [
+        'ProductMaster',
+        'InventoryMaster',
+        'OrderProcessorManager',
+        'OrderSource',
+      ],
     });
   });
 
@@ -106,7 +115,7 @@ describe('PrestashopSetupForm', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
-      }),
+      })
     );
   });
 
@@ -130,7 +139,7 @@ describe('PrestashopSetupForm', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: { baseUrl: 'https://shop.example.com', shopId: '2' },
-      }),
+      })
     );
   });
 
@@ -159,7 +168,7 @@ describe('PrestashopSetupForm', () => {
           baseUrl: 'https://api.shop.example.com',
           storefrontBaseUrl: 'https://shop.example.com',
         },
-      }),
+      })
     );
   });
 
@@ -183,7 +192,7 @@ describe('PrestashopSetupForm', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: { baseUrl: 'https://shop.example.com' },
-      }),
+      })
     );
     const payload = create.mock.calls[0]?.[0] as { config: Record<string, unknown> };
     expect('storefrontBaseUrl' in payload.config).toBe(false);
@@ -203,7 +212,9 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Next' }));
 
-    expect((await screen.findAllByText('Storefront URL must be a valid URL')).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText('Storefront URL must be a valid URL')).length
+    ).toBeGreaterThan(0);
     expect(within(view.container).getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.queryByText('Verify the credentials')).toBeNull();
   });
@@ -252,7 +263,7 @@ describe('PrestashopSetupForm', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: { baseUrl: 'https://shop.example.com', currency: 'PLN' },
-      }),
+      })
     );
   });
 
@@ -290,10 +301,39 @@ describe('PrestashopSetupForm', () => {
     // invalid URL keeps us on the credentials step — field stays visible
     expect(
       (await screen.findAllByText('Shop URL must be a valid URL (e.g. https://shop.example.com)'))
-        .length,
+        .length
     ).toBeGreaterThan(0);
     expect(within(view.container).getByLabelText('Connection name')).toBeInTheDocument();
     // Still on step 1 — the second step's "Verify the credentials" alert is absent
     expect(screen.queryByText('Verify the credentials')).toBeNull();
+  });
+
+  it('renders the back-to-connections link inside the wizard card', () => {
+    const view = renderWithProviders(<PrestashopSetupForm />);
+    const backLink = within(view.container).getByRole('link', {
+      name: /Back to connections/,
+    });
+    expect(backLink).toHaveAttribute('href', '/connections/new');
+    expect(backLink).toHaveClass('wizard-card__back');
+  });
+
+  it('live-updates the summary panel from form input', () => {
+    const view = renderWithProviders(<PrestashopSetupForm />);
+    const summary = view.container.querySelector('aside[aria-label="Setup summary"]');
+    expect(summary).not.toBeNull();
+    fireEvent.change(within(view.container).getByLabelText('Connection name'), {
+      target: { value: 'Staging store' },
+    });
+    expect(summary).toHaveTextContent('Staging store');
+  });
+
+  it('applies mono-text to the identifier inputs (URL, storefront URL, key, shop ID)', () => {
+    const view = renderWithProviders(<PrestashopSetupForm />);
+    expect(within(view.container).getByLabelText('Shop URL')).toHaveClass('mono-text');
+    expect(within(view.container).getByLabelText('Storefront URL (optional)')).toHaveClass(
+      'mono-text'
+    );
+    expect(within(view.container).getByLabelText('Webservice key')).toHaveClass('mono-text');
+    expect(within(view.container).getByLabelText('Shop ID (optional)')).toHaveClass('mono-text');
   });
 });
