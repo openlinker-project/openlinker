@@ -7,7 +7,7 @@
  * @module apps/api/src/integrations/application/services
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { AllegroOAuthService } from './allegro-oauth.service';
 import { ConnectionService } from './connection.service';
 import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
@@ -59,6 +59,16 @@ describe('AllegroOAuthService', () => {
     jest.clearAllMocks();
     global.fetch = originalFetch;
   });
+
+  // Tests need to assert on the private `logger` instance. Centralised to avoid
+  // repeating the cast shape in every test body. Return type preserves the
+  // parameter shape so `.mock.calls[0]?.[0]` narrows to `unknown` (not `any`).
+  function spyOnLoggerError(): jest.SpiedFunction<(...args: unknown[]) => void> {
+    return jest.spyOn(
+      (service as unknown as { logger: { error: (...args: unknown[]) => void } }).logger,
+      'error',
+    );
+  }
 
   describe('markStateCompleted', () => {
     it('should write completed marker to Redis with correct key, TTL, and payload', async () => {
@@ -241,6 +251,171 @@ describe('AllegroOAuthService', () => {
 
       await expect(
         service.exchangeCodeForToken('bad-code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should surface cause.code and cause.message in the log when fetch rejects with an undici-style cause', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const networkError = Object.assign(new TypeError('fetch failed'), {
+        cause: { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 127.0.0.1:443' },
+      });
+      global.fetch = jest.fn().mockRejectedValue(networkError);
+
+      await expect(
+        service.exchangeCodeForToken(
+          'super-secret-auth-code',
+          'cid',
+          'super-secret-client-secret',
+          'https://example.com/cb',
+          'sandbox',
+        ),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      expect(loggerError).toHaveBeenCalled();
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('ECONNREFUSED');
+      expect(firstArg).toContain('connect ECONNREFUSED 127.0.0.1:443');
+      expect(firstArg).toContain('environment: sandbox');
+
+      // Secret safety — nothing sensitive must appear in the log line
+      expect(firstArg).not.toContain('super-secret-auth-code');
+      expect(firstArg).not.toContain('super-secret-client-secret');
+      expect(firstArg).not.toContain(Buffer.from('cid:super-secret-client-secret').toString('base64'));
+    });
+
+    it('should fall back to cause: unknown when cause has no code', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const networkError = Object.assign(new TypeError('fetch failed'), {
+        cause: { message: 'something broke' },
+      });
+      global.fetch = jest.fn().mockRejectedValue(networkError);
+
+      await expect(
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('cause: unknown — something broke');
+    });
+
+    it('should surface joined codes when cause is AggregateError-shaped', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const networkError = Object.assign(new TypeError('fetch failed'), {
+        cause: {
+          errors: [
+            Object.assign(new Error('dns v4'), { code: 'ENOTFOUND' }),
+            Object.assign(new Error('dns v6'), { code: 'EAI_AGAIN' }),
+          ],
+        },
+      });
+      global.fetch = jest.fn().mockRejectedValue(networkError);
+
+      await expect(
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('cause: aggregate — ENOTFOUND, EAI_AGAIN');
+    });
+
+    it('should surface the timeout duration when fetch rejects with AbortError', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const abortError = Object.assign(new Error('The operation was aborted'), {
+        name: 'AbortError',
+      });
+      global.fetch = jest.fn().mockRejectedValue(abortError);
+
+      await expect(
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('request aborted after 10000ms');
+      expect(firstArg).toContain('environment: sandbox');
+    });
+
+    it('should pass an AbortSignal to fetch so fetchWithTimeout can cancel hung requests', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ access_token: 't', token_type: 'bearer' }),
+      } as unknown as Response);
+      global.fetch = fetchMock;
+
+      await service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox');
+
+      const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
+      expect(call?.[1].signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  describe('refreshToken', () => {
+    it('should surface cause.code in the log when fetch rejects with an undici-style cause', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const networkError = Object.assign(new TypeError('fetch failed'), {
+        cause: { code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND allegro.pl' },
+      });
+      global.fetch = jest.fn().mockRejectedValue(networkError);
+
+      await expect(
+        service.refreshToken('super-secret-refresh-token', 'cid', 'super-secret-client-secret', 'sandbox'),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('Error refreshing token');
+      expect(firstArg).toContain('ENOTFOUND');
+      expect(firstArg).toContain('getaddrinfo ENOTFOUND allegro.pl');
+
+      // Secret safety
+      expect(firstArg).not.toContain('super-secret-refresh-token');
+      expect(firstArg).not.toContain('super-secret-client-secret');
+    });
+
+    it('should surface the timeout duration when fetch rejects with AbortError', async () => {
+      const loggerError = spyOnLoggerError();
+
+      const abortError = Object.assign(new Error('The operation was aborted'), {
+        name: 'AbortError',
+      });
+      global.fetch = jest.fn().mockRejectedValue(abortError);
+
+      await expect(
+        service.refreshToken('rt', 'cid', 'csec', 'production'),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      const firstArg = loggerError.mock.calls[0]?.[0] as string;
+      expect(firstArg).toContain('Error refreshing token');
+      expect(firstArg).toContain('environment: production');
+      expect(firstArg).toContain('request aborted after 10000ms');
+    });
+
+    it('should pass an AbortSignal to fetch so fetchWithTimeout can cancel hung requests', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ access_token: 't', token_type: 'bearer' }),
+      } as unknown as Response);
+      global.fetch = fetchMock;
+
+      await service.refreshToken('rt', 'cid', 'csec', 'sandbox');
+
+      const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
+      expect(call?.[1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('should throw BadRequestException when token endpoint returns non-OK status', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: jest.fn().mockResolvedValue('invalid_grant'),
+      } as unknown as Response);
+
+      await expect(
+        service.refreshToken('bad-refresh-token', 'cid', 'csec', 'sandbox'),
       ).rejects.toThrow(BadRequestException);
     });
   });
