@@ -122,7 +122,9 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       this.logger.debug(`OAuth state validated successfully: ${state}`);
       return stateData;
     } catch (error) {
-      this.logger.error(`Failed to parse OAuth state data: ${(error as Error).message}`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to parse OAuth state data: ${message}`, stack);
       await this.redisClient.del(stateKey); // Clean up invalid state
       return null;
     }
@@ -460,7 +462,9 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     try {
       return JSON.parse(stored) as CompletedStateData;
     } catch (error) {
-      this.logger.error(`Failed to parse OAuth completed state data: ${(error as Error).message}`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to parse OAuth completed state data: ${message}`, stack);
       // Self-heal: drop the poisoned marker so a subsequent write can succeed cleanly.
       await this.redisClient.del(key);
       return null;
