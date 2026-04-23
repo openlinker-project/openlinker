@@ -128,6 +128,20 @@ export function AllegroSetupForm(): ReactElement {
 
       {stepIndex === 0 ? (
         <>
+          <Alert tone="info" title="Before you start">
+            In the{' '}
+            <a
+              href="https://developer.allegro.pl/"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Allegro developer portal
+            </a>
+            , create a developer app and register{' '}
+            <span className="mono-text">{redirectUri}</span> as an allowed redirect URI. Copy the
+            Client ID and Client Secret from that app into the fields below.
+          </Alert>
+
           <FormField
             label="Connection name"
             name="name"
