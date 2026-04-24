@@ -30,6 +30,7 @@ This document describes the database migration workflow for OpenLinker, includin
 2. **`synchronize: false`**: Migrations are the source of truth in all environments
 3. **Separate DataSource**: TypeORM CLI requires a standalone `DataSource` file (not NestJS module)
 4. **CI/CD runs migrations**: Migrations run explicitly before application startup
+5. **Timestamps are unique and strictly match the class**: Every migration in `apps/api/src/migrations/` has a unique 13-digit timestamp prefix, and the class declared in the file repeats that same timestamp suffix. Enforced by `scripts/check-migration-timestamps.mjs`, wired into `pnpm lint`. See [Migration Naming Convention](#migration-naming-convention) and [Recovery: duplicate migration timestamp](#5-duplicate-migration-timestamp).
 
 ---
 
@@ -49,6 +50,17 @@ This document describes the database migration workflow for OpenLinker, includin
 Migrations are automatically named with timestamp prefix:
 - Format: `{timestamp}-{description}.ts`
 - Example: `1735000000000-add-connections-and-update-mappings.ts`
+
+#### Timestamp uniqueness invariant
+
+Every migration filename begins with exactly **13 digits** (the `Date.now()` millisecond shape TypeORM generates). Two rules are non-negotiable:
+
+1. **Unique**: no two files in `apps/api/src/migrations/` share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/SilkSoftwareHouse/openlinker/issues/374)).
+2. **Consistent**: the class declared in the file repeats the same timestamp suffix as the filename prefix. This catches half-renames where one side is updated but not the other.
+
+Both rules are enforced by `scripts/check-migration-timestamps.mjs`, chained into the root `check:invariants` command and therefore into every `pnpm lint` run (including pre-commit). A collision fails `pnpm lint` immediately.
+
+If `migration:generate` produces a timestamp that happens to be already taken (rare, but possible in branch-merge windows), bump the new file's prefix to the next free millisecond and update the class suffix to match before committing.
 
 ---
 
@@ -241,6 +253,31 @@ node -r tsconfig-paths/register -r ts-node/register \
 - Verify `data-source.ts` uses `__dirname` (not hardcoded paths)
 - Check compiled output structure matches expectations
 - Test migration execution in staging environment first
+
+#### 5. Duplicate migration timestamp
+
+**Problem**: Two migrations share the same 13-digit timestamp prefix. TypeORM's execution order between them is undefined, so on some environments both class rows appear in the `migrations` table but one `up()` body never ran. Symptoms typically surface as `QueryFailedError: column "X" does not exist` on reads that depend on the lost DDL.
+
+**Prevention**: `pnpm lint` runs `scripts/check-migration-timestamps.mjs` on every invocation (via `check:invariants`) and fails the build on any collision or on filename-vs-class drift. If this guard is green, a collision cannot reach `main`. See [Timestamp uniqueness invariant](#timestamp-uniqueness-invariant).
+
+**Recovery (for environments already affected by the #374 collision)**:
+
+The `AddCurrencyToProducts1790000000002` migration self-heals — on any environment that applied the pre-rename `AddCurrencyToProducts1790000000000`, running `pnpm --filter @openlinker/api migration:run` is sufficient: it removes the orphaned `migrations` row and creates the `products.currency` column idempotently. The same is true of `RenameMarketplaceCapability1788000000001` for the second collision pair.
+
+If the automated path cannot run (e.g. the API is down and you need a quick unblock), either of these manual recipes restores the affected DB by hand:
+
+```sql
+-- Option 1 (minimal): apply the missing DDL directly.
+ALTER TABLE "products" ADD "currency" character varying(3);
+```
+
+```sql
+-- Option 2 (cleaner): delete both orphan migrations rows, then let
+-- `migration:run` apply the renamed migrations normally. Delete whichever
+-- row(s) the affected DB actually has — both are safe no-ops if absent.
+DELETE FROM migrations WHERE name = 'AddCurrencyToProducts1790000000000';
+DELETE FROM migrations WHERE name = 'RenameMarketplaceCapability1788000000000';
+```
 
 ### Debugging Tips
 
