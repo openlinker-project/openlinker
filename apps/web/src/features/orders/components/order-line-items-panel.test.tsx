@@ -1,4 +1,4 @@
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { OrderLineItemsPanel } from './order-line-items-panel';
 import { renderWithProviders } from '../../../test/test-utils';
@@ -50,26 +50,21 @@ describe('OrderLineItemsPanel', () => {
     expect(rows).toHaveLength(3);
   });
 
-  it('renders the totals rollup with subtotal, shipping, and total', () => {
-    renderWithProviders(<OrderLineItemsPanel items={items} totals={totals} />);
+  it('does not render a totals rollup (moved to OrderTotalsPanel)', () => {
+    const { container } = renderWithProviders(
+      <OrderLineItemsPanel items={items} totals={totals} />,
+    );
 
-    const rollup = screen.getByText('Subtotal').closest('dl');
-    expect(rollup).not.toBeNull();
-    const rollupEl = within(rollup!);
-    expect(rollupEl.getByText('Subtotal')).toBeInTheDocument();
-    expect(rollupEl.getByText('Shipping')).toBeInTheDocument();
-    expect(rollupEl.getByText('Total')).toBeInTheDocument();
-    // Tax is zero so should NOT render a Tax row
-    expect(rollupEl.queryByText('Tax')).toBeNull();
+    // The `Total` column header still exists inside the table. The rollup — a
+    // sibling <dl class="order-totals"> — must not.
+    expect(screen.queryByText('Subtotal')).toBeNull();
+    expect(container.querySelector('.order-totals')).toBeNull();
   });
 
   it('renders line items without assuming a currency when totals are absent', () => {
     renderWithProviders(<OrderLineItemsPanel items={items} />);
 
     expect(screen.getByText('Widget A')).toBeInTheDocument();
-    // No totals rollup
-    expect(screen.queryByText('Subtotal')).toBeNull();
-    // No PLN or other currency code should appear
     expect(screen.queryByText(/PLN/)).toBeNull();
     expect(screen.queryByText(/\$/)).toBeNull();
     expect(screen.queryByText(/€/)).toBeNull();
@@ -78,5 +73,16 @@ describe('OrderLineItemsPanel', () => {
   it('renders the empty state when there are no items', () => {
     renderWithProviders(<OrderLineItemsPanel items={[]} />);
     expect(screen.getByText('No line items')).toBeInTheDocument();
+  });
+
+  it('falls back to productId then item id for the SKU line when SKU is absent', () => {
+    const itemsMissingSku: ParsedOrderItem[] = [
+      { id: 'ol_orderitem_noSku', productId: 'ol_product_x', quantity: 1, price: 5 },
+      { id: 'ol_orderitem_noProduct', quantity: 1, price: 5 },
+    ];
+    renderWithProviders(<OrderLineItemsPanel items={itemsMissingSku} />);
+
+    expect(screen.getByText('ol_product_x')).toBeInTheDocument();
+    expect(screen.getByText('ol_orderitem_noProduct')).toBeInTheDocument();
   });
 });

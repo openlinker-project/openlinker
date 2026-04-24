@@ -14,10 +14,14 @@ import { useOrderQuery } from '../../features/orders/hooks/use-order-query';
 import type { OrderSyncStatus, OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
+import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderLineItemsPanel } from '../../features/orders/components/order-line-items-panel';
+import { OrderTotalsPanel } from '../../features/orders/components/order-totals-panel';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import type { ParsedAddress } from '../../features/orders/api/order-snapshot.schema';
+
+const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 
 const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   pending: 'info',
@@ -115,7 +119,13 @@ export function OrderDetailPage(): ReactElement {
           title="Unable to load order"
           message={query.error?.message ?? 'Order not found'}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              Retry
+            </Button>
           }
         />
       </PageLayout>
@@ -125,8 +135,9 @@ export function OrderDetailPage(): ReactElement {
   const order = query.data;
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
+  const hasAnyAddress = Boolean(snapshot.shippingAddress ?? snapshot.billingAddress);
 
-  const shippingLine = snapshot?.shippingAddress
+  const shippingLine = snapshot.shippingAddress
     ? [
         snapshot.shippingAddress.address1,
         snapshot.shippingAddress.city,
@@ -143,12 +154,10 @@ export function OrderDetailPage(): ReactElement {
       value: order.internalOrderId,
       mono: true,
     },
-    ...(snapshot?.orderNumber
+    ...(snapshot.orderNumber
       ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
       : []),
-    ...(snapshot?.status
-      ? [{ id: 'status', label: 'Status', value: snapshot.status }]
-      : []),
+    ...(snapshot.status ? [{ id: 'status', label: 'Status', value: snapshot.status }] : []),
     {
       id: 'sourceConnection',
       label: 'Source',
@@ -177,7 +186,7 @@ export function OrderDetailPage(): ReactElement {
     <PageLayout
       eyebrow="Orders"
       title={
-        snapshot?.orderNumber
+        snapshot.orderNumber
           ? `Order #${snapshot.orderNumber}`
           : `Order — ${order.internalOrderId}`
       }
@@ -222,8 +231,8 @@ export function OrderDetailPage(): ReactElement {
         </Alert>
       ) : null}
 
-      {/* Summary + Sync Status — two-column on desktop */}
-      <div className="order-detail__primary-grid">
+      {/* Primary grid: Summary | Sync Status | Customer (three columns on wide viewports) */}
+      <div className="order-detail__primary-grid order-detail__primary-grid--three">
         <section className="detail-section">
           <h3 className="detail-section__title">Summary</h3>
           <KeyValueList items={summaryItems} />
@@ -244,28 +253,59 @@ export function OrderDetailPage(): ReactElement {
             <p className="text-muted">No sync destinations configured.</p>
           )}
         </section>
+
+        <OrderCustomerCard
+          customerId={order.customerId}
+          sourceConnectionId={order.sourceConnectionId}
+        />
       </div>
 
-      {/* Line items */}
-      {snapshot ? (
-        <section className="detail-section">
-          <h3 className="detail-section__title">
-            Line Items{snapshot.items.length > 0 ? ` (${snapshot.items.length})` : ''}
-          </h3>
-          <OrderLineItemsPanel items={snapshot.items} totals={snapshot.totals} />
-        </section>
+      {/* Parse-warnings breadcrumb — quiet, diagnostic, links to the raw snapshot.
+          Stays page-level so it remains visible even when every enriched section
+          below is empty because everything failed to parse. */}
+      {snapshot.parseWarnings.length > 0 ? (
+        <p className="order-detail__parse-warning-row">
+          <a
+            href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
+            className="order-detail__parse-warning"
+            title="Some fields couldn't be parsed — see raw snapshot"
+          >
+            <span aria-hidden="true">⚠</span> {snapshot.parseWarnings.length} field
+            {snapshot.parseWarnings.length > 1 ? 's' : ''} couldn&rsquo;t be parsed · view raw
+          </a>
+        </p>
       ) : null}
 
-      {/* Addresses */}
-      {(snapshot?.shippingAddress ?? snapshot?.billingAddress) ? (
+      {/* Line items + totals — each renders independently so one failure doesn't blank both.
+          When items are empty but totals exist, skip the Line Items column entirely rather
+          than showing a "Line Items" heading over an explanatory paragraph. */}
+      {snapshot.items.length > 0 || snapshot.totals ? (
+        <div className="order-detail__items-grid">
+          {snapshot.items.length > 0 ? (
+            <section className="detail-section">
+              <h3 className="detail-section__title">Line Items ({snapshot.items.length})</h3>
+              <OrderLineItemsPanel items={snapshot.items} totals={snapshot.totals} />
+            </section>
+          ) : null}
+          {snapshot.totals ? (
+            <section className="detail-section order-detail__totals-section">
+              <h3 className="detail-section__title">Totals</h3>
+              <OrderTotalsPanel totals={snapshot.totals} />
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Addresses — render each independently whenever its own sub-tree parsed */}
+      {hasAnyAddress ? (
         <div className="order-detail__address-grid">
-          {snapshot?.shippingAddress ? (
+          {snapshot.shippingAddress ? (
             <section className="detail-section">
               <h3 className="detail-section__title">Shipping Address</h3>
               <KeyValueList items={buildAddressItems(snapshot.shippingAddress, 'Address')} />
             </section>
           ) : null}
-          {snapshot?.billingAddress ? (
+          {snapshot.billingAddress ? (
             <section className="detail-section">
               <h3 className="detail-section__title">Billing Address</h3>
               <KeyValueList items={buildAddressItems(snapshot.billingAddress, 'Address')} />
@@ -284,8 +324,8 @@ export function OrderDetailPage(): ReactElement {
         />
       </section>
 
-      {/* Raw snapshot — collapsed by default */}
-      <section className="detail-section">
+      {/* Raw snapshot — collapsed by default; warning chip above links here */}
+      <section className="detail-section" id={RAW_SNAPSHOT_ANCHOR_ID}>
         <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} />
       </section>
     </PageLayout>

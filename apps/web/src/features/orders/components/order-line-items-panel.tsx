@@ -1,33 +1,28 @@
 /**
  * Order Line Items Panel
  *
- * Renders an order's parsed line items as a DataTable (product thumbnail + name/SKU,
- * qty, unit price, line total) with a subtotal/shipping/tax/total rollup. Currency
- * comes from the order totals; when totals are absent, prices render as plain
- * decimals rather than assuming a default currency.
+ * Renders an order's parsed line items as a DataTable (product thumbnail +
+ * name/SKU, qty, unit price, line total). The financial rollup lives in a
+ * sibling `OrderTotalsPanel` (split in #382) so the summary stays visible
+ * when items fail to parse.
  */
 import type { ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
+import { formatAmount } from '../../../shared/format/format-amount';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface OrderLineItemsPanelProps {
   items: ParsedOrderItem[];
+  /**
+   * Only used for per-line price formatting. Totals are rendered separately
+   * by `OrderTotalsPanel`.
+   */
   totals?: ParsedOrderTotals;
 }
 
-function formatAmount(amount: number, currency: string | undefined): string {
-  if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
-  }
-  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
-}
-
-export function OrderLineItemsPanel({
-  items,
-  totals,
-}: OrderLineItemsPanelProps): ReactElement {
+export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps): ReactElement {
   const currency = totals?.currency;
 
   const columns: DataTableColumn<ParsedOrderItem>[] = [
@@ -37,7 +32,7 @@ export function OrderLineItemsPanel({
       cell: (item) => (
         <span className="order-line-item__product">
           <ProductThumbnail
-            name={item.name ?? item.sku ?? item.productId}
+            name={item.name ?? item.sku ?? item.productId ?? item.id}
             src={item.imageUrl}
             size="sm"
           />
@@ -47,8 +42,10 @@ export function OrderLineItemsPanel({
             ) : null}
             {item.sku ? (
               <span className="order-line-item__sku mono-text">{item.sku}</span>
-            ) : (
+            ) : item.productId ? (
               <span className="order-line-item__sku mono-text text-muted">{item.productId}</span>
+            ) : (
+              <span className="order-line-item__sku mono-text text-muted">{item.id}</span>
             )}
           </span>
         </span>
@@ -96,30 +93,6 @@ export function OrderLineItemsPanel({
         rows={items}
         rowKey={(item) => item.id}
       />
-      {totals ? (
-        <dl className="order-totals">
-          <div className="order-totals__row">
-            <dt>Subtotal</dt>
-            <dd className="mono-text">{formatAmount(totals.subtotal, currency)}</dd>
-          </div>
-          {totals.shipping > 0 ? (
-            <div className="order-totals__row">
-              <dt>Shipping</dt>
-              <dd className="mono-text">{formatAmount(totals.shipping, currency)}</dd>
-            </div>
-          ) : null}
-          {totals.tax > 0 ? (
-            <div className="order-totals__row">
-              <dt>Tax</dt>
-              <dd className="mono-text">{formatAmount(totals.tax, currency)}</dd>
-            </div>
-          ) : null}
-          <div className="order-totals__row order-totals__row--total">
-            <dt>Total</dt>
-            <dd className="mono-text">{formatAmount(totals.total, currency)}</dd>
-          </div>
-        </dl>
-      ) : null}
     </div>
   );
 }
