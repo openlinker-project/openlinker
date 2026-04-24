@@ -200,7 +200,7 @@ export function PromptTemplatesListPage(): ReactElement {
           rows={rows}
           columns={columns}
           rowKey={(row) => row.latestId}
-          rowHref={(row) => `/settings/prompt-templates/${row.latestId}`}
+          rowHref={(row) => `/ai/prompt-templates/${row.latestId}`}
           cardView={CARD_VIEW}
         />
       )}

@@ -56,11 +56,11 @@ function renderPage(
   const apiClient = createMockApiClient(apiOverrides);
   return renderWithProviders(
     <Routes>
-      <Route path="/settings/prompt-templates/:id" element={<PromptTemplateDetailPage />} />
+      <Route path="/ai/prompt-templates/:id" element={<PromptTemplateDetailPage />} />
     </Routes>,
     {
       apiClient,
-      route: '/settings/prompt-templates/tmpl-1',
+      route: '/ai/prompt-templates/tmpl-1',
       sessionAdapter,
     },
   );
