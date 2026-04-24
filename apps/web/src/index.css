@@ -202,7 +202,7 @@
   --border-subtle: #e5eaf0;
   --border-default: #d7dee8;
   --border-strong: #c2ccd8;
-  --border-focus: #7ea6ff; /* FE-002 canonical — alias of --accent-focus */
+  --border-focus: var(--accent-focus); /* FE-002 canonical — alias of --accent-focus */
 
   /* ── Text ─────────────────────────────────────────────────────────── */
   --text-primary: #16202b;
@@ -212,12 +212,19 @@
   --text-on-primary: #eff6ff; /* pre-refactor — button text on --accent-primary */
   --text-inverse: #eff6ff; /* FE-002 canonical — alias of --text-on-primary */
 
-  /* ── Accent ───────────────────────────────────────────────────────── */
-  --accent-primary: #2f6fed;
-  --accent-primary-hover: #245fd1;
-  --accent-primary-soft: #e8f0ff;
-  --accent-primary-border: rgba(79, 140, 255, 0.35);
-  --accent-focus: #7ea6ff;
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Monochrome by design — `--accent-primary` is an alias of
+   * `--text-primary`, so links, focus rings, and the active-nav inset
+   * indicator all read as page foreground. The alias is expressed via
+   * `var()` so it holds across theme flips automatically. Do not
+   * reintroduce a brand hue here; chroma is reserved for `--status-*`
+   * tokens. (#371)
+   */
+  --accent-primary: var(--text-primary);
+  --accent-primary-hover: #000000;
+  --accent-primary-soft: rgba(22, 32, 43, 0.06);
+  --accent-primary-border: rgba(22, 32, 43, 0.18);
+  --accent-focus: var(--text-primary);
 
   /* ── Status: success ──────────────────────────────────────────────── */
   --status-success: #1f9d63;
@@ -240,12 +247,15 @@
   --status-error-fg: #9f3030; /* pre-refactor */
   --status-error-strong: #9f3030; /* FE-002 canonical — alias of -fg */
 
-  /* ── Status: info ─────────────────────────────────────────────────── */
-  --status-info: #2b7de9;
-  --status-info-soft: #eaf3ff;
-  --status-info-border: #bfd7fb;
-  --status-info-fg: #2456a5; /* pre-refactor */
-  --status-info-strong: #2456a5; /* FE-002 canonical — alias of -fg */
+  /* ── Status: info ───────────────────────────────────────────────
+   * Neutral slate, not blue — split from `--accent-primary` to keep
+   * informational alerts from competing with primary actions. (#371)
+   */
+  --status-info: #5a6b85;
+  --status-info-soft: #eef1f5;
+  --status-info-border: #c9d0db;
+  --status-info-fg: #3e4a60; /* pre-refactor */
+  --status-info-strong: #3e4a60; /* FE-002 canonical — alias of -fg */
 
   /* ── Status: review / manual ──────────────────────────────────────── */
   --status-review: #7c5cc4;
@@ -333,35 +343,36 @@ html[data-theme='dark'] {
   /* Primary button hover — keep contrast against the inverted --text-primary */
   --button-primary-bg-hover: #f5fafd;
 
-  /* Surfaces */
-  --bg-canvas: #0b1220;
-  --bg-shell: #10192a;
-  --bg-surface: #111c2e;
-  --bg-surface-elevated: #172338;
-  --bg-muted: #1b2740;
-  --bg-surface-muted: #1b2740;
-  --bg-surface-hover: #223057;
+  /* Surfaces — graphite ramp (#371). Replaces the prior navy bias;
+     elevation step sizes are matched so existing components carry over. */
+  --bg-canvas: #0e1014;
+  --bg-shell: #131519;
+  --bg-surface: #16181d;
+  --bg-surface-elevated: #1b1e24;
+  --bg-muted: #1f2229;
+  --bg-surface-muted: #1f2229;
+  --bg-surface-hover: #272b33;
 
   /* Borders */
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-default: rgba(255, 255, 255, 0.14);
   --border-strong: rgba(255, 255, 255, 0.24);
-  --border-focus: #7ea6ff;
+  --border-focus: var(--accent-focus);
 
   /* Text */
   --text-primary: #e9eef5;
   --text-secondary: #b5c1d1;
   --text-muted: #8998ac;
   --text-disabled: #596776;
-  --text-on-primary: #0b1220;
-  --text-inverse: #0b1220;
+  --text-on-primary: #0e1014; /* tracks --bg-canvas (#371) */
+  --text-inverse: #0e1014;
 
-  /* Accent */
-  --accent-primary: #6c96ff;
-  --accent-primary-hover: #87a9ff;
-  --accent-primary-soft: rgba(108, 150, 255, 0.16);
-  --accent-primary-border: rgba(108, 150, 255, 0.4);
-  --accent-focus: #9cbaff;
+  /* Accent — see :root for the design rationale. (#371) */
+  --accent-primary: var(--text-primary);
+  --accent-primary-hover: #ffffff;
+  --accent-primary-soft: rgba(233, 238, 245, 0.08);
+  --accent-primary-border: rgba(233, 238, 245, 0.24);
+  --accent-focus: var(--text-primary);
 
   /* Status — success */
   --status-success: #3fbb82;
@@ -384,12 +395,12 @@ html[data-theme='dark'] {
   --status-error-fg: #f2a5a5;
   --status-error-strong: #f2a5a5;
 
-  /* Status — info */
-  --status-info: #5b9df0;
-  --status-info-soft: rgba(91, 157, 240, 0.16);
-  --status-info-border: rgba(91, 157, 240, 0.35);
-  --status-info-fg: #a8c9f7;
-  --status-info-strong: #a8c9f7;
+  /* Status — info — neutral slate (#371) */
+  --status-info: #8a95a8;
+  --status-info-soft: rgba(138, 149, 168, 0.14);
+  --status-info-border: rgba(138, 149, 168, 0.32);
+  --status-info-fg: #c5cbd6;
+  --status-info-strong: #c5cbd6;
 
   /* Status — review */
   --status-review: #9d82d8;

@@ -176,7 +176,7 @@ The FE-001 baseline should move away from a dark SaaS concept-shot aesthetic and
 Corrective direction:
 
 - use a white and graphite-neutral base with restrained accent usage
-- reserve blue for active, selected, focused, and primary action states
+- keep chroma reserved for semantic status states — primary CTAs, active/selected/focused affordances use `var(--accent-primary)`, which is itself a monochrome alias of `--text-primary` (see #371 and the "Color Usage Rules" section below)
 - reduce panel padding and decorative empty space
 - replace roadmap or product-planning content with operator-facing queues, health lists, and activity views
 - prefer tables, compact lists, and timelines over large descriptive cards
@@ -198,7 +198,7 @@ Recommended FE light theme tokens:
   --border-subtle: #e5eaf0;
   --border-default: #d7dee8;
   --border-strong: #c2ccd8;
-  --border-focus: #7ea6ff;
+  --border-focus: var(--accent-focus);
 
   --text-primary: #16202b;
   --text-secondary: #4f5f73;
@@ -206,11 +206,14 @@ Recommended FE light theme tokens:
   --text-disabled: #9aa6b5;
   --text-inverse: #ffffff;
 
-  --accent-primary: #2f6fed;
-  --accent-primary-hover: #245fd1;
-  --accent-primary-soft: #e8f0ff;
-  --accent-primary-border: #bfd4ff;
-  --accent-focus: #7ea6ff;
+  /* Accent — monochrome by design (#371). `--accent-primary` is an alias
+     of `--text-primary`, expressed via `var()` so the alias holds across
+     theme flips. Do not reintroduce a chromatic brand hue here. */
+  --accent-primary: var(--text-primary);
+  --accent-primary-hover: #000000;
+  --accent-primary-soft: rgba(22, 32, 43, 0.06);
+  --accent-primary-border: rgba(22, 32, 43, 0.18);
+  --accent-focus: var(--text-primary);
 
   /* Each status tone ships a 4-variable triple: base (icon/dot) / strong (text on soft surface) / soft (surface tint) / border */
   --status-success: #1f9d63;
@@ -228,10 +231,12 @@ Recommended FE light theme tokens:
   --status-error-soft: #fdecec;
   --status-error-border: #efb7b7;
 
-  --status-info: #2b7de9;
-  --status-info-strong: #1e5cb3;
-  --status-info-soft: #eaf3ff;
-  --status-info-border: #bfd7fb;
+  /* Info is a neutral slate, not a second blue — it must not compete
+     with the primary surface for attention. (#371) */
+  --status-info: #5a6b85;
+  --status-info-strong: #3e4a60;
+  --status-info-soft: #eef1f5;
+  --status-info-border: #c9d0db;
 
   --status-review: #7c5cc4;
   --status-review-soft: #f2edfb;
@@ -252,9 +257,12 @@ Recommended FE light theme tokens:
 - canvas and shell stay neutral
 - **the primary CTA is near-black** (`var(--text-primary)`) — it auto-inverts
   to near-white in dark mode, so primary buttons read as "page foreground,
-  filled" in either theme. Demoted blue (`var(--accent-primary)`) is
-  reserved for **links, focus rings, and the active-nav inset indicator**
-  only — never for buttons.
+  filled" in either theme.
+- **`--accent-primary` is itself monochrome** — aliased to `--text-primary`,
+  so links, focus rings, and the active-nav inset indicator all read as page
+  foreground. There is no demoted brand hue; chroma is reserved for the
+  `--status-*` tokens only. Do not reintroduce a blue (or any chromatic)
+  accent without revisiting #371.
 - semantic colors appear mainly in badges, icons, row markers, and compact highlights
 - large panels should not use semantic fills unless the whole panel is an alert or incident state
 - neutral borders should dominate the interface
@@ -278,23 +286,54 @@ at `apps/web/src/shared/ui/theme-toggle.tsx`.
 
 ### Color
 
-Use a restrained semantic palette:
+The dark canvas is a **graphite ramp** — neutral with the slightest cool
+whisper, deliberately not navy. The accent inverts the light-mode rule:
+`--accent-primary` is aliased to `--text-primary` (near-white), so primary
+buttons, links, focus rings, and the active-nav inset indicator all read as
+page foreground in dark mode too. Status info is a neutral slate, never a
+second light-blue — see #371 for the rationale.
 
-- neutral background
-- neutral surface
-- elevated surface
-- strong primary text
-- muted secondary text
-- clear border color
+```css
+html[data-theme='dark'] {
+  --bg-canvas: #0e1014;
+  --bg-shell: #131519;
+  --bg-surface: #16181d;
+  --bg-surface-elevated: #1b1e24;
+  --bg-surface-muted: #1f2229;
+  --bg-surface-hover: #272b33;
 
-Status colors should be semantic and reusable:
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --border-focus: var(--accent-focus);
 
-- success
-- warning
-- error
-- info
-- inactive
-- conflict or manual review
+  --text-primary: #e9eef5;
+  --text-secondary: #b5c1d1;
+  --text-muted: #8998ac;
+  --text-disabled: #596776;
+  --text-inverse: #0e1014;
+
+  --accent-primary: var(--text-primary);
+  --accent-primary-hover: #ffffff;
+  --accent-primary-soft: rgba(233, 238, 245, 0.08);
+  --accent-primary-border: rgba(233, 238, 245, 0.24);
+  --accent-focus: var(--text-primary);
+
+  --status-info: #8a95a8;
+  --status-info-strong: #c5cbd6;
+  --status-info-soft: rgba(138, 149, 168, 0.14);
+  --status-info-border: rgba(138, 149, 168, 0.32);
+
+  /* Status success / warning / error / review / conflict / disabled
+     keep their semantic chroma — see apps/web/src/index.css. */
+}
+```
+
+The palette is intentionally restrained:
+
+- neutral background, surface, elevated surface
+- strong primary text, muted secondary text, clear border color
+- semantic status tones (success, warning, error, info, inactive, conflict / manual review) — chroma reserved for state, never decoration
 
 Color must never be the only signal. Every status must also have text and, where useful, an icon.
 
