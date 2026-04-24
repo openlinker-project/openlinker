@@ -736,6 +736,20 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body.images).toEqual(imageUrls);
     });
 
+    it('omits images from the body when overrides.imageUrls is an empty array', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-img-empty', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, imageUrls: [] },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('images');
+    });
+
     it('throws OfferCreateRejectedException when overrides.categoryId is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,
