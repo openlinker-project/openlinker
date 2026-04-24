@@ -15,6 +15,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
 import { SessionProvider } from '../shared/auth/session-provider';
+import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { ToastProvider } from '../shared/ui/toast-provider';
 import { ApiClientProvider } from './api/api-client-provider';
 import type { ApiClient } from './api/api-client';
@@ -27,7 +28,7 @@ import {
 interface RenderShellOptions {
   apiClient?: ApiClient;
   pathname?: string;
-  sessionAdapter?: ReturnType<typeof createAuthenticatedSessionAdapter>;
+  sessionAdapter?: SessionAdapter;
 }
 
 function renderShell({
@@ -106,10 +107,11 @@ describe('AppShell', () => {
       permissions: [],
     });
     renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
-    // Wait for the user chip to surface the viewer username — a reliable
-    // signal the session has resolved. Only then is the absence assertion
+    // Wait for the viewer username to land in the DOM — a reliable signal
+    // that the session has resolved, without depending on a specific
+    // component's aria-label wording. Only then is the absence assertion
     // meaningful.
-    await screen.findByRole('button', { name: /Account menu for viewer/i });
+    await screen.findAllByText('viewer');
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).queryByText('AI')).toBeNull();
     expect(within(primary).queryByText('Prompt templates')).toBeNull();
