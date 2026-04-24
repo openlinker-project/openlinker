@@ -12,6 +12,11 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
+  // Self-hosted CI (added via 444244f) runs this package's jest in
+  // parallel with the other workspace packages. Cap workers and raise
+  // timeout to match apps/api and libs/core — same reasoning.
+  maxWorkers: 2,
+  testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),
     '^@openlinker/shared/(.*)$': path.resolve(__dirname, '../../libs/shared/src/$1'),

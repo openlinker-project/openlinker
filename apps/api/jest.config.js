@@ -12,6 +12,14 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   forceExit: true,
+  // Self-hosted CI (added via 444244f) runs this package's jest in
+  // parallel with libs/core, libs/shared, libs/integrations/*, apps/web,
+  // and apps/worker. Default worker count oversubscribes CPU/memory:
+  // bcrypt-heavy auth tests starve each other and trip the 5s timeout,
+  // and random workers get OOM-killed (SIGKILL). Cap workers and raise
+  // timeout to match the other packages.
+  maxWorkers: 2,
+  testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/integrations-allegro$': path.resolve(__dirname, '../../libs/integrations/allegro/src/index.ts'),
     '^@openlinker/integrations-allegro/(.*)$': path.resolve(__dirname, '../../libs/integrations/allegro/src/$1'),
