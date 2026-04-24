@@ -705,6 +705,51 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).not.toHaveProperty('images');
     });
 
+    it('emits images as a flat string[] (Allegro POST /sale/product-offers wire shape)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-img', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer(baseCmd);
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.images).toEqual(['https://example.com/img.jpg']);
+    });
+
+    it('preserves image URL order when multiple images are supplied', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-img-multi', publication: { status: 'INACTIVE' } }),
+      );
+
+      const imageUrls = [
+        'https://example.com/a.jpg',
+        'https://example.com/b.jpg',
+        'https://example.com/c.jpg',
+      ];
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, imageUrls },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.images).toEqual(imageUrls);
+    });
+
+    it('omits images from the body when overrides.imageUrls is an empty array', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-img-empty', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, imageUrls: [] },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('images');
+    });
+
     it('throws OfferCreateRejectedException when overrides.categoryId is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,

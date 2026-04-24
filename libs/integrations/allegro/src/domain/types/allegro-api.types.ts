@@ -331,7 +331,7 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
       items: Array<{ type: 'TEXT'; content: string }>;
     }>;
   };
-  images?: Array<{ url: string }>;
+  images?: string[];
   parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
   delivery?: { shippingRates?: { id: string }; handlingTime?: string };
   afterSalesServices?: {
