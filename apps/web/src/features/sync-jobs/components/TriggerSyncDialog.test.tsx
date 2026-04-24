@@ -205,7 +205,12 @@ describe('TriggerSyncDialog', () => {
             jobType: 'master.product.syncAll',
             payload: { schemaVersion: 1 },
             idempotencyKey: expect.stringMatching(
-              new RegExp(`^manual:${sampleConnection.id}:master\\.product\\.syncAll:\\d+$`),
+              // Suffix is a crypto.randomUUID() value — stable per dialog
+              // open cycle so the backend dedup can collapse double-clicks.
+              // See #369.
+              new RegExp(
+                `^manual:${sampleConnection.id}:master\\.product\\.syncAll:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+              ),
             ),
           }),
         );
@@ -310,6 +315,104 @@ describe('TriggerSyncDialog', () => {
       const { onOpenChange } = renderDialog();
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
       expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('idempotency key (#369)', () => {
+    it('should reuse the same idempotency key across retries after a failed submit', async () => {
+      const enqueue = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Connection refused'))
+        .mockResolvedValueOnce({ jobId: 'job_retry', status: 'queued' });
+      const mockApi = createMockApiClient({ syncJobs: { enqueue } });
+      renderWithProviders(
+        <TriggerSyncDialog connection={sampleConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      // First click — rejects
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
+      });
+
+      // Second click — succeeds (operator retries)
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(enqueue).toHaveBeenCalledTimes(2);
+      });
+
+      const firstKey = (enqueue.mock.calls[0][0] as { idempotencyKey: string }).idempotencyKey;
+      const secondKey = (enqueue.mock.calls[1][0] as { idempotencyKey: string }).idempotencyKey;
+      expect(firstKey).toBe(secondKey); // stable across retries within the same dialog open cycle
+    });
+
+    it('should mint a fresh idempotency key on each dialog open cycle', async () => {
+      const enqueue = vi.fn().mockResolvedValue({ jobId: 'job_x', status: 'queued' });
+      const mockApi = createMockApiClient({ syncJobs: { enqueue } });
+
+      const { rerender } = renderWithProviders(
+        <TriggerSyncDialog connection={sampleConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      // First open + submit
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(enqueue).toHaveBeenCalledTimes(1);
+      });
+
+      // Close then reopen
+      rerender(
+        <TriggerSyncDialog connection={sampleConnection} open={false} onOpenChange={vi.fn()} />,
+      );
+      rerender(
+        <TriggerSyncDialog connection={sampleConnection} open onOpenChange={vi.fn()} />,
+      );
+
+      // Second open + submit
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(enqueue).toHaveBeenCalledTimes(2);
+      });
+
+      const firstKey = (enqueue.mock.calls[0][0] as { idempotencyKey: string }).idempotencyKey;
+      const secondKey = (enqueue.mock.calls[1][0] as { idempotencyKey: string }).idempotencyKey;
+      expect(firstKey).not.toBe(secondKey); // distinct intents across dialog sessions
+    });
+
+    it('should yield a distinct key when switching job types within the same open cycle', async () => {
+      const enqueue = vi.fn().mockResolvedValue({ jobId: 'job_x', status: 'queued' });
+      const mockApi = createMockApiClient({ syncJobs: { enqueue } });
+      renderWithProviders(
+        <TriggerSyncDialog connection={sampleConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+
+      // First submit — default job (master.product.syncAll)
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(enqueue).toHaveBeenCalledTimes(1);
+      });
+
+      // Switch job type and submit again — different jobType segment in the key
+      const select = screen.getByRole('combobox', { name: /job type/i });
+      fireEvent.change(select, { target: { value: 'master.inventory.syncAll' } });
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+      await waitFor(() => {
+        expect(enqueue).toHaveBeenCalledTimes(2);
+      });
+
+      const firstKey = (enqueue.mock.calls[0][0] as { idempotencyKey: string }).idempotencyKey;
+      const secondKey = (enqueue.mock.calls[1][0] as { idempotencyKey: string }).idempotencyKey;
+      // Full keys differ because the jobType segment differs (master.product vs master.inventory)
+      expect(firstKey).not.toBe(secondKey);
+      expect(firstKey).toContain(':master.product.syncAll:');
+      expect(secondKey).toContain(':master.inventory.syncAll:');
+      // UUID suffix is stable across the session
+      const firstSuffix = firstKey.split(':').at(-1);
+      const secondSuffix = secondKey.split(':').at(-1);
+      expect(firstSuffix).toBe(secondSuffix);
     });
   });
 });

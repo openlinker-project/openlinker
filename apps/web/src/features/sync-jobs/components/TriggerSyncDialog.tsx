@@ -155,6 +155,12 @@ export function TriggerSyncDialog({
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Stable idempotency-key suffix for this dialog open cycle. Reused across
+  // retries after a failed submit so the backend dedup (Redis SET NX + DB
+  // unique index on idempotency_key) collapses rapid double-clicks into a
+  // single sync_jobs row. Re-minted each time the dialog is reopened so
+  // genuinely distinct triggers remain distinct. See #369.
+  const [intentKey, setIntentKey] = useState<string | null>(null);
 
   const enqueueSyncJob = useEnqueueSyncJobMutation();
   const { showToast } = useToast();
@@ -169,6 +175,7 @@ export function TriggerSyncDialog({
         firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
       );
       setFieldErrors({});
+      setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
   }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
@@ -194,7 +201,7 @@ export function TriggerSyncDialog({
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (!selectedJob || !validate()) return;
+    if (!selectedJob || !validate() || intentKey === null) return;
 
     const payload: Record<string, unknown> = { schemaVersion: 1 };
     for (const field of selectedJob.payloadFields) {
@@ -209,7 +216,7 @@ export function TriggerSyncDialog({
         connectionId: connection.id,
         jobType: selectedJob.jobType,
         payload,
-        idempotencyKey: `manual:${connection.id}:${selectedJob.jobType}:${Date.now()}`,
+        idempotencyKey: `manual:${connection.id}:${selectedJob.jobType}:${intentKey}`,
       });
 
       onOpenChange(false);
@@ -286,7 +293,7 @@ export function TriggerSyncDialog({
           <Button
             tone="primary"
             onClick={() => void handleSubmit()}
-            disabled={enqueueSyncJob.isPending}
+            disabled={enqueueSyncJob.isPending || intentKey === null}
           >
             {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
           </Button>
