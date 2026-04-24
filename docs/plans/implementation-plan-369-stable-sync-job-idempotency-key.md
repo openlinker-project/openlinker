@@ -120,7 +120,7 @@ Acceptance: diff touches only three regions of the file; no other behaviour chan
 
 ### Step 2 — `TriggerSyncDialog.test.tsx` test additions
 
-Add two new `it()` blocks under the existing `describe` that covers submission:
+Three new `it()` blocks in a new `describe('idempotency key (#369)')` block, plus one update to the existing key-format assertion (the pre-existing test at the "submission" describe asserts the suffix matches `\d+` — the regex must be updated to the UUID shape, or it would silently keep matching a narrow subset of UUIDs that happen to start with digits).
 
 **Test A — "reuses the same idempotency key when resubmitting after a failed enqueue"**
 
@@ -176,7 +176,11 @@ it('mints a fresh idempotency key on each dialog open cycle', async () => {
 });
 ```
 
-Acceptance: both tests pass with the patched component; at least one fails against the unpatched component (the pre-fix `Date.now()` would let both keys differ even within one open cycle, breaking Test A).
+**Test C — "yields a distinct full key when switching job types within the same open cycle"**
+
+Asserts that switching job types within one open cycle produces a different full key (because the `jobType` segment changes) while the UUID suffix stays stable. This closes the loop on the "option 2 vs option 3" scoping decision from §5.1 — proving that scoping to (dialog open) is sufficient without also re-minting on jobType change.
+
+Acceptance: all three tests pass with the patched component; Test A fails against the unpatched component (the pre-fix `Date.now()` would let both keys differ even within one open cycle).
 
 ### Step 3 — Quality gate
 

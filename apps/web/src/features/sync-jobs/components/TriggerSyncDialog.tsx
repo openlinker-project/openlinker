@@ -293,7 +293,7 @@ export function TriggerSyncDialog({
           <Button
             tone="primary"
             onClick={() => void handleSubmit()}
-            disabled={enqueueSyncJob.isPending}
+            disabled={enqueueSyncJob.isPending || intentKey === null}
           >
             {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
           </Button>
