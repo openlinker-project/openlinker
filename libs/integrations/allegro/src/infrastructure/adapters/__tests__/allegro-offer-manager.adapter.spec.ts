@@ -778,7 +778,7 @@ describe('AllegroOfferManagerAdapter', () => {
       httpClient.get
         .mockResolvedValueOnce(
           makeResponse({
-            deliverySettings: [
+            shippingRates: [
               { id: 'd1', name: 'Standard' },
               { id: 'd2', name: 'Express' },
             ],
@@ -819,14 +819,18 @@ describe('AllegroOfferManagerAdapter', () => {
           '/after-sales-service-conditions/implied-warranties',
           '/after-sales-service-conditions/return-policies',
           '/after-sales-service-conditions/warranties',
-          '/sale/delivery-settings',
+          '/sale/shipping-rates',
         ].sort(),
       );
+      // `/sale/delivery-settings` is a different Allegro resource (account-level
+      // free-delivery config, not a list). Pinning its absence here keeps a
+      // future regression visible in review (#383).
+      expect(calledPaths).not.toContain('/sale/delivery-settings');
     });
 
     it('returns empty arrays when Allegro returns no policies', async () => {
       httpClient.get
-        .mockResolvedValueOnce(makeResponse({ deliverySettings: [] }))
+        .mockResolvedValueOnce(makeResponse({ shippingRates: [] }))
         .mockResolvedValueOnce(makeResponse({ returnPolicies: [] }))
         .mockResolvedValueOnce(makeResponse({ warranties: [] }))
         .mockResolvedValueOnce(makeResponse({ impliedWarranties: [] }));
@@ -843,7 +847,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('propagates AllegroApiException when any single endpoint fails', async () => {
       httpClient.get
-        .mockResolvedValueOnce(makeResponse({ deliverySettings: [] }))
+        .mockResolvedValueOnce(makeResponse({ shippingRates: [] }))
         .mockRejectedValueOnce(new AllegroApiException('rate limit', 429))
         .mockResolvedValueOnce(makeResponse({ warranties: [] }))
         .mockResolvedValueOnce(makeResponse({ impliedWarranties: [] }));

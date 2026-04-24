@@ -46,7 +46,7 @@ import {
   AllegroProductOfferCreateRequest,
   AllegroProductOfferCreateResponse,
   AllegroValidationError,
-  AllegroDeliverySettingsResponse,
+  AllegroShippingRatesResponse,
   AllegroReturnPoliciesResponse,
   AllegroWarrantiesResponse,
   AllegroImpliedWarrantiesResponse,
@@ -666,19 +666,26 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * Fetch seller-configured Allegro policies (delivery + return + warranty +
-   * implied-warranty). All four Allegro endpoints are independent; issued in
-   * parallel via Promise.all so total latency tracks the slowest call. Any
-   * non-2xx propagates as `AllegroApiException` from the HTTP client — the
-   * calling service surfaces that to the HTTP layer as a 5xx.
+   * Fetch seller-configured Allegro policies (shipping-rates + return +
+   * warranty + implied-warranty). All four Allegro endpoints are independent;
+   * issued in parallel via Promise.all so total latency tracks the slowest
+   * call. Any non-2xx propagates as `AllegroApiException` from the HTTP
+   * client — the calling service surfaces that to the HTTP layer as a 5xx.
+   *
+   * Delivery policies come from `GET /sale/shipping-rates` (the seller's
+   * configured "cenniki dostawy" / delivery methods, whose IDs are the same
+   * namespace `POST /sale/product-offers` expects at
+   * `delivery.shippingRates.id`). `/sale/delivery-settings` is a different
+   * Allegro resource (account-level free-delivery / join-policy config, not
+   * a list) and must not be used here.
    */
   async fetchSellerPolicies(): Promise<SellerPolicies> {
     this.logger.debug(
       `Fetching Allegro seller policies (connection: ${this.connectionId})`,
     );
 
-    const [delivery, returns, warranties, impliedWarranties] = await Promise.all([
-      this.httpClient.get<AllegroDeliverySettingsResponse>('/sale/delivery-settings'),
+    const [shippingRates, returns, warranties, impliedWarranties] = await Promise.all([
+      this.httpClient.get<AllegroShippingRatesResponse>('/sale/shipping-rates'),
       this.httpClient.get<AllegroReturnPoliciesResponse>('/after-sales-service-conditions/return-policies'),
       this.httpClient.get<AllegroWarrantiesResponse>('/after-sales-service-conditions/warranties'),
       this.httpClient.get<AllegroImpliedWarrantiesResponse>('/after-sales-service-conditions/implied-warranties'),
@@ -690,7 +697,7 @@ export class AllegroOfferManagerAdapter
     });
 
     return {
-      deliveryPolicies: (delivery.data.deliverySettings ?? []).map(mapEntry),
+      deliveryPolicies: (shippingRates.data.shippingRates ?? []).map(mapEntry),
       returnPolicies: (returns.data.returnPolicies ?? []).map(mapEntry),
       warranties: (warranties.data.warranties ?? []).map(mapEntry),
       impliedWarranties: (impliedWarranties.data.impliedWarranties ?? []).map(mapEntry),
