@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddAdapterKeyToConnections766837626402 implements MigrationInterface {
+export class AddAdapterKeyToConnections1766837626402 implements MigrationInterface {
     name = 'AddAdapterKeyToConnections1766837626402'
 
     public async up(queryRunner: QueryRunner): Promise<void> {

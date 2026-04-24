@@ -11,11 +11,28 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * `1780000000000-add-enabled-capabilities-to-connections.ts`:
  * platform-scoped `UPDATE`s with a catch-all `array_replace` at the end so
  * any mis-tagged rows still get their token rewritten.
+ *
+ * Retimestamped from `1788000000000` → `1788000000001` (#374): the original
+ * timestamp collided with `PromoteProductVariantEntityType1788000000000`.
+ * The `up()` body prefixes an orphan-row cleanup so environments that already
+ * ran the old class name don't leave a stale `migrations` row behind; the
+ * UPDATE clauses below are predicate-idempotent, so re-running them on a DB
+ * that already applied the original class is a no-op. The orphan DELETE and
+ * the UPDATEs commit atomically with TypeORM's insert into `migrations`
+ * (migrations run under `transaction: 'all'` by default), so a mid-migration
+ * failure rolls the orphan-row cleanup back with the rest.
  */
-export class RenameMarketplaceCapability1788000000000 implements MigrationInterface {
-  name = 'RenameMarketplaceCapability1788000000000';
+export class RenameMarketplaceCapability1788000000001 implements MigrationInterface {
+  name = 'RenameMarketplaceCapability1788000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Orphan-row cleanup (#374). Removes the row written by the pre-rename
+    // class name; no-op on fresh DBs and on DBs that never applied the old
+    // version.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" = 'RenameMarketplaceCapability1788000000000'`,
+    );
+
     // Allegro rows: promote to the new ['OrderSource', 'OfferManager'] set.
     // Only apply when the row currently carries the legacy 'Marketplace' token
     // so operators who already edited the array by hand are left alone.
