@@ -10,7 +10,8 @@ jobs:
   lint:
     name: Lint
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -36,7 +37,8 @@ jobs:
   type-check:
     name: Type Check
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -52,7 +54,8 @@ jobs:
   test:
     name: Test
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -79,7 +82,8 @@ jobs:
   test-integration:
     name: Integration Tests
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     # Run on push to main (after merge) and on PRs to catch issues early
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     needs: [test] # Only run if unit tests pass
@@ -120,7 +124,8 @@ jobs:
   build:
     name: Build
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
