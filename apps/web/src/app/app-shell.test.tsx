@@ -15,6 +15,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
 import { SessionProvider } from '../shared/auth/session-provider';
+import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { ToastProvider } from '../shared/ui/toast-provider';
 import { ApiClientProvider } from './api/api-client-provider';
 import type { ApiClient } from './api/api-client';
@@ -27,14 +28,16 @@ import {
 interface RenderShellOptions {
   apiClient?: ApiClient;
   pathname?: string;
+  sessionAdapter?: SessionAdapter;
 }
 
 function renderShell({
   apiClient = createMockApiClient(),
   pathname = '/',
+  sessionAdapter,
 }: RenderShellOptions = {}): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const adapter = createAuthenticatedSessionAdapter();
+  const adapter = sessionAdapter ?? createAuthenticatedSessionAdapter();
 
   return render(
     <ThemeProvider>
@@ -84,6 +87,34 @@ describe('AppShell', () => {
     expect(automations).toHaveAttribute('aria-disabled', 'true');
     expect(automations).toHaveAttribute('tabindex', '-1');
     expect(automations).toHaveAttribute('title', 'Coming in a future release');
+  });
+
+  it('renders the AI group with a Prompt templates link for admin sessions (#377)', async () => {
+    renderShell({ pathname: '/' });
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    // AI group renders only once the session resolves to admin, so use `find`.
+    const promptTemplates = await within(primary).findByText('Prompt templates');
+    expect(within(primary).getByText('AI')).toBeInTheDocument();
+    expect(promptTemplates.closest('a')).toHaveAttribute('href', '/ai/prompt-templates');
+  });
+
+  it('hides the AI nav group from non-admin sessions (#377)', async () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: [],
+    });
+    renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
+    // Wait for the viewer username to land in the DOM — a reliable signal
+    // that the session has resolved, without depending on a specific
+    // component's aria-label wording. Only then is the absence assertion
+    // meaningful.
+    await screen.findAllByText('viewer');
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primary).queryByText('AI')).toBeNull();
+    expect(within(primary).queryByText('Prompt templates')).toBeNull();
   });
 
   it('uses "Connections" as the nav label (not "Integrations")', () => {

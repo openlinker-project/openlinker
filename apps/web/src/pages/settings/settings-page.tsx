@@ -1,13 +1,10 @@
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { env } from '../../shared/config/env';
 import { useSession } from '../../shared/auth/use-session';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
-  const isAdmin =
-    isReady && session.status === 'authenticated' && session.user?.role === 'admin';
 
   return (
     <PageLayout
@@ -124,24 +121,6 @@ export function SettingsPage(): ReactElement {
           </p>
         </article>
 
-        {/* ── Prompt templates (admin-only) ───────────────────────────── */}
-        {isAdmin ? (
-          <article className="panel panel--dense">
-            <div className="panel__header">
-              <div>
-                <p className="eyebrow">AI</p>
-                <h3 className="section-title">Prompt templates</h3>
-              </div>
-              <span className="panel__meta">Admin</span>
-            </div>
-            <p className="panel-copy">
-              Author and version the prompts used to suggest product copy. Changes take effect on the next suggestion request.
-            </p>
-            <Link className="button button--secondary" to="/settings/prompt-templates">
-              Open
-            </Link>
-          </article>
-        ) : null}
       </div>
     </PageLayout>
   );

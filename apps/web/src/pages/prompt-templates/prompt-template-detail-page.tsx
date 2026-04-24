@@ -126,7 +126,7 @@ export function PromptTemplateDetailPage(): ReactElement {
     try {
       await deleteMutation.mutateAsync(template.id);
       showToast({ tone: 'success', description: 'Draft discarded' });
-      void navigate('/settings/prompt-templates');
+      void navigate('/ai/prompt-templates');
     } catch {
       /* surfaced via deleteMutation.error */
     }
@@ -143,7 +143,7 @@ export function PromptTemplateDetailPage(): ReactElement {
         variables: template.variables,
       });
       showToast({ tone: 'success', description: `Draft v${draft.version} created` });
-      void navigate(`/settings/prompt-templates/${draft.id}`);
+      void navigate(`/ai/prompt-templates/${draft.id}`);
     } catch {
       /* surfaced via createMutation.error */
     }
@@ -162,7 +162,7 @@ export function PromptTemplateDetailPage(): ReactElement {
           tone: 'success',
           description: `Draft v${draft.version} created from v${version}`,
         });
-        void navigate(`/settings/prompt-templates/${draft.id}`);
+        void navigate(`/ai/prompt-templates/${draft.id}`);
       } catch {
         /* surfaced via revertMutation.error */
       }
@@ -380,7 +380,7 @@ export function PromptTemplateDetailPage(): ReactElement {
               currentId={template.id}
               isLoading={versionsQuery.isLoading}
               onOpen={(version) => {
-                void navigate(`/settings/prompt-templates/${version.id}`);
+                void navigate(`/ai/prompt-templates/${version.id}`);
               }}
               onRevert={(version) => void handleRevertTo(version.version)}
               revertPending={revertMutation.isPending}

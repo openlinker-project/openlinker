@@ -15,6 +15,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type PropsWithChildren,
   type ReactElement,
@@ -63,38 +64,58 @@ interface PlannedNavGroup {
 
 type NavGroup = LiveNavGroup | PlannedNavGroup;
 
-const navGroups: NavGroup[] = [
-  {
-    kind: 'live',
-    label: 'Operations',
-    items: [
-      { to: '/', label: 'Dashboard', end: true },
-      { to: '/orders', label: 'Orders', countKey: 'orders' },
-      { to: '/products', label: 'Products' },
-      { to: '/inventory', label: 'Inventory', countKey: 'inventory' },
-      { to: '/customers', label: 'Customers', countKey: 'customers' },
-      { to: '/listings', label: 'Listings', countKey: 'listings' },
-    ],
-  },
-  {
-    kind: 'live',
-    label: 'Diagnostics',
-    items: [
-      { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
-      { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
-      { to: '/cursors', label: 'Cursors' },
-    ],
-  },
-  {
-    kind: 'live',
-    label: 'Platform',
-    items: [
-      { to: '/connections', label: 'Connections', countKey: 'connections' },
-      { to: '/adapters', label: 'Adapters' },
-      { to: '/settings', label: 'Settings' },
-    ],
-  },
-  {
+interface NavGroupOptions {
+  isAdmin: boolean;
+}
+
+/**
+ * Build the sidebar nav composition for the current session. Admin-only
+ * groups (AI) are spliced in at build time so non-admin sessions never see
+ * them in the DOM — no client-side permission filtering at render.
+ */
+function buildNavGroups({ isAdmin }: NavGroupOptions): NavGroup[] {
+  const groups: NavGroup[] = [
+    {
+      kind: 'live',
+      label: 'Operations',
+      items: [
+        { to: '/', label: 'Dashboard', end: true },
+        { to: '/orders', label: 'Orders', countKey: 'orders' },
+        { to: '/products', label: 'Products' },
+        { to: '/inventory', label: 'Inventory', countKey: 'inventory' },
+        { to: '/customers', label: 'Customers', countKey: 'customers' },
+        { to: '/listings', label: 'Listings', countKey: 'listings' },
+      ],
+    },
+    {
+      kind: 'live',
+      label: 'Diagnostics',
+      items: [
+        { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
+        { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
+        { to: '/cursors', label: 'Cursors' },
+      ],
+    },
+    {
+      kind: 'live',
+      label: 'Platform',
+      items: [
+        { to: '/connections', label: 'Connections', countKey: 'connections' },
+        { to: '/adapters', label: 'Adapters' },
+        { to: '/settings', label: 'Settings' },
+      ],
+    },
+  ];
+
+  if (isAdmin) {
+    groups.push({
+      kind: 'live',
+      label: 'AI',
+      items: [{ to: '/ai/prompt-templates', label: 'Prompt templates' }],
+    });
+  }
+
+  groups.push({
     kind: 'planned',
     label: 'Planned',
     items: [
@@ -102,8 +123,10 @@ const navGroups: NavGroup[] = [
       { label: 'Shipping', reason: 'Coming in a future release' },
       { label: 'Invoices', reason: 'Coming in a future release' },
     ],
-  },
-];
+  });
+
+  return groups;
+}
 
 const staticCrumbs: Record<string, { group: string; title: string }> = {
   '/': { group: 'Operations', title: 'Dashboard' },
@@ -123,7 +146,7 @@ const staticCrumbs: Record<string, { group: string; title: string }> = {
   '/connections/new/advanced': { group: 'Platform', title: 'Advanced setup' },
   '/adapters': { group: 'Platform', title: 'Adapters' },
   '/settings': { group: 'Platform', title: 'Settings' },
-  '/settings/prompt-templates': { group: 'Platform', title: 'Prompt templates' },
+  '/ai/prompt-templates': { group: 'AI', title: 'Prompt templates' },
 };
 
 function resolveCrumbs(pathname: string): { group: string; title: string } {
@@ -137,6 +160,7 @@ function resolveCrumbs(pathname: string): { group: string; title: string } {
   if (pathname.startsWith('/listings/')) return { group: 'Operations', title: 'Listing' };
   if (pathname.startsWith('/jobs-logs/')) return { group: 'Diagnostics', title: 'Job' };
   if (pathname.startsWith('/connections/')) return { group: 'Platform', title: 'Connection' };
+  if (pathname.startsWith('/ai/prompt-templates/')) return { group: 'AI', title: 'Prompt template' };
 
   return { group: 'OpenLinker', title: '' };
 }
@@ -151,13 +175,14 @@ function formatCount(value: number | null): string | null {
 interface SidebarNavProps {
   ariaLabel: string;
   counts: NavCounts;
+  groups: NavGroup[];
   onNavigate?: () => void;
 }
 
-function SidebarNav({ ariaLabel, counts, onNavigate }: SidebarNavProps): ReactElement {
+function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
   return (
     <nav className="shell-nav" aria-label={ariaLabel}>
-      {navGroups.map((group) => (
+      {groups.map((group) => (
         <section key={group.label} className="shell-nav__group">
           <p className="shell-nav__label">{group.label}</p>
           <ul className="shell-nav__list">
@@ -304,13 +329,16 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
 }
 
 export function AppShell({ children }: PropsWithChildren): ReactElement {
-  const { session, clearSession } = useSession();
+  const { isReady, session, clearSession } = useSession();
   const { showToast } = useToast();
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const counts = useNavCounts();
+  const isAdmin =
+    isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  const groups = useMemo(() => buildNavGroups({ isAdmin }), [isAdmin]);
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -337,7 +365,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     <div className="shell">
       <div className="shell-sidebar">
         <SidebarBrand />
-        <SidebarNav ariaLabel="Primary" counts={counts} />
+        <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
         <WorkspaceFooter
           username={username}
           onLogout={username ? handleLogout : undefined}
@@ -357,7 +385,12 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
               ✕
             </Button>
           </div>
-          <SidebarNav ariaLabel="Primary (mobile)" counts={counts} onNavigate={closeDrawer} />
+          <SidebarNav
+            ariaLabel="Primary (mobile)"
+            counts={counts}
+            groups={groups}
+            onNavigate={closeDrawer}
+          />
           <WorkspaceFooter
             username={username}
             onLogout={username ? handleLogout : undefined}
