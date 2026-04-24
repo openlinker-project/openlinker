@@ -743,7 +743,7 @@ export class AllegroOfferManagerAdapter
     }
 
     if (cmd.overrides?.imageUrls && cmd.overrides.imageUrls.length > 0) {
-      body.images = cmd.overrides.imageUrls.map((url) => ({ url }));
+      body.images = cmd.overrides.imageUrls;
     }
 
     this.applyPlatformParams(body, platformParams);
