@@ -4617,6 +4617,24 @@ a.kpi-card:focus-visible {
   }
 }
 
+/* Three-column variant (#382): summary | sync status | customer */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .order-detail__primary-grid--three {
+    /* Tablet: fall back to two columns and let the customer card wrap underneath. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  }
+
+  .order-detail__primary-grid--three > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .order-detail__primary-grid--three {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
+  }
+}
+
 /* Address grid: shipping + billing side-by-side (desktop) */
 .order-detail__address-grid {
   display: grid;
@@ -4662,7 +4680,179 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
 }
 
-/* Order totals summary below line items table */
+/* Raw-snapshot anchor (#382): parse-warning chip scroll-links here. Offset the
+   scroll so the section heading clears the sticky topbar on jump. */
+#order-raw-snapshot {
+  scroll-margin-top: 4rem;
+}
+
+/* Items + totals grid (#382): items on the left, totals panel on the right at >=1024px. */
+.order-detail__items-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .order-detail__items-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.45fr);
+    align-items: start;
+  }
+}
+
+.order-detail__totals-section {
+  min-width: 0;
+}
+
+/* Standalone warning breadcrumb row — quiet, diagnostic, links to raw snapshot. */
+.order-detail__parse-warning-row {
+  margin: 0;
+}
+
+.order-detail__parse-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--status-warning-strong);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--status-warning-border);
+  padding-bottom: 1px;
+}
+
+.order-detail__parse-warning:hover,
+.order-detail__parse-warning:focus-visible {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+  outline: none;
+}
+
+/* Order customer card (#382) — quieter treatment than .detail-section chrome. */
+.order-customer-card {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.75rem 0 0.75rem 1rem;
+  border-left: 2px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.order-customer-card--empty {
+  border-left-color: var(--border-subtle);
+}
+
+.order-customer-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.order-customer-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.order-customer-card__view {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.order-customer-card__view:hover,
+.order-customer-card__view:focus-visible {
+  color: var(--text-primary);
+  outline: none;
+}
+
+.order-customer-card__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.order-customer-card__name--loading,
+.order-customer-card__email--loading {
+  color: var(--text-disabled);
+}
+
+.order-customer-card__email {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.order-customer-card__hash {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.order-customer-card__meta {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0;
+}
+
+.order-customer-card__meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.order-customer-card__meta-row dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.order-customer-card__meta-row dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.order-customer-card__meta-link {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.order-customer-card__error {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.order-customer-card__empty-body {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.order-customer-card__empty-link {
+  display: inline-flex;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-default);
+  padding-bottom: 1px;
+  align-self: flex-start;
+}
+
+.order-customer-card__empty-link:hover,
+.order-customer-card__empty-link:focus-visible {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+  outline: none;
+}
+
+/* Order totals summary (moved to OrderTotalsPanel in #382) */
 .order-totals {
   display: grid;
   gap: 0.25rem;
@@ -4684,15 +4874,28 @@ a.kpi-card:focus-visible {
 }
 
 .order-totals__row--total {
+  align-items: baseline;
   font-weight: 600;
   color: var(--text-primary);
   border-top: 1px solid var(--border-subtle);
-  padding-top: 0.375rem;
-  margin-top: 0.125rem;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 
 .order-totals__row--total dt {
   color: var(--text-secondary);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Grand-total amount as typographic anchor — larger tabular-mono numeral
+   pulls the eye to the bottom of the rollup without using colour. */
+.order-totals__row--total dd {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Activity timeline */
@@ -4792,6 +4995,83 @@ a.kpi-card:focus-visible {
   .order-activity__time {
     grid-column: 2;
     margin-top: -0.375rem;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Inventory detail page (#381)                                             */
+/* ------------------------------------------------------------------------ */
+
+/* Hero: thumb + product identity + status badge + meta + id chip */
+.inventory-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem 1.125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.inventory-hero__thumb {
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.125rem;
+  border-radius: 0.5rem;
+}
+
+.inventory-hero__body {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.inventory-hero__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inventory-hero__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.inventory-hero__sep {
+  color: var(--text-disabled);
+}
+
+.inventory-hero__id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* KPI: single compound card (Available primary + reserved/on-hand description) */
+.inventory-detail__kpi {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 600px) {
+  .inventory-detail__kpi {
+    grid-template-columns: minmax(0, 18rem);
   }
 }
 
