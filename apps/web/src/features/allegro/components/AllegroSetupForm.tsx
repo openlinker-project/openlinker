@@ -14,7 +14,6 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { Link } from 'react-router-dom';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
 import { useProductMasterConnections } from '../../connections/hooks/use-product-master-connections';
 import {
@@ -26,6 +25,7 @@ import {
 } from './allegro-setup.schema';
 import { AllegroSetupSummary } from './allegro-setup-summary';
 import { Alert } from '../../../shared/ui/alert';
+import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
@@ -130,9 +130,7 @@ export function AllegroSetupForm(): ReactElement {
       }
     >
       <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-        <Link className="wizard-card__back" to="/connections/new">
-          ← Back to connections
-        </Link>
+        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />

@@ -6,21 +6,16 @@
  * advanced escape-hatch route is also exposed.
  */
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { PlatformPicker } from '../../features/connections/components/platform-picker';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function NewConnectionPage(): ReactElement {
   return (
     <PageLayout
+      backTo={{ to: '/connections', label: 'Connections' }}
       eyebrow="Integrations"
       title="Add a connection"
       description="Pick the platform you want to connect. Each platform has a guided setup flow — no raw adapter keys or config JSON required."
-      actions={
-        <Link className="button button--secondary" to="/connections">
-          Back to integrations
-        </Link>
-      }
       summary={
         <div className="toolbar__group">
           <span className="toolbar-chip">Guided setup</span>

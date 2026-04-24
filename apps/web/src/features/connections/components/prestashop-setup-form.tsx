@@ -16,7 +16,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   PRESTASHOP_ADAPTER_KEY,
@@ -31,6 +31,7 @@ import { PrestashopSetupSummary } from './prestashop-setup-summary';
 import type { Capability } from '../api/connections.types';
 import { useAdaptersQuery } from '../../adapters/hooks/use-adapters-query';
 import { Alert } from '../../../shared/ui/alert';
+import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
@@ -145,9 +146,7 @@ export function PrestashopSetupForm(): ReactElement {
       summary={<PrestashopSetupSummary values={values} stepIndex={stepIndex} />}
     >
       <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-        <Link className="wizard-card__back" to="/connections/new">
-          ← Back to connections
-        </Link>
+        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />

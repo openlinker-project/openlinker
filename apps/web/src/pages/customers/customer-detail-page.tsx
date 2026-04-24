@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -172,13 +172,9 @@ export function CustomerDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/customers', label: 'Customers' }}
       eyebrow="Customers"
       title={<EntityLabel id={customer.internalCustomerId} name={name || null} />}
-      actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to customers
-        </Link>
-      }
     >
       <section className="detail-section">
         <KeyValueList items={buildCustomerItems(customer)} />

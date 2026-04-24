@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -93,13 +93,9 @@ export function SyncJobDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/jobs-logs', label: 'Jobs & Logs' }}
       eyebrow="Sync Jobs"
       title={<span className="mono-text">{job.jobType}</span>}
-      actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to jobs
-        </Link>
-      }
     >
       {isDead ? (
         <Alert

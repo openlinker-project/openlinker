@@ -155,9 +155,9 @@ describe('AllegroSetupForm', () => {
     const { container } = renderWithProviders(<AllegroSetupForm />, {
       apiClient: defaultApiClient(),
     });
-    const backLink = within(container).getByRole('link', { name: /Back to connections/ });
+    const backLink = within(container).getByRole('link', { name: 'Connections' });
     expect(backLink).toHaveAttribute('href', '/connections/new');
-    expect(backLink).toHaveClass('wizard-card__back');
+    expect(backLink).toHaveClass('back-link', 'wizard-card__back');
   });
 
   it('live-updates the summary panel from form input', () => {

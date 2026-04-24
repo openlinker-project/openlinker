@@ -8,7 +8,7 @@
  * @module apps/web/src/pages/orders
  */
 import { type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -113,14 +113,10 @@ export function FailedOrdersPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/orders', label: 'Orders' }}
       eyebrow="Operations"
       title="Awaiting Mapping"
       description="Orders with unresolved offer→variant mappings. These retry automatically once the mapping is created."
-      actions={
-        <Link to="/orders" className="button button--ghost">
-          ← All Orders
-        </Link>
-      }
     >
       <div className="toolbar">
         <Select

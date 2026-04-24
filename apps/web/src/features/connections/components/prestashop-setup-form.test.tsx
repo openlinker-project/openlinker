@@ -310,11 +310,9 @@ describe('PrestashopSetupForm', () => {
 
   it('renders the back-to-connections link inside the wizard card', () => {
     const view = renderWithProviders(<PrestashopSetupForm />);
-    const backLink = within(view.container).getByRole('link', {
-      name: /Back to connections/,
-    });
+    const backLink = within(view.container).getByRole('link', { name: 'Connections' });
     expect(backLink).toHaveAttribute('href', '/connections/new');
-    expect(backLink).toHaveClass('wizard-card__back');
+    expect(backLink).toHaveClass('back-link', 'wizard-card__back');
   });
 
   it('live-updates the summary panel from form input', () => {

@@ -138,11 +138,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
     deleteMutation.mutate(selectedCategoryId);
   }
 
-  const backLink = (
-    <Link className="button button--secondary" to={`/connections/${connectionId}`}>
-      Back to connection
-    </Link>
-  );
+  const backTo = { to: `/connections/${connectionId}`, label: 'Connection' };
 
   const isLoading =
     connectionsQuery.isLoading || mappingsQuery.isLoading || prestashopCategoriesQuery.isLoading;
@@ -151,7 +147,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   if (isLoading) {
     return (
-      <PageLayout eyebrow="Connection" title="Category Mappings">
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
         <LoadingState liveRegion="off" title="Loading" message="Fetching categories and mappings..." />
       </PageLayout>
     );
@@ -159,7 +155,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   if (loadError) {
     return (
-      <PageLayout eyebrow="Connection" title="Category Mappings">
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
         <ErrorState title="Unable to load" message={loadError.message} />
       </PageLayout>
     );
@@ -167,7 +163,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   if (marketplaceConnections.length === 0) {
     return (
-      <PageLayout eyebrow="Connection" title="Category Mappings" actions={backLink}>
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
         <EmptyState
           title="No marketplace connection configured"
           message="Add an Allegro (or other Marketplace) connection before mapping categories."
@@ -183,7 +179,7 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   if (categories.length === 0) {
     return (
-      <PageLayout eyebrow="Connection" title="Category Mappings" actions={backLink}>
+      <PageLayout backTo={backTo} eyebrow="Connection" title="Category Mappings">
         <EmptyState
           title="No PrestaShop categories"
           message="No categories were found for this connection. Ensure the PrestaShop store has categories configured."
@@ -194,10 +190,10 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={backTo}
       eyebrow="Connection"
       title="Category Mappings"
       description={`${mappedCount} of ${categories.length} categories mapped`}
-      actions={backLink}
     >
       <DesktopOnlyBanner title="Open on a desktop screen to edit categories">
         The category mapping editor pairs a category tree with a marketplace search side by side
