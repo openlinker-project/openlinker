@@ -32,6 +32,14 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// In vitest jsdom runs, Radix's auto-dismiss setTimeout can outlive the test
+// file and fire after the worker tears jsdom down, leaving an unhandled
+// "ReferenceError: window is not defined" that fails CI even when all
+// assertions pass. Under `MODE === 'test'` we suppress auto-dismiss entirely
+// (tests drive the toast lifecycle via `cleanup()`). Production and dev
+// behaviour are unchanged.
+const IS_TEST_ENV = import.meta.env.MODE === 'test';
+
 export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
@@ -43,7 +51,11 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   const showToast = useCallback(
     ({ description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
       const id = nextIdRef.current++;
-      setToasts((current) => [...current, { description, durationMs, id, title, tone }]);
+      const effectiveDurationMs = IS_TEST_ENV ? Number.POSITIVE_INFINITY : durationMs;
+      setToasts((current) => [
+        ...current,
+        { description, durationMs: effectiveDurationMs, id, title, tone },
+      ]);
     },
     [],
   );

@@ -140,27 +140,23 @@ export function ConnectionDetailPage(): ReactElement {
         )
       }
       description="Connection overview, configuration, health, and operator actions."
+      backTo={{ to: '/connections', label: 'Connections' }}
       actions={
-        <div className="button-group">
-          {connection ? (
-            <>
-              <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
-                Edit connection
+        connection ? (
+          <div className="button-group">
+            <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
+              Edit connection
+            </Link>
+            <Link className="button button--secondary" to={`/connections/${connectionId}/mappings`}>
+              Mappings
+            </Link>
+            {connection.enabledCapabilities.includes('ProductMaster') ? (
+              <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
+                Category Mappings
               </Link>
-              <Link className="button button--secondary" to={`/connections/${connectionId}/mappings`}>
-                Mappings
-              </Link>
-              {connection.enabledCapabilities.includes('ProductMaster') ? (
-                <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
-                  Category Mappings
-                </Link>
-              ) : null}
-            </>
-          ) : null}
-          <Link className="button button--secondary" to="/connections">
-            Back to integrations
-          </Link>
-        </div>
+            ) : null}
+          </div>
+        ) : undefined
       }
       summary={
         connection ? (

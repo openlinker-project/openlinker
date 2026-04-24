@@ -1461,6 +1461,33 @@ textarea {
   align-items: start;
 }
 
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: start;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  transition: color 120ms ease;
+}
+
+.back-link:hover {
+  color: var(--text-primary);
+}
+
+.back-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.back-link__glyph {
+  font-size: 0.9em;
+  line-height: 1;
+}
+
 .page-header__content,
 .page-header__actions,
 .state-card,
@@ -3857,20 +3884,12 @@ a.kpi-card:focus-visible {
   gap: 0.5rem;
 }
 
+/* Audit trail (#380): `.wizard-card__back` was a full back-link rule (display,
+   gap, typography, hover state). Typography is now owned by `.back-link` so
+   migrated wizard call sites compose `className="wizard-card__back"` on top
+   of the shared primitive. What remains here is grid-positioning-only. */
 .wizard-card__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-  text-decoration: none;
   justify-self: start;
-}
-
-.wizard-card__back:hover,
-.wizard-card__back:focus-visible {
-  color: var(--text-primary);
-  text-decoration: underline;
 }
 
 /* Three-slot wizard composition: stepper on top, form + summary below.
@@ -5054,14 +5073,6 @@ a.kpi-card:focus-visible {
   .inventory-detail__kpi {
     grid-template-columns: minmax(0, 18rem);
   }
-}
-
-/* Action cluster in PageLayout.actions slot — back (ghost) + view-product (primary) */
-.inventory-detail__actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
 /* ------------------------------------------------------------------------ */

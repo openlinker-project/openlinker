@@ -117,13 +117,9 @@ export function WebhookDeliveryDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/webhook-deliveries', label: 'Webhooks' }}
       eyebrow="Webhook Deliveries"
       title={<span className="mono-text">{d.eventType ?? d.eventId}</span>}
-      actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to deliveries
-        </Link>
-      }
     >
       <section className="detail-section">
         <KeyValueList items={buildWebhookDeliveryItems(d)} />

@@ -146,17 +146,13 @@ function InventoryDetailContent({ item }: { item: InventoryItem }): ReactElement
 
   return (
     <PageLayout
+      backTo={{ to: '/inventory', label: 'Inventory' }}
       eyebrow="Inventory"
       title={productHeading}
       actions={
-        <div className="inventory-detail__actions">
-          <Link to=".." relative="path" className="button button--ghost">
-            ← Back to inventory
-          </Link>
-          <Link to={`/products/${item.productId}`} className="button button--primary">
-            View product
-          </Link>
-        </div>
+        <Link to={`/products/${item.productId}`} className="button button--primary">
+          View product
+        </Link>
       }
     >
       <section className="inventory-hero" aria-label="Inventory item summary">

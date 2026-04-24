@@ -366,12 +366,19 @@ export interface AllegroSellerPolicyEntry {
 }
 
 /**
- * Response from `GET /sale/delivery-settings`.
+ * Response from `GET /sale/shipping-rates`.
  *
- * Allegro wraps the policy list under the `deliverySettings` key.
+ * Allegro wraps the seller-configured shipping-rate sets (user-facing
+ * "delivery methods" in the seller UI) under the `shippingRates` key. These
+ * are the IDs that `POST /sale/product-offers` expects at
+ * `delivery.shippingRates.id` — the namespace is the same, which is why the
+ * wizard round-trip is internally consistent once we fetch from the right
+ * endpoint. Note: `/sale/delivery-settings` is a *different* Allegro
+ * resource returning a single account-level config object (free-delivery
+ * threshold, join-policy) — unrelated to this list.
  */
-export interface AllegroDeliverySettingsResponse {
-  deliverySettings: AllegroSellerPolicyEntry[];
+export interface AllegroShippingRatesResponse {
+  shippingRates: AllegroSellerPolicyEntry[];
 }
 
 /**

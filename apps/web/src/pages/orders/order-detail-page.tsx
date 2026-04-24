@@ -184,16 +184,12 @@ export function OrderDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/orders', label: 'Orders' }}
       eyebrow="Orders"
       title={
         snapshot.orderNumber
           ? `Order #${snapshot.orderNumber}`
           : `Order — ${order.internalOrderId}`
-      }
-      actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to orders
-        </Link>
       }
     >
       {failedDestinations.length > 0 ? (

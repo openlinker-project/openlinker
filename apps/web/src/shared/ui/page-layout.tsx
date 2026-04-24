@@ -1,7 +1,9 @@
 import type { PropsWithChildren, ReactElement, ReactNode } from 'react';
+import { BackLink } from './back-link';
 
 interface PageLayoutProps extends PropsWithChildren {
   actions?: ReactNode;
+  backTo?: { to: string; label: ReactNode };
   description?: ReactNode;
   eyebrow?: string;
   summary?: ReactNode;
@@ -10,6 +12,7 @@ interface PageLayoutProps extends PropsWithChildren {
 
 export function PageLayout({
   actions,
+  backTo,
   children,
   description,
   eyebrow,
@@ -20,6 +23,7 @@ export function PageLayout({
     <section className="page-section">
       <div className={actions ? 'page-header page-header--split' : 'page-header'}>
         <div className="page-header__content">
+          {backTo ? <BackLink to={backTo.to} label={backTo.label} /> : null}
           {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
           <h2 className="page-title">{title}</h2>
           {description ? <p className="page-description">{description}</p> : null}
