@@ -157,7 +157,7 @@ FE CreateOfferWizard
 
 **File:** `libs/integrations/allegro/src/infrastructure/adapters/__tests__/allegro-offer-manager.adapter.spec.ts`
 
-Three test cases inside `describe('fetchSellerPolicies', …)` need updating (see Phase 2 §5):
+Three test cases inside `describe('fetchSellerPolicies', …)` need updating (see Research §5 — Existing test coverage):
 
 1. **Happy path (777–825):**
    - Mock response `{ deliverySettings: [...] }` → `{ shippingRates: [...] }`.
