@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { EditConnectionForm } from '../../features/connections/components/EditConnectionForm';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -11,14 +11,13 @@ export function EditConnectionPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{
+        to: `/connections/${connectionId}`,
+        label: connectionQuery.data?.name ?? 'Connection',
+      }}
       eyebrow="Connection settings"
       title="Edit connection"
       description="Update the connection name, configuration, and adapter settings."
-      actions={
-        <Link className="button button--secondary" to={`/connections/${connectionId}`}>
-          Back to detail
-        </Link>
-      }
     >
       {connectionQuery.isLoading ? (
         <LoadingState

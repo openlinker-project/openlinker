@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
@@ -68,13 +68,9 @@ export function InventoryDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/inventory', label: 'Inventory' }}
       eyebrow="Inventory"
       title={`Inventory — ${item.id}`}
-      actions={
-        <Link to=".." relative="path" className="button button--ghost">
-          ← Back to inventory
-        </Link>
-      }
     >
       <section className="detail-section">
         <KeyValueList items={buildInventoryItems(item)} />

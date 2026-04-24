@@ -8,7 +8,7 @@
  */
 
 import { type ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
@@ -93,14 +93,10 @@ export function ConnectionMappingsPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: `/connections/${connectionId}`, label: 'Connection' }}
       eyebrow="Connection"
       title="Mapping Configuration"
       description="Configure Allegro → PrestaShop mappings for order statuses, delivery carriers, and payment methods."
-      actions={
-        <Link className="button button--secondary" to={`/connections/${connectionId}`}>
-          Back to connection
-        </Link>
-      }
     >
       <DesktopOnlyBanner>
         Mapping editors are designed for desktop. On smaller screens the controls below are still

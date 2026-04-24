@@ -65,19 +65,15 @@ export function ListingDetailPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/listings', label: 'Listings' }}
       eyebrow="Listings"
       title={`Mapping — ${mapping.externalId}`}
       actions={
-        <>
-          {mapping.platformType.toLowerCase() === 'allegro' ? (
-            <Button onClick={() => setIsEditDrawerOpen(true)}>
-              Edit offer
-            </Button>
-          ) : null}
-          <Link to=".." relative="path" className="button button--ghost">
-            ← Back to listings
-          </Link>
-        </>
+        mapping.platformType.toLowerCase() === 'allegro' ? (
+          <Button onClick={() => setIsEditDrawerOpen(true)}>
+            Edit offer
+          </Button>
+        ) : undefined
       }
     >
       <section className="detail-section">
