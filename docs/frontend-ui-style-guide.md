@@ -176,7 +176,7 @@ The FE-001 baseline should move away from a dark SaaS concept-shot aesthetic and
 Corrective direction:
 
 - use a white and graphite-neutral base with restrained accent usage
-- reserve blue for active, selected, focused, and primary action states
+- keep chroma reserved for semantic status states — primary CTAs, active/selected/focused affordances use `var(--accent-primary)`, which is itself a monochrome alias of `--text-primary` (see #371 and the "Color Usage Rules" section below)
 - reduce panel padding and decorative empty space
 - replace roadmap or product-planning content with operator-facing queues, health lists, and activity views
 - prefer tables, compact lists, and timelines over large descriptive cards
