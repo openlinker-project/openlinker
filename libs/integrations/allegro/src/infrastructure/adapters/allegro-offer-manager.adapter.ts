@@ -55,6 +55,7 @@ import {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
+import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
 import {
   AllegroQuantityCommandRepositoryPort,
   AllegroQuantityCommand,
@@ -733,13 +734,16 @@ export class AllegroOfferManagerAdapter
     };
 
     if (cmd.overrides?.description) {
-      body.description = {
-        sections: [
-          {
-            items: [{ type: 'TEXT', content: cmd.overrides.description }],
-          },
-        ],
-      };
+      const sanitized = sanitizeAllegroDescription(cmd.overrides.description).trim();
+      if (sanitized.length > 0) {
+        body.description = {
+          sections: [
+            {
+              items: [{ type: 'TEXT', content: sanitized }],
+            },
+          ],
+        };
+      }
     }
 
     if (cmd.overrides?.imageUrls && cmd.overrides.imageUrls.length > 0) {
