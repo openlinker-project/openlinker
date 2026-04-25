@@ -107,6 +107,11 @@ export class OrderRecordService implements IOrderRecordService {
       orderNumber: incoming.orderNumber,
       status: incoming.status,
       customerExternalId: incoming.customerExternalId,
+      // Items are passed through verbatim — this snapshot captures the raw
+      // pre-mapping incoming order for debugging and retry. Optional fields
+      // (name, imageUrl) propagate automatically; when an adapter omits one,
+      // the property is absent and `JSON.stringify` drops it, matching the
+      // present-only wire shape `persistOrder` emits below.
       items: incoming.items,
       totals: incoming.totals,
       shippingAddress: piiConfig.storePii
