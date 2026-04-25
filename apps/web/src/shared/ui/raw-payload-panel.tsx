@@ -73,6 +73,7 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
           id={bodyId}
           className="raw-payload__body mono-text"
           aria-label="Payload content"
+          tabIndex={0}
           hidden={!open}
         >
           {tinted ?? formatted}

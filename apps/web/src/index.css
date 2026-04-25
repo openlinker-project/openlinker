@@ -3465,9 +3465,18 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
   background: var(--bg-canvas);
   overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   max-height: 520px;
   white-space: pre;
   tab-size: 2;
+}
+
+.raw-payload__body:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  /* Negative offset keeps the outline inside the panel so it doesn't
+     collide with the header border on short payloads. */
+  outline-offset: -2px;
 }
 
 .raw-payload__body[hidden] {

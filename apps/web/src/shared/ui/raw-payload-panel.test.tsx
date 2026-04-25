@@ -36,6 +36,11 @@ describe('RawPayloadPanel', () => {
     expect(screen.getByLabelText('Payload content')).toHaveAttribute('id', controls!);
   });
 
+  it('makes the scrollable body keyboard-reachable via tabIndex', () => {
+    render(<RawPayloadPanel payload={{ a: 1 }} defaultOpen />);
+    expect(screen.getByLabelText('Payload content')).toHaveAttribute('tabindex', '0');
+  });
+
   it('can start expanded via defaultOpen', () => {
     render(<RawPayloadPanel payload={{ a: 1 }} defaultOpen />);
     const body = screen.getByLabelText('Payload content');
