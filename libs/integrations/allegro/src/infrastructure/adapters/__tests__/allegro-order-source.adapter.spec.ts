@@ -227,6 +227,7 @@ describe('AllegroOrderSourceAdapter', () => {
         productRef: { type: 'offer', externalId: 'offer-1' },
         quantity: 2,
         price: 19.99,
+        name: 'Offer 1',
       });
       expect(incoming.totals).toMatchObject({ total: 39.98, currency: 'PLN' });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');

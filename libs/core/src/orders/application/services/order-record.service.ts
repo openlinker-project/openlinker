@@ -56,6 +56,12 @@ export class OrderRecordService implements IOrderRecordService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // Conditional spread keeps the snapshot key absent (not `undefined`)
+        // when the source did not supply the field — the snapshot is a
+        // stable JSON contract surfaced to the FE, so present-only keys keep
+        // the wire shape clean and let consumers tell "missing" from "blank".
+        ...(item.name !== undefined && { name: item.name }),
+        ...(item.imageUrl !== undefined && { imageUrl: item.imageUrl }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii

@@ -98,6 +98,19 @@ export interface OrderItem {
   quantity: number;
   price: number;
   sku?: string;
+
+  /**
+   * Source-reported display label, propagated from `IncomingOrderItem.name`
+   * by `OrderIngestionService.buildUnifiedOrder`. Optional because not every
+   * order-source adapter populates it.
+   */
+  name?: string;
+
+  /**
+   * Absolute product-image URL when the source supplies one. Reserved for
+   * future enrichment — no current adapter sets this on ingestion.
+   */
+  imageUrl?: string;
 }
 
 export interface OrderTotals {
