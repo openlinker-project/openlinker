@@ -378,6 +378,32 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).toHaveProperty('description');
     });
 
+    it('sanitizes attribute-laden HTML in description content (#392 fix — PATCH parity)', async () => {
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-1',
+        fields: {
+          description: {
+            sections: [
+              {
+                items: [
+                  {
+                    type: 'TEXT',
+                    content:
+                      '<p style="color:#000;">Hello <span class="x">world</span></p>',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
+      expect(body.description).toEqual({
+        sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+      });
+    });
+
     it('should not call HTTP when fields object is empty', async () => {
       await adapter.updateOfferFields({
         externalOfferId: 'allegro-offer-1',
@@ -748,6 +774,40 @@ describe('AllegroOfferManagerAdapter', () => {
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
       expect(body).not.toHaveProperty('images');
+    });
+
+    it('sanitizes attribute-laden HTML in description before wrapping (#392 fix)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-desc', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          description:
+            '<p style="color:rgba(0,0,0,0.87);font-family:\'Open Sans\';">Hello <span class="x">world</span></p>',
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.description).toEqual({
+        sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+      });
+    });
+
+    it('omits description when sanitization yields whitespace-only content', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-desc-empty', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, description: '<div><span>  </span></div>' },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('description');
     });
 
     it('throws OfferCreateRejectedException when overrides.categoryId is missing (precondition)', async () => {
