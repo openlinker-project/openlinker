@@ -169,6 +169,42 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot.billingAddress).toEqual(order.billingAddress);
       expect(callArg.recordStatus).toBe('ready');
     });
+
+    it('should serialise OrderItem.name and imageUrl into the snapshot when present', async () => {
+      const order = createMockOrder();
+      order.items[0].name = 'Widget';
+      order.items[0].imageUrl = 'https://cdn.example/widget.jpg';
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> }).items;
+      expect(snapshotItems[0]).toMatchObject({
+        id: 'item-1',
+        name: 'Widget',
+        imageUrl: 'https://cdn.example/widget.jpg',
+      });
+    });
+
+    it('should omit name and imageUrl from the snapshot when the OrderItem does not carry them', async () => {
+      const order = createMockOrder();
+      // createMockOrder() leaves name/imageUrl unset; this asserts conditional
+      // serialisation in persistOrder keeps the keys absent rather than emitting
+      // explicit `undefined` (the snapshot is a stable JSON contract).
+      expect(order.items[0].name).toBeUndefined();
+      expect(order.items[0].imageUrl).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> }).items;
+      expect(snapshotItems[0]).not.toHaveProperty('name');
+      expect(snapshotItems[0]).not.toHaveProperty('imageUrl');
+    });
   });
 
   describe('persistOrder - PII disabled', () => {

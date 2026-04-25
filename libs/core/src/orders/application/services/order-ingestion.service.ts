@@ -210,6 +210,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           quantity: item.quantity,
           price: item.price,
           sku: item.sku,
+          name: item.name,
+          imageUrl: item.imageUrl,
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason });

@@ -77,6 +77,22 @@ export interface IncomingOrderItem {
   quantity: number;
   price: number;
   sku?: string;
+
+  /**
+   * Source-reported display label (e.g. Allegro `lineItem.offer.name`).
+   * Optional because not every adapter has it — PrestaShop's order-source
+   * doesn't expose a free per-line product name and would need catalog
+   * enrichment to populate this.
+   */
+  name?: string;
+
+  /**
+   * Absolute URL to a representative product image when the source provides
+   * one. Optional and forward-compatible: today no order-source endpoint we
+   * consume returns this (Allegro's checkout-form does not), so it's reserved
+   * for future enrichment.
+   */
+  imageUrl?: string;
 }
 
 /**

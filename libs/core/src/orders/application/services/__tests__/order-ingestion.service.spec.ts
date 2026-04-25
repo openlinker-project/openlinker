@@ -402,7 +402,14 @@ describe('OrderIngestionService', () => {
       orderNumber: externalOrderId,
       status: 'BOUGHT',
       items: [
-        { id: 'item-1', productRef: { type: 'offer' as const, externalId: 'offer-a' }, quantity: 1, price: 9.99 },
+        {
+          id: 'item-1',
+          productRef: { type: 'offer' as const, externalId: 'offer-a' },
+          quantity: 1,
+          price: 9.99,
+          name: 'Offer A',
+          imageUrl: 'https://cdn.example/a.jpg',
+        },
         { id: 'item-2', productRef: { type: 'offer' as const, externalId: 'offer-b' }, quantity: 2, price: 4.99 },
       ],
       totals: { subtotal: 19.97, tax: 0, shipping: 0, total: 19.97, currency: 'PLN' },
@@ -427,6 +434,20 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
       expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+
+      // buildUnifiedOrder must propagate IncomingOrderItem.name / imageUrl
+      // onto the resolved OrderItem so persistOrder can persist them. This
+      // is the only test that exercises the IncomingOrderItem → OrderItem
+      // conversion; the persistOrder spec works with Order directly.
+      const persistedOrder = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(persistedOrder.items).toHaveLength(2);
+      expect(persistedOrder.items[0]).toMatchObject({
+        id: 'item-1',
+        name: 'Offer A',
+        imageUrl: 'https://cdn.example/a.jpg',
+      });
+      expect(persistedOrder.items[1].name).toBeUndefined();
+      expect(persistedOrder.items[1].imageUrl).toBeUndefined();
     });
 
     it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {

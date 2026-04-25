@@ -161,6 +161,10 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
           quantity: lineItem.quantity,
           price: Number.parseFloat(lineItem.price.amount),
           sku: lineItem.offer.id,
+          name: lineItem.offer.name,
+          // imageUrl intentionally omitted — Allegro's checkout-form endpoint
+          // does not expose a product image URL. Future enrichment from the
+          // internal product catalog is tracked as a separate follow-up.
         })),
         totals: {
           subtotal: Number.parseFloat(checkoutForm.summary.totalToPay.amount),
