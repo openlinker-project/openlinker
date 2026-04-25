@@ -558,7 +558,7 @@ export class AllegroOfferManagerAdapter
         sections: cmd.fields.description.sections.map((section) => ({
           items: section.items.map((item) => ({
             type: item.type,
-            content: item.content,
+            content: sanitizeAllegroDescription(item.content),
           })),
         })),
       };

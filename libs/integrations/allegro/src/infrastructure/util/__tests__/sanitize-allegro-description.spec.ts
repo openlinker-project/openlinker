@@ -54,6 +54,25 @@ describe('sanitizeAllegroDescription', () => {
     expect(sanitizeAllegroDescription('')).toBe('');
   });
 
+  it('caps output at 40000 bytes, cutting at the last closing-tag boundary', () => {
+    // Build a description longer than 40000 bytes once sanitized: 5000 reps of
+    // a ~10-byte <p>x</p> = 50 000 bytes (well past the cap). After sanitation
+    // it should be ≤ 40 000 bytes and end with a clean </p>.
+    const input = '<p>x</p>'.repeat(5000);
+    const output = sanitizeAllegroDescription(input);
+    expect(Buffer.byteLength(output, 'utf8')).toBeLessThanOrEqual(40000);
+    expect(output.endsWith('</p>')).toBe(true);
+  });
+
+  it('handles multi-byte UTF-8 characters when capping byte length', () => {
+    // Polish characters (ą, ę, ł, …) are 2 bytes each in UTF-8 — naive char-count
+    // truncation would let the byte count exceed the cap. Build an input where
+    // every character is 2 bytes and verify the byte cap holds.
+    const input = 'ą'.repeat(25000); // 50 000 bytes, no tags
+    const output = sanitizeAllegroDescription(input);
+    expect(Buffer.byteLength(output, 'utf8')).toBeLessThanOrEqual(40000);
+  });
+
   it('sanitizes the real PrestaShop fixture captured in #392 diagnostic', () => {
     // Verbatim slice from the sandbox failure: PrestaShop ships <p style="..."> from
     // its TinyMCE editor; after sanitization the structural <p>...</p> survives but
