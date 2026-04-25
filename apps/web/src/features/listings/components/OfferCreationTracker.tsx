@@ -28,7 +28,14 @@ import { OfferCreationErrorList } from './OfferCreationErrorList';
 interface OfferCreationTrackerProps {
   connectionId: string;
   offerCreationRecordId: string;
-  onDismiss: () => void;
+  /** Optional. When provided, a Dismiss button appears on terminal statuses
+   *  and the error variant is rendered with a Dismiss action. When omitted,
+   *  the consumer is treated as a static read-only surface (e.g. a page
+   *  panel rather than a session-scoped tracker): no Dismiss button, and
+   *  the error path renders nothing rather than an unactionable error
+   *  message — matches the "gracefully shows nothing" guarantee that
+   *  read-only consumers expect (#391). */
+  onDismiss?: () => void;
   /** Invoked when the operator clicks Retry on a failed record. Only
    *  rendered when the record has a non-null `request` snapshot — without
    *  the snapshot the wizard cannot pre-fill, so we hide the action. */
@@ -58,6 +65,12 @@ export function OfferCreationTracker({
   }
 
   if (query.error) {
+    // Read-only consumers (no onDismiss) are treated as "show nothing on
+    // failure" — they have no way to dismiss the error UI and the surface
+    // is informational, not actionable.
+    if (onDismiss === undefined) {
+      return <></>;
+    }
     return (
       <section className="offer-creation-tracker offer-creation-tracker--error" aria-live="polite">
         <div className="offer-creation-tracker__header">
@@ -88,6 +101,7 @@ export function OfferCreationTracker({
     onRetry !== undefined &&
     record.request != null &&
     canReadCreateOfferRequestSnapshot(record.request);
+  const showDismiss = isTerminal && onDismiss !== undefined;
 
   return (
     <section
@@ -105,7 +119,7 @@ export function OfferCreationTracker({
             Retry
           </Button>
         ) : null}
-        {isTerminal ? (
+        {showDismiss ? (
           <Button tone="ghost" onClick={onDismiss}>
             Dismiss
           </Button>

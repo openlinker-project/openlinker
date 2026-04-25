@@ -28,6 +28,7 @@ export const JOB_TYPE_VALUES = [
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields', // Internal job — not user-triggerable; listed here for status display only.
+  'marketplace.offer.create',
   'master.product.syncAll',
   'master.product.syncByExternalId',
   'master.inventory.syncAll',

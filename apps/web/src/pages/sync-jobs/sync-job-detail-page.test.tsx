@@ -119,4 +119,118 @@ describe('SyncJobDetailPage', () => {
     await screen.findByText('marketplace.orders.poll');
     expect(screen.queryByText(/Job failed/)).toBeNull();
   });
+
+  describe('OfferCreationRecord panel for marketplace.offer.create jobs (#391)', () => {
+    const offerCreateJob: SyncJob = {
+      ...sampleJob,
+      jobType: 'marketplace.offer.create',
+      payloadJson: {
+        connectionId: 'conn_allegro_1',
+        internalVariantId: 'ol_variant_abc',
+        offerCreationRecordId: 'rec-1',
+      },
+    };
+
+    it('fetches and renders the linked OfferCreationRecord with status and validation errors when failed', async () => {
+      const getOfferCreationStatus = vi.fn().mockResolvedValue({
+        id: 'rec-1',
+        connectionId: 'conn_allegro_1',
+        internalVariantId: 'ol_variant_abc',
+        externalOfferId: null,
+        status: 'failed',
+        errors: [
+          { field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' },
+        ],
+        publishImmediately: false,
+        createdAt: '2026-04-25T10:00:00Z',
+        updatedAt: '2026-04-25T10:01:00Z',
+        request: null,
+      });
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(offerCreateJob) },
+        listings: { getOfferCreationStatus },
+      });
+
+      renderDetailPage(mockApi);
+
+      // Status surfaces the failed badge and the structured error, not just the green job badge.
+      expect(await screen.findByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('parameters.EAN')).toBeInTheDocument();
+      expect(screen.getByText('EAN is required.')).toBeInTheDocument();
+      expect(getOfferCreationStatus).toHaveBeenCalledWith('conn_allegro_1', 'rec-1');
+    });
+
+    it('renders no panel when the payload omits offerCreationRecordId', async () => {
+      const job: SyncJob = {
+        ...offerCreateJob,
+        payloadJson: { connectionId: 'conn_allegro_1', internalVariantId: 'ol_variant_abc' },
+      };
+      const getOfferCreationStatus = vi.fn();
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(job) },
+        listings: { getOfferCreationStatus },
+      });
+
+      renderDetailPage(mockApi);
+
+      await screen.findByText('marketplace.offer.create');
+      expect(getOfferCreationStatus).not.toHaveBeenCalled();
+      expect(screen.queryByText(/^Offer creation$/)).toBeNull();
+    });
+
+    it('renders no panel when payloadJson is null (orchestrator threw before record creation)', async () => {
+      const job: SyncJob = { ...offerCreateJob, payloadJson: null };
+      const getOfferCreationStatus = vi.fn();
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(job) },
+        listings: { getOfferCreationStatus },
+      });
+
+      renderDetailPage(mockApi);
+
+      await screen.findByText('marketplace.offer.create');
+      expect(getOfferCreationStatus).not.toHaveBeenCalled();
+      expect(screen.queryByText(/^Offer creation$/)).toBeNull();
+    });
+
+    it('renders no panel when offerCreationRecordId is present but not a string', async () => {
+      const job: SyncJob = {
+        ...offerCreateJob,
+        // Defensive: a future schema drift or a corrupt payload could carry a non-string here.
+        // The type-guard rejects it; the page must not crash and must not call the API.
+        payloadJson: { ...offerCreateJob.payloadJson, offerCreationRecordId: 42 },
+      };
+      const getOfferCreationStatus = vi.fn();
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(job) },
+        listings: { getOfferCreationStatus },
+      });
+
+      renderDetailPage(mockApi);
+
+      await screen.findByText('marketplace.offer.create');
+      expect(getOfferCreationStatus).not.toHaveBeenCalled();
+      expect(screen.queryByText(/^Offer creation$/)).toBeNull();
+    });
+
+    it('renders no panel for non-marketplace.offer.create job types even when payload happens to carry the field', async () => {
+      // Defensive: the type-guard is keyed on jobType. If a future job type accidentally
+      // adds an offerCreationRecordId field to its payload, the panel must not appear.
+      const job: SyncJob = {
+        ...sampleJob,
+        jobType: 'marketplace.orders.poll',
+        payloadJson: { offerCreationRecordId: 'rec-1' },
+      };
+      const getOfferCreationStatus = vi.fn();
+      const mockApi = createMockApiClient({
+        syncJobs: { getById: vi.fn().mockResolvedValue(job) },
+        listings: { getOfferCreationStatus },
+      });
+
+      renderDetailPage(mockApi);
+
+      await screen.findByText('marketplace.orders.poll');
+      expect(getOfferCreationStatus).not.toHaveBeenCalled();
+    });
+  });
 });
