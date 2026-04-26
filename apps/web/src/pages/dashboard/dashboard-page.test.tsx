@@ -22,6 +22,7 @@ function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
     jobType: 'marketplace.orders.poll',
     connectionId: 'conn_1',
     status: 'succeeded',
+    outcome: 'ok',
     attempts: 1,
     maxAttempts: 3,
     nextRunAt: '2026-04-11T00:00:00.000Z',

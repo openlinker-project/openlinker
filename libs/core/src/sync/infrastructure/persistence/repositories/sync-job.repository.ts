@@ -24,6 +24,8 @@ import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
 import {
+  JobOutcome,
+  JobOutcomeValues,
   JobStatus,
   JobStatusValues,
   JobType,
@@ -81,6 +83,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lockedAt = null;
       entity.lockedBy = null;
       entity.lastError = null;
+      entity.outcome = null;
 
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
@@ -166,9 +169,10 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     });
   }
 
-  async markSucceeded(id: string): Promise<void> {
+  async markSucceeded(id: string, outcome: JobOutcome): Promise<void> {
     await this.repository.update(id, {
       status: 'succeeded',
+      outcome,
       lockedAt: null,
       lockedBy: null,
       lastError: null,
@@ -207,10 +211,11 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   }
 
   async findMany(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs> {
-    const where: { status?: string; connectionId?: string; jobType?: string } = {};
+    const where: { status?: string; connectionId?: string; jobType?: string; outcome?: string } = {};
     if (filters.status) where.status = filters.status;
     if (filters.connectionId) where.connectionId = filters.connectionId;
     if (filters.jobType) where.jobType = filters.jobType;
+    if (filters.outcome) where.outcome = filters.outcome;
 
     const [entities, total] = await this.repository.findAndCount({
       where,
@@ -422,6 +427,16 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       throw new InvalidSyncJobStateError('status', entity.status, entity.id);
     }
 
+    // Validate outcome if present. NULL/undefined is the expected resting state
+    // for non-succeeded jobs and historical rows pre-dating issue #400.
+    if (
+      entity.outcome !== null &&
+      entity.outcome !== undefined &&
+      !this.isValidJobOutcome(entity.outcome)
+    ) {
+      throw new InvalidSyncJobStateError('outcome', entity.outcome, entity.id);
+    }
+
     return new SyncJob(
       entity.id,
       entity.jobType,
@@ -437,6 +452,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lastError,
       entity.createdAt,
       entity.updatedAt,
+      entity.outcome ?? null,
     );
   }
 
@@ -452,6 +468,13 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
    */
   private isValidJobStatus(value: string): value is JobStatus {
     return (JobStatusValues as readonly string[]).includes(value);
+  }
+
+  /**
+   * Type guard for JobOutcome
+   */
+  private isValidJobOutcome(value: string): value is JobOutcome {
+    return (JobOutcomeValues as readonly string[]).includes(value);
   }
 }
 

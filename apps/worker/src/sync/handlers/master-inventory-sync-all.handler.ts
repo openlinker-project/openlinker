@@ -18,6 +18,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   JobEnqueuePort,
@@ -43,7 +44,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     private readonly jobEnqueue: JobEnqueuePort,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     this.logger.log(
       `Executing master.inventory.syncAll job ${job.id} for connection ${job.connectionId}`,
     );
@@ -65,7 +66,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         this.logger.log(
           `No product mappings found for connection ${job.connectionId}. Skipping inventory sync.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       this.logger.log(
@@ -109,6 +110,8 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
           `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued (${externalIds.length - productExternalIds.length} synthetic variant IDs skipped)`,
         );
       }
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

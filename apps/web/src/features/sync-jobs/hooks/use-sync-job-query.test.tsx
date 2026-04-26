@@ -27,6 +27,7 @@ const mockJob: SyncJob = {
   jobType: 'marketplace.orders.poll',
   connectionId: 'conn-1',
   status: 'succeeded',
+  outcome: 'ok',
   attempts: 1,
   maxAttempts: 10,
   nextRunAt: '2026-01-01T00:00:00.000Z',

@@ -12,8 +12,15 @@ import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobS
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
-import type { SyncJob, SyncJobFilters, JobStatus, JobType } from '../../features/sync-jobs/api/sync-jobs.types';
+import type {
+  SyncJob,
+  SyncJobFilters,
+  JobOutcome,
+  JobStatus,
+  JobType,
+} from '../../features/sync-jobs/api/sync-jobs.types';
 import {
+  JOB_OUTCOME_VALUES,
   JOB_STATUS_VALUES,
   JOB_TYPE_VALUES,
   SYNC_JOBS_MAX_LIMIT,
@@ -26,7 +33,7 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
   {
     id: 'status',
     header: 'Status',
-    cell: (job) => <SyncJobStatusBadge status={job.status} />,
+    cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
     accessor: (job) => job.status,
     sortable: true,
   },
@@ -87,9 +94,10 @@ export function SyncJobsPage(): ReactElement {
   const status = (searchParams.get('status') as JobStatus | null) ?? undefined;
   const jobType = (searchParams.get('jobType') as JobType | null) ?? undefined;
   const connectionId = searchParams.get('connectionId') ?? undefined;
+  const outcome = (searchParams.get('outcome') as JobOutcome | null) ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
-  const filters: SyncJobFilters = { status, jobType, connectionId };
+  const filters: SyncJobFilters = { status, jobType, connectionId, outcome };
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useSyncJobsQuery(filters, pagination);
@@ -127,12 +135,13 @@ export function SyncJobsPage(): ReactElement {
       next.delete('status');
       next.delete('jobType');
       next.delete('connectionId');
+      next.delete('outcome');
       next.delete('offset');
       return next;
     });
   }
 
-  const filtersActive = Boolean(status || jobType || connectionId);
+  const filtersActive = Boolean(status || jobType || connectionId || outcome);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
@@ -167,6 +176,19 @@ export function SyncJobsPage(): ReactElement {
           {JOB_TYPE_VALUES.map((t) => (
             <option key={t} value={t}>
               {t}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          aria-label="Filter by outcome"
+          value={outcome ?? ''}
+          onChange={(e) => { setFilter('outcome', e.target.value); }}
+        >
+          <option value="">All outcomes</option>
+          {JOB_OUTCOME_VALUES.map((o) => (
+            <option key={o} value={o}>
+              {o === 'business_failure' ? 'business failure' : o}
             </option>
           ))}
         </Select>
@@ -232,7 +254,7 @@ export function SyncJobsPage(): ReactElement {
                   showId={false}
                 />
               ),
-              meta: (job) => <SyncJobStatusBadge status={job.status} />,
+              meta: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
             }}
           />
 

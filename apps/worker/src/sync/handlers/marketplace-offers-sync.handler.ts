@@ -9,6 +9,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   MarketplaceOffersSyncPayloadV1,
@@ -36,7 +37,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     const feedType = payload.feedType ?? (payload.cursorKey ? 'events' : 'offers');
@@ -102,6 +103,8 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
           `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${nextCursor})`,
         );
       }
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

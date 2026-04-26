@@ -7,8 +7,8 @@
  * @module apps/api/src/sync/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
-import type { JobStatus, JobType } from '@openlinker/core/sync';
+import { JobOutcomeValues, JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
+import type { JobOutcome, JobStatus, JobType } from '@openlinker/core/sync';
 
 export class SyncJobResponseDto {
   @ApiProperty({ description: 'Job UUID' })
@@ -22,6 +22,14 @@ export class SyncJobResponseDto {
 
   @ApiProperty({ enum: JobStatusValues, description: 'Current job status' })
   status!: JobStatus;
+
+  @ApiPropertyOptional({
+    enum: JobOutcomeValues,
+    nullable: true,
+    description:
+      'Business outcome of the job (only set on the succeeded path). `ok` = business operation succeeded; `business_failure` = orchestration ran cleanly but the business operation was rejected terminally (e.g. marketplace validation failed). `null` for queued / running / dead jobs and historical rows pre-dating issue #400.',
+  })
+  outcome!: JobOutcome | null;
 
   @ApiProperty({ description: 'Number of execution attempts so far' })
   attempts!: number;

@@ -328,15 +328,32 @@ describe('SyncJobRepository', () => {
   });
 
   describe('markSucceeded', () => {
-    it('should update job status to succeeded and clear lock', async () => {
+    it('should update job status to succeeded with outcome=ok and clear lock', async () => {
       const jobId = randomUUID();
 
       ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
 
-      await repository.markSucceeded(jobId);
+      await repository.markSucceeded(jobId, 'ok');
 
       expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
         status: 'succeeded',
+        outcome: 'ok',
+        lockedAt: null,
+        lockedBy: null,
+        lastError: null,
+      });
+    });
+
+    it('should persist outcome=business_failure when handler reports a terminal business rejection', async () => {
+      const jobId = randomUUID();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.markSucceeded(jobId, 'business_failure');
+
+      expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
+        status: 'succeeded',
+        outcome: 'business_failure',
         lockedAt: null,
         lockedBy: null,
         lastError: null,

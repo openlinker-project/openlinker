@@ -80,7 +80,7 @@ export function PromptTemplateDetailPage(): ReactElement {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   useEffect(() => {
-    if (template === undefined) return;
+    if (!template) return;
     setSystemPrompt(template.systemPrompt);
     setUserPromptTemplate(template.userPromptTemplate);
     setVariables(template.variables);
@@ -88,7 +88,7 @@ export function PromptTemplateDetailPage(): ReactElement {
 
   const canEdit = template?.state === 'draft' && !isMobile;
   const isDirty = useMemo(() => {
-    if (template === undefined) return false;
+    if (!template) return false;
     return (
       systemPrompt !== template.systemPrompt ||
       userPromptTemplate !== template.userPromptTemplate ||
@@ -201,7 +201,7 @@ export function PromptTemplateDetailPage(): ReactElement {
     );
   }
 
-  if (template === undefined) {
+  if (!template) {
     return (
       <PageLayout eyebrow="Settings" title="Prompt template">
         <EmptyState title="Template not found" message="The template may have been deleted." />
