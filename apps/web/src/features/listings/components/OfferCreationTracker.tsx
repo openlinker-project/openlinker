@@ -21,6 +21,7 @@ import {
   TERMINAL_OFFER_CREATION_STATUSES,
   type OfferCreationStatusResponse,
 } from '../api/listings.types';
+import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
 import { canReadCreateOfferRequestSnapshot } from './create-offer-request-to-form-values';
 import { OfferCreationStatusBadge } from './OfferCreationStatusBadge';
 import { OfferCreationErrorList } from './OfferCreationErrorList';
@@ -28,6 +29,13 @@ import { OfferCreationErrorList } from './OfferCreationErrorList';
 interface OfferCreationTrackerProps {
   connectionId: string;
   offerCreationRecordId: string;
+  /** Platform type of the connection. When 'allegro' (and environment
+   *  provided), the draft branch renders an "Open in Allegro seller
+   *  panel" deep link. Optional so existing callers don't break. (#407) */
+  marketplacePlatformType?: string;
+  /** Connection environment ('sandbox' | 'production'). Used together with
+   *  marketplacePlatformType to derive the seller-panel host. (#407) */
+  marketplaceEnvironment?: string;
   /** Optional. When provided, a Dismiss button appears on terminal statuses
    *  and the error variant is rendered with a Dismiss action. When omitted,
    *  the consumer is treated as a static read-only surface (e.g. a page
@@ -45,6 +53,8 @@ interface OfferCreationTrackerProps {
 export function OfferCreationTracker({
   connectionId,
   offerCreationRecordId,
+  marketplacePlatformType,
+  marketplaceEnvironment,
   onDismiss,
   onRetry,
 }: OfferCreationTrackerProps): ReactElement {
@@ -92,6 +102,11 @@ export function OfferCreationTracker({
   }
 
   const isTerminal = TERMINAL_OFFER_CREATION_STATUSES.includes(record.status);
+  const sellerPanelUrl = buildAllegroSellerPanelUrl(
+    marketplacePlatformType,
+    marketplaceEnvironment,
+    record.externalOfferId,
+  );
   // Hide Retry when the snapshot is absent (old records) or carries a
   // schemaVersion this client does not know how to read. A server newer
   // than the client can persist v2+ snapshots; we must not silently
@@ -143,6 +158,41 @@ export function OfferCreationTracker({
           ) : null}
           .
         </p>
+      ) : null}
+
+      {record.status === 'draft' ? (
+        <>
+          <p className="offer-creation-tracker__body">
+            Offer created as a draft on Allegro
+            {record.externalOfferId ? (
+              <>
+                {' '}· external id{' '}
+                <span className="mono-text">{record.externalOfferId}</span>
+              </>
+            ) : null}
+            .
+            {sellerPanelUrl ? (
+              <>
+                {' '}
+                <a href={sellerPanelUrl} target="_blank" rel="noopener noreferrer">
+                  Open in Allegro seller panel
+                </a>
+              </>
+            ) : null}
+          </p>
+          {record.errors && record.errors.length > 0 ? (
+            <>
+              <p className="offer-creation-tracker__body">
+                Allegro reported validation issues that block publishing:
+              </p>
+              <OfferCreationErrorList errors={record.errors} />
+            </>
+          ) : (
+            <p className="offer-creation-tracker__body offer-creation-tracker__body--muted">
+              No inline validation issues — publish manually in the Allegro seller panel.
+            </p>
+          )}
+        </>
       ) : null}
 
       {record.status === 'failed' ? (

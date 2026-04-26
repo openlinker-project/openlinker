@@ -871,8 +871,13 @@ export class AllegroOfferManagerAdapter
       if (Array.isArray(parsed.errors)) {
         return parsed.errors;
       }
-    } catch {
-      // Response wasn't JSON or didn't match the expected shape.
+    } catch (err) {
+      // Genuinely malformed body (HTML proxy errors, etc.) — log breadcrumbs
+      // so operators don't see an opaque `errors=0` upstream (#409).
+      this.logger.warn(
+        `Failed to parse Allegro error body as JSON: ${(err as Error).message}. ` +
+          `Raw body (first 500 chars): ${responseBody.slice(0, 500)}`,
+      );
     }
     return [];
   }

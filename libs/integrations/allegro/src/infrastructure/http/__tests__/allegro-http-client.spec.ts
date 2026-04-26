@@ -474,6 +474,34 @@ describe('AllegroHttpClient', () => {
       await expect(noRetryClient.get('/test')).rejects.toThrow(AllegroApiException);
     });
 
+    it('preserves the full Allegro error body on AllegroApiException (#409)', async () => {
+      // Pre-#409 the body was truncated to 500 chars before being stored on
+      // the exception, which broke downstream `parseAllegroErrors` for any
+      // real Allegro error body (multiple-KB).
+      const longErrorJson = JSON.stringify({
+        errors: [
+          {
+            code: 'ConstraintViolationException.MissingRequiredParameters',
+            message: 'x'.repeat(2000),
+            details: 'y'.repeat(2000),
+          },
+        ],
+      });
+      expect(longErrorJson.length).toBeGreaterThan(500);
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        headers: new Headers(),
+        text: () => Promise.resolve(longErrorJson),
+      });
+
+      await expect(noRetryClient.get('/test')).rejects.toMatchObject({
+        statusCode: 422,
+        responseBody: longErrorJson,
+      });
+    });
+
     it('should throw AllegroApiException on timeout', async () => {
       // noRetryClient: get the timeout exception directly without a retry storm.
       // Mock fetch to resolve only when its AbortSignal fires.

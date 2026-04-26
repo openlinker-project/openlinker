@@ -31,6 +31,10 @@ function active(): OfferCreationStatusResponse {
   return { ...pending(), status: 'active', externalOfferId: 'ext-1' };
 }
 
+function draft(): OfferCreationStatusResponse {
+  return { ...pending(), status: 'draft', externalOfferId: 'ext-1' };
+}
+
 describe('useOfferCreationStatusQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,6 +63,21 @@ describe('useOfferCreationStatusQuery', () => {
     });
     await waitFor(() => expect(result.current.data?.status).toBe('active'));
     // Wait well past one poll interval — the hook must not call again.
+    await new Promise((r) => setTimeout(r, 80));
+    expect(getOfferCreationStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling on draft status (#407)', async () => {
+    // 'draft' is a terminal outcome of the create lifecycle (Allegro
+    // accepted, awaiting manual publish in the seller panel) — polling
+    // it forever wastes requests and keeps "still processing" copy on
+    // screen indefinitely. Regression guard for the terminal-status fix.
+    const getOfferCreationStatus = vi.fn().mockResolvedValue(draft());
+    const apiClient = createMockApiClient({ listings: { getOfferCreationStatus } });
+    const { result } = renderHook(() => useOfferCreationStatusQuery('conn-1', 'rec-1'), {
+      wrapper: wrap(apiClient),
+    });
+    await waitFor(() => expect(result.current.data?.status).toBe('draft'));
     await new Promise((r) => setTimeout(r, 80));
     expect(getOfferCreationStatus).toHaveBeenCalledTimes(1);
   });
