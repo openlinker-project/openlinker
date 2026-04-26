@@ -809,20 +809,19 @@ export class AllegroOfferManagerAdapter
     const returnPolicyId = platformParams['returnPolicyId'];
     const warrantyId = platformParams['warrantyId'];
     const impliedWarrantyId = platformParams['impliedWarrantyId'];
-    if (
-      typeof returnPolicyId === 'string' ||
-      typeof warrantyId === 'string' ||
-      typeof impliedWarrantyId === 'string'
-    ) {
+    if (typeof returnPolicyId === 'string' || typeof warrantyId === 'string') {
       body.afterSalesServices = {};
       if (typeof returnPolicyId === 'string') {
         body.afterSalesServices.returnPolicy = { id: returnPolicyId };
       }
       if (typeof warrantyId === 'string') {
         body.afterSalesServices.warranty = { id: warrantyId };
-      }
-      if (typeof impliedWarrantyId === 'string') {
-        body.afterSalesServices.impliedWarranty = { id: impliedWarrantyId };
+        // Allegro account-level Complaints Terms (Warunki reklamacji) are required
+        // before impliedWarrantyId can be referenced; gate on warrantyId to avoid
+        // ImpliedWarrantyNotDefinedException 422 (#406).
+        if (typeof impliedWarrantyId === 'string') {
+          body.afterSalesServices.impliedWarranty = { id: impliedWarrantyId };
+        }
       }
     }
 
