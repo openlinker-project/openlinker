@@ -37,6 +37,15 @@ export interface AllegroConnectionConfig {
    * - Production: https://api.allegro.pl
    */
   apiBaseUrl?: string;
+
+  /**
+   * Allegro image-upload base URL (optional, defaults based on environment).
+   * The image-binary endpoint lives on a different host from the rest of the
+   * Allegro API, so each connection holds two host configurations.
+   * - Sandbox: https://upload.allegro.pl.allegrosandbox.pl
+   * - Production: https://upload.allegro.pl
+   */
+  uploadBaseUrl?: string;
 }
 
 

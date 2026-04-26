@@ -21,6 +21,7 @@ import {
 import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
+import { AllegroConnectionTokenState } from '../infrastructure/http/allegro-connection-token-state';
 import {
   AllegroOfferManagerAdapter,
   QuantityPollConfig,
@@ -64,8 +65,9 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     // Resolve credentials
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
 
-    // Determine API base URL
+    // Determine API + upload base URLs
     const apiBaseUrl = config.apiBaseUrl || this.getDefaultApiBaseUrl(config.environment);
+    const uploadBaseUrl = config.uploadBaseUrl || this.getDefaultUploadBaseUrl(config.environment);
 
     // Create token refresh callback if token refresh service is available.
     // We forward both accessToken and expiresAt so the HTTP client can update
@@ -84,22 +86,27 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
         }
       : undefined;
 
-    // Create HTTP client
-    const httpClient = new AllegroHttpClient(
+    // One token state shared between both HTTP clients so a refresh triggered
+    // by either client is immediately visible to the other (no wasted 401
+    // round-trip on the sibling client after rotation).
+    const tokenState = new AllegroConnectionTokenState(
       connection.id,
-      apiBaseUrl,
       credentials,
-      config,
-      undefined, // retryConfig
-      tokenRefreshCallback
+      tokenRefreshCallback,
     );
 
-    // Both adapters receive the single per-connection HTTP client + identifier-mapping
-    // instance constructed above. This keeps token-refresh + rate-limit coordination
-    // coherent across the offer-side and order-ingestion paths.
+    // Two HTTP clients per connection — one for api.allegro.pl, one for
+    // upload.allegro.pl. They share the token state above.
+    const httpClient = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState);
+    const uploadHttpClient = new AllegroHttpClient(connection.id, uploadBaseUrl, tokenState);
+
+    // The offer-manager adapter needs both clients (api for offer CRUD,
+    // upload for `POST /sale/images`). The order-source adapter only ever
+    // talks to the api host.
     const offerManagerAdapter = new AllegroOfferManagerAdapter(
       connection.id,
       httpClient,
+      uploadHttpClient,
       identifierMapping,
       connection,
       this.commandRepository,
@@ -127,6 +134,25 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       default:
         this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
         return 'https://api.allegro.pl.allegrosandbox.pl';
+    }
+  }
+
+  /**
+   * Get default image-upload base URL for environment.
+   *
+   * Allegro hosts image uploads on a separate domain (`upload.allegro.pl`)
+   * from the rest of the API; the sandbox follows the same `*.allegrosandbox.pl`
+   * naming pattern as the api host.
+   */
+  private getDefaultUploadBaseUrl(environment: string): string {
+    switch (environment) {
+      case 'sandbox':
+        return 'https://upload.allegro.pl.allegrosandbox.pl';
+      case 'production':
+        return 'https://upload.allegro.pl';
+      default:
+        this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
+        return 'https://upload.allegro.pl.allegrosandbox.pl';
     }
   }
 

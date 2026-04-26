@@ -6,13 +6,16 @@
  * request building, response parsing, retries with backoff, rate limiting,
  * and error handling.
  *
+ * Token state (accessToken, expiresAt, single-flight refresh, cooldown) is
+ * owned by `AllegroConnectionTokenState` so multiple clients per connection
+ * (e.g., the api host + the upload host) can share one refresh path.
+ *
  * @module libs/integrations/allegro/src/infrastructure/http
  * @implements {IAllegroHttpClient}
+ * @see {@link AllegroConnectionTokenState} — owns the per-connection token
  */
 import { IAllegroHttpClient, AllegroHttpRequestOptions, AllegroHttpResponse } from './allegro-http-client.interface';
-import { TokenRefreshCallback, TokenRefreshResult } from './allegro-http-client.types';
-import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
-import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
+import { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
@@ -40,15 +43,6 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
- * Proactive token-refresh window.
- *
- * Refresh proactively when the current access token is within this many
- * milliseconds of its expiresAt timestamp, so we don't pay a wasted 401
- * round-trip on the next request after an idle period.
- */
-const TOKEN_REFRESH_WINDOW_MS = 60_000;
-
-/**
  * Token refreshed error
  *
  * Internal error used to signal that token was refreshed and request should be retried.
@@ -67,45 +61,30 @@ class TokenRefreshedError extends Error {
  * Implements HTTP client for Allegro Public API using native fetch.
  */
 export class AllegroHttpClient implements IAllegroHttpClient {
-  /**
-   * Cooldown after a failed proactive refresh. During this window pre-request
-   * checks short-circuit and rely on the reactive 401 path, preventing a
-   * refresh storm when the refresh endpoint is unhealthy.
-   */
-  private static readonly PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS = 5_000;
-
   private readonly logger = new Logger(AllegroHttpClient.name);
   private readonly baseUrl: string;
-  private accessToken: string; // Mutable to support token refresh
-  private tokenExpiresAt: number | undefined; // Epoch ms; undefined disables proactive refresh
-  private refreshInFlight: Promise<void> | null = null; // Per-instance single-flight
-  private proactiveRefreshCooldownUntil: number | undefined; // Epoch ms; set on failure
   private readonly retryConfig: RetryConfig;
   private readonly connectionId: string;
-  private readonly tokenRefreshCallback?: TokenRefreshCallback;
+  private readonly tokenState: AllegroConnectionTokenState;
 
   constructor(
     connectionId: string,
     baseUrl: string,
-    credentials: AllegroCredentials,
-    _config: AllegroConnectionConfig,
+    tokenState: AllegroConnectionTokenState,
     retryConfig?: Partial<RetryConfig>,
-    tokenRefreshCallback?: TokenRefreshCallback,
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
     this.baseUrl = baseUrl.replace(/\/$/, '');
-    this.accessToken = credentials.accessToken;
-    this.tokenExpiresAt = this.normalizeExpiresAt(credentials.expiresAt);
+    this.tokenState = tokenState;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-    this.tokenRefreshCallback = tokenRefreshCallback;
   }
 
   async get<T = unknown>(
     path: string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
-    return this.request<T>('GET', path, undefined, options);
+    return this.request<T>('GET', path, undefined, undefined, options);
   }
 
   async post<T = unknown>(
@@ -113,7 +92,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     body?: Record<string, unknown> | string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
-    return this.request<T>('POST', path, body, options);
+    return this.request<T>('POST', path, body, undefined, options);
   }
 
   async put<T = unknown>(
@@ -121,7 +100,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     body?: Record<string, unknown> | string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
-    return this.request<T>('PUT', path, body, options);
+    return this.request<T>('PUT', path, body, undefined, options);
   }
 
   async patch<T = unknown>(
@@ -129,7 +108,16 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     body?: Record<string, unknown> | string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
-    return this.request<T>('PATCH', path, body, options);
+    return this.request<T>('PATCH', path, body, undefined, options);
+  }
+
+  async postBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('POST', path, body, contentType, options);
   }
 
   /**
@@ -137,14 +125,18 @@ export class AllegroHttpClient implements IAllegroHttpClient {
    *
    * @param method - HTTP method
    * @param path - API path
-   * @param body - Request body (optional)
+   * @param body - Request body (optional). When `Uint8Array`, the request is
+   *   binary and `binaryContentType` must be supplied.
+   * @param binaryContentType - When body is binary, the MIME type to send.
+   *   When undefined the request takes the JSON default.
    * @param options - Request options
    * @returns Response data
    */
   private async request<T = unknown>(
     method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
-    body?: Record<string, unknown> | string,
+    body?: Record<string, unknown> | string | Uint8Array,
+    binaryContentType?: string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
     let lastError: Error | null = null;
@@ -152,7 +144,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeRequest<T>(method, path, body, options);
+        return await this.executeRequest<T>(method, path, body, binaryContentType, options);
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -210,13 +202,15 @@ export class AllegroHttpClient implements IAllegroHttpClient {
    * @param method - HTTP method
    * @param path - API path
    * @param body - Request body (optional)
+   * @param binaryContentType - MIME for raw binary body; undefined for JSON
    * @param options - Request options
    * @returns Response data
    */
   private async executeRequest<T = unknown>(
     method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
-    body?: Record<string, unknown> | string,
+    body?: Record<string, unknown> | string | Uint8Array,
+    binaryContentType?: string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
     const startTime = Date.now();
@@ -225,7 +219,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     // Proactively refresh the token before building Authorization if we're
     // inside the refresh window. No-op when no callback or no expiresAt,
     // preserving behavior for connections without expiry metadata.
-    await this.ensureFreshToken(traceId);
+    await this.tokenState.ensureFreshToken(traceId, this.logger);
 
     // Build URL with query parameters
     const url = new URL(path, this.baseUrl);
@@ -240,7 +234,11 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     // Structural headers land last because Authorization is owned by the token-refresh
     // flow and X-Trace-Id must match the log correlation ID — neither is a caller concern.
     const headers = new Headers();
-    headers.set('Content-Type', 'application/vnd.allegro.public.v1+json');
+    if (binaryContentType !== undefined) {
+      headers.set('Content-Type', binaryContentType);
+    } else {
+      headers.set('Content-Type', 'application/vnd.allegro.public.v1+json');
+    }
     headers.set('Accept', 'application/vnd.allegro.public.v1+json');
 
     if (options?.headers) {
@@ -249,7 +247,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       }
     }
 
-    headers.set('Authorization', `Bearer ${this.accessToken}`);
+    headers.set('Authorization', `Bearer ${this.tokenState.getAccessToken()}`);
     headers.set('X-Trace-Id', traceId);
 
     // Convert Headers to plain object for fetch (Node.js fetch may have issues with Headers object)
@@ -258,10 +256,16 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       headersObject[key] = value;
     });
 
-    // Prepare request body
-    let requestBody: string | undefined;
-    if (body) {
-      requestBody = typeof body === 'string' ? body : JSON.stringify(body);
+    // Prepare request body. Binary bodies (Uint8Array) flow through to fetch
+    // unchanged; the JSON path stringifies plain objects.
+    let requestBody: string | Uint8Array | undefined;
+    if (body !== undefined) {
+      if (binaryContentType !== undefined) {
+        // Caller supplied a Content-Type — body must be raw bytes.
+        requestBody = body as Uint8Array;
+      } else {
+        requestBody = typeof body === 'string' ? body : JSON.stringify(body);
+      }
     }
 
     // Create AbortController for timeout
@@ -357,7 +361,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   /**
    * Handle HTTP error responses
    *
-   * For 401 errors, attempts token refresh if a refresh callback is available.
+   * For 401 errors, attempts token refresh via `tokenState.refreshOnUnauthorized`.
    * Otherwise, throws AllegroAuthenticationException.
    */
   private async handleError(
@@ -375,36 +379,16 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         bodyLower.includes('token') ||
         bodyLower.includes('invalid_token') ||
         bodyLower.includes('access_token');
-      
-      if (isTokenExpired && this.tokenRefreshCallback) {
-        // Attempt token refresh
-        try {
-          this.logger.warn(
-            `[${traceId}] Access token expired, attempting refresh (connection: ${this.connectionId})`,
-          );
-          const refreshResult = await this.tokenRefreshCallback(this.connectionId);
-          this.applyRefreshResult(refreshResult);
-          this.logger.log(
-            `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`,
-          );
-          // Return a special error that indicates refresh succeeded (caller should retry)
+
+      if (isTokenExpired) {
+        const refreshed = await this.tokenState.refreshOnUnauthorized(traceId, this.logger);
+        if (refreshed) {
+          // Signal caller to retry with the freshly-rotated token.
           throw new TokenRefreshedError('Token refreshed, retry request');
-        } catch (error) {
-          if (error instanceof TokenRefreshedError) {
-            // Re-throw to signal caller to retry
-            throw error;
-          }
-          // Refresh failed - log and fall through to throw authentication exception
-          this.logger.error(
-            `[${traceId}] Token refresh failed: ${(error as Error).message} (connection: ${this.connectionId})`,
-          );
         }
-      } else if (isTokenExpired) {
-        this.logger.warn(
-          `[${traceId}] Access token expired or invalid, refresh required but no refresh callback available (connection: ${this.connectionId})`,
-        );
+        // Refresh path didn't help — fall through to authentication exception.
       }
-      
+
       this.logger.error(`[${traceId}] Authentication failed: Invalid or expired access token`);
       throw new AllegroAuthenticationException(
         `Authentication failed: Invalid or expired access token for ${url}`,
@@ -449,105 +433,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   }
 
   /**
-   * Ensure the access token is fresh before sending a request.
-   *
-   * No-op when the client has no refresh callback or no expiresAt (backward
-   * compat for connections that were created before expiry was persisted).
-   * Short-circuits during the post-failure cooldown so a sick refresh endpoint
-   * can't trigger a refresh storm — the reactive 401 path stays as the
-   * fallback.
-   *
-   * Uses per-instance single-flight: concurrent callers await the same
-   * in-flight refresh promise instead of each triggering their own. Cross-
-   * process / cross-instance serialization is handled by
-   * `AllegroTokenRefreshService`'s Redis lock.
-   */
-  private async ensureFreshToken(traceId: string): Promise<void> {
-    if (!this.tokenRefreshCallback || this.tokenExpiresAt === undefined) {
-      return;
-    }
-    if (
-      this.proactiveRefreshCooldownUntil !== undefined &&
-      Date.now() < this.proactiveRefreshCooldownUntil
-    ) {
-      return;
-    }
-    if (Date.now() < this.tokenExpiresAt - TOKEN_REFRESH_WINDOW_MS) {
-      return;
-    }
-    if (this.refreshInFlight) {
-      await this.refreshInFlight;
-      return;
-    }
-    this.refreshInFlight = this.performProactiveRefresh(traceId).finally(() => {
-      this.refreshInFlight = null;
-    });
-    await this.refreshInFlight;
-  }
-
-  /**
-   * Perform the actual proactive refresh. Updates cached access token and
-   * expiry on success; records a cooldown on failure so subsequent requests
-   * skip the proactive path and rely on the reactive 401 path.
-   */
-  private async performProactiveRefresh(traceId: string): Promise<void> {
-    if (!this.tokenRefreshCallback) {
-      return;
-    }
-    try {
-      this.logger.debug(
-        `[${traceId}] Proactive token refresh (connection: ${this.connectionId})`,
-      );
-      const refreshResult = await this.tokenRefreshCallback(this.connectionId);
-      this.applyRefreshResult(refreshResult);
-      this.logger.log(
-        `[${traceId}] Proactive token refresh succeeded (connection: ${this.connectionId})`,
-      );
-    } catch (error) {
-      // Deliberately swallowed: the reactive 401 path is the documented
-      // fallback (see issue #336 AC). Record a short cooldown so we don't
-      // re-attempt on every request while the endpoint is unhealthy.
-      this.proactiveRefreshCooldownUntil =
-        Date.now() + AllegroHttpClient.PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS;
-      this.logger.warn(
-        `[${traceId}] Proactive token refresh failed, falling back to reactive 401 path: ${(error as Error).message} (connection: ${this.connectionId})`,
-      );
-    }
-  }
-
-  /**
-   * Apply a successful refresh result to cached client state.
-   *
-   * Single place where the access token and cached expiry get updated, so
-   * the proactive and reactive refresh paths can't drift (e.g., one forgetting
-   * to clear the cooldown or update the expiry).
-   */
-  private applyRefreshResult(result: TokenRefreshResult): void {
-    this.accessToken = result.accessToken;
-    this.tokenExpiresAt = this.normalizeExpiresAt(result.expiresAt);
-    this.proactiveRefreshCooldownUntil = undefined;
-  }
-
-  /**
-   * Normalize an `expiresAt` value (Date | string | undefined) to epoch ms.
-   *
-   * Returns `undefined` for absent values, invalid Date objects, or strings
-   * that don't parse — which disables proactive refresh for that client
-   * instance rather than letting NaN silently poison the comparison.
-   */
-  private normalizeExpiresAt(value: Date | string | undefined): number | undefined {
-    if (value === undefined) {
-      return undefined;
-    }
-    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
-    return Number.isFinite(ms) ? ms : undefined;
-  }
-
-  /**
    * Sleep utility for retry delays
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

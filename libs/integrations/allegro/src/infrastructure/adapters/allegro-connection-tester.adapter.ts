@@ -14,6 +14,7 @@
 import { ConnectionTesterPort, ConnectionTestResult, CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { AllegroHttpClient } from '../http/allegro-http-client';
+import { AllegroConnectionTokenState } from '../http/allegro-connection-token-state';
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
 
@@ -38,13 +39,16 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
         connection.credentialsRef,
       );
 
-      const client = new AllegroHttpClient(
-        connection.id,
-        apiBaseUrl,
-        credentials,
-        config as AllegroConnectionConfig,
-        { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 },
-      );
+      // Probe deliberately runs without a token-refresh callback: a stale or
+      // invalid token must surface as a clear failure (caller can prompt the
+      // operator to reconnect), not silently rotate behind the operator's back.
+      const tokenState = new AllegroConnectionTokenState(connection.id, credentials);
+      const client = new AllegroHttpClient(connection.id, apiBaseUrl, tokenState, {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        backoffMultiplier: 1,
+      });
 
       const response = await client.get('/me');
 
