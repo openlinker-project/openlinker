@@ -17,6 +17,14 @@ import { AiRateLimitError } from '@openlinker/core/ai/domain/exceptions/ai-rate-
 import { AiTimeoutError } from '@openlinker/core/ai/domain/exceptions/ai-timeout.exception';
 import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
 import { AiInvalidResponseError } from '@openlinker/core/ai/domain/exceptions/ai-invalid-response.exception';
+import { AiProviderKeyMissingError } from '@openlinker/core/ai/domain/exceptions/ai-provider-key-missing.exception';
+import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
+
+const buildCredentialsPort = (apiKey = 'test-api-key'): jest.Mocked<AiProviderCredentialsPort> => ({
+  getApiKey: jest.fn().mockResolvedValue(apiKey),
+  describe: jest.fn(),
+  invalidate: jest.fn(),
+});
 
 /**
  * Subset of args we care about asserting in the test. Mirrors the keys passed
@@ -71,7 +79,11 @@ describe('VercelAiCompletionAdapter', () => {
   describe('complete', () => {
     it('should forward model, system, prompt, and cache control to generateText when cacheSystemPrompt is true (default)', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await adapter.complete({
         systemPrompt: 'system instructions',
@@ -96,7 +108,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should pass the system prompt as a plain string when cacheSystemPrompt is false', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await adapter.complete({
         systemPrompt: 'sys',
@@ -109,7 +125,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should honour per-call model and maxOutputTokens overrides', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await adapter.complete({
         systemPrompt: 's',
@@ -126,7 +146,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should report the requested model in modelUsed', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       const result = await adapter.complete({
         systemPrompt: 's',
@@ -141,7 +165,11 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest
         .fn()
         .mockResolvedValue(buildSuccessResult({ cacheReadTokens: 42, cachedInputTokensDeprecated: 7 }));
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
 
@@ -152,7 +180,11 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest
         .fn()
         .mockResolvedValue(buildSuccessResult({ cachedInputTokensDeprecated: 11 }));
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
 
@@ -161,7 +193,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should default cachedInputTokens to 0 when both signals are absent', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
 
@@ -171,7 +207,11 @@ describe('VercelAiCompletionAdapter', () => {
     it('should map abort/timeout-shaped errors to AiTimeoutError', async () => {
       const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
       const generateTextFn = jest.fn().mockRejectedValue(abortError);
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
         AiTimeoutError,
@@ -181,7 +221,11 @@ describe('VercelAiCompletionAdapter', () => {
     it('should map a 429 statusCode to AiRateLimitError', async () => {
       const rateLimitError = Object.assign(new Error('rate limited'), { statusCode: 429 });
       const generateTextFn = jest.fn().mockRejectedValue(rateLimitError);
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
         AiRateLimitError,
@@ -190,7 +234,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should map an unknown failure to AiCompletionError', async () => {
       const generateTextFn = jest.fn().mockRejectedValue(new Error('boom'));
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
         AiCompletionError,
@@ -199,7 +247,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should throw AiInvalidResponseError when the provider returns empty text', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult({ text: '' }));
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
         AiInvalidResponseError,
@@ -208,7 +260,11 @@ describe('VercelAiCompletionAdapter', () => {
 
     it('should report a non-negative latency', async () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
-      const adapter = new VercelAiCompletionAdapter(buildConfigService(), generateTextFn);
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        buildCredentialsPort(),
+        generateTextFn,
+      );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
 
@@ -219,6 +275,7 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
       const adapter = new VercelAiCompletionAdapter(
         buildConfigService({ OL_AI_DEFAULT_MAX_TOKENS: '512', OL_AI_TIMEOUT_MS: '15000' }),
+        buildCredentialsPort(),
         generateTextFn,
       );
 
@@ -227,6 +284,40 @@ describe('VercelAiCompletionAdapter', () => {
       const args = captureFirstCallArgs(generateTextFn);
       expect(args.maxOutputTokens).toBe(512);
       expect(args.timeout).toBe(15000);
+    });
+
+    it('should resolve the API key through the credentials port on every call', async () => {
+      const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
+      const credentials = buildCredentialsPort('resolved-key-abc');
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        credentials,
+        generateTextFn,
+      );
+
+      await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
+      await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
+
+      // Per-call resolution — port-level cache is the seam for amortising cost.
+      expect(credentials.getApiKey).toHaveBeenCalledTimes(2);
+    });
+
+    it('should propagate AiProviderKeyMissingError unchanged so callers can distinguish "no key" from generic completion failures', async () => {
+      const generateTextFn = jest.fn();
+      const credentials = buildCredentialsPort();
+      credentials.getApiKey.mockRejectedValueOnce(
+        new AiProviderKeyMissingError('No API key configured for AI provider'),
+      );
+      const adapter = new VercelAiCompletionAdapter(
+        buildConfigService(),
+        credentials,
+        generateTextFn,
+      );
+
+      await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
+        AiProviderKeyMissingError,
+      );
+      expect(generateTextFn).not.toHaveBeenCalled();
     });
   });
 });
