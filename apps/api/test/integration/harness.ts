@@ -77,6 +77,16 @@ export async function startHarness(): Promise<void> {
   // Regression guard: test/integration/bootstrap-admin-disabled.int-spec.ts
   process.env.OL_BOOTSTRAP_ADMIN_ENABLED = 'false';
 
+  // Force the deterministic FakeAiCompletionAdapter for every integration
+  // suite. Without this, `AiIntegrationModule` defaults to `anthropic`, which
+  // (a) requires a real ANTHROPIC_API_KEY in CI and (b) makes any test that
+  // exercises the suggest / provider-settings surface non-deterministic.
+  // Matches the documented intent in the content-editor int-spec docblock
+  // ("OL_AI_PROVIDER=fake makes the suggest path deterministic — no network
+  // egress") and the ai-provider-settings int-spec, which asserts fake-mode
+  // behaviour explicitly.
+  process.env.OL_AI_PROVIDER = 'fake';
+
   // Store containers on globalThis for teardown
   globalThis.__API_TEST_HARNESS__ = { postgres, redis };
 }
