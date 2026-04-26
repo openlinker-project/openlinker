@@ -146,6 +146,53 @@ describe('OfferCreationTracker', () => {
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
   });
 
+  describe('read-only consumers (no onDismiss)', () => {
+    it('renders the failed-status content without a Dismiss button when onDismiss is omitted', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockResolvedValue(
+            makeRecord('failed', {
+              errors: [{ field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' }],
+            }),
+          ),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker connectionId="conn-1" offerCreationRecordId="rec-1" />,
+        { apiClient: mockApi },
+      );
+
+      // Status, error, and id all render — content is identical to the with-onDismiss path.
+      expect(await screen.findByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('EAN is required.')).toBeInTheDocument();
+      expect(screen.getByText('rec-1')).toBeInTheDocument();
+      // …but the terminal-status Dismiss button is suppressed.
+      expect(screen.queryByRole('button', { name: /dismiss/i })).not.toBeInTheDocument();
+    });
+
+    it('renders nothing when the status fetch errors and onDismiss is omitted', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockRejectedValue(new Error('Boom')),
+        },
+      });
+
+      const { container } = renderWithProviders(
+        <OfferCreationTracker connectionId="conn-1" offerCreationRecordId="rec-1" />,
+        { apiClient: mockApi },
+      );
+
+      // Wait for the query to settle. The component must render no error UI
+      // and no Dismiss button — read-only consumers can't act on errors.
+      await waitFor(() => {
+        expect(screen.queryByText(/unable to load status/i)).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: /dismiss/i })).not.toBeInTheDocument();
+      expect(container.querySelector('.offer-creation-tracker--error')).toBeNull();
+    });
+  });
+
   describe('retry affordance (#307)', () => {
     it('renders Retry on a failed record when onRetry is provided and a request snapshot exists', async () => {
       const mockApi = createMockApiClient({

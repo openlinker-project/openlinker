@@ -13,6 +13,23 @@ import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-que
 import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retry-sync-job-mutation';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
+
+/**
+ * Extracts the offer-creation record ID from a `marketplace.offer.create`
+ * job payload. The worker enqueue path (`POST /listings/connections/:id/offers`)
+ * pre-creates the OfferCreationRecord and threads its id through the job
+ * payload so downstream consumers can correlate the job with the business
+ * outcome. Returns null when the field is absent or has a non-string shape
+ * — both cases render no panel (#391 AC3 "gracefully shows nothing").
+ */
+function extractOfferCreationRecordId(job: SyncJob): string | null {
+  if (job.jobType !== 'marketplace.offer.create' || job.payloadJson === null) {
+    return null;
+  }
+  const candidate = (job.payloadJson as Record<string, unknown>).offerCreationRecordId;
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+}
 
 function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
   const items: KeyValueItem[] = [
@@ -75,6 +92,7 @@ export function SyncJobDetailPage(): ReactElement {
 
   const job = query.data;
   const isDead = job.status === 'dead';
+  const offerCreationRecordId = extractOfferCreationRecordId(job);
 
   function handleRetry(): void {
     retry.mutate(job.id, {
@@ -120,6 +138,15 @@ export function SyncJobDetailPage(): ReactElement {
       <section className="detail-section">
         <KeyValueList items={buildSyncJobItems(job)} />
       </section>
+
+      {offerCreationRecordId !== null ? (
+        <section className="detail-section">
+          <OfferCreationTracker
+            connectionId={job.connectionId}
+            offerCreationRecordId={offerCreationRecordId}
+          />
+        </section>
+      ) : null}
 
       {job.lastError ? (
         <section className="detail-section">
