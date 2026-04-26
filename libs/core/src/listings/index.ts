@@ -70,6 +70,7 @@ export type {
 } from './domain/types/offer-creation-request-snapshot.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
+export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
 export type { IOfferCreationExecutionService } from './application/interfaces/offer-creation-execution.service.interface';

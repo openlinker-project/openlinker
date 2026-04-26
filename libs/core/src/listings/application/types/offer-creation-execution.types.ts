@@ -8,6 +8,7 @@
  */
 
 import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { JobOutcome } from '@openlinker/core/sync';
 
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 
@@ -37,4 +38,14 @@ export interface ExecuteOfferCreationInput {
 export interface ExecuteOfferCreationResult {
   /** Terminal-state record after the flow finishes (success or recorded failure). */
   offerCreationRecord: OfferCreationRecord;
+  /**
+   * Business outcome of the creation:
+   * - `'ok'` when the record landed in `active` / `draft` / `validating`,
+   * - `'business_failure'` when the record landed in `failed` (builder
+   *   validation, master-catalog misconfig, marketplace rejection).
+   *
+   * Threaded back through the worker handler to `SyncJobRunner`, which
+   * persists it on `sync_jobs.outcome`. See issue #400 (Plan B for #391).
+   */
+  outcome: JobOutcome;
 }

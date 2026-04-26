@@ -59,6 +59,7 @@ describe('MarketplaceOfferCreateHandler', () => {
   it('delegates to the execution service with parsed payload + job connection id', async () => {
     offerCreation.executeCreation.mockResolvedValue({
       offerCreationRecord: buildRecord({ status: 'draft', externalOfferId: 'allegro-1' }),
+      outcome: 'ok',
     });
 
     const job = createJob({
@@ -71,8 +72,9 @@ describe('MarketplaceOfferCreateHandler', () => {
       idempotencyKey: 'idem-1',
     });
 
-    await handler.execute(job);
+    const result = await handler.execute(job);
 
+    expect(result).toEqual({ outcome: 'ok' });
     expect(offerCreation.executeCreation).toHaveBeenCalledWith({
       internalVariantId: VARIANT_ID,
       connectionId: CONNECTION_ID,
@@ -85,12 +87,13 @@ describe('MarketplaceOfferCreateHandler', () => {
     });
   });
 
-  it('returns normally when the service records a terminal failure', async () => {
+  it('returns outcome=business_failure when the service records a terminal failure', async () => {
     offerCreation.executeCreation.mockResolvedValue({
       offerCreationRecord: buildRecord({
         status: 'failed',
         errors: [{ field: 'price.amount', code: 'REQUIRED', message: 'Required' }],
       }),
+      outcome: 'business_failure',
     });
 
     const job = createJob({
@@ -100,7 +103,7 @@ describe('MarketplaceOfferCreateHandler', () => {
       publishImmediately: false,
     });
 
-    await expect(handler.execute(job)).resolves.toBeUndefined();
+    await expect(handler.execute(job)).resolves.toEqual({ outcome: 'business_failure' });
   });
 
   it('wraps unknown service errors in SyncJobExecutionError for retry', async () => {

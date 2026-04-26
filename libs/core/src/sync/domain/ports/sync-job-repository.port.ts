@@ -11,6 +11,7 @@
  */
 import { SyncJob } from '../entities/sync-job.entity';
 import {
+  JobOutcome,
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
@@ -52,11 +53,17 @@ export interface SyncJobRepositoryPort {
   findAndLockDueJobs(limit: number, workerId: string): Promise<SyncJob[]>;
 
   /**
-   * Mark job as succeeded
+   * Mark job as succeeded and record its business outcome.
+   *
+   * The outcome captures whether the underlying business operation
+   * succeeded or terminated in a non-retryable rejection (e.g. marketplace
+   * validation failed on `marketplace.offer.create`). It is written
+   * atomically with the status flip — see issue #400 (Plan B for #391).
    *
    * @param id - Job ID
+   * @param outcome - Business outcome of the run (`'ok' | 'business_failure'`)
    */
-  markSucceeded(id: string): Promise<void>;
+  markSucceeded(id: string, outcome: JobOutcome): Promise<void>;
 
   /**
    * Mark job as failed and schedule retry

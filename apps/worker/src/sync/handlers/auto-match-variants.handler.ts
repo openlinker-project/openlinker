@@ -9,6 +9,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
@@ -30,7 +31,7 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
     private readonly autoMatchService: IAutoMatchVariantOffersService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
@@ -45,6 +46,8 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
       this.logger.log(
         `Auto-match complete (job=${job.id}): matched=${result.matched}, skippedAmbiguous=${result.skippedAmbiguous}, skippedNoMatch=${result.skippedNoMatch}, errors=${result.errors.length}`,
       );
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

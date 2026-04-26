@@ -10,6 +10,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   MarketplaceOrdersPollPayloadV1,
@@ -31,7 +32,7 @@ export class OrdersPollHandler implements SyncJobHandler {
     private readonly orderIngestion: IOrderIngestionService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
@@ -49,12 +50,14 @@ export class OrdersPollHandler implements SyncJobHandler {
         this.logger.debug(
           `Skipped ingestion due to lock (connection: ${job.connectionId}). Treating job as succeeded.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       this.logger.log(
         `Ingestion completed (connection: ${job.connectionId}): fetched=${result.fetched}, enqueued=${result.enqueued}, committed=${result.committed}`,
       );
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

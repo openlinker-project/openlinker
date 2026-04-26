@@ -8,8 +8,8 @@
 import { IsEnum, IsOptional, IsUUID, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
-import type { JobStatus, JobType } from '@openlinker/core/sync';
+import { JobOutcomeValues, JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
+import type { JobOutcome, JobStatus, JobType } from '@openlinker/core/sync';
 
 export class ListSyncJobsQueryDto {
   @ApiPropertyOptional({ enum: JobStatusValues, description: 'Filter by job status' })
@@ -26,6 +26,15 @@ export class ListSyncJobsQueryDto {
   @IsOptional()
   @IsEnum(JobTypeValues)
   jobType?: JobType;
+
+  @ApiPropertyOptional({
+    enum: JobOutcomeValues,
+    description:
+      'Filter by business outcome (only meaningful for succeeded jobs). `business_failure` surfaces succeeded jobs whose underlying business operation was rejected terminally.',
+  })
+  @IsOptional()
+  @IsEnum(JobOutcomeValues)
+  outcome?: JobOutcome;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()

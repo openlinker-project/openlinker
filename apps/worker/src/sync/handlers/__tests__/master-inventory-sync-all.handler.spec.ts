@@ -79,7 +79,7 @@ describe('MasterInventorySyncAllHandler', () => {
       .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
       .mockRejectedValueOnce(new Error('queue full'));
 
-    await expect(handler.execute(createJob('conn-1'))).resolves.toBeUndefined();
+    await expect(handler.execute(createJob('conn-1'))).resolves.toEqual({ outcome: 'ok' });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
   });
 

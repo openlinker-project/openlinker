@@ -33,6 +33,7 @@ import {
 import { OfferManagerPort, isOfferCreator } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { CreateOfferCommand, CreateOfferResult, CreateOfferValidationError, OfferCreateRejectedException } from '@openlinker/core/listings';
+import type { JobOutcome } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
@@ -41,6 +42,7 @@ import {
   OfferBuilderValidationException,
   OfferBuilderValidationIssue,
 } from '../../domain/exceptions/offer-builder-validation.exception';
+import { OfferCreationInvariantException } from '../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../domain/exceptions/offer-creation-record-not-found.exception';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import { OfferCreationError } from '../../domain/types/offer-creation-record.types';
@@ -88,7 +90,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       const terminal = this.mapBuilderException(error);
       if (terminal) {
         const updated = await this.offerCreationRecords.updateStatus(record.id, 'failed', terminal);
-        return { offerCreationRecord: updated };
+        return this.buildResult(updated, input.connectionId);
       }
       throw error;
     }
@@ -113,7 +115,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
           'failed',
           this.mapRejectionErrors(error),
         );
-        return { offerCreationRecord: updated };
+        return this.buildResult(updated, input.connectionId);
       }
       throw error;
     }
@@ -147,7 +149,46 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       );
     }
 
-    return { offerCreationRecord: finalRecord };
+    return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Map an `OfferCreationRecord` to its corresponding `JobOutcome`.
+   *
+   * Domain semantics — kept here (rather than in the worker handler) so the
+   * future REST entrypoint (#259) gets the same mapping for free.
+   *
+   * - `'failed'` → `'business_failure'` (terminal rejection by marketplace,
+   *   builder, or master-catalog config — not retryable; operator action).
+   * - `'active' | 'draft' | 'validating'` → `'ok'` (the create operation
+   *   itself succeeded; any subsequent async transitions are tracked on the
+   *   record, not the job — see issue #400 risk #4).
+   * - `'pending'` → invariant violation (see {@link OfferCreationInvariantException}).
+   */
+  private recordToOutcome(record: OfferCreationRecord): JobOutcome {
+    switch (record.status) {
+      case 'failed':
+        return 'business_failure';
+      case 'active':
+      case 'draft':
+      case 'validating':
+        return 'ok';
+      case 'pending':
+        throw new OfferCreationInvariantException(record.id, record.status);
+    }
+  }
+
+  private buildResult(
+    record: OfferCreationRecord,
+    connectionId: string,
+  ): ExecuteOfferCreationResult {
+    const outcome = this.recordToOutcome(record);
+    if (outcome === 'business_failure') {
+      this.logger.warn(
+        `Offer creation recorded business_failure. recordId=${record.id} connectionId=${connectionId} errorCount=${record.errors?.length ?? 0}`,
+      );
+    }
+    return { offerCreationRecord: record, outcome };
   }
 
   private async loadOrCreateRecord(

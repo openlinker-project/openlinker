@@ -20,6 +20,7 @@ import { OfferCreationExecutionService } from '../offer-creation-execution.servi
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
 import { OfferBuilderValidationException } from '../../../domain/exceptions/offer-builder-validation.exception';
+import { OfferCreationInvariantException } from '../../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import {
@@ -354,6 +355,109 @@ describe('OfferCreationExecutionService', () => {
       price: { amount: 99.5, currency: 'EUR' },
       overrides,
       idempotencyKey: 'idem-1',
+    });
+  });
+
+  // Issue #400 — Plan B for #391: outcome derivation on the result.
+  describe('outcome derivation', () => {
+    it('returns outcome=ok when adapter persists status=draft', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'draft',
+      } satisfies CreateOfferResult);
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(result.offerCreationRecord.status).toBe('draft');
+    });
+
+    it('returns outcome=ok when adapter persists status=active', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+      } satisfies CreateOfferResult);
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+    });
+
+    it('returns outcome=ok when adapter returns validating (poll handler will resolve later)', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'validating',
+      } satisfies CreateOfferResult);
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+    });
+
+    it('returns outcome=business_failure when builder validation fails', async () => {
+      builder.buildCreateOfferCommand.mockRejectedValueOnce(
+        new OfferBuilderValidationException([
+          { field: 'price.amount', code: 'REQUIRED', message: 'Required' },
+        ]),
+      );
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('business_failure');
+      expect(result.offerCreationRecord.status).toBe('failed');
+    });
+
+    it('returns outcome=business_failure when master catalog is misconfigured', async () => {
+      builder.buildCreateOfferCommand.mockRejectedValueOnce(
+        new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID),
+      );
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('business_failure');
+    });
+
+    it('returns outcome=business_failure when the adapter rejects with OfferCreateRejectedException', async () => {
+      adapter.createOffer.mockRejectedValueOnce(
+        new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
+          { field: 'category', code: 'INVALID', message: 'Unknown category' },
+        ]),
+      );
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('business_failure');
+    });
+
+    it('logs a warn line on the business_failure branch', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      adapter.createOffer.mockRejectedValueOnce(
+        new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
+          { field: 'category', code: 'INVALID', message: 'Unknown category' },
+        ]),
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('business_failure'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('throws OfferCreationInvariantException when the record stays in pending after the flow', async () => {
+      // Return shape never normally occurs — but defensively: the orchestrator should
+      // fail loudly rather than silently mislabel a pending record as ok.
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+      } satisfies CreateOfferResult);
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(buildRecord({ status: 'pending' }));
+
+      await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
+        OfferCreationInvariantException,
+      );
     });
   });
 });

@@ -22,6 +22,21 @@ export const SYNC_JOBS_MAX_LIMIT = 100;
 export const JOB_STATUS_VALUES = ['queued', 'running', 'succeeded', 'dead'] as const;
 export type JobStatus = (typeof JOB_STATUS_VALUES)[number];
 
+/**
+ * Business outcome of a successfully-orchestrated job (issue #400 — Plan B
+ * for #391). Distinct from `status`, which is the orchestration result.
+ *
+ * - `'ok'`: business operation succeeded.
+ * - `'business_failure'`: orchestration ran cleanly but the business
+ *   operation was rejected terminally (e.g. marketplace validation failed
+ *   on `marketplace.offer.create`).
+ *
+ * `null` for queued / running / dead jobs and historical rows pre-dating
+ * the column.
+ */
+export const JOB_OUTCOME_VALUES = ['ok', 'business_failure'] as const;
+export type JobOutcome = (typeof JOB_OUTCOME_VALUES)[number];
+
 export const JOB_TYPE_VALUES = [
   'marketplace.orders.poll',
   'marketplace.order.sync',
@@ -43,6 +58,7 @@ export interface SyncJob {
   jobType: string;
   connectionId: string;
   status: JobStatus;
+  outcome: JobOutcome | null;
   attempts: number;
   maxAttempts: number;
   nextRunAt: string;
@@ -59,6 +75,7 @@ export interface SyncJobFilters {
   status?: JobStatus;
   connectionId?: string;
   jobType?: JobType;
+  outcome?: JobOutcome;
 }
 
 export interface SyncJobPagination {

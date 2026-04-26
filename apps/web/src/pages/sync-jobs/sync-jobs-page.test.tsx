@@ -34,6 +34,7 @@ const sampleJobs: PaginatedSyncJobs = {
       jobType: 'marketplace.orders.poll',
       connectionId: 'conn_allegro_1',
       status: 'succeeded',
+      outcome: 'ok',
       attempts: 1,
       maxAttempts: 3,
       nextRunAt: '2026-01-15T10:05:00.000Z',

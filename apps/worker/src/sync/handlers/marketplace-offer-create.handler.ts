@@ -14,12 +14,17 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 
-import { IOfferCreationExecutionService, OFFER_CREATION_EXECUTION_SERVICE_TOKEN } from '@openlinker/core/listings';
+import {
+  IOfferCreationExecutionService,
+  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
+  OfferCreationInvariantException,
+} from '@openlinker/core/listings';
 import {
   MarketplaceOfferCreatePayloadV1,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   SyncJobHandler,
+  SyncJobHandlerResult,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -34,7 +39,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     private readonly offerCreation: IOfferCreationExecutionService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
@@ -42,7 +47,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     );
 
     try {
-      const { offerCreationRecord } = await this.offerCreation.executeCreation({
+      const { offerCreationRecord, outcome } = await this.offerCreation.executeCreation({
         internalVariantId: payload.internalVariantId,
         connectionId: job.connectionId,
         stock: payload.stock,
@@ -54,9 +59,18 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `Offer creation finished: job=${job.id} recordId=${offerCreationRecord.id} status=${offerCreationRecord.status} externalOfferId=${offerCreationRecord.externalOfferId ?? 'n/a'}`,
+        `Offer creation finished: job=${job.id} recordId=${offerCreationRecord.id} status=${offerCreationRecord.status} outcome=${outcome} externalOfferId=${offerCreationRecord.externalOfferId ?? 'n/a'}`,
       );
+
+      return { outcome };
     } catch (error) {
+      // OfferCreationInvariantException is a code bug — propagate untouched so
+      // the runner classifies it as non-retryable (markDead). Wrapping it in a
+      // SyncJobExecutionError would route it through the retry path, which is
+      // pointless for an invariant violation.
+      if (error instanceof OfferCreationInvariantException) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(
         `marketplace.offer.create job failed: ${message}`,

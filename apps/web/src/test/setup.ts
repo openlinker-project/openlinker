@@ -1,4 +1,18 @@
 import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Auto-unmount rendered components after every test. Without this, components
+// leak across tests within a file and their `useEffect` cleanups never run —
+// notably Radix Toast's `ToastAnnounce` schedules a 1-second `window.setTimeout`
+// (`@radix-ui/react-toast/dist/index.mjs:477`) that fires after happy-dom is
+// torn down, surfacing as an unhandled "ReferenceError: window is not defined"
+// that fails CI even when every assertion passes. RTL only registers this
+// hook automatically when `globals: true` is set in the vitest config; we
+// don't use globals, so we register it explicitly here.
+afterEach(() => {
+  cleanup();
+});
 
 // happy-dom (and jsdom) do not fully implement HTMLDialogElement.showModal / .close
 // with proper focus management. These stubs mirror the browser behaviours that our

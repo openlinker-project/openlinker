@@ -17,6 +17,7 @@ import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-hand
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
 import { AllegroApiException } from '@openlinker/integrations-allegro';
+import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { randomUUID } from 'crypto';
 
 describe('SyncJobRunner', () => {
@@ -118,7 +119,7 @@ describe('SyncJobRunner', () => {
 
     it('should execute handler and mark job as succeeded on success', async () => {
       const job = createMockJob({ status: 'running' });
-      mockHandler.execute.mockResolvedValueOnce(undefined);
+      mockHandler.execute.mockResolvedValueOnce({ outcome: 'ok' });
       handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
       jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
 
@@ -126,7 +127,20 @@ describe('SyncJobRunner', () => {
 
       expect(handlerRegistry.getHandler).toHaveBeenCalledWith(job.jobType);
       expect(mockHandler.execute).toHaveBeenCalledWith(job);
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok');
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('should persist outcome=business_failure when handler reports a terminal business rejection', async () => {
+      const job = createMockJob({ status: 'running' });
+      mockHandler.execute.mockResolvedValueOnce({ outcome: 'business_failure' });
+      handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValueOnce(undefined);
+
+      await (runner as any).processJob(job);
+
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'business_failure');
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -276,6 +290,17 @@ describe('SyncJobRunner', () => {
         'String error',
         expect.any(Date),
       );
+    });
+
+    it('should mark job as dead when OfferCreationInvariantException is thrown (issue #400)', async () => {
+      const job = createMockJob(1, 10);
+      const error = new OfferCreationInvariantException('rec_test_1', 'pending');
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
     it('should mark job as dead when AllegroApiException has deterministic 4xx (415)', async () => {
@@ -481,7 +506,7 @@ describe('SyncJobRunner', () => {
         .mockResolvedValueOnce([job1])
         .mockResolvedValueOnce([]);
 
-      mockHandler.execute.mockResolvedValueOnce(undefined);
+      mockHandler.execute.mockResolvedValueOnce({ outcome: 'ok' });
       handlerRegistry.getHandler.mockReturnValue(mockHandler);
       jobRepository.markSucceeded.mockResolvedValue(undefined);
 

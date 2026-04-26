@@ -33,7 +33,14 @@ export class SyncJobOrmEntity {
   payloadJson!: Record<string, unknown>;
 
   @Column({ type: 'varchar' })
-  status!: string; // 'queued' | 'running' | 'succeeded' | 'failed' | 'dead'
+  status!: string; // 'queued' | 'running' | 'succeeded' | 'dead'
+
+  /**
+   * Business outcome of the run (`'ok' | 'business_failure'`); null for
+   * non-succeeded jobs. See issue #400 (Plan B for #391).
+   */
+  @Column({ type: 'varchar', nullable: true })
+  outcome!: string | null;
 
   @Column({ type: 'varchar', unique: true })
   idempotencyKey!: string;
