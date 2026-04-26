@@ -1,4 +1,8 @@
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
+import {
+  createAiProviderSettingsApi,
+  type AiProviderSettingsApi,
+} from '../../features/ai-provider-settings/api/ai-provider-settings.api';
 import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
@@ -34,6 +38,7 @@ interface ApiClientConfig {
 
 export interface ApiClient {
   adapters: AdaptersApi;
+  aiProviderSettings: AiProviderSettingsApi;
   allegro: AllegroApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -130,6 +135,7 @@ export function createApiClient({
 
   return {
     adapters: createAdaptersApi(request),
+    aiProviderSettings: createAiProviderSettingsApi(request),
     allegro: createAllegroApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

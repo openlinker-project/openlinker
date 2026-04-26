@@ -12,6 +12,7 @@ import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
 import { dashboardRoute } from './dashboard.route';
 import { listingsRoute } from './listings.route';
+import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { inventoryRoute } from './inventory.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
@@ -57,5 +58,6 @@ export const rootRoute: RouteObject = {
     promptTemplateDetailRoute,
     promptTemplatesLegacyListRedirectRoute,
     promptTemplateLegacyDetailRedirectRoute,
+    aiProviderSettingsRoute,
   ],
 };
