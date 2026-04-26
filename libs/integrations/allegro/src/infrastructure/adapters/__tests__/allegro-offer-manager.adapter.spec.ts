@@ -749,6 +749,40 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).not.toHaveProperty('unknownField');
     });
 
+    it('omits afterSalesServices entirely when impliedWarrantyId is set but warrantyId, returnPolicyId are not (#406)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-iwar-only', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: { impliedWarrantyId: 'iwar-1' },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('afterSalesServices');
+    });
+
+    it('omits impliedWarranty when impliedWarrantyId is set with returnPolicy but no warranty (#406)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-ret-iwar', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: { returnPolicyId: 'ret-1', impliedWarrantyId: 'iwar-1' },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.afterSalesServices).toEqual({ returnPolicy: { id: 'ret-1' } });
+    });
+
     it('throws OfferCreateRejectedException when overrides.title is missing (precondition)', async () => {
       const cmd: CreateOfferCommand = {
         ...baseCmd,

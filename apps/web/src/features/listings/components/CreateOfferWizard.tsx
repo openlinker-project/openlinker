@@ -625,7 +625,11 @@ export function CreateOfferWizard({
                 </Select>
               </FormField>
 
-              <FormField label="Implied warranty (optional)" name="impliedWarrantyId">
+              <FormField
+                label="Implied warranty (optional)"
+                name="impliedWarrantyId"
+                description="Allegro requires a Warranty selection alongside Implied warranty; otherwise the value is dropped from the request."
+              >
                 <Select {...form.register('impliedWarrantyId')}>
                   <option value="">No override</option>
                   {(policies?.impliedWarranties ?? []).map((p) => (

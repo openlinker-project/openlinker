@@ -256,6 +256,10 @@ describe('CreateOfferWizard', () => {
 
     // Now on Step 3 — try to advance without picking delivery
     await screen.findByLabelText(/delivery policy/i);
+    // #406: implied-warranty / warranty coupling hint is visible on the policies step.
+    expect(
+      screen.getByText(/Allegro requires a Warranty selection alongside Implied warranty/i),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     expect(await screen.findByText(/delivery policy is required/i)).toBeInTheDocument();
   });
