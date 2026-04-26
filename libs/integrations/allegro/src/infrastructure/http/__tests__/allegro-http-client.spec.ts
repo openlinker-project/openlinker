@@ -11,8 +11,8 @@
  * @module libs/integrations/allegro/src/infrastructure/http/__tests__
  */
 import { AllegroHttpClient } from '../allegro-http-client';
+import { AllegroConnectionTokenState } from '../allegro-connection-token-state';
 import {
-  AllegroConnectionConfig,
   AllegroCredentials,
   AllegroApiException,
   AllegroAuthenticationException,
@@ -30,7 +30,6 @@ describe('AllegroHttpClient', () => {
   let connectionId: string;
   let baseUrl: string;
   let credentials: AllegroCredentials;
-  let config: AllegroConnectionConfig;
 
   beforeEach(() => {
     connectionId = 'connection-123';
@@ -38,14 +37,18 @@ describe('AllegroHttpClient', () => {
     credentials = {
       accessToken: 'test-access-token-12345',
     };
-    config = {
-      environment: 'production',
-    };
 
-    client = new AllegroHttpClient(connectionId, baseUrl, credentials, config);
-    noRetryClient = new AllegroHttpClient(connectionId, baseUrl, credentials, config, {
-      maxRetries: 0,
-    });
+    client = new AllegroHttpClient(
+      connectionId,
+      baseUrl,
+      new AllegroConnectionTokenState(connectionId, credentials),
+    );
+    noRetryClient = new AllegroHttpClient(
+      connectionId,
+      baseUrl,
+      new AllegroConnectionTokenState(connectionId, credentials),
+      { maxRetries: 0 },
+    );
     jest.useFakeTimers();
   });
 
@@ -59,8 +62,7 @@ describe('AllegroHttpClient', () => {
       const clientWithSlash = new AllegroHttpClient(
         connectionId,
         'https://api.allegro.pl/',
-        credentials,
-        config,
+        new AllegroConnectionTokenState(connectionId, credentials),
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       expect((clientWithSlash as any).baseUrl).toBe('https://api.allegro.pl');
@@ -90,8 +92,7 @@ describe('AllegroHttpClient', () => {
       const clientWithCustom = new AllegroHttpClient(
         connectionId,
         baseUrl,
-        credentials,
-        config,
+        new AllegroConnectionTokenState(connectionId, credentials),
         customRetryConfig,
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
@@ -180,6 +181,120 @@ describe('AllegroHttpClient', () => {
           body: JSON.stringify(requestBody),
         }),
       );
+    });
+  });
+
+  describe('postBinary', () => {
+    it('sends raw Uint8Array body without JSON-stringifying it', async () => {
+      const responseData = { location: 'https://images.allegrostatic.com/abc.jpg' };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(responseData)),
+      });
+
+      const bytes = new Uint8Array([0xff, 0xd8, 0xff]); // JPEG magic bytes
+      const response = await client.postBinary('/sale/images', 'image/jpeg', bytes);
+
+      expect(response.data).toEqual(responseData);
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(fetchCall[1]?.method).toBe('POST');
+      expect(fetchCall[1]?.body).toBe(bytes);
+    });
+
+    it('sets Content-Type from the parameter, overriding the JSON default', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.postBinary('/sale/images', 'image/png', new Uint8Array([1, 2, 3]));
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['content-type']).toBe('image/png');
+    });
+
+    it('still attaches Authorization: Bearer <token> from the token state', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.postBinary('/sale/images', 'image/jpeg', new Uint8Array([0xff]));
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers.authorization).toBe('Bearer test-access-token-12345');
+    });
+
+    it('inherits 5xx retry from the request loop', async () => {
+      const responseData = { location: 'https://images.allegrostatic.com/ok.jpg' };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.resolve('Internal Server Error'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve(JSON.stringify(responseData)),
+        });
+
+      const promise = client.postBinary('/sale/images', 'image/jpeg', new Uint8Array([0xff]));
+      await jest.advanceTimersByTimeAsync(1_000);
+      const response = await promise;
+
+      expect(response.data).toEqual(responseData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('inherits 401 reactive token-refresh from the request loop', async () => {
+      const NOW = Date.now();
+      const refreshCallback = jest.fn().mockResolvedValue({
+        accessToken: 'recovered-token',
+        expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+      });
+      const tokenState = new AllegroConnectionTokenState(
+        connectionId,
+        { accessToken: 'stale-token' },
+        refreshCallback,
+      );
+      const refreshClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          headers: new Headers(),
+          text: () => Promise.resolve('{"error":"expired_token"}'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{"location":"https://images.allegrostatic.com/x.jpg"}'),
+        });
+
+      const response = await refreshClient.postBinary(
+        '/sale/images',
+        'image/jpeg',
+        new Uint8Array([0xff]),
+      );
+
+      expect(response.status).toBe(201);
+      expect(refreshCallback).toHaveBeenCalledTimes(1);
+      const retryCall = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
+      const retryHeaders = (retryCall[1]?.headers as Record<string, string>) ?? {};
+      expect(retryHeaders.authorization).toBe('Bearer recovered-token');
     });
   });
 
@@ -502,14 +617,17 @@ describe('AllegroHttpClient', () => {
       callback?: (connectionId: string) => Promise<{ accessToken: string; expiresAt?: Date | string }>;
       accessToken?: string;
     } = {}): AllegroHttpClient => {
-      return new AllegroHttpClient(
+      const tokenState = new AllegroConnectionTokenState(
         connectionId,
-        baseUrl,
         { accessToken: opts.accessToken ?? 'initial-token', expiresAt: opts.expiresAt },
-        config,
-        { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 },
         opts.callback,
       );
+      return new AllegroHttpClient(connectionId, baseUrl, tokenState, {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        backoffMultiplier: 1,
+      });
     };
 
     const mockAlways200 = (): void => {
@@ -676,10 +794,11 @@ describe('AllegroHttpClient', () => {
       const client = new AllegroHttpClient(
         connectionId,
         baseUrl,
-        { accessToken: 'initial-token', expiresAt: new Date(NOW + 30_000) },
-        config,
-        undefined,
-        refreshCallback,
+        new AllegroConnectionTokenState(
+          connectionId,
+          { accessToken: 'initial-token', expiresAt: new Date(NOW + 30_000) },
+          refreshCallback,
+        ),
       );
 
       const response = await client.get('/test');

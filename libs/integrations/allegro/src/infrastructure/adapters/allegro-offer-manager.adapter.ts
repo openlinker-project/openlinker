@@ -56,6 +56,7 @@ import { AllegroApiException } from '../../domain/exceptions/allegro-api.excepti
 import { Logger } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
+import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import {
   AllegroQuantityCommandRepositoryPort,
   AllegroQuantityCommand,
@@ -122,6 +123,13 @@ export class AllegroOfferManagerAdapter
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IAllegroHttpClient,
+    /**
+     * Sibling HTTP client pointed at `upload.allegro.pl[.allegrosandbox.pl]`.
+     * Allegro's image-binary endpoint lives on a different host from the
+     * rest of the API; the factory builds both clients with shared token
+     * state (see `AllegroAdapterFactory`).
+     */
+    private readonly uploadHttpClient: IAllegroHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     _connection: Connection,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
@@ -617,6 +625,33 @@ export class AllegroOfferManagerAdapter
    */
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
     const body = this.buildCreateOfferRequest(cmd);
+
+    // Pre-step: re-host any operator image URLs onto Allegro's CDN. Allegro
+    // resolves URLs in `images[]` server-side and rejects offer creation when
+    // it can't fetch them — so for operators whose PS lives behind localhost,
+    // private IPs, basic-auth, or hardened .htaccess, we proxy bytes via OL.
+    // The util returns a result object (never throws for image failures); we
+    // map it to the neutral `OfferCreateRejectedException` here, where the
+    // adapter-key constant lives.
+    if (body.images && body.images.length > 0) {
+      const originalCount = body.images.length;
+      this.logger.debug(
+        `Allegro image upload starting: connection=${this.connectionId} count=${originalCount}`,
+      );
+      const uploadResult = await uploadImagesViaAllegro(this.uploadHttpClient, body.images);
+      if (!uploadResult.ok) {
+        const codes = Array.from(new Set(uploadResult.failures.map((f) => f.code))).join(',');
+        this.logger.warn(
+          `Allegro image upload rejected create: connection=${this.connectionId} ` +
+            `failed=${uploadResult.failures.length}/${originalCount} codes=${codes}`,
+        );
+        throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, uploadResult.failures);
+      }
+      body.images = uploadResult.locations;
+      this.logger.debug(
+        `Allegro image upload complete: connection=${this.connectionId} count=${body.images.length}`,
+      );
+    }
 
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,

@@ -21,6 +21,7 @@ import { OfferCreateRejectedException, type CreateOfferCommand } from '@openlink
 describe('AllegroOfferManagerAdapter', () => {
   let adapter: AllegroOfferManagerAdapter;
   let httpClient: jest.Mocked<IAllegroHttpClient>;
+  let uploadHttpClient: jest.Mocked<IAllegroHttpClient>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let connection: Connection;
 
@@ -32,6 +33,15 @@ describe('AllegroOfferManagerAdapter', () => {
       post: jest.fn(),
       put: jest.fn(),
       patch: jest.fn(),
+      postBinary: jest.fn(),
+    } as unknown as jest.Mocked<IAllegroHttpClient>;
+
+    uploadHttpClient = {
+      get: jest.fn(),
+      post: jest.fn(),
+      put: jest.fn(),
+      patch: jest.fn(),
+      postBinary: jest.fn(),
     } as unknown as jest.Mocked<IAllegroHttpClient>;
 
     identifierMapping = {
@@ -58,7 +68,13 @@ describe('AllegroOfferManagerAdapter', () => {
       ['OfferManager', 'OrderSource'],
     );
 
-    adapter = new AllegroOfferManagerAdapter(connectionId, httpClient, identifierMapping, connection);
+    adapter = new AllegroOfferManagerAdapter(
+      connectionId,
+      httpClient,
+      uploadHttpClient,
+      identifierMapping,
+      connection,
+    );
   });
 
   describe('updateOfferQuantity', () => {
@@ -283,6 +299,7 @@ describe('AllegroOfferManagerAdapter', () => {
       const adapterWithRepo = new AllegroOfferManagerAdapter(
         connectionId,
         httpClient,
+        uploadHttpClient,
         identifierMapping,
         connection,
         commandRepository,
@@ -560,6 +577,38 @@ describe('AllegroOfferManagerAdapter', () => {
       headers: {},
     });
 
+    let fetchSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      // Default fetch: 200 + image/jpeg + minimal JPEG bytes — keeps existing
+      // specs that don't care about the upload step green.
+      fetchSpy = jest
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(() =>
+          Promise.resolve(
+            new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
+              status: 200,
+              headers: { 'content-type': 'image/jpeg' },
+            }),
+          ),
+        );
+
+      // Default upload: returns deterministic Allegro CDN URLs per call so
+      // multi-image specs can pin order.
+      let i = 0;
+      uploadHttpClient.postBinary.mockImplementation(() =>
+        Promise.resolve({
+          data: { location: `https://images.allegrostatic.com/test/uploaded-${++i}.jpg` },
+          status: 201,
+          headers: {},
+        }),
+      );
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
     it('returns draft status when INACTIVE without validation errors', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({
@@ -731,7 +780,7 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).not.toHaveProperty('images');
     });
 
-    it('emits images as a flat string[] (Allegro POST /sale/product-offers wire shape)', async () => {
+    it('emits images as a flat string[] of Allegro CDN locations (after upload step)', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-img', publication: { status: 'INACTIVE' } }),
       );
@@ -739,10 +788,10 @@ describe('AllegroOfferManagerAdapter', () => {
       await adapter.createOffer(baseCmd);
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-      expect(body.images).toEqual(['https://example.com/img.jpg']);
+      expect(body.images).toEqual(['https://images.allegrostatic.com/test/uploaded-1.jpg']);
     });
 
-    it('preserves image URL order when multiple images are supplied', async () => {
+    it('preserves image order through the upload step when multiple images are supplied', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-img-multi', publication: { status: 'INACTIVE' } }),
       );
@@ -759,7 +808,11 @@ describe('AllegroOfferManagerAdapter', () => {
       });
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-      expect(body.images).toEqual(imageUrls);
+      expect(body.images).toEqual([
+        'https://images.allegrostatic.com/test/uploaded-1.jpg',
+        'https://images.allegrostatic.com/test/uploaded-2.jpg',
+        'https://images.allegrostatic.com/test/uploaded-3.jpg',
+      ]);
     });
 
     it('omits images from the body when overrides.imageUrls is an empty array', async () => {
@@ -871,6 +924,98 @@ describe('AllegroOfferManagerAdapter', () => {
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
       expect(body.external).toEqual({ id: 'ol_variant_abc' });
+    });
+
+    it('throws OfferCreateRejectedException with IMAGE_DOWNLOAD_FAILED when PrestaShop returns 403', async () => {
+      fetchSpy.mockResolvedValue(new Response('Forbidden', { status: 403 }));
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        name: 'OfferCreateRejectedException',
+        statusCode: 0,
+        errors: [
+          expect.objectContaining({
+            field: 'images',
+            code: 'IMAGE_DOWNLOAD_FAILED',
+            message: expect.stringMatching(/403/),
+          }),
+        ],
+      });
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('throws OfferCreateRejectedException with IMAGE_DOWNLOAD_INVALID_TYPE when PrestaShop returns 200 + text/html', async () => {
+      fetchSpy.mockResolvedValue(
+        new Response('<html>Blocked</html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        }),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        name: 'OfferCreateRejectedException',
+        statusCode: 0,
+        errors: [
+          expect.objectContaining({
+            field: 'images',
+            code: 'IMAGE_DOWNLOAD_INVALID_TYPE',
+          }),
+        ],
+      });
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('throws OfferCreateRejectedException with IMAGE_UPLOAD_FAILED when Allegro upload returns 422', async () => {
+      uploadHttpClient.postBinary.mockReset();
+      uploadHttpClient.postBinary.mockRejectedValue(
+        new AllegroApiException(
+          'Unprocessable entity',
+          422,
+          '{"errors":[{"code":"INVALID_IMAGE"}]}',
+          'https://upload.allegro.pl/sale/images',
+        ),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        name: 'OfferCreateRejectedException',
+        statusCode: 0,
+        errors: [
+          expect.objectContaining({
+            field: 'images',
+            code: 'IMAGE_UPLOAD_FAILED',
+            message: expect.stringMatching(/HTTP 422/),
+          }),
+        ],
+      });
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('does not call POST /sale/product-offers when the image upload step fails', async () => {
+      // Reuses the IMAGE_DOWNLOAD_FAILED setup; explicit assertion that no
+      // offer-create attempt was made (regression guard against silently
+      // proceeding with the original PrestaShop URLs).
+      fetchSpy.mockResolvedValue(new Response('Forbidden', { status: 403 }));
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
+        OfferCreateRejectedException,
+      );
+
+      expect(httpClient.post).not.toHaveBeenCalled();
+      expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
+    });
+
+    it('calls upload host /sale/images with the normalized image content-type', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-ct', publication: { status: 'INACTIVE' } }),
+      );
+
+      await adapter.createOffer(baseCmd);
+
+      expect(uploadHttpClient.postBinary).toHaveBeenCalledTimes(1);
+      expect(uploadHttpClient.postBinary).toHaveBeenCalledWith(
+        '/sale/images',
+        'image/jpeg',
+        expect.any(Uint8Array),
+      );
     });
   });
 
