@@ -809,23 +809,16 @@ export class AllegroOfferManagerAdapter
     const returnPolicyId = platformParams['returnPolicyId'];
     const warrantyId = platformParams['warrantyId'];
     const impliedWarrantyId = platformParams['impliedWarrantyId'];
-    // Allegro requires Complaints Terms (Warunki reklamacji) at the seller-account
-    // level before any impliedWarrantyId can be referenced. Treat impliedWarranty
-    // as gated by warranty: if the operator didn't pick a regular warranty, skip
-    // implied so we don't trigger ImpliedWarrantyNotDefinedException (#406).
-    const sendImpliedWarranty =
-      typeof impliedWarrantyId === 'string' && typeof warrantyId === 'string';
-    if (
-      typeof returnPolicyId === 'string' ||
-      typeof warrantyId === 'string' ||
-      sendImpliedWarranty
-    ) {
+    if (typeof returnPolicyId === 'string' || typeof warrantyId === 'string') {
       body.afterSalesServices = {};
       if (typeof returnPolicyId === 'string') {
         body.afterSalesServices.returnPolicy = { id: returnPolicyId };
       }
       if (typeof warrantyId === 'string') {
         body.afterSalesServices.warranty = { id: warrantyId };
+        // Allegro account-level Complaints Terms (Warunki reklamacji) are required
+        // before impliedWarrantyId can be referenced; gate on warrantyId to avoid
+        // ImpliedWarrantyNotDefinedException 422 (#406).
         if (typeof impliedWarrantyId === 'string') {
           body.afterSalesServices.impliedWarranty = { id: impliedWarrantyId };
         }
