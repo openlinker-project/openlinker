@@ -77,6 +77,16 @@ export async function startHarness(): Promise<void> {
   // Regression guard: test/integration/bootstrap-admin-disabled.int-spec.ts
   process.env.OL_BOOTSTRAP_ADMIN_ENABLED = 'false';
 
+  // Force the AiIntegrationModule into fake mode for every integration test.
+  // The fake adapter is wired by `OL_AI_PROVIDER=fake` and avoids real
+  // outbound LLM calls. `ai-provider-settings.int-spec.ts` also asserts the
+  // "fake mode" branch of `/ai-provider-settings` (PUT/DELETE return 400,
+  // GET returns `provider: 'fake'`); without this, those expectations fail
+  // on any environment that doesn't already set the var (notably CI).
+  // See #402's test docstring claim that the harness "boots with
+  // OL_AI_PROVIDER=fake" — this is the line that makes that claim true.
+  process.env.OL_AI_PROVIDER = 'fake';
+
   // Store containers on globalThis for teardown
   globalThis.__API_TEST_HARNESS__ = { postgres, redis };
 }
