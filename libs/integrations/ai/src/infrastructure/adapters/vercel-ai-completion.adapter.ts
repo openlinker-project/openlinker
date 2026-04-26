@@ -5,6 +5,12 @@
  * `@ai-sdk/anthropic` provider. Selected by AiIntegrationModule when
  * `OL_AI_PROVIDER=anthropic` (the default).
  *
+ * The API key is resolved per-request through `AiProviderCredentialsPort`
+ * (DB-backed encrypted credential row → env-var fallback). The provider
+ * factory `createAnthropic({ apiKey })` is instantiated inside `complete()`
+ * so admin key rotations take effect without a process restart — the port's
+ * own 60 s cache keeps the hot path cheap.
+ *
  * Anthropic prompt-cache note: when `cacheSystemPrompt` is true (default), this
  * adapter attaches `providerOptions.anthropic.cacheControl = { type: 'ephemeral' }`
  * to the system message. The Anthropic API silently no-ops cache_control when
@@ -23,15 +29,19 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateText } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { Logger } from '@openlinker/shared/logging';
+import { AI_PROVIDER_CREDENTIALS_PORT_TOKEN } from '@openlinker/core/ai/ai.tokens';
 import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
+import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
 import type {
   AiCompletionInput,
   AiCompletionResult,
 } from '@openlinker/core/ai/domain/types/ai-completion.types';
 import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
 import { AiInvalidResponseError } from '@openlinker/core/ai/domain/exceptions/ai-invalid-response.exception';
+import { AiProviderKeyMissingError } from '@openlinker/core/ai/domain/exceptions/ai-provider-key-missing.exception';
+import { AiProviderSettingsNotApplicableError } from '@openlinker/core/ai/domain/exceptions/ai-provider-settings-not-applicable.exception';
 import { AiRateLimitError } from '@openlinker/core/ai/domain/exceptions/ai-rate-limit.exception';
 import { AiTimeoutError } from '@openlinker/core/ai/domain/exceptions/ai-timeout.exception';
 
@@ -59,6 +69,8 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
 
   constructor(
     private readonly configService: ConfigService,
+    @Inject(AI_PROVIDER_CREDENTIALS_PORT_TOKEN)
+    private readonly credentials: AiProviderCredentialsPort,
     @Optional()
     @Inject(VERCEL_GENERATE_TEXT_FN_TOKEN)
     generateTextOverride?: VercelGenerateTextFn,
@@ -104,8 +116,14 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
 
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
+      // Resolve the API key per-request so admin rotations apply without a
+      // process restart. The credentials port has its own 60 s cache, so the
+      // hot path stays cheap; an `AiProviderKeyMissingError` here surfaces
+      // straight to the caller.
+      const apiKey = await this.credentials.getApiKey();
+      const anthropicProvider = createAnthropic({ apiKey });
       result = await this.generateTextFn({
-        model: anthropic(model),
+        model: anthropicProvider(model),
         system: systemMessage,
         prompt: input.userPrompt,
         maxOutputTokens,
@@ -114,6 +132,15 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
         maxRetries: 0,
       });
     } catch (error: unknown) {
+      // Surface credential-config errors with their original type so callers
+      // can distinguish "no key configured" / "wrong active provider" from
+      // transient SDK failures by `instanceof`.
+      if (
+        error instanceof AiProviderKeyMissingError ||
+        error instanceof AiProviderSettingsNotApplicableError
+      ) {
+        throw error;
+      }
       throw this.mapProviderError(error, requestId);
     }
 
