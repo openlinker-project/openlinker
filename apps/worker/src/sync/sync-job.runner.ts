@@ -15,6 +15,7 @@ import {
   SyncJobEntity,
   SyncJobExecutionError,
 } from '@openlinker/core/sync';
+import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import {
   AllegroApiException,
   AllegroAuthenticationException,
@@ -262,13 +263,13 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Execute handler
-      await handler.execute(job);
+      // Execute handler — handlers return their business outcome (issue #400)
+      const result = await handler.execute(job);
 
-      // Success - mark as succeeded
-      await this.jobRepository.markSucceeded(job.id);
+      // Success - mark as succeeded with the handler's reported outcome
+      await this.jobRepository.markSucceeded(job.id, result.outcome);
       this.logger.log(
-        `Job ${job.id} (${job.jobType}) succeeded after ${job.attempts + 1} attempt(s)`,
+        `Job ${job.id} (${job.jobType}) succeeded with outcome=${result.outcome} after ${job.attempts + 1} attempt(s)`,
       );
     } catch (error) {
       // Handle execution error
@@ -345,6 +346,14 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private isNonRetryableError(error: unknown): boolean {
     const cause =
       error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+
+    // OfferCreationInvariantException is a code bug (orchestrator returned with a
+    // record still in 'pending'). Retries cannot fix it — the next attempt would
+    // hit the same code path. Mark dead immediately so the operator can see it.
+    // See issue #400 (Plan B for #391).
+    if (cause instanceof OfferCreationInvariantException) {
+      return true;
+    }
 
     // AllegroAuthenticationException extends Error directly (not AllegroApiException),
     // so the two branches are disjoint: a 401 never reaches the status-code set below.

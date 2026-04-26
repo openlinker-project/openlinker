@@ -13,6 +13,7 @@
  * @see {@link PrestashopProductSyncHandler} for an example implementation
  */
 import { SyncJob } from '../entities/sync-job.entity';
+import { SyncJobHandlerResult } from '../types/sync-job.types';
 
 /**
  * Sync Job Handler Port
@@ -23,16 +24,19 @@ import { SyncJob } from '../entities/sync-job.entity';
  */
 export interface SyncJobHandler {
   /**
-   * Execute a sync job
+   * Execute a sync job.
    *
-   * Processes the job by pulling data from adapters and persisting to canonical storage.
-   * Throws domain exceptions (e.g., SyncJobExecutionError) for errors that should
-   * trigger retries. The runner will handle retry logic and backoff.
+   * Resolves with a `SyncJobHandlerResult` whose `outcome` describes the
+   * business result; the runner persists it via `markSucceeded(id, outcome)`.
+   * Throws domain exceptions (e.g. `SyncJobExecutionError`) for errors that
+   * should trigger retries. The runner classifies a small set of exception
+   * classes as non-retryable (markDead).
    *
    * @param job - The sync job to execute
+   * @returns SyncJobHandlerResult with the business outcome of the run
    * @throws SyncJobExecutionError if job execution fails (will trigger retry)
    * @throws Error for unexpected errors (will also trigger retry)
    */
-  execute(job: SyncJob): Promise<void>;
+  execute(job: SyncJob): Promise<SyncJobHandlerResult>;
 }
 

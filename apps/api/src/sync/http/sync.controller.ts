@@ -126,15 +126,16 @@ export class SyncController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List sync jobs',
-    description: 'Returns a paginated list of sync jobs. Supports filtering by status, connectionId, and jobType.',
+    description:
+      'Returns a paginated list of sync jobs. Supports filtering by status, outcome, connectionId, and jobType.',
   })
   @ApiResponse({ status: 200, description: 'Paginated job list', type: PaginatedSyncJobsResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listJobs(@Query() query: ListSyncJobsQueryDto): Promise<PaginatedSyncJobsResponseDto> {
-    const { status, connectionId, jobType, limit = 20, offset = 0 } = query;
+    const { status, connectionId, jobType, outcome, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.syncJobRepository.findMany(
-      { status, connectionId, jobType },
+      { status, connectionId, jobType, outcome },
       { limit, offset },
     );
 
@@ -245,6 +246,7 @@ export class SyncController {
       jobType: job.jobType,
       connectionId: job.connectionId,
       status: job.status,
+      outcome: job.outcome ?? null,
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       nextRunAt: job.nextRunAt instanceof Date ? job.nextRunAt.toISOString() : job.nextRunAt,

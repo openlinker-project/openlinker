@@ -10,6 +10,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   JobEnqueuePort,
@@ -58,7 +59,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     private readonly jobEnqueue: JobEnqueuePort,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const productId = job.payload?.productId as string | undefined;
     this.logger.log(
       `Executing inventory propagate to marketplaces job ${job.id} for product ${productId ?? 'unknown'}`,
@@ -79,7 +80,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         this.logger.warn(
           `No inventory found for product ${payload.productId}${payload.variantId ? `, variant ${payload.variantId}` : ''}. Skipping propagation.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       const availableQuantity = inventory.availableQuantity;
@@ -97,7 +98,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         this.logger.debug(
           `No offer mappings found for product ${payload.productId}. Skipping propagation.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       this.logger.log(
@@ -112,7 +113,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         this.logger.debug(
           `No Allegro offer mappings found for product ${payload.productId}. Skipping propagation.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
@@ -146,6 +147,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       this.logger.log(
         `Successfully enqueued ${allegroMappings.length} offer quantity update job(s) for product ${payload.productId}`,
       );
+
+      return { outcome: 'ok' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

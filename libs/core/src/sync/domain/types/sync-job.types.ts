@@ -62,6 +62,41 @@ export const JobStatusValues = [
 export type JobStatus = (typeof JobStatusValues)[number];
 
 /**
+ * Job Outcome Values
+ *
+ * Runtime array of all valid job outcome values. Outcome is the *business*
+ * result of a successfully-orchestrated job — distinct from `status`, which
+ * is the orchestration result. Set only when a job reaches `succeeded`;
+ * `null` for queued / running / dead jobs (no business outcome to record).
+ *
+ * - `'ok'`: business operation succeeded.
+ * - `'business_failure'`: orchestration ran cleanly but the business
+ *   operation was rejected terminally (e.g. marketplace validation failed
+ *   on `marketplace.offer.create`). Not retried by the runner.
+ */
+export const JobOutcomeValues = ['ok', 'business_failure'] as const;
+
+/**
+ * Job Outcome
+ *
+ * Derived union type from JobOutcomeValues.
+ */
+export type JobOutcome = (typeof JobOutcomeValues)[number];
+
+/**
+ * Sync Job Handler Result
+ *
+ * Returned by every `SyncJobHandler.execute` implementation on the success
+ * (no-throw) path. Carries the *business* outcome of the run, threaded back
+ * through the worker runner to `sync_jobs.outcome` (issue #400 — Plan B for
+ * #391). Handlers without a meaningful business-failure branch return
+ * `{ outcome: 'ok' }` unconditionally.
+ */
+export interface SyncJobHandlerResult {
+  outcome: JobOutcome;
+}
+
+/**
  * Enqueue Job Result
  *
  * Returned by JobEnqueuePort.enqueueJob. Separates the job ID from the
@@ -114,6 +149,7 @@ export interface SyncJobFilters {
   status?: JobStatus;
   connectionId?: string;
   jobType?: JobType;
+  outcome?: JobOutcome;
 }
 
 /**
@@ -255,6 +291,17 @@ export interface SyncJob extends SyncJobRequest {
    * Last error message (if job failed)
    */
   lastError?: string | null;
+
+  /**
+   * Business outcome of the job (only set on the succeeded path).
+   *
+   * - `'ok'`: business operation succeeded.
+   * - `'business_failure'`: orchestration succeeded but the business
+   *   operation was rejected terminally (e.g. marketplace validation failed).
+   * - `null`: job has not reached `succeeded` (queued / running / dead),
+   *   or this is a historical row predating the outcome column (#400).
+   */
+  outcome?: JobOutcome | null;
 
   /**
    * Creation timestamp

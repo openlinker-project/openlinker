@@ -22,6 +22,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   JobEnqueuePort,
@@ -49,7 +50,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     private readonly configService: ConfigService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     this.logger.log(
       `Executing master.product.syncAll job ${job.id} for connection ${job.connectionId}`,
     );
@@ -67,7 +68,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
         this.logger.log(
           `No products found on source platform for connection ${job.connectionId}. Nothing to sync.`,
         );
-        return;
+        return { outcome: 'ok' };
       }
 
       this.logger.log(
@@ -109,6 +110,8 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
           `master.product.syncAll for connection ${job.connectionId}: ${succeeded} product sync job(s) enqueued`,
         );
       }
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

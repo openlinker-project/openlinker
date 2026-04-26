@@ -164,6 +164,86 @@ describe('Sync Jobs Read API Integration', () => {
       const http = harness.getHttp();
       await http.get('/sync/jobs').expect(401);
     });
+
+    // Issue #400 — Plan B for #391: outcome field on sync_jobs.
+    describe('outcome field (issue #400)', () => {
+      it('should expose outcome on the response DTO', async () => {
+        const http = harness.getHttp();
+        const dataSource = harness.getDataSource();
+        const token = await loginAsAdmin(http, dataSource);
+
+        await createTestSyncJob(dataSource, {
+          jobType: 'marketplace.offer.create',
+          status: 'succeeded',
+          outcome: 'business_failure',
+        });
+
+        const response = await http
+          .get('/sync/jobs')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+
+        expect(response.body.items).toHaveLength(1);
+        expect(response.body.items[0].outcome).toBe('business_failure');
+      });
+
+      it('should return null outcome for queued / running / dead jobs', async () => {
+        const http = harness.getHttp();
+        const dataSource = harness.getDataSource();
+        const token = await loginAsAdmin(http, dataSource);
+
+        await createTestSyncJob(dataSource, { status: 'queued' });
+        await createTestSyncJob(dataSource, { status: 'dead' });
+
+        const response = await http
+          .get('/sync/jobs')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+
+        expect(response.body.total).toBe(2);
+        for (const item of response.body.items) {
+          expect(item.outcome).toBeNull();
+        }
+      });
+
+      it('should filter by outcome=business_failure', async () => {
+        const http = harness.getHttp();
+        const dataSource = harness.getDataSource();
+        const token = await loginAsAdmin(http, dataSource);
+
+        const failedJob = await createTestSyncJob(dataSource, {
+          jobType: 'marketplace.offer.create',
+          status: 'succeeded',
+          outcome: 'business_failure',
+        });
+        await createTestSyncJob(dataSource, {
+          jobType: 'marketplace.offer.create',
+          status: 'succeeded',
+          outcome: 'ok',
+        });
+        await createTestSyncJob(dataSource, { status: 'queued', outcome: null });
+
+        const response = await http
+          .get('/sync/jobs?outcome=business_failure')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+
+        expect(response.body.total).toBe(1);
+        expect(response.body.items[0].id).toBe(failedJob.id);
+        expect(response.body.items[0].outcome).toBe('business_failure');
+      });
+
+      it('should reject invalid outcome filter values', async () => {
+        const http = harness.getHttp();
+        const dataSource = harness.getDataSource();
+        const token = await loginAsAdmin(http, dataSource);
+
+        await http
+          .get('/sync/jobs?outcome=garbage')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(400);
+      });
+    });
   });
 
   describe('GET /sync/jobs/:id', () => {

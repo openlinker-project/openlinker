@@ -11,6 +11,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   MasterProductSyncByExternalIdPayloadV1,
@@ -32,7 +33,7 @@ export class MasterProductSyncHandler implements SyncJobHandler {
     private readonly masterProductSync: IMasterProductSyncService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     if (String(payload.objectType).toLowerCase() !== 'product') {
@@ -50,6 +51,8 @@ export class MasterProductSyncHandler implements SyncJobHandler {
 
     try {
       await this.masterProductSync.syncFromMasterByExternalId(job.connectionId, payload.externalId);
+
+      return { outcome: 'ok' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(

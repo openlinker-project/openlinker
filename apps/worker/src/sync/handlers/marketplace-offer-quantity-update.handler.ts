@@ -11,6 +11,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   SyncJobHandler,
+  SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobExecutionError,
   MarketplaceOfferQuantityUpdatePayloadV1,
@@ -32,7 +33,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
     private readonly inventorySync: IInventorySyncService,
   ) {}
 
-  async execute(job: SyncJob): Promise<void> {
+  async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
@@ -55,6 +56,8 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
           job.connectionId,
         );
       }
+
+      return { outcome: 'ok' };
     } catch (error) {
       if (error instanceof SyncJobExecutionError) {
         throw error;

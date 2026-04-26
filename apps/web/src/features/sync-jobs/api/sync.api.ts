@@ -66,6 +66,7 @@ function buildQuery(filters?: SyncJobFilters, pagination?: SyncJobPagination): s
   if (filters?.status) params.set('status', filters.status);
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.jobType) params.set('jobType', filters.jobType);
+  if (filters?.outcome) params.set('outcome', filters.outcome);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();

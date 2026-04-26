@@ -33,7 +33,11 @@ function extractOfferCreationRecordId(job: SyncJob): string | null {
 
 function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
   const items: KeyValueItem[] = [
-    { id: 'status', label: 'Status', value: <SyncJobStatusBadge status={job.status} /> },
+    {
+      id: 'status',
+      label: 'Status',
+      value: <SyncJobStatusBadge status={job.status} outcome={job.outcome} />,
+    },
     { id: 'jobId', label: 'Job ID', value: job.id, mono: true },
     {
       id: 'connection',
