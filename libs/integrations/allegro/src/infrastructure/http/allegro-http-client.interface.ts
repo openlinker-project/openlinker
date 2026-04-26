@@ -83,6 +83,28 @@ export interface IAllegroHttpClient {
     body?: Record<string, unknown> | string,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>>;
+
+  /**
+   * Make POST request with a raw binary body.
+   *
+   * Used for endpoints that accept image / file bytes (`upload.allegro.pl/sale/images`)
+   * — `Content-Type` comes from the parameter, not the JSON default. The body
+   * is passed straight to fetch as `Uint8Array`; no JSON serialization happens.
+   * Otherwise behaves identically to `post`: same auth header, same retry +
+   * token-refresh machinery.
+   *
+   * @param path - API path (e.g., '/sale/images')
+   * @param contentType - MIME type of the body (e.g., 'image/jpeg')
+   * @param body - Raw bytes
+   * @param options - Request options (headers, query params)
+   * @returns Response data
+   */
+  postBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
 }
 
 
