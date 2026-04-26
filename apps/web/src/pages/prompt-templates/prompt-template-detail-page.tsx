@@ -201,7 +201,7 @@ export function PromptTemplateDetailPage(): ReactElement {
     );
   }
 
-  if (template === undefined) {
+  if (!template) {
     return (
       <PageLayout eyebrow="Settings" title="Prompt template">
         <EmptyState title="Template not found" message="The template may have been deleted." />

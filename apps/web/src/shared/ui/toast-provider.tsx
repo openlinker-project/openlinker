@@ -32,15 +32,13 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-// In vitest jsdom runs, Radix's auto-dismiss setTimeout can outlive the test
-// file and fire after the worker tears jsdom down, leaving an unhandled
-// "ReferenceError: window is not defined" that fails CI even when all
-// assertions pass. Under `MODE === 'test'` we cap duration at the max int32
-// (~24.8 days), the largest value Node's setTimeout accepts without
-// silently coercing to 1ms — this prevents the timer from firing during
-// the test run while keeping production/dev behaviour at the configured
-// `durationMs` default. Using `Number.POSITIVE_INFINITY` here is unsafe
-// because Node clamps Infinity to 1ms and the timer fires immediately.
+// In vitest happy-dom runs, Radix's auto-dismiss setTimeout can outlive the
+// test if the toast is still mounted at teardown. Test env caps duration at
+// the max int32 (~24.8 days) — the largest value Node's setTimeout accepts
+// without coercion. Combined with `afterEach(cleanup)` in `test/setup.ts`,
+// this guarantees neither the duration timer nor Radix's announce timer
+// (`@radix-ui/react-toast/dist/index.mjs:477`) leaks past a test file.
+// Production / dev behaviour is unchanged at the configured `durationMs`.
 const IS_TEST_ENV = import.meta.env.MODE === 'test';
 const TEST_ENV_DURATION_MS = 2_147_483_647;
 
