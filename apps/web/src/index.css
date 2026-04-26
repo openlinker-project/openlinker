@@ -4366,6 +4366,10 @@ a.kpi-card:focus-visible {
   color: var(--text-secondary);
 }
 
+.offer-creation-tracker__body--muted {
+  color: var(--text-muted);
+}
+
 /*
  * ── Listing detail — Offer creation section (#306) ────────────────
  * Header row (title + status badge) for the embedded OfferCreation

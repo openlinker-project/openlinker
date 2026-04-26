@@ -13,6 +13,7 @@ import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-que
 import { useRetrySyncJobMutation } from '../../features/sync-jobs/hooks/use-retry-sync-job-mutation';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
 
 /**
@@ -69,6 +70,11 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
 export function SyncJobDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useSyncJobQuery(id);
+  // Connection lookup feeds the OfferCreationTracker's draft branch with
+  // platform + environment so it can render the Allegro seller-panel link
+  // (#407). The hook self-disables on empty id, so it's safe to call
+  // before the loading/error guards below.
+  const connectionQuery = useConnectionQuery(query.data?.connectionId ?? '');
   const retry = useRetrySyncJobMutation();
   const { showToast } = useToast();
 
@@ -148,6 +154,12 @@ export function SyncJobDetailPage(): ReactElement {
           <OfferCreationTracker
             connectionId={job.connectionId}
             offerCreationRecordId={offerCreationRecordId}
+            marketplacePlatformType={connectionQuery.data?.platformType}
+            marketplaceEnvironment={
+              typeof connectionQuery.data?.config?.environment === 'string'
+                ? connectionQuery.data.config.environment
+                : undefined
+            }
           />
         </section>
       ) : null}

@@ -77,7 +77,11 @@ export interface UpdateOfferFieldsResult {
  * OL-initiated offer creation lifecycle status.
  *
  * Mirrors `OfferCreationStatus` on the backend. Terminal values are
- * `'active'` and `'failed'` — the tracker stops polling on those.
+ * `'draft'`, `'active'`, and `'failed'` — the tracker stops polling on
+ * those. `'draft'` is terminal because Allegro accepted the offer (it's
+ * sitting in the seller panel awaiting manual publish); OL will not
+ * transition it. `'validating'` stays non-terminal until the
+ * `marketplace.offer.pollCreationStatus` follow-up handler lands. (#407)
  */
 export const OfferCreationStatusValues = [
   'pending',
@@ -88,7 +92,11 @@ export const OfferCreationStatusValues = [
 ] as const;
 export type OfferCreationStatus = (typeof OfferCreationStatusValues)[number];
 
-export const TERMINAL_OFFER_CREATION_STATUSES: readonly OfferCreationStatus[] = ['active', 'failed'];
+export const TERMINAL_OFFER_CREATION_STATUSES: readonly OfferCreationStatus[] = [
+  'draft',
+  'active',
+  'failed',
+];
 
 export interface OfferCreationError {
   field?: string;

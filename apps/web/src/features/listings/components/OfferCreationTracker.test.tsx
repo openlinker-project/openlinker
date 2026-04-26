@@ -332,4 +332,100 @@ describe('OfferCreationTracker', () => {
       expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
     });
   });
+
+  describe('draft status (#407)', () => {
+    it('renders external id, sandbox seller-panel link, and the error list when errors are present', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockResolvedValue(
+            makeRecord('draft', {
+              externalOfferId: 'allegro-555',
+              errors: [
+                { field: 'parameters.42', code: 'MissingValue', message: 'Brand is required.' },
+              ],
+            }),
+          ),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          marketplacePlatformType="allegro"
+          marketplaceEnvironment="sandbox"
+          onDismiss={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      expect(await screen.findByText('Draft')).toBeInTheDocument();
+      expect(screen.getByText('allegro-555')).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: /open in allegro seller panel/i });
+      expect(link).toHaveAttribute(
+        'href',
+        'https://allegro.pl.allegrosandbox.pl/oferta/allegro-555/edit',
+      );
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(screen.getByText('Brand is required.')).toBeInTheDocument();
+    });
+
+    it('renders the production seller-panel link and "no inline validation issues" copy when errors are empty', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockResolvedValue(
+            makeRecord('draft', { externalOfferId: 'allegro-777', errors: null }),
+          ),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          marketplacePlatformType="allegro"
+          marketplaceEnvironment="production"
+          onDismiss={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      expect(await screen.findByText('Draft')).toBeInTheDocument();
+      expect(screen.getByText('allegro-777')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /open in allegro seller panel/i })).toHaveAttribute(
+        'href',
+        'https://allegro.pl/oferta/allegro-777/edit',
+      );
+      expect(
+        screen.getByText(/no inline validation issues/i),
+      ).toBeInTheDocument();
+    });
+
+    it('renders the draft body without an id or seller-panel link when externalOfferId is null and props are omitted', async () => {
+      const mockApi = createMockApiClient({
+        listings: {
+          getOfferCreationStatus: vi.fn().mockResolvedValue(
+            makeRecord('draft', { externalOfferId: null, errors: null }),
+          ),
+        },
+      });
+
+      renderWithProviders(
+        <OfferCreationTracker
+          connectionId="conn-1"
+          offerCreationRecordId="rec-1"
+          onDismiss={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      expect(await screen.findByText('Draft')).toBeInTheDocument();
+      expect(screen.getByText(/offer created as a draft on allegro/i)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /open in allegro seller panel/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/no inline validation issues/i),
+      ).toBeInTheDocument();
+    });
+  });
 });

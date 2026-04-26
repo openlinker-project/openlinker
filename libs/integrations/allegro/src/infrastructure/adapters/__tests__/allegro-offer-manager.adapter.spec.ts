@@ -712,6 +712,66 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
+    it('preserves Allegro error codes through full responseBody round-trip (#409)', async () => {
+      // Pre-#409 the http-client truncated `responseBody` to 500 chars before
+      // it reached `parseAllegroErrors`, which silently swallowed the
+      // resulting `JSON.parse` failure on the half-message and produced an
+      // `OfferCreateRejectedException` with empty `errors[]`. This regression
+      // guard ensures the full body now round-trips end-to-end.
+      const longBody = JSON.stringify({
+        errors: [
+          {
+            code: 'ConstraintViolationException.MissingRequiredParameters',
+            message: 'Missing required parameters',
+            details: 'd'.repeat(6000),
+          },
+        ],
+      });
+      expect(longBody.length).toBeGreaterThan(500);
+
+      httpClient.post.mockRejectedValue(
+        new AllegroApiException(
+          'Allegro API error (422)',
+          422,
+          longBody,
+          'https://api.allegro.pl/sale/product-offers',
+        ),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        errors: [
+          expect.objectContaining({
+            code: 'ConstraintViolationException.MissingRequiredParameters',
+          }),
+        ],
+      });
+    });
+
+    it('logs warn when Allegro response body is not parseable JSON (#409)', async () => {
+      // Access the private logger to assert the breadcrumb warn fires; no
+      // existing log-spy pattern in this suite to follow.
+      const warnSpy = jest.spyOn(
+        (adapter as unknown as { logger: { warn: jest.Mock } }).logger,
+        'warn',
+      );
+
+      httpClient.post.mockRejectedValue(
+        new AllegroApiException(
+          'Allegro API error (502)',
+          502,
+          '<html>upstream proxy error</html>',
+          'https://api.allegro.pl/sale/product-offers',
+        ),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
+        OfferCreateRejectedException,
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to parse Allegro error body as JSON'),
+      );
+    });
+
     it('maps platformParams to delivery/return/warranty/invoice/parameters', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-5', publication: { status: 'INACTIVE' } }),

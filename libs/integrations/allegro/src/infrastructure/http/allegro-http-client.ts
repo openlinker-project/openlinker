@@ -312,10 +312,13 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         data = responseBody ? (JSON.parse(responseBody) as T) : ({} as T);
       } catch (parseError) {
         this.logger.error(`[${traceId}] Failed to parse JSON response: ${(parseError as Error).message}`);
+        // Pass full body to the exception (#409) — `parseAllegroErrors`
+        // and similar downstream parsers need the complete payload, not
+        // a truncated half-message.
         throw new AllegroApiException(
           `Invalid JSON response from Allegro API: ${url.toString()}`,
           response.status,
-          responseBody.substring(0, 500),
+          responseBody,
           url.toString(),
         );
       }
@@ -414,20 +417,25 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
     if (statusCode >= 500) {
       this.logger.error(`[${traceId}] Allegro API server error (${statusCode}): ${url}`);
+      // Full body on the exception (#409); the operator-visible log line
+      // above stays terse since callers don't read multi-KB scroll-back.
       throw new AllegroApiException(
         `Allegro API server error (${statusCode}): ${url}`,
         statusCode,
-        body.substring(0, 500),
+        body,
         url,
       );
     }
 
     // Other client errors (4xx)
     this.logger.error(`[${traceId}] Allegro API error (${statusCode}): ${url} - ${body.substring(0, 200)}`);
+    // Full body on the exception (#409) — `parseAllegroErrors` needs the
+    // complete JSON to pull out Allegro's `errors[]`; the 200-char preview
+    // on the log line above stays for scroll-back readability.
     throw new AllegroApiException(
       `Allegro API error (${statusCode}): ${url}`,
       statusCode,
-      body.substring(0, 500),
+      body,
       url,
     );
   }
