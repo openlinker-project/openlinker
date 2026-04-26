@@ -37,6 +37,7 @@ export const sampleConnection: Connection = {
 type DeepPartialApiClient = {
   request?: ApiClient['request'];
   adapters?: Partial<ApiClient['adapters']>;
+  aiProviderSettings?: Partial<ApiClient['aiProviderSettings']>;
   allegro?: Partial<ApiClient['allegro']>;
   auth?: Partial<ApiClient['auth']>;
   connections?: Partial<ApiClient['connections']>;
@@ -61,6 +62,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
+    aiProviderSettings: {
+      get: vi.fn().mockResolvedValue({
+        provider: 'anthropic',
+        configured: false,
+        source: 'none',
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+      ...overrides.aiProviderSettings,
+    } as ApiClient['aiProviderSettings'],
     allegro: {
       startOAuth: vi.fn().mockResolvedValue({
         authorizationUrl: 'https://example.com/oauth',

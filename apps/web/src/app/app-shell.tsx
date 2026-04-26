@@ -111,7 +111,10 @@ function buildNavGroups({ isAdmin }: NavGroupOptions): NavGroup[] {
     groups.push({
       kind: 'live',
       label: 'AI',
-      items: [{ to: '/ai/prompt-templates', label: 'Prompt templates' }],
+      items: [
+        { to: '/ai/prompt-templates', label: 'Prompt templates' },
+        { to: '/ai/provider-settings', label: 'Provider settings' },
+      ],
     });
   }
 
@@ -147,6 +150,7 @@ const staticCrumbs: Record<string, { group: string; title: string }> = {
   '/adapters': { group: 'Platform', title: 'Adapters' },
   '/settings': { group: 'Platform', title: 'Settings' },
   '/ai/prompt-templates': { group: 'AI', title: 'Prompt templates' },
+  '/ai/provider-settings': { group: 'AI', title: 'Provider settings' },
 };
 
 function resolveCrumbs(pathname: string): { group: string; title: string } {
