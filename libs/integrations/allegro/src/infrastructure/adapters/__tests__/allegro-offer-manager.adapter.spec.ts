@@ -1042,8 +1042,8 @@ describe('AllegroOfferManagerAdapter', () => {
         // Allegro additionally requires productSet[0].product.images (≥1)
         // when creating an inline product — confirmed by sandbox repro
         // returning `ProductValidationException` at path
-        // `productSet[0].product` when images were omitted. We mirror
-        // body.images (already uploaded to Allegro's CDN earlier).
+        // `productSet[0].product` when images were omitted.
+        const expectedCdnImages = ['https://images.allegrostatic.com/test/uploaded-1.jpg'];
         expect(body.productSet).toEqual([
           {
             product: {
@@ -1052,13 +1052,14 @@ describe('AllegroOfferManagerAdapter', () => {
                 { id: '248811', valuesIds: ['248811_canon'] },
                 { id: '237206', values: ['PowerShot SX740'] },
               ],
-              images: body.images,
+              images: expectedCdnImages,
             },
           },
         ]);
-        expect(body.productSet?.[0]?.product?.images).toEqual([
-          'https://images.allegrostatic.com/test/uploaded-1.jpg',
-        ]);
+        // Mirroring contract: product.images is the post-upload offer-level
+        // body.images, not the operator-supplied URL.
+        expect(body.productSet?.[0]?.product?.images).toEqual(body.images);
+        expect(body.images).toEqual(expectedCdnImages);
         // body.product is no longer a permitted key on the request shape.
         expect(body).not.toHaveProperty('product');
       });

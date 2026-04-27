@@ -208,6 +208,13 @@ export interface AllegroOfferParameter {
  * The adapter mirrors `body.name` and `body.images` onto the product entry;
  * see #419 §4.2 for the MVP coupling rationale and #412 for the smart-link
  * follow-up that revisits this.
+ *
+ * **Two-phase population in `AllegroOfferManagerAdapter`**: `name` and
+ * `parameters` are written by `applyPlatformParams` while building the
+ * request body; `images` is mirrored later in `createOffer`, *after* the
+ * image-upload step rewrites `body.images` to Allegro CDN URLs. Doing the
+ * `images` copy in `applyPlatformParams` would leak the pre-upload operator
+ * URL into the inline product, which Allegro rejects.
  */
 export interface AllegroProductSetEntry {
   product?: {

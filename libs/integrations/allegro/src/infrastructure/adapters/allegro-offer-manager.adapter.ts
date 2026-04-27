@@ -736,6 +736,11 @@ export class AllegroOfferManagerAdapter
     // creating an inline product. Mirror the post-upload `body.images` here
     // (not in applyPlatformParams) so the URLs Allegro sees in the inline
     // product match the ones it just minted on its own CDN.
+    //
+    // Invariant: when `body.productSet` is present, it always has exactly
+    // one entry with a populated `product` — see `applyPlatformParams`,
+    // which is the only writer. The optional-chaining guard below is
+    // belt-and-braces against future writers introducing a different shape.
     if (body.productSet?.[0]?.product && body.images && body.images.length > 0) {
       body.productSet[0].product.images = body.images;
     }
