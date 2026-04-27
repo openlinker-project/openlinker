@@ -60,6 +60,7 @@ import { AllegroApiException } from '../../domain/exceptions/allegro-api.excepti
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
+import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import {
   AllegroQuantityCommandRepositoryPort,
@@ -637,7 +638,17 @@ export class AllegroOfferManagerAdapter
     }
 
     if (cmd.fields.title !== undefined) {
-      body.name = cmd.fields.title;
+      // #420 — same Allegro name validator as POST; sanitize operator-typed
+      // titles on PATCH too so title edits are subject to the same gate.
+      const sanitized = sanitizeAllegroName(cmd.fields.title);
+      if (sanitized !== cmd.fields.title) {
+        this.logger.debug(
+          `Allegro name sanitized on offer update: offerId=${cmd.externalOfferId} ` +
+            `connection=${this.connectionId} ` +
+            `original=${JSON.stringify(cmd.fields.title)} sanitized=${JSON.stringify(sanitized)}`,
+        );
+      }
+      body.name = sanitized;
     }
 
     if (cmd.fields.description !== undefined) {
@@ -831,7 +842,22 @@ export class AllegroOfferManagerAdapter
   private buildCreateOfferRequest(cmd: CreateOfferCommand): AllegroProductOfferCreateRequest {
     const platformParams = cmd.overrides?.platformParams ?? {};
 
-    const name = cmd.overrides?.title;
+    // #420 — Allegro's product-name validator (and presumably the offer-name
+    // one) rejects Unicode punctuation like em-dash. ASCII-normalize the
+    // operator title before any other use so both `body.name` and the
+    // mirrored `productSet[0].product.name` (set later in applyPlatformParams)
+    // see the same clean string. Sanitize before the empty-precondition
+    // check so a title of only banned-and-empty-mapped chars (none today,
+    // but future-proof) still trips the precondition correctly.
+    const rawTitle = cmd.overrides?.title;
+    const name = rawTitle !== undefined ? sanitizeAllegroName(rawTitle) : undefined;
+    if (rawTitle !== undefined && name !== rawTitle) {
+      this.logger.debug(
+        `Allegro name sanitized on offer create: connection=${this.connectionId} ` +
+          `original=${JSON.stringify(rawTitle)} sanitized=${JSON.stringify(name)}`,
+      );
+    }
+
     const categoryId = cmd.overrides?.categoryId;
     if (!name || name.trim().length === 0) {
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
@@ -954,6 +980,11 @@ export class AllegroOfferManagerAdapter
     if (Array.isArray(productParameters)) {
       const filtered = productParameters.filter(isAllegroOfferParameterShape);
       if (filtered.length > 0) {
+        // #420 — `body.name` arrives already sanitized via sanitizeAllegroName
+        // in buildCreateOfferRequest (which calls this method); no
+        // re-sanitization needed at this site. Keeping a single sanitization
+        // point per request lifecycle avoids "why is this being sanitized
+        // — wasn't it already?" reader confusion.
         body.productSet = [{ product: { name: body.name, parameters: filtered } }];
       }
     }
