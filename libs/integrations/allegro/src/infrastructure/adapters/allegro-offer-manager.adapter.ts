@@ -914,21 +914,27 @@ export class AllegroOfferManagerAdapter
       body.parameters = parameters.filter(isAllegroOfferParameterShape);
     }
 
-    // #415 — product-section parameters travel under `body.product.parameters[]`,
-    // not `body.parameters[]`. Allegro 422s with `ParameterCategoryException`
-    // when Brand / Model / Manufacturer-code appear in the offer-section
-    // array. Omit `body.product` entirely when the array would be empty —
-    // sending `{ product: { parameters: [] } }` is equally rejected.
+    // #419 — product-section parameters travel under
+    // `body.productSet[0].product.parameters[]`. The earlier #415 fix wrote
+    // them under a top-level `body.product`, which Allegro rejects with
+    // `UnknownJSONProperty: { unknownProperties: "product" }`. Allegro's POST
+    // contract mirrors the GET shape (`AllegroProductOffer.productSet[]`).
     //
-    // Merge into any pre-existing `body.product` rather than overwriting:
-    // today this is a clean greenfield assignment, but if a future capability
-    // populates `body.product` (e.g. a linked-product id, product-level
-    // images), this preserves those fields.
+    // Allegro additionally requires `productSet[].product.name` when creating
+    // an inline product (no existing `product.id` to inherit from). We reuse
+    // `body.name` (the offer title, already validated ≤75 chars) as an MVP
+    // coupling — see #412 for the smart-link follow-up that revisits this.
+    //
+    // Omit `body.productSet` entirely when the array would be empty: sending
+    // `productSet: []` or `productSet: [{ product: { parameters: [] } }]` is
+    // rejected the same way `body.product` was. The empty-rejection
+    // assumption is inherited from #415 and is itself unverified — if the
+    // sandbox repro contradicts it we revisit here.
     const productParameters = platformParams['productParameters'];
     if (Array.isArray(productParameters)) {
       const filtered = productParameters.filter(isAllegroOfferParameterShape);
       if (filtered.length > 0) {
-        body.product = { ...(body.product ?? {}), parameters: filtered };
+        body.productSet = [{ product: { name: body.name, parameters: filtered } }];
       }
     }
   }

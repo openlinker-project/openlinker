@@ -1003,8 +1003,8 @@ describe('AllegroOfferManagerAdapter', () => {
       ]);
     });
 
-    describe('product-section parameters (#415)', () => {
-      it('routes platformParams.productParameters to body.product.parameters', async () => {
+    describe('product-section parameters (#415 / #419)', () => {
+      it('routes platformParams.productParameters to body.productSet[0].product.parameters', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-product', publication: { status: 'INACTIVE' } }),
         );
@@ -1025,21 +1025,31 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           parameters?: Array<{ id: string }>;
-          product?: { parameters?: Array<{ id: string }> };
+          productSet?: Array<{
+            product?: { name?: string; parameters?: Array<{ id: string }> };
+          }>;
         };
-        // Offer-section stays under body.parameters
+        // Offer-section stays under body.parameters.
         expect(body.parameters).toEqual([{ id: 'p_ean', values: ['5901234567890'] }]);
-        // Product-section moved to body.product.parameters — this is the
-        // exact bug from the camera-category 422 (#415).
-        expect(body.product).toEqual({
-          parameters: [
-            { id: '248811', valuesIds: ['248811_canon'] },
-            { id: '237206', values: ['PowerShot SX740'] },
-          ],
-        });
+        // Product-section travels under body.productSet[0].product.parameters
+        // — Allegro's POST contract mirrors the GET shape. The earlier #415
+        // shape (`body.product`) was rejected with `UnknownJSONProperty`.
+        expect(body.productSet).toEqual([
+          {
+            product: {
+              name: 'Test Offer Title',
+              parameters: [
+                { id: '248811', valuesIds: ['248811_canon'] },
+                { id: '237206', values: ['PowerShot SX740'] },
+              ],
+            },
+          },
+        ]);
+        // body.product is no longer a permitted key on the request shape.
+        expect(body).not.toHaveProperty('product');
       });
 
-      it('omits body.product entirely when productParameters is missing or empty', async () => {
+      it('omits body.productSet entirely when productParameters is missing or empty', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } }),
         );
@@ -1056,8 +1066,9 @@ describe('AllegroOfferManagerAdapter', () => {
         });
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        // Allegro 422s on `{ product: { parameters: [] } }` just like on the
-        // offer-side mismatch — the empty array must round-trip to a missing key.
+        // Allegro 422s on `productSet: []` and `productSet: [{ product: { parameters: [] } }]`
+        // just like the offer-side mismatch — empty array must round-trip to a missing key.
+        expect(body).not.toHaveProperty('productSet');
         expect(body).not.toHaveProperty('product');
       });
 
@@ -1082,11 +1093,18 @@ describe('AllegroOfferManagerAdapter', () => {
         });
 
         const body = httpClient.post.mock.calls[0][1] as {
-          product?: { parameters?: Array<{ id: string }> };
+          productSet?: Array<{
+            product?: { name?: string; parameters?: Array<{ id: string }> };
+          }>;
         };
-        expect(body.product).toEqual({
-          parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
-        });
+        expect(body.productSet).toEqual([
+          {
+            product: {
+              name: 'Test Offer Title',
+              parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        ]);
       });
     });
 
