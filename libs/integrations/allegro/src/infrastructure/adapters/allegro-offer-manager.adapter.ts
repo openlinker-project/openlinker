@@ -732,6 +732,14 @@ export class AllegroOfferManagerAdapter
       );
     }
 
+    // #419 — Allegro requires `productSet[0].product.images` (≥1) when
+    // creating an inline product. Mirror the post-upload `body.images` here
+    // (not in applyPlatformParams) so the URLs Allegro sees in the inline
+    // product match the ones it just minted on its own CDN.
+    if (body.productSet?.[0]?.product && body.images && body.images.length > 0) {
+      body.productSet[0].product.images = body.images;
+    }
+
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
     );
@@ -922,8 +930,15 @@ export class AllegroOfferManagerAdapter
     //
     // Allegro additionally requires `productSet[].product.name` when creating
     // an inline product (no existing `product.id` to inherit from). We reuse
-    // `body.name` (the offer title, already validated ≤75 chars) as an MVP
-    // coupling — see #412 for the smart-link follow-up that revisits this.
+    // `body.name` (the offer title, already validated ≤75 chars) — MVP
+    // coupling, revisited by the smart-link follow-up (#412).
+    //
+    // `productSet[0].product.images` is also required (≥1) — confirmed by
+    // sandbox repro returning `ProductValidationException` at path
+    // `productSet[0].product`. We populate it later in `createOffer`, *after*
+    // the image-upload step has rewritten `body.images` to Allegro CDN URLs:
+    // doing it here would copy the pre-upload operator URL, which Allegro
+    // rejects.
     //
     // Omit `body.productSet` entirely when the array would be empty: sending
     // `productSet: []` or `productSet: [{ product: { parameters: [] } }]` is

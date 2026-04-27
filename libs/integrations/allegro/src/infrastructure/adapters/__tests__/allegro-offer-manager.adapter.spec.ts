@@ -1025,8 +1025,13 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           parameters?: Array<{ id: string }>;
+          images?: string[];
           productSet?: Array<{
-            product?: { name?: string; parameters?: Array<{ id: string }> };
+            product?: {
+              name?: string;
+              parameters?: Array<{ id: string }>;
+              images?: string[];
+            };
           }>;
         };
         // Offer-section stays under body.parameters.
@@ -1034,6 +1039,11 @@ describe('AllegroOfferManagerAdapter', () => {
         // Product-section travels under body.productSet[0].product.parameters
         // — Allegro's POST contract mirrors the GET shape. The earlier #415
         // shape (`body.product`) was rejected with `UnknownJSONProperty`.
+        // Allegro additionally requires productSet[0].product.images (≥1)
+        // when creating an inline product — confirmed by sandbox repro
+        // returning `ProductValidationException` at path
+        // `productSet[0].product` when images were omitted. We mirror
+        // body.images (already uploaded to Allegro's CDN earlier).
         expect(body.productSet).toEqual([
           {
             product: {
@@ -1042,8 +1052,12 @@ describe('AllegroOfferManagerAdapter', () => {
                 { id: '248811', valuesIds: ['248811_canon'] },
                 { id: '237206', values: ['PowerShot SX740'] },
               ],
+              images: body.images,
             },
           },
+        ]);
+        expect(body.productSet?.[0]?.product?.images).toEqual([
+          'https://images.allegrostatic.com/test/uploaded-1.jpg',
         ]);
         // body.product is no longer a permitted key on the request shape.
         expect(body).not.toHaveProperty('product');
@@ -1094,7 +1108,11 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
-            product?: { name?: string; parameters?: Array<{ id: string }> };
+            product?: {
+              name?: string;
+              parameters?: Array<{ id: string }>;
+              images?: string[];
+            };
           }>;
         };
         expect(body.productSet).toEqual([
@@ -1102,9 +1120,34 @@ describe('AllegroOfferManagerAdapter', () => {
             product: {
               name: 'Test Offer Title',
               parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+              images: ['https://images.allegrostatic.com/test/uploaded-1.jpg'],
             },
           },
         ]);
+      });
+
+      it('omits productSet[0].product.images when offer-level images are empty', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-no-img', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            imageUrls: [],
+            platformParams: {
+              productParameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        });
+
+        // Allegro will 422 in this case — the wizard prevents it as a
+        // precondition. The adapter should not invent a fallback.
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet?: Array<{ product?: { images?: string[] } }>;
+        };
+        expect(body.productSet?.[0]?.product).not.toHaveProperty('images');
       });
     });
 

@@ -91,7 +91,7 @@ Same 4-test layering established in #415 — only the adapter spec assertion mov
 
 ## 8. Risks & open questions
 
-- **Allegro requires more than `name + parameters` on `productSet[0].product`** — possible. If it 422s with another `MissingValue` for e.g. `category`, `images`, or `description`, we address it inside this same PR per the strengthened acceptance criterion #6 — **not** as a fast-follow. The "ship and follow up" pattern is what produced #419 in the first place; we are explicitly closing that loop here.
+- **Allegro requires more than `name + parameters` on `productSet[0].product`** — confirmed by sandbox repro: Allegro 422'd with `ProductValidationException` at path `productSet[0].product` saying *"At least one image should be attached to add product."* (`Wymagane jest co najmniej 1 zdjęcie`). Fixed inside this PR by mirroring the post-upload `body.images` onto `productSet[0].product.images` after the image-upload step (the mirror **must** happen post-upload — operator URLs would be rejected by Allegro). The same loop applies if Allegro surfaces yet another missing field on the next round-trip: address it here, not in a fast-follow. The "ship and follow up" pattern is what produced #419 in the first place; we are explicitly closing that loop.
 - **Allegro creates duplicate products on each offer** — possible, but that's Allegro's catalog matching problem, not ours. If we observe duplicates accumulating in the seller's product catalog, the answer is the smart-link flow (out of scope here) — not changing the request shape.
 - **Wizard cache** — the FE caches the categoryParameters response for 24 h. Operators with stale caches won't see any difference (the response shape didn't change). No invalidation needed.
 

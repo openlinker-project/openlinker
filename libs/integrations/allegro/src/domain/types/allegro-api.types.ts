@@ -203,15 +203,17 @@ export interface AllegroOfferParameter {
  * One entry in `body.productSet[]` on `POST /sale/product-offers` and in the
  * `productSet[]` field returned by `GET /sale/product-offers/{offerId}`.
  *
- * On POST, Allegro requires `product.name` when creating an inline product
- * (no existing `product.id` to inherit from). The adapter currently fills
- * this from the offer title (`body.name`) — see #419 §4.2 for the MVP
- * coupling rationale and #412 for the smart-link follow-up that revisits it.
+ * On POST, Allegro requires `product.name` and `product.images` (≥1) when
+ * creating an inline product — no existing `product.id` to inherit from.
+ * The adapter mirrors `body.name` and `body.images` onto the product entry;
+ * see #419 §4.2 for the MVP coupling rationale and #412 for the smart-link
+ * follow-up that revisits this.
  */
 export interface AllegroProductSetEntry {
   product?: {
     name?: string;
     parameters?: AllegroOfferParameter[];
+    images?: string[];
   };
 }
 
