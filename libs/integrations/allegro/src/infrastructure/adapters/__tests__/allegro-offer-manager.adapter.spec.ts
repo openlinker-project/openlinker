@@ -445,6 +445,20 @@ describe('AllegroOfferManagerAdapter', () => {
         }),
       ).rejects.toThrow('Allegro API error');
     });
+
+    it('sanitizes the PATCH body.name when the title contains banned Unicode (#420)', async () => {
+      httpClient.patch.mockResolvedValueOnce({ data: undefined, status: 204, headers: {} });
+
+      await adapter.updateOfferFields({
+        externalOfferId: 'allegro-offer-edit',
+        fields: { title: 'Updated — model “Pro”' },
+      });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(
+        '/sale/product-offers/allegro-offer-edit',
+        expect.objectContaining({ name: 'Updated - model "Pro"' }),
+      );
+    });
   });
 
   describe('fetchCategories', () => {
@@ -1149,6 +1163,79 @@ describe('AllegroOfferManagerAdapter', () => {
           productSet?: Array<{ product?: { images?: string[] } }>;
         };
         expect(body.productSet?.[0]?.product).not.toHaveProperty('images');
+      });
+    });
+
+    describe('name sanitization (#420)', () => {
+      it('sanitizes em-dash + curly quotes in body.name on offer create', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-sanitize', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            title: 'Smartphone — “black” edition',
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as { name?: string };
+        // Em-dash → " - ", curly double quotes → ASCII double quotes,
+        // then internal-whitespace collapse.
+        expect(body.name).toBe('Smartphone - "black" edition');
+      });
+
+      it('mirrors the already-sanitized body.name onto productSet[0].product.name without re-sanitization', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-mirror', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            title: 'Camera — Pro',
+            platformParams: {
+              productParameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          name?: string;
+          productSet?: Array<{ product?: { name?: string } }>;
+        };
+        // Single sanitization point per request lifecycle: applyPlatformParams
+        // reads the already-clean body.name and mirrors it directly.
+        const expected = 'Camera - Pro';
+        expect(body.name).toBe(expected);
+        expect(body.productSet?.[0]?.product?.name).toBe(expected);
+      });
+
+      it('round-trips a clean ASCII title unchanged through both name fields', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-clean', publication: { status: 'INACTIVE' } }),
+        );
+
+        const cleanTitle = 'Aparat cyfrowy CANON PowerShot SX740 Lite Edition - srebrny';
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            title: cleanTitle,
+            platformParams: {
+              productParameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          name?: string;
+          productSet?: Array<{ product?: { name?: string } }>;
+        };
+        expect(body.name).toBe(cleanTitle);
+        expect(body.productSet?.[0]?.product?.name).toBe(cleanTitle);
       });
     });
 
