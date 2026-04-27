@@ -66,7 +66,7 @@ export class PrestashopResponseParser {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
               const parseError = new PrestashopParseException(
                 combinedMessage,
-                responseBody.substring(0, 500),
+                responseBody,
                 'auto',
                 error instanceof Error ? error : undefined,
               );
@@ -77,7 +77,7 @@ export class PrestashopResponseParser {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
           const parseError = new PrestashopParseException(
             `Failed to parse JSON response: ${errorMessage}`,
-            responseBody.substring(0, 500),
+            responseBody,
             'json',
             error instanceof Error ? error : undefined,
           );
@@ -95,7 +95,7 @@ export class PrestashopResponseParser {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
         const parseError = new PrestashopParseException(
           `Failed to parse XML response: ${errorMessage}`,
-          responseBody.substring(0, 500),
+          responseBody,
           'xml',
           error instanceof Error ? error : undefined,
         );
@@ -112,7 +112,7 @@ export class PrestashopResponseParser {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
         const parseError = new PrestashopParseException(
           `Failed to parse response: ${errorMessage}`,
-          responseBody.substring(0, 500),
+          responseBody,
           'auto',
           error instanceof Error ? error : undefined,
         );
@@ -123,7 +123,7 @@ export class PrestashopResponseParser {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const parseError = new PrestashopParseException(
       'Unable to determine response format (not JSON or XML)',
-      responseBody.substring(0, 500),
+      responseBody,
       'auto',
     );
     throw parseError;

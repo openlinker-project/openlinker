@@ -57,7 +57,7 @@ import {
   AllegroSellerPolicyEntry,
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
-import { Logger } from '@openlinker/shared/logging';
+import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
@@ -970,10 +970,12 @@ export class AllegroOfferManagerAdapter
       }
     } catch (err) {
       // Genuinely malformed body (HTML proxy errors, etc.) — log breadcrumbs
-      // so operators don't see an opaque `errors=0` upstream (#409).
+      // so operators don't see an opaque `errors=0` upstream (#409). Body is
+      // routed through `formatBodyForLog` (#416) — uncapped by default,
+      // operator-tunable via `OL_LOG_BODY_MAX_BYTES`.
       this.logger.warn(
         `Failed to parse Allegro error body as JSON: ${(err as Error).message}. ` +
-          `Raw body (first 500 chars): ${responseBody.slice(0, 500)}`,
+          `Raw body: ${formatBodyForLog(responseBody)}`,
       );
     }
     return [];

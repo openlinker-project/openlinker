@@ -6,4 +6,5 @@
  * @module libs/shared/src/logging
  */
 export * from './logger';
+export * from './format-body-for-log';
 

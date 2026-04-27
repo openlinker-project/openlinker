@@ -27,7 +27,7 @@ import {
   PrestashopApiException,
   PrestashopProvisioningException,
 } from '@openlinker/integrations-prestashop';
-import { Logger } from '@openlinker/shared/logging';
+import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
 import { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
@@ -306,7 +306,7 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         
         // Log error details for debugging (use warn level so it shows up)
         this.logger.warn(
-          `Order creation error type: ${createError?.constructor?.name || 'unknown'}, message: ${errorMessage.substring(0, 200)}`,
+          `Order creation error type: ${createError?.constructor?.name || 'unknown'}, message: ${formatBodyForLog(errorMessage)}`,
         );
         
         // Check if it's a PrestashopApiException and has responseBody
@@ -315,7 +315,7 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
             responseBody = createError.responseBody;
             // Also check the response body for duplicate key errors
             errorMessage = `${errorMessage} ${responseBody}`;
-            this.logger.warn(`PrestaShop API error response body: ${responseBody.substring(0, 500)}`);
+            this.logger.warn(`PrestaShop API error response body: ${formatBodyForLog(responseBody)}`);
           }
           this.logger.warn(`PrestaShop API error status code: ${createError.statusCode || 'unknown'}`);
         }
