@@ -5,13 +5,24 @@
  * arrays — one per wire-shape section Allegro's `POST /sale/product-offers`
  * accepts:
  *
- *   - `offerParameters`   → `body.parameters[]`        (offer-section)
- *   - `productParameters` → `body.product.parameters[]` (product-section, #415)
+ *   - `offerParameters`   → `body.parameters[]`                    (offer-section)
+ *   - `productParameters` → `body.productSet[0].product.parameters[]` (product-section, #415 / #419)
  *
  * Each parameter is routed by its `section` field on the neutral metadata.
  * Sending a product-section parameter under `body.parameters[]` triggers
  * `ParameterCategoryException` 422 — the split here is the actual fix for
  * the camera-category bug.
+ *
+ * **Strict branching (#423).** The router's branches are explicit:
+ * `'product'` → productParameters, `'offer'` → offerParameters, and
+ * **anything else throws** `MissingCategoryParameterSectionError`. CORE marks
+ * `section` as required, so reaching the throw branch means the data
+ * arrived from outside the type contract — almost certainly a stale
+ * TanStack Query cache predating #417. Failing loud here is preferable to
+ * silently mis-routing the parameter and getting `ParameterCategoryException`
+ * from Allegro at the very last step of the wizard. The cache-version key
+ * (`CATEGORY_PARAMETERS_SCHEMA_VERSION` in listings.types.ts) makes this
+ * throw unreachable in well-behaved deploys; this is the runtime backstop.
  *
  * Handles all four submit shapes per parameter:
  *   - dictionary single → `{ id, valuesIds: [v] }`
@@ -41,8 +52,35 @@ export interface AllegroParameterInput {
 export interface SerializedParameters {
   /** Wire-ready array for `body.parameters[]` (offer-section). Order preserved from metadata. */
   offerParameters: AllegroParameterInput[];
-  /** Wire-ready array for `body.product.parameters[]` (product-section, #415). */
+  /** Wire-ready array for `body.productSet[0].product.parameters[]` (product-section, #415 / #419). */
   productParameters: AllegroParameterInput[];
+}
+
+/**
+ * Thrown by `serializeAllegroParameters` when a `CategoryParameter` arrives
+ * without a `section` value — a contract violation that signals a stale
+ * browser cache predating #417 (when the field was added to the type).
+ *
+ * The wizard's submit handler catches this to render an actionable
+ * "wizard data is out of date — please reload" Alert. Carries the
+ * offending parameter's `id` and `name` as public readonly fields so the
+ * UI can substitute them into operator-facing copy without re-parsing the
+ * error message.
+ */
+export class MissingCategoryParameterSectionError extends Error {
+  public readonly parameterId: string;
+  public readonly parameterName: string;
+
+  constructor(parameterId: string, parameterName: string) {
+    super(
+      `Category parameter '${parameterId}' (${parameterName}) is missing a 'section' value. ` +
+        `This usually means the wizard's category-parameters data was cached before the schema ` +
+        `field was introduced (#417). Reload the wizard to refetch.`,
+    );
+    this.name = 'MissingCategoryParameterSectionError';
+    this.parameterId = parameterId;
+    this.parameterName = parameterName;
+  }
 }
 
 export function serializeAllegroParameters(
@@ -58,8 +96,15 @@ export function serializeAllegroParameters(
     if (out === null) continue;
     if (param.section === 'product') {
       productParameters.push(out);
-    } else {
+    } else if (param.section === 'offer') {
       offerParameters.push(out);
+    } else {
+      // #423 — `section` is required by the CategoryParameter type contract.
+      // Reaching this branch means the data arrived stale (most likely from
+      // a TanStack Query cache predating #417). Fail loud rather than
+      // silently mis-routing to offer-section, which would surface as
+      // `ParameterCategoryException` from Allegro after a long wizard flow.
+      throw new MissingCategoryParameterSectionError(param.id, param.name);
     }
   }
 

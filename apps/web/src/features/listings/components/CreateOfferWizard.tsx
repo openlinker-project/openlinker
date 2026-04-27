@@ -57,7 +57,10 @@ import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
 import { autoPrefillParameters } from './auto-prefill-parameters';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
-import { serializeAllegroParameters } from './serialize-allegro-parameters';
+import {
+  MissingCategoryParameterSectionError,
+  serializeAllegroParameters,
+} from './serialize-allegro-parameters';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
 import type { CategoryParameter, CreateOfferRequest } from '../api/listings.types';
 import {
@@ -227,6 +230,11 @@ export function CreateOfferWizard({
   // exclude any field the operator has dirtied (so the hint disappears once
   // they edit the value).
   const [prefilledIds, setPrefilledIds] = useState<ReadonlySet<string>>(new Set());
+  // #423 — surfaces MissingCategoryParameterSectionError thrown by the
+  // serializer when a stale TanStack Query cache returns a CategoryParameter
+  // without `section`. Stores the offending parameter's name for the alert
+  // copy. `null` means "no stale-data error active".
+  const [staleSchemaError, setStaleSchemaError] = useState<string | null>(null);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
   // Reset wizard state on open. A fresh idempotency key is minted every
@@ -458,6 +466,8 @@ export function CreateOfferWizard({
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
+    setStaleSchemaError(null); // clear from any prior submit
+
     const platformParams: Record<string, unknown> = { deliveryPolicyId: values.deliveryPolicyId };
     if (values.returnPolicyId) platformParams.returnPolicyId = values.returnPolicyId;
     if (values.warrantyId) platformParams.warrantyId = values.warrantyId;
@@ -469,10 +479,27 @@ export function CreateOfferWizard({
     // remaining required-field gaps via `mutation.error`. The output is
     // split into offer-section and product-section arrays per #415; each
     // travels under a different key on the create-offer body.
-    const { offerParameters, productParameters } = serializeAllegroParameters(
-      (values.parameters as CategoryParameterFormValues | undefined) ?? {},
-      categoryParameters,
-    );
+    //
+    // #423 — `serializeAllegroParameters` throws `MissingCategoryParameterSectionError`
+    // when a CategoryParameter arrives without a `section` value (a stale
+    // cache predating #417). Catch the typed error and surface it through
+    // `staleSchemaError` so the operator gets an actionable "reload the
+    // wizard" message — anything else rethrows as a real bug.
+    let offerParameters: ReturnType<typeof serializeAllegroParameters>['offerParameters'];
+    let productParameters: ReturnType<typeof serializeAllegroParameters>['productParameters'];
+    try {
+      ({ offerParameters, productParameters } = serializeAllegroParameters(
+        (values.parameters as CategoryParameterFormValues | undefined) ?? {},
+        categoryParameters,
+      ));
+    } catch (error) {
+      if (error instanceof MissingCategoryParameterSectionError) {
+        setStaleSchemaError(error.parameterName);
+        return;
+      }
+      throw error;
+    }
+
     if (offerParameters.length > 0) {
       platformParams.parameters = offerParameters;
     }
@@ -532,6 +559,36 @@ export function CreateOfferWizard({
         {mutation.error ? (
           <Alert tone="error" title="Offer creation failed">
             {mutation.error.message}
+          </Alert>
+        ) : null}
+        {staleSchemaError !== null ? (
+          <Alert tone="error" title="Wizard data is out of date">
+            <p>
+              Category parameter <strong>{staleSchemaError}</strong> is missing data that was
+              added in a recent update. Please reload this page to refetch the latest category
+              schema.
+            </p>
+            <p>
+              <strong>Reloading will discard your in-progress wizard values</strong> — copy
+              the offer title, price, and any filled fields before refreshing if you want to
+              preserve them.
+            </p>
+            <div className="alert__actions">
+              <Button
+                type="button"
+                tone="primary"
+                onClick={() => window.location.reload()}
+              >
+                Reload now
+              </Button>
+              <Button
+                type="button"
+                tone="ghost"
+                onClick={() => setStaleSchemaError(null)}
+              >
+                Dismiss
+              </Button>
+            </div>
           </Alert>
         ) : null}
 

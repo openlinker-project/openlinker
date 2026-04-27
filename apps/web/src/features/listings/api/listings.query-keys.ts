@@ -1,3 +1,4 @@
+import { CATEGORY_PARAMETERS_SCHEMA_VERSION } from './listings.types';
 import type { ListingsFilters, ListingsPagination } from './listings.types';
 
 export const listingsQueryKeys = {
@@ -12,6 +13,15 @@ export const listingsQueryKeys = {
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
   sellerPolicies: (connectionId: string) =>
     ['listings', 'sellerPolicies', connectionId] as const,
+  // The version constant at index 2 cache-busts every browser's in-flight
+  // TanStack Query cache when the response shape changes. See #423 + the
+  // CATEGORY_PARAMETERS_SCHEMA_VERSION JSDoc in listings.types.ts.
   categoryParameters: (connectionId: string, categoryId: string) =>
-    ['listings', 'categoryParameters', connectionId, categoryId] as const,
+    [
+      'listings',
+      'categoryParameters',
+      CATEGORY_PARAMETERS_SCHEMA_VERSION,
+      connectionId,
+      categoryId,
+    ] as const,
 };

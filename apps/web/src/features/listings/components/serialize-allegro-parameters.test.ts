@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { CategoryParameter } from '../api/listings.types';
-import { serializeAllegroParameters } from './serialize-allegro-parameters';
+import {
+  MissingCategoryParameterSectionError,
+  serializeAllegroParameters,
+} from './serialize-allegro-parameters';
 
 function param(overrides: Partial<CategoryParameter>): CategoryParameter {
   return {
@@ -155,6 +158,62 @@ describe('serializeAllegroParameters', () => {
       );
       expect(offerParameters.map((p) => p.id)).toEqual(['a', 'c']);
       expect(productParameters.map((p) => p.id)).toEqual(['b', 'd']);
+    });
+  });
+
+  describe('strict section branching (#423)', () => {
+    it('throws MissingCategoryParameterSectionError when section is undefined (stale-cache simulation)', () => {
+      // Simulating a stale-cached response that violates the CategoryParameter
+      // type contract — the runtime throw is the backstop for this case.
+      // The cast routes around `CategoryParameterSection`; `param()`'s Partial
+      // helper would silently swallow `section: undefined` without a type
+      // error, so we strip the field after construction.
+      const stale = {
+        ...param({ id: 'p_marka', name: 'Marka' }),
+        section: undefined as unknown as CategoryParameter['section'],
+      };
+      const meta = [stale];
+
+      expect(() => serializeAllegroParameters({ p_marka: 'p_marka_canon' }, meta)).toThrow(
+        MissingCategoryParameterSectionError,
+      );
+
+      try {
+        serializeAllegroParameters({ p_marka: 'p_marka_canon' }, meta);
+      } catch (error) {
+        expect(error).toBeInstanceOf(MissingCategoryParameterSectionError);
+        const typed = error as MissingCategoryParameterSectionError;
+        expect(typed.parameterId).toBe('p_marka');
+        expect(typed.parameterName).toBe('Marka');
+      }
+    });
+
+    it('throws MissingCategoryParameterSectionError when section is an unrecognized value (forward-compat backstop)', () => {
+      // Same simulation as above for an unknown future section value: the
+      // serializer must not silently default to offer-section when CORE
+      // adds a new section name we don't yet route. The cast to `unknown`
+      // first lets us bypass the `CategoryParameterSection` constraint
+      // without `@ts-expect-error` (which fires on signature changes the
+      // helper masks via Partial<>).
+      const stale = {
+        ...param({ id: 'p_marka', name: 'Marka' }),
+        section: 'archived' as unknown as CategoryParameter['section'],
+      };
+      const meta = [stale];
+
+      expect(() => serializeAllegroParameters({ p_marka: 'p_marka_canon' }, meta)).toThrow(
+        MissingCategoryParameterSectionError,
+      );
+    });
+
+    it('does not throw when all parameters have valid sections', () => {
+      const meta = [
+        param({ id: 'p_ean', type: 'string', section: 'offer' }),
+        param({ id: 'p_marka', type: 'dictionary', section: 'product' }),
+      ];
+      expect(() =>
+        serializeAllegroParameters({ p_ean: '111', p_marka: 'p_marka_canon' }, meta),
+      ).not.toThrow();
     });
   });
 });
