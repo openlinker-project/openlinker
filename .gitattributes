@@ -1,0 +1,4 @@
+# Mark large vendor / fixture payloads as generated so GitHub collapses
+# their diffs by default and excludes them from language statistics. They
+# are still tracked normally — this only changes the review surface.
+libs/integrations/allegro/src/infrastructure/adapters/__fixtures__/*.json linguist-generated=true

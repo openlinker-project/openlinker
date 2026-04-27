@@ -57,10 +57,7 @@ import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
 import { autoPrefillParameters } from './auto-prefill-parameters';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
-import {
-  serializeAllegroParameters,
-  type AllegroParameterInput,
-} from './serialize-allegro-parameters';
+import { serializeAllegroParameters } from './serialize-allegro-parameters';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
 import type { CategoryParameter, CreateOfferRequest } from '../api/listings.types';
 import {
@@ -103,6 +100,17 @@ interface CreateOfferWizardProps {
    *  while the wizard is already open has no effect. */
   initialValues?: CreateOfferRequest;
   onSubmitted: (offerCreationRecordId: string, connectionId: string) => void;
+}
+
+/**
+ * RHF cannot infer the dynamic `parameters.{paramId}` path from
+ * `CreateOfferFieldsValues` (the `parameters` slice is `z.record(z.unknown())`
+ * by design, since per-field shapes come from the runtime `CategoryParameter`
+ * list). Centralise the cast so the unsafe widening lives in exactly one
+ * place — every call site goes through this helper.
+ */
+function parametersFieldPath(paramId: string): FieldPath<CreateOfferFieldsValues> {
+  return `parameters.${paramId}` as FieldPath<CreateOfferFieldsValues>;
 }
 
 function variantLabel(product: Product, variant: ProductVariant): string {
@@ -215,14 +223,10 @@ export function CreateOfferWizard({
   const [pickedVariantEan, setPickedVariantEan] = useState<string | null>(null);
   // Set of parameter ids that were auto-prefilled by `autoPrefillParameters`
   // for the current (connectionId, categoryId) pair. Surfaced to the step as
-  // a `prefilledIds` hint so the operator sees which fields were
-  // pre-populated. Stays static after the initial fill — chasing dirty state
-  // would add complexity for small UX gain.
+  // a `prefilledIds` hint; the step itself narrows the set per-render to
+  // exclude any field the operator has dirtied (so the hint disappears once
+  // they edit the value).
   const [prefilledIds, setPrefilledIds] = useState<ReadonlySet<string>>(new Set());
-  // Wire snapshot of the parameters we sent on submit. Anchors error mapping
-  // when Allegro returns positional `parameters[N]` validation errors after
-  // a failed submit (each index → parameter id via this snapshot).
-  const submittedParametersRef = useRef<AllegroParameterInput[]>([]);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
   // Reset wizard state on open. A fresh idempotency key is minted every
@@ -262,7 +266,6 @@ export function CreateOfferWizard({
       setProductOffset(0);
       setPickedVariantEan(null);
       setPrefilledIds(new Set());
-      submittedParametersRef.current = [];
       mutation.reset();
     }
     prevIsOpenRef.current = isOpen;
@@ -415,20 +418,19 @@ export function CreateOfferWizard({
       const result = buildParametersZodSchema(categoryParameters).safeParse(values);
       if (!result.success) {
         // Surface per-field issues onto the form — the renderer reads them
-        // via `formState.errors['parameters.{paramId}']` (flat key, set
-        // explicitly because RHF cannot infer the dynamic path shape).
-        form.clearErrors('parameters' as FieldPath<CreateOfferFieldsValues>);
+        // via `formState.errors['parameters.{paramId}']`.
+        form.clearErrors('parameters');
         for (const issue of result.error.issues) {
           const paramId = String(issue.path[0] ?? '');
           if (paramId === '') continue;
-          form.setError(
-            `parameters.${paramId}` as FieldPath<CreateOfferFieldsValues>,
-            { type: 'manual', message: issue.message },
-          );
+          form.setError(parametersFieldPath(paramId), {
+            type: 'manual',
+            message: issue.message,
+          });
         }
         return;
       }
-      form.clearErrors('parameters' as FieldPath<CreateOfferFieldsValues>);
+      form.clearErrors('parameters');
     }
 
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
@@ -462,14 +464,13 @@ export function CreateOfferWizard({
     if (values.impliedWarrantyId) platformParams.impliedWarrantyId = values.impliedWarrantyId;
 
     // Serialise Step-3 parameter values into Allegro's wire shape. The
-    // returned snapshot stays in `submittedParametersRef` for positional
-    // error mapping (Allegro returns `parameters[N]` indices on validation
-    // failure → look up the parameter id via this snapshot).
+    // serialiser drops empty / hidden values so an underfilled draft just
+    // produces a smaller payload — server-side validation surfaces any
+    // remaining required-field gaps via `mutation.error`.
     const { submitted: submittedParameters } = serializeAllegroParameters(
       (values.parameters as CategoryParameterFormValues | undefined) ?? {},
       categoryParameters,
     );
-    submittedParametersRef.current = submittedParameters;
     if (submittedParameters.length > 0) {
       platformParams.parameters = submittedParameters;
     }

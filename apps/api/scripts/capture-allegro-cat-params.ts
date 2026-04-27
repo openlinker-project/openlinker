@@ -1,13 +1,19 @@
 /**
- * Capture Allegro category-parameters response (dev tool)
+ * Capture Allegro category-parameters response (DEV-ONLY tool)
+ *
+ * ⚠️  This script is for local fixture capture only. Do NOT invoke it from
+ * production, CI, or any deployed environment — it boots the full Nest
+ * application context and writes to the source tree. There is no
+ * authentication, no rate-limit handling, and the output path is
+ * developer-controlled.
  *
  * Bootstraps the Nest application context, resolves the Allegro
  * `OfferManager` adapter for the given connection, and dumps the raw
  * `/sale/categories/{id}/parameters` response to disk. Used to capture
  * fixtures for the mapper / adapter specs (#410).
  *
- * Usage:
- *   pnpm --filter @openlinker/api allegro:capture-cat-params \
+ * Usage (from a developer machine, against an Allegro sandbox connection):
+ *   pnpm --filter @openlinker/api dev:allegro:capture-cat-params \
  *     <connectionId> <categoryId> [outputPath]
  *
  * If `outputPath` is omitted, the script writes to the conventional fixture

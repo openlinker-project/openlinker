@@ -23,7 +23,7 @@
     "migration:run": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' bash node_modules/.bin/typeorm migration:run -d src/database/data-source.ts",
     "migration:revert": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' bash node_modules/.bin/typeorm migration:revert -d src/database/data-source.ts",
     "migration:show": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' bash node_modules/.bin/typeorm migration:show -d src/database/data-source.ts",
-    "allegro:capture-cat-params": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' node scripts/capture-allegro-cat-params.ts"
+    "dev:allegro:capture-cat-params": "NODE_OPTIONS='-r ts-node/register -r tsconfig-paths/register' node scripts/capture-allegro-cat-params.ts"
   },
   "dependencies": {
     "@nestjs/axios": "3.0.2",

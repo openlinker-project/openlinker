@@ -75,8 +75,8 @@ All TypeScript projects must use strict mode:
 
 - **ORM Entities**: `*.orm-entity.ts` (e.g., `product.orm-entity.ts`)
 - **Repositories**: `*.repository.ts` (e.g., `product.repository.ts`)
-- **Adapter Interfaces**: `*-adapter.interface.ts` (e.g., `prestashop-inventory-master.adapter.interface.ts`) - interface definition only (if needed)
-- **Adapters**: `*-adapter.ts` (e.g., `prestashop-inventory-master.adapter.ts`) - implements port interface
+- **Adapter Interfaces**: `*.adapter.interface.ts` (e.g., `prestashop-inventory-master.adapter.interface.ts`) - interface definition only (if needed)
+- **Adapters**: `*.adapter.ts` (e.g., `prestashop-inventory-master.adapter.ts`) - implements port interface
 - **Mappers**: `*.mapper.ts` (e.g., `product.mapper.ts`)
 - **Types**: `*.types.ts` (e.g., `adapter.types.ts`) - type definitions only
 

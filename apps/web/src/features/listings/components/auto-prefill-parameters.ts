@@ -16,6 +16,22 @@
 import type { CategoryParameter } from '../api/listings.types';
 import type { CategoryParameterFormValues, FormParameterValue } from './category-parameter-form.types';
 
+/**
+ * Known fragility — these matchers are case-insensitive *exact* string
+ * compares against Allegro's PL/EN parameter names and dictionary entry
+ * values. Any of the following will silently break prefill until the lists
+ * below are updated:
+ *
+ *   - Allegro adds a new locale (e.g. an `allegro.de` connection),
+ *   - Allegro renames a parameter ("Stan" → "Stan produktu"),
+ *   - the canonical "Nowy" entry is replaced with a localised string.
+ *
+ * The fixture-based unit tests catch the *current* spelling but cannot
+ * detect drift on the live API. When the brand / producer-code prefill
+ * lands in #412, replace these literals with a config map keyed by
+ * connection locale + parameter role, so each adapter can declare its own
+ * mapping table.
+ */
 const EAN_NAME_PATTERNS = ['ean (gtin)', 'ean', 'gtin', 'kod ean'];
 const CONDITION_NAME_PATTERNS = ['stan'];
 const NEW_VALUE_PATTERNS = ['nowy', 'new', 'nowe', 'nowa'];

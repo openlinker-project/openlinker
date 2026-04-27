@@ -66,7 +66,7 @@ export function CategoryParametersStep({
   formNamespace,
   prefilledIds,
 }: CategoryParametersStepProps): ReactElement {
-  const { control, setValue, getValues } = useFormContext();
+  const { control, setValue, getValues, formState } = useFormContext();
   // Watching the entire `parameters` slice keeps visibility / option-narrowing
   // in sync with the form state on every keystroke. Acceptable cost — the
   // wizard form is small and per-render evaluation is O(parameters × constant).
@@ -75,6 +75,20 @@ export function CategoryParametersStep({
     () => (formValuesRaw && typeof formValuesRaw === 'object' ? (formValuesRaw as CategoryParameterFormValues) : {}),
     [formValuesRaw],
   );
+
+  // Strip the "Auto-filled" hint from any field the operator has already
+  // edited. RHF tracks dirty state per-field — auto-prefill writes with
+  // `shouldDirty: false`, so a dirty entry here is operator-authored.
+  const dirtyParameters =
+    (formState.dirtyFields as Record<string, Record<string, unknown> | undefined>)[formNamespace] ?? {};
+  const liveprefilledIds = useMemo(() => {
+    if (!prefilledIds || prefilledIds.size === 0) return prefilledIds ?? new Set<string>();
+    const next = new Set<string>();
+    for (const id of prefilledIds) {
+      if (!dirtyParameters[id]) next.add(id);
+    }
+    return next;
+  }, [prefilledIds, dirtyParameters]);
 
   // Visibility filter: when a parent parameter's value changes such that a
   // dependent parameter becomes hidden, clear the dependent's form value so
@@ -110,7 +124,7 @@ export function CategoryParametersStep({
               parameter={param}
               formNamespace={formNamespace}
               parentValues={formValues}
-              prefilled={prefilledIds?.has(param.id) ?? false}
+              prefilled={liveprefilledIds.has(param.id)}
             />
           ))}
         </fieldset>
@@ -129,7 +143,7 @@ export function CategoryParametersStep({
                 parameter={param}
                 formNamespace={formNamespace}
                 parentValues={formValues}
-                prefilled={prefilledIds?.has(param.id) ?? false}
+                prefilled={liveprefilledIds.has(param.id)}
               />
             ))}
           </fieldset>
@@ -154,9 +168,15 @@ function ParameterField({
 }: ParameterFieldProps): ReactElement {
   const { control, formState } = useFormContext();
   const fieldName = `${formNamespace}.${parameter.id}`;
-  const error = (formState.errors as Record<string, { message?: string } | undefined>)[
-    `${formNamespace}.${parameter.id}`
-  ]?.message;
+  // RHF stores errors set via dotted paths (`form.setError('parameters.p_x',
+  // …)`) at `formState.errors.parameters.p_x`, not as a flat key. Walk the
+  // nested object — the field name's parts are statically known.
+  const namespaceErrors = (formState.errors as Record<string, unknown>)[formNamespace];
+  const fieldError =
+    namespaceErrors && typeof namespaceErrors === 'object'
+      ? (namespaceErrors as Record<string, { message?: string } | undefined>)[parameter.id]
+      : undefined;
+  const error = fieldError?.message;
 
   const description = describeFilter(parameter, parentValues);
   const autoFillHint = prefilled ? 'Auto-filled from variant data' : undefined;
