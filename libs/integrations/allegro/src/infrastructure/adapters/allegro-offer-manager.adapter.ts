@@ -915,6 +915,19 @@ export class AllegroOfferManagerAdapter
     if (Array.isArray(parameters)) {
       body.parameters = parameters.filter(isAllegroOfferParameterShape);
     }
+
+    // #415 — product-section parameters travel under `body.product.parameters[]`,
+    // not `body.parameters[]`. Allegro 422s with `ParameterCategoryException`
+    // when Brand / Model / Manufacturer-code appear in the offer-section
+    // array. Omit `body.product` entirely when the array would be empty —
+    // sending `{ product: { parameters: [] } }` is equally rejected.
+    const productParameters = platformParams['productParameters'];
+    if (Array.isArray(productParameters)) {
+      const filtered = productParameters.filter(isAllegroOfferParameterShape);
+      if (filtered.length > 0) {
+        body.product = { parameters: filtered };
+      }
+    }
   }
 
   private resolveCreateOfferStatus(

@@ -385,6 +385,17 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   };
   images?: string[];
   parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
+  /**
+   * Product-section parameters (#415). Allegro splits category parameters
+   * into "describes the offer" (`body.parameters[]`) and "describes the
+   * product itself" — Brand, Model, Manufacturer-code (`body.product.parameters[]`).
+   * Sending a product-section parameter under `body.parameters[]` triggers
+   * `ParameterCategoryException` 422. The shape is identical to the
+   * offer-section envelope.
+   */
+  product?: {
+    parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
+  };
   delivery?: { shippingRates?: { id: string }; handlingTime?: string };
   afterSalesServices?: {
     impliedWarranty?: { id: string };

@@ -146,8 +146,12 @@ export type {
   CategoryParameterRestrictions,
   CategoryParameterDependsOn,
   CategoryParameterType,
+  CategoryParameterSection,
 } from './domain/types/category-parameter.types';
-export { CategoryParameterTypeValues } from './domain/types/category-parameter.types';
+export {
+  CategoryParameterTypeValues,
+  CategoryParameterSectionValues,
+} from './domain/types/category-parameter.types';
 export { CategoryNotFoundException } from './domain/exceptions/category-not-found.exception';
 export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';

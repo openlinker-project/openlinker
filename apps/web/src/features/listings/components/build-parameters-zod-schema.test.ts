@@ -14,6 +14,7 @@ function param(overrides: Partial<CategoryParameter>): CategoryParameter {
     type: 'string',
     required: false,
     restrictions: {},
+    section: 'offer',
     ...overrides,
   };
 }

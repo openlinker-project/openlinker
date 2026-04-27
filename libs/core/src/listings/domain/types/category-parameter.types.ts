@@ -29,6 +29,24 @@ export const CategoryParameterTypeValues = [
 ] as const;
 export type CategoryParameterType = (typeof CategoryParameterTypeValues)[number];
 
+/**
+ * Where the parameter must travel on the wire when creating an offer (#415).
+ *
+ *   - `'offer'`   — goes under `body.parameters[]` (free-text fields, condition,
+ *                   EAN, etc.). The default for marketplaces that don't
+ *                   distinguish a separate product layer.
+ *   - `'product'` — goes under `body.product.parameters[]` (Brand, Model,
+ *                   Manufacturer-code, etc., on Allegro). Sending a
+ *                   product-section parameter under `body.parameters` triggers
+ *                   `ParameterCategoryException` 422.
+ *
+ * Allegro derives this from `options.describesProduct: boolean` on each
+ * parameter in `GET /sale/categories/{id}/parameters`. Adapters that cannot
+ * distinguish (eBay, Shopify, …) emit `'offer'` for every parameter.
+ */
+export const CategoryParameterSectionValues = ['offer', 'product'] as const;
+export type CategoryParameterSection = (typeof CategoryParameterSectionValues)[number];
+
 export interface CategoryParameterDictionaryEntry {
   id: string;
   value: string;
@@ -88,4 +106,10 @@ export interface CategoryParameter {
   restrictions: CategoryParameterRestrictions;
   /** Parameter-level visibility (show/hide). Distinct from per-entry filtering. */
   dependsOn?: CategoryParameterDependsOn;
+  /**
+   * Wire-shape section the parameter belongs to (#415). Required —
+   * adapters that can't distinguish must emit `'offer'` explicitly so
+   * future adapters can't silently inherit a default.
+   */
+  section: CategoryParameterSection;
 }

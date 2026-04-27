@@ -45,12 +45,23 @@ function readString(params: Record<string, unknown> | undefined, key: string): s
  *
  * Once the parameters meta resolves, the renderer interprets the raw value
  * correctly even when our heuristic guessed the wrong shape.
+ *
+ * Reads from BOTH `params.parameters` (offer-section) and
+ * `params.productParameters` (product-section, #415). The form-state map is
+ * keyed by parameter id alone — re-submission re-derives the section split
+ * from the freshly-loaded category-parameters metadata, so the section
+ * distinction is not preserved on the form side.
  */
 function readParameters(params: Record<string, unknown> | undefined): CategoryParameterFormValues {
-  const raw = params?.parameters;
-  if (!Array.isArray(raw)) return {};
-
   const out: CategoryParameterFormValues = {};
+  appendWireParameters(out, params?.parameters);
+  appendWireParameters(out, params?.productParameters);
+  return out;
+}
+
+function appendWireParameters(out: CategoryParameterFormValues, raw: unknown): void {
+  if (!Array.isArray(raw)) return;
+
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
     const e = entry as {
@@ -89,7 +100,6 @@ function readParameters(params: Record<string, unknown> | undefined): CategoryPa
       if (vals.length > 0) out[e.id] = vals[0];
     }
   }
-  return out;
 }
 
 /**

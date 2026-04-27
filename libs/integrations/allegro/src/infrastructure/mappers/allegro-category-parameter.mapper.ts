@@ -54,6 +54,11 @@ export function toNeutralCategoryParameter(
       dependsOnParameterId && visibilityValueIds.length > 0
         ? { parameterId: dependsOnParameterId, valueIds: visibilityValueIds }
         : undefined,
+    // #415 — Allegro's `options.describesProduct: true` flags parameters
+    // that must travel under `body.product.parameters[]` on POST
+    // /sale/product-offers, not under `body.parameters[]`. Treat anything
+    // missing or `false` as offer-section.
+    section: raw.options?.describesProduct === true ? 'product' : 'offer',
   };
 }
 

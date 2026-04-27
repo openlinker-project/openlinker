@@ -726,6 +726,7 @@ describe('CreateOfferWizard', () => {
         type: 'string',
         required: false,
         restrictions: { maxLength: 20 },
+        section: 'offer',
       },
       {
         id: 'p_stan',
@@ -737,6 +738,7 @@ describe('CreateOfferWizard', () => {
           { id: 'p_stan_used', value: 'Używany' },
         ],
         restrictions: {},
+        section: 'offer',
       },
     ];
 
@@ -806,6 +808,101 @@ describe('CreateOfferWizard', () => {
         ),
       );
       expect(onSubmitted).toHaveBeenCalledWith('rec-1', allegroConnection.id);
+    });
+
+    it('routes product-section parameters to platformParams.productParameters, not platformParams.parameters (#415)', async () => {
+      // Mixed fixture: p_ean (offer) + p_marka (product). The submit must
+      // place each in the correct platformParams key — sending a
+      // product-section parameter under `parameters` is exactly the
+      // ParameterCategoryException 422 from the bug report.
+      const mixedFixture: CategoryParameter[] = [
+        {
+          id: 'p_ean',
+          name: 'EAN (GTIN)',
+          type: 'string',
+          required: false,
+          restrictions: { maxLength: 20 },
+          section: 'offer',
+        },
+        {
+          id: 'p_marka',
+          name: 'Marka',
+          type: 'dictionary',
+          required: true,
+          dictionary: [
+            { id: 'p_marka_canon', value: 'Canon' },
+            { id: 'p_marka_nikon', value: 'Nikon' },
+          ],
+          restrictions: {},
+          section: 'product',
+        },
+      ];
+      const createOffer = vi
+        .fn()
+        .mockResolvedValue({ jobId: 'job-prod', offerCreationRecordId: 'rec-prod' });
+      const mockApi = defaultMocks({
+        listings: {
+          createOffer,
+          getSellerPolicies: vi.fn().mockResolvedValue(policies),
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: mixedFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Step 3 — fill both parameters explicitly.
+      await screen.findByLabelText(/ean \(gtin\)/i);
+      fireEvent.change(screen.getByLabelText(/ean \(gtin\)/i), {
+        target: { value: '5901234567890' },
+      });
+      const markaSelect = screen.getByLabelText<HTMLSelectElement>(/^marka$/i);
+      fireEvent.change(markaSelect, { target: { value: 'p_marka_canon' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.change(await screen.findByLabelText(/delivery policy/i), {
+        target: { value: 'del-1' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+
+      await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
+      const submittedRequest = createOffer.mock.calls[0][1] as {
+        overrides: {
+          platformParams: {
+            parameters?: Array<{ id: string }>;
+            productParameters?: Array<{ id: string }>;
+          };
+        };
+      };
+      const platformParams = submittedRequest.overrides.platformParams;
+
+      // Offer-section is under `parameters` only.
+      expect(platformParams.parameters).toEqual([
+        { id: 'p_ean', values: ['5901234567890'] },
+      ]);
+      // Product-section is under `productParameters` only.
+      expect(platformParams.productParameters).toEqual([
+        { id: 'p_marka', valuesIds: ['p_marka_canon'] },
+      ]);
+      // The cross-contamination that triggered the bug must NOT happen.
+      expect(platformParams.parameters?.find((p) => p.id === 'p_marka')).toBeUndefined();
+      expect(
+        platformParams.productParameters?.find((p) => p.id === 'p_ean'),
+      ).toBeUndefined();
     });
 
     it('blocks advancement past Step 3 when a required dictionary parameter is empty', async () => {
