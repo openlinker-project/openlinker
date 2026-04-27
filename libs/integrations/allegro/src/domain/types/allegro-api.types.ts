@@ -186,16 +186,42 @@ export interface AllegroOffersResponse {
  * Allegro offer parameter entry. Used both as a GET payload field (from
  * `GET /sale/product-offers/{offerId}` — `name` is populated server-side)
  * and as a POST request shape (`body.parameters[]` /
- * `body.product.parameters[]` — adapters omit `name`, Allegro infers it from
- * `id`). Allegro's actual POST API also accepts `rangeValue?: { from, to }`
- * here; the adapter's shape validator (`isAllegroOfferParameterShape`)
- * currently filters that branch out — pre-existing gap, tracked separately.
+ * `body.productSet[].product.parameters[]` — adapters omit `name`, Allegro
+ * infers it from `id`). Allegro's actual POST API also accepts
+ * `rangeValue?: { from, to }` here; the adapter's shape validator
+ * (`isAllegroOfferParameterShape`) currently filters that branch out —
+ * pre-existing gap, tracked separately.
  */
 export interface AllegroOfferParameter {
   id: string;
   name?: string;
   values?: string[];
   valuesIds?: string[];
+}
+
+/**
+ * One entry in `body.productSet[]` on `POST /sale/product-offers` and in the
+ * `productSet[]` field returned by `GET /sale/product-offers/{offerId}`.
+ *
+ * On POST, Allegro requires `product.name` and `product.images` (≥1) when
+ * creating an inline product — no existing `product.id` to inherit from.
+ * The adapter mirrors `body.name` and `body.images` onto the product entry;
+ * see #419 §4.2 for the MVP coupling rationale and #412 for the smart-link
+ * follow-up that revisits this.
+ *
+ * **Two-phase population in `AllegroOfferManagerAdapter`**: `name` and
+ * `parameters` are written by `applyPlatformParams` while building the
+ * request body; `images` is mirrored later in `createOffer`, *after* the
+ * image-upload step rewrites `body.images` to Allegro CDN URLs. Doing the
+ * `images` copy in `applyPlatformParams` would leak the pre-upload operator
+ * URL into the inline product, which Allegro rejects.
+ */
+export interface AllegroProductSetEntry {
+  product?: {
+    name?: string;
+    parameters?: AllegroOfferParameter[];
+    images?: string[];
+  };
 }
 
 /**
@@ -208,11 +234,7 @@ export interface AllegroProductOffer {
     id: string;
   };
   parameters?: AllegroOfferParameter[];
-  productSet?: Array<{
-    product?: {
-      parameters?: AllegroOfferParameter[];
-    };
-  }>;
+  productSet?: AllegroProductSetEntry[];
   external?: {
     id?: string | null;
   };
@@ -392,16 +414,15 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   images?: string[];
   parameters?: AllegroOfferParameter[];
   /**
-   * Product-section parameters (#415). Allegro splits category parameters
-   * into "describes the offer" (`body.parameters[]`) and "describes the
-   * product itself" — Brand, Model, Manufacturer-code (`body.product.parameters[]`).
-   * Sending a product-section parameter under `body.parameters[]` triggers
-   * `ParameterCategoryException` 422. The shape is identical to the
-   * offer-section envelope.
+   * Product-section parameters (#415 / #419). Allegro splits category
+   * parameters into "describes the offer" (`body.parameters[]`) and
+   * "describes the product itself" — Brand, Model, Manufacturer-code —
+   * which travel under `body.productSet[].product.parameters[]`. The same
+   * shape Allegro returns from `GET /sale/product-offers/{offerId}`. The
+   * earlier #415 fix used a top-level `body.product` field which Allegro
+   * rejects with `UnknownJSONProperty`; this is the corrected shape.
    */
-  product?: {
-    parameters?: AllegroOfferParameter[];
-  };
+  productSet?: AllegroProductSetEntry[];
   delivery?: { shippingRates?: { id: string }; handlingTime?: string };
   afterSalesServices?: {
     impliedWarranty?: { id: string };

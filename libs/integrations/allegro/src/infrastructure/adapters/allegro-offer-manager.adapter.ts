@@ -732,6 +732,19 @@ export class AllegroOfferManagerAdapter
       );
     }
 
+    // #419 — Allegro requires `productSet[0].product.images` (≥1) when
+    // creating an inline product. Mirror the post-upload `body.images` here
+    // (not in applyPlatformParams) so the URLs Allegro sees in the inline
+    // product match the ones it just minted on its own CDN.
+    //
+    // Invariant: when `body.productSet` is present, it always has exactly
+    // one entry with a populated `product` — see `applyPlatformParams`,
+    // which is the only writer. The optional-chaining guard below is
+    // belt-and-braces against future writers introducing a different shape.
+    if (body.productSet?.[0]?.product && body.images && body.images.length > 0) {
+      body.productSet[0].product.images = body.images;
+    }
+
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
     );
@@ -914,21 +927,34 @@ export class AllegroOfferManagerAdapter
       body.parameters = parameters.filter(isAllegroOfferParameterShape);
     }
 
-    // #415 — product-section parameters travel under `body.product.parameters[]`,
-    // not `body.parameters[]`. Allegro 422s with `ParameterCategoryException`
-    // when Brand / Model / Manufacturer-code appear in the offer-section
-    // array. Omit `body.product` entirely when the array would be empty —
-    // sending `{ product: { parameters: [] } }` is equally rejected.
+    // #419 — product-section parameters travel under
+    // `body.productSet[0].product.parameters[]`. The earlier #415 fix wrote
+    // them under a top-level `body.product`, which Allegro rejects with
+    // `UnknownJSONProperty: { unknownProperties: "product" }`. Allegro's POST
+    // contract mirrors the GET shape (`AllegroProductOffer.productSet[]`).
     //
-    // Merge into any pre-existing `body.product` rather than overwriting:
-    // today this is a clean greenfield assignment, but if a future capability
-    // populates `body.product` (e.g. a linked-product id, product-level
-    // images), this preserves those fields.
+    // Allegro additionally requires `productSet[].product.name` when creating
+    // an inline product (no existing `product.id` to inherit from). We reuse
+    // `body.name` (the offer title, already validated ≤75 chars) — MVP
+    // coupling, revisited by the smart-link follow-up (#412).
+    //
+    // `productSet[0].product.images` is also required (≥1) — confirmed by
+    // sandbox repro returning `ProductValidationException` at path
+    // `productSet[0].product`. We populate it later in `createOffer`, *after*
+    // the image-upload step has rewritten `body.images` to Allegro CDN URLs:
+    // doing it here would copy the pre-upload operator URL, which Allegro
+    // rejects.
+    //
+    // Omit `body.productSet` entirely when the array would be empty: sending
+    // `productSet: []` or `productSet: [{ product: { parameters: [] } }]` is
+    // rejected the same way `body.product` was. The empty-rejection
+    // assumption is inherited from #415 and is itself unverified — if the
+    // sandbox repro contradicts it we revisit here.
     const productParameters = platformParams['productParameters'];
     if (Array.isArray(productParameters)) {
       const filtered = productParameters.filter(isAllegroOfferParameterShape);
       if (filtered.length > 0) {
-        body.product = { ...(body.product ?? {}), parameters: filtered };
+        body.productSet = [{ product: { name: body.name, parameters: filtered } }];
       }
     }
   }
