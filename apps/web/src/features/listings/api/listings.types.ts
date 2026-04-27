@@ -163,3 +163,67 @@ export interface SellerPoliciesResponse {
   warranties: SellerPolicy[];
   impliedWarranties: SellerPolicy[];
 }
+
+/** ----- Category parameters (#410) ----------------------------------------
+ *
+ * Marketplace-neutral shape for category parameters returned by
+ * `GET /listings/connections/:connectionId/categories/:categoryId/parameters`.
+ * Mirrors the backend `CategoryParameter` 1:1 — no transport-level remapping.
+ *
+ * Two distinct dependency mechanisms surface separately:
+ *   - parameter-level visibility (`dependsOn`) — show/hide the whole field
+ *   - dictionary-entry filtering (`dictionary[i].dependsOnValueIds`) —
+ *     filter individual options inside an already-visible field
+ *
+ * The wizard renderer uses both: `dependsOn` to skip rendering, the
+ * per-entry list to filter dictionary options once the parent has a value.
+ * --------------------------------------------------------------------- */
+
+export const CategoryParameterTypeValues = [
+  'dictionary',
+  'string',
+  'integer',
+  'float',
+] as const;
+export type CategoryParameterType = (typeof CategoryParameterTypeValues)[number];
+
+export interface CategoryParameterDictionaryEntry {
+  id: string;
+  value: string;
+  dependsOnValueIds?: string[];
+}
+
+export interface CategoryParameterRestrictions {
+  multipleChoices?: boolean;
+  range?: boolean;
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  precision?: number;
+  /** Maximum number of values the user may submit. `1` = single, `2+` = bounded multi. */
+  allowedNumberOfValues?: number;
+  /** Dictionary allows free-text entries alongside the dictionary list (combobox). */
+  customValuesEnabled?: boolean;
+}
+
+export interface CategoryParameterDependsOn {
+  parameterId: string;
+  valueIds: string[];
+}
+
+export interface CategoryParameter {
+  id: string;
+  name: string;
+  type: CategoryParameterType;
+  required: boolean;
+  unit?: string;
+  dictionary?: CategoryParameterDictionaryEntry[];
+  restrictions: CategoryParameterRestrictions;
+  /** Parameter-level visibility — see file header. */
+  dependsOn?: CategoryParameterDependsOn;
+}
+
+export interface CategoryParametersListResponse {
+  parameters: CategoryParameter[];
+}

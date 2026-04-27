@@ -14,6 +14,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
+import { CacheModule } from '@openlinker/shared/cache';
 import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
@@ -42,6 +43,7 @@ import { ContentApiModule } from './content/content.module';
     ScheduleModule.forRoot(),
     DatabaseModule,
     RedisConfigModule,
+    CacheModule,
     HealthModule,
     AuthModule,
     IdentifierMappingModule,

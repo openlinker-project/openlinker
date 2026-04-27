@@ -7,6 +7,7 @@
  * @module apps/web/src/features/listings/api
  */
 import type {
+  CategoryParametersListResponse,
   CreateOfferRequest,
   CreateOfferResponse,
   ListingsFilters,
@@ -41,6 +42,10 @@ export interface ListingsApi {
     offerCreationRecordId: string,
   ) => Promise<OfferCreationStatusResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
+  getCategoryParameters: (
+    connectionId: string,
+    categoryId: string,
+  ) => Promise<CategoryParametersListResponse>;
 }
 
 interface ApiRequest {
@@ -95,6 +100,11 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     },
     getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
       return request<SellerPoliciesResponse>(`/listings/connections/${connectionId}/seller-policies`);
+    },
+    getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
+      return request<CategoryParametersListResponse>(
+        `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      );
     },
   };
 }

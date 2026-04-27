@@ -11,6 +11,7 @@ export * from './config';
 export * from './database';
 export * from './errors';
 export * from './redis';
+export * from './cache';
 export * from './types';
 export * from './crypto';
 

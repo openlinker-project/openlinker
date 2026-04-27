@@ -68,6 +68,11 @@ function defaultMocks(overrides: Parameters<typeof createMockApiClient>[0] = {})
         .fn()
         .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       getSellerPolicies: vi.fn().mockResolvedValue(policies),
+      // Default the category-parameters fetch to "no parameters" so the step
+      // renders a friendly empty message and the existing happy-path tests
+      // can advance past it with a single Next click. Individual tests
+      // override when they exercise parameter rendering / validation.
+      getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
     },
     mappings: {
       // Single-leaf root tree for simple happy-path coverage. Individual tests
@@ -90,6 +95,19 @@ async function pickFirstLeafCategory(): Promise<void> {
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
   );
+}
+
+/**
+ * Advance through the (empty by default) Step-3 "Category parameters" step,
+ * landing on Step-4 "Policies". Used by the existing tests that don't care
+ * about parameter rendering — keeps them readable while the new step still
+ * gets traversed.
+ */
+async function advanceThroughEmptyParameters(): Promise<void> {
+  expect(
+    await screen.findByText(/no additional parameters required/i),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /next/i }));
 }
 
 async function advanceToStep2(): Promise<void> {
@@ -210,7 +228,9 @@ describe('CreateOfferWizard', () => {
     expect(
       await screen.findByText(/allegro category id is required/i),
     ).toBeInTheDocument();
-    // Still on Step 2 — delivery-policy select (Step 3) is not rendered.
+    // Still on Step 2 — neither the parameters step (#410) nor the
+    // delivery-policy select (Step 4) are rendered.
+    expect(screen.queryByText(/no additional parameters required/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
   });
 
@@ -235,7 +255,7 @@ describe('CreateOfferWizard', () => {
     expect(await screen.findByText(/75 characters or fewer/i)).toBeInTheDocument();
   });
 
-  it('requires delivery policy on step 3 when policies are present', async () => {
+  it('requires delivery policy on the policies step when policies are present', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
       <CreateOfferWizard
@@ -254,7 +274,10 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    // Now on Step 3 — try to advance without picking delivery
+    // Step 3 (#410) — no parameters for this category in the default mock.
+    await advanceThroughEmptyParameters();
+
+    // Now on Step 4 — try to advance without picking delivery
     await screen.findByLabelText(/delivery policy/i);
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     expect(await screen.findByText(/delivery policy is required/i)).toBeInTheDocument();
@@ -287,6 +310,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
 
     expect(await screen.findByText(/no seller policies configured/i)).toBeInTheDocument();
   });
@@ -312,13 +336,14 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
 
-    // Step 3 — pick delivery
+    // Step 4 — pick delivery
     const deliverySelect = await screen.findByLabelText(/delivery policy/i);
     fireEvent.change(deliverySelect, { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    // Step 4 — submit
+    // Step 5 — submit
     fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
 
     await waitFor(() =>
@@ -365,6 +390,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
     fireEvent.change(await screen.findByLabelText(/delivery policy/i), { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
@@ -404,6 +430,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
     fireEvent.change(await screen.findByLabelText(/delivery policy/i), { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
@@ -516,6 +543,7 @@ describe('CreateOfferWizard', () => {
       fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
       fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await advanceThroughEmptyParameters();
       fireEvent.change(await screen.findByLabelText(/delivery policy/i), {
         target: { value: 'del-1' },
       });
@@ -543,9 +571,11 @@ describe('CreateOfferWizard', () => {
         />,
       );
 
-      // We land on Step 2 pre-filled; advance through Step 3 → submit.
+      // We land on Step 2 pre-filled; advance through the empty parameters
+      // step (#410) and the policies step → submit.
       await screen.findByLabelText(/^title$/i);
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await advanceThroughEmptyParameters();
       // Delivery policy pre-fills from initialValues; just advance.
       await screen.findByLabelText(/delivery policy/i);
       fireEvent.click(screen.getByRole('button', { name: /next/i }));

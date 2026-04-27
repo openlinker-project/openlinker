@@ -1,15 +1,18 @@
 /**
  * CreateOfferWizard
  *
- * Four-step wizard that publishes an OpenLinker variant as a new offer
+ * Five-step wizard that publishes an OpenLinker variant as a new offer
  * on a marketplace connection. Steps:
  *   1. Connection & Variant — pick the target connection, search and
  *      select a product variant
  *   2. Offer details — title override, Allegro category id, price, stock,
  *      description, publish-immediately toggle
- *   3. Policies — delivery (required), return / warranty / implied
+ *   3. Category parameters (#410) — required-first / optional-collapsed
+ *      Allegro per-category attributes; renders a friendly empty message
+ *      when the category has no parameters.
+ *   4. Policies — delivery (required), return / warranty / implied
  *      warranty (optional), populated from the seller-policies endpoint
- *   4. Review — summary of all chosen values
+ *   5. Review — summary of all chosen values
  *
  * Retry-safe: a stable `x-idempotency-key` is generated on open
  * (`crypto.randomUUID()`) and reused until success or explicit cancel,
@@ -24,7 +27,13 @@
  * @module apps/web/src/features/listings/components
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Controller, useForm, type Path } from 'react-hook-form';
+import {
+  Controller,
+  FormProvider,
+  useForm,
+  type FieldPath,
+  type Path,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -43,8 +52,17 @@ import { useProductsQuery } from '../../products/hooks/use-products-query';
 import type { Product, ProductVariant } from '../../products/api/products.types';
 import { useCreateOfferMutation } from '../hooks/use-create-offer-mutation';
 import { useSellerPoliciesQuery } from '../hooks/use-seller-policies-query';
+import { useCategoryParametersQuery } from '../hooks/use-category-parameters-query';
 import { CategoryPicker } from './CategoryPicker';
-import type { CreateOfferRequest } from '../api/listings.types';
+import { CategoryParametersStep } from './category-parameters-step';
+import { autoPrefillParameters } from './auto-prefill-parameters';
+import { buildParametersZodSchema } from './build-parameters-zod-schema';
+import {
+  serializeAllegroParameters,
+  type AllegroParameterInput,
+} from './serialize-allegro-parameters';
+import type { CategoryParameterFormValues } from './category-parameter-form.types';
+import type { CategoryParameter, CreateOfferRequest } from '../api/listings.types';
 import {
   CREATE_OFFER_DEFAULT_VALUES,
   createOfferFieldsSchema,
@@ -53,11 +71,20 @@ import {
 } from './create-offer-fields.schema';
 import { createOfferRequestToFormValues } from './create-offer-request-to-form-values';
 
-const STEP_LABELS = ['Connection & Variant', 'Offer details', 'Policies', 'Review'] as const;
+const STEP_LABELS = [
+  'Connection & Variant',
+  'Offer details',
+  'Category parameters',
+  'Policies',
+  'Review',
+] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<CreateOfferFieldsValues>>> = [
   ['connectionId', 'internalVariantId'],
   ['title', 'categoryId', 'priceAmount', 'priceCurrency', 'stock'],
+  // Step 3 (parameters) is validated dynamically via buildParametersZodSchema —
+  // its field shape is runtime-driven so we cannot list keys statically.
+  [],
   ['deliveryPolicyId'],
   [],
 ];
@@ -89,6 +116,73 @@ function variantLabel(product: Product, variant: ProductVariant): string {
   return product.name;
 }
 
+interface ReviewParameterRow {
+  id: string;
+  label: string;
+  value: string;
+}
+
+/**
+ * Project the wizard's parameter form-state into a flat label/value list for
+ * the Review step. Keeps the rendering data-flow inside the wizard rather
+ * than leaking display logic into the field renderer.
+ */
+function renderReviewParameters(
+  values: CategoryParameterFormValues,
+  parameters: CategoryParameter[],
+): ReviewParameterRow[] {
+  const rows: ReviewParameterRow[] = [];
+  for (const param of parameters) {
+    const raw = values[param.id];
+    if (raw === undefined || raw === '') continue;
+
+    let display = '';
+    if (Array.isArray(raw)) {
+      if (raw.length === 0) continue;
+      display = raw
+        .map((id) => param.dictionary?.find((e) => e.id === id)?.value ?? id)
+        .join(', ');
+    } else if (typeof raw === 'string') {
+      const matched = param.dictionary?.find((e) => e.id === raw);
+      display = matched ? matched.value : raw;
+    } else if (typeof raw === 'object' && raw !== null) {
+      const r = raw as { from?: string; to?: string };
+      const from = r.from?.trim() ?? '';
+      const to = r.to?.trim() ?? '';
+      if (from === '' && to === '') continue;
+      display = `${from || '—'} – ${to || '—'}${param.unit ? ` ${param.unit}` : ''}`;
+    } else {
+      continue;
+    }
+
+    rows.push({ id: param.id, label: param.name, value: display });
+  }
+  return rows;
+}
+
+function renderReviewParametersBlock(
+  values: CategoryParameterFormValues,
+  parameters: CategoryParameter[],
+): ReactElement | null {
+  const rows = renderReviewParameters(values, parameters);
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <dt>Category parameters</dt>
+      <dd>
+        <ul className="wizard-review-list__nested">
+          {rows.map((row) => (
+            <li key={row.id}>
+              <span className="muted-text">{row.label}: </span>
+              <span>{row.value}</span>
+            </li>
+          ))}
+        </ul>
+      </dd>
+    </>
+  );
+}
+
 export function CreateOfferWizard({
   isOpen,
   onClose,
@@ -115,6 +209,20 @@ export function CreateOfferWizard({
   // Lets Step 1 render a hint explaining why the picker looks empty
   // despite the form carrying a variant id from the prior attempt.
   const [wasPrefilled, setWasPrefilled] = useState(false);
+  // EAN of the variant the operator picked in Step 1 — fed to the Step 3
+  // parameter auto-prefill so EAN/GTIN-class fields populate from the
+  // variant's barcode without needing the variant detail re-fetched.
+  const [pickedVariantEan, setPickedVariantEan] = useState<string | null>(null);
+  // Set of parameter ids that were auto-prefilled by `autoPrefillParameters`
+  // for the current (connectionId, categoryId) pair. Surfaced to the step as
+  // a `prefilledIds` hint so the operator sees which fields were
+  // pre-populated. Stays static after the initial fill — chasing dirty state
+  // would add complexity for small UX gain.
+  const [prefilledIds, setPrefilledIds] = useState<ReadonlySet<string>>(new Set());
+  // Wire snapshot of the parameters we sent on submit. Anchors error mapping
+  // when Allegro returns positional `parameters[N]` validation errors after
+  // a failed submit (each index → parameter id via this snapshot).
+  const submittedParametersRef = useRef<AllegroParameterInput[]>([]);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
   // Reset wizard state on open. A fresh idempotency key is minted every
@@ -152,6 +260,9 @@ export function CreateOfferWizard({
       }
       setProductSearchInput('');
       setProductOffset(0);
+      setPickedVariantEan(null);
+      setPrefilledIds(new Set());
+      submittedParametersRef.current = [];
       mutation.reset();
     }
     prevIsOpenRef.current = isOpen;
@@ -213,6 +324,75 @@ export function CreateOfferWizard({
         policies.impliedWarranties.length),
   );
 
+  // Step 3 (#410) — fetch the per-category parameter schema.
+  const currentCategoryId = form.watch('categoryId');
+  const categoryParametersQuery = useCategoryParametersQuery(
+    currentConnectionId || undefined,
+    currentCategoryId || undefined,
+  );
+  const categoryParameters = useMemo(
+    () => categoryParametersQuery.data ?? [],
+    [categoryParametersQuery.data],
+  );
+
+  // Auto-prefill EAN/Stan when the parameter schema first arrives for the
+  // current (connectionId, categoryId) pair. Re-runs only when the pair
+  // changes — values the operator has already typed are preserved.
+  const prefilledKeyRef = useRef<string>('');
+  useEffect(() => {
+    if (categoryParametersQuery.data === undefined) return;
+    const key = `${currentConnectionId}::${currentCategoryId}`;
+    if (prefilledKeyRef.current === key) return;
+    prefilledKeyRef.current = key;
+    if (categoryParametersQuery.data.length === 0) {
+      setPrefilledIds(new Set());
+      return;
+    }
+    const filled = autoPrefillParameters(categoryParametersQuery.data, {
+      ean: pickedVariantEan,
+    });
+    if (Object.keys(filled).length === 0) {
+      setPrefilledIds(new Set());
+      return;
+    }
+    const current =
+      (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
+    // Operator-set values win over auto-fill — only fill keys the form
+    // does not have a value for yet.
+    const merged: CategoryParameterFormValues = { ...current };
+    const filledIds = new Set<string>();
+    for (const [paramId, value] of Object.entries(filled)) {
+      if (current[paramId] === undefined || current[paramId] === '') {
+        merged[paramId] = value;
+        filledIds.add(paramId);
+      }
+    }
+    if (filledIds.size > 0) {
+      form.setValue('parameters', merged, { shouldDirty: false, shouldValidate: false });
+    }
+    setPrefilledIds(filledIds);
+  }, [
+    categoryParametersQuery.data,
+    currentConnectionId,
+    currentCategoryId,
+    pickedVariantEan,
+    form,
+  ]);
+
+  // Clear the parameters slice whenever the chosen category changes — the
+  // shape is category-specific so prior values would never be valid under a
+  // new schema.
+  const lastCategoryIdRef = useRef<string>(currentCategoryId);
+  useEffect(() => {
+    if (lastCategoryIdRef.current && lastCategoryIdRef.current !== currentCategoryId) {
+      form.setValue('parameters', {}, { shouldDirty: false, shouldValidate: false });
+      form.clearErrors('parameters');
+      setPrefilledIds(new Set());
+      prefilledKeyRef.current = '';
+    }
+    lastCategoryIdRef.current = currentCategoryId;
+  }, [currentCategoryId, form]);
+
   const validationMessages = Object.values(form.formState.errors).flatMap((e) =>
     e?.message ? [String(e.message)] : [],
   );
@@ -223,6 +403,34 @@ export function CreateOfferWizard({
       const valid = await form.trigger([...fields]);
       if (!valid) return;
     }
+
+    // Step 3 (#410) — dynamic per-category Zod validation. Skipped when the
+    // category has no parameters or when the schema is still loading (the
+    // serialiser drops empty/missing values, so an under-filled draft just
+    // produces a smaller payload — submission still surfaces server-side
+    // validation errors at the Review step).
+    if (stepIndex === 2 && categoryParameters.length > 0) {
+      const values =
+        (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
+      const result = buildParametersZodSchema(categoryParameters).safeParse(values);
+      if (!result.success) {
+        // Surface per-field issues onto the form — the renderer reads them
+        // via `formState.errors['parameters.{paramId}']` (flat key, set
+        // explicitly because RHF cannot infer the dynamic path shape).
+        form.clearErrors('parameters' as FieldPath<CreateOfferFieldsValues>);
+        for (const issue of result.error.issues) {
+          const paramId = String(issue.path[0] ?? '');
+          if (paramId === '') continue;
+          form.setError(
+            `parameters.${paramId}` as FieldPath<CreateOfferFieldsValues>,
+            { type: 'manual', message: issue.message },
+          );
+        }
+        return;
+      }
+      form.clearErrors('parameters' as FieldPath<CreateOfferFieldsValues>);
+    }
+
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -242,6 +450,9 @@ export function CreateOfferWizard({
     if (!form.getValues('priceAmount') && product.price !== null) {
       form.setValue('priceAmount', String(product.price.toFixed(2)), { shouldDirty: true });
     }
+    // Capture the variant's EAN for Step 3 auto-prefill (EAN/GTIN parameters
+    // populate from the variant's barcode).
+    setPickedVariantEan(variant.ean ?? null);
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -249,6 +460,19 @@ export function CreateOfferWizard({
     if (values.returnPolicyId) platformParams.returnPolicyId = values.returnPolicyId;
     if (values.warrantyId) platformParams.warrantyId = values.warrantyId;
     if (values.impliedWarrantyId) platformParams.impliedWarrantyId = values.impliedWarrantyId;
+
+    // Serialise Step-3 parameter values into Allegro's wire shape. The
+    // returned snapshot stays in `submittedParametersRef` for positional
+    // error mapping (Allegro returns `parameters[N]` indices on validation
+    // failure → look up the parameter id via this snapshot).
+    const { submitted: submittedParameters } = serializeAllegroParameters(
+      (values.parameters as CategoryParameterFormValues | undefined) ?? {},
+      categoryParameters,
+    );
+    submittedParametersRef.current = submittedParameters;
+    if (submittedParameters.length > 0) {
+      platformParams.parameters = submittedParameters;
+    }
 
     const request: CreateOfferRequest = {
       internalVariantId: values.internalVariantId,
@@ -305,6 +529,7 @@ export function CreateOfferWizard({
           </Alert>
         ) : null}
 
+        <FormProvider {...form}>
         <form
           id="create-offer-form"
           onSubmit={(e) => void onSubmit(e)}
@@ -570,6 +795,37 @@ export function CreateOfferWizard({
 
           {stepIndex === 2 ? (
             <>
+              {categoryParametersQuery.isLoading ? (
+                <p className="muted-text" role="status" aria-live="polite">
+                  Loading category parameters…
+                </p>
+              ) : categoryParametersQuery.error ? (
+                <Alert tone="error" title="Unable to load category parameters">
+                  <span>{categoryParametersQuery.error.message}</span>
+                  <Button
+                    tone="secondary"
+                    type="button"
+                    onClick={() => void categoryParametersQuery.refetch()}
+                  >
+                    Retry
+                  </Button>
+                </Alert>
+              ) : categoryParameters.length === 0 ? (
+                <p className="muted-text">
+                  No additional parameters required for this category.
+                </p>
+              ) : (
+                <CategoryParametersStep
+                  parameters={categoryParameters}
+                  formNamespace="parameters"
+                  prefilledIds={prefilledIds}
+                />
+              )}
+            </>
+          ) : null}
+
+          {stepIndex === 3 ? (
+            <>
               {sellerPoliciesQuery.isLoading ? (
                 <p className="muted-text">Loading seller policies…</p>
               ) : sellerPoliciesQuery.error ? (
@@ -638,7 +894,7 @@ export function CreateOfferWizard({
             </>
           ) : null}
 
-          {stepIndex === 3 ? (
+          {stepIndex === 4 ? (
             <dl className="wizard-review-list">
               <dt>Connection</dt>
               <dd>
@@ -656,6 +912,10 @@ export function CreateOfferWizard({
               <dd>{values.stock}</dd>
               <dt>Publish immediately</dt>
               <dd>{values.publishImmediately ? 'Yes' : 'No (create as draft)'}</dd>
+              {renderReviewParametersBlock(
+                (values.parameters as CategoryParameterFormValues | undefined) ?? {},
+                categoryParameters,
+              )}
               <dt>Delivery policy</dt>
               <dd>
                 {policies?.deliveryPolicies.find((p) => p.id === values.deliveryPolicyId)?.name ??
@@ -698,6 +958,7 @@ export function CreateOfferWizard({
             </dl>
           ) : null}
         </form>
+        </FormProvider>
 
         <div className="wizard-actions">
           <div className="wizard-actions__group">

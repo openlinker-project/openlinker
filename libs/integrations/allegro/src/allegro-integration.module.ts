@@ -21,6 +21,7 @@ import { AllegroTokenRefreshService } from './infrastructure/token-refresh/alleg
 import { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
 import { Logger } from '@openlinker/shared/logging';
 import { AllegroQuantityCommandRepositoryPort } from './domain/ports/allegro-quantity-command-repository.port';
+import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 
 @Module({
   imports: [
@@ -77,6 +78,15 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
     @Optional()
     private readonly configService?: ConfigService,
+    /**
+     * Distributed cache used by the offer-manager adapter for category-parameter
+     * responses (#410). Optional so unit-test bootstraps that don't import
+     * `CacheModule` keep working — production wiring imports it via
+     * `apps/api/src/app.module.ts`.
+     */
+    @Optional()
+    @Inject(CACHE_PORT_TOKEN)
+    private readonly cache?: CachePort,
   ) {}
 
   onModuleInit(): void {
@@ -86,6 +96,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
       this.tokenRefreshService,
       this.commandRepository,
       this.readQuantityPollConfig(),
+      this.cache,
+      this.readCatParamsTtlSec(),
     );
     this.factoryResolver.registerFactory('allegro.publicapi.v1', factory);
     this.connectionTesterRegistry.register(
@@ -115,6 +127,18 @@ export class AllegroIntegrationModule implements OnModuleInit {
     if (maxDelayMs !== undefined) config.maxDelayMs = maxDelayMs;
     if (backoffMultiplier !== undefined) config.backoffMultiplier = backoffMultiplier;
     return Object.keys(config).length > 0 ? config : undefined;
+  }
+
+  /**
+   * Read the cache-TTL override for `/sale/categories/{id}/parameters` from
+   * `OL_ALLEGRO_CAT_PARAMS_TTL_SEC`. Returns `undefined` when unset or
+   * non-positive — the adapter then uses its 24h default.
+   */
+  private readCatParamsTtlSec(): number | undefined {
+    const raw = this.configService?.get<string>('OL_ALLEGRO_CAT_PARAMS_TTL_SEC');
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
   }
 }
 

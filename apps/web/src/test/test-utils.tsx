@@ -218,6 +218,9 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         warranties: [],
         impliedWarranties: [],
       }),
+      // #410 — default to "no parameters" so the wizard's category step
+      // renders the friendly empty state in tests that don't override.
+      getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {

@@ -25,10 +25,71 @@ import {
   CREATE_OFFER_DEFAULT_VALUES,
   type CreateOfferFieldsValues,
 } from './create-offer-fields.schema';
+import type { CategoryParameterFormValues } from './category-parameter-form.types';
 
 function readString(params: Record<string, unknown> | undefined, key: string): string {
   const value = params?.[key];
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Reverse the wire-shape `parameters[]` array Allegro accepts back into the
+ * wizard's flat form-shape. Used by the retry path so a failed snapshot
+ * re-opens with values visible to the operator. Without the parameter
+ * meta we infer the form-side type from the wire payload:
+ *
+ *   - `rangeValue`             → `{ from, to }`
+ *   - `valuesIds.length > 1`   → `string[]` (multi-select dictionary)
+ *   - `valuesIds.length === 1` → `string`   (single dictionary)
+ *   - `values.length >= 1`     → `string`   (scalar / custom-text first)
+ *
+ * Once the parameters meta resolves, the renderer interprets the raw value
+ * correctly even when our heuristic guessed the wrong shape.
+ */
+function readParameters(params: Record<string, unknown> | undefined): CategoryParameterFormValues {
+  const raw = params?.parameters;
+  if (!Array.isArray(raw)) return {};
+
+  const out: CategoryParameterFormValues = {};
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const e = entry as {
+      id?: unknown;
+      values?: unknown;
+      valuesIds?: unknown;
+      rangeValue?: unknown;
+    };
+    if (typeof e.id !== 'string' || e.id === '') continue;
+
+    if (
+      e.rangeValue !== undefined &&
+      e.rangeValue !== null &&
+      typeof e.rangeValue === 'object'
+    ) {
+      const r = e.rangeValue as { from?: unknown; to?: unknown };
+      out[e.id] = {
+        from: typeof r.from === 'string' ? r.from : '',
+        to: typeof r.to === 'string' ? r.to : '',
+      };
+      continue;
+    }
+
+    if (Array.isArray(e.valuesIds) && e.valuesIds.every((v) => typeof v === 'string')) {
+      const ids = e.valuesIds as string[];
+      if (ids.length > 1) {
+        out[e.id] = ids;
+      } else if (ids.length === 1) {
+        out[e.id] = ids[0];
+      }
+      continue;
+    }
+
+    if (Array.isArray(e.values) && e.values.every((v) => typeof v === 'string')) {
+      const vals = e.values as string[];
+      if (vals.length > 0) out[e.id] = vals[0];
+    }
+  }
+  return out;
 }
 
 /**
@@ -64,6 +125,7 @@ export function createOfferRequestToFormValues(
     stock: request.stock,
     description: overrides?.description ?? '',
     publishImmediately: request.publishImmediately,
+    parameters: readParameters(platformParams),
     deliveryPolicyId: readString(platformParams, 'deliveryPolicyId'),
     returnPolicyId: readString(platformParams, 'returnPolicyId'),
     warrantyId: readString(platformParams, 'warrantyId'),

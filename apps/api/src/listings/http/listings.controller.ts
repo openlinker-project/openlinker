@@ -21,13 +21,31 @@ import {
   Param,
   Post,
   Query,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
-import type { IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecord, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import {
+  CategoryNotFoundException,
+  isCategoryParametersReader,
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
+  SELLER_POLICIES_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
+import type {
+  CategoryParameter,
+  IOfferCreationEnqueueService,
+  ISellerPoliciesService,
+  OfferCreationRecord,
+  OfferCreationRecordRepositoryPort,
+  OfferManagerPort,
+  OfferMappingRepositoryPort,
+} from '@openlinker/core/listings';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { EntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
@@ -41,6 +59,10 @@ import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
+import {
+  CategoryParametersListResponseDto,
+  CategoryParameterResponseDto,
+} from './dto/category-parameter-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -58,6 +80,8 @@ export class ListingsController {
     private readonly offerCreationEnqueue: IOfferCreationEnqueueService,
     @Inject(SELLER_POLICIES_SERVICE_TOKEN)
     private readonly sellerPolicies: ISellerPoliciesService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
 
   @Get()
@@ -254,6 +278,76 @@ export class ListingsController {
     @Param('connectionId') connectionId: string,
   ): Promise<SellerPoliciesResponseDto> {
     return this.sellerPolicies.getSellerPolicies(connectionId);
+  }
+
+  @Get('connections/:connectionId/categories/:categoryId/parameters')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'categoryId', description: 'Marketplace category ID (Allegro-issued).' })
+  @ApiOperation({
+    summary: 'List category parameters for offer creation (#410)',
+    description:
+      'Returns the full set of marketplace category parameters (required + optional) the create-offer wizard renders for the given connection. The adapter caches the upstream response for 24h by default; the FE additionally caches per (connectionId, categoryId) in TanStack Query.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Category parameters wrapped under `parameters`.',
+    type: CategoryParametersListResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection or category not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support category-parameters reading.',
+  })
+  async getCategoryParameters(
+    @Param('connectionId') connectionId: string,
+    @Param('categoryId') categoryId: string,
+  ): Promise<CategoryParametersListResponseDto> {
+    // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
+    // CapabilityNotSupportedException (422) for upstream connection-level issues.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+
+    if (!isCategoryParametersReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${connectionId} does not support category-parameters reading`,
+      );
+    }
+
+    let parameters: CategoryParameter[];
+    try {
+      parameters = await adapter.fetchCategoryParameters({ categoryId });
+    } catch (err) {
+      if (err instanceof CategoryNotFoundException) {
+        // Bubble category-level 404 distinct from connection-level 404 — the FE
+        // can show a friendlier message and let the operator pick a different
+        // category without re-resolving the connection.
+        throw new NotFoundException(`Category ${categoryId} not found on connection ${connectionId}`);
+      }
+      throw err;
+    }
+
+    return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
+  }
+
+  private toCategoryParameterResponseDto(p: CategoryParameter): CategoryParameterResponseDto {
+    return {
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      required: p.required,
+      unit: p.unit,
+      dictionary: p.dictionary?.map((entry) => ({
+        id: entry.id,
+        value: entry.value,
+        dependsOnValueIds: entry.dependsOnValueIds,
+      })),
+      restrictions: { ...p.restrictions },
+      dependsOn: p.dependsOn ? { ...p.dependsOn } : undefined,
+    };
   }
 
   private toDto(mapping: IdentifierMapping): OfferMappingResponseDto {

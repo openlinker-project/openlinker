@@ -30,6 +30,7 @@ import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-or
 import { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
 import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
+import type { CachePort } from '@openlinker/shared';
 import { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
 
 /**
@@ -47,7 +48,11 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     _customerIdentityResolver?: CustomerIdentityResolverPort,
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
-    private readonly quantityPollConfig?: Partial<QuantityPollConfig>
+    private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
+    /** Distributed cache for category parameters (#410). Optional; missing → no caching. */
+    private readonly cache?: CachePort,
+    /** TTL override for the category parameters cache in seconds. Defaults to 24h. */
+    private readonly catParamsTtlSec?: number,
   ) {
     void _customerIdentityResolver;
   }
@@ -110,7 +115,9 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       identifierMapping,
       connection,
       this.commandRepository,
-      this.quantityPollConfig
+      this.quantityPollConfig,
+      this.cache,
+      this.catParamsTtlSec,
     );
     const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 

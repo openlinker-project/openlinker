@@ -6,10 +6,13 @@
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import type { SellerPolicies } from '@openlinker/core/listings';
+import type { CategoryParameter, OfferManagerPort, SellerPolicies } from '@openlinker/core/listings';
+import { CategoryNotFoundException } from '@openlinker/core/listings';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, OfferCreationRecord, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
 import type { IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
@@ -22,6 +25,7 @@ describe('ListingsController', () => {
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let offerCreationEnqueue: jest.Mocked<IOfferCreationEnqueueService>;
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
+  let integrationsService: jest.Mocked<IIntegrationsService>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -69,6 +73,9 @@ describe('ListingsController', () => {
     sellerPolicies = {
       getSellerPolicies: jest.fn(),
     };
+    integrationsService = {
+      getCapabilityAdapter: jest.fn(),
+    } as unknown as jest.Mocked<IIntegrationsService>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -78,6 +85,7 @@ describe('ListingsController', () => {
         { provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useValue: offerCreationRecords },
         { provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, useValue: offerCreationEnqueue },
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
       ],
     }).compile();
 
@@ -360,6 +368,97 @@ describe('ListingsController', () => {
 
       expect(result).toEqual(policies);
       expect(sellerPolicies.getSellerPolicies).toHaveBeenCalledWith('conn-1');
+    });
+  });
+
+  describe('getCategoryParameters', () => {
+    const sampleNeutral: CategoryParameter[] = [
+      {
+        id: '11323',
+        name: 'Stan',
+        type: 'dictionary',
+        required: true,
+        dictionary: [{ id: '11323_1', value: 'Nowy' }],
+        restrictions: { multipleChoices: false },
+      },
+      {
+        id: '229205',
+        name: 'Stan opakowania',
+        type: 'dictionary',
+        required: false,
+        dictionary: [
+          {
+            id: '229205_340245',
+            value: 'oryginalne',
+            dependsOnValueIds: ['11323_1'],
+          },
+        ],
+        restrictions: { multipleChoices: false },
+        dependsOn: { parameterId: '11323', valueIds: ['11323_1'] },
+      },
+    ];
+
+    function makeAdapter(
+      withCategoryParametersReader: boolean,
+      fetch: jest.Mock = jest.fn().mockResolvedValue(sampleNeutral),
+    ): OfferManagerPort {
+      // Adapter is a plain object — only the `fetchCategoryParameters` method
+      // matters for the type-guard narrowing.
+      const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+      if (withCategoryParametersReader) {
+        return Object.assign(base, { fetchCategoryParameters: fetch });
+      }
+      return base;
+    }
+
+    it('returns parameters wrapped under `parameters`, mapping the neutral shape verbatim', async () => {
+      const fetch = jest.fn().mockResolvedValue(sampleNeutral);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      const result = await controller.getCategoryParameters('conn-1', '257933');
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(fetch).toHaveBeenCalledWith({ categoryId: '257933' });
+      expect(result.parameters).toHaveLength(2);
+      expect(result.parameters[0]).toMatchObject({
+        id: '11323',
+        type: 'dictionary',
+        required: true,
+        dictionary: [{ id: '11323_1', value: 'Nowy' }],
+      });
+      expect(result.parameters[1].dependsOn).toEqual({
+        parameterId: '11323',
+        valueIds: ['11323_1'],
+      });
+      expect(result.parameters[1].dictionary?.[0].dependsOnValueIds).toEqual(['11323_1']);
+    });
+
+    it('throws 422 when the adapter does not implement CategoryParametersReader', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+      await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('translates CategoryNotFoundException to a 404 NotFoundException', async () => {
+      const fetch = jest
+        .fn()
+        .mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryParameters('conn-1', '999999')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('propagates upstream errors that are not CategoryNotFoundException', async () => {
+      const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toThrow(
+        'upstream-503',
+      );
     });
   });
 });
