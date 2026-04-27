@@ -19,7 +19,7 @@ import { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
-import { Logger } from '@openlinker/shared/logging';
+import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { randomUUID } from 'crypto';
 
 /**
@@ -428,10 +428,11 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     }
 
     // Other client errors (4xx)
-    this.logger.error(`[${traceId}] Allegro API error (${statusCode}): ${url} - ${body.substring(0, 200)}`);
+    this.logger.error(`[${traceId}] Allegro API error (${statusCode}): ${url} - ${formatBodyForLog(body)}`);
     // Full body on the exception (#409) — `parseAllegroErrors` needs the
-    // complete JSON to pull out Allegro's `errors[]`; the 200-char preview
-    // on the log line above stays for scroll-back readability.
+    // complete JSON to pull out Allegro's `errors[]`. The log line above is
+    // formatted via `formatBodyForLog` (#416), which is uncapped by default
+    // and only truncates when an operator opts into `OL_LOG_BODY_MAX_BYTES`.
     throw new AllegroApiException(
       `Allegro API error (${statusCode}): ${url}`,
       statusCode,

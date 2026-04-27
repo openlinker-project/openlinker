@@ -564,7 +564,13 @@ describe('PrestashopWebserviceClient', () => {
       }
     });
 
-    it('should truncate error body to 500 characters', async () => {
+    it('should carry the full error body on the exception (#416)', async () => {
+      // Pre-#416 the client truncated `responseBody` to 500 chars before
+      // attaching it to the exception. That made it impossible for callers
+      // to inspect the full upstream payload. Post-#416 the exception
+      // carries the FULL body (matches Allegro #409); only log lines are
+      // subject to the operator-tunable `OL_LOG_BODY_MAX_BYTES` cap.
+
       // Disable retries for error-handling tests
       const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
         maxRetries: 0,
@@ -584,10 +590,10 @@ describe('PrestashopWebserviceClient', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(PrestashopApiException);
         if (error instanceof PrestashopApiException) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const apiError = error;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        expect(apiError.responseBody?.length).toBeLessThanOrEqual(500);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const apiError = error;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          expect(apiError.responseBody).toBe(longErrorBody);
         }
       }
     });

@@ -18,7 +18,7 @@ import {
 } from '@openlinker/integrations-prestashop';
 import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
-import { Logger } from '@openlinker/shared/logging';
+import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
 
 /**
@@ -393,7 +393,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       if (options.method === 'POST' && typeof options.body === 'string') {
         this.logger.debug(`Body (full): ${options.body}`);
       } else {
-        this.logger.debug(`Body: ${typeof options.body === 'string' ? options.body.substring(0, 500) : '[binary]'}`);
+        this.logger.debug(`Body: ${typeof options.body === 'string' ? formatBodyForLog(options.body) : '[binary]'}`);
       }
     }
 
@@ -424,8 +424,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       if (response.status >= 400) {
         this.logger.debug(`Response body (full for error): ${body || '(empty)'}`);
       } else {
-        const bodyPreview = body.length > 1000 ? `${body.substring(0, 1000)}... [truncated, total length: ${body.length}]` : body;
-        this.logger.debug(`Response body: ${bodyPreview}`);
+        this.logger.debug(`Response body: ${formatBodyForLog(body)}`);
       }
 
       // Handle errors
@@ -492,15 +491,17 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     }
 
     if (statusCode >= 500) {
-      // Log the full error response for debugging
+      // Log line uses `formatBodyForLog` so operators can opt into a cap via
+      // `OL_LOG_BODY_MAX_BYTES`; the exception carries the FULL body so any
+      // downstream consumer can inspect or parse it (matches Allegro #409).
       this.logger.error(
-        `PrestaShop API server error (${statusCode}): ${url}. Response body: ${body.substring(0, 1000)}`,
+        `PrestaShop API server error (${statusCode}): ${url}. Response body: ${formatBodyForLog(body)}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const serverError = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
-        body.substring(0, 500),
+        body,
       );
       throw serverError;
     }
@@ -509,7 +510,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const apiError = new PrestashopApiException(
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,
-      body.substring(0, 500),
+      body,
     );
     throw apiError;
   }
