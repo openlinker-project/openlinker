@@ -183,7 +183,13 @@ export interface AllegroOffersResponse {
 }
 
 /**
- * Allegro offer parameter entry (from GET /sale/product-offers/{offerId})
+ * Allegro offer parameter entry. Used both as a GET payload field (from
+ * `GET /sale/product-offers/{offerId}` — `name` is populated server-side)
+ * and as a POST request shape (`body.parameters[]` /
+ * `body.product.parameters[]` — adapters omit `name`, Allegro infers it from
+ * `id`). Allegro's actual POST API also accepts `rangeValue?: { from, to }`
+ * here; the adapter's shape validator (`isAllegroOfferParameterShape`)
+ * currently filters that branch out — pre-existing gap, tracked separately.
  */
 export interface AllegroOfferParameter {
   id: string;
@@ -384,7 +390,7 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
     }>;
   };
   images?: string[];
-  parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
+  parameters?: AllegroOfferParameter[];
   /**
    * Product-section parameters (#415). Allegro splits category parameters
    * into "describes the offer" (`body.parameters[]`) and "describes the
@@ -394,7 +400,7 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
    * offer-section envelope.
    */
   product?: {
-    parameters?: Array<{ id: string; values?: string[]; valuesIds?: string[] }>;
+    parameters?: AllegroOfferParameter[];
   };
   delivery?: { shippingRates?: { id: string }; handlingTime?: string };
   afterSalesServices?: {

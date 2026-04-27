@@ -951,6 +951,57 @@ describe('CreateOfferWizard', () => {
       expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
     });
 
+    it('blocks advancement past Step 3 when a required PRODUCT-section parameter is empty (#415)', async () => {
+      // Marka is product-section + required + has no auto-prefill, so it
+      // stays empty until the operator picks a value. The dynamic-Zod gate
+      // must reject advancement regardless of section — the section split
+      // happens at submit time, validation happens before that.
+      const mockApi = defaultMocks({
+        listings: {
+          createOffer: vi.fn(),
+          getSellerPolicies: vi.fn().mockResolvedValue(policies),
+          getCategoryParameters: vi.fn().mockResolvedValue({
+            parameters: [
+              {
+                id: 'p_marka',
+                name: 'Marka',
+                type: 'dictionary',
+                required: true,
+                dictionary: [{ id: 'p_marka_canon', value: 'Canon' }],
+                restrictions: {},
+                section: 'product',
+              } satisfies CategoryParameter,
+            ],
+          }),
+        },
+      });
+
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Step 3 — Marka is rendered, empty, required.
+      const markaSelect = await screen.findByLabelText<HTMLSelectElement>(/^marka$/i);
+      expect(markaSelect.value).toBe('');
+
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      // Dynamic validation rejects the advance — policies step does NOT appear.
+      expect(await screen.findByText(/marka is required/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
+    });
+
     // Note: the "categoryId change clears the parameters slice" effect is
     // small enough to live in the wizard's clearing useEffect, and the
     // wired path is covered by the visibility / serializer / Zod helper
