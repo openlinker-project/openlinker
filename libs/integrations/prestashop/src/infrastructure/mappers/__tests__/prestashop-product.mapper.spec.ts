@@ -394,7 +394,7 @@ describe('PrestashopProductMapper', () => {
       const prestashopProduct = makeProductWithImages({ image: { id: '7' } });
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toEqual(['https://shop.test/img/p/7/7-home_default.jpg']);
+      expect(result.images).toEqual(['https://shop.test/img/p/7/7-large_default.jpg']);
     });
 
     it('should extract a multi-image array and preserve order (cover first)', () => {
@@ -404,9 +404,9 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual([
-        'https://shop.test/img/p/1/1-home_default.jpg',
-        'https://shop.test/img/p/2/2-home_default.jpg',
-        'https://shop.test/img/p/3/3-home_default.jpg',
+        'https://shop.test/img/p/1/1-large_default.jpg',
+        'https://shop.test/img/p/2/2-large_default.jpg',
+        'https://shop.test/img/p/3/3-large_default.jpg',
       ]);
     });
 
@@ -417,8 +417,8 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual([
-        'https://shop.test/img/p/4/2/42-home_default.jpg',
-        'https://shop.test/img/p/1/2/3/123-home_default.jpg',
+        'https://shop.test/img/p/4/2/42-large_default.jpg',
+        'https://shop.test/img/p/1/2/3/123-large_default.jpg',
       ]);
     });
 
@@ -429,10 +429,10 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual([
-        'https://shop.test/img/p/1/1-home_default.jpg',
-        'https://shop.test/img/p/4/2/42-home_default.jpg',
-        'https://shop.test/img/p/1/2/3/123-home_default.jpg',
-        'https://shop.test/img/p/1/2/3/4/1234-home_default.jpg',
+        'https://shop.test/img/p/1/1-large_default.jpg',
+        'https://shop.test/img/p/4/2/42-large_default.jpg',
+        'https://shop.test/img/p/1/2/3/123-large_default.jpg',
+        'https://shop.test/img/p/1/2/3/4/1234-large_default.jpg',
       ]);
     });
 
@@ -443,7 +443,7 @@ describe('PrestashopProductMapper', () => {
       const prestashopProduct = makeProductWithImages({ image: { id: '1' } });
 
       const result = localMapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toEqual(['https://shop.test/img/p/1/1-home_default.jpg']);
+      expect(result.images).toEqual(['https://shop.test/img/p/1/1-large_default.jpg']);
     });
 
     it('should skip entries without a usable id and still return the rest', () => {
@@ -453,8 +453,8 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual([
-        'https://shop.test/img/p/1/1-home_default.jpg',
-        'https://shop.test/img/p/3/3-home_default.jpg',
+        'https://shop.test/img/p/1/1-large_default.jpg',
+        'https://shop.test/img/p/3/3-large_default.jpg',
       ]);
     });
 
@@ -471,7 +471,7 @@ describe('PrestashopProductMapper', () => {
       const prestashopProduct = makeProductWithImages({ image: { id: 55 } });
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.images).toEqual(['https://shop.test/img/p/5/5/55-home_default.jpg']);
+      expect(result.images).toEqual(['https://shop.test/img/p/5/5/55-large_default.jpg']);
     });
 
     it('should extract images from JSON shape (flat array, no image wrapper)', () => {
@@ -482,8 +482,8 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toEqual([
-        'https://shop.test/img/p/1/1-home_default.jpg',
-        'https://shop.test/img/p/2/2-home_default.jpg',
+        'https://shop.test/img/p/1/1-large_default.jpg',
+        'https://shop.test/img/p/2/2-large_default.jpg',
       ]);
     });
 
@@ -494,6 +494,23 @@ describe('PrestashopProductMapper', () => {
 
       const result = mapper.mapProduct(prestashopProduct, 1);
       expect(result.images).toBeNull();
+    });
+
+    it('should honour the imageVariant option override', () => {
+      // #424 — `imageVariant` lets a connection override the default
+      // `large_default` suffix when the PS instance uses non-standard
+      // image-type names or sizing.
+      const localMapper = new PrestashopProductMapper({
+        storefrontBaseUrl: 'https://shop.test',
+        imageVariant: 'medium_default',
+      });
+      const prestashopProduct = makeProductWithImages({ image: [{ id: '1' }, { id: '42' }] });
+
+      const result = localMapper.mapProduct(prestashopProduct, 1);
+      expect(result.images).toEqual([
+        'https://shop.test/img/p/1/1-medium_default.jpg',
+        'https://shop.test/img/p/4/2/42-medium_default.jpg',
+      ]);
     });
   });
 

@@ -23,6 +23,33 @@ import {
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
 
+/**
+ * Build a minimal valid PNG header (24 bytes) for the given dimensions.
+ *
+ * Used by `createOffer` specs to feed `uploadImagesViaAllegro` bytes that
+ * pass `image-size`'s header parser and clear Allegro's 400px-longer-side
+ * gate (#424).
+ */
+function makeValidPng(width: number, height: number): Uint8Array {
+  const buf = Buffer.alloc(24);
+  buf[0] = 0x89;
+  buf[1] = 0x50;
+  buf[2] = 0x4e;
+  buf[3] = 0x47;
+  buf[4] = 0x0d;
+  buf[5] = 0x0a;
+  buf[6] = 0x1a;
+  buf[7] = 0x0a;
+  buf.writeUInt32BE(13, 8);
+  buf[12] = 0x49;
+  buf[13] = 0x48;
+  buf[14] = 0x44;
+  buf[15] = 0x52;
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return new Uint8Array(buf);
+}
+
 describe('AllegroOfferManagerAdapter', () => {
   let adapter: AllegroOfferManagerAdapter;
   let httpClient: jest.Mocked<IAllegroHttpClient>;
@@ -599,13 +626,16 @@ describe('AllegroOfferManagerAdapter', () => {
     let fetchSpy: jest.SpyInstance;
 
     beforeEach(() => {
-      // Default fetch: 200 + image/jpeg + minimal JPEG bytes — keeps existing
-      // specs that don't care about the upload step green.
+      // Default fetch: 200 + image/jpeg + a valid 800×800 PNG header —
+      // image-size's PNG handler will accept this regardless of the
+      // declared content-type, and 800×800 clears Allegro's 400px-longer-side
+      // gate (#424). Keeps existing specs that don't care about the upload
+      // step green.
       fetchSpy = jest
         .spyOn(globalThis, 'fetch')
         .mockImplementation(() =>
           Promise.resolve(
-            new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
+            new Response(makeValidPng(800, 800), {
               status: 200,
               headers: { 'content-type': 'image/jpeg' },
             }),
@@ -1322,6 +1352,32 @@ describe('AllegroOfferManagerAdapter', () => {
         ],
       });
       expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('throws OfferCreateRejectedException with IMAGE_TOO_SMALL_FOR_PRODUCT when source image is below the 400px gate', async () => {
+      // #424 — full e2e check that the new code surfaces through the
+      // existing OfferCreateRejectedException path and prevents the
+      // POST /sale/product-offers call.
+      fetchSpy.mockResolvedValue(
+        new Response(makeValidPng(200, 200), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        }),
+      );
+
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        name: 'OfferCreateRejectedException',
+        statusCode: 0,
+        errors: [
+          expect.objectContaining({
+            field: 'images',
+            code: 'IMAGE_TOO_SMALL_FOR_PRODUCT',
+            message: expect.stringMatching(/200×200px/),
+          }),
+        ],
+      });
+      expect(httpClient.post).not.toHaveBeenCalled();
+      expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
     });
 
     it('does not call POST /sale/product-offers when the image upload step fails', async () => {

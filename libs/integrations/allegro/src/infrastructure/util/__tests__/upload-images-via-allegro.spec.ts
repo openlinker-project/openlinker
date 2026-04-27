@@ -10,7 +10,41 @@
  */
 import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import { uploadImagesViaAllegro } from '../upload-images-via-allegro';
+import {
+  ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX,
+  uploadImagesViaAllegro,
+} from '../upload-images-via-allegro';
+
+/**
+ * Build a minimal valid PNG header (24 bytes) for the given dimensions.
+ *
+ * `image-size`'s PNG handler reads only the signature + IHDR chunk
+ * (`signature[8] + length[4] + 'IHDR'[4] + width[4] + height[4]`); the
+ * chunk-length / CRC bytes can be anything. Lets us build dimension fixtures
+ * without shipping binary blobs in the repo.
+ */
+function makeValidPng(width: number, height: number): Uint8Array {
+  const buf = Buffer.alloc(24);
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  buf[0] = 0x89;
+  buf[1] = 0x50;
+  buf[2] = 0x4e;
+  buf[3] = 0x47;
+  buf[4] = 0x0d;
+  buf[5] = 0x0a;
+  buf[6] = 0x1a;
+  buf[7] = 0x0a;
+  // Chunk length (13) — value does not affect `image-size` parsing.
+  buf.writeUInt32BE(13, 8);
+  // 'IHDR'
+  buf[12] = 0x49;
+  buf[13] = 0x48;
+  buf[14] = 0x44;
+  buf[15] = 0x52;
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return new Uint8Array(buf);
+}
 
 describe('uploadImagesViaAllegro', () => {
   let uploadHttpClient: jest.Mocked<IAllegroHttpClient>;
@@ -42,7 +76,7 @@ describe('uploadImagesViaAllegro', () => {
   });
 
   it('happy path — single 200 jpeg returns one Allegro CDN location', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(new Uint8Array([0xff, 0xd8, 0xff])));
+    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(800, 800)));
     uploadHttpClient.postBinary.mockResolvedValue({
       data: { location: 'https://images.allegrostatic.com/uploaded-1.jpg' },
       status: 201,
@@ -71,7 +105,7 @@ describe('uploadImagesViaAllegro', () => {
     // Fresh Response per call — Response bodies can only be consumed once.
     const fetchImpl = jest
       .fn()
-      .mockImplementation(() => Promise.resolve(okFetchResponse(new Uint8Array([1]))));
+      .mockImplementation(() => Promise.resolve(okFetchResponse(makeValidPng(800, 800))));
     let counter = 0;
     uploadHttpClient.postBinary.mockImplementation(() =>
       Promise.resolve({
@@ -166,7 +200,7 @@ describe('uploadImagesViaAllegro', () => {
 
   it('normalizes image/jpg to image/jpeg when forwarding to Allegro', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
-      new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
+      new Response(makeValidPng(600, 600), {
         status: 200,
         headers: { 'content-type': 'image/jpg' }, // non-standard but ubiquitous
       }),
@@ -192,7 +226,7 @@ describe('uploadImagesViaAllegro', () => {
   });
 
   it('IMAGE_UPLOAD_FAILED when Allegro postBinary rejects with 4xx', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(new Uint8Array([0xff])));
+    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(600, 600)));
     uploadHttpClient.postBinary.mockRejectedValue(
       new AllegroApiException(
         'Unprocessable entity',
@@ -218,7 +252,7 @@ describe('uploadImagesViaAllegro', () => {
   });
 
   it('IMAGE_UPLOAD_FAILED when Allegro response is missing the location field', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(new Uint8Array([0xff])));
+    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(600, 600)));
     uploadHttpClient.postBinary.mockResolvedValue({
       data: {},
       status: 201,
@@ -245,7 +279,7 @@ describe('uploadImagesViaAllegro', () => {
       if (url.includes('bad')) {
         return Promise.resolve(errFetchResponse(403));
       }
-      return Promise.resolve(okFetchResponse(new Uint8Array([0xff])));
+      return Promise.resolve(okFetchResponse(makeValidPng(600, 600)));
     });
     uploadHttpClient.postBinary.mockResolvedValue({
       data: { location: 'https://images.allegrostatic.com/ok.jpg' },
@@ -264,5 +298,77 @@ describe('uploadImagesViaAllegro', () => {
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].message).toContain('http://shop.local/bad.jpg');
     expect(result.failures[0].message).not.toContain('http://shop.local/good.jpg');
+  });
+
+  it('IMAGE_TOO_SMALL_FOR_PRODUCT when source longer side < 400px — postBinary never called', async () => {
+    // #424 — Allegro's productSet[0].product.images[] validator rejects
+    // anything below 400px on the longer side. Catch it before we burn an
+    // upload + a 422 at offer-creation time.
+    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(200, 200)));
+
+    const result = await uploadImagesViaAllegro(
+      uploadHttpClient,
+      ['http://shop.local/tiny.jpg'],
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures[0]).toEqual({
+      field: 'images',
+      code: 'IMAGE_TOO_SMALL_FOR_PRODUCT',
+      message: expect.stringMatching(/200×200px/),
+    });
+    expect(result.failures[0].message).toContain(
+      `≥ ${ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX}px`,
+    );
+    expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
+  });
+
+  it('accepts an image at the 400px boundary (longer side === min is allowed)', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(400, 400)));
+    uploadHttpClient.postBinary.mockResolvedValue({
+      data: { location: 'https://images.allegrostatic.com/boundary.jpg' },
+      status: 201,
+      headers: {},
+    });
+
+    const result = await uploadImagesViaAllegro(
+      uploadHttpClient,
+      ['http://shop.local/boundary.jpg'],
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      locations: ['https://images.allegrostatic.com/boundary.jpg'],
+    });
+  });
+
+  it('IMAGE_DOWNLOAD_INVALID_TYPE when bytes claim image/* but image-size cannot decode them', async () => {
+    // PNG signature with truncated IHDR — passes content-type check (server
+    // claims image/png) but `image-size` throws on the malformed header.
+    const corrupt = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]);
+    const fetchImpl = jest.fn().mockResolvedValue(
+      new Response(corrupt, {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      }),
+    );
+
+    const result = await uploadImagesViaAllegro(
+      uploadHttpClient,
+      ['http://shop.local/corrupt.png'],
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failures[0]).toEqual({
+      field: 'images',
+      code: 'IMAGE_DOWNLOAD_INVALID_TYPE',
+      message: expect.stringMatching(/could not be decoded/),
+    });
+    expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
   });
 });
