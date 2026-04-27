@@ -229,6 +229,31 @@ export interface CategoryParameterDependsOn {
   valueIds: string[];
 }
 
+/**
+ * Cache-bust version for the category-parameters TanStack Query response shape.
+ *
+ * **BUMP THIS** every time the `CategoryParameter` interface gains a new
+ * required field (or removes one), so every browser's in-flight TanStack
+ * Query cache for this endpoint is invalidated on next deploy.
+ *
+ * Why: the FE caches the categoryParameters response for 24h (see
+ * `useCategoryParametersQuery`'s `staleTime`). When a required field is
+ * added to the interface, browsers holding pre-bump cached responses serve
+ * stale data that violates the type contract — causing the
+ * `MissingCategoryParameterSectionError` throw in `serializeAllegroParameters`
+ * (the runtime backstop). Bumping this constant routes around the staleness
+ * by changing the queryKey, so old caches become orphaned and a fresh fetch
+ * is forced.
+ *
+ * Bump history:
+ *   - 2 (#423, 2026-04): post-#417 schema with `section: 'offer' | 'product'`.
+ *   - 1 (implicit): pre-#417 schema without `section`.
+ *
+ * @see {@link CategoryParameter}
+ * @see #423 for the original cache-staleness incident.
+ */
+export const CATEGORY_PARAMETERS_SCHEMA_VERSION = 2;
+
 export interface CategoryParameter {
   id: string;
   name: string;
