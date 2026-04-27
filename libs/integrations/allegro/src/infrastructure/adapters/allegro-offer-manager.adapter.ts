@@ -81,9 +81,7 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
  * silently dropped — Allegro would reject it anyway, and keeping the guard
  * strict means invalid shapes fail fast at the request-build step.
  */
-function isAllegroOfferParameterShape(
-  candidate: unknown,
-): candidate is { id: string; values?: string[]; valuesIds?: string[] } {
+function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroOfferParameter {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const c = candidate as { id?: unknown; values?: unknown; valuesIds?: unknown };
   if (typeof c.id !== 'string' || c.id.length === 0) return false;
@@ -914,6 +912,24 @@ export class AllegroOfferManagerAdapter
     const parameters = platformParams['parameters'];
     if (Array.isArray(parameters)) {
       body.parameters = parameters.filter(isAllegroOfferParameterShape);
+    }
+
+    // #415 — product-section parameters travel under `body.product.parameters[]`,
+    // not `body.parameters[]`. Allegro 422s with `ParameterCategoryException`
+    // when Brand / Model / Manufacturer-code appear in the offer-section
+    // array. Omit `body.product` entirely when the array would be empty —
+    // sending `{ product: { parameters: [] } }` is equally rejected.
+    //
+    // Merge into any pre-existing `body.product` rather than overwriting:
+    // today this is a clean greenfield assignment, but if a future capability
+    // populates `body.product` (e.g. a linked-product id, product-level
+    // images), this preserves those fields.
+    const productParameters = platformParams['productParameters'];
+    if (Array.isArray(productParameters)) {
+      const filtered = productParameters.filter(isAllegroOfferParameterShape);
+      if (filtered.length > 0) {
+        body.product = { ...(body.product ?? {}), parameters: filtered };
+      }
     }
   }
 

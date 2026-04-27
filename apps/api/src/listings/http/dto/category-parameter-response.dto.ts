@@ -12,7 +12,10 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 
-import { CategoryParameterTypeValues } from '@openlinker/core/listings';
+import {
+  CategoryParameterSectionValues,
+  CategoryParameterTypeValues,
+} from '@openlinker/core/listings';
 
 export class CategoryParameterDictionaryEntryResponseDto {
   @ApiProperty({ description: 'Allegro-issued dictionary entry ID.' })
@@ -101,6 +104,13 @@ export class CategoryParameterResponseDto {
       'Parameter-level visibility dependency. Distinct from `dictionary[i].dependsOnValueIds`, which filters dictionary entries within an already-visible parameter.',
   })
   dependsOn?: CategoryParameterDependsOnResponseDto;
+
+  @ApiProperty({
+    enum: CategoryParameterSectionValues,
+    description:
+      'Wire-shape section the parameter belongs to (#415). `"product"` parameters travel under `body.product.parameters[]` on offer creation; `"offer"` under `body.parameters[]`. Adapters that cannot distinguish always emit `"offer"`.',
+  })
+  section!: (typeof CategoryParameterSectionValues)[number];
 }
 
 export class CategoryParametersListResponseDto {

@@ -380,6 +380,7 @@ describe('ListingsController', () => {
         required: true,
         dictionary: [{ id: '11323_1', value: 'Nowy' }],
         restrictions: { multipleChoices: false },
+        section: 'offer',
       },
       {
         id: '229205',
@@ -395,6 +396,7 @@ describe('ListingsController', () => {
         ],
         restrictions: { multipleChoices: false },
         dependsOn: { parameterId: '11323', valueIds: ['11323_1'] },
+        section: 'offer',
       },
     ];
 
@@ -431,6 +433,24 @@ describe('ListingsController', () => {
         valueIds: ['11323_1'],
       });
       expect(result.parameters[1].dictionary?.[0].dependsOnValueIds).toEqual(['11323_1']);
+    });
+
+    it('round-trips the section field from neutral metadata onto the response (#415)', async () => {
+      const fetch = jest.fn().mockResolvedValue([
+        {
+          ...sampleNeutral[0],
+          id: '248811',
+          name: 'Marka',
+          section: 'product' as const,
+        },
+        sampleNeutral[1], // section: 'offer'
+      ]);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      const result = await controller.getCategoryParameters('conn-1', '257932');
+
+      expect(result.parameters[0].section).toBe('product');
+      expect(result.parameters[1].section).toBe('offer');
     });
 
     it('throws 422 when the adapter does not implement CategoryParametersReader', async () => {

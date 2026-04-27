@@ -164,4 +164,25 @@ describe('toNeutralCategoryParameter', () => {
       expect(neutral.dictionary?.length).toBe(raw.dictionary?.length);
     });
   });
+
+  describe('section flag (#415)', () => {
+    it("emits section: 'product' for parameters with options.describesProduct === true", () => {
+      // Marka (id 248811) is the canonical product-section parameter — it's
+      // the one that triggered ParameterCategoryException in the bug report
+      // when sent under body.parameters[]. Fixture confirms describesProduct=true.
+      const raw = findRaw(fixture, '248811');
+      expect(raw.options?.describesProduct).toBe(true);
+      const neutral = toNeutralCategoryParameter(raw);
+      expect(neutral.section).toBe('product');
+    });
+
+    it("emits section: 'offer' for parameters where describesProduct is false or absent", () => {
+      // Stan (id 11323) is the classic offer-section parameter — every
+      // operator-set condition lives here.
+      const raw = findRaw(fixture, '11323');
+      expect(raw.options?.describesProduct).not.toBe(true);
+      const neutral = toNeutralCategoryParameter(raw);
+      expect(neutral.section).toBe('offer');
+    });
+  });
 });

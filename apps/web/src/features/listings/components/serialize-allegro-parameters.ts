@@ -1,12 +1,19 @@
 /**
  * Serialize Category-Parameter Form Values → Allegro Wire Shape
  *
- * Converts the wizard's flat `parameters[paramId]` form state into the
- * `parameters[]` array Allegro's `POST /sale/product-offers` expects (#410).
- * Output is appended to `platformParams.parameters` on the existing
- * create-offer mutation payload.
+ * Converts the wizard's flat `parameters[paramId]` form state into two
+ * arrays — one per wire-shape section Allegro's `POST /sale/product-offers`
+ * accepts:
  *
- * Handles all four submit shapes:
+ *   - `offerParameters`   → `body.parameters[]`        (offer-section)
+ *   - `productParameters` → `body.product.parameters[]` (product-section, #415)
+ *
+ * Each parameter is routed by its `section` field on the neutral metadata.
+ * Sending a product-section parameter under `body.parameters[]` triggers
+ * `ParameterCategoryException` 422 — the split here is the actual fix for
+ * the camera-category bug.
+ *
+ * Handles all four submit shapes per parameter:
  *   - dictionary single → `{ id, valuesIds: [v] }`
  *   - dictionary multi  → `{ id, valuesIds: [...vs] }`
  *   - dictionary single + customValuesEnabled → match against the
@@ -15,9 +22,8 @@
  *   - integer / float / string scalar → `{ id, values: [String(v)] }`
  *
  * Hidden parameters (per `isParameterVisible`) are excluded entirely. The
- * caller keeps the returned array as a snapshot for error-mapping after a
- * failed submit (the positional `parameters[N]` index Allegro returns in
- * validation errors maps back to a parameter id via this snapshot).
+ * caller keeps both arrays as snapshots for error-mapping after a failed
+ * submit.
  *
  * @module apps/web/src/features/listings/components
  */
@@ -33,23 +39,31 @@ export interface AllegroParameterInput {
 }
 
 export interface SerializedParameters {
-  /** Wire-ready array, in the order Allegro receives. Used for error mapping. */
-  submitted: AllegroParameterInput[];
+  /** Wire-ready array for `body.parameters[]` (offer-section). Order preserved from metadata. */
+  offerParameters: AllegroParameterInput[];
+  /** Wire-ready array for `body.product.parameters[]` (product-section, #415). */
+  productParameters: AllegroParameterInput[];
 }
 
 export function serializeAllegroParameters(
   values: CategoryParameterFormValues,
   parameters: CategoryParameter[],
 ): SerializedParameters {
-  const submitted: AllegroParameterInput[] = [];
+  const offerParameters: AllegroParameterInput[] = [];
+  const productParameters: AllegroParameterInput[] = [];
 
   for (const param of parameters) {
     if (!isParameterVisible(param, values)) continue;
     const out = mapOne(param, values[param.id]);
-    if (out !== null) submitted.push(out);
+    if (out === null) continue;
+    if (param.section === 'product') {
+      productParameters.push(out);
+    } else {
+      offerParameters.push(out);
+    }
   }
 
-  return { submitted };
+  return { offerParameters, productParameters };
 }
 
 function mapOne(

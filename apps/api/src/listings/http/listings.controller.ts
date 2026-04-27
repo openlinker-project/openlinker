@@ -347,6 +347,7 @@ export class ListingsController {
       })),
       restrictions: { ...p.restrictions },
       dependsOn: p.dependsOn ? { ...p.dependsOn } : undefined,
+      section: p.section,
     };
   }
 

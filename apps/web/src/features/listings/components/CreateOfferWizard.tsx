@@ -466,13 +466,18 @@ export function CreateOfferWizard({
     // Serialise Step-3 parameter values into Allegro's wire shape. The
     // serialiser drops empty / hidden values so an underfilled draft just
     // produces a smaller payload — server-side validation surfaces any
-    // remaining required-field gaps via `mutation.error`.
-    const { submitted: submittedParameters } = serializeAllegroParameters(
+    // remaining required-field gaps via `mutation.error`. The output is
+    // split into offer-section and product-section arrays per #415; each
+    // travels under a different key on the create-offer body.
+    const { offerParameters, productParameters } = serializeAllegroParameters(
       (values.parameters as CategoryParameterFormValues | undefined) ?? {},
       categoryParameters,
     );
-    if (submittedParameters.length > 0) {
-      platformParams.parameters = submittedParameters;
+    if (offerParameters.length > 0) {
+      platformParams.parameters = offerParameters;
+    }
+    if (productParameters.length > 0) {
+      platformParams.productParameters = productParameters;
     }
 
     const request: CreateOfferRequest = {

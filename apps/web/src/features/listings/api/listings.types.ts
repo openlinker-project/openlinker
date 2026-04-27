@@ -195,6 +195,15 @@ export const CategoryParameterTypeValues = [
 ] as const;
 export type CategoryParameterType = (typeof CategoryParameterTypeValues)[number];
 
+/**
+ * Wire-shape section the parameter belongs to (#415). `'product'` parameters
+ * travel under `body.product.parameters[]` on Allegro offer creation;
+ * `'offer'` under `body.parameters[]`. The wizard renders both kinds in one
+ * unified list — the split happens at submit time via the serializer.
+ */
+export const CategoryParameterSectionValues = ['offer', 'product'] as const;
+export type CategoryParameterSection = (typeof CategoryParameterSectionValues)[number];
+
 export interface CategoryParameterDictionaryEntry {
   id: string;
   value: string;
@@ -230,6 +239,8 @@ export interface CategoryParameter {
   restrictions: CategoryParameterRestrictions;
   /** Parameter-level visibility — see file header. */
   dependsOn?: CategoryParameterDependsOn;
+  /** Wire-shape section (#415). Drives the offer/product split at submit time. */
+  section: CategoryParameterSection;
 }
 
 export interface CategoryParametersListResponse {

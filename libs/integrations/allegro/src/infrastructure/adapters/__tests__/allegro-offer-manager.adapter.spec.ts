@@ -1003,6 +1003,93 @@ describe('AllegroOfferManagerAdapter', () => {
       ]);
     });
 
+    describe('product-section parameters (#415)', () => {
+      it('routes platformParams.productParameters to body.product.parameters', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-product', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              parameters: [{ id: 'p_ean', values: ['5901234567890'] }],
+              productParameters: [
+                { id: '248811', valuesIds: ['248811_canon'] }, // Marka = Canon
+                { id: '237206', values: ['PowerShot SX740'] }, // Model
+              ],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          parameters?: Array<{ id: string }>;
+          product?: { parameters?: Array<{ id: string }> };
+        };
+        // Offer-section stays under body.parameters
+        expect(body.parameters).toEqual([{ id: 'p_ean', values: ['5901234567890'] }]);
+        // Product-section moved to body.product.parameters — this is the
+        // exact bug from the camera-category 422 (#415).
+        expect(body.product).toEqual({
+          parameters: [
+            { id: '248811', valuesIds: ['248811_canon'] },
+            { id: '237206', values: ['PowerShot SX740'] },
+          ],
+        });
+      });
+
+      it('omits body.product entirely when productParameters is missing or empty', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              parameters: [{ id: 'p_ean', values: ['5901234567890'] }],
+              productParameters: [],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        // Allegro 422s on `{ product: { parameters: [] } }` just like on the
+        // offer-side mismatch — the empty array must round-trip to a missing key.
+        expect(body).not.toHaveProperty('product');
+      });
+
+      it('drops malformed product-parameter entries through the same shape validator', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-product-mal', publication: { status: 'INACTIVE' } }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              productParameters: [
+                { id: '248811', valuesIds: ['248811_canon'] },
+                { id: '', valuesIds: ['x'] }, // empty id — dropped
+                { valuesIds: ['y'] }, // missing id — dropped
+                { id: 'bad', values: [42] }, // non-string values — dropped
+              ],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          product?: { parameters?: Array<{ id: string }> };
+        };
+        expect(body.product).toEqual({
+          parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+        });
+      });
+    });
+
     it('uses cmd.idempotencyKey for external.id when provided', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-6', publication: { status: 'INACTIVE' } }),

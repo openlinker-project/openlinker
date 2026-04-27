@@ -198,4 +198,61 @@ describe('createOfferRequestToFormValues', () => {
     expect(values.warrantyId).toBe('');
     expect(values.impliedWarrantyId).toBe('');
   });
+
+  describe('product-section parameters (#415)', () => {
+    it('surfaces productParameters-only snapshots into the form-state map', () => {
+      const request: CreateOfferRequest = {
+        internalVariantId: 'ol_variant_xyz',
+        stock: 1,
+        publishImmediately: false,
+        overrides: {
+          title: 't',
+          categoryId: 'c',
+          platformParams: {
+            productParameters: [
+              { id: '248811', valuesIds: ['248811_canon'] }, // Marka
+              { id: '237206', values: ['PowerShot SX740'] }, // Model
+            ],
+          },
+        },
+      };
+
+      const values = createOfferRequestToFormValues(request, 'conn_1');
+      expect(values.parameters).toEqual({
+        '248811': '248811_canon',
+        '237206': 'PowerShot SX740',
+      });
+    });
+
+    it('merges parameters and productParameters into a single flat form-state map', () => {
+      const request: CreateOfferRequest = {
+        internalVariantId: 'ol_variant_xyz',
+        stock: 1,
+        publishImmediately: false,
+        overrides: {
+          title: 't',
+          categoryId: 'c',
+          platformParams: {
+            parameters: [
+              { id: '11323', valuesIds: ['11323_new'] }, // Stan (offer)
+              { id: 'p_ean', values: ['5901234567890'] }, // EAN (offer)
+            ],
+            productParameters: [
+              { id: '248811', valuesIds: ['248811_canon'] }, // Marka (product)
+              { id: '237206', values: ['PowerShot SX740'] }, // Model (product)
+            ],
+          },
+        },
+      };
+
+      const values = createOfferRequestToFormValues(request, 'conn_1');
+      // Both arrays merged — neither dropped.
+      expect(values.parameters).toEqual({
+        '11323': '11323_new',
+        p_ean: '5901234567890',
+        '248811': '248811_canon',
+        '237206': 'PowerShot SX740',
+      });
+    });
+  });
 });
