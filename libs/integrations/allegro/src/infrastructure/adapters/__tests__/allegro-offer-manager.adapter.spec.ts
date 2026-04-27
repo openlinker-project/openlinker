@@ -16,7 +16,12 @@ import {
   AllegroProductOfferCreateResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import { OfferCreateRejectedException, type CreateOfferCommand } from '@openlinker/core/listings';
+import {
+  CategoryNotFoundException,
+  OfferCreateRejectedException,
+  type CreateOfferCommand,
+} from '@openlinker/core/listings';
+import type { CachePort } from '@openlinker/shared';
 
 describe('AllegroOfferManagerAdapter', () => {
   let adapter: AllegroOfferManagerAdapter;
@@ -1197,6 +1202,128 @@ describe('AllegroOfferManagerAdapter', () => {
         .mockResolvedValueOnce(makeResponse({ impliedWarranties: [] }));
 
       await expect(adapter.fetchSellerPolicies()).rejects.toBeInstanceOf(AllegroApiException);
+    });
+  });
+
+  describe('fetchCategoryParameters (cached + neutral)', () => {
+    function makeResponse<T>(data: T): { data: T; status: number; headers: Record<string, string> } {
+      return { data, status: 200, headers: {} };
+    }
+
+    function makeCache(): jest.Mocked<CachePort> {
+      return {
+        get: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+      };
+    }
+
+    function buildAdapter(cache: jest.Mocked<CachePort>, ttlSec?: number): AllegroOfferManagerAdapter {
+      return new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        cache,
+        ttlSec,
+      );
+    }
+
+    const RAW_RESPONSE = {
+      parameters: [
+        {
+          id: '11323',
+          name: 'Stan',
+          type: 'dictionary' as const,
+          required: true,
+          options: { dependsOnParameterId: null, customValuesEnabled: false },
+          dictionary: [
+            { id: '11323_1', value: 'Nowy', dependsOnValueIds: [] },
+          ],
+          restrictions: { multipleChoices: false },
+        },
+      ],
+    };
+
+    it('returns cached value without hitting Allegro on cache HIT', async () => {
+      const cache = makeCache();
+      const adapterWithCache = buildAdapter(cache);
+      cache.get.mockResolvedValueOnce([
+        { id: 'cached', name: 'Pre-warmed', type: 'string', required: false, restrictions: {} },
+      ]);
+
+      const result = await adapterWithCache.fetchCategoryParameters({ categoryId: '257933' });
+
+      expect(cache.get).toHaveBeenCalledWith('allegro:cat-params:257933');
+      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        { id: 'cached', name: 'Pre-warmed', type: 'string', required: false, restrictions: {} },
+      ]);
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('fetches, maps, and caches on cache MISS — TTL forwarded to CachePort', async () => {
+      const cache = makeCache();
+      const adapterWithCache = buildAdapter(cache, 3600);
+      cache.get.mockResolvedValueOnce(null);
+      httpClient.get.mockResolvedValueOnce(makeResponse(RAW_RESPONSE));
+
+      const result = await adapterWithCache.fetchCategoryParameters({ categoryId: '257933' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/categories/257933/parameters');
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: '11323',
+        type: 'dictionary',
+        required: true,
+      });
+      expect(cache.set).toHaveBeenCalledWith('allegro:cat-params:257933', result, 3600);
+    });
+
+    it('uses the 24h default TTL when no override is supplied', async () => {
+      const cache = makeCache();
+      const adapterWithCache = buildAdapter(cache);
+      cache.get.mockResolvedValueOnce(null);
+      httpClient.get.mockResolvedValueOnce(makeResponse(RAW_RESPONSE));
+
+      await adapterWithCache.fetchCategoryParameters({ categoryId: '257933' });
+
+      expect(cache.set).toHaveBeenCalledWith('allegro:cat-params:257933', expect.any(Array), 86400);
+    });
+
+    it('translates Allegro 404 to CategoryNotFoundException', async () => {
+      const cache = makeCache();
+      const adapterWithCache = buildAdapter(cache);
+      cache.get.mockResolvedValueOnce(null);
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('not found', 404));
+
+      await expect(
+        adapterWithCache.fetchCategoryParameters({ categoryId: 'unknown' }),
+      ).rejects.toBeInstanceOf(CategoryNotFoundException);
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('propagates non-404 AllegroApiException unchanged', async () => {
+      const cache = makeCache();
+      const adapterWithCache = buildAdapter(cache);
+      cache.get.mockResolvedValueOnce(null);
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('upstream', 503));
+
+      await expect(
+        adapterWithCache.fetchCategoryParameters({ categoryId: '257933' }),
+      ).rejects.toMatchObject({ name: 'AllegroApiException', statusCode: 503 });
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('still works without a cache (degrades to no caching)', async () => {
+      // adapter from the outer beforeEach has no cache
+      httpClient.get.mockResolvedValueOnce(makeResponse(RAW_RESPONSE));
+      const result = await adapter.fetchCategoryParameters({ categoryId: '257933' });
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/categories/257933/parameters');
+      expect(result).toHaveLength(1);
     });
   });
 });

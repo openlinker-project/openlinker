@@ -9,7 +9,11 @@ import { renderWithProviders, createMockApiClient } from '../../../test/test-uti
 import { CreateOfferWizard } from './CreateOfferWizard';
 import type { Connection } from '../../connections/api/connections.types';
 import type { Product } from '../../products/api/products.types';
-import type { CreateOfferRequest, SellerPoliciesResponse } from '../api/listings.types';
+import type {
+  CategoryParameter,
+  CreateOfferRequest,
+  SellerPoliciesResponse,
+} from '../api/listings.types';
 
 const allegroConnection: Connection = {
   id: 'conn_allegro_1',
@@ -68,6 +72,11 @@ function defaultMocks(overrides: Parameters<typeof createMockApiClient>[0] = {})
         .fn()
         .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       getSellerPolicies: vi.fn().mockResolvedValue(policies),
+      // Default the category-parameters fetch to "no parameters" so the step
+      // renders a friendly empty message and the existing happy-path tests
+      // can advance past it with a single Next click. Individual tests
+      // override when they exercise parameter rendering / validation.
+      getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
     },
     mappings: {
       // Single-leaf root tree for simple happy-path coverage. Individual tests
@@ -90,6 +99,19 @@ async function pickFirstLeafCategory(): Promise<void> {
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
   );
+}
+
+/**
+ * Advance through the (empty by default) Step-3 "Category parameters" step,
+ * landing on Step-4 "Policies". Used by the existing tests that don't care
+ * about parameter rendering — keeps them readable while the new step still
+ * gets traversed.
+ */
+async function advanceThroughEmptyParameters(): Promise<void> {
+  expect(
+    await screen.findByText(/no additional parameters required/i),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /next/i }));
 }
 
 async function advanceToStep2(): Promise<void> {
@@ -210,7 +232,9 @@ describe('CreateOfferWizard', () => {
     expect(
       await screen.findByText(/allegro category id is required/i),
     ).toBeInTheDocument();
-    // Still on Step 2 — delivery-policy select (Step 3) is not rendered.
+    // Still on Step 2 — neither the parameters step (#410) nor the
+    // delivery-policy select (Step 4) are rendered.
+    expect(screen.queryByText(/no additional parameters required/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
   });
 
@@ -235,7 +259,7 @@ describe('CreateOfferWizard', () => {
     expect(await screen.findByText(/75 characters or fewer/i)).toBeInTheDocument();
   });
 
-  it('requires delivery policy on step 3 when policies are present', async () => {
+  it('requires delivery policy on the policies step when policies are present', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
       <CreateOfferWizard
@@ -254,7 +278,10 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    // Now on Step 3 — try to advance without picking delivery
+    // Step 3 (#410) — no parameters for this category in the default mock.
+    await advanceThroughEmptyParameters();
+
+    // Now on Step 4 — try to advance without picking delivery
     await screen.findByLabelText(/delivery policy/i);
     // #406: implied-warranty / warranty coupling hint is visible on the policies step.
     expect(
@@ -291,6 +318,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
 
     expect(await screen.findByText(/no seller policies configured/i)).toBeInTheDocument();
   });
@@ -316,13 +344,14 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
 
-    // Step 3 — pick delivery
+    // Step 4 — pick delivery
     const deliverySelect = await screen.findByLabelText(/delivery policy/i);
     fireEvent.change(deliverySelect, { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    // Step 4 — submit
+    // Step 5 — submit
     fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
 
     await waitFor(() =>
@@ -369,6 +398,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
     fireEvent.change(await screen.findByLabelText(/delivery policy/i), { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
@@ -408,6 +438,7 @@ describe('CreateOfferWizard', () => {
     fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
     fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    await advanceThroughEmptyParameters();
     fireEvent.change(await screen.findByLabelText(/delivery policy/i), { target: { value: 'del-1' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
@@ -520,6 +551,7 @@ describe('CreateOfferWizard', () => {
       fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
       fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await advanceThroughEmptyParameters();
       fireEvent.change(await screen.findByLabelText(/delivery policy/i), {
         target: { value: 'del-1' },
       });
@@ -547,9 +579,11 @@ describe('CreateOfferWizard', () => {
         />,
       );
 
-      // We land on Step 2 pre-filled; advance through Step 3 → submit.
+      // We land on Step 2 pre-filled; advance through the empty parameters
+      // step (#410) and the policies step → submit.
       await screen.findByLabelText(/^title$/i);
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await advanceThroughEmptyParameters();
       // Delivery policy pre-fills from initialValues; just advance.
       await screen.findByLabelText(/delivery policy/i);
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -674,5 +708,157 @@ describe('CreateOfferWizard', () => {
         { timeout: 1000 },
       );
     });
+  });
+
+  describe('category parameters step (#410)', () => {
+    /**
+     * Two-parameter fixture covering the auto-prefill, dynamic-validation,
+     * and serialiser branches in one shot:
+     *  - `p_ean` is an EAN-class string field (matches the auto-prefill
+     *    `EAN_NAME_PATTERNS` list).
+     *  - `p_stan` is a required dictionary that contains a "Nowy" entry,
+     *    so the auto-prefill defaults it to `p_stan_new`.
+     */
+    const parametersFixture: CategoryParameter[] = [
+      {
+        id: 'p_ean',
+        name: 'EAN (GTIN)',
+        type: 'string',
+        required: false,
+        restrictions: { maxLength: 20 },
+      },
+      {
+        id: 'p_stan',
+        name: 'Stan',
+        type: 'dictionary',
+        required: true,
+        dictionary: [
+          { id: 'p_stan_new', value: 'Nowy' },
+          { id: 'p_stan_used', value: 'Używany' },
+        ],
+        restrictions: {},
+      },
+    ];
+
+    it('auto-prefills EAN from variant + Stan default and serialises both into the submit payload', async () => {
+      const createOffer = vi
+        .fn()
+        .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' });
+      const onSubmitted = vi.fn();
+      const onClose = vi.fn();
+      const mockApi = defaultMocks({
+        listings: {
+          createOffer,
+          getSellerPolicies: vi.fn().mockResolvedValue(policies),
+          getCategoryParameters: vi
+            .fn()
+            .mockResolvedValue({ parameters: parametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={onClose}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={onSubmitted}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Step 3 (parameters) — required EAN field is rendered and pre-filled
+      // from the variant's EAN; Stan defaults to "Nowy".
+      const eanInput = await screen.findByLabelText(/ean \(gtin\)/i);
+      await waitFor(() => expect(eanInput).toHaveValue('5901234567890'));
+      const stanSelect = screen.getByLabelText<HTMLSelectElement>(/^stan$/i);
+      await waitFor(() => expect(stanSelect.value).toBe('p_stan_new'));
+
+      // Advance — dynamic Zod validation passes because Stan is filled.
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      await screen.findByLabelText(/delivery policy/i);
+      fireEvent.change(screen.getByLabelText(/delivery policy/i), {
+        target: { value: 'del-1' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+
+      await waitFor(() =>
+        expect(createOffer).toHaveBeenCalledWith(
+          allegroConnection.id,
+          expect.objectContaining({
+            overrides: expect.objectContaining({
+              platformParams: expect.objectContaining({
+                deliveryPolicyId: 'del-1',
+                parameters: expect.arrayContaining([
+                  { id: 'p_ean', values: ['5901234567890'] },
+                  { id: 'p_stan', valuesIds: ['p_stan_new'] },
+                ]),
+              }),
+            }),
+          }),
+          expect.objectContaining({ idempotencyKey: expect.stringMatching(/.+/) }),
+        ),
+      );
+      expect(onSubmitted).toHaveBeenCalledWith('rec-1', allegroConnection.id);
+    });
+
+    it('blocks advancement past Step 3 when a required dictionary parameter is empty', async () => {
+      // Same fixture, but tests that clearing Stan rejects advancement.
+      const mockApi = defaultMocks({
+        listings: {
+          createOffer: vi.fn(),
+          getSellerPolicies: vi.fn().mockResolvedValue(policies),
+          // Stan has no "Nowy" entry → autoprefill leaves it empty,
+          // exercising the required-when-visible Zod rule.
+          getCategoryParameters: vi.fn().mockResolvedValue({
+            parameters: [
+              {
+                ...parametersFixture[1],
+                dictionary: [{ id: 'p_stan_used', value: 'Używany' }],
+              },
+            ],
+          }),
+        },
+      });
+
+      renderWithProviders(
+        <CreateOfferWizard
+          isOpen={true}
+          onClose={vi.fn()}
+          defaultConnectionId={allegroConnection.id}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Step 3 — Stan is rendered, empty, required.
+      const stanSelect = await screen.findByLabelText<HTMLSelectElement>(/^stan$/i);
+      expect(stanSelect.value).toBe('');
+
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      // The dynamic-validation message is set on the form, and the policies
+      // step (Step 4) does not appear.
+      expect(await screen.findByText(/stan is required/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/delivery policy/i)).not.toBeInTheDocument();
+    });
+
+    // Note: the "categoryId change clears the parameters slice" effect is
+    // small enough to live in the wizard's clearing useEffect, and the
+    // wired path is covered by the visibility / serializer / Zod helper
+    // unit tests. We deliberately don't add a wizard-level test for it
+    // here — driving the CategoryPicker through the picker's "Selected"
+    // → re-pick UI is brittle and the marginal coverage is low.
   });
 });

@@ -16,6 +16,7 @@ import type {
   OfferFieldUpdater,
   CategoryBrowser,
   CategoryBarcodeMatcher,
+  CategoryParametersReader,
   OfferCreator,
   SellerPoliciesReader,
   OfferFeedInput,
@@ -27,11 +28,14 @@ import type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCategory,
+  CategoryParameter,
   SellerPolicies,
 } from '@openlinker/core/listings';
-import { OfferCreateRejectedException } from '@openlinker/core/listings';
+import { OfferCreateRejectedException, CategoryNotFoundException } from '@openlinker/core/listings';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CachePort } from '@openlinker/shared';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import { toNeutralCategoryParameter } from '../mappers/allegro-category-parameter.mapper';
 import {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroQuantityChangeCommandStatusResponse,
@@ -64,6 +68,11 @@ import {
 
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
+
+/** Default cache TTL (24h) for `/sale/categories/{id}/parameters` responses. */
+const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
+/** Cache key prefix — global namespace; Allegro category schemas are public taxonomy. */
+const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
 
 /**
  * Type guard used when filtering untyped `platformParams.parameters` into the
@@ -114,11 +123,13 @@ export class AllegroOfferManagerAdapter
     OfferFieldUpdater,
     CategoryBrowser,
     CategoryBarcodeMatcher,
+    CategoryParametersReader,
     OfferCreator,
     SellerPoliciesReader {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
   private readonly quantityPollConfig: QuantityPollConfig;
+  private readonly catParamsTtlSec: number;
 
   constructor(
     private readonly connectionId: string,
@@ -134,6 +145,14 @@ export class AllegroOfferManagerAdapter
     _connection: Connection,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
     quantityPollConfig?: Partial<QuantityPollConfig>,
+    /**
+     * Optional distributed cache for `/sale/categories/{id}/parameters`
+     * responses. When omitted, every fetch hits Allegro — acceptable for
+     * unit tests but not production. The factory injects a `RedisCacheAdapter`
+     * via `CACHE_PORT_TOKEN` in real wiring.
+     */
+    private readonly cache?: CachePort,
+    catParamsTtlSec?: number,
   ) {
     this.quantityPollConfig = {
       maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
@@ -141,6 +160,7 @@ export class AllegroOfferManagerAdapter
       maxDelayMs: quantityPollConfig?.maxDelayMs ?? 30000,
       backoffMultiplier: quantityPollConfig?.backoffMultiplier ?? 2,
     };
+    this.catParamsTtlSec = catParamsTtlSec ?? DEFAULT_CAT_PARAMS_TTL_SEC;
     void _connection;
   }
 
@@ -386,11 +406,9 @@ export class AllegroOfferManagerAdapter
     let gtinIds: Set<string> = new Set();
 
     if (resolvedCategoryId) {
-      const categoryParamsResponse = await this.httpClient.get<AllegroCategoryParametersResponse>(
-        `/sale/categories/${resolvedCategoryId}/parameters`,
-      );
+      const categoryParams = await this.fetchCategoryParametersRaw(resolvedCategoryId);
       const { eanIds: resolvedEanIds, gtinIds: resolvedGtinIds } =
-        this.findIdentifierParameterIds(categoryParamsResponse.data.parameters);
+        this.findIdentifierParameterIds(categoryParams.parameters);
       eanIds = resolvedEanIds;
       gtinIds = resolvedGtinIds;
     }
@@ -407,6 +425,69 @@ export class AllegroOfferManagerAdapter
       ean: this.pickSingleValue(eanValues),
       gtin: this.pickSingleValue(gtinValues),
     };
+  }
+
+  /**
+   * Raw, uncached fetch of `/sale/categories/{id}/parameters`. Returns Allegro's
+   * native shape verbatim. Single source of truth for the HTTP call —
+   * `fetchOfferIdentifiers` and `fetchCategoryParameters` (cached + neutral)
+   * both delegate here. Public so dev tooling can capture fixtures.
+   */
+  async fetchCategoryParametersRaw(
+    categoryId: string,
+  ): Promise<AllegroCategoryParametersResponse> {
+    this.logger.debug(
+      `Fetching Allegro category parameters (raw): connection=${this.connectionId} categoryId=${categoryId}`,
+    );
+    const response = await this.httpClient.get<AllegroCategoryParametersResponse>(
+      `/sale/categories/${categoryId}/parameters`,
+    );
+    return response.data;
+  }
+
+  /**
+   * Cached, neutral-shape fetch of category parameters for the create-offer
+   * wizard (#410). Implements `CategoryParametersReader`.
+   *
+   * Cache: global key `allegro:cat-params:{categoryId}` (Allegro category
+   * schemas are public taxonomy and identical for every seller). TTL defaults
+   * to 24h; override via constructor `catParamsTtlSec` (env-driven from the
+   * adapter factory).
+   *
+   * 404 from Allegro maps to the neutral `CategoryNotFoundException`; other
+   * upstream errors propagate as-is so the existing `IntegrationError` chain
+   * keeps working.
+   */
+  async fetchCategoryParameters(input: { categoryId: string }): Promise<CategoryParameter[]> {
+    const cacheKey = `${CAT_PARAMS_CACHE_PREFIX}${input.categoryId}`;
+
+    if (this.cache) {
+      const cached = await this.cache.get<CategoryParameter[]>(cacheKey);
+      if (cached) {
+        this.logger.debug(
+          `Category parameters cache HIT: connection=${this.connectionId} categoryId=${input.categoryId}`,
+        );
+        return cached;
+      }
+    }
+
+    let raw: AllegroCategoryParametersResponse;
+    try {
+      raw = await this.fetchCategoryParametersRaw(input.categoryId);
+    } catch (err) {
+      if (err instanceof AllegroApiException && err.statusCode === 404) {
+        throw new CategoryNotFoundException(input.categoryId, 'allegro');
+      }
+      throw err;
+    }
+
+    const neutral = (raw.parameters ?? []).map(toNeutralCategoryParameter);
+
+    if (this.cache) {
+      await this.cache.set(cacheKey, neutral, this.catParamsTtlSec);
+    }
+
+    return neutral;
   }
 
   async fetchCategories(parentId?: string): Promise<OfferCategory[]> {

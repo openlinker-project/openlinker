@@ -34,6 +34,10 @@
     "./redis": {
       "types": "./dist/redis/index.d.ts",
       "require": "./dist/redis/index.js"
+    },
+    "./cache": {
+      "types": "./dist/cache/index.d.ts",
+      "require": "./dist/cache/index.js"
     }
   },
   "files": ["dist"],

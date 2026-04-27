@@ -138,6 +138,17 @@ export type { CategoryBrowser } from './domain/ports/capabilities/category-brows
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
+export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
+export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
+export type {
+  CategoryParameter,
+  CategoryParameterDictionaryEntry,
+  CategoryParameterRestrictions,
+  CategoryParameterDependsOn,
+  CategoryParameterType,
+} from './domain/types/category-parameter.types';
+export { CategoryParameterTypeValues } from './domain/types/category-parameter.types';
+export { CategoryNotFoundException } from './domain/exceptions/category-not-found.exception';
 export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';

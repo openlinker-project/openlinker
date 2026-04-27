@@ -10,6 +10,7 @@
 import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
+import type { CachePort } from '@openlinker/shared';
 import { AllegroAdapterFactory } from '../../application/allegro-adapter.factory';
 import { AllegroTokenRefreshService } from '../token-refresh/allegro-token-refresh.service';
 import { AllegroQuantityCommandRepositoryPort } from '../../domain/ports/allegro-quantity-command-repository.port';
@@ -29,12 +30,18 @@ export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
     private readonly tokenRefreshService?: AllegroTokenRefreshService,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
     private readonly quantityPollConfig?: Partial<QuantityPollConfig>,
+    /** Distributed cache for category parameters (#410). */
+    private readonly cache?: CachePort,
+    /** TTL override (seconds) for the category parameters cache. Defaults to 24h in the adapter. */
+    private readonly catParamsTtlSec?: number,
   ) {
     this.factory = new AllegroAdapterFactory(
       this.customerIdentityResolver,
       this.tokenRefreshService,
       this.commandRepository,
       this.quantityPollConfig,
+      this.cache,
+      this.catParamsTtlSec,
     );
   }
 

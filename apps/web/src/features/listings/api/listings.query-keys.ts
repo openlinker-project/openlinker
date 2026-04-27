@@ -12,4 +12,6 @@ export const listingsQueryKeys = {
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
   sellerPolicies: (connectionId: string) =>
     ['listings', 'sellerPolicies', connectionId] as const,
+  categoryParameters: (connectionId: string, categoryId: string) =>
+    ['listings', 'categoryParameters', connectionId, categoryId] as const,
 };

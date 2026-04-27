@@ -232,13 +232,65 @@ export interface AllegroCategoriesResponse {
 }
 
 /**
+ * Allegro category parameter — raw shape from
+ * GET /sale/categories/{categoryId}/parameters
+ *
+ * Surfaces both dependency mechanisms separately:
+ *   - parameter-level visibility (`options.dependsOnParameterId`)
+ *   - dictionary-entry filtering (`dictionary[i].dependsOnParameterValueIds`)
+ *
+ * `requiredIf` / `displayedIf` are richer JSONPath-ish predicates that the
+ * adapter does not currently surface to CORE — kept here for traceability
+ * when capturing fixtures.
+ */
+export interface AllegroCategoryParameter {
+  id: string;
+  name: string;
+  type: 'dictionary' | 'string' | 'integer' | 'float';
+  required: boolean;
+  requiredForProduct?: boolean;
+  requiredIf?: unknown;
+  displayedIf?: unknown;
+  unit?: string;
+  options?: {
+    ambiguousValueId?: string;
+    dependsOnParameterId?: string;
+    describesProduct?: boolean;
+    customValuesEnabled?: boolean;
+  };
+  dictionary?: Array<{
+    id: string;
+    value: string;
+    /**
+     * Entry-level dependency. Allegro's field name is exactly `dependsOnValueIds`
+     * (not `dependsOnParameterValueIds`). When non-empty, this entry is only
+     * selectable when the parent parameter (identified by the parameter's
+     * `options.dependsOnParameterId`) has one of these value IDs.
+     */
+    dependsOnValueIds?: string[];
+    /** Legacy migration data on individual entries — adapter ignores. */
+    formerData?: unknown;
+  }>;
+  restrictions?: {
+    multipleChoices?: boolean;
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    range?: boolean;
+    precision?: number;
+    /** Numeric — e.g. 1 for single value, 5 / 20 for capped multi-value strings. */
+    allowedNumberOfValues?: number;
+  };
+  /** Legacy migration data — adapter ignores. */
+  formerData?: unknown;
+}
+
+/**
  * Allegro category parameters response (from GET /sale/categories/{categoryId}/parameters)
  */
 export interface AllegroCategoryParametersResponse {
-  parameters: Array<{
-    id: string;
-    name: string;
-  }>;
+  parameters: AllegroCategoryParameter[];
 }
 
 /**
