@@ -23,7 +23,8 @@
   },
   "dependencies": {
     "@openlinker/core": "workspace:*",
-    "@openlinker/shared": "workspace:*"
+    "@openlinker/shared": "workspace:*",
+    "image-size": "^1.0.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0"

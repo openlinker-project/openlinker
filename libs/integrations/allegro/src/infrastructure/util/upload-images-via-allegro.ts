@@ -12,13 +12,20 @@
  * discriminated `UploadImagesResult`. Failure surfaces as a list of
  * `CreateOfferValidationError` carrying:
  *
- * - `IMAGE_DOWNLOAD_FAILED`        — non-2xx, network error, or timeout when
- *                                    GETting the operator's image URL
- * - `IMAGE_DOWNLOAD_INVALID_TYPE`  — GET succeeded but Content-Type is not
- *                                    `image/jpeg|png|gif|webp`
- * - `IMAGE_UPLOAD_FAILED`          — Allegro's `POST /sale/images` rejected
- *                                    the upload, or its response is missing
- *                                    the `location` field
+ * - `IMAGE_DOWNLOAD_FAILED`         — non-2xx, network error, or timeout when
+ *                                     GETting the operator's image URL
+ * - `IMAGE_DOWNLOAD_INVALID_TYPE`   — GET succeeded but Content-Type is not
+ *                                     `image/jpeg|png|gif|webp`, or the bytes
+ *                                     could not be parsed by `image-size`
+ * - `IMAGE_TOO_SMALL_FOR_PRODUCT`   — image dimensions are below Allegro's
+ *                                     `productSet[0].product.images[]`
+ *                                     400px-longer-side rule. Rejecting up-front
+ *                                     avoids burning an upload on bytes that
+ *                                     would fail product validation at the
+ *                                     end of the offer-creation flow (#424).
+ * - `IMAGE_UPLOAD_FAILED`           — Allegro's `POST /sale/images` rejected
+ *                                     the upload, or its response is missing
+ *                                     the `location` field
  *
  * Adapter-key context (e.g. `'allegro.publicapi.v1'`) lives in the calling
  * adapter, not here — the util stays adapter-agnostic.
@@ -35,6 +42,7 @@
  * @module libs/integrations/allegro/src/infrastructure/util
  * @see {@link AllegroOfferManagerAdapter.createOffer} — sole consumer
  */
+import imageSize from 'image-size';
 import { CreateOfferValidationError } from '@openlinker/core/listings';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -50,6 +58,20 @@ const ACCEPTED_IMAGE_CONTENT_TYPES: ReadonlySet<string> = new Set([
   'image/gif',
   'image/webp',
 ]);
+
+/**
+ * Allegro's `productSet[0].product.images[]` validator rejects images whose
+ * longer side is below this threshold with `ProductValidationException:
+ * TOO_SMALL_IMAGE` (sandbox repro 2026-04-27, #424). Apply at download time
+ * so we fail fast with actionable diagnostics instead of incurring an upload
+ * + a 422 at the end of the offer-creation flow.
+ *
+ * The offer-side `body.images[]` validator is more lenient — same threshold
+ * may eventually apply there too. We gate up-front on the assumption that
+ * any image used for an offer is also used to create the inline product
+ * (mirrored since #420).
+ */
+export const ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX = 400;
 
 export async function uploadImagesViaAllegro(
   uploadHttpClient: IAllegroHttpClient,
@@ -148,6 +170,37 @@ async function downloadImage(
     return downloadFailure('IMAGE_DOWNLOAD_FAILED', `Image URL '${url}': failed to read body — ${message}`);
   }
 
+  // Header-only dimension check — `image-size` reads the format header
+  // (e.g. PNG IHDR, JPEG SOF) without decoding pixel data, so this stays
+  // cheap even for the upper end of typical product-image sizes (~5MB).
+  let width: number | undefined;
+  let height: number | undefined;
+  try {
+    const dimensions = imageSize(bytes);
+    width = dimensions.width;
+    height = dimensions.height;
+  } catch (error) {
+    // The content-type validator already accepted the bytes as image/*;
+    // a header-decode failure here points at corrupt or truncated source
+    // data. Surface as INVALID_TYPE so the operator gets the same actionable
+    // copy ("not a usable image") rather than a generic download failure.
+    const message = error instanceof Error ? error.message : String(error);
+    return downloadFailure(
+      'IMAGE_DOWNLOAD_INVALID_TYPE',
+      `Image URL '${url}': bytes claimed content-type '${contentType}' but could not be decoded — ${message}`,
+    );
+  }
+
+  const longerSide = Math.max(width ?? 0, height ?? 0);
+  if (longerSide < ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX) {
+    return downloadFailure(
+      'IMAGE_TOO_SMALL_FOR_PRODUCT',
+      `Image URL '${url}' is ${width ?? '?'}×${height ?? '?'}px; ` +
+        `Allegro requires a longer side ≥ ${ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX}px ` +
+        `for product images. Use a larger source image.`,
+    );
+  }
+
   return { ok: true, contentType, bytes };
 }
 
@@ -193,7 +246,7 @@ function normalizeImageContentType(raw: string | null): string | null {
 }
 
 function downloadFailure(
-  code: 'IMAGE_DOWNLOAD_FAILED' | 'IMAGE_DOWNLOAD_INVALID_TYPE',
+  code: 'IMAGE_DOWNLOAD_FAILED' | 'IMAGE_DOWNLOAD_INVALID_TYPE' | 'IMAGE_TOO_SMALL_FOR_PRODUCT',
   message: string,
 ): DownloadErr {
   return { ok: false, failure: { field: 'images', code, message } };

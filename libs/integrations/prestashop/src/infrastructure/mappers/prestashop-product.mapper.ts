@@ -12,6 +12,17 @@ import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } fr
 import { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
 
 /**
+ * PrestaShop image-variant suffix used by `buildImageUrl` when the
+ * connection has not specified `options.imageVariant`.
+ *
+ * `large_default` is the standard high-resolution storefront variant
+ * (~800px on a stock PS install), chosen so emitted image URLs satisfy
+ * Allegro's `productSet[0].product.images[]` 400px-longer-side rule (#424).
+ * Operators with non-standard PS image settings can override per connection.
+ */
+const DEFAULT_IMAGE_VARIANT = 'large_default';
+
+/**
  * PrestaShop Product Mapper
  *
  * Transforms PrestaShop product data to OpenLinker Product schema.
@@ -382,18 +393,18 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
   /**
    * Build a public front-office image URL for a given PrestaShop image id.
    *
-   * Uses the numeric path format (`/img/p/{split}/{id}-{type}.jpg`) which
+   * Uses the numeric path format (`/img/p/{split}/{id}-{variant}.jpg`) which
    * PrestaShop serves regardless of "Friendly URL" configuration. `split` is
    * the image id with digits separated by `/` (e.g. `123` → `1/2/3`). Digit
-   * splitting handles arbitrarily long ids.
-   *
-   * TODO: image type ('home_default') is fixed for v1. Expose via options
-   * when detail-page or retina sizes land.
+   * splitting handles arbitrarily long ids. The variant suffix comes from
+   * `options.imageVariant` and falls back to `DEFAULT_IMAGE_VARIANT`
+   * (`large_default`) — see #424 for why thumbnails are unsuitable.
    */
   private buildImageUrl(imageId: string): string {
     const base = this.options.storefrontBaseUrl.replace(/\/+$/, '');
     const split = this.splitImageId(imageId);
-    return `${base}/img/p/${split}/${imageId}-home_default.jpg`;
+    const variant = this.options.imageVariant ?? DEFAULT_IMAGE_VARIANT;
+    return `${base}/img/p/${split}/${imageId}-${variant}.jpg`;
   }
 
   /**
