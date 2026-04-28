@@ -118,6 +118,8 @@ describe('OfferBuilderService', () => {
           imageUrls: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
         },
         idempotencyKey: undefined,
+        // #431 — barcode threaded through for adapter-side smart-link.
+        variantBarcode: '5901234123457',
       });
     });
   });

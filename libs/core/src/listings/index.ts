@@ -157,3 +157,10 @@ export type { OfferCreator } from './domain/ports/capabilities/offer-creator.cap
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
+export { isResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
+export type {
+  ResponsibleProducerEntry,
+  ResponsibleProducerKind,
+} from './domain/types/responsible-producer.types';
+export { ResponsibleProducerKindValues } from './domain/types/responsible-producer.types';

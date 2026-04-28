@@ -21,6 +21,8 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { AllegroSellerDefaultsSection } from './allegro-seller-defaults-section';
+import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -32,6 +34,54 @@ type PlatformBranch = 'prestashop' | 'marketplace' | 'raw';
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Read the connection-level Allegro seller defaults out of `config` (#430).
+ * Always returns a fully-populated form-shape — empty-string fields where
+ * the operator hasn't filled them yet — so RHF's `register()` paths work
+ * without per-field undefined guards.
+ */
+function readSellerDefaults(
+  config: Record<string, unknown>,
+): NonNullable<EditConnectionFormValues['sellerDefaults']> {
+  const raw =
+    typeof config.sellerDefaults === 'object' && config.sellerDefaults !== null
+      ? (config.sellerDefaults as Record<string, unknown>)
+      : {};
+  const location =
+    typeof raw.location === 'object' && raw.location !== null
+      ? (raw.location as Record<string, unknown>)
+      : {};
+  const safety =
+    typeof raw.safetyInformation === 'object' && raw.safetyInformation !== null
+      ? (raw.safetyInformation as Record<string, unknown>)
+      : {};
+  const safetyType: 'NO_SAFETY_INFORMATION' | 'SAFETY_INFORMATION' =
+    safety.type === 'SAFETY_INFORMATION' ? 'SAFETY_INFORMATION' : 'NO_SAFETY_INFORMATION';
+  // Narrow `province` to the FE Zod union; out-of-band values fall through
+  // as '' so the operator picks again. Mirrors `safetyInformation.type`'s
+  // guard above.
+  const provinceRaw = typeof location.province === 'string' ? location.province : '';
+  const province: NonNullable<
+    NonNullable<EditConnectionFormValues['sellerDefaults']>['location']
+  >['province'] = (POLISH_VOIVODESHIP_VALUES as readonly string[]).includes(provinceRaw)
+    ? (provinceRaw as (typeof POLISH_VOIVODESHIP_VALUES)[number])
+    : '';
+  return {
+    location: {
+      countryCode: 'PL',
+      province,
+      city: typeof location.city === 'string' ? location.city : '',
+      postCode: typeof location.postCode === 'string' ? location.postCode : '',
+    },
+    responsibleProducerId:
+      typeof raw.responsibleProducerId === 'string' ? raw.responsibleProducerId : '',
+    safetyInformation: {
+      type: safetyType,
+      content: typeof safety.content === 'string' ? safety.content : '',
+    },
+  };
 }
 
 function isParseableJson(text: string): boolean {
@@ -58,6 +108,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
+      sellerDefaults: readSellerDefaults(connection.config),
     },
     resolver: zodResolver(editConnectionSchema),
   });
@@ -118,6 +169,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, { [field]: value });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: markDirty });
+  }
+
+  // #430 — re-serialize the entire `sellerDefaults` shape into configText
+  // on every sub-field change. Treated as a single structured patch (vs.
+  // the per-field syncs above) because the BE DTO requires the full nested
+  // shape on save and partial-empty fields would round-trip awkwardly.
+  function syncSellerDefaultsToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      sellerDefaults: form.getValues('sellerDefaults'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
   // Auto-select the sole candidate ONCE on mount, only when the server never
@@ -274,6 +338,15 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           disabled={!configIsParseable}
           onChange={(value) => syncStructuredToJson('masterCatalogConnectionId', value)}
           onRetry={() => void connectionsQuery.refetch()}
+        />
+      ) : null}
+
+      {connection.platformType === 'allegro' ? (
+        <AllegroSellerDefaultsSection
+          connectionId={connection.id}
+          form={form}
+          onChange={syncSellerDefaultsToJson}
+          disabled={!configIsParseable}
         />
       ) : null}
 

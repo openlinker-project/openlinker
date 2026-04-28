@@ -8,6 +8,7 @@
  *
  * @module libs/integrations/allegro/src/domain/types
  */
+import type { AllegroSellerDefaultsConfig } from './allegro-seller-defaults.types';
 
 /**
  * Allegro environment (sandbox or production)
@@ -46,6 +47,15 @@ export interface AllegroConnectionConfig {
    * - Production: https://upload.allegro.pl
    */
   uploadBaseUrl?: string;
+
+  /**
+   * Connection-level seller defaults required by `POST /sale/product-offers`
+   * — `location` (every offer), plus `responsibleProducerId` and
+   * `safetyInformation` for the inline-product path. See #430. Optional at
+   * the type level so existing connections without it parse cleanly; offer
+   * creation fails fast with `SELLER_DEFAULTS_NOT_CONFIGURED` if missing.
+   */
+  sellerDefaults?: AllegroSellerDefaultsConfig;
 }
 
 

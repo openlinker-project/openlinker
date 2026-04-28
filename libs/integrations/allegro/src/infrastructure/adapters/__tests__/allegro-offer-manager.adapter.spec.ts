@@ -22,6 +22,25 @@ import {
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
+import type { AllegroSellerDefaultsConfig } from '../../../domain/types/allegro-seller-defaults.types';
+
+/**
+ * Default seller defaults seeded by the createOffer specs (#430). All
+ * createOffer tests previously assumed these were configured implicitly;
+ * the new preflight throws when missing, so the test fixture exposes them
+ * explicitly. Individual specs can omit them by constructing the adapter
+ * via the dedicated `null sellerDefaults` test path.
+ */
+const DEFAULT_SELLER_DEFAULTS: AllegroSellerDefaultsConfig = {
+  location: {
+    countryCode: 'PL',
+    province: 'MAZOWIECKIE',
+    city: 'Warszawa',
+    postCode: '00-001',
+  },
+  responsibleProducerId: 'rp-test-1',
+  safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+};
 
 /**
  * Build a minimal valid PNG header (24 bytes) for the given dimensions.
@@ -106,6 +125,11 @@ describe('AllegroOfferManagerAdapter', () => {
       uploadHttpClient,
       identifierMapping,
       connection,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      DEFAULT_SELLER_DEFAULTS,
     );
   });
 
@@ -1098,6 +1122,9 @@ describe('AllegroOfferManagerAdapter', () => {
               ],
               images: expectedCdnImages,
             },
+            // #430 — GPSR fields written from sellerDefaults on inline path.
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
           },
         ]);
         // Mirroring contract: product.images is the post-upload offer-level
@@ -1167,6 +1194,9 @@ describe('AllegroOfferManagerAdapter', () => {
               parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
               images: ['https://images.allegrostatic.com/test/uploaded-1.jpg'],
             },
+            // #430 — GPSR fields on inline-product path.
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
           },
         ]);
       });
@@ -1407,6 +1437,178 @@ describe('AllegroOfferManagerAdapter', () => {
         'image/jpeg',
         expect.any(Uint8Array),
       );
+    });
+
+    describe('seller defaults (#430)', () => {
+      it('throws OfferCreateRejectedException with SELLER_DEFAULTS_NOT_CONFIGURED when sellerDefaults are missing', async () => {
+        // Construct an adapter without sellerDefaults — preflight must fire.
+        const adapterWithoutDefaults = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+        );
+
+        await expect(adapterWithoutDefaults.createOffer(baseCmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          statusCode: 0,
+          errors: expect.arrayContaining([
+            expect.objectContaining({
+              field: 'sellerDefaults.location',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+            expect.objectContaining({
+              field: 'sellerDefaults.responsibleProducerId',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+            expect.objectContaining({
+              field: 'sellerDefaults.safetyInformation',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+          ]),
+        });
+        // Preflight must short-circuit before any HTTP call.
+        expect(httpClient.post).not.toHaveBeenCalled();
+        expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
+      });
+
+      it('writes body.location from sellerDefaults on every offer create', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({
+            id: 'allegro-offer-loc',
+            publication: { status: 'INACTIVE' },
+          }),
+        );
+
+        await adapter.createOffer(baseCmd);
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body.location).toEqual({
+          countryCode: 'PL',
+          province: 'MAZOWIECKIE',
+          city: 'Warszawa',
+          postCode: '00-001',
+        });
+      });
+    });
+
+    describe('smart-link by EAN (#431)', () => {
+      it('on unique match: links via productSet[0].product.id, omits inline name/parameters/images/GPSR, uses per-entry quantity', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({
+            id: 'allegro-offer-linked',
+            publication: { status: 'INACTIVE' },
+          }),
+        );
+        // Mock the smart-link resolver path: one exact-EAN match.
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            products: [{ id: 'allegro-card-1', ean: '5901234123457' }],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        await adapter.createOffer({
+          ...baseCmd,
+          variantBarcode: '5901234123457',
+          stock: 7,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              productParameters: [
+                // Would normally produce an inline product; smart-link must
+                // win and skip these.
+                { id: '248811', valuesIds: ['248811_canon'] },
+              ],
+            },
+          },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body.productSet).toEqual([
+          {
+            product: { id: 'allegro-card-1' },
+            quantity: 7,
+          },
+        ]);
+        // Card-linked offers inherit GPSR from the card — adapter must NOT
+        // write `responsibleProducer` / `safetyInformation` on the entry.
+        expect(body.productSet).not.toContainEqual(
+          expect.objectContaining({ responsibleProducer: expect.anything() }),
+        );
+      });
+
+      it('falls through to inline path when variantBarcode is missing (smart-link short-circuits)', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({
+            id: 'allegro-offer-inline',
+            publication: { status: 'INACTIVE' },
+          }),
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          variantBarcode: undefined,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              productParameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        });
+
+        // Resolver was never called because variantBarcode was missing.
+        expect(httpClient.get).not.toHaveBeenCalledWith(
+          '/sale/products',
+          expect.anything(),
+        );
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet?: Array<{
+            product?: { id?: string; name?: string };
+            responsibleProducer?: unknown;
+          }>;
+        };
+        // Inline path: product.id absent, GPSR fields written from sellerDefaults.
+        expect(body.productSet?.[0]?.product?.id).toBeUndefined();
+        expect(body.productSet?.[0]?.product?.name).toBe('Test Offer Title');
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+      });
+    });
+
+    describe('fetchResponsibleProducers (#430)', () => {
+      it('maps Allegro entries to the neutral ResponsibleProducerEntry shape', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            responsibleProducers: [
+              { id: 'rp-1', name: 'ACME GmbH', type: 'PRODUCER' },
+              { id: 'rp-2', name: 'Importer Co.', type: 'IMPORTER' },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.fetchResponsibleProducers();
+
+        expect(result).toEqual([
+          { id: 'rp-1', name: 'ACME GmbH', kind: 'PRODUCER' },
+          { id: 'rp-2', name: 'Importer Co.', kind: 'IMPORTER' },
+        ]);
+      });
+
+      it('defaults missing kind to PRODUCER and falls back name → id', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: { responsibleProducers: [{ id: 'rp-3' }] },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.fetchResponsibleProducers();
+
+        expect(result).toEqual([{ id: 'rp-3', name: 'rp-3', kind: 'PRODUCER' }]);
+      });
     });
   });
 

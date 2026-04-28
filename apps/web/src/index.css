@@ -4562,6 +4562,97 @@ a.kpi-card:focus-visible {
 }
 
 /*
+ * ── Allegro seller defaults section (#430) ───────────────────────────
+ * Connection-edit sub-section composed of three field groups (location,
+ * responsible producer, safety information). Renders inside
+ * `EditConnectionForm` for `platformType === 'allegro'`. Tokens only —
+ * mirrors the surrounding form's typographic hierarchy.
+ */
+.seller-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem 1rem 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  background: var(--bg-surface-elevated);
+}
+
+.seller-defaults__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.seller-defaults__eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.seller-defaults__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.seller-defaults__description {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.seller-defaults__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.seller-defaults__group:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.seller-defaults__group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.seller-defaults__group-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.seller-defaults__group-description {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.seller-defaults__row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .seller-defaults__row {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+
+/*
  * ── Phase 6 — Dashboard triage ──────────────────────────────────────
  * KPI strip responsive matrix per style guide §Responsive:
  *   mobile (<768)  → 1×4 vertical stack

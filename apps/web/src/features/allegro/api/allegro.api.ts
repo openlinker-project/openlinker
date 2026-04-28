@@ -18,9 +18,25 @@ export interface AllegroCallbackResponse {
   connectionName: string;
 }
 
+/**
+ * One entry from `GET /integrations/allegro/connections/:id/responsible-producers`.
+ * Mirrors the BE neutral `ResponsibleProducerEntry` shape so the FE Select
+ * can render directly from the API response.
+ */
+export interface AllegroResponsibleProducer {
+  id: string;
+  name: string;
+  kind:
+    | 'PRODUCER'
+    | 'IMPORTER'
+    | 'AUTHORIZED_REPRESENTATIVE'
+    | 'FULFILLMENT_SERVICE_PROVIDER';
+}
+
 export interface AllegroApi {
   startOAuth: (input: StartAllegroOAuthInput) => Promise<StartAllegroOAuthResponse>;
   handleCallback: (code: string, state: string) => Promise<AllegroCallbackResponse>;
+  listResponsibleProducers: (connectionId: string) => Promise<AllegroResponsibleProducer[]>;
 }
 
 interface ApiRequest {
@@ -39,6 +55,12 @@ export function createAllegroApi(request: ApiRequest): AllegroApi {
     handleCallback(code, state): Promise<AllegroCallbackResponse> {
       const params = new URLSearchParams({ code, state });
       return request<AllegroCallbackResponse>(`/integrations/allegro/oauth/callback?${params.toString()}`);
+    },
+
+    listResponsibleProducers(connectionId): Promise<AllegroResponsibleProducer[]> {
+      return request<AllegroResponsibleProducer[]>(
+        `/integrations/allegro/connections/${connectionId}/responsible-producers`,
+      );
     },
   };
 }

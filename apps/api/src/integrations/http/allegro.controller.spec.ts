@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
 import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
+import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
 import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   AllegroQuantityCommandRepositoryPort,
@@ -63,6 +64,12 @@ describe('AllegroController', () => {
       updateStatus: jest.fn(),
     } as unknown as jest.Mocked<AllegroQuantityCommandRepositoryPort>;
 
+    const mockIntegrationsService = {
+      getCapabilityAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn(),
+      getCapabilityAdapters: jest.fn(),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AllegroController],
       providers: [
@@ -77,6 +84,10 @@ describe('AllegroController', () => {
         {
           provide: ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
           useValue: mockCommandRepository,
+        },
+        {
+          provide: INTEGRATIONS_SERVICE_TOKEN,
+          useValue: mockIntegrationsService,
         },
       ],
     }).compile();

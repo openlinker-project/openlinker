@@ -128,6 +128,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      // #431 — smart-link by barcode. Pre-resolved here so adapters that
+      // need it (Allegro) don't have to re-fetch the variant.
+      variantBarcode: variant.ean ?? variant.gtin ?? null,
     };
 
     this.logger.debug(
