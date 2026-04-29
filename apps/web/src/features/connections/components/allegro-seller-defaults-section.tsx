@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { useResponsibleProducersQuery } from '../../allegro/hooks/use-responsible-producers-query';
 import {
@@ -47,24 +47,11 @@ export function AllegroSellerDefaultsSection({
 }: AllegroSellerDefaultsSectionProps): ReactElement {
   const producersQuery = useResponsibleProducersQuery(connectionId);
 
+  // The default safety-information type is seeded by the parent's
+  // `readSellerDefaults` helper at form-construction time (always one of
+  // the two enum values, never `undefined`), so `safetyType` is guaranteed
+  // truthy on first render — no mount-only effect needed here.
   const safetyType = form.watch('sellerDefaults.safetyInformation.type');
-
-  // Default safety type to NO_SAFETY_INFORMATION on first render so the
-  // BE always sees a valid discriminator the moment the operator engages
-  // with the section. Operators can switch to SAFETY_INFORMATION explicitly.
-  // The mount-only guard (`mounted` ref) is preferable to the lint-disable
-  // dance for `[]` deps; matches existing patterns in the codebase that
-  // avoid `react-hooks/exhaustive-deps` annotations entirely.
-  const didDefaultRef = useRef(false);
-  useEffect(() => {
-    if (didDefaultRef.current) return;
-    didDefaultRef.current = true;
-    if (!safetyType) {
-      form.setValue('sellerDefaults.safetyInformation.type', 'NO_SAFETY_INFORMATION', {
-        shouldDirty: false,
-      });
-    }
-  }, [form, safetyType]);
 
   const errors = form.formState.errors.sellerDefaults;
 

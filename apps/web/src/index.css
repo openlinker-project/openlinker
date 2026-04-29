@@ -4572,7 +4572,7 @@ a.kpi-card:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  padding: 1rem 1rem 1.25rem;
+  padding: 1rem;
   border: 1px solid var(--border-subtle);
   border-radius: 0.625rem;
   background: var(--bg-surface-elevated);
@@ -4635,7 +4635,7 @@ a.kpi-card:focus-visible {
 }
 
 .seller-defaults__group-description {
-  margin: 0.125rem 0 0;
+  margin: 0.25rem 0 0;
   font-size: 0.75rem;
   line-height: 1.5;
   color: var(--text-muted);
