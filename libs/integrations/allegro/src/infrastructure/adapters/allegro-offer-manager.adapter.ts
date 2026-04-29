@@ -56,6 +56,7 @@ import {
   AllegroMatchingCategoriesResponse,
   AllegroProductOfferCreateRequest,
   AllegroProductOfferCreateResponse,
+  AllegroProductSetEntry,
   AllegroValidationError,
   AllegroShippingRatesResponse,
   AllegroReturnPoliciesResponse,
@@ -1158,33 +1159,44 @@ export class AllegroOfferManagerAdapter
     // doing it here would copy the pre-upload operator URL, which Allegro
     // rejects.
     //
-    // Omit `body.productSet` entirely when the array would be empty: sending
-    // `productSet: []` or `productSet: [{ product: { parameters: [] } }]` is
-    // rejected the same way `body.product` was. The empty-rejection
-    // assumption is inherited from #415 and is itself unverified — if the
-    // sandbox repro contradicts it we revisit here.
+    // #439 — `productSet[0]` is emitted on every non-card-linked offer,
+    // even when the operator hasn't supplied any `productParameters`. The
+    // earlier code gated the entire entry on `productParameters.length > 0`
+    // (an unverified assumption inherited from #415). Allegro's GPSR
+    // enforcement (Reg. 2023/988, mandatory since 13 Dec 2024) requires
+    // `responsibleProducer` + `safetyInformation` on `productSet[0]` for
+    // every inline product, so omitting the array yields a 422 with
+    // `SAFETY_INFO_NOT_DEFINED` at `productSet[0].safetyInformation`. The
+    // 2026-04-29 sandbox repro confirmed this: smart-link missed, the
+    // offer carried no `productParameters`, and the create was rejected
+    // because the GPSR fields never reached Allegro.
+    //
+    // #420 — `body.name` arrives already sanitized via sanitizeAllegroName
+    // in buildCreateOfferRequest (which calls this method); no re-sanitization
+    // needed at this site. Keeping a single sanitization point per request
+    // lifecycle avoids "why is this being sanitized — wasn't it already?"
+    // reader confusion.
     const productParameters = platformParams['productParameters'];
-    if (Array.isArray(productParameters)) {
-      const filtered = productParameters.filter(isAllegroOfferParameterShape);
-      if (filtered.length > 0) {
-        // #420 — `body.name` arrives already sanitized via sanitizeAllegroName
-        // in buildCreateOfferRequest (which calls this method); no
-        // re-sanitization needed at this site. Keeping a single sanitization
-        // point per request lifecycle avoids "why is this being sanitized
-        // — wasn't it already?" reader confusion.
-        body.productSet = [
-          {
-            product: { name: body.name, parameters: filtered },
-            // #430 — GPSR fields required by Allegro on inline-product
-            // creation (Reg. 2023/988, mandatory since 13 Dec 2024).
-            // Sourced from the connection's seller defaults (preflight
-            // guard in `createOffer` ensures these exist).
-            responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-            safetyInformation: this.sellerDefaults!.safetyInformation,
-          },
-        ];
-      }
+    const filtered = Array.isArray(productParameters)
+      ? productParameters.filter(isAllegroOfferParameterShape)
+      : [];
+    const inlineProduct: NonNullable<AllegroProductSetEntry['product']> = {
+      name: body.name,
+    };
+    if (filtered.length > 0) {
+      inlineProduct.parameters = filtered;
     }
+    body.productSet = [
+      {
+        product: inlineProduct,
+        // #430 — GPSR fields required by Allegro on inline-product creation
+        // (Reg. 2023/988, mandatory since 13 Dec 2024). Sourced from the
+        // connection's seller defaults (the per-field preflight in
+        // `createOffer` ensures these exist).
+        responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
+        safetyInformation: this.sellerDefaults!.safetyInformation,
+      },
+    ];
   }
 
   private resolveCreateOfferStatus(

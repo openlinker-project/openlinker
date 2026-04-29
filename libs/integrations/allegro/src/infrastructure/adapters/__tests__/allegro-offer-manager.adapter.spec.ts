@@ -1135,7 +1135,13 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(body).not.toHaveProperty('product');
       });
 
-      it('omits body.productSet entirely when productParameters is missing or empty', async () => {
+      // #439 — emit `productSet[0]` on every non-card-linked offer even when
+      // `productParameters` is missing or empty. Allegro's GPSR enforcement
+      // requires `responsibleProducer` + `safetyInformation` on the inline
+      // entry; omitting `productSet` yielded a sandbox 422 with
+      // `SAFETY_INFO_NOT_DEFINED` at `productSet[0].safetyInformation`.
+      // `product.parameters` stays absent when the operator supplied none.
+      it('emits productSet[0] with GPSR + product.name when productParameters is missing or empty', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } }),
         );
@@ -1151,10 +1157,21 @@ describe('AllegroOfferManagerAdapter', () => {
           },
         });
 
-        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        // Allegro 422s on `productSet: []` and `productSet: [{ product: { parameters: [] } }]`
-        // just like the offer-side mismatch — empty array must round-trip to a missing key.
-        expect(body).not.toHaveProperty('productSet');
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet?: Array<{
+            product?: { id?: string; name?: string; parameters?: unknown };
+            responsibleProducer?: { id: string };
+            safetyInformation?: { type: string };
+          }>;
+        };
+        // Inline path: product.id absent (no smart-link), product.name reuses
+        // the offer title, GPSR fields written from sellerDefaults.
+        expect(body.productSet?.[0]?.product?.id).toBeUndefined();
+        expect(body.productSet?.[0]?.product?.name).toBe('Test Offer Title');
+        expect(body.productSet?.[0]?.product?.parameters).toBeUndefined();
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
+        // `body.product` is still rejected as an unknown property.
         expect(body).not.toHaveProperty('product');
       });
 
