@@ -442,6 +442,26 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(incoming.shippingAddress?.city).toBe('BuyerCity');
         expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
       });
+
+      it('should fall back to buyer.address when delivery.address has only name fields (no geography)', async () => {
+        // Defensive: a delivery.address with firstName/lastName but no
+        // street/city/zipCode is geographically meaningless — the empty-guard
+        // pushes it to the buyer.address fallback rather than emitting empty
+        // strings. This case is exotic but cheap to lock in.
+        const form = baseForm();
+        form.delivery = {
+          address: {
+            firstName: 'Recipient',
+            lastName: 'NoGeography',
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shippingAddress?.firstName).toBe('Buyer'); // from buyer.address
+        expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
+      });
     });
   });
 });
