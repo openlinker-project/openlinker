@@ -3,14 +3,17 @@ import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 
 /**
- * Connection-level seller-defaults schema (#430). Each sub-field is
+ * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
  * optional at the FE level so the operator can save incremental progress
  * (e.g. fill location now, return for safety info later); the BE DTO
  * validator at `apps/api/src/integrations/application/dto/allegro-connection-config.dto.ts`
  * is the strict gate.
  *
- * `safetyInformation` is a discriminated union — when `type` is
- * `SAFETY_INFORMATION`, `content` becomes required server-side.
+ * `safetyInformation` is a discriminated union — when `type` is `TEXT`,
+ * `description` becomes required server-side (1–5000 chars per Allegro).
+ * `ATTACHMENTS` carries `attachments[].id`; the FE upload UI for that
+ * variant is out of scope for #445 — operators can still target it via
+ * the JSON view if they have pre-uploaded attachment ids.
  */
 const allegroSellerLocationSchema = z.object({
   countryCode: z.literal('PL').optional(),
@@ -24,9 +27,15 @@ const allegroSellerLocationSchema = z.object({
     .optional(),
 });
 
+// FE schema is permissive (optional everywhere) so the operator can save
+// incremental progress. The BE DTO is the strict gate — see #445.
 const allegroSafetyInformationSchema = z.object({
-  type: z.enum(['NO_SAFETY_INFORMATION', 'SAFETY_INFORMATION']).optional(),
-  content: z.string().trim().max(2000).optional(),
+  type: z.enum(['NO_SAFETY_INFORMATION', 'TEXT', 'ATTACHMENTS']).optional(),
+  description: z.string().trim().max(5000).optional(),
+  attachments: z
+    .array(z.object({ id: z.string().trim().min(1) }))
+    .max(20)
+    .optional(),
 });
 
 const allegroSellerDefaultsSchema = z.object({
@@ -173,11 +182,17 @@ function pruneEmptySellerDefaults(
   if (values.safetyInformation?.type) {
     const safety: Record<string, unknown> = { type: values.safetyInformation.type };
     if (
-      values.safetyInformation.type === 'SAFETY_INFORMATION' &&
-      values.safetyInformation.content &&
-      values.safetyInformation.content.length > 0
+      values.safetyInformation.type === 'TEXT' &&
+      values.safetyInformation.description &&
+      values.safetyInformation.description.length > 0
     ) {
-      safety.content = values.safetyInformation.content;
+      safety.description = values.safetyInformation.description;
+    } else if (
+      values.safetyInformation.type === 'ATTACHMENTS' &&
+      Array.isArray(values.safetyInformation.attachments) &&
+      values.safetyInformation.attachments.length > 0
+    ) {
+      safety.attachments = values.safetyInformation.attachments;
     }
     out.safetyInformation = safety;
   }

@@ -6,7 +6,7 @@
  * - loading: RP query in flight → Select disabled with loading copy
  * - error: RP query fails → error Alert with retry
  * - empty: RP query returns [] → info Alert prompting Allegro panel
- * - conditional textarea: visible only when type === SAFETY_INFORMATION
+ * - conditional textarea: visible only when type === TEXT (#445)
  *
  * @module apps/web/src/features/connections/components
  */
@@ -20,7 +20,7 @@ import type { EditConnectionFormValues } from './edit-connection.schema';
 
 interface HarnessProps {
   apiClient?: ReturnType<typeof createMockApiClient>;
-  initialSafetyType?: 'NO_SAFETY_INFORMATION' | 'SAFETY_INFORMATION';
+  initialSafetyType?: 'NO_SAFETY_INFORMATION' | 'TEXT' | 'ATTACHMENTS';
   onChange?: () => void;
 }
 
@@ -35,7 +35,7 @@ function Harness({ initialSafetyType, onChange }: HarnessProps): ReactElement {
         responsibleProducerId: '',
         safetyInformation: {
           type: initialSafetyType ?? 'NO_SAFETY_INFORMATION',
-          content: '',
+          description: '',
         },
       },
     },
@@ -115,22 +115,22 @@ describe('AllegroSellerDefaultsSection', () => {
     expect(screen.getByText(/Allegro seller panel/i)).toBeInTheDocument();
   });
 
-  it('hides the safety-information content textarea when type is NO_SAFETY_INFORMATION', () => {
+  it('hides the safety-information description textarea when type is NO_SAFETY_INFORMATION', () => {
     renderWithProviders(<Harness initialSafetyType="NO_SAFETY_INFORMATION" />);
 
-    expect(screen.queryByLabelText(/safety information content/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/safety information description/i)).not.toBeInTheDocument();
   });
 
-  it('reveals the content textarea when the operator picks SAFETY_INFORMATION', async () => {
+  it('reveals the description textarea when the operator picks TEXT (#445)', async () => {
     renderWithProviders(<Harness initialSafetyType="NO_SAFETY_INFORMATION" />);
 
-    expect(screen.queryByLabelText(/safety information content/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/safety information description/i)).not.toBeInTheDocument();
 
     const typeSelect = screen.getByLabelText(/^Type$/);
-    fireEvent.change(typeSelect, { target: { value: 'SAFETY_INFORMATION' } });
+    fireEvent.change(typeSelect, { target: { value: 'TEXT' } });
 
     expect(
-      await screen.findByLabelText(/safety information content/i),
+      await screen.findByLabelText(/safety information description/i),
     ).toBeInTheDocument();
   });
 

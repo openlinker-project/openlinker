@@ -138,10 +138,18 @@ function collectMissingSellerDefaultsFields(
   if (!safety?.type) {
     missing.push('sellerDefaults.safetyInformation.type');
   } else if (
-    safety.type === 'SAFETY_INFORMATION' &&
-    (typeof safety.content !== 'string' || safety.content.length === 0)
+    safety.type === 'TEXT' &&
+    (typeof safety.description !== 'string' || safety.description.length === 0)
   ) {
-    missing.push('sellerDefaults.safetyInformation.content');
+    // Allegro accepts 1–5000 chars on `TEXT.description` (#445). The DTO
+    // validator enforces the upper bound at save time; here we only catch
+    // empty/missing description which would silently pass the type check.
+    missing.push('sellerDefaults.safetyInformation.description');
+  } else if (
+    safety.type === 'ATTACHMENTS' &&
+    (!Array.isArray(safety.attachments) || safety.attachments.length === 0)
+  ) {
+    missing.push('sellerDefaults.safetyInformation.attachments');
   }
   return missing;
 }
@@ -858,14 +866,6 @@ export class AllegroOfferManagerAdapter
 
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
-    );
-    // #441 — diagnostic: dump the literal POST body so a sandbox 422 (e.g.
-    // `SAFETY_INFO_NOT_DEFINED` post-#440) can be diagnosed against ground
-    // truth rather than against unit-test expectations. Will be removed or
-    // demoted once the issue is closed; passes through `formatBodyForLog` so
-    // operator-controlled long strings can't blow up logs.
-    this.logger.log(
-      `Allegro offer-create POST body: connection=${this.connectionId} body=${formatBodyForLog(JSON.stringify(body))}`,
     );
 
     let response: AllegroProductOfferCreateResponse;

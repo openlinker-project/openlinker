@@ -227,7 +227,12 @@ export function AllegroSellerDefaultsSection({
         <h4 className="seller-defaults__group-title">Safety information</h4>
         <p className="seller-defaults__group-description">
           Pick <strong>None applies</strong> for products without GPSR safety
-          obligations, or provide free-text safety details.
+          obligations, or provide free-text safety details. Some categories
+          (cameras, electronics with batteries, etc.) require <strong>TEXT</strong>
+          and reject the &quot;None applies&quot; option. The
+          <strong> ATTACHMENTS</strong> variant (referencing pre-uploaded
+          attachment ids) is supported by the API but no upload UI is shipped
+          yet — operators using attachments must edit the JSON view directly.
         </p>
 
         <FormField
@@ -240,7 +245,7 @@ export function AllegroSellerDefaultsSection({
             onChange={(event) => {
               form.setValue(
                 'sellerDefaults.safetyInformation.type',
-                event.target.value as 'NO_SAFETY_INFORMATION' | 'SAFETY_INFORMATION',
+                event.target.value as 'NO_SAFETY_INFORMATION' | 'TEXT' | 'ATTACHMENTS',
                 { shouldDirty: true },
               );
               onChange();
@@ -248,31 +253,31 @@ export function AllegroSellerDefaultsSection({
             disabled={disabled}
           >
             <option value="NO_SAFETY_INFORMATION">None applies</option>
-            <option value="SAFETY_INFORMATION">Provide safety information</option>
+            <option value="TEXT">Provide safety information (text)</option>
           </Select>
         </FormField>
 
-        {safetyType === 'SAFETY_INFORMATION' ? (
+        {safetyType === 'TEXT' ? (
           <FormField
-            label="Safety information content"
-            name="sellerDefaults.safetyInformation.content"
-            error={errors?.safetyInformation?.content?.message}
-            description="Free text shown to buyers. 1–2000 characters."
+            label="Safety information description"
+            name="sellerDefaults.safetyInformation.description"
+            error={errors?.safetyInformation?.description?.message}
+            description="Free text shown to buyers. 1–5000 characters; no HTML, newlines allowed."
           >
             <Textarea
-              {...form.register('sellerDefaults.safetyInformation.content')}
+              {...form.register('sellerDefaults.safetyInformation.description')}
               onChange={(event) => {
                 form.setValue(
-                  'sellerDefaults.safetyInformation.content',
+                  'sellerDefaults.safetyInformation.description',
                   event.target.value,
                   { shouldDirty: true },
                 );
                 onChange();
               }}
               rows={4}
-              maxLength={2000}
+              maxLength={5000}
               disabled={disabled}
-              invalid={Boolean(errors?.safetyInformation?.content)}
+              invalid={Boolean(errors?.safetyInformation?.description)}
             />
           </FormField>
         ) : null}

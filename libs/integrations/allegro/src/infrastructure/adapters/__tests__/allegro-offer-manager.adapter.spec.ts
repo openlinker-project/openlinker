@@ -1175,11 +1175,13 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(body).not.toHaveProperty('product');
       });
 
-      // #439 — discriminator parity: when sellerDefaults uses the
-      // `SAFETY_INFORMATION` branch (free-text content rather than the
-      // "no risks" declaration), the adapter must pass the entire object
-      // through to `productSet[0].safetyInformation` — `type` + `content`.
-      it('passes SAFETY_INFORMATION discriminator with content through to productSet[0].safetyInformation', async () => {
+      // #439 / #445 — discriminator parity: when sellerDefaults uses the
+      // `TEXT` branch (free-text description rather than the "no risks"
+      // declaration), the adapter must pass the entire object through to
+      // `productSet[0].safetyInformation` — `type` + `description`. #445
+      // corrected the discriminator from `SAFETY_INFORMATION`/`content` to
+      // `TEXT`/`description` per developer.allegro.pl.
+      it('passes TEXT discriminator with description through to productSet[0].safetyInformation (#445)', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-safety-text', publication: { status: 'INACTIVE' } }),
         );
@@ -1197,8 +1199,8 @@ describe('AllegroOfferManagerAdapter', () => {
           {
             ...DEFAULT_SELLER_DEFAULTS,
             safetyInformation: {
-              type: 'SAFETY_INFORMATION',
-              content: 'Keep dry. Not for children under 3.',
+              type: 'TEXT',
+              description: 'Keep dry. Not for children under 3.',
             },
           },
         );
@@ -1207,12 +1209,56 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
-            safetyInformation?: { type: string; content?: string };
+            safetyInformation?: { type: string; description?: string };
           }>;
         };
         expect(body.productSet?.[0]?.safetyInformation).toEqual({
-          type: 'SAFETY_INFORMATION',
-          content: 'Keep dry. Not for children under 3.',
+          type: 'TEXT',
+          description: 'Keep dry. Not for children under 3.',
+        });
+      });
+
+      // #445 — ATTACHMENTS variant flows through unchanged.
+      it('passes ATTACHMENTS discriminator with attachment ids through to productSet[0].safetyInformation (#445)', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({
+            id: 'allegro-offer-safety-att',
+            publication: { status: 'INACTIVE' },
+          }),
+        );
+
+        const adapterWithAttachments = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            ...DEFAULT_SELLER_DEFAULTS,
+            safetyInformation: {
+              type: 'ATTACHMENTS',
+              attachments: [{ id: 'att-1' }, { id: 'att-2' }],
+            },
+          },
+        );
+
+        await adapterWithAttachments.createOffer(baseCmd);
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet?: Array<{
+            safetyInformation?: {
+              type: string;
+              attachments?: Array<{ id: string }>;
+            };
+          }>;
+        };
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({
+          type: 'ATTACHMENTS',
+          attachments: [{ id: 'att-1' }, { id: 'att-2' }],
         });
       });
 
@@ -1594,10 +1640,10 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(httpClient.post).not.toHaveBeenCalled();
       });
 
-      it('reports sellerDefaults.safetyInformation.content when type=SAFETY_INFORMATION but content is missing', async () => {
+      it('reports sellerDefaults.safetyInformation.description when type=TEXT but description is missing (#445)', async () => {
         const partial = {
           ...DEFAULT_SELLER_DEFAULTS,
-          safetyInformation: { type: 'SAFETY_INFORMATION' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
+          safetyInformation: { type: 'TEXT' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
         };
         const partialAdapter = new AllegroOfferManagerAdapter(
           connectionId,
@@ -1616,7 +1662,37 @@ describe('AllegroOfferManagerAdapter', () => {
           name: 'OfferCreateRejectedException',
           errors: [
             expect.objectContaining({
-              field: 'sellerDefaults.safetyInformation.content',
+              field: 'sellerDefaults.safetyInformation.description',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('reports sellerDefaults.safetyInformation.attachments when type=ATTACHMENTS but attachments is missing/empty (#445)', async () => {
+        const partial = {
+          ...DEFAULT_SELLER_DEFAULTS,
+          safetyInformation: { type: 'ATTACHMENTS' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
+        };
+        const partialAdapter = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          partial,
+        );
+
+        await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [
+            expect.objectContaining({
+              field: 'sellerDefaults.safetyInformation.attachments',
               code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
             }),
           ],
