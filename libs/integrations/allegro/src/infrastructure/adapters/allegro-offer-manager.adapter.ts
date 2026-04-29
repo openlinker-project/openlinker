@@ -859,14 +859,6 @@ export class AllegroOfferManagerAdapter
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
     );
-    // #441 — diagnostic: dump the literal POST body so a sandbox 422 (e.g.
-    // `SAFETY_INFO_NOT_DEFINED` post-#440) can be diagnosed against ground
-    // truth rather than against unit-test expectations. Will be removed or
-    // demoted once the issue is closed; passes through `formatBodyForLog` so
-    // operator-controlled long strings can't blow up logs.
-    this.logger.log(
-      `Allegro offer-create POST body: connection=${this.connectionId} body=${formatBodyForLog(JSON.stringify(body))}`,
-    );
 
     let response: AllegroProductOfferCreateResponse;
     try {
@@ -1191,24 +1183,23 @@ export class AllegroOfferManagerAdapter
     // `parameters` is attached only when the operator supplied any — Allegro
     // rejects an explicit empty array on inline products. Spread-with-conditional
     // keeps the construction declarative and avoids a post-create mutation.
+    //
+    // #442 — `responsibleProducer` and `safetyInformation` live INSIDE
+    // `product`, not at the entry level. #430's original placement at the
+    // entry level looked plausible against the GET response shape but
+    // Allegro's POST schema scopes GPSR to the product itself; the body-log
+    // diagnostic from #441 confirmed Allegro 422s `SAFETY_INFO_NOT_DEFINED`
+    // when these fields sit outside `product`. The `sellerDefaults!`
+    // non-null assertions are guaranteed by the per-field preflight in
+    // `createOffer` (`collectMissingSellerDefaultsFields`, #430 / #437) —
+    // do not weaken the preflight without revisiting these sites.
     const inlineProduct: NonNullable<AllegroProductSetEntry['product']> = {
       name: body.name,
       ...(filtered.length > 0 ? { parameters: filtered } : {}),
+      responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
+      safetyInformation: this.sellerDefaults!.safetyInformation,
     };
-    // The `sellerDefaults!` non-null assertions below are guaranteed by the
-    // per-field preflight in `createOffer` (`collectMissingSellerDefaultsFields`,
-    // #430 / #437): if `responsibleProducerId` or `safetyInformation` were
-    // missing, the preflight throws `OfferCreateRejectedException` before this
-    // method runs. Do not weaken the preflight without revisiting these sites.
-    body.productSet = [
-      {
-        product: inlineProduct,
-        // #430 — GPSR fields required by Allegro on inline-product creation
-        // (Reg. 2023/988, mandatory since 13 Dec 2024).
-        responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-        safetyInformation: this.sellerDefaults!.safetyInformation,
-      },
-    ];
+    body.productSet = [{ product: inlineProduct }];
   }
 
   private resolveCreateOfferStatus(
