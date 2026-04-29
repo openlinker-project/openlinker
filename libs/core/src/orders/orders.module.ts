@@ -12,6 +12,7 @@ import { OrderSyncService } from './application/services/order-sync.service';
 import { OrderIngestionService } from './application/services/order-ingestion.service';
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
+import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import {
@@ -19,6 +20,7 @@ import {
   ORDER_INGESTION_SERVICE_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -46,6 +48,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderIngestionService,
     OrderItemRefResolverService,
     OrderRecordService,
+    OrderDestinationRetryService,
     OrderRecordRepository,
     // Then provide token bindings using useExisting
     {
@@ -64,6 +67,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_RECORD_SERVICE_TOKEN,
       useExisting: OrderRecordService,
     },
+    {
+      provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+      useExisting: OrderDestinationRetryService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -71,6 +78,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_INGESTION_SERVICE_TOKEN,
     ORDER_RECORD_REPOSITORY_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
+    ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

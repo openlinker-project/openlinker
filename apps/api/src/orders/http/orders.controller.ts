@@ -9,24 +9,34 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
   Param,
   HttpCode,
   HttpStatus,
   NotFoundException,
+  ConflictException,
+  InternalServerErrorException,
   Inject,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   OrderRecordRepositoryPort,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  OrderRecordNotFoundException,
+  OrderDestinationNotFoundException,
+  OrderDestinationNotRetryableException,
+  MissingSourceExternalIdException,
 } from '@openlinker/core/orders';
-import type { OrderRecord, OrderSyncStatus } from '@openlinker/core/orders';
+import type { OrderRecord, OrderSyncStatus, IOrderDestinationRetryService } from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
+import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -36,6 +46,8 @@ export class OrdersController {
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
+    @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
+    private readonly destinationRetryService: IOrderDestinationRetryService,
   ) {}
 
   @Get()
@@ -82,6 +94,53 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     return this.toDto(order);
+  }
+
+  @Post(':internalOrderId/destinations/:connectionId/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Retry a failed destination sync for an order',
+    description:
+      'Re-enqueues the source-side `marketplace.order.sync` job with a fresh idempotency key. Only destinations whose current status is `failed` can be retried — `pending` / `syncing` / `synced` rows are rejected with 409. The destination row is flipped to `pending` immediately so the operator sees the retry queued.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Retry accepted; new sync job enqueued',
+    type: RetryOrderDestinationResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Order or destination row not found' })
+  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryDestination(
+    @Param('internalOrderId') internalOrderId: string,
+    @Param('connectionId', ParseUUIDPipe) connectionId: string,
+  ): Promise<RetryOrderDestinationResponseDto> {
+    try {
+      const result = await this.destinationRetryService.retry({
+        internalOrderId,
+        destinationConnectionId: connectionId,
+      });
+      return {
+        internalOrderId,
+        destinationConnectionId: connectionId,
+        jobId: result.jobId,
+        jobType: result.jobType,
+      };
+    } catch (error) {
+      if (
+        error instanceof OrderRecordNotFoundException ||
+        error instanceof OrderDestinationNotFoundException
+      ) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof OrderDestinationNotRetryableException) {
+        throw new ConflictException(error.message);
+      }
+      if (error instanceof MissingSourceExternalIdException) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw error;
+    }
   }
 
   private toDto(order: OrderRecord): OrderRecordResponseDto {

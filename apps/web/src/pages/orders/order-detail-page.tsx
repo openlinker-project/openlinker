@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useCallback, useMemo, type ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
@@ -10,7 +10,9 @@ import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list'
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { useToast } from '../../shared/ui/toast-provider';
 import { useOrderQuery } from '../../features/orders/hooks/use-order-query';
+import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import type { OrderSyncStatus, OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
@@ -30,62 +32,86 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   failed: 'error',
 };
 
-const SYNC_COLUMNS: DataTableColumn<OrderSyncStatus>[] = [
-  {
-    id: 'destinationConnectionId',
-    header: 'Destination',
-    cell: (s) => <ConnectionEntityLabel connectionId={s.destinationConnectionId} showId={false} />,
-  },
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (s) => (
-      <StatusBadge tone={SYNC_STATUS_TONES[s.status]} compact>
-        {s.status}
-      </StatusBadge>
-    ),
-  },
-  {
-    id: 'externalOrderId',
-    header: 'External Order ID',
-    cell: (s) =>
-      s.externalOrderId ? (
-        <span className="mono-text">{s.externalOrderId}</span>
-      ) : (
-        <EmptyValue />
+function buildSyncColumns(
+  onRetry: (destinationConnectionId: string) => void,
+  isRetrying: (destinationConnectionId: string) => boolean,
+): DataTableColumn<OrderSyncStatus>[] {
+  return [
+    {
+      id: 'destinationConnectionId',
+      header: 'Destination',
+      cell: (s) => <ConnectionEntityLabel connectionId={s.destinationConnectionId} showId={false} />,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (s) => (
+        <StatusBadge tone={SYNC_STATUS_TONES[s.status]} compact>
+          {s.status}
+        </StatusBadge>
       ),
-    hideBelow: 768,
-  },
-  {
-    id: 'externalOrderNumber',
-    header: 'External Order #',
-    cell: (s) =>
-      s.externalOrderNumber ? (
-        <span className="mono-text">{s.externalOrderNumber}</span>
-      ) : (
-        <EmptyValue />
-      ),
-  },
-  {
-    id: 'syncedAt',
-    header: 'Synced At',
-    cell: (s) => (s.syncedAt ? <TimeDisplay iso={s.syncedAt} /> : <EmptyValue />),
-    hideBelow: 768,
-  },
-  {
-    id: 'error',
-    header: 'Error',
-    cell: (s) =>
-      s.error ? (
-        <span className="text-muted" title={s.error}>
-          {s.error.length > 80 ? `${s.error.slice(0, 80)}…` : s.error}
-        </span>
-      ) : (
-        <EmptyValue />
-      ),
-    hideBelow: 1024,
-  },
-];
+    },
+    {
+      id: 'externalOrderId',
+      header: 'External Order ID',
+      cell: (s) =>
+        s.externalOrderId ? (
+          <span className="mono-text">{s.externalOrderId}</span>
+        ) : (
+          <EmptyValue />
+        ),
+      hideBelow: 768,
+    },
+    {
+      id: 'externalOrderNumber',
+      header: 'External Order #',
+      cell: (s) =>
+        s.externalOrderNumber ? (
+          <span className="mono-text">{s.externalOrderNumber}</span>
+        ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      id: 'syncedAt',
+      header: 'Synced At',
+      cell: (s) => (s.syncedAt ? <TimeDisplay iso={s.syncedAt} /> : <EmptyValue />),
+      hideBelow: 768,
+    },
+    {
+      id: 'error',
+      header: 'Error',
+      cell: (s) =>
+        s.error ? (
+          <span className="text-muted" title={s.error}>
+            {s.error.length > 80 ? `${s.error.slice(0, 80)}…` : s.error}
+          </span>
+        ) : (
+          <EmptyValue />
+        ),
+      hideBelow: 1024,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: (s) => {
+        if (s.status !== 'failed') {
+          return <EmptyValue />;
+        }
+        const pending = isRetrying(s.destinationConnectionId);
+        return (
+          <Button
+            tone="secondary"
+            onClick={() => onRetry(s.destinationConnectionId)}
+            disabled={pending}
+          >
+            {pending ? 'Retrying…' : 'Retry'}
+          </Button>
+        );
+      },
+    },
+  ];
+}
 
 function buildAddressItems(address: ParsedAddress, label: string): KeyValueItem[] {
   const fullName = [address.firstName, address.lastName].filter(Boolean).join(' ');
@@ -103,6 +129,41 @@ function buildAddressItems(address: ParsedAddress, label: string): KeyValueItem[
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const query = useOrderQuery(internalOrderId);
+  const retry = useRetryOrderDestinationMutation();
+  const { showToast } = useToast();
+
+  const pendingDestinationId =
+    retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
+
+  const handleRetry = useCallback(
+    (destinationConnectionId: string): void => {
+      retry.mutate(
+        { internalOrderId, destinationConnectionId },
+        {
+          onSuccess: () => {
+            showToast({
+              tone: 'success',
+              title: 'Retry queued',
+              description: 'Sync queued for the failed destination.',
+            });
+          },
+          onError: (error) => {
+            showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+          },
+        },
+      );
+    },
+    [retry, internalOrderId, showToast],
+  );
+
+  const syncColumns = useMemo(
+    () =>
+      buildSyncColumns(
+        handleRetry,
+        (destinationConnectionId) => pendingDestinationId === destinationConnectionId,
+      ),
+    [handleRetry, pendingDestinationId],
+  );
 
   if (query.isLoading) {
     return (
@@ -241,7 +302,7 @@ export function OrderDetailPage(): ReactElement {
           {order.syncStatus.length > 0 ? (
             <DataTable
               caption="Order sync status"
-              columns={SYNC_COLUMNS}
+              columns={syncColumns}
               rows={order.syncStatus}
               rowKey={(s) => s.destinationConnectionId}
             />

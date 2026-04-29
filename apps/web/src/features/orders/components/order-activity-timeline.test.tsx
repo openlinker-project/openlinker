@@ -127,4 +127,32 @@ describe('OrderActivityTimeline', () => {
     expect(within(failedRow).getByText('PrestaShop returned 500')).toBeInTheDocument();
     expect(failedRow.querySelector('.order-activity__dot--error')).not.toBeNull();
   });
+
+  it('does not show "in progress" for a failed sync without syncedAt', () => {
+    // Real-world failed rows have no syncedAt — only an error string. Before the
+    // fix, the time pill mistakenly read "in progress" because it fell into the
+    // null-timestamp branch. Now the error tone branches before the pending pill.
+    const syncStatus: OrderSyncStatus[] = [
+      {
+        destinationConnectionId: 'ol_connection_dst',
+        status: 'failed',
+        syncedAt: null,
+        externalOrderId: null,
+        externalOrderNumber: null,
+        error: 'PrestaShop country PL not active',
+      },
+    ];
+
+    renderTimeline({
+      createdAt: '2026-04-20T10:00:00.000Z',
+      recordStatus: 'ready',
+      syncStatus,
+    });
+
+    const items = screen.getAllByRole('listitem');
+    const failedRow = items[1];
+    expect(within(failedRow).getByText(/failed to sync to/)).toBeInTheDocument();
+    expect(within(failedRow).queryByText('in progress')).toBeNull();
+    expect(failedRow.querySelector('.order-activity__dot--error')).not.toBeNull();
+  });
 });
