@@ -859,6 +859,14 @@ export class AllegroOfferManagerAdapter
     this.logger.debug(
       `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
     );
+    // #441 — diagnostic: dump the literal POST body so a sandbox 422 (e.g.
+    // `SAFETY_INFO_NOT_DEFINED` post-#440) can be diagnosed against ground
+    // truth rather than against unit-test expectations. Will be removed or
+    // demoted once the issue is closed; passes through `formatBodyForLog` so
+    // operator-controlled long strings can't blow up logs.
+    this.logger.log(
+      `Allegro offer-create POST body: connection=${this.connectionId} body=${formatBodyForLog(JSON.stringify(body))}`,
+    );
 
     let response: AllegroProductOfferCreateResponse;
     try {
