@@ -1175,6 +1175,47 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(body).not.toHaveProperty('product');
       });
 
+      // #439 — discriminator parity: when sellerDefaults uses the
+      // `SAFETY_INFORMATION` branch (free-text content rather than the
+      // "no risks" declaration), the adapter must pass the entire object
+      // through to `productSet[0].safetyInformation` — `type` + `content`.
+      it('passes SAFETY_INFORMATION discriminator with content through to productSet[0].safetyInformation', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-safety-text', publication: { status: 'INACTIVE' } }),
+        );
+
+        const adapterWithSafetyText = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            ...DEFAULT_SELLER_DEFAULTS,
+            safetyInformation: {
+              type: 'SAFETY_INFORMATION',
+              content: 'Keep dry. Not for children under 3.',
+            },
+          },
+        );
+
+        await adapterWithSafetyText.createOffer(baseCmd);
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet?: Array<{
+            safetyInformation?: { type: string; content?: string };
+          }>;
+        };
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({
+          type: 'SAFETY_INFORMATION',
+          content: 'Keep dry. Not for children under 3.',
+        });
+      });
+
       it('drops malformed product-parameter entries through the same shape validator', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-product-mal', publication: { status: 'INACTIVE' } }),

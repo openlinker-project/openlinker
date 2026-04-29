@@ -1180,19 +1180,23 @@ export class AllegroOfferManagerAdapter
     const filtered = Array.isArray(productParameters)
       ? productParameters.filter(isAllegroOfferParameterShape)
       : [];
+    // `parameters` is attached only when the operator supplied any — Allegro
+    // rejects an explicit empty array on inline products. Spread-with-conditional
+    // keeps the construction declarative and avoids a post-create mutation.
     const inlineProduct: NonNullable<AllegroProductSetEntry['product']> = {
       name: body.name,
+      ...(filtered.length > 0 ? { parameters: filtered } : {}),
     };
-    if (filtered.length > 0) {
-      inlineProduct.parameters = filtered;
-    }
+    // The `sellerDefaults!` non-null assertions below are guaranteed by the
+    // per-field preflight in `createOffer` (`collectMissingSellerDefaultsFields`,
+    // #430 / #437): if `responsibleProducerId` or `safetyInformation` were
+    // missing, the preflight throws `OfferCreateRejectedException` before this
+    // method runs. Do not weaken the preflight without revisiting these sites.
     body.productSet = [
       {
         product: inlineProduct,
         // #430 — GPSR fields required by Allegro on inline-product creation
-        // (Reg. 2023/988, mandatory since 13 Dec 2024). Sourced from the
-        // connection's seller defaults (the per-field preflight in
-        // `createOffer` ensures these exist).
+        // (Reg. 2023/988, mandatory since 13 Dec 2024).
         responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
         safetyInformation: this.sellerDefaults!.safetyInformation,
       },
