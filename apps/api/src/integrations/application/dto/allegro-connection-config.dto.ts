@@ -1,11 +1,15 @@
 /**
  * Allegro Connection Config DTO
  *
- * Request DTO for Allegro connection configuration. Validates Allegro-specific
- * config fields (environment, apiBaseUrl, sellerDefaults) and provides Swagger
- * documentation.
+ * Application-layer schema for the Allegro `Connection.config` blob.
+ * Lives in the application layer (not `http/dto/`) because the schema is
+ * the source of truth for `ConnectionService.update()`'s server-side
+ * re-validation pass — see #437. The HTTP controller hooks into the same
+ * shape but does not own it. Swagger decorators are kept on the class so
+ * the DTO can be referenced from a controller @Body() in the future
+ * without splitting the schema in two.
  *
- * @module apps/api/src/integrations/http/dto
+ * @module apps/api/src/integrations/application/dto
  */
 import {
   IsEnum,

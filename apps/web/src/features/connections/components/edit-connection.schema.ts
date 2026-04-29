@@ -6,7 +6,7 @@ import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
  * Connection-level seller-defaults schema (#430). Each sub-field is
  * optional at the FE level so the operator can save incremental progress
  * (e.g. fill location now, return for safety info later); the BE DTO
- * validator at `apps/api/src/integrations/http/dto/allegro-connection-config.dto.ts`
+ * validator at `apps/api/src/integrations/application/dto/allegro-connection-config.dto.ts`
  * is the strict gate.
  *
  * `safetyInformation` is a discriminated union — when `type` is
