@@ -419,18 +419,64 @@ describe('ConnectionService', () => {
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
-      it('should reject SAFETY_INFORMATION without content', async () => {
+      it('should reject TEXT without description (#445)', async () => {
         const partial = {
           ...validAllegroConfig,
           sellerDefaults: {
             ...validAllegroConfig.sellerDefaults,
-            safetyInformation: { type: 'SAFETY_INFORMATION' },
+            safetyInformation: { type: 'TEXT' },
           },
         };
         await expect(
           service.update('allegro-conn-1', { config: partial }),
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject ATTACHMENTS without attachments array (#445)', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            safetyInformation: { type: 'ATTACHMENTS' },
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject ATTACHMENTS exceeding 20 entries (#445)', async () => {
+        const tooMany = Array.from({ length: 21 }, (_, i) => ({ id: `att-${i}` }));
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            safetyInformation: { type: 'ATTACHMENTS', attachments: tooMany },
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should accept TEXT with valid description (#445)', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            safetyInformation: {
+              type: 'TEXT',
+              description: 'Aparat z akumulatorem litowo-jonowym. Spelnia normy CE/RoHS.',
+            },
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).resolves.toEqual(allegroConnection);
+        expect(connectionPort.update).toHaveBeenCalled();
       });
 
       it('should skip Allegro validation for non-Allegro connections', async () => {

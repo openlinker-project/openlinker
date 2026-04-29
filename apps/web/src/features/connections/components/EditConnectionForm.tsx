@@ -57,8 +57,27 @@ function readSellerDefaults(
     typeof raw.safetyInformation === 'object' && raw.safetyInformation !== null
       ? (raw.safetyInformation as Record<string, unknown>)
       : {};
-  const safetyType: 'NO_SAFETY_INFORMATION' | 'SAFETY_INFORMATION' =
-    safety.type === 'SAFETY_INFORMATION' ? 'SAFETY_INFORMATION' : 'NO_SAFETY_INFORMATION';
+  // #445 — discriminator now matches Allegro's actual API: `TEXT` (with
+  // `description`) and `ATTACHMENTS` replace the legacy `SAFETY_INFORMATION`
+  // shape. Pre-#445 persisted configs may still carry `{ type: 'SAFETY_INFORMATION',
+  // content }` if the data migration hasn't run yet on this environment;
+  // when seen, we surface them as `TEXT` + `description` so the operator
+  // can re-save them in the correct shape.
+  const legacySafetyContent =
+    safety.type === 'SAFETY_INFORMATION' && typeof safety.content === 'string'
+      ? safety.content
+      : '';
+  // Edge case: a legacy `SAFETY_INFORMATION` row with empty `content` falls
+  // through to `NO_SAFETY_INFORMATION` because empty content cannot be a
+  // valid `TEXT` value either — the operator would have to re-enter the
+  // text anyway. The dedicated migration (#445) rewrites
+  // `SAFETY_INFORMATION` → `TEXT` for non-empty content rows in production.
+  const safetyType: 'NO_SAFETY_INFORMATION' | 'TEXT' | 'ATTACHMENTS' =
+    safety.type === 'TEXT' || (safety.type === 'SAFETY_INFORMATION' && legacySafetyContent.length > 0)
+      ? 'TEXT'
+      : safety.type === 'ATTACHMENTS'
+        ? 'ATTACHMENTS'
+        : 'NO_SAFETY_INFORMATION';
   // Narrow `province` to the FE Zod union; out-of-band values fall through
   // as '' so the operator picks again. Mirrors `safetyInformation.type`'s
   // guard above.
@@ -79,7 +98,13 @@ function readSellerDefaults(
       typeof raw.responsibleProducerId === 'string' ? raw.responsibleProducerId : '',
     safetyInformation: {
       type: safetyType,
-      content: typeof safety.content === 'string' ? safety.content : '',
+      description:
+        typeof safety.description === 'string'
+          ? safety.description
+          : legacySafetyContent,
+      attachments: Array.isArray(safety.attachments)
+        ? (safety.attachments as Array<{ id: string }>)
+        : undefined,
     },
   };
 }

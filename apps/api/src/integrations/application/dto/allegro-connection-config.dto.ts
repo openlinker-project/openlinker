@@ -12,6 +12,9 @@
  * @module apps/api/src/integrations/application/dto
  */
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsIn,
   IsNotEmpty,
@@ -72,8 +75,31 @@ export class AllegroSellerLocationDto {
 }
 
 /**
- * EU GPSR safety-information payload. Discriminated by `type` — when
- * `SAFETY_INFORMATION`, `content` is required free text.
+ * Single attachment reference for the `ATTACHMENTS` safety-info variant.
+ * `id` is the upload-reference returned by Allegro's attachment-upload
+ * endpoint (out of scope for #445; the upload UI / adapter call will be
+ * a follow-up).
+ */
+export class AllegroSafetyAttachmentDto {
+  @ApiProperty({
+    description: 'Allegro attachment id (UUID returned by attachment upload)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  id!: string;
+}
+
+/**
+ * EU GPSR safety-information payload. Discriminated by `type` — three
+ * variants:
+ * - `NO_SAFETY_INFORMATION` — no extra fields
+ * - `TEXT` — `description` required (1–5000 chars per Allegro)
+ * - `ATTACHMENTS` — `attachments` required (1–20 entries per Allegro)
+ *
+ * Shape verified against Allegro Developer Portal (#445); see
+ * `AllegroSafetyInformation` in
+ * `libs/integrations/allegro/src/domain/types/allegro-seller-defaults.types.ts`
+ * for the canonical type and source links.
  */
 export class AllegroSafetyInformationDto {
   @ApiProperty({
@@ -85,19 +111,38 @@ export class AllegroSafetyInformationDto {
 
   @ApiPropertyOptional({
     description:
-      'Free-text safety information content. Required when `type === SAFETY_INFORMATION`.',
-    maxLength: 2000,
+      'Free-text safety information. Required when `type === TEXT`. ' +
+      'Allegro accepts 1–5000 characters; no HTML, newlines allowed.',
+    minLength: 1,
+    maxLength: 5000,
   })
-  // Conditional require: when `type === SAFETY_INFORMATION`, `content` must
-  // be a non-empty string. Otherwise the field is ignored entirely (every
-  // subsequent validator is skipped by `@ValidateIf`).
-  @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'SAFETY_INFORMATION')
+  // Conditional require: only enforced when `type === 'TEXT'`. Every
+  // subsequent validator is skipped on the other discriminator branches.
+  @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'TEXT')
   @IsString()
   @IsNotEmpty({
-    message: 'safetyInformation.content is required when type is SAFETY_INFORMATION',
+    message: 'safetyInformation.description is required when type is TEXT',
   })
-  @MaxLength(2000)
-  content?: string;
+  @MaxLength(5000)
+  description?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Attachment references for the `ATTACHMENTS` safety-info variant. ' +
+      'Required when `type === ATTACHMENTS`. Allegro accepts 1–20 attachments per product.',
+    type: () => [AllegroSafetyAttachmentDto],
+  })
+  @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'ATTACHMENTS')
+  @IsArray()
+  @ArrayMinSize(1, {
+    message: 'safetyInformation.attachments must contain at least 1 attachment when type is ATTACHMENTS',
+  })
+  @ArrayMaxSize(20, {
+    message: 'safetyInformation.attachments cannot contain more than 20 attachments',
+  })
+  @ValidateNested({ each: true })
+  @Type(() => AllegroSafetyAttachmentDto)
+  attachments?: AllegroSafetyAttachmentDto[];
 }
 
 export class AllegroSellerDefaultsDto {

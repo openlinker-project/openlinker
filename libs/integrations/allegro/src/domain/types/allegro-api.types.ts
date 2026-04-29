@@ -246,14 +246,19 @@ export interface AllegroProductSetEntry {
   responsibleProducer?: { id: string };
   /**
    * EU GPSR safety information. Same applicability as `responsibleProducer`:
-   * required on the inline path, inherited on the smart-link path. The
-   * `NO_SAFETY_INFORMATION` branch is Allegro's "this category does not
-   * carry safety risks" declaration; `SAFETY_INFORMATION` carries free-text
-   * content. See #430.
+   * required on the inline path, inherited on the smart-link path.
+   * Discriminator + sibling fields verified against
+   * developer.allegro.pl (#445):
+   * - `NO_SAFETY_INFORMATION` — declares no safety info applies. Forbidden
+   *   in some categories (cameras / electronics / etc.) — Allegro then
+   *   returns `NO_SAFETY_INFORMATION_OPTION_NOT_ALLOWED`.
+   * - `TEXT` + `description` — free-text 1–5000 chars, no HTML, `\n` allowed.
+   * - `ATTACHMENTS` + `attachments[].id` — max 20 entries.
    */
   safetyInformation?:
     | { type: 'NO_SAFETY_INFORMATION' }
-    | { type: 'SAFETY_INFORMATION'; content: string };
+    | { type: 'TEXT'; description: string }
+    | { type: 'ATTACHMENTS'; attachments: Array<{ id: string }> };
 }
 
 /**
