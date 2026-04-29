@@ -12,9 +12,13 @@
  */
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { IConnectionService } from '../interfaces/connection.service.interface';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import { validateCredentialsShape } from '../credentials/credential-shape.validator';
+import { AllegroConnectionConfigDto } from '../../http/dto/allegro-connection-config.dto';
+import { flattenValidationErrors } from './util/flatten-validation-errors';
 import {
   ConnectionPort,
   Connection,
@@ -260,6 +264,18 @@ export class ConnectionService implements IConnectionService {
         }
       }
 
+      // #437 — close the DTO bypass on `Connection.config`. The HTTP-layer
+      // `UpdateConnectionDto.config: Record<string, unknown>` erases the typed
+      // shape at the controller boundary, so the nested `AllegroConnectionConfigDto`
+      // decorators (location.countryCode, responsibleProducerId, safetyInformation
+      // discriminator, etc.) never run. Re-validate the platform-specific shape
+      // here, before persistence, so partial `sellerDefaults` blobs (the cause
+      // of the 2026-04-29 sandbox repro) are rejected at save time instead of
+      // surfacing as Allegro 422s at offer-create time.
+      if (patch.config !== undefined && existing.platformType === 'allegro') {
+        await this.validateAllegroConfig(patch.config);
+      }
+
       const connection = await this.connectionPort.update(connectionId, patch);
       this.logger.log(`Connection updated successfully: ${connection.id} (status: ${connection.status})`);
       return connection;
@@ -303,6 +319,25 @@ export class ConnectionService implements IConnectionService {
       }
       this.logger.error(`Failed to disable connection: ${connectionId}`, error);
       throw error;
+    }
+  }
+
+  private async validateAllegroConfig(config: Record<string, unknown>): Promise<void> {
+    const instance = plainToInstance(AllegroConnectionConfigDto, config);
+    // `whitelist: false` because the persisted `config` may carry adjacent keys
+    // (e.g. `adapterKey`, future per-platform tunables) that aren't part of
+    // `AllegroConnectionConfigDto` — we want shape-correctness on what the DTO
+    // *does* describe, not exhaustive ownership of the JSONB blob.
+    const errors = await validate(instance, {
+      whitelist: false,
+      forbidNonWhitelisted: false,
+    });
+    if (errors.length > 0) {
+      const issues = flattenValidationErrors(errors);
+      throw new BadRequestException({
+        message: 'Invalid Allegro connection config',
+        errors: issues,
+      });
     }
   }
 }

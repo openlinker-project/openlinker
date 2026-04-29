@@ -105,6 +105,47 @@ function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroO
 }
 
 /**
+ * Defensive runtime check for the persisted `Connection.config.allegro
+ * .sellerDefaults` blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
+ * marks every sub-field non-optional, but the JSONB column can carry partial
+ * shapes if the operator saved a half-completed wizard before #437 closed
+ * the DTO bypass — and on the operator-experience side we still want to
+ * surface a per-field "what's missing" list at offer-create time, not just
+ * "configure seller defaults". Returns the dot-paths of every missing field;
+ * empty result means the blob is structurally complete.
+ */
+function collectMissingSellerDefaultsFields(
+  defaults: AllegroSellerDefaultsConfig | undefined,
+): string[] {
+  if (!defaults) {
+    return [
+      'sellerDefaults.location',
+      'sellerDefaults.responsibleProducerId',
+      'sellerDefaults.safetyInformation',
+    ];
+  }
+  const missing: string[] = [];
+  const loc = defaults.location;
+  if (!loc?.countryCode) missing.push('sellerDefaults.location.countryCode');
+  if (!loc?.province) missing.push('sellerDefaults.location.province');
+  if (!loc?.city) missing.push('sellerDefaults.location.city');
+  if (!loc?.postCode) missing.push('sellerDefaults.location.postCode');
+  if (!defaults.responsibleProducerId) {
+    missing.push('sellerDefaults.responsibleProducerId');
+  }
+  const safety = defaults.safetyInformation;
+  if (!safety?.type) {
+    missing.push('sellerDefaults.safetyInformation.type');
+  } else if (
+    safety.type === 'SAFETY_INFORMATION' &&
+    (typeof safety.content !== 'string' || safety.content.length === 0)
+  ) {
+    missing.push('sellerDefaults.safetyInformation.content');
+  }
+  return missing;
+}
+
+/**
  * Polling configuration for Allegro async quantity change commands.
  *
  * Defaults: 5 attempts, 2s initial delay, 30s max delay, 2x backoff multiplier
@@ -734,30 +775,25 @@ export class AllegroOfferManagerAdapter
    * `CreateOfferResult.validationErrors`.
    */
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
-    // #430 — preflight: connection-level seller defaults must exist before we
-    // can build a body Allegro will accept. Surface as the existing neutral
-    // `OfferCreateRejectedException` (one error per missing field) rather
-    // than a custom Allegro exception type — keeps the `core → integration`
-    // boundary clean (no CORE-side mapping needed).
-    if (!this.sellerDefaults) {
-      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
-        {
-          field: 'sellerDefaults.location',
+    // #430 / #437 — preflight: connection-level seller defaults must be
+    // structurally complete before we can build a body Allegro will accept.
+    // The check is field-by-field rather than a single `if (!this.sellerDefaults)`
+    // because the persisted JSONB blob can carry a partial shape (the cause
+    // of the 2026-04-29 sandbox repro: a saved config missing only
+    // `responsibleProducerId` because the RP dropdown couldn't load).
+    // Surface as the neutral `OfferCreateRejectedException` (one error per
+    // missing field) — keeps the `core → integration` boundary clean.
+    const missingDefaults = collectMissingSellerDefaultsFields(this.sellerDefaults);
+    if (missingDefaults.length > 0) {
+      throw new OfferCreateRejectedException(
+        ALLEGRO_ADAPTER_KEY,
+        0,
+        missingDefaults.map((field) => ({
+          field,
           code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
-          message: `Allegro connection ${this.connectionId} has no seller defaults configured. Set the ship-from location, Responsible Producer, and Safety Information on the connection edit page before creating offers.`,
-        },
-        {
-          field: 'sellerDefaults.responsibleProducerId',
-          code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
-          message:
-            'Configure a Responsible Producer entry in your Allegro account, then select it on the OpenLinker connection edit page.',
-        },
-        {
-          field: 'sellerDefaults.safetyInformation',
-          code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
-          message: 'Configure GPSR safety information on the connection edit page.',
-        },
-      ]);
+          message: `Allegro connection ${this.connectionId} is missing required seller-defaults field "${field}". Complete the seller-defaults section on the connection edit page (ship-from location, Responsible Producer, GPSR safety information) before creating offers.`,
+        })),
+      );
     }
 
     // #431 — smart-link pre-step. Compute once at the top so the body

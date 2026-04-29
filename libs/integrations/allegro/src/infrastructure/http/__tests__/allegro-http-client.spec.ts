@@ -131,9 +131,25 @@ describe('AllegroHttpClient', () => {
             authorization: 'Bearer test-access-token-12345',
             'content-type': 'application/vnd.allegro.public.v1+json',
             accept: 'application/vnd.allegro.public.v1+json',
+            'accept-language': 'pl-PL',
           }),
         }),
       );
+    });
+
+    it('should let caller-supplied Accept-Language override the pl-PL default', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{}'),
+      });
+
+      await client.get('/test', { headers: { 'Accept-Language': 'en-US' } });
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      expect(headers['accept-language']).toBe('en-US');
     });
 
     it('should include query parameters in GET request', async () => {
