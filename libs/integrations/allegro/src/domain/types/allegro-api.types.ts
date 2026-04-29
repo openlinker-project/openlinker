@@ -224,12 +224,32 @@ export interface AllegroProductSetEntry {
      * Allegro inherits `name`, `parameters`, `images`, and GPSR data from
      * the card. The inline-product path leaves `id` undefined and supplies
      * those fields explicitly alongside `responsibleProducer` /
-     * `safetyInformation` on the entry.
+     * `safetyInformation` on the same `product` object.
      */
     id?: string;
     name?: string;
     parameters?: AllegroOfferParameter[];
     images?: string[];
+    /**
+     * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
+     * Allegro on inline products (no `product.id`); smart-linked entries
+     * inherit it from the card and may omit it. Sits **inside** `product`
+     * because Allegro's schema scopes GPSR to the product itself — #442
+     * confirmed via sandbox repro that the entry-level placement #430
+     * originally chose is silently rejected with `SAFETY_INFO_NOT_DEFINED`.
+     */
+    responsibleProducer?: { id: string };
+    /**
+     * EU GPSR safety information. Same applicability and placement as
+     * `responsibleProducer`: required on the inline path, inherited on the
+     * smart-link path, scoped to the product not the entry. The
+     * `NO_SAFETY_INFORMATION` branch is Allegro's "this category does not
+     * carry safety risks" declaration; `SAFETY_INFORMATION` carries
+     * free-text content. See #442.
+     */
+    safetyInformation?:
+      | { type: 'NO_SAFETY_INFORMATION' }
+      | { type: 'SAFETY_INFORMATION'; content: string };
   };
   /**
    * Per-entry quantity, used on the smart-link path (#431) where stock is
@@ -237,23 +257,6 @@ export interface AllegroProductSetEntry {
    * inline-product path leaves this undefined and uses `body.stock`.
    */
   quantity?: number;
-  /**
-   * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
-   * Allegro on every `productSet[]` entry when the entry creates an inline
-   * product (no `product.id`). Smart-linked entries inherit this from the
-   * referenced card and may omit it. See #430.
-   */
-  responsibleProducer?: { id: string };
-  /**
-   * EU GPSR safety information. Same applicability as `responsibleProducer`:
-   * required on the inline path, inherited on the smart-link path. The
-   * `NO_SAFETY_INFORMATION` branch is Allegro's "this category does not
-   * carry safety risks" declaration; `SAFETY_INFORMATION` carries free-text
-   * content. See #430.
-   */
-  safetyInformation?:
-    | { type: 'NO_SAFETY_INFORMATION' }
-    | { type: 'SAFETY_INFORMATION'; content: string };
 }
 
 /**
