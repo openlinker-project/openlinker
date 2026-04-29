@@ -1473,6 +1473,99 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
       });
 
+      // #437 — partial sellerDefaults blobs (the 2026-04-29 sandbox repro).
+      // The preflight must surface a per-field "what's missing" list rather
+      // than collapse to a single "configure seller defaults" message.
+      it('reports only sellerDefaults.responsibleProducerId when that is the sole missing field', async () => {
+        const partial = {
+          ...DEFAULT_SELLER_DEFAULTS,
+          responsibleProducerId: '',
+        } as AllegroSellerDefaultsConfig;
+        const partialAdapter = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          partial,
+        );
+
+        await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [
+            expect.objectContaining({
+              field: 'sellerDefaults.responsibleProducerId',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('reports only sellerDefaults.safetyInformation.type when safetyInformation is empty', async () => {
+        const partial = {
+          ...DEFAULT_SELLER_DEFAULTS,
+          safetyInformation: {} as AllegroSellerDefaultsConfig['safetyInformation'],
+        };
+        const partialAdapter = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          partial,
+        );
+
+        await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [
+            expect.objectContaining({
+              field: 'sellerDefaults.safetyInformation.type',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('reports sellerDefaults.safetyInformation.content when type=SAFETY_INFORMATION but content is missing', async () => {
+        const partial = {
+          ...DEFAULT_SELLER_DEFAULTS,
+          safetyInformation: { type: 'SAFETY_INFORMATION' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
+        };
+        const partialAdapter = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          partial,
+        );
+
+        await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [
+            expect.objectContaining({
+              field: 'sellerDefaults.safetyInformation.content',
+              code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+            }),
+          ],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
       it('writes body.location from sellerDefaults on every offer create', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({

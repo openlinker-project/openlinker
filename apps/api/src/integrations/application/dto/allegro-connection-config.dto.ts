@@ -1,11 +1,15 @@
 /**
  * Allegro Connection Config DTO
  *
- * Request DTO for Allegro connection configuration. Validates Allegro-specific
- * config fields (environment, apiBaseUrl, sellerDefaults) and provides Swagger
- * documentation.
+ * Application-layer schema for the Allegro `Connection.config` blob.
+ * Lives in the application layer (not `http/dto/`) because the schema is
+ * the source of truth for `ConnectionService.update()`'s server-side
+ * re-validation pass — see #437. The HTTP controller hooks into the same
+ * shape but does not own it. Swagger decorators are kept on the class so
+ * the DTO can be referenced from a controller @Body() in the future
+ * without splitting the schema in two.
  *
- * @module apps/api/src/integrations/http/dto
+ * @module apps/api/src/integrations/application/dto
  */
 import {
   IsEnum,
@@ -34,54 +38,6 @@ import {
 export enum AllegroEnvironment {
   SANDBOX = 'sandbox',
   PRODUCTION = 'production',
-}
-
-/**
- * Allegro Connection Config DTO
- *
- * Configuration for an Allegro connection. Environment is required;
- * apiBaseUrl is optional and defaults based on environment.
- */
-export class AllegroConnectionConfigDto {
-  @ApiProperty({
-    description: 'Allegro environment (sandbox or production)',
-    enum: AllegroEnvironment,
-    example: AllegroEnvironment.SANDBOX,
-  })
-  @IsEnum(AllegroEnvironment)
-  environment!: AllegroEnvironment;
-
-  @ApiPropertyOptional({
-    description:
-      'Allegro API base URL (optional, defaults based on environment). ' +
-      'Sandbox: https://api.allegro.pl.allegrosandbox.pl, Production: https://api.allegro.pl. ' +
-      'Note: OAuth authorization endpoints use https://allegro.pl.allegrosandbox.pl/auth/oauth/* (different base URL)',
-    example: 'https://api.allegro.pl.allegrosandbox.pl',
-  })
-  @IsUrl({ require_tld: false })
-  @IsOptional()
-  @IsString()
-  apiBaseUrl?: string;
-
-  @ApiPropertyOptional({
-    description: 'Master catalog connection ID for barcode lookups',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
-  @IsOptional()
-  masterCatalogConnectionId?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Connection-level seller defaults required by `POST /sale/product-offers` ' +
-      '— `location` (every offer), plus `responsibleProducerId` and ' +
-      '`safetyInformation` for the inline-product path. See #430.',
-    type: () => AllegroSellerDefaultsDto,
-  })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => AllegroSellerDefaultsDto)
-  sellerDefaults?: AllegroSellerDefaultsDto;
 }
 
 /**
@@ -169,3 +125,55 @@ export class AllegroSellerDefaultsDto {
   safetyInformation!: AllegroSafetyInformationDto;
 }
 
+/**
+ * Allegro Connection Config DTO
+ *
+ * Configuration for an Allegro connection. Environment is required;
+ * apiBaseUrl is optional and defaults based on environment.
+ *
+ * Declared after the nested DTOs because `emitDecoratorMetadata` resolves
+ * the property type eagerly at decorator-evaluation time — referencing
+ * `AllegroSellerDefaultsDto` from a class declared above it triggers a
+ * temporal-dead-zone error when the file is loaded by the service layer.
+ */
+export class AllegroConnectionConfigDto {
+  @ApiProperty({
+    description: 'Allegro environment (sandbox or production)',
+    enum: AllegroEnvironment,
+    example: AllegroEnvironment.SANDBOX,
+  })
+  @IsEnum(AllegroEnvironment)
+  environment!: AllegroEnvironment;
+
+  @ApiPropertyOptional({
+    description:
+      'Allegro API base URL (optional, defaults based on environment). ' +
+      'Sandbox: https://api.allegro.pl.allegrosandbox.pl, Production: https://api.allegro.pl. ' +
+      'Note: OAuth authorization endpoints use https://allegro.pl.allegrosandbox.pl/auth/oauth/* (different base URL)',
+    example: 'https://api.allegro.pl.allegrosandbox.pl',
+  })
+  @IsUrl({ require_tld: false })
+  @IsOptional()
+  @IsString()
+  apiBaseUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Master catalog connection ID for barcode lookups',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
+  @IsOptional()
+  masterCatalogConnectionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Connection-level seller defaults required by `POST /sale/product-offers` ' +
+      '— `location` (every offer), plus `responsibleProducerId` and ' +
+      '`safetyInformation` for the inline-product path. See #430.',
+    type: () => AllegroSellerDefaultsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AllegroSellerDefaultsDto)
+  sellerDefaults?: AllegroSellerDefaultsDto;
+}

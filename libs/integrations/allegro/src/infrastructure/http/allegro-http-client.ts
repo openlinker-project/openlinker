@@ -240,6 +240,13 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       headers.set('Content-Type', 'application/vnd.allegro.public.v1+json');
     }
     headers.set('Accept', 'application/vnd.allegro.public.v1+json');
+    // #436 — Allegro newer endpoints (`/sale/products`, `/sale/responsible-producers`)
+    // gate on `Accept-Language` and 422 with `UnsupportedLanguageInAcceptLanguageHeader`
+    // when the header is missing or carries a value outside their accepted set
+    // (`en-US, pl-PL, uk-UA, cs-CZ, sk-SK, hu-HU`). Default to `pl-PL` because
+    // OpenLinker's Allegro market is PL-first and operator-facing `userMessage`
+    // strings localize accordingly. Caller-supplied `Accept-Language` (below) wins.
+    headers.set('Accept-Language', 'pl-PL');
 
     if (options?.headers) {
       for (const [key, value] of Object.entries(options.headers)) {

@@ -7,7 +7,7 @@
  * @module apps/api/src/integrations/application/services
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConnectionService } from './connection.service';
 import {
   ConnectionPort,
@@ -330,6 +330,123 @@ describe('ConnectionService', () => {
       await expect(
         service.update('connection-123', { name: 'Updated' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    // #437 — service-layer Allegro config validation. Closes the bypass on
+    // `UpdateConnectionDto.config: Record<string, unknown>` by re-validating
+    // the platform-specific shape before persistence.
+    describe('Allegro config validation (#437)', () => {
+      const allegroConnection = new Connection(
+        'allegro-conn-1',
+        'allegro',
+        'Allegro PL',
+        'active',
+        { environment: 'sandbox' },
+        'db:cred-ref-allegro',
+        new Date(),
+        new Date(),
+        undefined,
+        ['OrderSource', 'OfferManager'],
+      );
+
+      const validAllegroConfig = {
+        environment: 'sandbox',
+        sellerDefaults: {
+          location: {
+            countryCode: 'PL',
+            province: 'MAZOWIECKIE',
+            city: 'Warszawa',
+            postCode: '00-001',
+          },
+          responsibleProducerId: 'rp-123',
+          safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+        },
+      };
+
+      beforeEach(() => {
+        connectionPort.get.mockResolvedValue(allegroConnection);
+        connectionPort.update.mockResolvedValue(allegroConnection);
+      });
+
+      it('should accept a fully-formed Allegro config', async () => {
+        await expect(
+          service.update('allegro-conn-1', { config: validAllegroConfig }),
+        ).resolves.toEqual(allegroConnection);
+        expect(connectionPort.update).toHaveBeenCalledWith('allegro-conn-1', {
+          config: validAllegroConfig,
+        });
+      });
+
+      it('should reject sellerDefaults missing location.countryCode', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            location: { ...validAllegroConfig.sellerDefaults.location, countryCode: undefined },
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject sellerDefaults missing responsibleProducerId', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            responsibleProducerId: undefined,
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject sellerDefaults missing safetyInformation.type', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            safetyInformation: {},
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject SAFETY_INFORMATION without content', async () => {
+        const partial = {
+          ...validAllegroConfig,
+          sellerDefaults: {
+            ...validAllegroConfig.sellerDefaults,
+            safetyInformation: { type: 'SAFETY_INFORMATION' },
+          },
+        };
+        await expect(
+          service.update('allegro-conn-1', { config: partial }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should skip Allegro validation for non-Allegro connections', async () => {
+        // The base mockConnection is a prestashop connection — passing nonsense
+        // in `config` must not raise here, since the validator only runs for
+        // `existing.platformType === 'allegro'`.
+        connectionPort.get.mockResolvedValue(mockConnection);
+        connectionPort.update.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { sellerDefaults: { type: 'whatever' } },
+          }),
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
     });
   });
 

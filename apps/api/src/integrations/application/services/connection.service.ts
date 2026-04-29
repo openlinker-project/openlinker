@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { IConnectionService } from '../interfaces/connection.service.interface';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import { validateCredentialsShape } from '../credentials/credential-shape.validator';
+import { CONNECTION_CONFIG_VALIDATORS } from './util/connection-config-validators';
 import {
   ConnectionPort,
   Connection,
@@ -260,6 +261,20 @@ export class ConnectionService implements IConnectionService {
         }
       }
 
+      // #437 — close the DTO bypass on `Connection.config`. The HTTP-layer
+      // `UpdateConnectionDto.config: Record<string, unknown>` erases the typed
+      // shape at the controller boundary, so the nested platform-specific
+      // decorators never run. Re-validate the platform-specific shape here,
+      // before persistence, so partial blobs (the cause of the 2026-04-29
+      // sandbox repro) are rejected at save time instead of surfacing as
+      // adapter 422s downstream. Per-platform validators are registered in
+      // `CONNECTION_CONFIG_VALIDATORS`; absence is a deliberate skip (no
+      // platform-specific shape to enforce yet).
+      const configValidator = CONNECTION_CONFIG_VALIDATORS[existing.platformType];
+      if (patch.config !== undefined && configValidator) {
+        await configValidator(patch.config);
+      }
+
       const connection = await this.connectionPort.update(connectionId, patch);
       this.logger.log(`Connection updated successfully: ${connection.id} (status: ${connection.status})`);
       return connection;
@@ -305,5 +320,6 @@ export class ConnectionService implements IConnectionService {
       throw error;
     }
   }
+
 }
 
