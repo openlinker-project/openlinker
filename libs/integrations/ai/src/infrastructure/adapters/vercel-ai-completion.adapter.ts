@@ -1,23 +1,32 @@
 /**
- * Vercel AI Completion Adapter (Anthropic)
+ * Vercel AI Completion Adapter (provider-parameterised)
  *
- * AiCompletionPort implementation backed by Vercel AI SDK Core (`ai`) and the
- * `@ai-sdk/anthropic` provider. Selected by AiIntegrationModule when
- * `OL_AI_PROVIDER=anthropic` (the default).
+ * `AiCompletionPort` implementation backed by Vercel AI SDK Core (`ai`).
+ * One instance is registered per supported provider — Anthropic and OpenAI
+ * today, both routed by `MultiProviderAiCompletionAdapter` based on the
+ * persisted active selection. The adapter is locked to its provider at
+ * construction; the per-request work is reading the provider's API key,
+ * building the corresponding model factory, and delegating to `generateText`.
+ *
+ * Provider-specific behaviour gated on `this.provider`:
+ *
+ *   - Anthropic prompt-cache: when `cacheSystemPrompt` is true (default),
+ *     this adapter attaches `providerOptions.anthropic.cacheControl =
+ *     { type: 'ephemeral' }` to the system message. The Anthropic API
+ *     silently no-ops cache_control when the cached prefix is below ~1024
+ *     input tokens, so `cachedInputTokens === 0` on a short system prompt
+ *     is **expected behaviour**, not a bug.
+ *
+ *   - OpenAI prompt-cache: OpenAI auto-applies prompt caching for prompts
+ *     ≥1024 tokens with no SDK opt-in. We don't pass any provider-options;
+ *     `cacheSystemPrompt` is a no-op for the OpenAI branch (kept on the
+ *     domain interface so the suggestion service stays provider-agnostic).
  *
  * The API key is resolved per-request through `AiProviderCredentialsPort`
- * (DB-backed encrypted credential row → env-var fallback). The provider
- * factory `createAnthropic({ apiKey })` is instantiated inside `complete()`
- * so admin key rotations take effect without a process restart — the port's
- * own 60 s cache keeps the hot path cheap.
- *
- * Anthropic prompt-cache note: when `cacheSystemPrompt` is true (default), this
- * adapter attaches `providerOptions.anthropic.cacheControl = { type: 'ephemeral' }`
- * to the system message. The Anthropic API silently no-ops cache_control when
- * the cached prefix is below ~1024 input tokens, so `cachedInputTokens === 0`
- * on a short system prompt is **expected behaviour**, not a bug. Repeat calls
- * with a sufficiently long, stable system prompt should observe
- * `cachedInputTokens > 0` after the first warm-up.
+ * (DB-backed encrypted credential row → env-var fallback), keyed by the
+ * provider this adapter instance was constructed for. Admin key rotations
+ * take effect without a process restart — the port's own 60 s cache keeps
+ * the hot path cheap.
  *
  * Provider error mapping happens at this boundary — no `ai` / `@ai-sdk/*`
  * types leak into the application layer. Rate-limits map to AiRateLimitError,
@@ -30,6 +39,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateText } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { Logger } from '@openlinker/shared/logging';
 import { AI_PROVIDER_CREDENTIALS_PORT_TOKEN } from '@openlinker/core/ai/ai.tokens';
 import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
@@ -37,6 +47,7 @@ import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports
 import type {
   AiCompletionInput,
   AiCompletionResult,
+  AiProvider,
 } from '@openlinker/core/ai/domain/types/ai-completion.types';
 import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
 import { AiInvalidResponseError } from '@openlinker/core/ai/domain/exceptions/ai-invalid-response.exception';
@@ -45,10 +56,24 @@ import { AiProviderSettingsNotApplicableError } from '@openlinker/core/ai/domain
 import { AiRateLimitError } from '@openlinker/core/ai/domain/exceptions/ai-rate-limit.exception';
 import { AiTimeoutError } from '@openlinker/core/ai/domain/exceptions/ai-timeout.exception';
 
-const DEFAULT_MODEL = 'claude-opus-4-7';
 const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_TEMPERATURE = 0.2;
+
+/**
+ * Per-provider default model id + the env-var that overrides it. The
+ * env-var split (`OL_AI_DEFAULT_MODEL` for anthropic, `OL_AI_OPENAI_MODEL`
+ * for openai) lets ops pin each provider independently — useful when
+ * comparing pricing or piloting a new model on one provider without
+ * touching the other.
+ */
+const PROVIDER_MODEL_DEFAULTS: Record<
+  Exclude<AiProvider, 'fake'>,
+  { envKey: string; fallback: string }
+> = {
+  anthropic: { envKey: 'OL_AI_DEFAULT_MODEL', fallback: 'claude-opus-4-7' },
+  openai: { envKey: 'OL_AI_OPENAI_MODEL', fallback: 'gpt-4o-mini' },
+};
 
 /**
  * Optional override hook for tests — allows specs to substitute a stub for
@@ -60,7 +85,7 @@ export type VercelGenerateTextFn = typeof generateText;
 
 @Injectable()
 export class VercelAiCompletionAdapter implements AiCompletionPort {
-  private readonly logger = new Logger(VercelAiCompletionAdapter.name);
+  private readonly logger: Logger;
   private readonly defaultModel: string;
   private readonly defaultMaxOutputTokens: number;
   private readonly defaultTimeoutMs: number;
@@ -68,6 +93,7 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
   private readonly generateTextFn: VercelGenerateTextFn;
 
   constructor(
+    public readonly provider: Exclude<AiProvider, 'fake'>,
     private readonly configService: ConfigService,
     @Inject(AI_PROVIDER_CREDENTIALS_PORT_TOKEN)
     private readonly credentials: AiProviderCredentialsPort,
@@ -75,7 +101,12 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
     @Inject(VERCEL_GENERATE_TEXT_FN_TOKEN)
     generateTextOverride?: VercelGenerateTextFn,
   ) {
-    this.defaultModel = this.configService.get<string>('OL_AI_DEFAULT_MODEL', DEFAULT_MODEL);
+    this.logger = new Logger(`VercelAiCompletionAdapter[${provider}]`);
+    const modelDefaults = PROVIDER_MODEL_DEFAULTS[provider];
+    this.defaultModel = this.configService.get<string>(
+      modelDefaults.envKey,
+      modelDefaults.fallback,
+    );
     this.defaultMaxOutputTokens = Number(
       this.configService.get<string | number>(
         'OL_AI_DEFAULT_MAX_TOKENS',
@@ -98,15 +129,18 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
     const requestId = input.requestId;
     const startedAt = Date.now();
 
-    const systemMessage = cacheSystemPrompt
-      ? ({
-          role: 'system' as const,
-          content: input.systemPrompt,
-          providerOptions: {
-            anthropic: { cacheControl: { type: 'ephemeral' as const } },
-          },
-        })
-      : input.systemPrompt;
+    // Anthropic-specific cache-control — gated by provider so we never emit
+    // a stray `providerOptions.anthropic` block on the OpenAI side.
+    const systemMessage =
+      this.provider === 'anthropic' && cacheSystemPrompt
+        ? ({
+            role: 'system' as const,
+            content: input.systemPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: 'ephemeral' as const } },
+            },
+          })
+        : input.systemPrompt;
 
     if (this.logPrompt) {
       this.logger.debug(
@@ -120,10 +154,13 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
       // process restart. The credentials port has its own 60 s cache, so the
       // hot path stays cheap; an `AiProviderKeyMissingError` here surfaces
       // straight to the caller.
-      const apiKey = await this.credentials.getApiKey();
-      const anthropicProvider = createAnthropic({ apiKey });
+      const apiKey = await this.credentials.getApiKey(this.provider);
+      const modelFactory =
+        this.provider === 'anthropic'
+          ? createAnthropic({ apiKey })
+          : createOpenAI({ apiKey });
       result = await this.generateTextFn({
-        model: anthropicProvider(model),
+        model: modelFactory(model),
         system: systemMessage,
         prompt: input.userPrompt,
         maxOutputTokens,
@@ -157,7 +194,7 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
     const latencyMs = Date.now() - startedAt;
 
     this.logger.log(
-      `[ai] completion requestId=${requestId ?? '-'} model=${model} latencyMs=${latencyMs} ` +
+      `[ai] completion requestId=${requestId ?? '-'} provider=${this.provider} model=${model} latencyMs=${latencyMs} ` +
         `inputTokens=${inputTokens} outputTokens=${outputTokens} cachedInputTokens=${cachedInputTokens}`,
     );
 
@@ -179,7 +216,7 @@ export class VercelAiCompletionAdapter implements AiCompletionPort {
    * those would re-introduce the coupling the port exists to prevent.
    */
   private mapProviderError(error: unknown, requestId: string | undefined): AiCompletionError {
-    const ctx = `requestId=${requestId ?? '-'}`;
+    const ctx = `requestId=${requestId ?? '-'} provider=${this.provider}`;
 
     if (this.isAbortLikeError(error)) {
       return new AiTimeoutError(`AI completion timed out (${ctx})`, { cause: error });

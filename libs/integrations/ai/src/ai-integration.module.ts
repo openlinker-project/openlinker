@@ -1,18 +1,21 @@
 /**
  * AI Integration Module
  *
- * NestJS module that selects an `AiCompletionPort` adapter based on
- * `OL_AI_PROVIDER` (default: `anthropic`; `fake` for tests / offline dev) and
- * binds the chosen instance to `AI_COMPLETION_PORT_TOKEN` via `useExisting`.
+ * NestJS module that registers all AI completion adapters (one per
+ * supported provider) plus the `MultiProviderAiCompletionAdapter` router
+ * bound to `AI_COMPLETION_PORT_TOKEN`. Per-call routing is driven by the
+ * persisted active-provider setting in core `AiModule`; `OL_AI_PROVIDER`
+ * env is no longer read at module init — it remains the first-boot fallback
+ * inside `AiProviderActiveSettingsService` when no DB row exists.
  *
- * The provider-key resolver (`AI_PROVIDER_CREDENTIALS_PORT_TOKEN`) and the
- * admin write-side service (`AI_PROVIDER_SETTINGS_SERVICE_TOKEN`) live in
- * core `AiModule` — they are core code (port + application service +
- * infrastructure adapter that talks only to the encrypted credential
- * store), and DI registration follows the code. This module imports core
- * `AiModule` to resolve `AI_PROVIDER_CREDENTIALS_PORT_TOKEN` for the Vercel
- * completion adapter and re-exports it so downstream consumers wired
- * through this module can inject it too.
+ * The provider-key resolver (`AI_PROVIDER_CREDENTIALS_PORT_TOKEN`), the
+ * `AiProviderKeyService`, and the `AiProviderActiveSettingsService` all
+ * live in core `AiModule` — they are core code (ports + application
+ * services + infrastructure adapters that talk only to the encrypted
+ * credential store / singleton-row table), and DI registration follows the
+ * code. This module imports core `AiModule` to resolve the credential port
+ * (consumed by the per-provider Vercel adapters) and the active-settings
+ * service (consumed by the router).
  *
  * Registered inside `apps/api/src/integrations/integrations.module.ts`
  * alongside `AllegroIntegrationModule` + `PrestashopIntegrationModule` —
@@ -25,55 +28,110 @@ import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
   AI_COMPLETION_PORT_TOKEN,
+  AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
+  AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   AiModule as CoreAiModule,
-  AiProviderValues,
-  type AiProvider,
 } from '@openlinker/core/ai';
-import { Logger } from '@openlinker/shared/logging';
+import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
+import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
+import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
 import { FakeAiCompletionAdapter } from './infrastructure/adapters/fake-ai-completion.adapter';
-import { VercelAiCompletionAdapter } from './infrastructure/adapters/vercel-ai-completion.adapter';
-
-const DEFAULT_PROVIDER: AiProvider = 'anthropic';
-
-const isAiProvider = (value: string): value is AiProvider =>
-  (AiProviderValues as readonly string[]).includes(value);
+import {
+  ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
+  FAKE_AI_COMPLETION_ADAPTER_TOKEN,
+  MultiProviderAiCompletionAdapter,
+  OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
+} from './infrastructure/adapters/multi-provider-ai-completion.adapter';
+import {
+  VERCEL_GENERATE_TEXT_FN_TOKEN,
+  VercelAiCompletionAdapter,
+  type VercelGenerateTextFn,
+} from './infrastructure/adapters/vercel-ai-completion.adapter';
 
 @Module({})
 export class AiIntegrationModule {
   static register(): DynamicModule {
-    const logger = new Logger(AiIntegrationModule.name);
-    const rawProvider = process.env.OL_AI_PROVIDER ?? DEFAULT_PROVIDER;
-    const provider: AiProvider = isAiProvider(rawProvider) ? rawProvider : DEFAULT_PROVIDER;
-
-    if (rawProvider !== provider) {
-      logger.warn(
-        `Invalid OL_AI_PROVIDER value "${rawProvider}"; falling back to "${DEFAULT_PROVIDER}". Allowed values: ${AiProviderValues.join(', ')}.`,
-      );
-    } else {
-      logger.log(`AiIntegrationModule using provider: ${provider}`);
-    }
-
-    const completionAdapterProviders: Provider[] =
-      provider === 'fake'
-        ? [
-            FakeAiCompletionAdapter,
-            { provide: AI_COMPLETION_PORT_TOKEN, useExisting: FakeAiCompletionAdapter },
-          ]
-        : [
-            VercelAiCompletionAdapter,
-            { provide: AI_COMPLETION_PORT_TOKEN, useExisting: VercelAiCompletionAdapter },
-          ];
+    const completionAdapterProviders: Provider[] = [
+      // Per-provider Vercel adapters — one instance each, locked to the
+      // provider key at construction. The `useFactory` route keeps the
+      // constructor's positional `provider` argument explicit.
+      {
+        provide: ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
+        useFactory: (
+          configService: ConfigService,
+          credentials: AiProviderCredentialsPort,
+          generateTextOverride?: VercelGenerateTextFn,
+        ) =>
+          new VercelAiCompletionAdapter(
+            'anthropic',
+            configService,
+            credentials,
+            generateTextOverride,
+          ),
+        inject: [
+          ConfigService,
+          AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
+          { token: VERCEL_GENERATE_TEXT_FN_TOKEN, optional: true },
+        ],
+      },
+      {
+        provide: OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
+        useFactory: (
+          configService: ConfigService,
+          credentials: AiProviderCredentialsPort,
+          generateTextOverride?: VercelGenerateTextFn,
+        ) =>
+          new VercelAiCompletionAdapter(
+            'openai',
+            configService,
+            credentials,
+            generateTextOverride,
+          ),
+        inject: [
+          ConfigService,
+          AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
+          { token: VERCEL_GENERATE_TEXT_FN_TOKEN, optional: true },
+        ],
+      },
+      FakeAiCompletionAdapter,
+      {
+        provide: FAKE_AI_COMPLETION_ADAPTER_TOKEN,
+        useExisting: FakeAiCompletionAdapter,
+      },
+      // Router: AI_COMPLETION_PORT_TOKEN resolves to this; it dispatches
+      // per-call to the right per-provider adapter based on the active
+      // selection.
+      {
+        provide: MultiProviderAiCompletionAdapter,
+        useFactory: (
+          anthropicAdapter: AiCompletionPort,
+          openaiAdapter: AiCompletionPort,
+          fakeAdapter: AiCompletionPort,
+          activeSettings: IAiProviderActiveSettingsService,
+        ) =>
+          new MultiProviderAiCompletionAdapter(
+            anthropicAdapter,
+            openaiAdapter,
+            fakeAdapter,
+            activeSettings,
+          ),
+        inject: [
+          ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
+          OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
+          FAKE_AI_COMPLETION_ADAPTER_TOKEN,
+          AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
+        ],
+      },
+      {
+        provide: AI_COMPLETION_PORT_TOKEN,
+        useExisting: MultiProviderAiCompletionAdapter,
+      },
+    ];
 
     return {
       module: AiIntegrationModule,
       imports: [ConfigModule, CoreAiModule],
       providers: [ConfigService, ...completionAdapterProviders],
-      // Only AI_COMPLETION_PORT_TOKEN is owned by this module. Consumers
-      // that need AI_PROVIDER_CREDENTIALS_PORT_TOKEN or
-      // AI_PROVIDER_SETTINGS_SERVICE_TOKEN (e.g. AiApiModule) should import
-      // CoreAiModule directly — re-exporting tokens from an imported
-      // module is not supported by NestJS without re-exporting the module
-      // itself, and the direct import is clearer anyway.
       exports: [AI_COMPLETION_PORT_TOKEN],
     };
   }

@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/openai": "^3.0.54",
     "@openlinker/core": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "ai": "^6.0.168"

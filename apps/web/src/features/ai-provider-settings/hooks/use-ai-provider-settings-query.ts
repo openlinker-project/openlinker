@@ -1,9 +1,10 @@
 /**
  * AI Provider Settings Query Hook
  *
- * Reads the current key-resolution status (provider, configured, source).
- * Gated on admin role so non-admin sessions don't trigger a 403 round-trip
- * — the page renders an `ErrorState` for them anyway.
+ * Reads the multi-provider settings view: the active provider plus the
+ * per-provider key status. Gated on admin role so non-admin sessions don't
+ * trigger a 403 round-trip — the page renders an `ErrorState` for them
+ * anyway.
  *
  * @module apps/web/src/features/ai-provider-settings/hooks
  */
@@ -21,7 +22,7 @@ export function useAiProviderSettingsQuery(): UseQueryResult<AiProviderSettingsV
 
   return useQuery({
     queryKey: aiProviderSettingsQueryKeys.current(),
-    queryFn: () => apiClient.aiProviderSettings.get(),
+    queryFn: () => apiClient.aiProviderSettings.getAll(),
     enabled: isAdmin,
   });
 }

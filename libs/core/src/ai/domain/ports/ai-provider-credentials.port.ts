@@ -1,17 +1,19 @@
 /**
  * AI Provider Credentials Port
  *
- * Resolves the API key for the active AI provider (read from
- * `OL_AI_PROVIDER`). Used by the Vercel completion adapter on every
- * `complete()` call so key rotations apply without a restart.
+ * Resolves the API key for a named AI provider. Used by the per-provider
+ * Vercel completion adapters on every `complete()` call so key rotations
+ * apply without a restart.
  *
- * Resolution priority (DB wins when both are set):
+ * Resolution priority for each provider (DB wins when both are set):
  *   1. Encrypted row in `integration_credentials` at `ref = ai-provider:{provider}`
- *   2. `ConfigService.get('ANTHROPIC_API_KEY')` (legacy env-var fallback for local dev)
+ *   2. Provider-specific env var (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`)
  *   3. throws `AiProviderKeyMissingError` if neither is set
  *
- * For `provider=fake`, `getApiKey()` should never be called — `FakeAiCompletionAdapter`
- * does not invoke the port. If invoked in fake mode, the implementation throws.
+ * For `provider=fake`, neither `getApiKey` nor `describe` requires a key —
+ * `describe` reports `{ provider: 'fake', configured: false, source: 'none' }`,
+ * `getApiKey` throws `AiProviderSettingsNotApplicableError` (the fake
+ * adapter never invokes it; if it does, that's a programming error).
  *
  * @module libs/core/src/ai/domain/ports
  */
@@ -20,33 +22,41 @@ import type { AiProviderSettingsView } from '../types/ai-provider-credentials.ty
 
 /**
  * Build the credential `ref` for a given provider. Single source of truth
- * shared between `AiProviderSettingsService` (write side) and
- * `CredentialsAiProviderAdapter` (read side). Lives in the domain layer so
- * both application and infrastructure consumers depend on it through the
- * port file — never on each other. Mirrors `webhookSecretRef` placement at
- * `libs/core/src/integrations/domain/ports/webhook-secret-provider.port.ts`.
+ * shared between the write side (`AiProviderKeyService`) and the read side
+ * (`CredentialsAiProviderAdapter`). Lives in the domain layer so both
+ * application and infrastructure consumers depend on it through the port
+ * file — never on each other.
  */
 export const aiProviderCredentialsRef = (provider: AiProvider): string =>
   `ai-provider:${provider}`;
 
 export interface AiProviderCredentialsPort {
   /**
-   * Resolve the API key for the active provider.
+   * Resolve the API key for the given provider.
    *
    * @throws {AiProviderKeyMissingError} when no key is resolvable.
+   * @throws {AiProviderSettingsNotApplicableError} when the provider does
+   *   not require a key (e.g. `fake`).
    */
-  getApiKey(): Promise<string>;
+  getApiKey(provider: AiProvider): Promise<string>;
 
   /**
-   * Where the key currently resolves from, without exposing the value.
-   * Safe to call in any provider mode (including `fake`).
+   * Where the key for `provider` currently resolves from, without exposing
+   * the value. Safe to call for every provider.
    */
-  describe(): Promise<AiProviderSettingsView>;
+  describe(provider: AiProvider): Promise<AiProviderSettingsView>;
 
   /**
-   * Drop the cached value. Called by `AiProviderSettingsService` after every
+   * Bulk variant of `describe()` covering every value in `AiProviderValues`.
+   * Used by the admin `GET /ai-provider-settings` endpoint to render the
+   * provider table without N+1 round-trips.
+   */
+  describeAll(): Promise<AiProviderSettingsView[]>;
+
+  /**
+   * Drop the cached value(s). Called by `AiProviderKeyService` after every
    * write (PUT / DELETE) so the next `getApiKey()` re-reads the credential
-   * row.
+   * row. Omit `provider` to invalidate every entry.
    */
-  invalidate(): void;
+  invalidate(provider?: AiProvider): void;
 }

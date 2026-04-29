@@ -1,10 +1,10 @@
 /**
- * Update AI Provider Settings DTO
+ * Update AI Provider Key DTO
  *
- * Request body for `PUT /ai-provider-settings`. The single field carries
- * the API key the admin pasted into the form. Length bounds are loose on
- * purpose — Anthropic's `sk-ant-` prefix has changed before, so a brittle
- * prefix check would invite breakage on a future rotation.
+ * Request body for `PUT /ai-provider-settings/keys/:provider`. The single
+ * field carries the API key the admin pasted into the form. Length bounds
+ * are loose on purpose — vendor key prefixes have changed before, so a
+ * brittle prefix check would invite breakage on a future rotation.
  *
  * @module apps/api/src/ai/http/dto
  */
@@ -22,10 +22,10 @@ const MAX_KEY_LENGTH = 512;
  * cause. Trim once at the boundary so length / non-empty assertions reflect
  * the value we'll actually persist.
  */
-export class UpdateAiProviderSettingsDto {
+export class UpdateAiProviderKeyDto {
   @ApiProperty({
     description:
-      'API key for the active AI provider. Stored encrypted; never returned in any response body. ' +
+      'API key for the targeted AI provider. Stored encrypted; never returned in any response body. ' +
       'Surrounding whitespace is trimmed before validation and storage.',
     minLength: MIN_KEY_LENGTH,
     maxLength: MAX_KEY_LENGTH,

@@ -1,10 +1,11 @@
 /**
  * AI Provider Settings Page
  *
- * Admin-only page for viewing and updating the AI provider's API key.
- * Backed by the BE endpoints shipped in #402. The page composes the
- * status card and the form; the query hook is gated on `isAdmin` so
- * non-admin sessions never trigger a 403 round-trip.
+ * Admin-only page for managing per-provider AI keys and switching the
+ * active provider. Renders a provider table; row actions open dialogs for
+ * key set/rotate, key clear, and active-provider switch. The query hook
+ * is gated on `isAdmin` so non-admin sessions never trigger a 403
+ * round-trip.
  *
  * @module apps/web/src/pages/ai-provider-settings
  */
@@ -14,17 +15,13 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { AiProviderSettingsForm } from '../../features/ai-provider-settings/components/ai-provider-settings-form';
-import { AiProviderStatusCard } from '../../features/ai-provider-settings/components/ai-provider-status-card';
+import { AiProviderTable } from '../../features/ai-provider-settings/components/ai-provider-table';
 import { useAiProviderSettingsQuery } from '../../features/ai-provider-settings/hooks/use-ai-provider-settings-query';
 
 export function AiProviderSettingsPage(): ReactElement {
   const { session } = useSession();
   const query = useAiProviderSettingsQuery();
 
-  // Admin gate before rendering the data surface. Mirrors the prompt-templates
-  // page's pattern; the query hook is `enabled: isAdmin` so non-admins never
-  // hit the network.
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
       <PageLayout
@@ -34,7 +31,7 @@ export function AiProviderSettingsPage(): ReactElement {
       >
         <ErrorState
           title="Admin role required"
-          message="This page manages the AI provider API key and requires an admin session."
+          message="This page manages AI provider keys and routing — it requires an admin session."
         />
       </PageLayout>
     );
@@ -44,15 +41,8 @@ export function AiProviderSettingsPage(): ReactElement {
     <PageLayout
       eyebrow="AI"
       title="Provider settings"
-      description="Configure the encrypted API key the server uses to talk to the active AI provider."
+      description="Manage per-provider API keys and switch the active provider that handles AI requests."
     >
-      {/*
-        Use `isPending` (no data yet) instead of `isLoading` so the LoadingState
-        also covers the gap between "session still resolving" (enabled=false) and
-        "session resolved + query in flight" (enabled=true, fetching). Without
-        this, the initial render with `enabled: isAdmin` flickers to an empty
-        viewport while the session adapter resolves.
-      */}
       {query.isPending ? (
         <LoadingState
           title="Loading provider settings"
@@ -70,18 +60,22 @@ export function AiProviderSettingsPage(): ReactElement {
         />
       ) : query.data ? (
         <>
-          <AiProviderStatusCard view={query.data} />
-          {query.data.provider === 'fake' ? (
-            <Alert tone="info" title="Fake provider active">
-              The active AI provider does not require an API key. Set
-              <span className="mono-text"> OL_AI_PROVIDER=anthropic </span>
-              on the server and restart the API to enable the form below.
+          {!hasAnyKeyConfigured(query.data.providers) ? (
+            <Alert tone="warning" title="No AI provider configured">
+              AI suggestions will fail until a key is saved and a provider is activated. The
+              active provider falls back to <span className="mono-text">OL_AI_PROVIDER</span>{' '}
+              on first boot when no DB row exists.
             </Alert>
-          ) : (
-            <AiProviderSettingsForm currentSource={query.data.source} />
-          )}
+          ) : null}
+          <AiProviderTable view={query.data} />
         </>
       ) : null}
     </PageLayout>
   );
+}
+
+function hasAnyKeyConfigured(
+  providers: { provider: string; configured: boolean }[],
+): boolean {
+  return providers.some((p) => p.provider !== 'fake' && p.configured);
 }

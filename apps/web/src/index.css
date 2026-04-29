@@ -5930,3 +5930,100 @@ a.kpi-card:focus-visible {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ============================================================
+   AI Provider Settings — multi-provider table (#451 / #452)
+   ============================================================ */
+
+.ai-provider-table-section {
+  margin-top: 1.5rem;
+}
+
+.ai-provider-table-section__head {
+  margin-bottom: 0.75rem;
+}
+
+.ai-provider-table-section__caption {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.ai-provider-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ai-provider-table thead th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ai-provider-table__th--actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ai-provider-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  font-size: 0.875rem;
+}
+
+.ai-provider-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ai-provider-table__row:hover td {
+  background: var(--bg-surface-muted);
+}
+
+.ai-provider-table__row--active td {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.ai-provider-table__name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-provider-table__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.ai-provider-table__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+/* Local utility — operator-cockpit "n/a" / muted inline labels for the
+   table cells. Scoped to the table to avoid creating a global utility
+   that drifts. */
+.ai-provider-table .text-muted {
+  color: var(--text-muted);
+}
+
+/* Compact button modifier for table-row actions. Per the FE-002 density
+   table (28 px small / 32 px medium); kept local to this scope until
+   another surface needs the same compact size. */
+.ai-provider-table__actions .button.button--sm {
+  height: 28px;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
+}

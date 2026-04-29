@@ -1,14 +1,15 @@
 /**
  * AI Provider Settings Page — Unit Tests
  *
- * Covers loading / error / non-admin / admin happy-path / fake-provider
- * branches. Verifies the query is gated on `isAdmin` (no API call when the
- * session role is not admin).
+ * Covers loading / error / non-admin / admin happy-path / no-key warning
+ * branches under the multi-provider contract. Verifies the query is gated
+ * on `isAdmin` (no API call when the session role is not admin) and that
+ * the table renders one row per provider with the active marker.
  *
  * @module apps/web/src/pages/ai-provider-settings
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -44,10 +45,21 @@ const viewerAdapter = createAuthenticatedSessionAdapter({
   permissions: [],
 });
 
+const baseView: AiProviderSettingsView = {
+  activeProvider: 'anthropic',
+  activeUpdatedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+  activeUpdatedBy: 'alice',
+  providers: [
+    { provider: 'anthropic', configured: true, source: 'db' },
+    { provider: 'openai', configured: false, source: 'none' },
+    { provider: 'fake', configured: false, source: 'none' },
+  ],
+};
+
 describe('AiProviderSettingsPage', () => {
   it('renders the admin-required ErrorState for non-admin sessions and never calls the API', async () => {
-    const get = vi.fn();
-    const apiClient = createMockApiClient({ aiProviderSettings: { get } });
+    const getAll = vi.fn();
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
 
     renderWithProviders(<AiProviderSettingsPage />, {
       apiClient,
@@ -55,14 +67,14 @@ describe('AiProviderSettingsPage', () => {
     });
 
     expect(await screen.findByText('Admin role required')).toBeInTheDocument();
-    expect(get).not.toHaveBeenCalled();
+    expect(getAll).not.toHaveBeenCalled();
   });
 
   it('shows the LoadingState while the query is in flight', () => {
-    const get = vi.fn<() => Promise<AiProviderSettingsView>>(
+    const getAll = vi.fn<() => Promise<AiProviderSettingsView>>(
       () => new Promise<AiProviderSettingsView>(() => undefined),
     );
-    const apiClient = createMockApiClient({ aiProviderSettings: { get } });
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
 
     renderWithProviders(<AiProviderSettingsPage />, {
       apiClient,
@@ -72,44 +84,72 @@ describe('AiProviderSettingsPage', () => {
     expect(screen.getByText('Loading provider settings')).toBeInTheDocument();
   });
 
-  it('renders the status card and form for an admin when source=db', async () => {
-    const get = vi.fn().mockResolvedValue({
-      provider: 'anthropic',
-      configured: true,
-      source: 'db',
-    });
-    const apiClient = createMockApiClient({ aiProviderSettings: { get } });
+  it('renders one row per provider with the active marker on the active row', async () => {
+    const getAll = vi.fn().mockResolvedValue(baseView);
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
 
     renderWithProviders(<AiProviderSettingsPage />, {
       apiClient,
       sessionAdapter: adminAdapter,
     });
 
-    expect(await screen.findByText('Stored encrypted')).toBeInTheDocument();
-    expect(screen.getByLabelText('API key')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /clear stored key/i })).toBeInTheDocument();
+    expect(await screen.findByText('Anthropic')).toBeInTheDocument();
+    expect(screen.getByText('OpenAI')).toBeInTheDocument();
+    expect(screen.getByText(/Fake \(offline stub\)/)).toBeInTheDocument();
+
+    // Active badge appears on the active (anthropic) row only.
+    const anthropicRow = screen.getByText('Anthropic').closest('tr');
+    expect(anthropicRow).not.toBeNull();
+    expect(within(anthropicRow as HTMLElement).getByText('Active')).toBeInTheDocument();
+    const openaiRow = screen.getByText('OpenAI').closest('tr');
+    expect(openaiRow).not.toBeNull();
+    expect(within(openaiRow as HTMLElement).queryByText('Active')).not.toBeInTheDocument();
   });
 
-  it('hides the form and shows an info alert when provider=fake', async () => {
-    const get = vi.fn().mockResolvedValue({
-      provider: 'fake',
-      configured: false,
-      source: 'none',
+  it('shows the no-provider warning when no real provider has a key', async () => {
+    const getAll = vi.fn().mockResolvedValue({
+      ...baseView,
+      activeProvider: 'fake',
+      providers: [
+        { provider: 'anthropic', configured: false, source: 'none' },
+        { provider: 'openai', configured: false, source: 'none' },
+        { provider: 'fake', configured: false, source: 'none' },
+      ],
     });
-    const apiClient = createMockApiClient({ aiProviderSettings: { get } });
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
 
     renderWithProviders(<AiProviderSettingsPage />, {
       apiClient,
       sessionAdapter: adminAdapter,
     });
 
-    expect(await screen.findByText('Fake provider active')).toBeInTheDocument();
-    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+    expect(await screen.findByText('No AI provider configured')).toBeInTheDocument();
+  });
+
+  it('disables Make active when the target provider has no key configured', async () => {
+    const getAll = vi.fn().mockResolvedValue(baseView);
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
+
+    renderWithProviders(<AiProviderSettingsPage />, {
+      apiClient,
+      sessionAdapter: adminAdapter,
+    });
+
+    // Wait for table to render.
+    await screen.findByText('OpenAI');
+
+    // OpenAI has no key — its Make active button must be disabled.
+    const openaiRow = screen.getByText('OpenAI').closest('tr');
+    expect(openaiRow).not.toBeNull();
+    const openaiActivate = within(openaiRow as HTMLElement).getByRole('button', {
+      name: /make active/i,
+    });
+    expect(openaiActivate).toBeDisabled();
   });
 
   it('renders the ErrorState with retry when the query fails', async () => {
-    const get = vi.fn().mockRejectedValue(new Error('Network down'));
-    const apiClient = createMockApiClient({ aiProviderSettings: { get } });
+    const getAll = vi.fn().mockRejectedValue(new Error('Network down'));
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
 
     renderWithProviders(<AiProviderSettingsPage />, {
       apiClient,
