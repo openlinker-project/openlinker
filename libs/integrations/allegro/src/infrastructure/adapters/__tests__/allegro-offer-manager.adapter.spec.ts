@@ -1121,14 +1121,10 @@ describe('AllegroOfferManagerAdapter', () => {
                 { id: '237206', values: ['PowerShot SX740'] },
               ],
               images: expectedCdnImages,
-              // #442 — GPSR fields nest INSIDE `product`, not at entry level.
-              // Allegro's POST schema scopes responsibleProducer +
-              // safetyInformation to the product itself; entry-level
-              // placement (the original #430 shape) is silently rejected
-              // with `SAFETY_INFO_NOT_DEFINED`.
-              responsibleProducer: { id: 'rp-test-1' },
-              safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
             },
+            // #430 — GPSR fields written from sellerDefaults on inline path.
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
           },
         ]);
         // Mirroring contract: product.images is the post-upload offer-level
@@ -1139,14 +1135,13 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(body).not.toHaveProperty('product');
       });
 
-      // #439 / #442 — emit `productSet[0].product` on every non-card-linked
-      // offer even when `productParameters` is missing or empty, and nest
-      // GPSR fields inside `product` (#442 — the entry-level placement #430
-      // originally chose is silently rejected by Allegro). Omitting any of
-      // these yielded a sandbox 422 with `SAFETY_INFO_NOT_DEFINED` at
-      // `productSet[0].safetyInformation`. `product.parameters` stays absent
-      // when the operator supplied none.
-      it('emits productSet[0].product with GPSR + name when productParameters is missing or empty', async () => {
+      // #439 — emit `productSet[0]` on every non-card-linked offer even when
+      // `productParameters` is missing or empty. Allegro's GPSR enforcement
+      // requires `responsibleProducer` + `safetyInformation` on the inline
+      // entry; omitting `productSet` yielded a sandbox 422 with
+      // `SAFETY_INFO_NOT_DEFINED` at `productSet[0].safetyInformation`.
+      // `product.parameters` stays absent when the operator supplied none.
+      it('emits productSet[0] with GPSR + product.name when productParameters is missing or empty', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } }),
         );
@@ -1164,34 +1159,27 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
-            product?: {
-              id?: string;
-              name?: string;
-              parameters?: unknown;
-              responsibleProducer?: { id: string };
-              safetyInformation?: { type: string };
-            };
+            product?: { id?: string; name?: string; parameters?: unknown };
+            responsibleProducer?: { id: string };
+            safetyInformation?: { type: string };
           }>;
         };
         // Inline path: product.id absent (no smart-link), product.name reuses
-        // the offer title, GPSR fields nested inside product (#442).
+        // the offer title, GPSR fields written from sellerDefaults.
         expect(body.productSet?.[0]?.product?.id).toBeUndefined();
         expect(body.productSet?.[0]?.product?.name).toBe('Test Offer Title');
         expect(body.productSet?.[0]?.product?.parameters).toBeUndefined();
-        expect(body.productSet?.[0]?.product?.responsibleProducer).toEqual({ id: 'rp-test-1' });
-        expect(body.productSet?.[0]?.product?.safetyInformation).toEqual({
-          type: 'NO_SAFETY_INFORMATION',
-        });
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
         // `body.product` is still rejected as an unknown property.
         expect(body).not.toHaveProperty('product');
       });
 
-      // #439 / #442 — discriminator parity: when sellerDefaults uses the
+      // #439 — discriminator parity: when sellerDefaults uses the
       // `SAFETY_INFORMATION` branch (free-text content rather than the
       // "no risks" declaration), the adapter must pass the entire object
-      // through to `productSet[0].product.safetyInformation` — `type` +
-      // `content`, nested inside `product`.
-      it('passes SAFETY_INFORMATION discriminator with content through to product.safetyInformation', async () => {
+      // through to `productSet[0].safetyInformation` — `type` + `content`.
+      it('passes SAFETY_INFORMATION discriminator with content through to productSet[0].safetyInformation', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-safety-text', publication: { status: 'INACTIVE' } }),
         );
@@ -1219,10 +1207,10 @@ describe('AllegroOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
-            product?: { safetyInformation?: { type: string; content?: string } };
+            safetyInformation?: { type: string; content?: string };
           }>;
         };
-        expect(body.productSet?.[0]?.product?.safetyInformation).toEqual({
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({
           type: 'SAFETY_INFORMATION',
           content: 'Keep dry. Not for children under 3.',
         });
@@ -1263,10 +1251,10 @@ describe('AllegroOfferManagerAdapter', () => {
               name: 'Test Offer Title',
               parameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
               images: ['https://images.allegrostatic.com/test/uploaded-1.jpg'],
-              // #442 — GPSR fields nested inside `product`, not at entry level.
-              responsibleProducer: { id: 'rp-test-1' },
-              safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
             },
+            // #430 — GPSR fields on inline-product path.
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
           },
         ]);
       });
@@ -1697,18 +1685,10 @@ describe('AllegroOfferManagerAdapter', () => {
           },
         ]);
         // Card-linked offers inherit GPSR from the card — adapter must NOT
-        // write `responsibleProducer` / `safetyInformation` anywhere on the
-        // entry (#442 scopes them under product, but on the card-linked
-        // path even product is just `{ id }`).
-        const productSet = body.productSet as Array<{
-          product?: { responsibleProducer?: unknown; safetyInformation?: unknown };
-          responsibleProducer?: unknown;
-          safetyInformation?: unknown;
-        }>;
-        expect(productSet[0].product?.responsibleProducer).toBeUndefined();
-        expect(productSet[0].product?.safetyInformation).toBeUndefined();
-        expect(productSet[0].responsibleProducer).toBeUndefined();
-        expect(productSet[0].safetyInformation).toBeUndefined();
+        // write `responsibleProducer` / `safetyInformation` on the entry.
+        expect(body.productSet).not.toContainEqual(
+          expect.objectContaining({ responsibleProducer: expect.anything() }),
+        );
       });
 
       it('falls through to inline path when variantBarcode is missing (smart-link short-circuits)', async () => {
@@ -1737,17 +1717,14 @@ describe('AllegroOfferManagerAdapter', () => {
         );
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
-            product?: {
-              id?: string;
-              name?: string;
-              responsibleProducer?: { id: string };
-            };
+            product?: { id?: string; name?: string };
+            responsibleProducer?: unknown;
           }>;
         };
-        // Inline path: product.id absent, GPSR fields written under product (#442).
+        // Inline path: product.id absent, GPSR fields written from sellerDefaults.
         expect(body.productSet?.[0]?.product?.id).toBeUndefined();
         expect(body.productSet?.[0]?.product?.name).toBe('Test Offer Title');
-        expect(body.productSet?.[0]?.product?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
       });
     });
 
