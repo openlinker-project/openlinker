@@ -19,6 +19,8 @@ import type {
   CategoryParametersReader,
   OfferCreator,
   SellerPoliciesReader,
+  ResponsibleProducerReader,
+  ResponsibleProducerEntry,
   OfferFeedInput,
   OfferFeedOutput,
   UpdateOfferQuantityCommand,
@@ -32,6 +34,11 @@ import type {
   SellerPolicies,
 } from '@openlinker/core/listings';
 import { OfferCreateRejectedException, CategoryNotFoundException } from '@openlinker/core/listings';
+import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
+import {
+  resolveAllegroProductCardByEan,
+  type ResolveProductCardResult,
+} from '../util/resolve-allegro-product-card-by-ean';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CachePort } from '@openlinker/shared';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
@@ -55,6 +62,8 @@ import {
   AllegroWarrantiesResponse,
   AllegroImpliedWarrantiesResponse,
   AllegroSellerPolicyEntry,
+  AllegroResponsibleProducerEntry,
+  AllegroResponsibleProducersResponse,
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
@@ -124,7 +133,8 @@ export class AllegroOfferManagerAdapter
     CategoryBarcodeMatcher,
     CategoryParametersReader,
     OfferCreator,
-    SellerPoliciesReader {
+    SellerPoliciesReader,
+    ResponsibleProducerReader {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
   private readonly quantityPollConfig: QuantityPollConfig;
@@ -152,6 +162,16 @@ export class AllegroOfferManagerAdapter
      */
     private readonly cache?: CachePort,
     catParamsTtlSec?: number,
+    /**
+     * Connection-level seller defaults — `location` (every offer),
+     * `responsibleProducerId` and `safetyInformation` (inline-product path).
+     * Sourced from `Connection.config.allegro.sellerDefaults` by
+     * `AllegroAdapterFactory`. When undefined, `createOffer` throws
+     * `OfferCreateRejectedException` with code
+     * `SELLER_DEFAULTS_NOT_CONFIGURED` rather than silently producing a
+     * partial body Allegro will 422 on (#430).
+     */
+    private readonly sellerDefaults?: AllegroSellerDefaultsConfig,
   ) {
     this.quantityPollConfig = {
       maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
@@ -714,7 +734,40 @@ export class AllegroOfferManagerAdapter
    * `CreateOfferResult.validationErrors`.
    */
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
-    const body = this.buildCreateOfferRequest(cmd);
+    // #430 — preflight: connection-level seller defaults must exist before we
+    // can build a body Allegro will accept. Surface as the existing neutral
+    // `OfferCreateRejectedException` (one error per missing field) rather
+    // than a custom Allegro exception type — keeps the `core → integration`
+    // boundary clean (no CORE-side mapping needed).
+    if (!this.sellerDefaults) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
+        {
+          field: 'sellerDefaults.location',
+          code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+          message: `Allegro connection ${this.connectionId} has no seller defaults configured. Set the ship-from location, Responsible Producer, and Safety Information on the connection edit page before creating offers.`,
+        },
+        {
+          field: 'sellerDefaults.responsibleProducerId',
+          code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+          message:
+            'Configure a Responsible Producer entry in your Allegro account, then select it on the OpenLinker connection edit page.',
+        },
+        {
+          field: 'sellerDefaults.safetyInformation',
+          code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
+          message: 'Configure GPSR safety information on the connection edit page.',
+        },
+      ]);
+    }
+
+    // #431 — smart-link pre-step. Compute once at the top so the body
+    // builder + platform-params applier stay synchronous (their current
+    // contract). On `unique`, `productSet[0]` becomes a card-link reference
+    // and Allegro inherits GPSR + parameters from the card; otherwise we
+    // fall through to inline (which uses the seller-defaults checked above).
+    const cardLinkResult = await this.maybeResolveProductCard(cmd);
+
+    const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
 
     // Pre-step: re-host any operator image URLs onto Allegro's CDN. Allegro
     // resolves URLs in `images[]` server-side and rejects offer creation when
@@ -752,7 +805,17 @@ export class AllegroOfferManagerAdapter
     // one entry with a populated `product` — see `applyPlatformParams`,
     // which is the only writer. The optional-chaining guard below is
     // belt-and-braces against future writers introducing a different shape.
-    if (body.productSet?.[0]?.product && body.images && body.images.length > 0) {
+    //
+    // #431 — Smart-linked entries (`product.id` set) inherit images from
+    // the existing Allegro product card; mirroring would write a sibling
+    // `images` field that Allegro does not expect on the link path. Skip
+    // when `product.id` is present.
+    if (
+      body.productSet?.[0]?.product &&
+      body.productSet[0].product.id === undefined &&
+      body.images &&
+      body.images.length > 0
+    ) {
       body.productSet[0].product.images = body.images;
     }
 
@@ -839,7 +902,59 @@ export class AllegroOfferManagerAdapter
     };
   }
 
-  private buildCreateOfferRequest(cmd: CreateOfferCommand): AllegroProductOfferCreateRequest {
+  /**
+   * Fetch the seller's EU GPSR responsible-producer registry
+   * (`GET /sale/responsible-producers`). Maps the Allegro response shape
+   * into the neutral `ResponsibleProducerEntry[]` consumed by the FE
+   * connection-settings dropdown. No caching — operator-driven, freshness
+   * over latency. (#430)
+   */
+  async fetchResponsibleProducers(): Promise<ResponsibleProducerEntry[]> {
+    this.logger.debug(
+      `Fetching Allegro responsible producers (connection: ${this.connectionId})`,
+    );
+    const response = await this.httpClient.get<AllegroResponsibleProducersResponse>(
+      '/sale/responsible-producers',
+    );
+    const entries = response.data.responsibleProducers ?? [];
+    return entries.map(
+      (e: AllegroResponsibleProducerEntry): ResponsibleProducerEntry => ({
+        id: e.id,
+        name: e.name ?? e.id,
+        // Allegro defaults unknown classifications to PRODUCER; mirror that
+        // so the FE never has to handle `undefined` here.
+        kind: e.type ?? 'PRODUCER',
+      }),
+    );
+  }
+
+  /**
+   * Smart-link pre-step (#431). Resolves the variant's barcode against
+   * Allegro's product catalogue *only* when both an EAN-shaped barcode
+   * and a category id are available; otherwise short-circuits to
+   * `no_match` so `applyPlatformParams` falls through to inline.
+   *
+   * Splitting out the precondition logic keeps `createOffer` flat and
+   * makes the smart-link skip-paths trivially traceable in tests.
+   */
+  private async maybeResolveProductCard(
+    cmd: CreateOfferCommand,
+  ): Promise<ResolveProductCardResult> {
+    const ean = cmd.variantBarcode;
+    const categoryId = cmd.overrides?.categoryId;
+    if (!ean || !categoryId) {
+      return { kind: 'no_match' };
+    }
+    return resolveAllegroProductCardByEan(this.httpClient, this.cache, {
+      ean,
+      categoryId,
+    });
+  }
+
+  private buildCreateOfferRequest(
+    cmd: CreateOfferCommand,
+    cardLinkResult: ResolveProductCardResult,
+  ): AllegroProductOfferCreateRequest {
     const platformParams = cmd.overrides?.platformParams ?? {};
 
     // #420 — Allegro's product-name validator (and presumably the offer-name
@@ -903,7 +1018,12 @@ export class AllegroOfferManagerAdapter
       body.images = cmd.overrides.imageUrls;
     }
 
-    this.applyPlatformParams(body, platformParams);
+    // #430 — every offer needs a ship-from address. Always written from the
+    // connection-level seller defaults (preflight guard in `createOffer`
+    // ensures `this.sellerDefaults` is defined by the time we get here).
+    body.location = { ...this.sellerDefaults!.location };
+
+    this.applyPlatformParams(body, platformParams, cardLinkResult, cmd.stock);
 
     return body;
   }
@@ -911,6 +1031,8 @@ export class AllegroOfferManagerAdapter
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
+    cardLinkResult: ResolveProductCardResult,
+    stock: number,
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -953,6 +1075,35 @@ export class AllegroOfferManagerAdapter
       body.parameters = parameters.filter(isAllegroOfferParameterShape);
     }
 
+    // #431 — smart-link short-circuit. When the variant's EAN uniquely
+    // matches an existing Allegro product card, build the productSet entry
+    // as a card reference: `product.id` only, plus the per-entry quantity.
+    // Allegro inherits `name`, `parameters`, `images`, and the EU GPSR
+    // fields (`responsibleProducer`, `safetyInformation`) from the card,
+    // so we **skip** writing all of those on the entry. Offer-section
+    // `body.parameters[]` (set above) still flows through normally.
+    if (cardLinkResult.kind === 'unique') {
+      body.productSet = [
+        {
+          product: { id: cardLinkResult.productId },
+          quantity: stock,
+        },
+      ];
+      this.logger.log(
+        `Allegro smart-link applied: connection=${this.connectionId} ` +
+          `productId=${cardLinkResult.productId} outcome=unique`,
+      );
+      return;
+    }
+
+    if (cardLinkResult.kind === 'ambiguous') {
+      this.logger.log(
+        `Allegro smart-link skipped: connection=${this.connectionId} ` +
+          `outcome=ambiguous matchCount=${cardLinkResult.matches.length}`,
+      );
+    }
+    // `no_match` — not logged here; resolver path is the cheap default.
+
     // #419 — product-section parameters travel under
     // `body.productSet[0].product.parameters[]`. The earlier #415 fix wrote
     // them under a top-level `body.product`, which Allegro rejects with
@@ -985,7 +1136,17 @@ export class AllegroOfferManagerAdapter
         // re-sanitization needed at this site. Keeping a single sanitization
         // point per request lifecycle avoids "why is this being sanitized
         // — wasn't it already?" reader confusion.
-        body.productSet = [{ product: { name: body.name, parameters: filtered } }];
+        body.productSet = [
+          {
+            product: { name: body.name, parameters: filtered },
+            // #430 — GPSR fields required by Allegro on inline-product
+            // creation (Reg. 2023/988, mandatory since 13 Dec 2024).
+            // Sourced from the connection's seller defaults (preflight
+            // guard in `createOffer` ensures these exist).
+            responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
+            safetyInformation: this.sellerDefaults!.safetyInformation,
+          },
+        ];
       }
     }
   }

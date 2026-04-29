@@ -118,6 +118,13 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       this.quantityPollConfig,
       this.cache,
       this.catParamsTtlSec,
+      // #430 — connection-level seller defaults sourced from
+      // `Connection.config.allegro.sellerDefaults`. Passed through unparsed
+      // (the API DTO layer validates province enum / postcode regex /
+      // discriminated safetyInformation before persistence). Undefined when
+      // operator hasn't configured them yet — adapter throws
+      // `OfferCreateRejectedException` on the first offer attempt.
+      config.sellerDefaults,
     );
     const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 

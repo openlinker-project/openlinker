@@ -68,6 +68,15 @@ export interface CreateOfferCommand {
   overrides?: CreateOfferOverrides;
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
+  /**
+   * Variant barcode (EAN ?? GTIN) carried through from the master catalog.
+   * Adapters that support smart-linking to existing marketplace product
+   * cards (e.g. Allegro #431) use it to look up an existing card before
+   * falling back to inline product creation. Pre-resolved by
+   * `OfferBuilderService` so adapters don't have to re-fetch the variant.
+   * `null` means "no usable barcode" (variant has neither EAN nor GTIN).
+   */
+  variantBarcode?: string | null;
 }
 
 /**

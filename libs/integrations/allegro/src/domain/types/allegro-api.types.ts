@@ -218,10 +218,42 @@ export interface AllegroOfferParameter {
  */
 export interface AllegroProductSetEntry {
   product?: {
+    /**
+     * Existing Allegro product-card id. Set on the smart-link path (#431) —
+     * presence of `id` means the entry references an existing card and
+     * Allegro inherits `name`, `parameters`, `images`, and GPSR data from
+     * the card. The inline-product path leaves `id` undefined and supplies
+     * those fields explicitly alongside `responsibleProducer` /
+     * `safetyInformation` on the entry.
+     */
+    id?: string;
     name?: string;
     parameters?: AllegroOfferParameter[];
     images?: string[];
   };
+  /**
+   * Per-entry quantity, used on the smart-link path (#431) where stock is
+   * declared on the productSet entry rather than on `body.stock`. The
+   * inline-product path leaves this undefined and uses `body.stock`.
+   */
+  quantity?: number;
+  /**
+   * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
+   * Allegro on every `productSet[]` entry when the entry creates an inline
+   * product (no `product.id`). Smart-linked entries inherit this from the
+   * referenced card and may omit it. See #430.
+   */
+  responsibleProducer?: { id: string };
+  /**
+   * EU GPSR safety information. Same applicability as `responsibleProducer`:
+   * required on the inline path, inherited on the smart-link path. The
+   * `NO_SAFETY_INFORMATION` branch is Allegro's "this category does not
+   * carry safety risks" declaration; `SAFETY_INFORMATION` carries free-text
+   * content. See #430.
+   */
+  safetyInformation?:
+    | { type: 'NO_SAFETY_INFORMATION' }
+    | { type: 'SAFETY_INFORMATION'; content: string };
 }
 
 /**
@@ -432,6 +464,34 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   payments?: { invoice?: 'VAT' | 'NO_INVOICE' | 'VAT_MARGIN' };
   publication?: { status: 'INACTIVE' | 'ACTIVE' };
   external?: { id: string };
+  /**
+   * Ship-from address. Required for every offer regardless of inline vs
+   * smart-link path (#430 — sandbox 422 on `location.state` was the
+   * original trigger). Sourced from `Connection.config.allegro
+   * .sellerDefaults.location` at offer-build time.
+   */
+  location?: {
+    countryCode: string;
+    province: string;
+    city: string;
+    postCode: string;
+  };
+}
+
+/**
+ * One entry in `GET /sale/products?phrase=…&category.id=…` (#431). Allegro's
+ * matcher is fuzzy on `phrase`, so the smart-link resolver post-filters by
+ * exact `ean` match. `name` is informational (used in logs and the
+ * `ambiguous` diagnostic payload).
+ */
+export interface AllegroProductCardSummary {
+  id: string;
+  name?: string;
+  ean?: string;
+}
+
+export interface AllegroProductsSearchResponse {
+  products: AllegroProductCardSummary[];
 }
 
 /**
@@ -453,6 +513,23 @@ export interface AllegroProductOfferCreateResponse {
 export interface AllegroSellerPolicyEntry {
   id: string;
   name: string;
+}
+
+/**
+ * One entry returned by Allegro's `GET /sale/responsible-producers`. The
+ * registry is the EU GPSR (Reg. 2023/988) operator-side list of producers
+ * the seller can declare on offer creation. Adapter surfaces this through
+ * the `ResponsibleProducerReader` capability for the FE settings dropdown
+ * (#430).
+ */
+export interface AllegroResponsibleProducerEntry {
+  id: string;
+  name?: string;
+  type?: 'PRODUCER' | 'IMPORTER' | 'AUTHORIZED_REPRESENTATIVE' | 'FULFILLMENT_SERVICE_PROVIDER';
+}
+
+export interface AllegroResponsibleProducersResponse {
+  responsibleProducers: AllegroResponsibleProducerEntry[];
 }
 
 /**

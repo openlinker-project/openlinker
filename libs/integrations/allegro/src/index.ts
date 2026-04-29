@@ -16,6 +16,17 @@ export { IAllegroAdapterFactory } from './application/interfaces/allegro-adapter
 export { AllegroConnectionConfig, AllegroEnvironment, AllegroEnvironmentValues } from './domain/types/allegro-config.types';
 export { AllegroCredentials } from './domain/types/allegro-credentials.types';
 export {
+  PolishVoivodeshipValues,
+  type PolishVoivodeship,
+} from './domain/types/allegro-location.types';
+export {
+  AllegroSafetyInformationTypeValues,
+  type AllegroSafetyInformationType,
+  type AllegroSafetyInformation,
+  type AllegroSellerLocation,
+  type AllegroSellerDefaultsConfig,
+} from './domain/types/allegro-seller-defaults.types';
+export {
   AllegroOrderEventsResponse,
   AllegroOfferQuantityChangeCommand,
   AllegroOfferQuantityChangeCommandResponse,

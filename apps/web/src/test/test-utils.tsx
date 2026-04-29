@@ -82,6 +82,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         connectionId: 'conn_allegro_1',
         connectionName: 'Allegro sandbox',
       }),
+      listResponsibleProducers: vi.fn().mockResolvedValue([]),
       ...overrides.allegro,
     } as ApiClient['allegro'],
     auth: {

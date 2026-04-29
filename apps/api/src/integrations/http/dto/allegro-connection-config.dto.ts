@@ -2,12 +2,31 @@
  * Allegro Connection Config DTO
  *
  * Request DTO for Allegro connection configuration. Validates Allegro-specific
- * config fields (environment, apiBaseUrl) and provides Swagger documentation.
+ * config fields (environment, apiBaseUrl, sellerDefaults) and provides Swagger
+ * documentation.
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsEnum, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
+import {
+  IsEnum,
+  IsIn,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  Matches,
+  MaxLength,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  AllegroSafetyInformationTypeValues,
+  PolishVoivodeshipValues,
+} from '@openlinker/integrations-allegro';
 
 /**
  * Allegro environment values
@@ -51,5 +70,102 @@ export class AllegroConnectionConfigDto {
   @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
   @IsOptional()
   masterCatalogConnectionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Connection-level seller defaults required by `POST /sale/product-offers` ' +
+      '— `location` (every offer), plus `responsibleProducerId` and ' +
+      '`safetyInformation` for the inline-product path. See #430.',
+    type: () => AllegroSellerDefaultsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AllegroSellerDefaultsDto)
+  sellerDefaults?: AllegroSellerDefaultsDto;
+}
+
+/**
+ * Allegro ship-from address. `countryCode` is pinned to `'PL'` for now —
+ * multi-market support is out of scope for #430. The voivodeship enum is
+ * Allegro's own (16 values) and the postcode regex matches the PL format.
+ */
+export class AllegroSellerLocationDto {
+  @ApiProperty({ description: 'ISO country code', enum: ['PL'], example: 'PL' })
+  @IsIn(['PL'])
+  countryCode!: 'PL';
+
+  @ApiProperty({
+    description: 'Polish voivodeship (Allegro enum)',
+    enum: PolishVoivodeshipValues,
+  })
+  @IsIn(PolishVoivodeshipValues as readonly string[])
+  province!: (typeof PolishVoivodeshipValues)[number];
+
+  @ApiProperty({ description: 'City name', example: 'Warszawa' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  city!: string;
+
+  @ApiProperty({ description: 'PL postcode (NN-NNN)', example: '00-001' })
+  @IsString()
+  @Matches(/^\d{2}-\d{3}$/, {
+    message: 'postCode must match the PL format NN-NNN',
+  })
+  postCode!: string;
+}
+
+/**
+ * EU GPSR safety-information payload. Discriminated by `type` — when
+ * `SAFETY_INFORMATION`, `content` is required free text.
+ */
+export class AllegroSafetyInformationDto {
+  @ApiProperty({
+    description: 'Safety-information discriminator',
+    enum: AllegroSafetyInformationTypeValues,
+  })
+  @IsIn(AllegroSafetyInformationTypeValues as readonly string[])
+  type!: (typeof AllegroSafetyInformationTypeValues)[number];
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text safety information content. Required when `type === SAFETY_INFORMATION`.',
+    maxLength: 2000,
+  })
+  // Conditional require: when `type === SAFETY_INFORMATION`, `content` must
+  // be a non-empty string. Otherwise the field is ignored entirely (every
+  // subsequent validator is skipped by `@ValidateIf`).
+  @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'SAFETY_INFORMATION')
+  @IsString()
+  @IsNotEmpty({
+    message: 'safetyInformation.content is required when type is SAFETY_INFORMATION',
+  })
+  @MaxLength(2000)
+  content?: string;
+}
+
+export class AllegroSellerDefaultsDto {
+  @ApiProperty({ description: 'Ship-from location', type: () => AllegroSellerLocationDto })
+  @ValidateNested()
+  @Type(() => AllegroSellerLocationDto)
+  @IsObject()
+  location!: AllegroSellerLocationDto;
+
+  @ApiProperty({
+    description:
+      'Allegro responsible-producer id from `/sale/responsible-producers` registry',
+  })
+  @IsString()
+  @IsNotEmpty()
+  responsibleProducerId!: string;
+
+  @ApiProperty({
+    description: 'EU GPSR safety information',
+    type: () => AllegroSafetyInformationDto,
+  })
+  @ValidateNested()
+  @Type(() => AllegroSafetyInformationDto)
+  @IsObject()
+  safetyInformation!: AllegroSafetyInformationDto;
 }
 

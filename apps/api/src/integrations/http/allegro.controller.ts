@@ -35,6 +35,15 @@ import {
 import { AllegroQuantityCommandResponseDto } from './dto/allegro-quantity-command-response.dto';
 import { AllegroCommandsQueryDto } from './dto/allegro-commands-query.dto';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import {
+  type OfferManagerPort,
+  type ResponsibleProducerEntry,
+  isResponsibleProducerReader,
+} from '@openlinker/core/listings';
 
 @ApiTags('allegro')
 @Controller('integrations/allegro')
@@ -48,6 +57,8 @@ export class AllegroController {
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
     private readonly commandRepository: AllegroQuantityCommandRepositoryPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
 
   @Roles('admin')
@@ -344,6 +355,43 @@ export class AllegroController {
     }
 
     return AllegroQuantityCommandResponseDto.fromDomain(command);
+  }
+
+  /**
+   * List the seller's EU GPSR responsible-producer registry. Backs the
+   * dropdown on the Allegro connection-edit page (#430). Adapter-resolved
+   * per connection: returns 200 with the neutral entry list, or 400 when
+   * the resolved adapter doesn't support the `ResponsibleProducerReader`
+   * capability.
+   *
+   * No local persistence — the registry is operator-driven (entries are
+   * created in Allegro's seller panel, not from inside OL), so freshness
+   * matters more than latency for a settings page.
+   */
+  @Roles('admin')
+  @ApiBearerAuth()
+  @Get('connections/:id/responsible-producers')
+  @ApiOperation({
+    summary: 'List EU GPSR responsible-producer entries for the connection',
+  })
+  @ApiParam({ name: 'id', description: 'Connection ID' })
+  @ApiResponse({ status: 200, description: 'Responsible-producer entries returned' })
+  async listResponsibleProducers(
+    @Param('id') connectionId: string,
+  ): Promise<ResponsibleProducerEntry[]> {
+    this.logger.debug(
+      `Listing Allegro responsible producers (connection: ${connectionId})`,
+    );
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+    if (!isResponsibleProducerReader(adapter)) {
+      throw new BadRequestException(
+        `Connection ${connectionId} does not support the ResponsibleProducerReader capability`,
+      );
+    }
+    return adapter.fetchResponsibleProducers();
   }
 }
 

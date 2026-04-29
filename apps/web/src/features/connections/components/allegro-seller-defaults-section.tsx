@@ -1,0 +1,282 @@
+import { type ReactElement } from 'react';
+import type { UseFormReturn } from 'react-hook-form';
+import { useResponsibleProducersQuery } from '../../allegro/hooks/use-responsible-producers-query';
+import {
+  POLISH_VOIVODESHIP_LABELS,
+  POLISH_VOIVODESHIP_VALUES,
+} from '../types/polish-voivodeship.types';
+import type { EditConnectionFormValues } from './edit-connection.schema';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import { FormField } from '../../../shared/ui/form-field';
+import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
+import { Textarea } from '../../../shared/ui/textarea';
+
+interface AllegroSellerDefaultsSectionProps {
+  connectionId: string;
+  form: UseFormReturn<EditConnectionFormValues>;
+  /**
+   * Called whenever any seller-defaults sub-field changes — the parent form
+   * uses this to re-serialize the whole `sellerDefaults` object into
+   * `configText` JSON via `mergeStructuredIntoConfig`. Keeping the merge
+   * logic in the parent (where `configText` lives) avoids duplicating the
+   * empty-string-pruning rules here.
+   */
+  onChange: () => void;
+  disabled?: boolean;
+}
+
+/**
+ * Connection-edit section for Allegro seller defaults (#430). Three field
+ * groups — ship-from location, EU GPSR responsible producer, and safety
+ * information — required by `POST /sale/product-offers` since the GPSR
+ * rollout on 2024-12-13.
+ *
+ * Lives inside the existing `EditConnectionForm`; rendered only when
+ * `connection.platformType === 'allegro'`. The form already syncs the
+ * structured fields into a single `configText` JSON via the merge helper —
+ * this section follows that pattern (every input change calls `onChange`,
+ * the parent re-serializes).
+ */
+export function AllegroSellerDefaultsSection({
+  connectionId,
+  form,
+  onChange,
+  disabled = false,
+}: AllegroSellerDefaultsSectionProps): ReactElement {
+  const producersQuery = useResponsibleProducersQuery(connectionId);
+
+  // The default safety-information type is seeded by the parent's
+  // `readSellerDefaults` helper at form-construction time (always one of
+  // the two enum values, never `undefined`), so `safetyType` is guaranteed
+  // truthy on first render — no mount-only effect needed here.
+  const safetyType = form.watch('sellerDefaults.safetyInformation.type');
+
+  const errors = form.formState.errors.sellerDefaults;
+
+  return (
+    <section className="seller-defaults" aria-labelledby="seller-defaults-heading">
+      <header className="seller-defaults__header">
+        <p className="seller-defaults__eyebrow">Allegro seller defaults</p>
+        <h3 id="seller-defaults-heading" className="seller-defaults__title">
+          Required by Allegro for offer creation
+        </h3>
+        <p className="seller-defaults__description">
+          Allegro requires a ship-from location and EU GPSR data
+          (Reg. 2023/988, mandatory since 13 Dec 2024) on every offer. These
+          defaults are sent on the inline-product path and used as a fallback
+          when smart-linking to an existing product card misses.
+        </p>
+      </header>
+
+      <div className="seller-defaults__group">
+        <h4 className="seller-defaults__group-title">Ship-from location</h4>
+        <p className="seller-defaults__group-description">
+          Used as <code className="mono-text">body.location</code> on every offer.
+        </p>
+
+        <FormField
+          label="Voivodeship"
+          name="sellerDefaults.location.province"
+          error={errors?.location?.province?.message}
+        >
+          <Select
+            {...form.register('sellerDefaults.location.province')}
+            onChange={(event) => {
+              const next = event.target.value;
+              const province = (POLISH_VOIVODESHIP_VALUES as readonly string[]).includes(next)
+                ? (next as (typeof POLISH_VOIVODESHIP_VALUES)[number])
+                : '';
+              form.setValue('sellerDefaults.location.province', province, {
+                shouldDirty: true,
+              });
+              form.setValue('sellerDefaults.location.countryCode', 'PL', {
+                shouldDirty: true,
+              });
+              onChange();
+            }}
+            disabled={disabled}
+          >
+            <option value="">Select voivodeship…</option>
+            {POLISH_VOIVODESHIP_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {POLISH_VOIVODESHIP_LABELS[value]}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+
+        <div className="seller-defaults__row">
+          <FormField
+            label="City"
+            name="sellerDefaults.location.city"
+            error={errors?.location?.city?.message}
+          >
+            <Input
+              {...form.register('sellerDefaults.location.city')}
+              onChange={(event) => {
+                form.setValue('sellerDefaults.location.city', event.target.value, {
+                  shouldDirty: true,
+                });
+                onChange();
+              }}
+              maxLength={200}
+              autoComplete="address-level2"
+              disabled={disabled}
+              invalid={Boolean(errors?.location?.city)}
+            />
+          </FormField>
+
+          <FormField
+            label="Post code"
+            name="sellerDefaults.location.postCode"
+            error={errors?.location?.postCode?.message}
+            description="Polish format NN-NNN."
+          >
+            <Input
+              {...form.register('sellerDefaults.location.postCode')}
+              onChange={(event) => {
+                form.setValue('sellerDefaults.location.postCode', event.target.value, {
+                  shouldDirty: true,
+                });
+                onChange();
+              }}
+              placeholder="00-001"
+              inputMode="numeric"
+              autoComplete="postal-code"
+              disabled={disabled}
+              invalid={Boolean(errors?.location?.postCode)}
+            />
+          </FormField>
+        </div>
+      </div>
+
+      <div className="seller-defaults__group">
+        <div className="seller-defaults__group-head">
+          <div>
+            <h4 className="seller-defaults__group-title">Responsible producer</h4>
+            <p className="seller-defaults__group-description">
+              EU GPSR registry entry from your Allegro seller account.
+            </p>
+          </div>
+          <Button
+            tone="secondary"
+            type="button"
+            onClick={() => void producersQuery.refetch()}
+            disabled={disabled || producersQuery.isFetching}
+          >
+            {producersQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+
+        {producersQuery.error ? (
+          <Alert tone="error" title="Could not load responsible producers">
+            {producersQuery.error.message}
+          </Alert>
+        ) : null}
+
+        {!producersQuery.isLoading &&
+        !producersQuery.error &&
+        (producersQuery.data ?? []).length === 0 ? (
+          <Alert tone="info" title="No responsible-producer entries yet">
+            Create a Responsible Producer in your Allegro seller panel, then
+            click Refresh.
+          </Alert>
+        ) : null}
+
+        <FormField
+          label="Responsible producer"
+          name="sellerDefaults.responsibleProducerId"
+          error={errors?.responsibleProducerId?.message}
+        >
+          <Select
+            {...form.register('sellerDefaults.responsibleProducerId')}
+            onChange={(event) => {
+              form.setValue(
+                'sellerDefaults.responsibleProducerId',
+                event.target.value,
+                { shouldDirty: true },
+              );
+              onChange();
+            }}
+            disabled={
+              disabled ||
+              producersQuery.isLoading ||
+              Boolean(producersQuery.error) ||
+              (producersQuery.data ?? []).length === 0
+            }
+          >
+            <option value="">
+              {producersQuery.isLoading
+                ? 'Loading…'
+                : (producersQuery.data ?? []).length === 0
+                  ? 'No entries'
+                  : 'Select an entry…'}
+            </option>
+            {(producersQuery.data ?? []).map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+      </div>
+
+      <div className="seller-defaults__group">
+        <h4 className="seller-defaults__group-title">Safety information</h4>
+        <p className="seller-defaults__group-description">
+          Pick <strong>None applies</strong> for products without GPSR safety
+          obligations, or provide free-text safety details.
+        </p>
+
+        <FormField
+          label="Type"
+          name="sellerDefaults.safetyInformation.type"
+          error={errors?.safetyInformation?.type?.message}
+        >
+          <Select
+            {...form.register('sellerDefaults.safetyInformation.type')}
+            onChange={(event) => {
+              form.setValue(
+                'sellerDefaults.safetyInformation.type',
+                event.target.value as 'NO_SAFETY_INFORMATION' | 'SAFETY_INFORMATION',
+                { shouldDirty: true },
+              );
+              onChange();
+            }}
+            disabled={disabled}
+          >
+            <option value="NO_SAFETY_INFORMATION">None applies</option>
+            <option value="SAFETY_INFORMATION">Provide safety information</option>
+          </Select>
+        </FormField>
+
+        {safetyType === 'SAFETY_INFORMATION' ? (
+          <FormField
+            label="Safety information content"
+            name="sellerDefaults.safetyInformation.content"
+            error={errors?.safetyInformation?.content?.message}
+            description="Free text shown to buyers. 1–2000 characters."
+          >
+            <Textarea
+              {...form.register('sellerDefaults.safetyInformation.content')}
+              onChange={(event) => {
+                form.setValue(
+                  'sellerDefaults.safetyInformation.content',
+                  event.target.value,
+                  { shouldDirty: true },
+                );
+                onChange();
+              }}
+              rows={4}
+              maxLength={2000}
+              disabled={disabled}
+              invalid={Boolean(errors?.safetyInformation?.content)}
+            />
+          </FormField>
+        ) : null}
+      </div>
+    </section>
+  );
+}
