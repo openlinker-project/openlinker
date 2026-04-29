@@ -56,10 +56,16 @@ export {
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export {
+  IOrderDestinationRetryService,
+  OrderDestinationRetryInput,
+  OrderDestinationRetryResult,
+} from './application/interfaces/order-destination-retry.service.interface';
+export {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
 } from './orders.tokens';
 
 // Domain entities
@@ -68,6 +74,9 @@ export { OrderRecord, OrderSyncStatus } from './domain/entities/order-record.ent
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
+export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';
+export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
+export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';

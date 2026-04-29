@@ -11,11 +11,16 @@ import type {
   OrderPagination,
   PaginatedOrders,
   OrderRecord,
+  RetryOrderDestinationResult,
 } from './orders.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
   getById: (internalOrderId: string) => Promise<OrderRecord>;
+  retryDestination: (
+    internalOrderId: string,
+    destinationConnectionId: string,
+  ) => Promise<RetryOrderDestinationResult>;
 }
 
 interface ApiRequest {
@@ -43,6 +48,12 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
     },
     getById(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${internalOrderId}`);
+    },
+    retryDestination(internalOrderId, destinationConnectionId): Promise<RetryOrderDestinationResult> {
+      return request<RetryOrderDestinationResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/destinations/${encodeURIComponent(destinationConnectionId)}/retry`,
+        { method: 'POST' },
+      );
     },
   };
 }

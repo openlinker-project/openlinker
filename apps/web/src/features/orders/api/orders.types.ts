@@ -57,3 +57,10 @@ export interface PaginatedOrders {
   limit: number;
   offset: number;
 }
+
+export interface RetryOrderDestinationResult {
+  internalOrderId: string;
+  destinationConnectionId: string;
+  jobId: string;
+  jobType: string;
+}

@@ -137,6 +137,11 @@ export function OrderActivityTimeline({
             <time className="order-activity__time" dateTime={event.timestamp}>
               <TimeDisplay iso={event.timestamp} format="datetime" />
             </time>
+          ) : event.tone === 'error' ? (
+            // Failed destinations have no `syncedAt` — the dot tone (red) and verb
+            // ("failed to sync to {destination}") already convey state, so the time
+            // pill stays empty rather than lying with "in progress".
+            <span className="order-activity__time" aria-hidden="true" />
           ) : (
             <span className="order-activity__time order-activity__time--pending">in progress</span>
           )}

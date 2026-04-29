@@ -4,17 +4,30 @@
  * @module apps/api/src/orders/http
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   OrderRecord,
+  OrderRecordNotFoundException,
+  OrderDestinationNotFoundException,
+  OrderDestinationNotRetryableException,
+  MissingSourceExternalIdException,
 } from '@openlinker/core/orders';
-import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
+import type {
+  OrderRecordRepositoryPort,
+  IOrderDestinationRetryService,
+} from '@openlinker/core/orders';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
+  let retryService: jest.Mocked<IOrderDestinationRetryService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -44,6 +57,10 @@ describe('OrdersController', () => {
       findMany: jest.fn(),
     };
 
+    const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
+      retry: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -51,11 +68,16 @@ describe('OrdersController', () => {
           provide: ORDER_RECORD_REPOSITORY_TOKEN,
           useValue: mockRepository,
         },
+        {
+          provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+          useValue: mockRetryService,
+        },
       ],
     }).compile();
 
     controller = module.get<OrdersController>(OrdersController);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
+    retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -156,6 +178,69 @@ describe('OrdersController', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(controller.getOrder('ol_order_999')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('retryDestination', () => {
+    const internalOrderId = 'ol_order_001';
+    const connectionId = '0aa1c2e0-1234-4abc-8def-0123456789ab';
+
+    it('should return job id and types on success (202)', async () => {
+      retryService.retry.mockResolvedValue({
+        jobId: 'job-new',
+        jobType: 'marketplace.order.sync',
+      });
+
+      const result = await controller.retryDestination(internalOrderId, connectionId);
+
+      expect(result).toEqual({
+        internalOrderId,
+        destinationConnectionId: connectionId,
+        jobId: 'job-new',
+        jobType: 'marketplace.order.sync',
+      });
+      expect(retryService.retry).toHaveBeenCalledWith({
+        internalOrderId,
+        destinationConnectionId: connectionId,
+      });
+    });
+
+    it('should map OrderRecordNotFoundException to NotFoundException (404)', async () => {
+      retryService.retry.mockRejectedValue(new OrderRecordNotFoundException(internalOrderId));
+
+      await expect(
+        controller.retryDestination(internalOrderId, connectionId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should map OrderDestinationNotFoundException to NotFoundException (404)', async () => {
+      retryService.retry.mockRejectedValue(
+        new OrderDestinationNotFoundException(internalOrderId, connectionId),
+      );
+
+      await expect(
+        controller.retryDestination(internalOrderId, connectionId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should map OrderDestinationNotRetryableException to ConflictException (409)', async () => {
+      retryService.retry.mockRejectedValue(
+        new OrderDestinationNotRetryableException(internalOrderId, connectionId, 'synced'),
+      );
+
+      await expect(
+        controller.retryDestination(internalOrderId, connectionId),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should map MissingSourceExternalIdException to InternalServerErrorException (500)', async () => {
+      retryService.retry.mockRejectedValue(
+        new MissingSourceExternalIdException(internalOrderId, 'conn-source-001'),
+      );
+
+      await expect(
+        controller.retryDestination(internalOrderId, connectionId),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
     });
   });
 });
