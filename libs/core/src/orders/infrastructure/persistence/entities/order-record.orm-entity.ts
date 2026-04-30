@@ -28,6 +28,19 @@ export interface OrderSyncStatusJson {
   error?: string;
 }
 
+/**
+ * Sync attempt JSONB structure (append-only history per destination).
+ * `attemptedAt` is ISO 8601; the domain entity exposes it as a `Date`.
+ */
+export interface SyncAttemptJson {
+  destinationConnectionId: string;
+  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  attemptedAt: string;
+  error?: string;
+  externalOrderId?: string;
+  externalOrderNumber?: string;
+}
+
 @Entity('order_records')
 @Index(['customerId'])
 @Index(['sourceConnectionId'])
@@ -58,6 +71,14 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb' })
   syncStatus!: OrderSyncStatusJson[];
+
+  /**
+   * Append-only attempt log per destination (JSONB array, capped per
+   * destination by the repository UPDATE statement). Enables the activity
+   * timeline to render `failed → retried → synced` history.
+   */
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  syncAttempts!: SyncAttemptJson[];
 
   @Column({ type: 'varchar', default: 'ready' })
   @Index()

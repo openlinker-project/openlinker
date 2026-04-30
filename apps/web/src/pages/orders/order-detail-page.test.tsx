@@ -22,6 +22,16 @@ const sampleOrder: OrderRecord = {
       error: null,
     },
   ],
+  syncAttempts: [
+    {
+      destinationConnectionId: sampleConnection.id,
+      status: 'synced',
+      attemptedAt: '2026-04-20T10:00:00.000Z',
+      error: null,
+      externalOrderId: '42',
+      externalOrderNumber: null,
+    },
+  ],
   recordStatus: 'ready',
   createdAt: '2026-04-20T09:00:00.000Z',
   updatedAt: '2026-04-20T10:00:00.000Z',

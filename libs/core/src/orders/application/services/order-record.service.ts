@@ -11,7 +11,8 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Order } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
+import { OrderRecord } from '../../domain/entities/order-record.entity';
+import { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { getPiiConfig } from '@openlinker/shared/config';
@@ -155,7 +156,22 @@ export class OrderRecordService implements IOrderRecordService {
     destinationConnectionId: string,
     status: OrderSyncStatus,
   ): Promise<void> {
-    await this.repository.updateSyncStatus(internalOrderId, destinationConnectionId, status);
+    // The service stamps `attemptedAt` so the repository UPDATE statement
+    // is purely mechanical (no clock dependency in the persistence layer).
+    const attempt: SyncAttempt = {
+      destinationConnectionId,
+      status: status.status,
+      attemptedAt: new Date(),
+      error: status.error,
+      externalOrderId: status.externalOrderId,
+      externalOrderNumber: status.externalOrderNumber,
+    };
+    await this.repository.updateSyncStatus(
+      internalOrderId,
+      destinationConnectionId,
+      status,
+      attempt,
+    );
   }
 
   /**

@@ -11,11 +11,25 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
-import { OrderRecordOrmEntity, OrderSyncStatusJson } from '../entities/order-record.orm-entity';
+import {
+  OrderRecordOrmEntity,
+  OrderSyncStatusJson,
+  SyncAttemptJson,
+} from '../entities/order-record.orm-entity';
 import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
-import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
+import { OrderRecord } from '../../../domain/entities/order-record.entity';
+import {
+  OrderSyncStatus,
+  SyncAttempt,
+  SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+} from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
-import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords, OrderRecordStatus } from '../../../domain/types/order-record.types';
+import type {
+  OrderRecordFilters,
+  OrderRecordPagination,
+  PaginatedOrderRecords,
+  OrderRecordStatus,
+} from '../../../domain/types/order-record.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -98,25 +112,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return this.toDomain(saved);
   }
 
+  /**
+   * Atomic per-destination upsert + append.
+   *
+   * Single SQL statement so concurrent workers serialize on the row's
+   * exclusive write lock (no read-modify-write race). The `syncAttempts`
+   * column is capped per destination using a window function: rows are
+   * ranked most-recent-first within each `destinationConnectionId`, and
+   * only the top N are kept. Entries are wrapped via `jsonb_build_array`
+   * so the binder can't collapse object/array semantics.
+   */
   async updateSyncStatus(
     internalOrderId: string,
     destinationConnectionId: string,
     status: OrderSyncStatus,
+    attempt: SyncAttempt,
   ): Promise<void> {
-    const entity = await this.repository.findOne({
-      where: { internalOrderId },
-    });
-
-    if (!entity) {
-      throw new OrderRecordNotFoundException(internalOrderId);
-    }
-
-    // Update or add sync status for the destination
-    const existingIndex = entity.syncStatus.findIndex(
-      (s) => s.destinationConnectionId === destinationConnectionId,
-    );
-
-    const statusJson: OrderSyncStatusJson = {
+    const newStatusRow: OrderSyncStatusJson = {
       destinationConnectionId: status.destinationConnectionId,
       status: status.status,
       syncedAt: status.syncedAt?.toISOString(),
@@ -125,13 +137,60 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       error: status.error,
     };
 
-    if (existingIndex >= 0) {
-      entity.syncStatus[existingIndex] = statusJson;
-    } else {
-      entity.syncStatus.push(statusJson);
-    }
+    const newAttemptRow: SyncAttemptJson = {
+      destinationConnectionId: attempt.destinationConnectionId,
+      status: attempt.status,
+      attemptedAt: attempt.attemptedAt.toISOString(),
+      error: attempt.error,
+      externalOrderId: attempt.externalOrderId,
+      externalOrderNumber: attempt.externalOrderNumber,
+    };
 
-    await this.repository.save(entity);
+    // Raw query keeps the JSONB expression and the parameter binding explicit
+    // (TypeORM's UpdateQueryBuilder set-with-function path doesn't substitute
+    // named params inside the raw SQL fragment reliably across versions).
+    // pg returns `[rows, affected]` for UPDATE; TypeORM forwards that shape
+    // through `Repository.query`, which is typed `Promise<any>`.
+    const result = (await this.repository.query(
+      `
+      UPDATE "order_records"
+      SET
+        "syncStatus" = (
+          SELECT COALESCE(jsonb_agg(s), '[]'::jsonb)
+          FROM jsonb_array_elements("syncStatus") s
+          WHERE s->>'destinationConnectionId' != $2
+        ) || jsonb_build_array($3::jsonb),
+        "syncAttempts" = (
+          SELECT COALESCE(jsonb_agg(a ORDER BY ord), '[]'::jsonb)
+          FROM (
+            SELECT
+              a, ord,
+              ROW_NUMBER() OVER (
+                PARTITION BY a->>'destinationConnectionId' ORDER BY ord DESC
+              ) AS recency_rank
+            FROM jsonb_array_elements(
+              "syncAttempts" || jsonb_build_array($4::jsonb)
+            ) WITH ORDINALITY AS t(a, ord)
+          ) ranked
+          WHERE recency_rank <= $5
+        ),
+        "updatedAt" = NOW()
+      WHERE "internalOrderId" = $1
+      `,
+      [
+        internalOrderId,
+        destinationConnectionId,
+        JSON.stringify(newStatusRow),
+        JSON.stringify(newAttemptRow),
+        SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+      ],
+    )) as unknown;
+
+    const affected =
+      Array.isArray(result) && typeof result[1] === 'number' ? result[1] : 0;
+    if (affected === 0) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
   }
 
   /**
@@ -147,6 +206,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       error: s.error,
     }));
 
+    const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
+      destinationConnectionId: a.destinationConnectionId,
+      status: a.status,
+      attemptedAt: new Date(a.attemptedAt),
+      error: a.error,
+      externalOrderId: a.externalOrderId,
+      externalOrderNumber: a.externalOrderNumber,
+    }));
+
     return new OrderRecord(
       entity.internalOrderId,
       entity.customerId,
@@ -157,6 +225,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
       entity.updatedAt,
+      syncAttempts,
     );
   }
 
@@ -177,6 +246,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+    }));
+    entity.syncAttempts = orderRecord.syncAttempts.map((a) => ({
+      destinationConnectionId: a.destinationConnectionId,
+      status: a.status,
+      attemptedAt: a.attemptedAt.toISOString(),
+      error: a.error,
+      externalOrderId: a.externalOrderId,
+      externalOrderNumber: a.externalOrderNumber,
     }));
     entity.recordStatus = orderRecord.recordStatus;
     entity.createdAt = orderRecord.createdAt;

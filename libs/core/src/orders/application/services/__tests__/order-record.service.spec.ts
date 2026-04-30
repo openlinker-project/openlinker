@@ -360,13 +360,24 @@ describe('OrderRecordService', () => {
   });
 
   describe('updateSyncStatus', () => {
-    it('should update sync status for a destination', async () => {
+    const FROZEN_NOW = new Date('2026-04-30T11:22:33.000Z');
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(FROZEN_NOW);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should pass through status and stamp attemptedAt with the current time', async () => {
       const internalOrderId = 'order-123';
       const destinationConnectionId = 'dest-connection-456';
       const status: OrderSyncStatus = {
         destinationConnectionId,
         status: 'synced',
-        syncedAt: new Date(),
+        syncedAt: new Date('2026-04-30T11:22:33.000Z'),
         externalOrderId: 'external-order-789',
         externalOrderNumber: 'EXT-001',
       };
@@ -379,10 +390,18 @@ describe('OrderRecordService', () => {
         internalOrderId,
         destinationConnectionId,
         status,
+        {
+          destinationConnectionId,
+          status: 'synced',
+          attemptedAt: FROZEN_NOW,
+          error: undefined,
+          externalOrderId: 'external-order-789',
+          externalOrderNumber: 'EXT-001',
+        },
       );
     });
 
-    it('should handle failed sync status', async () => {
+    it('should propagate the error onto the attempt for failed status', async () => {
       const internalOrderId = 'order-123';
       const destinationConnectionId = 'dest-connection-456';
       const status: OrderSyncStatus = {
@@ -399,6 +418,12 @@ describe('OrderRecordService', () => {
         internalOrderId,
         destinationConnectionId,
         status,
+        expect.objectContaining({
+          destinationConnectionId,
+          status: 'failed',
+          attemptedAt: FROZEN_NOW,
+          error: 'Sync failed: Connection timeout',
+        }),
       );
     });
   });

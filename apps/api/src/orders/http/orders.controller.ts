@@ -31,10 +31,16 @@ import {
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
 } from '@openlinker/core/orders';
-import type { OrderRecord, OrderSyncStatus, IOrderDestinationRetryService } from '@openlinker/core/orders';
+import type {
+  OrderRecord,
+  OrderSyncStatus,
+  SyncAttempt,
+  IOrderDestinationRetryService,
+} from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
+import { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 
@@ -151,6 +157,7 @@ export class OrdersController {
       sourceEventId: order.sourceEventId,
       orderSnapshot: order.orderSnapshot,
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
+      syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
@@ -165,6 +172,17 @@ export class OrdersController {
       externalOrderId: s.externalOrderId ?? null,
       externalOrderNumber: s.externalOrderNumber ?? null,
       error: s.error ?? null,
+    };
+  }
+
+  private toSyncAttemptDto(a: SyncAttempt): SyncAttemptResponseDto {
+    return {
+      destinationConnectionId: a.destinationConnectionId,
+      status: a.status,
+      attemptedAt: a.attemptedAt instanceof Date ? a.attemptedAt.toISOString() : a.attemptedAt,
+      error: a.error ?? null,
+      externalOrderId: a.externalOrderId ?? null,
+      externalOrderNumber: a.externalOrderNumber ?? null,
     };
   }
 }

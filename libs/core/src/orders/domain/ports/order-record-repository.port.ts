@@ -9,6 +9,7 @@
  */
 import { OrderRecord } from '../entities/order-record.entity';
 import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords } from '../types/order-record.types';
+import type { SyncAttempt } from '../types/order-sync.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -23,12 +24,20 @@ export interface OrderRecordRepositoryPort {
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
   /**
-   * Update sync status for a destination connection
+   * Update sync status for a destination connection.
+   *
+   * Atomically (single SQL statement):
+   *   1. upserts the per-destination row in `syncStatus` (current state),
+   *   2. appends `attempt` to `syncAttempts`, keeping at most the documented
+   *      per-destination cap of most-recent entries.
+   *
+   * Throws `OrderRecordNotFoundException` if no row matches `internalOrderId`.
    */
   updateSyncStatus(
     internalOrderId: string,
     destinationConnectionId: string,
     status: OrderRecord['syncStatus'][0],
+    attempt: SyncAttempt,
   ): Promise<void>;
 
   /**
