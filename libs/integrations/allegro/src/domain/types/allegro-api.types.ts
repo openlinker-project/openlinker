@@ -9,7 +9,15 @@
  */
 
 /**
- * Allegro checkout form (from GET /order/checkout-forms/{id})
+ * Allegro checkout form (from GET /order/checkout-forms/{id}).
+ *
+ * The `delivery` block mirrors the Allegro swagger
+ * `CheckoutFormDeliveryReference`. Today's adapter (`AllegroOrderSourceAdapter`)
+ * consumes only `delivery.cost` (#454 — shipping totals) and `delivery.address`
+ * (#457 — preferred shippingAddress source). The remaining fields are typed
+ * proactively so #455 (carrier mapping → `method.id`) and #458
+ * (pickup-point forwarding → `pickupPoint`) don't need to re-extend this
+ * interface.
  */
 export interface AllegroCheckoutForm {
   id: string;
@@ -55,6 +63,41 @@ export interface AllegroCheckoutForm {
       amount: string;
       currency: string;
     };
+  };
+  delivery?: {
+    /** #455 — carrier mapping consumes `method.id`. Ignored in this adapter today. */
+    method?: { id: string; name?: string };
+    /** #454 — `cost.amount` is the per-order shipping cost. */
+    cost?: { amount: string; currency: string };
+    /**
+     * #457 — preferred source for `shippingAddress`. May be present-but-empty
+     * (`{}`) on pickup-point orders where the parcel ships to the locker, not
+     * to a street address; the adapter guards against that case.
+     */
+    address?: {
+      firstName?: string;
+      lastName?: string;
+      street?: string;
+      city?: string;
+      zipCode?: string;
+      countryCode?: string;
+      companyName?: string;
+      phoneNumber?: string;
+    };
+    /** #458 — pickup-point (InPost locker etc.). Ignored in this adapter today. */
+    pickupPoint?: {
+      id: string;
+      name?: string;
+      description?: string;
+      address?: {
+        street?: string;
+        zipCode?: string;
+        city?: string;
+        countryCode?: string;
+      };
+    };
+    /** Allegro Smart! free-delivery flag. Ignored today. */
+    smart?: boolean;
   };
   createdAt?: string;
   updatedAt?: string;

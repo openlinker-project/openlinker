@@ -16,6 +16,7 @@ import type {
   OrderFeedOutput,
   OrderFeedEventType,
   IncomingOrder,
+  IncomingOrderAddress,
 } from '@openlinker/core/orders';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -149,6 +150,19 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
       const createdAt = checkoutForm.createdAt ?? new Date().toISOString();
       const updatedAt = checkoutForm.updatedAt ?? createdAt;
 
+      // #454 — split totals: derive subtotal from line items, shipping from
+      // delivery.cost (or fallback). Previously we used `totalToPay` as both
+      // subtotal and total, which left PrestaShop with `total_shipping=0` and
+      // a `Payment error` reconciliation gap on every Allegro order.
+      const subtotal = checkoutForm.lineItems.reduce(
+        (acc, item) => acc + Number.parseFloat(item.price.amount) * item.quantity,
+        0,
+      );
+      const total = Number.parseFloat(checkoutForm.summary.totalToPay.amount);
+      const shipping = checkoutForm.delivery?.cost
+        ? Number.parseFloat(checkoutForm.delivery.cost.amount)
+        : Math.max(0, total - subtotal);
+
       return {
         externalOrderId: checkoutFormId,
         orderNumber: checkoutFormId,
@@ -167,23 +181,13 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
           // internal product catalog is tracked as a separate follow-up.
         })),
         totals: {
-          subtotal: Number.parseFloat(checkoutForm.summary.totalToPay.amount),
+          subtotal: roundCurrency(subtotal),
           tax: 0,
-          shipping: 0,
-          total: Number.parseFloat(checkoutForm.summary.totalToPay.amount),
+          shipping: roundCurrency(shipping),
+          total: roundCurrency(total),
           currency: checkoutForm.summary.totalToPay.currency,
         },
-        shippingAddress: checkoutForm.buyer.address
-          ? {
-              firstName: checkoutForm.buyer.firstName,
-              lastName: checkoutForm.buyer.lastName,
-              address1: checkoutForm.buyer.address.street ?? '',
-              city: checkoutForm.buyer.address.city ?? '',
-              postalCode: checkoutForm.buyer.address.zipCode ?? '',
-              country: checkoutForm.buyer.address.countryCode ?? '',
-              phone: checkoutForm.buyer.phoneNumber,
-            }
-          : undefined,
+        shippingAddress: this.resolveShippingAddress(checkoutForm),
         billingAddress: undefined,
         createdAt,
         updatedAt,
@@ -202,6 +206,60 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
       throw error;
     }
   }
+
+  /**
+   * Resolve the shipping address from the checkout form (#457).
+   *
+   * Prefers `delivery.address` (the actual checkout-time ship-to that the
+   * buyer chose) over `buyer.address` (the buyer's stored profile address).
+   * Falls back to `buyer.address` when `delivery.address` is absent or empty.
+   *
+   * The empty-object guard matters for pickup-point orders: Allegro can
+   * return `delivery: { address: {} }` when the parcel ships to an InPost
+   * locker (the locker address lives on `delivery.pickupPoint`, which is
+   * #458's scope, not this PR's). Without the guard, we'd emit empty
+   * strings for every address field — worse than today's `buyer.address`
+   * fallback.
+   */
+  private resolveShippingAddress(
+    checkoutForm: AllegroCheckoutForm,
+  ): IncomingOrderAddress | undefined {
+    const deliveryAddr = checkoutForm.delivery?.address;
+    const hasDeliveryAddress = Boolean(
+      deliveryAddr && (deliveryAddr.street || deliveryAddr.city || deliveryAddr.zipCode),
+    );
+
+    if (hasDeliveryAddress && deliveryAddr) {
+      this.logger.debug(
+        `Using delivery.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`,
+      );
+      return {
+        firstName: deliveryAddr.firstName,
+        lastName: deliveryAddr.lastName,
+        company: deliveryAddr.companyName,
+        address1: deliveryAddr.street ?? '',
+        city: deliveryAddr.city ?? '',
+        postalCode: deliveryAddr.zipCode ?? '',
+        country: deliveryAddr.countryCode ?? '',
+        phone: deliveryAddr.phoneNumber,
+      };
+    }
+    if (checkoutForm.buyer.address) {
+      this.logger.debug(
+        `Using buyer.address as shippingAddress fallback for ${checkoutForm.id} (connection: ${this.connectionId})`,
+      );
+      return {
+        firstName: checkoutForm.buyer.firstName,
+        lastName: checkoutForm.buyer.lastName,
+        address1: checkoutForm.buyer.address.street ?? '',
+        city: checkoutForm.buyer.address.city ?? '',
+        postalCode: checkoutForm.buyer.address.zipCode ?? '',
+        country: checkoutForm.buyer.address.countryCode ?? '',
+        phone: checkoutForm.buyer.phoneNumber,
+      };
+    }
+    return undefined;
+  }
 }
 
 function mapAllegroEventType(type: string): OrderFeedEventType {
@@ -210,4 +268,15 @@ function mapAllegroEventType(type: string): OrderFeedEventType {
   if (t.includes('PAID')) return 'paid';
   if (t.includes('BOUGHT')) return 'created';
   return 'updated';
+}
+
+/**
+ * Round a number to 2-decimal currency precision.
+ *
+ * MVP: assumes 2-decimal currencies (PLN, EUR, USD). Allegro PL is the only
+ * marketplace today, so PLN coverage is sufficient. Revisit when a non-2-decimal
+ * currency surfaces (JPY = 0, BHD = 3, etc.) — likely via an Allegro CZ/SK seller.
+ */
+function roundCurrency(amount: number): number {
+  return Math.round(amount * 100) / 100;
 }

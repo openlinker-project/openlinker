@@ -229,7 +229,14 @@ describe('AllegroOrderSourceAdapter', () => {
         price: 19.99,
         name: 'Offer 1',
       });
-      expect(incoming.totals).toMatchObject({ total: 39.98, currency: 'PLN' });
+      // No `delivery` block — totals split with shipping=0, subtotal == total.
+      expect(incoming.totals).toEqual({
+        subtotal: 39.98,
+        tax: 0,
+        shipping: 0,
+        total: 39.98,
+        currency: 'PLN',
+      });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
     });
 
@@ -255,6 +262,206 @@ describe('AllegroOrderSourceAdapter', () => {
       const incoming = await adapter.getOrder({ externalOrderId: 'checkout-2' });
 
       expect(incoming.status).toBe('pending');
+    });
+
+    describe('totals — shipping cost (#454)', () => {
+      const baseForm = (): AllegroCheckoutForm => ({
+        id: 'cf',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: { id: 'b', email: 'b@e.com', login: 'b' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '22.49', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should compute subtotal and shipping correctly when delivery.cost is present', async () => {
+        const form = baseForm();
+        form.delivery = { cost: { amount: '12.49', currency: 'PLN' } };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.totals).toEqual({
+          subtotal: 10,
+          tax: 0,
+          shipping: 12.49,
+          total: 22.49,
+          currency: 'PLN',
+        });
+      });
+
+      it('should fall back to total - subtotal when delivery.cost is absent', async () => {
+        const form = baseForm();
+        // No `delivery` block — fallback path.
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.totals.shipping).toBe(12.49);
+      });
+
+      it('should clamp shipping to 0 when subtotal exceeds total (defensive)', async () => {
+        const form = baseForm();
+        form.lineItems = [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 5,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ];
+        form.summary = { totalToPay: { amount: '30.00', currency: 'PLN' } };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.totals.subtotal).toBe(50);
+        expect(incoming.totals.shipping).toBe(0);
+        expect(incoming.totals.total).toBe(30);
+      });
+
+      it('should report shipping=0 when delivery.cost is explicitly 0.00 (free delivery)', async () => {
+        // Locks in the right code path: a `||` regression would pass this test
+        // accidentally because subtotal == total, but the assertion that
+        // `delivery.cost` was the source still belongs in the suite — future
+        // edits that diverge the two paths (e.g. tax handling) will catch it.
+        const form = baseForm();
+        form.delivery = { cost: { amount: '0.00', currency: 'PLN' } };
+        form.summary = { totalToPay: { amount: '10.00', currency: 'PLN' } };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.totals).toEqual({
+          subtotal: 10,
+          tax: 0,
+          shipping: 0,
+          total: 10,
+          currency: 'PLN',
+        });
+      });
+    });
+
+    describe('shippingAddress — delivery.address preference (#457)', () => {
+      const baseForm = (): AllegroCheckoutForm => ({
+        id: 'cf',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: {
+          id: 'b',
+          email: 'b@e.com',
+          login: 'b',
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          phoneNumber: '+48000000000',
+          address: {
+            street: 'Profile Street 1',
+            city: 'BuyerCity',
+            zipCode: '00-001',
+            countryCode: 'PL',
+          },
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should prefer delivery.address over buyer.address for shippingAddress', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {
+            firstName: 'Recipient',
+            lastName: 'Different',
+            companyName: 'Acme Sp. z o.o.',
+            street: 'Delivery Street 99',
+            city: 'DeliveryCity',
+            zipCode: '99-999',
+            countryCode: 'PL',
+            phoneNumber: '+48999999999',
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shippingAddress).toEqual({
+          firstName: 'Recipient',
+          lastName: 'Different',
+          company: 'Acme Sp. z o.o.',
+          address1: 'Delivery Street 99',
+          city: 'DeliveryCity',
+          postalCode: '99-999',
+          country: 'PL',
+          phone: '+48999999999',
+        });
+      });
+
+      it('should fall back to buyer.address when delivery.address is undefined', async () => {
+        const form = baseForm();
+        // No `delivery` block at all.
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shippingAddress).toMatchObject({
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          address1: 'Profile Street 1',
+          city: 'BuyerCity',
+          postalCode: '00-001',
+          country: 'PL',
+          phone: '+48000000000',
+        });
+      });
+
+      it('should fall back to buyer.address when delivery.address is an empty object', async () => {
+        // Pickup-point order: parcel goes to delivery.pickupPoint (#458 scope),
+        // delivery.address is empty {}. Without the empty-guard, we'd emit
+        // empty strings — worse than today's buyer.address fallback.
+        const form = baseForm();
+        form.delivery = { address: {} };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shippingAddress?.city).toBe('BuyerCity');
+        expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
+      });
+
+      it('should fall back to buyer.address when delivery.address has only name fields (no geography)', async () => {
+        // Defensive: a delivery.address with firstName/lastName but no
+        // street/city/zipCode is geographically meaningless — the empty-guard
+        // pushes it to the buyer.address fallback rather than emitting empty
+        // strings. This case is exotic but cheap to lock in.
+        const form = baseForm();
+        form.delivery = {
+          address: {
+            firstName: 'Recipient',
+            lastName: 'NoGeography',
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shippingAddress?.firstName).toBe('Buyer'); // from buyer.address
+        expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
+      });
     });
   });
 });
