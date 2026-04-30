@@ -8,6 +8,11 @@
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
 import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService } from '@openlinker/core/integrations';
+import {
+  MappingsModule,
+  MAPPING_CONFIG_SERVICE_TOKEN,
+  IMappingConfigService,
+} from '@openlinker/core/mappings';
 import { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
 import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
@@ -22,7 +27,7 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { Logger } from '@openlinker/shared/logging';
 
 @Module({
-  imports: [IntegrationsModule, CustomersModule, RedisConfigModule],
+  imports: [IntegrationsModule, CustomersModule, RedisConfigModule, MappingsModule],
   providers: [PrestashopCustomerProvisioner, PrestashopAddressProvisioner, PrestashopCountryResolver],
 })
 export class PrestashopIntegrationModule implements OnModuleInit {
@@ -37,6 +42,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly addressProvisioner: PrestashopAddressProvisioner,
     @Inject(CUSTOMER_PROJECTION_REPOSITORY_TOKEN)
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
+    @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
+    private readonly mappingConfigService: IMappingConfigService,
   ) {}
 
   onModuleInit(): void {
@@ -45,6 +52,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       this.customerProvisioner,
       this.addressProvisioner,
       this.customerProjectionRepository,
+      this.mappingConfigService,
     );
     this.factoryResolver.registerFactory('prestashop.webservice.v1', factory);
     this.connectionTesterRegistry.register(

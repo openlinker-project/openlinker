@@ -23,7 +23,7 @@ import {
   DestinationAddressMapping,
   AddressType,
 } from '@openlinker/core/customers';
-import { Address } from '@openlinker/core/orders';
+import { Address, OrderPickupPoint } from '@openlinker/core/orders';
 import {
   PrestashopAddress,
   PrestashopAddressCreate,
@@ -48,6 +48,23 @@ function generateAddressAlias(addressType: AddressType, addressHash: string): st
   // Use first 6 characters of hash for alias (sufficient for uniqueness)
   const hashPrefix = addressHash.substring(0, 6);
   return `OL-${addressType}-${hashPrefix}`;
+}
+
+/**
+ * Build the operator-facing `address2` string for a pickup-point order (#458).
+ *
+ * Examples:
+ *   `Paczkomat POZ08A · Stacja paliw BP`   (name + id + description)
+ *   `Paczkomat POZ08A`                     (name + id, no description)
+ *   `POZ08A`                               (id only)
+ */
+function formatPickupPointAddress2(pickupPoint: OrderPickupPoint): string {
+  const head = pickupPoint.name ?? pickupPoint.id;
+  const headWithId =
+    pickupPoint.name && !pickupPoint.name.includes(pickupPoint.id)
+      ? `${pickupPoint.name} ${pickupPoint.id}`
+      : head;
+  return pickupPoint.description ? `${headWithId} · ${pickupPoint.description}` : headWithId;
 }
 
 @Injectable()
@@ -163,9 +180,18 @@ export class PrestashopAddressProvisioner {
     webserviceClient: IPrestashopWebserviceClient,
     _connectionConfig: PrestashopConnectionConfig,
     customerProjectionRepository: CustomerProjectionRepositoryPort,
+    pickupPoint?: OrderPickupPoint,
   ): Promise<string> {
-    // Step 1: Compute addressHash
-    const addressHash = this.computeAddressHash(address);
+    // Step 0: Single locker-aware view used for BOTH hashing and the PS create
+    // payload (#458). Keeping these tied together prevents drift — re-syncing
+    // the same locker after a code change either updates both consistently or
+    // doesn't update at all. No silent duplicate PS address rows.
+    const effectiveAddress: Address = pickupPoint
+      ? { ...address, address2: formatPickupPointAddress2(pickupPoint) }
+      : address;
+
+    // Step 1: Compute addressHash from the effective view.
+    const addressHash = this.computeAddressHash(effectiveAddress);
 
     // Step 2: Primary reuse - Query destination_address_mappings table
     const existingMapping = await customerProjectionRepository.findDestinationAddressMapping(
@@ -279,7 +305,7 @@ export class PrestashopAddressProvisioner {
               address2: prestashopAddr.address2,
               city: prestashopAddr.city,
               postcode: prestashopAddr.postcode,
-              countryIso2: address.country, // Use order address country for comparison
+              countryIso2: effectiveAddress.country, // Use order address country for comparison
             };
 
             const prestashopHash = hashAddress(normalized);
@@ -302,7 +328,7 @@ export class PrestashopAddressProvisioner {
         // Create new address
         // Resolve country ID
         const countryId = await this.countryResolver.resolveCountryId(
-          address.country,
+          effectiveAddress.country,
           destinationConnectionId,
           webserviceClient,
         );
@@ -329,13 +355,13 @@ export class PrestashopAddressProvisioner {
           id_customer: customerIdNum,
           id_country: countryId,
           alias,
-          firstname: address.firstName || 'Guest',
-          lastname: address.lastName || 'Customer',
-          address1: address.address1,
-          address2: address.address2,
-          city: address.city,
-          postcode: address.postalCode,
-          phone: address.phone,
+          firstname: effectiveAddress.firstName || 'Guest',
+          lastname: effectiveAddress.lastName || 'Customer',
+          address1: effectiveAddress.address1,
+          address2: effectiveAddress.address2,
+          city: effectiveAddress.city,
+          postcode: effectiveAddress.postalCode,
+          phone: effectiveAddress.phone,
         };
 
         const createdAddress = await webserviceClient.createResource<PrestashopAddress>(

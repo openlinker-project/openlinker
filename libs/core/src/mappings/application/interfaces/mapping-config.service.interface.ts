@@ -34,6 +34,20 @@ export interface IMappingConfigService {
    */
   resolveStatusMapping(connectionId: string, allegroStatus: string): Promise<string | null>;
 
+  /**
+   * Resolve the configured PrestaShop carrier ID for a given Allegro delivery method.
+   *
+   * `connectionId` is the **source** connection (Allegro) — same scoping convention
+   * as `resolveStatusMapping`. Returns null if no mapping is configured for this
+   * connection + allegroDeliveryMethodId pair; the caller is expected to fall back
+   * to a default carrier id (configured per destination connection) and ultimately
+   * to PrestaShop's `id_carrier=1` if neither is available.
+   */
+  resolveCarrierMapping(
+    connectionId: string,
+    allegroDeliveryMethodId: string,
+  ): Promise<string | null>;
+
   getCategoryMappings(connectionId: string): Promise<CategoryMapping[]>;
   upsertCategoryMapping(connectionId: string, input: CategoryMappingInput): Promise<CategoryMapping>;
   deleteCategoryMapping(connectionId: string, prestashopCategoryId: string): Promise<void>;

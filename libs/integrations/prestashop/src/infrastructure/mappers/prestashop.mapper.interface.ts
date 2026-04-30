@@ -175,6 +175,7 @@ export interface IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
+    externalCarrierId?: number,
   ): Record<string, unknown>;
 
   /**

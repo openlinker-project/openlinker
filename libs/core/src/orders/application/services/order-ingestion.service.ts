@@ -307,6 +307,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       totals: incoming.totals,
       shippingAddress: incoming.shippingAddress,
       billingAddress: incoming.billingAddress,
+      shipping: incoming.shipping,
+      pickupPoint: incoming.pickupPoint,
       createdAt: new Date(incoming.createdAt),
       updatedAt: new Date(incoming.updatedAt),
     };

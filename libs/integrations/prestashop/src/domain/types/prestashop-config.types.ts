@@ -88,6 +88,21 @@ export interface PrestashopConnectionConfig {
    * @see {@link Product.currency} in `@openlinker/core`
    */
   currency?: string;
+
+  /**
+   * Default PrestaShop carrier ID applied to incoming orders when no
+   * connection-level carrier mapping resolves for the source delivery method.
+   *
+   * Resolution chain at order-create time:
+   *   1. Per-method carrier mapping (`MappingConfigService.resolveCarrierMapping`)
+   *   2. This `defaultCarrierId`
+   *   3. PrestaShop's hardcoded `id_carrier=1` (first carrier)
+   *
+   * Both fallbacks are logged at `warn` so unmapped methods are observable.
+   * Must be a positive integer; `0` and negatives are rejected at config-validation
+   * time.
+   */
+  defaultCarrierId?: number;
 }
 
 

@@ -20,6 +20,7 @@ import {
   MappingAlreadyExistsError,
   DuplicateIdentifierMappingError,
 } from '@openlinker/core/identifier-mapping';
+import { IMappingConfigService } from '@openlinker/core/mappings';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { IPrestashopOrderMapper, PrestashopOrder } from '../mappers/prestashop.mapper.interface';
 import {
@@ -52,6 +53,7 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
     private readonly addressProvisioner: PrestashopAddressProvisioner,
     private readonly currencyResolver: PrestashopCurrencyResolver,
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
+    private readonly mappingConfigService?: IMappingConfigService,
   ) {}
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
@@ -214,6 +216,9 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
           this.httpClient,
           connectionConfig,
           this.customerProjectionRepository,
+          // Locker code goes onto the *shipping* address; the billing address
+          // (if any) stays the buyer's home and shouldn't carry pickup-point info.
+          order.pickupPoint,
         );
         this.logger.debug(`Resolved shipping address ID: ${externalShippingAddressId}`);
       }
@@ -248,6 +253,9 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
       const externalLangId: number = configLangId ?? 1; // Default to 1 if not specified
       this.logger.debug(`Using language ID: ${externalLangId} (from connection config)`);
 
+      // Step 5b: Resolve carrier id for #455 — carrier mapping at the destination.
+      const externalCarrierId = await this.resolveExternalCarrierId(order, config);
+
       // Step 6: Create cart in PrestaShop (required for order creation)
       this.logger.debug(`Creating cart in PrestaShop for order creation`);
       const prestashopCartData = this.orderMapper.mapCartCreate(
@@ -274,7 +282,7 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         );
       }
 
-      // Step 7: Map OrderCreate to PrestaShop format (including cart ID, currency ID, and language ID)
+      // Step 7: Map OrderCreate to PrestaShop format (including cart ID, currency ID, language ID, carrier ID)
       const prestashopOrderData = this.orderMapper.mapOrderCreate(
         order,
         externalCustomerId,
@@ -284,6 +292,7 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         externalBillingAddressId,
         externalCurrencyId,
         externalLangId,
+        externalCarrierId,
       );
       // Add cart ID to order data (required by PrestaShop)
       prestashopOrderData.id_cart = externalCartId;
@@ -454,6 +463,63 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         undefined,
       );
     }
+  }
+
+  /**
+   * Resolve the PrestaShop `id_carrier` to use when creating an order (#455).
+   *
+   * Resolution chain:
+   *   1. `MappingConfigService.resolveCarrierMapping(sourceConnectionId, methodId)`
+   *   2. `connection.config.defaultCarrierId`
+   *   3. `undefined` — mapper falls back to its hardcoded `1`
+   *
+   * Returns `undefined` to defer the final hardcoded default to the mapper,
+   * keeping the "every fallback gets a warn" semantics in one place.
+   */
+  private async resolveExternalCarrierId(
+    order: OrderCreate,
+    config: PrestashopConnectionConfig,
+  ): Promise<number | undefined> {
+    const sourceConnectionId = order.source?.connectionId;
+    const methodId = order.shipping?.methodId;
+    const methodName = order.shipping?.methodName;
+
+    if (this.mappingConfigService && sourceConnectionId && methodId) {
+      const mapped = await this.mappingConfigService.resolveCarrierMapping(
+        sourceConnectionId,
+        methodId,
+      );
+      if (mapped) {
+        const parsed = Number.parseInt(mapped, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          this.logger.debug(
+            `Resolved carrier mapping: methodId=${methodId} → id_carrier=${parsed} ` +
+              `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id})`,
+          );
+          return parsed;
+        }
+        this.logger.warn(
+          `Carrier mapping resolved to non-positive integer "${mapped}" — ignoring. ` +
+            `methodId=${methodId} sourceConnectionId=${sourceConnectionId}`,
+        );
+      }
+    }
+
+    if (config.defaultCarrierId !== undefined) {
+      this.logger.warn(
+        `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
+          `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}). ` +
+          `Falling back to connection.config.defaultCarrierId=${config.defaultCarrierId}.`,
+      );
+      return config.defaultCarrierId;
+    }
+
+    this.logger.warn(
+      `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
+        `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}) ` +
+        `and no defaultCarrierId on connection config. Falling back to PrestaShop's first carrier (id_carrier=1).`,
+    );
+    return undefined;
   }
 }
 

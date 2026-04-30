@@ -19,6 +19,7 @@ import {
   DuplicateIdentifierMappingError,
 } from '@openlinker/core/identifier-mapping';
 import { OrderCreate } from '@openlinker/core/orders';
+import { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
 import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
@@ -211,6 +212,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1, // currencyId
         1, // langId
+        undefined, // externalCarrierId — no mapping configured, no defaultCarrierId; mapper falls back to 1
       );
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
@@ -730,6 +732,220 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
+    });
+  });
+
+  describe('carrier resolution (#455)', () => {
+    const ALLEGRO_CONNECTION_ID = 'conn-allegro-1';
+    const ALLEGRO_METHOD_ID = '1fa56f79-aaa';
+
+    const buildOrderWithShipping = (): OrderCreate => ({
+      ...createTestOrder(),
+      shipping: { methodId: ALLEGRO_METHOD_ID, methodName: 'InPost Paczkomat' },
+      source: { connectionId: ALLEGRO_CONNECTION_ID },
+    });
+
+    const wireSuccessfulMappings = (externalCustomerId: string): void => {
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
+        if (entityType === 'Customer') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' },
+          ]);
+        }
+        if (entityType === 'Product' && internalId === 'internal-product-456') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'Product' && internalId === 'internal-product-789') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '200', entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'ProductVariant') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      mockOrderMapper.mapOrderCreate.mockReturnValue({
+        id_customer: externalCustomerId,
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      });
+
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce({ id: '123' })
+        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+    };
+
+    it('passes mapped externalCarrierId to mapOrderCreate when MappingConfigService resolves', async () => {
+      wireSuccessfulMappings('42');
+      const resolveCarrierMapping = jest.fn().mockResolvedValue('4');
+      const mockMappingConfig = { resolveCarrierMapping } as unknown as IMappingConfigService;
+      const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connection,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockMappingConfig,
+      );
+
+      await adapterWithMapping.createOrder(buildOrderWithShipping());
+
+      // 9th arg = externalCarrierId
+      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        4,
+      );
+      expect(resolveCarrierMapping).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, ALLEGRO_METHOD_ID);
+    });
+
+    it('falls back to connection.config.defaultCarrierId when no mapping resolves', async () => {
+      wireSuccessfulMappings('42');
+      // Connection fixture with defaultCarrierId set.
+      const connWithDefault = createTestConnection();
+      (connWithDefault.config as Record<string, unknown>).defaultCarrierId = 7;
+
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
+      const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connWithDefault,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockMappingConfig,
+      );
+
+      await adapterWithMapping.createOrder(buildOrderWithShipping());
+
+      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        7,
+      );
+    });
+
+    it('passes undefined externalCarrierId when neither mapping nor defaultCarrierId is set (mapper falls back to 1)', async () => {
+      wireSuccessfulMappings('42');
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
+      const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connection, // default fixture — no defaultCarrierId
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockMappingConfig,
+      );
+
+      await adapterWithMapping.createOrder(buildOrderWithShipping());
+
+      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        undefined,
+      );
+    });
+  });
+
+  describe('pickup-point forwarding (#458)', () => {
+    it('forwards order.pickupPoint into addressProvisioner.resolveOrCreateAddress', async () => {
+      const order: OrderCreate = {
+        ...createTestOrder(),
+        shippingAddress: {
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          address1: 'ul. Lockerowa 1',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+        },
+        pickupPoint: { id: 'POZ08A', name: 'Paczkomat POZ08A', description: 'Stacja paliw BP' },
+      };
+
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType) => {
+        if (entityType === 'Customer') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
+          ]);
+        }
+        if (entityType === 'Product') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'ProductVariant') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+      mockAddressProvisioner.resolveOrCreateAddress = jest.fn().mockResolvedValue('800');
+
+      mockOrderMapper.mapOrderCreate.mockReturnValue({
+        id_customer: '42',
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      });
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce({ id: '123' })
+        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+
+      await adapter.createOrder(order);
+
+      // 9th positional arg of resolveOrCreateAddress is `pickupPoint`.
+      expect(mockAddressProvisioner.resolveOrCreateAddress).toHaveBeenCalledWith(
+        expect.any(String), // internalCustomerId
+        expect.any(String), // prestashopCustomerId
+        order.shippingAddress,
+        'shipping',
+        connection.id,
+        mockHttpClient,
+        expect.any(Object), // connectionConfig
+        mockCustomerProjectionRepository,
+        order.pickupPoint,
+      );
     });
   });
 });

@@ -20,8 +20,10 @@ export {
   OrderItem,
   OrderTotals,
   Address,
+  OrderShipping,
+  OrderPickupPoint,
 } from './domain/types/order.types';
-export { OrderCreate, OrderRef } from './domain/types/order-processor.types';
+export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,
   IncomingOrderItem,

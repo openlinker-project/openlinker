@@ -463,5 +463,159 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
       });
     });
+
+    describe('shipping (#455)', () => {
+      const baseForm = (): AllegroCheckoutForm => ({
+        id: 'cf',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: {
+          id: 'b',
+          email: 'b@e.com',
+          login: 'b',
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should populate shipping.methodId and methodName from delivery.method', async () => {
+        const form = baseForm();
+        form.delivery = {
+          method: { id: '1fa56f79-aaa', name: 'InPost Paczkomat' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shipping).toEqual({
+          methodId: '1fa56f79-aaa',
+          methodName: 'InPost Paczkomat',
+        });
+      });
+
+      it('should leave shipping undefined when delivery.method.id is absent', async () => {
+        const form = baseForm();
+        form.delivery = { cost: { amount: '12.49', currency: 'PLN' } };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.shipping).toBeUndefined();
+      });
+    });
+
+    describe('pickupPoint (#458)', () => {
+      const baseForm = (): AllegroCheckoutForm => ({
+        id: 'cf',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: {
+          id: 'b',
+          email: 'b@e.com',
+          login: 'b',
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          phoneNumber: '+48000000000',
+          address: {
+            street: 'Profile Street 1',
+            city: 'BuyerCity',
+            zipCode: '00-001',
+            countryCode: 'PL',
+          },
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should populate pickupPoint and synthesize shippingAddress from pickupPoint.address', async () => {
+        const form = baseForm();
+        // Allegro returns delivery.address as `{}` for pickup-point orders.
+        form.delivery = {
+          address: {},
+          pickupPoint: {
+            id: 'POZ08A',
+            name: 'Paczkomat POZ08A',
+            description: 'Stacja paliw BP',
+            address: {
+              street: 'ul. Lockerowa 1',
+              city: 'Poznań',
+              zipCode: '60-001',
+              countryCode: 'PL',
+            },
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint).toEqual({
+          id: 'POZ08A',
+          name: 'Paczkomat POZ08A',
+          description: 'Stacja paliw BP',
+        });
+        // shippingAddress geography comes from the locker; recipient name+phone
+        // remain the buyer's (the parcel is collected by the buyer).
+        expect(incoming.shippingAddress).toEqual({
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          address1: 'ul. Lockerowa 1',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+          phone: '+48000000000',
+        });
+      });
+
+      it('should leave pickupPoint undefined when delivery.pickupPoint is absent', async () => {
+        const form = baseForm();
+        form.delivery = { cost: { amount: '12.49', currency: 'PLN' } };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint).toBeUndefined();
+      });
+
+      it('should fall back to buyer.address when pickupPoint.address has no geography', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: {
+            id: 'POZ08A',
+            name: 'Paczkomat POZ08A',
+            // No geography on the locker — defensive fallback.
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint).toEqual({
+          id: 'POZ08A',
+          name: 'Paczkomat POZ08A',
+          description: undefined,
+        });
+        // Falls back to buyer.address since neither delivery.address nor
+        // pickupPoint.address has geography.
+        expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
+        expect(incoming.shippingAddress?.city).toBe('BuyerCity');
+      });
+    });
   });
 });

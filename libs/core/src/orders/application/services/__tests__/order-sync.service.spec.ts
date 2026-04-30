@@ -79,6 +79,7 @@ describe('OrderSyncService', () => {
       getPaymentMappings: jest.fn().mockResolvedValue([]),
       upsertPaymentMappings: jest.fn().mockResolvedValue([]),
       resolveStatusMapping: jest.fn().mockResolvedValue(null),
+      resolveCarrierMapping: jest.fn().mockResolvedValue(null),
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
@@ -108,9 +109,8 @@ describe('OrderSyncService', () => {
       expect(adapter.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({
           orderNumber: 'ORDER-001',
+          source: { connectionId: 'source-1', eventId: 'event-456' },
           metadata: expect.objectContaining({
-            sourceConnectionId: 'source-1',
-            sourceEventId: 'event-456',
             internalOrderId: 'ol_order_123',
           }),
         }),
