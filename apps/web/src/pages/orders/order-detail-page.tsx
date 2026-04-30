@@ -377,7 +377,8 @@ export function OrderDetailPage(): ReactElement {
         <OrderActivityTimeline
           createdAt={order.createdAt}
           recordStatus={order.recordStatus}
-          syncStatus={order.syncStatus}
+          syncAttempts={order.syncAttempts}
+          sourceConnectionId={order.sourceConnectionId}
         />
       </section>
 

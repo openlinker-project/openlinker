@@ -20,6 +20,29 @@ export interface OrderSyncStatus {
   error: string | null;
 }
 
+/**
+ * Per-destination append-only attempt entry. Mirrors `SyncAttemptResponseDto`
+ * (BE) and `SyncAttempt` (CORE). The activity timeline renders one row per
+ * attempt to preserve failure → retry → success history (#456).
+ */
+export interface SyncAttempt {
+  destinationConnectionId: string;
+  status: OrderSyncStatusValue;
+  attemptedAt: string;
+  error: string | null;
+  externalOrderId: string | null;
+  externalOrderNumber: string | null;
+}
+
+/**
+ * Hand-mirrored from `SYNC_ATTEMPTS_PER_DESTINATION_CAP` in
+ * `libs/core/src/orders/domain/types/order-sync.types.ts` per the FE-001
+ * contract strategy. Used to decide whether to surface the "view all
+ * attempts" deep link below a destination's group of timeline rows.
+ * Keep in sync with the BE constant if the cap is ever tuned.
+ */
+export const SYNC_ATTEMPTS_PER_DESTINATION_CAP = 20;
+
 // Mirrors the backend `OrderRecordStatusValues` in `@openlinker/core/orders`.
 // Hand-written transport type per FE-001 contract strategy — keep in sync with backend.
 export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
@@ -32,6 +55,7 @@ export interface OrderRecord {
   sourceEventId: string | null;
   orderSnapshot: Record<string, unknown>;
   syncStatus: OrderSyncStatus[];
+  syncAttempts: SyncAttempt[];
   recordStatus: OrderRecordStatusValue;
   createdAt: string;
   updatedAt: string;

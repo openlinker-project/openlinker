@@ -16,6 +16,7 @@ function makeOrderRecord(overrides: Partial<OrderRecord> = {}): OrderRecord {
       items: [{ id: 'item-1', productRef: { type: 'offer', externalId: 'offer-a' }, quantity: 1, price: 9.99 }],
     },
     syncStatus: [],
+    syncAttempts: [],
     recordStatus: 'awaiting_mapping',
     createdAt: '2026-04-10T08:00:00.000Z',
     updatedAt: '2026-04-10T10:00:00.000Z',

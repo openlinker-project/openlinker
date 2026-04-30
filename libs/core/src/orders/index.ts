@@ -69,7 +69,12 @@ export {
 } from './orders.tokens';
 
 // Domain entities
-export { OrderRecord, OrderSyncStatus } from './domain/entities/order-record.entity';
+export { OrderRecord } from './domain/entities/order-record.entity';
+export {
+  OrderSyncStatus,
+  SyncAttempt,
+  SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+} from './domain/types/order-sync.types';
 
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';

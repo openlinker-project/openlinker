@@ -160,6 +160,57 @@ describe('OrdersController', () => {
       expect(result.items[0].syncStatus[0].externalOrderId).toBeNull();
       expect(result.items[0].syncStatus[0].error).toBeNull();
     });
+
+    it('maps syncAttempts to ISO timestamps and nullable fields', async () => {
+      const orderWithAttempts = new OrderRecord(
+        'ol_order_003',
+        null,
+        'conn-source-001',
+        null,
+        {},
+        [{ destinationConnectionId: 'conn-dest-001', status: 'synced' }],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T01:00:00Z'),
+        [
+          {
+            destinationConnectionId: 'conn-dest-001',
+            status: 'failed',
+            attemptedAt: new Date('2026-04-01T00:30:00Z'),
+            error: 'PL not active',
+          },
+          {
+            destinationConnectionId: 'conn-dest-001',
+            status: 'synced',
+            attemptedAt: new Date('2026-04-01T01:00:00Z'),
+            externalOrderId: 'PS-456',
+          },
+        ],
+      );
+      repository.findMany.mockResolvedValue({ items: [orderWithAttempts], total: 1 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].syncAttempts).toHaveLength(2);
+      expect(result.items[0].syncAttempts[0]).toEqual({
+        destinationConnectionId: 'conn-dest-001',
+        status: 'failed',
+        attemptedAt: '2026-04-01T00:30:00.000Z',
+        error: 'PL not active',
+        externalOrderId: null,
+        externalOrderNumber: null,
+      });
+      expect(result.items[0].syncAttempts[1].externalOrderId).toBe('PS-456');
+      expect(result.items[0].syncAttempts[1].error).toBeNull();
+    });
+
+    it('exposes an empty syncAttempts array when none exist', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].syncAttempts).toEqual([]);
+    });
   });
 
   describe('getOrder', () => {

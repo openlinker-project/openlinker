@@ -11,7 +11,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
 import { OrderRecordOrmEntity, OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
-import { OrderRecord, OrderSyncStatus } from '../../../../domain/entities/order-record.entity';
+import { OrderRecord } from '../../../../domain/entities/order-record.entity';
+import { OrderSyncStatus, SyncAttempt } from '../../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../../domain/exceptions/order-record-not-found.exception';
 
 describe('OrderRecordRepository', () => {
@@ -30,6 +31,7 @@ describe('OrderRecordRepository', () => {
     const mockOrmRepository = {
       findOne: jest.fn(),
       save: jest.fn(),
+      query: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>> & { _qb: typeof qb };
 
@@ -65,6 +67,7 @@ describe('OrderRecordRepository', () => {
       status: 'pending',
     };
     entity.syncStatus = [];
+    entity.syncAttempts = [];
     entity.recordStatus = 'ready';
     entity.createdAt = new Date('2025-01-01T10:00:00Z');
     entity.updatedAt = new Date('2025-01-01T10:00:00Z');
@@ -262,53 +265,11 @@ describe('OrderRecordRepository', () => {
   });
 
   describe('updateSyncStatus', () => {
-    it('should update existing sync status for a destination', async () => {
-      const entity = createOrmEntity();
-      const existingSyncStatus: OrderSyncStatusJson = {
-        destinationConnectionId: 'dest-connection-789',
-        status: 'pending',
-      };
-      entity.syncStatus = [existingSyncStatus];
-      ormRepository.findOne.mockResolvedValue(entity);
-      ormRepository.save.mockResolvedValue(entity);
-
-      const newStatus: OrderSyncStatus = {
-        destinationConnectionId: 'dest-connection-789',
-        status: 'synced',
-        syncedAt: new Date('2025-01-01T11:00:00Z'),
-        externalOrderId: 'external-order-999',
-      };
-
-      await repository.updateSyncStatus('order-123', 'dest-connection-789', newStatus);
-
-      expect(ormRepository.findOne).toHaveBeenCalledWith({
-        where: { internalOrderId: 'order-123' },
-      });
-      expect(ormRepository.save).toHaveBeenCalledTimes(1);
-      const savedEntity = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(savedEntity.syncStatus).toHaveLength(1);
-      expect(savedEntity.syncStatus[0].status).toBe('synced');
-    });
-
-    it('should add new sync status if destination not found', async () => {
-      const entity = createOrmEntity();
-      entity.syncStatus = [];
-      ormRepository.findOne.mockResolvedValue(entity);
-      ormRepository.save.mockResolvedValue(entity);
-
-      const newStatus: OrderSyncStatus = {
-        destinationConnectionId: 'dest-connection-789',
-        status: 'synced',
-        syncedAt: new Date('2025-01-01T11:00:00Z'),
-      };
-
-      await repository.updateSyncStatus('order-123', 'dest-connection-789', newStatus);
-
-      const savedEntity = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(savedEntity.syncStatus).toHaveLength(1);
-      expect(savedEntity.syncStatus[0].destinationConnectionId).toBe('dest-connection-789');
-    });
-
+    // The current-state upsert + per-destination append + cap is implemented
+    // as a single SQL statement and is covered end-to-end by the integration
+    // test in apps/api/test/integration/order-record-attempts.int-spec.ts.
+    // The unit test here only guards the not-found branch — the only path the
+    // integration test can't cheaply express.
     it('should map recordStatus from ORM to domain on toDomain path', async () => {
       const entity = createOrmEntity();
       entity.recordStatus = 'awaiting_mapping';
@@ -319,24 +280,28 @@ describe('OrderRecordRepository', () => {
       expect(result?.recordStatus).toBe('awaiting_mapping');
     });
 
-    it('should throw OrderRecordNotFoundException if order record not found', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
+    it('should throw OrderRecordNotFoundException when no row matches', async () => {
+      // pg drivers return [rows, affected] from raw UPDATE; TypeORM forwards.
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
 
       const newStatus: OrderSyncStatus = {
         destinationConnectionId: 'dest-connection-789',
         status: 'synced',
       };
+      const newAttempt: SyncAttempt = {
+        destinationConnectionId: 'dest-connection-789',
+        status: 'synced',
+        attemptedAt: new Date('2025-01-01T11:00:00Z'),
+      };
 
       await expect(
-        repository.updateSyncStatus('non-existent-order', 'dest-connection-789', newStatus),
+        repository.updateSyncStatus(
+          'non-existent-order',
+          'dest-connection-789',
+          newStatus,
+          newAttempt,
+        ),
       ).rejects.toThrow(OrderRecordNotFoundException);
-      
-      try {
-        await repository.updateSyncStatus('non-existent-order', 'dest-connection-789', newStatus);
-      } catch (error) {
-        expect(error).toBeInstanceOf(OrderRecordNotFoundException);
-        expect((error as OrderRecordNotFoundException).internalOrderId).toBe('non-existent-order');
-      }
     });
   });
 });

@@ -14,6 +14,7 @@ const sampleOrders: PaginatedOrders = {
       sourceEventId: null,
       orderSnapshot: {},
       syncStatus: [{ destinationConnectionId: 'conn_ps_1', status: 'synced', syncedAt: '2026-01-15T10:00:00.000Z', externalOrderId: '42', externalOrderNumber: null, error: null }],
+      syncAttempts: [],
       recordStatus: 'ready',
       createdAt: '2026-01-15T10:00:00.000Z',
       updatedAt: '2026-01-15T10:00:00.000Z',

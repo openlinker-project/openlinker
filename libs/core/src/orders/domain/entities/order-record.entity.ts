@@ -5,27 +5,12 @@
  * (OrderRecord + SyncState) for retry/debug support without re-polling source systems.
  * Order snapshot is PII-aware (respects OL_STORE_PII configuration).
  *
- * @module libs/core/src/orders/domain/entities
+ * @module domain/entities
  */
 import type { OrderRecordStatus } from '../types/order-record.types';
+import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
-/**
- * Sync status for a destination connection
- */
-export interface OrderSyncStatus {
-  /** Destination connection ID */
-  destinationConnectionId: string;
-  /** Sync status: pending, syncing, synced, or failed */
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
-  /** Timestamp when sync completed (for synced status) */
-  syncedAt?: Date;
-  /** External order ID in destination system */
-  externalOrderId?: string;
-  /** External order number in destination system */
-  externalOrderNumber?: string;
-  /** Error message (for failed status) */
-  error?: string;
-}
+export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
 /**
  * Order Record Domain Entity
@@ -35,6 +20,10 @@ export interface OrderSyncStatus {
  *
  * recordStatus='awaiting_mapping': snapshot holds raw IncomingOrder (external refs, no internal IDs).
  * recordStatus='ready': snapshot holds resolved Order (internal product/variant IDs).
+ *
+ * `syncAttempts` is the per-destination append-only history; the constructor
+ * defaults it to `[]` so existing call sites that pre-date the column compile
+ * unchanged (the field is hydrated from the JSONB column by the repository).
  */
 export class OrderRecord {
   constructor(
@@ -47,5 +36,6 @@ export class OrderRecord {
     public readonly recordStatus: OrderRecordStatus,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly syncAttempts: SyncAttempt[] = [],
   ) {}
 }

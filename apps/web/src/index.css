@@ -5512,6 +5512,22 @@ a.kpi-card:focus-visible {
   word-break: break-word;
 }
 
+.order-activity__footer {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+}
+
+.order-activity__cap-link {
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.order-activity__cap-link:hover,
+.order-activity__cap-link:focus-visible {
+  color: var(--text-primary);
+}
+
 .order-activity__time {
   font-family: var(--font-mono);
   font-size: 0.78rem;

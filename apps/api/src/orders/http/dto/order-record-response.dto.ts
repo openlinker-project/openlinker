@@ -7,9 +7,10 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderRecordStatusValues } from '@openlinker/core/orders';
+import { OrderRecordStatusValues, SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '@openlinker/core/orders';
 import type { OrderRecordStatus } from '@openlinker/core/orders';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
+import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -29,6 +30,15 @@ export class OrderRecordResponseDto {
 
   @ApiProperty({ type: [OrderSyncStatusResponseDto], description: 'Sync status per destination' })
   syncStatus!: OrderSyncStatusResponseDto[];
+
+  @ApiProperty({
+    type: [SyncAttemptResponseDto],
+    description:
+      `Per-destination attempt history (append-only, capped at ${SYNC_ATTEMPTS_PER_DESTINATION_CAP} ` +
+      'most-recent entries per destination). Used by the activity timeline to preserve ' +
+      'failure → retry → success narrative.',
+  })
+  syncAttempts!: SyncAttemptResponseDto[];
 
   @ApiProperty({ description: 'Order creation timestamp (ISO 8601)' })
   createdAt!: string;
