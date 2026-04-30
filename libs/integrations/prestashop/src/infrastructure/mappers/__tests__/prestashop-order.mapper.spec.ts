@@ -550,6 +550,48 @@ describe('PrestashopOrderMapper', () => {
       const orderRow = (orderRows.order_row as Array<Record<string, unknown>>)[0];
       expect(orderRow.product_attribute_id).toBe(0);
     });
+
+    describe('carrier resolution (#455)', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([
+        ['ol_variant_1', '5'],
+      ]);
+
+      it('should use externalCarrierId when explicitly provided', () => {
+        const result = mapper.mapOrderCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          '1',
+          '1',
+          4, // externalCarrierId — mapped from CarrierMapping
+        );
+
+        expect(result.id_carrier).toBe(4);
+      });
+
+      it('should fall back to PrestaShop default carrier 1 when externalCarrierId is omitted', () => {
+        const result = mapper.mapOrderCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          '1',
+          '1',
+          // externalCarrierId omitted — adapter resolved nothing.
+        );
+
+        expect(result.id_carrier).toBe(1);
+      });
+    });
   });
 
   describe('mapCartCreate', () => {

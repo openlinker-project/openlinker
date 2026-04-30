@@ -76,9 +76,10 @@ export class OrderSyncService implements IOrderSyncService {
       },
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,
+      shipping: order.shipping,
+      pickupPoint: order.pickupPoint,
+      source: { connectionId: sourceConnectionId, eventId: sourceEventId },
       metadata: {
-        sourceConnectionId,
-        sourceEventId,
         // Stamped once and shared across destinations: marks when OL started
         // dispatching this order, not per-destination completion time.
         syncedAt: new Date().toISOString(),

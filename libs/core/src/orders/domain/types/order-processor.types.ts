@@ -8,8 +8,27 @@
  *
  * @module libs/core/src/orders/domain/types
  */
-import { OrderItem, OrderTotals, Address } from '../types/order.types';
+import {
+  OrderItem,
+  OrderTotals,
+  Address,
+  OrderShipping,
+  OrderPickupPoint,
+} from '../types/order.types';
 import { OrderStatus } from './order.types';
+
+/**
+ * Source reference for an order being created on a destination platform.
+ *
+ * Distinct from `OrderSourcePort` (the capability port that ingests orders
+ * from a source) — this is a passive metadata tag attached to `OrderCreate`
+ * so destination adapters can call back into source-scoped resources
+ * (e.g. resolving a carrier mapping keyed by the source `methodId`).
+ */
+export interface OrderSourceRef {
+  connectionId: string;
+  eventId?: string;
+}
 
 /**
  * Order creation request
@@ -53,6 +72,25 @@ export interface OrderCreate {
    * Billing address
    */
   billingAddress?: Address;
+
+  /**
+   * Source-side shipping reference (e.g. Allegro `delivery.method`). Carrier
+   * resolution at the destination adapter consumes `methodId`. Optional —
+   * order sources that don't expose a delivery-method id leave it undefined.
+   */
+  shipping?: OrderShipping;
+
+  /**
+   * Pickup-point reference (locker etc.). Present only for pickup-point orders.
+   */
+  pickupPoint?: OrderPickupPoint;
+
+  /**
+   * Reference to the source connection / event this order was ingested from.
+   * Used by destination adapters to look up source-scoped configuration
+   * (e.g. carrier mappings keyed by the source `methodId`).
+   */
+  source?: OrderSourceRef;
 
   /**
    * Optional metadata for the order

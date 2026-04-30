@@ -10,6 +10,8 @@
  * @module libs/core/src/orders/domain/types
  */
 
+import type { OrderShipping, OrderPickupPoint } from './order.types';
+
 export interface IncomingOrder {
   /**
    * Marketplace-native order identifier.
@@ -47,6 +49,20 @@ export interface IncomingOrder {
 
   shippingAddress?: IncomingOrderAddress;
   billingAddress?: IncomingOrderAddress;
+
+  /**
+   * Source-side shipping reference (e.g. Allegro `delivery.method`). Optional —
+   * order sources that don't expose a delivery-method id leave it undefined.
+   * Carrier resolution at the destination adapter consumes `methodId`.
+   */
+  shipping?: OrderShipping;
+
+  /**
+   * Pickup-point reference (Allegro `delivery.pickupPoint`, InPost-style locker).
+   * Present only for pickup-point orders; locker geography lives on `shippingAddress`,
+   * the structured id+labels live here.
+   */
+  pickupPoint?: OrderPickupPoint;
 
   /**
    * ISO timestamps (strings) to keep DTO stable across runtimes.

@@ -10,6 +10,7 @@
 import { IPrestashopAdapterFactory, PrestashopAdapters } from './interfaces/prestashop-adapter.factory.interface';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations';
+import { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
 import { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
 import { PrestashopConfigException } from '../domain/exceptions/prestashop-config.exception';
@@ -40,10 +41,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
     private readonly addressProvisioner?: PrestashopAddressProvisioner,
     private readonly customerProjectionRepository?: CustomerProjectionRepositoryPort,
+    private readonly mappingConfigService?: IMappingConfigService,
   ) {
     // Validate that if orderProcessorManager is needed, dependencies are provided
     // Note: Dependencies are optional to allow factory creation without customer provisioning
     // The adapter will fail at runtime if dependencies are missing when needed
+    // `mappingConfigService` is optional too — when absent the destination adapter
+    // skips carrier resolution and falls back to `defaultCarrierId` / `1`.
   }
 
   async createAdapters(
@@ -115,6 +119,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         addressProvisioner,
         currencyResolver,
         this.customerProjectionRepository,
+        this.mappingConfigService,
       );
     } else {
       this.logger.warn(
@@ -208,6 +213,22 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       config.langId = langId;
     }
 
+    // Validate defaultCarrierId (if provided)
+    if (config.defaultCarrierId !== undefined) {
+      const defaultCarrierId =
+        typeof config.defaultCarrierId === 'number'
+          ? config.defaultCarrierId
+          : parseInt(String(config.defaultCarrierId), 10);
+      if (isNaN(defaultCarrierId) || defaultCarrierId < 1) {
+        throw new PrestashopConfigException(
+          'defaultCarrierId must be a positive integer',
+          'defaultCarrierId',
+          config.defaultCarrierId,
+        );
+      }
+      config.defaultCarrierId = defaultCarrierId;
+    }
+
     // Validate timeoutMs (if provided)
     if (config.timeoutMs !== undefined) {
       const timeoutMs = typeof config.timeoutMs === 'number' ? config.timeoutMs : parseInt(String(config.timeoutMs), 10);
@@ -262,6 +283,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       pageSize: (config.pageSize as number | undefined) ?? 100,
       responseFormat: (config.responseFormat as 'auto' | 'json' | 'xml' | undefined) ?? 'auto',
       currency,
+      defaultCarrierId: config.defaultCarrierId as number | undefined,
     };
 
     return validatedConfig;

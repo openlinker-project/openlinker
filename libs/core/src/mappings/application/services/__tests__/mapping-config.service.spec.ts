@@ -153,6 +153,39 @@ describe('MappingConfigService', () => {
     });
   });
 
+  // ── resolveCarrierMapping ──────────────────────────────────────────────
+
+  describe('resolveCarrierMapping', () => {
+    it('should return prestashopCarrierId when allegroDeliveryMethodId matches', async () => {
+      carrierRepo.findByConnectionId.mockResolvedValue([
+        new CarrierMapping('id-1', CONNECTION_ID, '1fa56f79-aaa', '4'),
+        new CarrierMapping('id-2', CONNECTION_ID, 'DPD', '3'),
+      ]);
+
+      const result = await service.resolveCarrierMapping(CONNECTION_ID, '1fa56f79-aaa');
+
+      expect(result).toBe('4');
+    });
+
+    it('should return null when no mapping matches the given allegroDeliveryMethodId', async () => {
+      carrierRepo.findByConnectionId.mockResolvedValue([
+        new CarrierMapping('id-1', CONNECTION_ID, 'DPD', '3'),
+      ]);
+
+      const result = await service.resolveCarrierMapping(CONNECTION_ID, 'UNKNOWN_METHOD');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when connection has no carrier mappings configured', async () => {
+      carrierRepo.findByConnectionId.mockResolvedValue([]);
+
+      const result = await service.resolveCarrierMapping(CONNECTION_ID, '1fa56f79-aaa');
+
+      expect(result).toBeNull();
+    });
+  });
+
   // ── Payment mappings ───────────────────────────────────────────────────
 
   describe('getPaymentMappings', () => {

@@ -17,6 +17,8 @@ import type {
   OrderFeedEventType,
   IncomingOrder,
   IncomingOrderAddress,
+  OrderShipping,
+  OrderPickupPoint,
 } from '@openlinker/core/orders';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -189,6 +191,8 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
         },
         shippingAddress: this.resolveShippingAddress(checkoutForm),
         billingAddress: undefined,
+        shipping: this.resolveShipping(checkoutForm),
+        pickupPoint: this.resolvePickupPoint(checkoutForm),
         createdAt,
         updatedAt,
         metadata: {
@@ -208,18 +212,18 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
-   * Resolve the shipping address from the checkout form (#457).
+   * Resolve the shipping address from the checkout form.
    *
-   * Prefers `delivery.address` (the actual checkout-time ship-to that the
-   * buyer chose) over `buyer.address` (the buyer's stored profile address).
-   * Falls back to `buyer.address` when `delivery.address` is absent or empty.
+   * Resolution chain:
+   *   1. `delivery.address` (#457) — buyer's checkout-time ship-to when present
+   *      with real geography.
+   *   2. `delivery.pickupPoint.address` (#458) — locker geography for pickup-point
+   *      orders, where `delivery.address` is typically empty `{}`.
+   *   3. `buyer.address` — the buyer's stored profile address as a final fallback.
    *
-   * The empty-object guard matters for pickup-point orders: Allegro can
-   * return `delivery: { address: {} }` when the parcel ships to an InPost
-   * locker (the locker address lives on `delivery.pickupPoint`, which is
-   * #458's scope, not this PR's). Without the guard, we'd emit empty
-   * strings for every address field — worse than today's `buyer.address`
-   * fallback.
+   * Empty-object guard for `delivery.address`: Allegro returns `{}` on pickup-point
+   * orders (the locker address lives on `delivery.pickupPoint`). Without the guard
+   * we'd emit empty strings for every address field — worse than the fallbacks.
    */
   private resolveShippingAddress(
     checkoutForm: AllegroCheckoutForm,
@@ -244,6 +248,27 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
         phone: deliveryAddr.phoneNumber,
       };
     }
+
+    const pickupAddr = checkoutForm.delivery?.pickupPoint?.address;
+    const hasPickupAddress = Boolean(
+      pickupAddr && (pickupAddr.street || pickupAddr.city || pickupAddr.zipCode),
+    );
+    if (hasPickupAddress && pickupAddr) {
+      this.logger.debug(
+        `Using delivery.pickupPoint.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`,
+      );
+      // The recipient is still the buyer; only the geography comes from the locker.
+      return {
+        firstName: checkoutForm.buyer.firstName,
+        lastName: checkoutForm.buyer.lastName,
+        address1: pickupAddr.street ?? '',
+        city: pickupAddr.city ?? '',
+        postalCode: pickupAddr.zipCode ?? '',
+        country: pickupAddr.countryCode ?? '',
+        phone: checkoutForm.buyer.phoneNumber,
+      };
+    }
+
     if (checkoutForm.buyer.address) {
       this.logger.debug(
         `Using buyer.address as shippingAddress fallback for ${checkoutForm.id} (connection: ${this.connectionId})`,
@@ -259,6 +284,35 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
       };
     }
     return undefined;
+  }
+
+  /**
+   * Resolve the source-side shipping reference (#455).
+   *
+   * Returns `{ methodId, methodName? }` when Allegro provides `delivery.method.id`.
+   * Carrier mapping at the destination consumes `methodId`.
+   */
+  private resolveShipping(checkoutForm: AllegroCheckoutForm): OrderShipping | undefined {
+    const method = checkoutForm.delivery?.method;
+    if (!method?.id) {
+      return undefined;
+    }
+    return { methodId: method.id, methodName: method.name };
+  }
+
+  /**
+   * Resolve the pickup-point reference (#458).
+   *
+   * Returns `{ id, name?, description? }` when Allegro provides `delivery.pickupPoint.id`.
+   * Decoupled from `shippingAddress` so it survives address normalization and is
+   * greppable for downstream module-aware integrations.
+   */
+  private resolvePickupPoint(checkoutForm: AllegroCheckoutForm): OrderPickupPoint | undefined {
+    const pp = checkoutForm.delivery?.pickupPoint;
+    if (!pp?.id) {
+      return undefined;
+    }
+    return { id: pp.id, name: pp.name, description: pp.description };
   }
 }
 

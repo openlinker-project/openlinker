@@ -87,8 +87,46 @@ export interface Order {
   totals: OrderTotals;
   shippingAddress?: Address;
   billingAddress?: Address;
+  /**
+   * Source-side shipping method reference. Carries `methodId` (the carrier-mapping
+   * lookup key on the source connection) and an optional human label. Optional
+   * because not every source platform exposes a method id (e.g. PrestaShop's
+   * `OrderSourcePort` doesn't surface one today).
+   */
+  shipping?: OrderShipping;
+  /**
+   * Pickup-point (locker) reference. Present on Allegro orders shipped via InPost
+   * Paczkomat or similar pickup networks. Carries the bare locker id alongside an
+   * optional human label so destination adapters can either stamp the id into the
+   * shipping address (MVP) or hand it to a module-aware carrier integration
+   * (future). Decoupled from `shippingAddress` so it survives address normalization
+   * and is greppable for downstream features.
+   */
+  pickupPoint?: OrderPickupPoint;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Source-side shipping reference attached to an `Order` / `IncomingOrder` /
+ * `OrderCreate`. `methodId` is required when the object is present — it's the
+ * carrier-mapping lookup key and the whole point of having the object. The
+ * outer `shipping?:` carries the optionality.
+ */
+export interface OrderShipping {
+  methodId: string;
+  methodName?: string;
+}
+
+/**
+ * Pickup-point reference (InPost Paczkomat locker etc.). `id` is the bare
+ * locker code (e.g. `POZ08A`); `name` and `description` are operator-facing
+ * labels (`Paczkomat POZ08A` / `Stacja paliw BP`).
+ */
+export interface OrderPickupPoint {
+  id: string;
+  name?: string;
+  description?: string;
 }
 
 export interface OrderItem {

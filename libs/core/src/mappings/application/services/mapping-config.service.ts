@@ -77,6 +77,16 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.prestashopStatusId ?? null;
   }
 
+  async resolveCarrierMapping(
+    connectionId: string,
+    allegroDeliveryMethodId: string,
+  ): Promise<string | null> {
+    // TODO: cache per sync session — same N+1 concern as resolveStatusMapping.
+    const mappings = await this.carrierRepo.findByConnectionId(connectionId);
+    const match = mappings.find((m) => m.allegroDeliveryMethodId === allegroDeliveryMethodId);
+    return match?.prestashopCarrierId ?? null;
+  }
+
   getCategoryMappings(connectionId: string): Promise<CategoryMapping[]> {
     return this.categoryRepo.findByConnectionId(connectionId);
   }

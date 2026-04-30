@@ -10,6 +10,7 @@
  */
 import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopAdapterFactory } from '../../application/prestashop-adapter.factory';
 import { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
@@ -29,11 +30,13 @@ export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
     private readonly _customerProvisioner?: PrestashopCustomerProvisioner,
     private readonly _addressProvisioner?: PrestashopAddressProvisioner,
     private readonly _customerProjectionRepository?: CustomerProjectionRepositoryPort,
+    private readonly _mappingConfigService?: IMappingConfigService,
   ) {
     this.factory = new PrestashopAdapterFactory(
       this._customerProvisioner,
       this._addressProvisioner,
       this._customerProjectionRepository,
+      this._mappingConfigService,
     );
   }
 

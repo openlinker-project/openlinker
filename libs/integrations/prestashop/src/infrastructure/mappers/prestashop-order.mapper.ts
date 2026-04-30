@@ -150,6 +150,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
+    externalCarrierId?: number,
   ): Record<string, unknown> {
     // Map order status to PrestaShop status ID
     // PrestaShop uses numeric status IDs. For MVP, we'll use common defaults:
@@ -259,7 +260,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       id_customer: externalCustomerId,
       id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
       id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
-      id_carrier: DEFAULT_CARRIER_ID,
+      id_carrier: externalCarrierId ?? DEFAULT_CARRIER_ID,
       module: DEFAULT_PAYMENT_MODULE,
       payment: DEFAULT_PAYMENT_METHOD,
       current_state: statusId,
