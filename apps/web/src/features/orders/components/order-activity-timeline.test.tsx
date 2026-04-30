@@ -132,6 +132,42 @@ describe('OrderActivityTimeline', () => {
     expect(screen.getAllByRole('link', { name: /view all attempts/i })).toHaveLength(1);
   });
 
+  it('attaches the cap link only to the capped destination when destinations are mixed', () => {
+    const otherDestId = 'ol_connection_dst_other';
+    const cappedAttempts: SyncAttempt[] = Array.from(
+      { length: SYNC_ATTEMPTS_PER_DESTINATION_CAP },
+      (_, i) => ({
+        destinationConnectionId: DEST_CONNECTION_ID,
+        status: 'failed' as const,
+        attemptedAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
+        error: `attempt-${i}`,
+        externalOrderId: null,
+        externalOrderNumber: null,
+      }),
+    );
+    const uncappedAttempt: SyncAttempt = {
+      destinationConnectionId: otherDestId,
+      status: 'synced',
+      attemptedAt: new Date(2026, 0, 1, 0, 1, 0).toISOString(),
+      error: null,
+      externalOrderId: 'ext-99',
+      externalOrderNumber: '9099',
+    };
+
+    renderTimeline({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      recordStatus: 'ready',
+      syncAttempts: [...cappedAttempts, uncappedAttempt],
+      sourceConnectionId: SOURCE_CONNECTION_ID,
+    });
+
+    const links = screen.getAllByRole('link', { name: /view all attempts/i });
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute('href')).toBe(
+      `/sync/jobs?connectionId=${encodeURIComponent(SOURCE_CONNECTION_ID)}`,
+    );
+  });
+
   it('does not show the cap link when below the per-destination cap', () => {
     const attempts: SyncAttempt[] = [
       {

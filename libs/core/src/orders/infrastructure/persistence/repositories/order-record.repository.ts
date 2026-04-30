@@ -155,11 +155,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `
       UPDATE "order_records"
       SET
+        -- syncStatus: drop any existing row for this destination, then append
+        -- the new current-state row at the tail. Per-destination upsert in one
+        -- expression — no race because the whole UPDATE is one statement.
         "syncStatus" = (
           SELECT COALESCE(jsonb_agg(s), '[]'::jsonb)
           FROM jsonb_array_elements("syncStatus") s
           WHERE s->>'destinationConnectionId' != $2
         ) || jsonb_build_array($3::jsonb),
+        -- syncAttempts: append the new attempt, then keep only the most-recent
+        -- N per destination. \`ord\` from WITH ORDINALITY = JSONB array insertion
+        -- order (chronological since we always append). The window function
+        -- ranks DESC within each destination so rank 1 = newest; rows above the
+        -- cap drop out. Outer \`ORDER BY ord\` re-chronologises the survivors.
         "syncAttempts" = (
           SELECT COALESCE(jsonb_agg(a ORDER BY ord), '[]'::jsonb)
           FROM (

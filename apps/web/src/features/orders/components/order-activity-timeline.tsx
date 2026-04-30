@@ -9,7 +9,7 @@
  * a "view all attempts" link to `/sync/jobs?connectionId={source}` lets
  * operators dig deeper without coupling the order surface to `sync_jobs`.
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -169,7 +169,10 @@ export function OrderActivityTimeline({
   syncAttempts,
   sourceConnectionId,
 }: OrderActivityTimelineProps): ReactElement {
-  const events = buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId);
+  const events = useMemo(
+    () => buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId),
+    [createdAt, recordStatus, syncAttempts, sourceConnectionId],
+  );
 
   if (events.length === 0) {
     return (

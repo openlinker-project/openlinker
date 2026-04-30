@@ -151,6 +151,36 @@ describe('OrderRecord sync attempts (integration)', () => {
     expect(recordedDests).toEqual(new Set(dests));
   });
 
+  it('keeps every attempt under same-destination concurrent writes within the cap', async () => {
+    // Belt-and-braces: even though the row lock makes concurrent writes to the
+    // same destination effectively serial, prove the cap-under-contention path
+    // doesn't lose entries. Fire 5 parallel writes (cap is 20) → all 5 land.
+    const destId = '22222222-2222-4222-8222-222222222222';
+    const seeded = await createTestOrderRecord(harness.getDataSource(), {
+      syncStatus: [{ destinationConnectionId: destId, status: 'pending' }],
+    });
+
+    const now = new Date('2026-04-30T00:00:00.000Z');
+    const writes = 5;
+    await Promise.all(
+      Array.from({ length: writes }, (_, i) =>
+        repository.updateSyncStatus(
+          seeded.internalOrderId,
+          destId,
+          { destinationConnectionId: destId, status: 'failed', error: `concurrent-${i}` },
+          makeAttempt(destId, 'failed', new Date(now.getTime() + i * 1000), {
+            error: `concurrent-${i}`,
+          }),
+        ),
+      ),
+    );
+
+    const found = await repository.findById(seeded.internalOrderId);
+    expect(found!.syncAttempts).toHaveLength(writes);
+    const errors = new Set(found!.syncAttempts.map((a) => a.error));
+    expect(errors.size).toBe(writes);
+  });
+
   it('throws OrderRecordNotFoundException when no row matches', async () => {
     const destId = '22222222-2222-4222-8222-222222222222';
     await expect(
