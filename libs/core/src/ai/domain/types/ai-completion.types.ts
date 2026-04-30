@@ -8,11 +8,13 @@
  */
 
 /**
- * Runtime array of supported AI provider keys. Used by AiIntegrationModule
- * to select an adapter at boot. `'fake'` is the deterministic offline adapter
- * used in tests and `OL_AI_PROVIDER=fake` local dev.
+ * Runtime array of supported AI provider keys. Each value maps to a
+ * registered adapter instance in `AiIntegrationModule`; the active one is
+ * resolved per-request through `IAiProviderActiveSettingsService` (DB-backed
+ * runtime setting, falling back to `OL_AI_PROVIDER`). `'fake'` is the
+ * deterministic offline adapter used in tests and offline dev.
  */
-export const AiProviderValues = ['anthropic', 'fake'] as const;
+export const AiProviderValues = ['anthropic', 'openai', 'fake'] as const;
 export type AiProvider = (typeof AiProviderValues)[number];
 
 /**

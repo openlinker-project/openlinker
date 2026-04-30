@@ -128,6 +128,12 @@ export class IntegrationTestHarness {
     await this.dataSource.query('TRUNCATE TABLE product_content_field CASCADE');
     // prompt_templates has no FKs but is part of the AI context — reset per test.
     await this.dataSource.query('TRUNCATE TABLE prompt_templates CASCADE');
+    // AI provider singleton + per-provider keys (#451 / #452). Reset between
+    // tests so the multi-provider spec sees a clean view per case; the
+    // credentials table is shared (webhook secrets etc.) so it is best to
+    // truncate it broadly rather than scope to a particular ref prefix.
+    await this.dataSource.query('TRUNCATE TABLE ai_provider_active_setting CASCADE');
+    await this.dataSource.query('TRUNCATE TABLE integration_credentials CASCADE');
     await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
     await this.dataSource.query('TRUNCATE TABLE products CASCADE');
     await this.dataSource.query('TRUNCATE TABLE connections CASCADE');

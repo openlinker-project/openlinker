@@ -5,17 +5,16 @@
  *   - The `prompt_templates` ORM entity, TypeORM repository, and
  *     `PromptTemplateService` (#341).
  *   - The provider-key resolver (`CredentialsAiProviderAdapter` →
- *     `AI_PROVIDER_CREDENTIALS_PORT_TOKEN`) and the admin write-side service
- *     (`AiProviderSettingsService` → `AI_PROVIDER_SETTINGS_SERVICE_TOKEN`)
- *     (#398). Both are core code, so DI registration lives here — mirroring
- *     the webhook-secret split (`WebhookSecretService` +
- *     `CredentialsWebhookSecretAdapter` are wired by core
- *     `IntegrationsModule`, not by the integrations package).
+ *     `AI_PROVIDER_CREDENTIALS_PORT_TOKEN`) and the admin write-side
+ *     `AiProviderKeyService` (`AI_PROVIDER_KEY_SERVICE_TOKEN`).
+ *   - The active-provider singleton repository + `AiProviderActiveSettingsService`
+ *     (`AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN`) — drives the runtime
+ *     active selection consumed by `MultiProviderAiCompletionAdapter`.
  *
- * The Vercel / Fake completion adapters live in `libs/integrations/ai/`
- * and are registered through `AiIntegrationModule`. That module imports
- * this one to resolve `AI_PROVIDER_CREDENTIALS_PORT_TOKEN` for the Vercel
- * adapter.
+ * The Vercel / Fake completion adapters and the multi-provider router live
+ * in `libs/integrations/ai/` and are registered through
+ * `AiIntegrationModule`. That module imports this one to resolve the
+ * credential resolver + active-settings service tokens.
  *
  * @module libs/core/src/ai
  */
@@ -25,28 +24,33 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CryptoService } from '@openlinker/shared';
 import { IntegrationsModule as CoreIntegrationsModule } from '../integrations/integrations.module';
 import {
+  AI_PROVIDER_ACTIVE_SETTING_REPOSITORY_TOKEN,
+  AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
-  AI_PROVIDER_SETTINGS_SERVICE_TOKEN,
+  AI_PROVIDER_KEY_SERVICE_TOKEN,
   PROMPT_TEMPLATE_REPOSITORY_TOKEN,
   PROMPT_TEMPLATE_SERVICE_TOKEN,
 } from './ai.tokens';
-import { AiProviderSettingsService } from './application/services/ai-provider-settings.service';
+import { AiProviderActiveSettingsService } from './application/services/ai-provider-active-settings.service';
+import { AiProviderKeyService } from './application/services/ai-provider-key.service';
 import { PromptTemplateService } from './application/services/prompt-template.service';
 import { CredentialsAiProviderAdapter } from './infrastructure/adapters/credentials-ai-provider.adapter';
+import { AiProviderActiveSettingOrmEntity } from './infrastructure/persistence/entities/ai-provider-active-setting.orm-entity';
 import { PromptTemplateOrmEntity } from './infrastructure/persistence/entities/prompt-template.orm-entity';
+import { AiProviderActiveSettingRepository } from './infrastructure/persistence/repositories/ai-provider-active-setting.repository';
 import { PromptTemplateRepository } from './infrastructure/persistence/repositories/prompt-template.repository';
 
 @Module({
   imports: [
     ConfigModule,
     // For INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN consumed by the credentials
-    // adapter and the settings service.
+    // adapter and the key service.
     CoreIntegrationsModule,
-    TypeOrmModule.forFeature([PromptTemplateOrmEntity]),
+    TypeOrmModule.forFeature([PromptTemplateOrmEntity, AiProviderActiveSettingOrmEntity]),
   ],
   providers: [
     // CoreIntegrationsModule provides CryptoService internally but does not
-    // export it; we register it locally so AiProviderSettingsService and
+    // export it; we register it locally so the AI services and
     // CredentialsAiProviderAdapter can construct.
     CryptoService,
     PromptTemplateRepository,
@@ -64,17 +68,29 @@ import { PromptTemplateRepository } from './infrastructure/persistence/repositor
       provide: AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
       useExisting: CredentialsAiProviderAdapter,
     },
-    AiProviderSettingsService,
+    AiProviderKeyService,
     {
-      provide: AI_PROVIDER_SETTINGS_SERVICE_TOKEN,
-      useExisting: AiProviderSettingsService,
+      provide: AI_PROVIDER_KEY_SERVICE_TOKEN,
+      useExisting: AiProviderKeyService,
+    },
+    AiProviderActiveSettingRepository,
+    {
+      provide: AI_PROVIDER_ACTIVE_SETTING_REPOSITORY_TOKEN,
+      useExisting: AiProviderActiveSettingRepository,
+    },
+    AiProviderActiveSettingsService,
+    {
+      provide: AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
+      useExisting: AiProviderActiveSettingsService,
     },
   ],
   exports: [
     PROMPT_TEMPLATE_REPOSITORY_TOKEN,
     PROMPT_TEMPLATE_SERVICE_TOKEN,
     AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
-    AI_PROVIDER_SETTINGS_SERVICE_TOKEN,
+    AI_PROVIDER_KEY_SERVICE_TOKEN,
+    AI_PROVIDER_ACTIVE_SETTING_REPOSITORY_TOKEN,
+    AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   ],
 })
 export class AiModule {}

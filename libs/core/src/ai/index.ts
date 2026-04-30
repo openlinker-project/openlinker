@@ -5,14 +5,15 @@
  * bounded context. Three concerns:
  *
  *   1. `AiCompletionPort` — provider-agnostic LLM completions. Implemented
- *      by adapters in `libs/integrations/ai/`.
+ *      by adapters in `libs/integrations/ai/` (one per provider) and routed
+ *      by `MultiProviderAiCompletionAdapter` based on the active selection.
  *   2. Prompt-template storage — editable, versioned templates with a
  *      draft/publish/archive state machine. Owned end-to-end by the core
  *      `AiModule` (repository + service + render helper).
- *   3. Provider-key management — `AiProviderCredentialsPort` (read) +
- *      `IAiProviderSettingsService` (write). Backed by the encrypted
- *      `integration_credentials` store and wired into
- *      `AiIntegrationModule.register()`.
+ *   3. Provider management — `AiProviderCredentialsPort` (read),
+ *      `IAiProviderKeyService` (per-provider key writes),
+ *      `IAiProviderActiveSettingsService` (active-provider selection +
+ *      composite multi-provider view). All bound by core `AiModule`.
  *
  * @module libs/core/src/ai
  */
@@ -35,11 +36,15 @@ export * from './application/types/prompt-template-commands.types';
 export { renderTemplate } from './application/internal/render-template';
 export type { RenderTemplateArgs } from './application/internal/render-template';
 
+export * from './domain/entities/ai-provider-active-setting.entity';
 export * from './domain/ports/ai-provider-credentials.port';
+export * from './domain/ports/ai-provider-active-setting-repository.port';
 export * from './domain/types/ai-provider-credentials.types';
 export * from './domain/exceptions/ai-provider-key-missing.exception';
 export * from './domain/exceptions/ai-provider-settings-not-applicable.exception';
-export * from './application/services/ai-provider-settings.service.interface';
+export * from './domain/exceptions/ai-provider-activation.exception';
+export * from './application/services/ai-provider-key.service.interface';
+export * from './application/services/ai-provider-active-settings.service.interface';
 
 export * from './ai.tokens';
 export { AiModule } from './ai.module';

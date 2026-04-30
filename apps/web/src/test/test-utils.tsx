@@ -63,13 +63,19 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       ...overrides.adapters,
     } as ApiClient['adapters'],
     aiProviderSettings: {
-      get: vi.fn().mockResolvedValue({
-        provider: 'anthropic',
-        configured: false,
-        source: 'none',
+      getAll: vi.fn().mockResolvedValue({
+        activeProvider: 'fake',
+        activeUpdatedAt: null,
+        activeUpdatedBy: null,
+        providers: [
+          { provider: 'anthropic', configured: false, source: 'none' },
+          { provider: 'openai', configured: false, source: 'none' },
+          { provider: 'fake', configured: false, source: 'none' },
+        ],
       }),
-      update: vi.fn().mockResolvedValue(undefined),
-      clear: vi.fn().mockResolvedValue(undefined),
+      setKey: vi.fn().mockResolvedValue(undefined),
+      clearKey: vi.fn().mockResolvedValue(undefined),
+      setActive: vi.fn().mockResolvedValue(undefined),
       ...overrides.aiProviderSettings,
     } as ApiClient['aiProviderSettings'],
     allegro: {

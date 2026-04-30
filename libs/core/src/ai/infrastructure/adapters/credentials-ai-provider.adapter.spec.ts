@@ -2,11 +2,11 @@
  * Credentials AI Provider Adapter — Unit Tests
  *
  * Mocks the credential repo, crypto service, and ConfigService. Asserts:
- * DB hit (decrypts), DB miss → env fallback (warns once), both missing →
- * AiProviderKeyMissingError, cache hit, invalidate() clears cache,
- * describe() reports the resolution source without leaking the key,
- * provider=fake short-circuits without DB/env lookups, env reads go via
- * ConfigService (not process.env).
+ * per-provider DB hit (decrypts), DB miss → env fallback (warns once per
+ * provider), both missing → AiProviderKeyMissingError, per-provider cache
+ * hit, invalidate(provider) clears that provider's slot, describe() reports
+ * the resolution source per provider, provider=fake short-circuits without
+ * DB/env lookups, env reads go via ConfigService (not process.env).
  *
  * @module libs/core/src/ai/infrastructure/adapters
  */
@@ -66,7 +66,7 @@ describe('CredentialsAiProviderAdapter', () => {
   });
 
   const buildAdapter = (
-    config: Record<string, string | undefined> = { OL_AI_PROVIDER: 'anthropic' },
+    config: Record<string, string | undefined> = {},
   ): CredentialsAiProviderAdapter =>
     new CredentialsAiProviderAdapter(
       repository,
@@ -75,71 +75,96 @@ describe('CredentialsAiProviderAdapter', () => {
     );
 
   describe('getApiKey', () => {
-    it('returns the decrypted DB key when present', async () => {
+    it('returns the decrypted DB key when present for the given provider', async () => {
       repository.getByRef.mockResolvedValue(dbCredential('ai-provider:anthropic', 'cipher'));
       crypto.decrypt.mockReturnValue('plaintext-key');
 
-      const result = await buildAdapter().getApiKey();
+      const result = await buildAdapter().getApiKey('anthropic');
 
       expect(result).toBe('plaintext-key');
       expect(repository.getByRef).toHaveBeenCalledWith('ai-provider:anthropic');
       expect(crypto.decrypt).toHaveBeenCalledWith('cipher');
     });
 
-    it('falls back to ConfigService env (with one-shot warning) when no DB row', async () => {
+    it('falls back to ConfigService env (with one-shot warning per provider) when no DB row', async () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
       const adapter = buildAdapter({
-        OL_AI_PROVIDER: 'anthropic',
-        ANTHROPIC_API_KEY: 'env-key',
+        ANTHROPIC_API_KEY: 'anthropic-env-key',
+        OPENAI_API_KEY: 'openai-env-key',
       });
 
-      const first = await adapter.getApiKey();
-      const second = await adapter.getApiKey();
+      const a1 = await adapter.getApiKey('anthropic');
+      const a2 = await adapter.getApiKey('anthropic');
+      expect(a1).toBe('anthropic-env-key');
+      expect(a2).toBe('anthropic-env-key');
+      // Only one warning emitted for anthropic so far
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const firstWarn = String((warnSpy.mock.calls[0] as unknown as [unknown])[0] ?? '');
+      expect(firstWarn).toContain('ANTHROPIC_API_KEY');
+      expect(firstWarn).toContain('deprecated');
 
-      expect(first).toBe('env-key');
-      expect(second).toBe('env-key');
-      expect(warnSpy).toHaveBeenCalledTimes(1); // one-shot
-      const warnArgs = warnSpy.mock.calls[0] as unknown as [unknown, ...unknown[]];
-      const warnedMessage = String(warnArgs[0] ?? '');
-      expect(warnedMessage).toContain('ANTHROPIC_API_KEY');
-      expect(warnedMessage).toContain('deprecated');
+      // OpenAI key resolves separately and triggers its own one-shot warning
+      const o1 = await adapter.getApiKey('openai');
+      expect(o1).toBe('openai-env-key');
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+      const secondWarn = String((warnSpy.mock.calls[1] as unknown as [unknown])[0] ?? '');
+      expect(secondWarn).toContain('OPENAI_API_KEY');
     });
 
-    it('throws AiProviderKeyMissingError when neither DB nor env has a key', async () => {
+    it('throws AiProviderKeyMissingError when neither DB nor env has a key for that provider', async () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
-      const adapter = buildAdapter({ OL_AI_PROVIDER: 'anthropic' });
+      const adapter = buildAdapter();
 
-      await expect(adapter.getApiKey()).rejects.toBeInstanceOf(AiProviderKeyMissingError);
+      await expect(adapter.getApiKey('anthropic')).rejects.toBeInstanceOf(AiProviderKeyMissingError);
     });
 
-    it('caches the resolved key and avoids re-reading the DB on the next call', async () => {
+    it('caches the resolved key per provider and avoids re-reading the DB on the next call', async () => {
       repository.getByRef.mockResolvedValue(dbCredential('ai-provider:anthropic', 'cipher'));
       crypto.decrypt.mockReturnValue('plaintext-key');
       const adapter = buildAdapter();
 
-      await adapter.getApiKey();
-      await adapter.getApiKey();
+      await adapter.getApiKey('anthropic');
+      await adapter.getApiKey('anthropic');
 
       expect(repository.getByRef).toHaveBeenCalledTimes(1);
       expect(crypto.decrypt).toHaveBeenCalledTimes(1);
     });
 
-    it('re-reads the DB after invalidate()', async () => {
+    it('re-reads the DB for that provider after invalidate(provider)', async () => {
       repository.getByRef.mockResolvedValue(dbCredential('ai-provider:anthropic', 'cipher'));
       crypto.decrypt.mockReturnValue('plaintext-key');
       const adapter = buildAdapter();
 
-      await adapter.getApiKey();
-      adapter.invalidate();
-      await adapter.getApiKey();
+      await adapter.getApiKey('anthropic');
+      adapter.invalidate('anthropic');
+      await adapter.getApiKey('anthropic');
 
       expect(repository.getByRef).toHaveBeenCalledTimes(2);
     });
 
-    it('throws AiProviderSettingsNotApplicableError immediately when active provider is fake', async () => {
-      const adapter = buildAdapter({ OL_AI_PROVIDER: 'fake' });
+    it('keeps each provider\'s cache slot independent — invalidating openai does not bust anthropic', async () => {
+      repository.getByRef.mockImplementation((ref: string) => {
+        if (ref === 'ai-provider:anthropic') {
+          return Promise.resolve(dbCredential('ai-provider:anthropic', 'a-cipher'));
+        }
+        return Promise.resolve(dbCredential('ai-provider:openai', 'o-cipher'));
+      });
+      crypto.decrypt.mockImplementation((ct: string) => `plain-${ct}`);
+      const adapter = buildAdapter();
 
-      await expect(adapter.getApiKey()).rejects.toBeInstanceOf(
+      await adapter.getApiKey('anthropic');
+      await adapter.getApiKey('openai');
+      adapter.invalidate('openai');
+      await adapter.getApiKey('anthropic'); // still cached
+      await adapter.getApiKey('openai'); // re-read
+
+      expect(repository.getByRef).toHaveBeenCalledTimes(3);
+    });
+
+    it('throws AiProviderSettingsNotApplicableError immediately for provider=fake', async () => {
+      const adapter = buildAdapter();
+
+      await expect(adapter.getApiKey('fake')).rejects.toBeInstanceOf(
         AiProviderSettingsNotApplicableError,
       );
       expect(repository.getByRef).not.toHaveBeenCalled();
@@ -150,7 +175,7 @@ describe('CredentialsAiProviderAdapter', () => {
         dbCredential('ai-provider:anthropic', 'plaintext-stored', false),
       );
 
-      const result = await buildAdapter().getApiKey();
+      const result = await buildAdapter().getApiKey('anthropic');
 
       expect(result).toBe('plaintext-stored');
       expect(crypto.decrypt).not.toHaveBeenCalled();
@@ -162,7 +187,7 @@ describe('CredentialsAiProviderAdapter', () => {
       repository.getByRef.mockResolvedValue(dbCredential('ai-provider:anthropic', 'cipher'));
       crypto.decrypt.mockReturnValue('plaintext-key');
 
-      expect(await buildAdapter().describe()).toEqual({
+      expect(await buildAdapter().describe('anthropic')).toEqual({
         provider: 'anthropic',
         configured: true,
         source: 'db',
@@ -172,16 +197,9 @@ describe('CredentialsAiProviderAdapter', () => {
     it('reports source=env when DB is empty and env is set', async () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
 
-      const view = await buildAdapter({
-        OL_AI_PROVIDER: 'anthropic',
-        ANTHROPIC_API_KEY: 'env-key',
-      }).describe();
+      const view = await buildAdapter({ ANTHROPIC_API_KEY: 'env-key' }).describe('anthropic');
 
-      expect(view).toEqual({
-        provider: 'anthropic',
-        configured: true,
-        source: 'env',
-      });
+      expect(view).toEqual({ provider: 'anthropic', configured: true, source: 'env' });
       // describe() must not emit the deprecation warning — only getApiKey() does
       expect(warnSpy).not.toHaveBeenCalled();
     });
@@ -189,7 +207,7 @@ describe('CredentialsAiProviderAdapter', () => {
     it('reports source=none when neither DB nor env is set', async () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
 
-      expect(await buildAdapter({ OL_AI_PROVIDER: 'anthropic' }).describe()).toEqual({
+      expect(await buildAdapter().describe('anthropic')).toEqual({
         provider: 'anthropic',
         configured: false,
         source: 'none',
@@ -197,29 +215,41 @@ describe('CredentialsAiProviderAdapter', () => {
     });
 
     it('short-circuits to source=none for provider=fake without any DB/env lookup', async () => {
-      const adapter = buildAdapter({ OL_AI_PROVIDER: 'fake' });
+      const adapter = buildAdapter();
 
-      const view = await adapter.describe();
+      const view = await adapter.describe('fake');
 
       expect(view).toEqual({ provider: 'fake', configured: false, source: 'none' });
       expect(repository.getByRef).not.toHaveBeenCalled();
     });
   });
 
+  describe('describeAll', () => {
+    it('returns a row per value in AiProviderValues', async () => {
+      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+
+      const views = await buildAdapter().describeAll();
+
+      expect(views.map((v) => v.provider)).toEqual(['anthropic', 'openai', 'fake']);
+      expect(views.find((v) => v.provider === 'fake')).toEqual({
+        provider: 'fake',
+        configured: false,
+        source: 'none',
+      });
+    });
+  });
+
   describe('env reads use ConfigService, not process.env', () => {
     it('routes the env lookup through ConfigService.get', async () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
-      const config = buildConfigService({
-        OL_AI_PROVIDER: 'anthropic',
-        ANTHROPIC_API_KEY: 'env-key',
-      });
+      const config = buildConfigService({ ANTHROPIC_API_KEY: 'env-key' });
       const adapter = new CredentialsAiProviderAdapter(
         repository,
         crypto as unknown as CryptoService,
         config,
       );
 
-      await adapter.getApiKey();
+      await adapter.getApiKey('anthropic');
 
       expect(config.get).toHaveBeenCalledWith('ANTHROPIC_API_KEY');
     });
