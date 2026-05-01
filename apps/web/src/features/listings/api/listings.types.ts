@@ -54,6 +54,36 @@ export interface PaginatedOfferMappings {
   offset: number;
 }
 
+/**
+ * Live marketplace-side offer state surfaced on the listing detail page (#464).
+ * Mirrors the backend `MarketplaceOfferResponseDto`. `status` is a string
+ * passthrough — different marketplaces use different lifecycle vocabularies
+ * (Allegro: `ACTIVE` / `ENDED` / `INACTIVE` / `BIDDING`); the FE renders
+ * known values with a tone and falls back to a neutral badge for the rest.
+ */
+export interface MarketplaceOfferPrice {
+  amount: string;
+  currency: string;
+}
+
+export interface MarketplaceOfferCategory {
+  id: string;
+  name?: string;
+}
+
+export interface MarketplaceOfferResponse {
+  externalId: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  price: MarketplaceOfferPrice;
+  availableQuantity: number;
+  status: string;
+  category?: MarketplaceOfferCategory;
+  marketplaceUrl?: string;
+  updatedAt?: string;
+}
+
 export interface UpdateOfferDescriptionSectionItem {
   type: 'TEXT';
   content: string;

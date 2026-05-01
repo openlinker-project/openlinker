@@ -18,6 +18,7 @@ import type {
   CategoryBarcodeMatcher,
   CategoryParametersReader,
   OfferCreator,
+  OfferReader,
   SellerPoliciesReader,
   ResponsibleProducerReader,
   ResponsibleProducerEntry,
@@ -31,6 +32,7 @@ import type {
   CreateOfferValidationError,
   OfferCategory,
   CategoryParameter,
+  MarketplaceOffer,
   SellerPolicies,
 } from '@openlinker/core/listings';
 import { OfferCreateRejectedException, CategoryNotFoundException } from '@openlinker/core/listings';
@@ -183,6 +185,7 @@ export class AllegroOfferManagerAdapter
     CategoryBarcodeMatcher,
     CategoryParametersReader,
     OfferCreator,
+    OfferReader,
     SellerPoliciesReader,
     ResponsibleProducerReader {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
@@ -222,6 +225,13 @@ export class AllegroOfferManagerAdapter
      * partial body Allegro will 422 on (#430).
      */
     private readonly sellerDefaults?: AllegroSellerDefaultsConfig,
+    /**
+     * Storefront base URL used to derive the public buyer-facing offer URL
+     * for `getOffer` (#464). Sandbox: `https://allegro.pl.allegrosandbox.pl`,
+     * production: `https://allegro.pl`. The factory passes the right value;
+     * when undefined, `getOffer` omits `marketplaceUrl` from its result.
+     */
+    private readonly storefrontBaseUrl?: string,
   ) {
     this.quantityPollConfig = {
       maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
@@ -494,6 +504,91 @@ export class AllegroOfferManagerAdapter
       ean: this.pickSingleValue(eanValues),
       gtin: this.pickSingleValue(gtinValues),
     };
+  }
+
+  /**
+   * Fetch a single offer's live state (#464 — `OfferReader`).
+   *
+   * Hits `GET /sale/product-offers/{externalId}` (same endpoint as
+   * `fetchOfferIdentifiers`, different projection of the response) and maps
+   * Allegro's native shape into the neutral `MarketplaceOffer` DTO consumed
+   * by the listing-detail page. Sparse upstream fields (missing description /
+   * images / category name / updatedAt) cleanly degrade to `undefined` on
+   * the result.
+   */
+  async getOffer(input: { externalId: string }): Promise<MarketplaceOffer> {
+    const { externalId } = input;
+    this.logger.debug(
+      `Fetching Allegro offer detail: connection=${this.connectionId} offerId=${externalId}`,
+    );
+
+    const response = await this.httpClient.get<AllegroProductOffer>(
+      `/sale/product-offers/${externalId}`,
+    );
+    const offer = response.data;
+
+    const price = offer.sellingMode?.price;
+    if (!price) {
+      // Allegro consistently returns sellingMode.price for every active or
+      // ended offer; missing it indicates a malformed payload, not a sparse
+      // legitimate response. Throw so the controller's existing error mapping
+      // surfaces a 502 instead of silently returning a half-formed DTO.
+      throw new AllegroApiException(
+        `Allegro offer ${externalId} response missing sellingMode.price`,
+        undefined,
+        formatBodyForLog(JSON.stringify(offer)),
+      );
+    }
+
+    return {
+      externalId: offer.id,
+      title: offer.name ?? '',
+      description: this.extractOfferDescription(offer),
+      imageUrl: offer.images?.[0]?.url,
+      price: { amount: price.amount, currency: price.currency },
+      availableQuantity: offer.stock?.available ?? 0,
+      status: offer.publication?.status ?? 'UNKNOWN',
+      category: offer.category ? { id: offer.category.id } : undefined,
+      marketplaceUrl: this.buildMarketplaceUrl(offer.id),
+      updatedAt: offer.publication?.endingAt,
+    };
+  }
+
+  /**
+   * Flatten Allegro's structured `description.sections[].items[]` into a
+   * single string suitable for FE preview rendering. Items of type `'TEXT'`
+   * (or unspecified) contribute their `content`; image items are dropped —
+   * the listing-detail surface shows the primary image separately. Returns
+   * undefined when there's nothing renderable so the FE can omit the
+   * description preview entirely.
+   */
+  private extractOfferDescription(offer: AllegroProductOffer): string | undefined {
+    const sections = offer.description?.sections ?? [];
+    const parts: string[] = [];
+    for (const section of sections) {
+      for (const item of section.items ?? []) {
+        if (item.content && (item.type === undefined || item.type === 'TEXT')) {
+          parts.push(item.content);
+        }
+      }
+    }
+    if (parts.length === 0) {
+      return undefined;
+    }
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Build the public buyer-facing offer URL. Allegro's storefront and API
+   * hosts differ between sandbox and production; the factory passes the
+   * right storefront base via the constructor. When unset (legacy callers,
+   * tests), omit the URL — the FE renders no link rather than a wrong one.
+   */
+  private buildMarketplaceUrl(offerId: string): string | undefined {
+    if (!this.storefrontBaseUrl) {
+      return undefined;
+    }
+    return `${this.storefrontBaseUrl.replace(/\/+$/, '')}/oferta/${offerId}`;
   }
 
   /**

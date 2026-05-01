@@ -222,6 +222,100 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('getMarketplaceOffer (#464)', () => {
+    const liveOffer = {
+      externalId: 'allegro-offer-456',
+      title: 'Vintage Camera Lens',
+      description: 'Mint condition, original case included.',
+      imageUrl: 'https://a.allegroimg.com/original/abc/lens.jpg',
+      price: { amount: '249.00', currency: 'PLN' },
+      availableQuantity: 3,
+      status: 'ACTIVE',
+      category: { id: '12345', name: 'Lenses' },
+      marketplaceUrl: 'https://allegro.pl/oferta/allegro-offer-456',
+      updatedAt: '2026-04-30T10:00:00Z',
+    };
+
+    function makeOfferReaderAdapter(getOffer: jest.Mock): OfferManagerPort {
+      return {
+        updateOfferQuantity: jest.fn(),
+        getOffer,
+      } as unknown as OfferManagerPort;
+    }
+
+    it('should return MarketplaceOfferResponseDto on happy path', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      const getOffer = jest.fn().mockResolvedValue(liveOffer);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeOfferReaderAdapter(getOffer));
+
+      const result = await controller.getMarketplaceOffer('uuid-1');
+
+      expect(repository.findById).toHaveBeenCalledWith('uuid-1');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(getOffer).toHaveBeenCalledWith({ externalId: 'allegro-offer-456' });
+      expect(result).toEqual({
+        externalId: 'allegro-offer-456',
+        title: 'Vintage Camera Lens',
+        description: 'Mint condition, original case included.',
+        imageUrl: 'https://a.allegroimg.com/original/abc/lens.jpg',
+        price: { amount: '249.00', currency: 'PLN' },
+        availableQuantity: 3,
+        status: 'ACTIVE',
+        category: { id: '12345', name: 'Lenses' },
+        marketplaceUrl: 'https://allegro.pl/oferta/allegro-offer-456',
+        updatedAt: '2026-04-30T10:00:00Z',
+      });
+    });
+
+    it('should throw NotFoundException when mapping does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(controller.getMarketplaceOffer('uuid-missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when mapping entityType is not Offer', async () => {
+      const productMapping = new IdentifierMapping(
+        'uuid-2',
+        'Product',
+        'ol_product_1',
+        'ext-product-1',
+        'allegro',
+        'conn-1',
+        null,
+        new Date(),
+        new Date(),
+      );
+      repository.findById.mockResolvedValue(productMapping);
+
+      await expect(controller.getMarketplaceOffer('uuid-2')).rejects.toThrow(NotFoundException);
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should throw UnprocessableEntityException when adapter does not implement OfferReader', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      // Adapter without `getOffer` method.
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+      } as unknown as OfferManagerPort);
+
+      await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should propagate adapter errors verbatim', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      const upstream = new Error('Allegro 502');
+      const getOffer = jest.fn().mockRejectedValue(upstream);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeOfferReaderAdapter(getOffer));
+
+      await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow('Allegro 502');
+    });
+  });
+
   describe('createOffer', () => {
     const validDto = {
       internalVariantId: 'ol_variant_abc123',

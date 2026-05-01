@@ -5143,6 +5143,64 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+.detail-section__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Listing marketplace offer section (#464) — surfaces live Allegro offer
+ * state above the raw mapping fields on the listing detail page.
+ */
+.listing-marketplace-offer__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.listing-marketplace-offer__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.listing-marketplace-offer__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.listing-marketplace-offer__description {
+  margin-top: 0.25rem;
+}
+
+.listing-marketplace-offer__description summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.listing-marketplace-offer__description-body {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+/* Inline SKU/EAN tags rendered next to the Internal ID link on the
+ * listing detail page (#464). Quiet treatment — the linked id is the
+ * primary affordance, the tags are supplementary.
+ */
+.listing-detail-variant-tags {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* Primary grid: summary left, sync status right (desktop) */
 .order-detail__primary-grid {
   display: grid;

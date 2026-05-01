@@ -13,6 +13,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   HttpCode,
   HttpStatus,
@@ -30,6 +31,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   CategoryNotFoundException,
   isCategoryParametersReader,
+  isOfferReader,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
@@ -51,6 +53,7 @@ import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
+import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
 import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
@@ -139,6 +142,58 @@ export class ListingsController {
       }
     }
     return dto;
+  }
+
+  @Get(':id/offer')
+  @HttpCode(HttpStatus.OK)
+  // 30 s cache lets quick back-and-forth navigation between the listings
+  // list and the detail page reuse a single Allegro fetch — `staleTime` on
+  // the FE query mirrors the same window. Keep `public` because the response
+  // carries no per-user state (everything is connection-scoped marketplace
+  // data the operator can already see in the UI).
+  @Header('Cache-Control', 'public, max-age=30')
+  @ApiParam({ name: 'id', description: 'Offer mapping row ID (UUID)' })
+  @ApiOperation({
+    summary: 'Get live marketplace offer for an offer mapping (#464)',
+    description:
+      'Fetches the live marketplace-side offer (title, image, price, qty, status, …) referenced by an `entityType=Offer` mapping. Resolves the connection\'s `OfferManagerPort` and requires it to implement the `OfferReader` sub-capability; adapters that do not are surfaced as 422 so the FE can render a soft "live data unavailable" fallback while the rest of the page (raw mapping fields, OfferCreation status) keeps rendering.',
+  })
+  @ApiResponse({ status: 200, description: 'Live offer detail', type: MarketplaceOfferResponseDto })
+  @ApiResponse({ status: 404, description: 'Offer mapping not found, or mapping is not of `entityType=Offer`' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter for this connection does not implement `OfferReader`',
+  })
+  async getMarketplaceOffer(@Param('id') id: string): Promise<MarketplaceOfferResponseDto> {
+    const mapping = await this.offerMappingRepository.findById(id);
+    if (!mapping) {
+      throw new NotFoundException(`Offer mapping not found: ${id}`);
+    }
+    // Treat non-Offer mappings as 404 rather than a separate 4xx — the
+    // existence of the mapping isn't actionable for the live-offer surface
+    // and the response shape is identical to "mapping doesn't exist".
+    if (mapping.entityType !== ('Offer' satisfies EntityType)) {
+      throw new NotFoundException(
+        `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`,
+      );
+    }
+
+    // Connection-level errors (404 / 409) propagate from getCapabilityAdapter
+    // unchanged via Nest's exception filter — same convention as
+    // getCategoryParameters above.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      mapping.connectionId,
+      'OfferManager',
+    );
+
+    if (!isOfferReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${mapping.connectionId} does not support live offer reading`,
+      );
+    }
+
+    const offer = await adapter.getOffer({ externalId: mapping.externalId });
+    return MarketplaceOfferResponseDto.fromDomain(offer);
   }
 
   @Post('connections/:connectionId/offers/:offerId/fields')

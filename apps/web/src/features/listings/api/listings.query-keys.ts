@@ -9,6 +9,8 @@ export const listingsQueryKeys = {
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
     ['listings', 'list', filters ?? {}, pagination ?? {}] as const,
   detail: (id: string) => ['listings', 'detail', id] as const,
+  marketplaceOffer: (mappingId: string) =>
+    ['listings', 'marketplaceOffer', mappingId] as const,
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
   sellerPolicies: (connectionId: string) =>

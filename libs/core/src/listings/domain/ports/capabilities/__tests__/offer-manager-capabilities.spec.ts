@@ -19,6 +19,7 @@ import { isCategoryBrowser } from '../category-browser.capability';
 import { isCategoryBarcodeMatcher } from '../category-barcode-matcher.capability';
 import { isCategoryParametersReader } from '../category-parameters-reader.capability';
 import { isOfferCreator } from '../offer-creator.capability';
+import { isOfferReader } from '../offer-reader.capability';
 import { isSellerPoliciesReader } from '../seller-policies-reader.capability';
 
 type Guard = (adapter: OfferManagerPort) => boolean;
@@ -32,6 +33,7 @@ const cases: ReadonlyArray<readonly [string, Guard, string]> = [
   ['CategoryBarcodeMatcher', isCategoryBarcodeMatcher, 'matchCategoryByBarcode'],
   ['CategoryParametersReader', isCategoryParametersReader, 'fetchCategoryParameters'],
   ['OfferCreator', isOfferCreator, 'createOffer'],
+  ['OfferReader', isOfferReader, 'getOffer'],
   ['SellerPoliciesReader', isSellerPoliciesReader, 'fetchSellerPolicies'],
 ];
 

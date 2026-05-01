@@ -11,11 +11,18 @@ import type {
   ProductPagination,
   PaginatedProducts,
   Product,
+  ProductVariantSummary,
 } from './products.types';
 
 export interface ProductsApi {
   list: (filters?: ProductFilters, pagination?: ProductPagination) => Promise<PaginatedProducts>;
   getById: (id: string) => Promise<Product>;
+  /**
+   * Lightweight projection of a single variant — id, parent product id, SKU,
+   * EAN, optional human-readable name. Used by the listing-detail page (#464)
+   * to enrich the Internal ID row with the variant's identifiers inline.
+   */
+  getVariant: (variantId: string) => Promise<ProductVariantSummary>;
 }
 
 interface ApiRequest {
@@ -38,6 +45,9 @@ export function createProductsApi(request: ApiRequest): ProductsApi {
     },
     getById(id): Promise<Product> {
       return request<Product>(`/products/${id}`);
+    },
+    getVariant(variantId): Promise<ProductVariantSummary> {
+      return request<ProductVariantSummary>(`/products/variants/${variantId}`);
     },
   };
 }
