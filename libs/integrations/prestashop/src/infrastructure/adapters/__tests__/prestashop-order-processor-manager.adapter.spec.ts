@@ -1150,5 +1150,126 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       );
     });
   });
+
+  describe('DestinationOptionsReader (#472 / #473)', () => {
+    describe('listCarriers', () => {
+      it('returns active non-deleted carriers with id_reference as value', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', id_reference: '1', name: 'Click and collect', active: '1', deleted: '0' },
+          { id: '2', id_reference: '2', name: 'My carrier', active: '1', deleted: '0' },
+          { id: '3', id_reference: '3', name: 'My cheap carrier', active: '1', deleted: '0' },
+          { id: '4', id_reference: '4', name: 'My light carrier', active: '1', deleted: '0' },
+        ]);
+
+        const result = await adapter.listCarriers();
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+          'carriers',
+          { custom: { active: '1', deleted: '0' } },
+          1000,
+          0,
+        );
+        expect(result).toEqual([
+          { value: '1', label: 'Click and collect' },
+          { value: '2', label: 'My carrier' },
+          { value: '3', label: 'My cheap carrier' },
+          { value: '4', label: 'My light carrier' },
+        ]);
+      });
+
+      it('unwraps multi-language name field shape', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          {
+            id: '1',
+            id_reference: '1',
+            name: { language: [{ '#text': 'Click and collect' }] },
+            active: '1',
+            deleted: '0',
+          },
+        ]);
+
+        const result = await adapter.listCarriers();
+
+        expect(result).toEqual([{ value: '1', label: 'Click and collect' }]);
+      });
+
+      it('returns empty array when PS reports no carriers', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+        await expect(adapter.listCarriers()).resolves.toEqual([]);
+      });
+    });
+
+    describe('listOrderStatuses', () => {
+      it('returns non-deleted order_states keyed by id', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', name: 'Awaiting check payment', deleted: '0' },
+          { id: '2', name: 'Payment accepted', deleted: '0' },
+          { id: '5', name: 'Delivered', deleted: '0' },
+        ]);
+
+        const result = await adapter.listOrderStatuses();
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+          'order_states',
+          { custom: { deleted: '0' } },
+          1000,
+          0,
+        );
+        expect(result).toEqual([
+          { value: '1', label: 'Awaiting check payment' },
+          { value: '2', label: 'Payment accepted' },
+          { value: '5', label: 'Delivered' },
+        ]);
+      });
+    });
+
+    describe('listPaymentMethods', () => {
+      it('filters to is_payment_module=1 (PS 1.7+)', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1', is_payment_module: '1' },
+          { id: '2', name: 'ps_emailalerts', display_name: 'Email alerts', active: '1', is_payment_module: '0' },
+          { id: '3', name: 'payu', displayName: 'PayU', active: '1', is_payment_module: '1' },
+        ]);
+
+        const result = await adapter.listPaymentMethods();
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+          'modules',
+          { custom: { active: '1' } },
+          1000,
+          0,
+        );
+        expect(result).toEqual([
+          { value: 'ps_wirepayment', label: 'Wire transfer' },
+          { value: 'payu', label: 'PayU' },
+        ]);
+      });
+
+      it('falls back to tab=payments_gateways when is_payment_module is absent', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1', tab: 'payments_gateways' },
+          { id: '2', name: 'ps_emailalerts', display_name: 'Email alerts', active: '1', tab: 'administration' },
+        ]);
+
+        const result = await adapter.listPaymentMethods();
+
+        expect(result).toEqual([{ value: 'ps_wirepayment', label: 'Wire transfer' }]);
+      });
+
+      it('falls through to "include all active" when no indicator field exists on any row', async () => {
+        // Defensive: rather than silently dropping legitimate gateways on a PS
+        // version that doesn't expose either field, return everything and let
+        // the operator filter in the UI.
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1' },
+          { id: '2', name: 'payu', displayName: 'PayU', active: '1' },
+        ]);
+
+        const result = await adapter.listPaymentMethods();
+
+        expect(result).toHaveLength(2);
+      });
+    });
+  });
 });
 

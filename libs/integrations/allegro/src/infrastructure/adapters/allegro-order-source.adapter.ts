@@ -10,7 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
-import type { OrderSourcePort } from '@openlinker/core/orders';
+import type { OrderSourcePort, SourceOptionsReader, MappingOption } from '@openlinker/core/orders';
 import type {
   OrderFeedInput,
   OrderFeedOutput,
@@ -23,7 +23,14 @@ import type {
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import { AllegroCheckoutForm, AllegroOrderEventsResponse } from '../../domain/types/allegro-api.types';
+import {
+  AllegroCheckoutForm,
+  AllegroOrderEventsResponse,
+  AllegroShippingRatesResponse,
+  AllegroShippingRateDetailResponse,
+} from '../../domain/types/allegro-api.types';
+import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
+import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -37,7 +44,7 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * `OrderIngestionService` against the `IncomingOrder` payload, so the adapter
  * does not need the identifier-mapping port itself.
  */
-export class AllegroOrderSourceAdapter implements OrderSourcePort {
+export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptionsReader {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
   constructor(
@@ -313,6 +320,65 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort {
       return undefined;
     }
     return { id: pp.id, name: pp.name, description: pp.description };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SourceOptionsReader (#472 / #474)
+  //
+  // `listOrderStatuses` and `listPaymentMethods` are static lookups — Allegro
+  // does not expose live endpoints for these (see the doc-link comments in
+  // `allegro-order-status.types.ts` and `allegro-payment-type.types.ts`).
+  // `listDeliveryMethods` is the only live one: it walks the seller's rate-
+  // tables (`/sale/shipping-rates` + per-id details) and flattens the
+  // underlying carrier methods, deduped by methodId.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return Promise.resolve([...ALLEGRO_ORDER_STATUS_OPTIONS]);
+  }
+
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return Promise.resolve([...ALLEGRO_PAYMENT_TYPE_OPTIONS]);
+  }
+
+  async listDeliveryMethods(): Promise<MappingOption[]> {
+    // Step 1: list the seller's rate-tables (cheap — single response).
+    const rateSets = await this.httpClient.get<AllegroShippingRatesResponse>(
+      '/sale/shipping-rates',
+    );
+    const rateSetIds = (rateSets.data.shippingRates ?? []).map((r) => r.id);
+
+    if (rateSetIds.length === 0) {
+      this.logger.warn(
+        `Allegro returned no shipping-rates for connection ${this.connectionId} — listDeliveryMethods is empty. Operator likely needs to configure cenniki in the seller portal first.`,
+      );
+      return [];
+    }
+
+    // Step 2: fetch each rate-table's details in parallel. N+1 in the strict
+    // sense but bounded — sellers typically have <20 rate-tables, and this is
+    // an operator-driven endpoint (called when opening the carrier-mapping UI),
+    // not a hot path. Caching is deferred to a follow-up if latency bites.
+    const details = await Promise.all(
+      rateSetIds.map((id) =>
+        this.httpClient.get<AllegroShippingRateDetailResponse>(
+          `/sale/shipping-rates/${id}`,
+        ),
+      ),
+    );
+
+    // Step 3: flatten + dedup by methodId.
+    const seen = new Map<string, string>();
+    for (const detail of details) {
+      for (const rate of detail.data.rates ?? []) {
+        const id = rate.method?.id;
+        if (!id) continue;
+        if (!seen.has(id)) {
+          seen.set(id, rate.method?.name ?? id);
+        }
+      }
+    }
+    return Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
   }
 }
 

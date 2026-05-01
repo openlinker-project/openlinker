@@ -641,6 +641,29 @@ export interface AllegroShippingRatesResponse {
 }
 
 /**
+ * Response from `GET /sale/shipping-rates/{id}` — the **detailed** per-rate-
+ * table view (#472). The top-level list endpoint (`/sale/shipping-rates`)
+ * returns rate-table identifiers and names; this per-id endpoint returns the
+ * full rate table including the underlying carrier methods.
+ *
+ * Each `rates[].method` entry carries the seller-stable Allegro carrier-
+ * method identity (e.g. `1fa56f79-…` for "Allegro Paczkomaty InPost") used
+ * by the order-checkout-form `delivery.method.id` field. This is the layer
+ * #474's `listDeliveryMethods()` flattens + dedupes from across all
+ * rate-tables.
+ */
+export interface AllegroShippingRateDetailResponse {
+  id: string;
+  name: string;
+  rates?: Array<{
+    method?: {
+      id: string;
+      name?: string;
+    };
+  }>;
+}
+
+/**
  * Response from `GET /after-sales-service-conditions/return-policies`.
  */
 export interface AllegroReturnPoliciesResponse {

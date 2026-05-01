@@ -11,6 +11,15 @@
 export { OrderSourcePort } from './domain/ports/order-source.port';
 export { OrderProcessorManagerPort } from './domain/ports/order-processor-manager.port';
 
+// Sub-capabilities (#472): optional capabilities extracted into distinct
+// interfaces + co-located type guards. Mirrors the pattern established by the
+// OfferManagerPort sub-capabilities in @openlinker/core/listings.
+export type { DestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
+export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
+export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
+export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
+export type { MappingOption } from './domain/types/mapping-option.types';
+
 // Types
 export {
   OrderFilters,

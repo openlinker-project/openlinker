@@ -34,6 +34,28 @@ export interface MappingOption {
   label: string;
 }
 
+/**
+ * Which adapter side serves the option list.
+ * - `destination` resolves the OrderProcessorManager adapter (e.g. PrestaShop)
+ * - `source` resolves the OrderSource adapter (e.g. Allegro)
+ */
+export const MappingSideValues = ['source', 'destination'] as const;
+export type MappingSide = (typeof MappingSideValues)[number];
+
+/**
+ * Option list kind. Not every combo is valid — the API returns 404 for
+ * unsupported pairs:
+ *   destination: carriers | order-statuses | payment-methods
+ *   source:      order-statuses | delivery-methods | payment-methods
+ */
+export const MappingOptionKindValues = [
+  'carriers',
+  'order-statuses',
+  'payment-methods',
+  'delivery-methods',
+] as const;
+export type MappingOptionKind = (typeof MappingOptionKindValues)[number];
+
 // ── Upsert payloads ──────────────────────────────────────────────────────
 
 export interface UpsertStatusMappingsPayload {

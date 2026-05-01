@@ -9,7 +9,24 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { ConnectionMappingsPage } from './connection-mappings-page';
-import type { StatusMapping, MappingOption } from '../../features/mappings/api/mappings.types';
+import type {
+  StatusMapping,
+  MappingOption,
+  MappingSide,
+  MappingOptionKind,
+} from '../../features/mappings/api/mappings.types';
+
+/**
+ * Builds a getMappingOptions mock that switches by (side, kind).
+ * Mirrors the new capability-scoped routes (#472).
+ */
+function buildOptionsResolver(
+  byKey: Partial<Record<`${MappingSide}/${MappingOptionKind}`, MappingOption[]>>,
+) {
+  return vi.fn((_connectionId: string, side: MappingSide, kind: MappingOptionKind) =>
+    Promise.resolve(byKey[`${side}/${kind}`] ?? []),
+  );
+}
 
 const STATUS_OPTIONS: MappingOption[] = [
   { value: 'READY_FOR_PROCESSING', label: 'Ready for processing' },
@@ -37,12 +54,10 @@ const BASE_MAPPINGS_MOCKS = {
   upsertCarrierMappings: vi.fn().mockResolvedValue([]),
   getPaymentMappings: vi.fn().mockResolvedValue([]),
   upsertPaymentMappings: vi.fn().mockResolvedValue([]),
-  getAllegroOrderStatuses: vi.fn().mockResolvedValue(STATUS_OPTIONS),
-  getAllegroDeliveryMethods: vi.fn().mockResolvedValue([]),
-  getAllegroPaymentProviders: vi.fn().mockResolvedValue([]),
-  getPrestashopOrderStatuses: vi.fn().mockResolvedValue(PS_STATUS_OPTIONS),
-  getPrestashopCarriers: vi.fn().mockResolvedValue([]),
-  getPrestashopPaymentModules: vi.fn().mockResolvedValue([]),
+  getMappingOptions: buildOptionsResolver({
+    'source/order-statuses': STATUS_OPTIONS,
+    'destination/order-statuses': PS_STATUS_OPTIONS,
+  }),
 };
 
 function buildApiClient(mappingsOverrides: Partial<typeof BASE_MAPPINGS_MOCKS> = {}): ReturnType<typeof createMockApiClient> {

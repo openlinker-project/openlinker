@@ -282,12 +282,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       upsertCarrierMappings: vi.fn().mockResolvedValue([]),
       getPaymentMappings: vi.fn().mockResolvedValue([]),
       upsertPaymentMappings: vi.fn().mockResolvedValue([]),
-      getAllegroOrderStatuses: vi.fn().mockResolvedValue([]),
-      getAllegroDeliveryMethods: vi.fn().mockResolvedValue([]),
-      getAllegroPaymentProviders: vi.fn().mockResolvedValue([]),
-      getPrestashopOrderStatuses: vi.fn().mockResolvedValue([]),
-      getPrestashopCarriers: vi.fn().mockResolvedValue([]),
-      getPrestashopPaymentModules: vi.fn().mockResolvedValue([]),
+      getMappingOptions: vi.fn().mockResolvedValue([]),
       ...overrides.mappings,
     } as ApiClient['mappings'],
     syncJobs: {

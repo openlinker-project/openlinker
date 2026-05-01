@@ -1,211 +1,201 @@
 /**
- * Mapping Options Controller
+ * Mapping Options Controller (#472 / #473 / #474)
  *
- * Helper endpoints that return available option values for FE dropdowns.
- * For MVP, all lists are hardcoded with well-known Allegro and PrestaShop values.
- * Live platform calls (fetching actual PS order states, carriers) are deferred to a follow-up.
+ * Capability-scoped routes for the carrier-mapping UI dropdowns. Each handler
+ * resolves the platform adapter via `IIntegrationsService.getCapabilityAdapter`,
+ * narrows it through the appropriate type guard
+ * (`isDestinationOptionsReader` / `isSourceOptionsReader`), and returns the
+ * live `MappingOption[]` list. Adapters that don't implement the relevant
+ * sub-capability cause a `501 Not Implemented`; FE renders an empty dropdown
+ * with a clear message.
+ *
+ * Replaces the eight legacy platform-prefixed routes (`allegro/*`,
+ * `prestashop/*`) and the seven hardcoded option constants. The routes drop
+ * the platform prefix from the URL because `connectionId` already
+ * disambiguates the platform via `ConnectionService`.
+ *
+ * Categories endpoints continue to use `categoriesCacheService` directly —
+ * they're already live-data and the cache is the right architecture for
+ * tree-structured taxonomies; only the URL changed.
  *
  * @module apps/api/src/mappings/http
  */
 
-import { Controller, Get, Param, Query, Inject } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, Inject, NotImplementedException } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import {
+  isDestinationOptionsReader,
+  isSourceOptionsReader,
+  type DestinationOptionsReader,
+  type OrderProcessorManagerPort,
+  type OrderSourcePort,
+  type SourceOptionsReader,
+} from '@openlinker/core/orders';
+
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { MappingOptionResponseDto } from './dto/mapping-option-response.dto';
 import { AllegroCategoryResponseDto } from './dto/allegro-category-response.dto';
 import { ICategoriesCacheService } from '../../categories/categories-cache.service.interface';
 import { CATEGORIES_CACHE_SERVICE_TOKEN } from '../../categories/categories.tokens';
 
-/**
- * Well-known Allegro order/payment statuses.
- * Source: Allegro REST API documentation — CheckoutForm.status and payment.type values.
- */
-const ALLEGRO_ORDER_STATUSES: MappingOptionResponseDto[] = [
-  { value: 'BOUGHT', label: 'Bought (checkout started)' },
-  { value: 'FILLED_IN', label: 'Filled in (buyer data provided)' },
-  { value: 'READY_FOR_PROCESSING', label: 'Ready for processing' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-];
-
-/**
- * Well-known Allegro delivery method IDs.
- * Source: Allegro REST API — /sale/delivery-methods endpoint values.
- */
-const ALLEGRO_DELIVERY_METHODS: MappingOptionResponseDto[] = [
-  { value: 'INPOST_PACZKOMAT', label: 'InPost Paczkomat' },
-  { value: 'INPOST_KURIER', label: 'InPost Kurier' },
-  { value: 'DPD', label: 'DPD' },
-  { value: 'DHL', label: 'DHL' },
-  { value: 'UPS', label: 'UPS' },
-  { value: 'POCZTEX', label: 'Pocztex' },
-  { value: 'GLS', label: 'GLS' },
-  { value: 'FEDEX', label: 'FedEx' },
-  { value: 'PICKUP', label: 'Personal pickup' },
-  { value: 'OTHER', label: 'Other' },
-];
-
-/**
- * Well-known Allegro payment provider names.
- * Source: Allegro REST API — CheckoutForm.payment.type values.
- */
-const ALLEGRO_PAYMENT_PROVIDERS: MappingOptionResponseDto[] = [
-  { value: 'P24', label: 'Przelewy24' },
-  { value: 'CARD', label: 'Card payment' },
-  { value: 'BLIK', label: 'BLIK' },
-  { value: 'WIRE_TRANSFER', label: 'Wire transfer' },
-  { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
-  { value: 'INSTALLMENTS', label: 'Installments' },
-  { value: 'SPLIT_PAYMENT', label: 'Split payment' },
-];
-
-/**
- * Common PrestaShop default order status IDs and labels.
- * Values correspond to PrestaShop's built-in order_state IDs (1–12).
- * Merchants with custom statuses should extend their mapping via the PS admin panel.
- */
-const PRESTASHOP_ORDER_STATUSES: MappingOptionResponseDto[] = [
-  { value: '1', label: 'Awaiting check payment' },
-  { value: '2', label: 'Payment accepted' },
-  { value: '3', label: 'Processing in progress' },
-  { value: '4', label: 'Shipped' },
-  { value: '5', label: 'Delivered' },
-  { value: '6', label: 'Cancelled' },
-  { value: '7', label: 'Refunded' },
-  { value: '8', label: 'Payment error' },
-  { value: '9', label: 'On backorder (paid)' },
-  { value: '10', label: 'Awaiting bank wire payment' },
-  { value: '11', label: 'Remote payment accepted' },
-  { value: '12', label: 'On backorder (not paid)' },
-];
-
-/**
- * Common PrestaShop default carrier IDs and labels.
- * Merchants should configure carrier IDs matching their PS installation.
- */
-const PRESTASHOP_CARRIERS: MappingOptionResponseDto[] = [
-  { value: '1', label: 'My carrier' },
-  { value: '2', label: 'My cheap carrier' },
-];
-
-/**
- * Common PrestaShop payment module names.
- * Corresponds to the `module_name` field on PS orders.
- */
-const PRESTASHOP_PAYMENT_MODULES: MappingOptionResponseDto[] = [
-  { value: 'ps_wirepayment', label: 'Wire payment (ps_wirepayment)' },
-  { value: 'ps_checkpayment', label: 'Check payment (ps_checkpayment)' },
-  { value: 'ps_cashondelivery', label: 'Cash on delivery (ps_cashondelivery)' },
-  { value: 'paypal', label: 'PayPal' },
-  { value: 'przelewy24', label: 'Przelewy24' },
-  { value: 'stripe', label: 'Stripe' },
-  { value: 'dotpay', label: 'Dotpay' },
-  { value: 'payu', label: 'PayU' },
-];
-
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('mappings')
-@Controller('connections/:connectionId')
+@Controller('connections/:connectionId/mappings/options')
 export class MappingOptionsController {
   constructor(
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
     @Inject(CATEGORIES_CACHE_SERVICE_TOKEN)
     private readonly categoriesCacheService: ICategoriesCacheService,
   ) {}
 
-  // ── Allegro options ───────────────────────────────────────────────────────
+  // ── Destination side (e.g. PrestaShop OrderProcessorManager) ────────────
 
-  @Get('allegro/order-statuses')
-  @ApiOperation({ summary: 'List available Allegro order status values' })
+  @Get('destination/carriers')
+  @ApiOperation({ summary: 'List destination-platform carriers (live)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getAllegroOrderStatuses(
-    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return ALLEGRO_ORDER_STATUSES;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
+  async getDestinationCarriers(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveDestinationOptions(connectionId, 'listCarriers');
   }
 
-  @Get('allegro/delivery-methods')
-  @ApiOperation({ summary: 'List available Allegro delivery method IDs' })
+  @Get('destination/order-statuses')
+  @ApiOperation({ summary: 'List destination-platform order statuses (live)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getAllegroDeliveryMethods(
-    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return ALLEGRO_DELIVERY_METHODS;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
+  async getDestinationOrderStatuses(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveDestinationOptions(connectionId, 'listOrderStatuses');
   }
 
-  @Get('allegro/payment-providers')
-  @ApiOperation({ summary: 'List available Allegro payment provider names' })
+  @Get('destination/payment-methods')
+  @ApiOperation({ summary: 'List destination-platform payment methods (live)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getAllegroPaymentProviders(
-    // TODO: use connectionId to fetch live values from the Allegro adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return ALLEGRO_PAYMENT_PROVIDERS;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
+  async getDestinationPaymentMethods(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveDestinationOptions(connectionId, 'listPaymentMethods');
   }
 
-  // ── PrestaShop options ────────────────────────────────────────────────────
+  // ── Source side (e.g. Allegro OrderSource) ──────────────────────────────
 
-  @Get('prestashop/order-statuses')
-  @ApiOperation({ summary: 'List available PrestaShop order status IDs' })
+  @Get('source/order-statuses')
+  @ApiOperation({ summary: 'List source-platform order statuses' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getPrestashopOrderStatuses(
-    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return PRESTASHOP_ORDER_STATUSES;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
+  async getSourceOrderStatuses(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveSourceOptions(connectionId, 'listOrderStatuses');
   }
 
-  @Get('prestashop/carriers')
-  @ApiOperation({ summary: 'List available PrestaShop carrier IDs' })
+  @Get('source/delivery-methods')
+  @ApiOperation({ summary: 'List source-platform delivery methods (carriers, with human labels)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getPrestashopCarriers(
-    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return PRESTASHOP_CARRIERS;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
+  async getSourceDeliveryMethods(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveSourceOptions(connectionId, 'listDeliveryMethods');
   }
 
-  @Get('prestashop/payment-modules')
-  @ApiOperation({ summary: 'List available PrestaShop payment module names' })
+  @Get('source/payment-methods')
+  @ApiOperation({ summary: 'List source-platform payment methods' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [MappingOptionResponseDto] })
-  getPrestashopPaymentModules(
-    // TODO: use connectionId to fetch live values from the PrestaShop adapter once adapters expose option lists
-    @Param('connectionId') _connectionId: string,
-  ): MappingOptionResponseDto[] {
-    return PRESTASHOP_PAYMENT_MODULES;
+  @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
+  async getSourcePaymentMethods(
+    @Param('connectionId') connectionId: string,
+  ): Promise<MappingOptionResponseDto[]> {
+    return this.resolveSourceOptions(connectionId, 'listPaymentMethods');
   }
 
-  // ── PrestaShop categories ────────────────────────────────────────────────
+  // ── Categories (live, cached — different architecture from option lists) ─
 
-  @Get('prestashop/categories')
-  @ApiOperation({ summary: 'List PrestaShop categories for a connection (live fetch)' })
+  @Get('destination/categories')
+  @ApiOperation({ summary: 'List destination-platform categories (live, cached)' })
   @ApiParam({ name: 'connectionId', type: String })
-  @ApiResponse({ status: 200, description: 'Array of PrestaShop categories' })
-  async getPrestashopCategories(
+  @ApiResponse({ status: 200, description: 'Array of platform categories' })
+  async getDestinationCategories(
     @Param('connectionId') connectionId: string,
   ): Promise<unknown[]> {
     return this.categoriesCacheService.getPrestashopCategories(connectionId);
   }
 
-  // ── Allegro categories ──────────────────────────────────────────────────
-
-  @Get('allegro/categories')
-  @ApiOperation({ summary: 'Browse Allegro category tree (cached, 24h TTL)' })
+  @Get('source/categories')
+  @ApiOperation({ summary: 'Browse source-platform category tree (cached, 24h TTL)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiQuery({ name: 'parentId', required: false, type: String, description: 'Parent category ID (omit for root)' })
   @ApiResponse({ status: 200, type: [AllegroCategoryResponseDto] })
-  async getAllegroCategories(
+  async getSourceCategories(
     @Param('connectionId') connectionId: string,
     @Query('parentId') parentId?: string,
   ): Promise<AllegroCategoryResponseDto[]> {
     const categories = await this.categoriesCacheService.getAllegroCategories(connectionId, parentId);
     return categories.map((c) => AllegroCategoryResponseDto.fromDomain(c));
+  }
+
+  // ── Private helpers (#472 §5.5) ─────────────────────────────────────────
+
+  /**
+   * Resolves the destination adapter, narrows via `isDestinationOptionsReader`,
+   * and invokes the named method. Centralises the resolve+narrow+invoke
+   * pattern that would otherwise repeat across three near-identical handlers.
+   */
+  private async resolveDestinationOptions<K extends keyof DestinationOptionsReader>(
+    connectionId: string,
+    method: K,
+  ): Promise<MappingOptionResponseDto[]> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<OrderProcessorManagerPort>(
+      connectionId,
+      'OrderProcessorManager',
+    );
+    if (!isDestinationOptionsReader(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement DestinationOptionsReader`,
+      );
+    }
+    return adapter[method]();
+  }
+
+  /**
+   * Source-side counterpart to `resolveDestinationOptions`. Same shape, but
+   * resolves `OrderSourcePort` and narrows via `isSourceOptionsReader`.
+   */
+  private async resolveSourceOptions<K extends keyof SourceOptionsReader>(
+    connectionId: string,
+    method: K,
+  ): Promise<MappingOptionResponseDto[]> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+      connectionId,
+      'OrderSource',
+    );
+    if (!isSourceOptionsReader(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement SourceOptionsReader`,
+      );
+    }
+    return adapter[method]();
   }
 }

@@ -3,6 +3,15 @@
  *
  * Typed API methods for connection-scoped mapping configuration endpoints.
  *
+ * Option lists (carriers, order statuses, payment methods, delivery methods)
+ * collapse into a single parameterised call against the new capability-scoped
+ * routes (#472): `/connections/:id/mappings/options/:side/:kind`. The `side`
+ * indicates whether to resolve the destination (e.g. PrestaShop) or source
+ * (e.g. Allegro) adapter — the connection alone disambiguates the platform.
+ *
+ * Categories keep dedicated methods because they return richer DTOs (tree
+ * metadata) and use a different upstream architecture (cached browse).
+ *
  * @module apps/web/src/features/mappings/api
  */
 
@@ -14,6 +23,8 @@ import type {
   AllegroCategory,
   PrestashopCategory,
   MappingOption,
+  MappingSide,
+  MappingOptionKind,
   UpsertStatusMappingsPayload,
   UpsertCarrierMappingsPayload,
   UpsertPaymentMappingsPayload,
@@ -30,12 +41,17 @@ export interface MappingsApi {
   getPaymentMappings: (connectionId: string) => Promise<PaymentMapping[]>;
   upsertPaymentMappings: (connectionId: string, payload: UpsertPaymentMappingsPayload) => Promise<PaymentMapping[]>;
 
-  getAllegroOrderStatuses: (connectionId: string) => Promise<MappingOption[]>;
-  getAllegroDeliveryMethods: (connectionId: string) => Promise<MappingOption[]>;
-  getAllegroPaymentProviders: (connectionId: string) => Promise<MappingOption[]>;
-  getPrestashopOrderStatuses: (connectionId: string) => Promise<MappingOption[]>;
-  getPrestashopCarriers: (connectionId: string) => Promise<MappingOption[]>;
-  getPrestashopPaymentModules: (connectionId: string) => Promise<MappingOption[]>;
+  /**
+   * Fetch a dropdown option list from the resolved capability adapter.
+   * Valid combos (rejected as 404 by the API otherwise):
+   *   destination + (carriers | order-statuses | payment-methods)
+   *   source      + (order-statuses | delivery-methods | payment-methods)
+   */
+  getMappingOptions: (
+    connectionId: string,
+    side: MappingSide,
+    kind: MappingOptionKind,
+  ) => Promise<MappingOption[]>;
 
   getCategoryMappings: (connectionId: string) => Promise<CategoryMapping[]>;
   upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
@@ -77,23 +93,10 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         body: JSON.stringify(payload),
       }),
 
-    getAllegroOrderStatuses: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/allegro/order-statuses`),
-
-    getAllegroDeliveryMethods: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/allegro/delivery-methods`),
-
-    getAllegroPaymentProviders: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/allegro/payment-providers`),
-
-    getPrestashopOrderStatuses: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/prestashop/order-statuses`),
-
-    getPrestashopCarriers: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/prestashop/carriers`),
-
-    getPrestashopPaymentModules: (connectionId) =>
-      request<MappingOption[]>(`/connections/${connectionId}/prestashop/payment-modules`),
+    getMappingOptions: (connectionId, side, kind) =>
+      request<MappingOption[]>(
+        `/connections/${connectionId}/mappings/options/${side}/${kind}`,
+      ),
 
     getCategoryMappings: (connectionId) =>
       request<CategoryMapping[]>(`/connections/${connectionId}/mappings/categories`),
@@ -111,10 +114,14 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
 
     getAllegroCategories: (connectionId, parentId?) => {
       const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
-      return request<AllegroCategory[]>(`/connections/${connectionId}/allegro/categories${qs}`);
+      return request<AllegroCategory[]>(
+        `/connections/${connectionId}/mappings/options/source/categories${qs}`,
+      );
     },
 
     getPrestashopCategories: (connectionId) =>
-      request<PrestashopCategory[]>(`/connections/${connectionId}/prestashop/categories`),
+      request<PrestashopCategory[]>(
+        `/connections/${connectionId}/mappings/options/destination/categories`,
+      ),
   };
 }
