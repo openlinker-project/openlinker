@@ -57,6 +57,12 @@ const TRANSLATIONS: Record<string, Translator> = {
 export function translateAllegroError(
   error: OfferCreationError,
 ): AllegroErrorTranslation | null {
-  const translator = TRANSLATIONS[error.code];
-  return translator ? translator(error) : null;
+  // `Object.hasOwn` rather than a bare lookup so we can't accidentally
+  // resolve to an inherited prototype method (e.g. `error.code === 'toString'`)
+  // and call it with `(error)` — extremely unlikely from Allegro in practice,
+  // but the guard is one line and free.
+  if (!Object.hasOwn(TRANSLATIONS, error.code)) {
+    return null;
+  }
+  return TRANSLATIONS[error.code](error);
 }

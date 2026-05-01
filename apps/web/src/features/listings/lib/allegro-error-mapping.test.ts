@@ -65,4 +65,11 @@ describe('translateAllegroError', () => {
     };
     expect(translateAllegroError(error)).toBeNull();
   });
+
+  it.each(['toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'returns null for prototype-inherited key %s (defensive — never resolves to an Object.prototype method)',
+    (code) => {
+      expect(translateAllegroError({ code, message: 'irrelevant' })).toBeNull();
+    },
+  );
 });
