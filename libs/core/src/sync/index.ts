@@ -57,6 +57,7 @@ export {
   MarketplaceOfferFieldUpdatePayloadV1,
   MarketplaceOffersSyncPayloadV1,
   MarketplaceOfferCreatePayloadV1,
+  MarketplaceOfferPollCreationStatusPayloadV1,
 } from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,

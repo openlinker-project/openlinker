@@ -53,9 +53,11 @@ import {
 import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_STATUS_POLL_SERVICE_TOKEN,
 } from '../../listings.tokens';
 import { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
 import { IOfferCreationExecutionService } from '../interfaces/offer-creation-execution.service.interface';
+import { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
 
 @Injectable()
 export class OfferCreationExecutionService implements IOfferCreationExecutionService {
@@ -70,6 +72,8 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(OFFER_STATUS_POLL_SERVICE_TOKEN)
+    private readonly offerStatusPoll: IOfferStatusPollService,
   ) {}
 
   async executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult> {
@@ -144,9 +148,20 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     );
 
     if (finalRecord.status === 'validating') {
-      this.logger.warn(
-        `Offer created but stuck in validating — awaiting marketplace.offer.pollCreationStatus handler (follow-up). recordId=${finalRecord.id} externalOfferId=${result.externalOfferId} connectionId=${input.connectionId}`,
-      );
+      try {
+        await this.offerStatusPoll.scheduleFirstPoll({
+          offerCreationRecordId: finalRecord.id,
+          externalOfferId: result.externalOfferId,
+          connectionId: input.connectionId,
+        });
+      } catch (err) {
+        // Enqueue failure is non-fatal for the create flow — the offer was
+        // already created on Allegro and the record is persisted. Log so an
+        // operator can manually trigger a retry from the FE if needed.
+        this.logger.warn(
+          `Offer created but failed to schedule poll iteration #1 — record will stay 'validating' until an operator retries. recordId=${finalRecord.id} externalOfferId=${result.externalOfferId} connectionId=${input.connectionId} error=${(err as Error).message}`,
+        );
+      }
     }
 
     return this.buildResult(finalRecord, input.connectionId);

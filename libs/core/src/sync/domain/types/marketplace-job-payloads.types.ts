@@ -93,3 +93,27 @@ export interface MarketplaceOfferCreatePayloadV1 {
    */
   offerCreationRecordId?: string;
 }
+
+/**
+ * Payload for `marketplace.offer.pollCreationStatus` jobs (#447).
+ *
+ * Self-rescheduling poll: each iteration writes the next iteration's payload
+ * with `pollAttempt + 1`. `pollAttempt` is the **polling-cadence** counter
+ * (1..`OL_ALLEGRO_OFFER_POLL_MAX_ATTEMPTS`); orthogonal to `sync_jobs.attempts`,
+ * which is the runner's transient-HTTP-retry counter (capped at 3 per
+ * iteration). See `docs/plans/implementation-plan-447-allegro-offer-poll-creation-status.md`
+ * §5.3 for the two-counter model.
+ */
+export interface MarketplaceOfferPollCreationStatusPayloadV1 {
+  schemaVersion: 1;
+  /** OL internal `OfferCreationRecord.id` to update on terminal states. */
+  offerCreationRecordId: string;
+  /** Marketplace-native offer id (e.g. Allegro `7781562863`). */
+  externalOfferId: string;
+  /**
+   * Polling-cadence counter. `1` on the first scheduled poll; service writes
+   * `pollAttempt + 1` into the next iteration's payload until terminal or
+   * `OL_ALLEGRO_OFFER_POLL_MAX_ATTEMPTS` is reached.
+   */
+  pollAttempt: number;
+}

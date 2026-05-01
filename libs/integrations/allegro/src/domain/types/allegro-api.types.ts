@@ -318,6 +318,18 @@ export interface AllegroProductOffer {
   external?: {
     id?: string | null;
   };
+  /**
+   * Async-validation lifecycle. Only present once Allegro starts processing
+   * the offer; absent on freshly-pulled drafts. Read by the offer-creation
+   * poller (#447) via `OfferStatusReader.getOfferStatus`.
+   */
+  publication?: { status?: AllegroOfferPublicationStatus };
+  /**
+   * Validation errors returned alongside the offer resource. Mirrors the
+   * shape returned on `POST /sale/product-offers` 2xx-with-errors responses;
+   * the same array can appear here once Allegro finishes async validation.
+   */
+  validation?: { errors?: AllegroValidationError[] };
 }
 
 /**

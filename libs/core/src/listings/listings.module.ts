@@ -24,6 +24,7 @@ import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entit
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
+import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -33,6 +34,7 @@ import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_STATUS_POLL_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
@@ -47,6 +49,7 @@ export {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_STATUS_POLL_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
@@ -73,6 +76,7 @@ export {
     OfferBuilderService,
     OfferCreationExecutionService,
     OfferCreationEnqueueService,
+    OfferStatusPollService,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
     {
@@ -108,6 +112,10 @@ export {
       useExisting: OfferCreationEnqueueService,
     },
     {
+      provide: OFFER_STATUS_POLL_SERVICE_TOKEN,
+      useExisting: OfferStatusPollService,
+    },
+    {
       provide: SELLER_POLICIES_CACHE_TOKEN,
       useExisting: SellerPoliciesCacheRepository,
     },
@@ -125,6 +133,7 @@ export {
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+    OFFER_STATUS_POLL_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
   ],
