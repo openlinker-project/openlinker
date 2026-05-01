@@ -21,6 +21,7 @@ import {
   CUSTOMER_PROJECTION_SERVICE_TOKEN,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
   CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
+  ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from './customers.tokens';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 
@@ -56,13 +57,17 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
       provide: CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
       useExisting: CustomerIdentityResolverService,
     },
+    {
+      provide: ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
+      useExisting: OrderCustomerProjectionUpdaterService,
+    },
   ],
   exports: [
-    OrderCustomerProjectionUpdaterService, // Export service class for direct injection
     CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
     CUSTOMER_PROJECTION_SERVICE_TOKEN,
     CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
     CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN,
+    ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
   ],
 })
 export class CustomersModule {}

@@ -18,6 +18,7 @@ export * from './application/interfaces/customer-identity-resolver.service.inter
 export * from './application/services/customer-identity-resolver.service';
 export * from './application/interfaces/customer-projection.service.interface';
 export * from './application/services/customer-projection.service';
+export * from './application/interfaces/order-customer-projection-updater.service.interface';
 export * from './application/services/order-customer-projection-updater.service';
 export * from './customers.tokens';
 export * from './customers.module';

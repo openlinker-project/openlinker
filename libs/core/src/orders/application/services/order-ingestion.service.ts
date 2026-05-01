@@ -30,6 +30,8 @@ import {
 import {
   ICustomerIdentityResolverService,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
+  IOrderCustomerProjectionUpdaterService,
+  ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
 import {
@@ -70,6 +72,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly customerIdentityResolver: ICustomerIdentityResolverService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
+    @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
+    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
   ) {}
 
   async ingestOrders(
@@ -232,6 +236,24 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
     const order = this.buildUnifiedOrder(incoming, internalOrderId, internalCustomerId, resolvedItems);
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+
+    // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
+    // a destination failure can't drop projection updates. Failure here is swallowed —
+    // projections are non-authoritative and must never block order sync.
+    if (internalCustomerId) {
+      try {
+        await this.customerProjectionUpdater.updateProjectionsForOrder(
+          order,
+          internalCustomerId,
+          connectionId,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to update customer projections for order ${order.id} (customer: ${internalCustomerId}, connection: ${connectionId}): ${(error as Error).message}`,
+          error,
+        );
+      }
+    }
 
     const results = await this.orderSyncService.syncOrder({
       order,
