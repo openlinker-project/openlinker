@@ -53,7 +53,7 @@ import {
 } from '@openlinker/core/listings';
 import {
   ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES,
-  ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES,
+  ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN,
 } from '@openlinker/integrations-allegro';
 import { UploadSafetyAttachmentResponseDto } from './dto/upload-safety-attachment-response.dto';
 
@@ -441,13 +441,7 @@ export class AllegroController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES }),
-          new FileTypeValidator({
-            fileType: new RegExp(
-              `^(${[...ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES]
-                .map((m) => m.replace(/\//g, '\\/'))
-                .join('|')})$`,
-            ),
-          }),
+          new FileTypeValidator({ fileType: ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN }),
         ],
       }),
     )
@@ -479,7 +473,6 @@ export class AllegroController {
       fileName: file.originalname,
       mimeType: file.mimetype,
       sizeBytes: file.size,
-      uploadedAt: new Date().toISOString(),
     };
   }
 }

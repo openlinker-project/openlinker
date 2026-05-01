@@ -23,7 +23,4 @@ export class UploadSafetyAttachmentResponseDto {
 
   @ApiProperty({ description: 'Size of the uploaded file in bytes' })
   sizeBytes!: number;
-
-  @ApiProperty({ description: 'ISO 8601 timestamp when the upload completed' })
-  uploadedAt!: string;
 }

@@ -43,7 +43,6 @@ export interface AllegroSafetyAttachmentUploadResponse {
   fileName: string;
   mimeType: string;
   sizeBytes: number;
-  uploadedAt: string;
 }
 
 export interface AllegroApi {

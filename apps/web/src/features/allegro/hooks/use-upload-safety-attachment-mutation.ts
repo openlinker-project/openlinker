@@ -1,6 +1,6 @@
 import { useMutation, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import type { AllegroSafetyAttachmentUploadResponse } from '../../allegro/api/allegro.api';
+import type { AllegroSafetyAttachmentUploadResponse } from '../api/allegro.api';
 import type { ApiError } from '../../../shared/api/api-error';
 
 export interface UploadSafetyAttachmentInput {

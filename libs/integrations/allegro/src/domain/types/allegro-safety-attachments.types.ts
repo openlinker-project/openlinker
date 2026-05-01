@@ -40,22 +40,21 @@ export const ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES: ReadonlySet<string> = new Se
 ]);
 
 /**
- * Input shape for `SafetyAttachmentUploader.uploadSafetyAttachment`.
- * Bytes are passed as `Uint8Array` — typical attachment is a single
- * PDF under the cap above, so streaming would be premature.
+ * Anchored regex matching exactly the MIME types in
+ * `ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES`. Precomputed (rather than
+ * built from the Set at request time) so adding a future MIME with
+ * regex metacharacters (`+`, `;`, etc.) only needs the alternative
+ * here, not a careful escape at every call site. Consumed by the
+ * controller's `FileTypeValidator`.
  */
-export interface SafetyAttachmentUploadInput {
-  bytes: Uint8Array;
-  mimeType: string;
-  fileName: string;
-}
+export const ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN: RegExp = /^application\/pdf$/;
 
-/**
- * Result shape returned to callers. Allegro's response may carry
- * additional fields (e.g. `status`, `fileName`); we only consume `id`,
- * which is what `safetyInformation.attachments[].id` references on
- * offer create.
- */
-export interface SafetyAttachmentUploadResult {
-  id: string;
-}
+// Input/result types for `SafetyAttachmentUploader` are defined in core
+// (`libs/core/src/listings/domain/ports/capabilities/safety-attachment-uploader.capability.ts`)
+// and re-exported here so adapter-local code keeps a single import path
+// without duplicating the contract. Drift between the two declarations
+// would silently strip new fields at the boundary — see #449 review.
+export type {
+  SafetyAttachmentUploadInput,
+  SafetyAttachmentUploadResult,
+} from '@openlinker/core/listings';

@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { useResponsibleProducersQuery } from '../../allegro/hooks/use-responsible-producers-query';
-import { useUploadSafetyAttachmentMutation } from '../hooks/use-upload-safety-attachment-mutation';
+import { useUploadSafetyAttachmentMutation } from '../../allegro/hooks/use-upload-safety-attachment-mutation';
 import {
   POLISH_VOIVODESHIP_LABELS,
   POLISH_VOIVODESHIP_VALUES,
