@@ -610,18 +610,19 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  padding: 1rem 1.5rem;
-  border: 1px dashed var(--border-default);
+  min-height: 6.5rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px dashed var(--border-strong);
   border-radius: 0.625rem;
   background: var(--bg-surface-muted);
   color: var(--text-secondary);
   cursor: pointer;
   text-align: center;
-  transition: border-color 120ms, background-color 120ms;
+  transition: border-color 120ms, background-color 120ms, color 120ms;
 }
 
 .file-upload:hover:not(.file-upload--disabled):not(.file-upload--busy) {
-  border-color: var(--border-strong);
+  border-color: var(--accent-primary);
   background: var(--bg-surface-hover);
 }
 
@@ -631,7 +632,12 @@ textarea {
 }
 
 .file-upload--drag-over {
-  border-color: var(--accent-primary-border);
+  /* Step up to 2px solid so the "now drop" affordance is unmistakable
+     and doesn't shift layout (1px dashed → 2px solid keeps the visual
+     box the same since the extra pixel comes from the border itself). */
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--accent-primary);
   background: var(--accent-primary-soft);
   color: var(--text-primary);
 }
@@ -641,10 +647,20 @@ textarea {
   background: var(--status-error-soft);
 }
 
-.file-upload--busy,
+.file-upload--busy {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+/* At-cap / explicitly-disabled state. Visually retreats — dotted border,
+   no hover tone, muted text — so the operator reads it as inert and
+   looks at the hint for the cause. */
 .file-upload--disabled {
   cursor: not-allowed;
-  opacity: 0.7;
+  border-style: dotted;
+  border-color: var(--border-subtle);
+  background: var(--bg-canvas);
+  color: var(--text-muted);
 }
 
 .file-upload__input {
@@ -662,7 +678,7 @@ textarea {
 .file-upload__label {
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .file-upload__hint {
@@ -673,14 +689,16 @@ textarea {
 .file-upload__list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.375rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
 }
 
 .file-upload__list-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border-subtle);
@@ -694,12 +712,44 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .file-upload__list-item-meta {
   color: var(--text-muted);
   font-size: 0.75rem;
-  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .file-upload {
+    /* Tap target — operator may upload from a phone. */
+    min-height: 7.5rem;
+    padding: 1.5rem 1rem;
+  }
+
+  .file-upload__list-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name remove'
+      'meta remove';
+    row-gap: 0.125rem;
+  }
+
+  .file-upload__list-item-name {
+    grid-area: name;
+  }
+
+  .file-upload__list-item-meta {
+    grid-area: meta;
+  }
+
+  .file-upload__list-item-remove {
+    grid-area: remove;
+    align-self: center;
+    /* Tap target — operator may remove from a phone. */
+    min-height: 2.75rem;
+  }
 }
 
 #root {

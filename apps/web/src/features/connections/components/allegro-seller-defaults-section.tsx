@@ -390,33 +390,18 @@ function SafetyAttachmentsField({
 
   const apiError = uploadMutation.error;
 
+  // Once anything is uploaded, surface the list above the dropzone so
+  // the operator sees what they have before adding more. The single
+  // alert below merges client-side validation and API errors — they're
+  // the same concern from the operator's POV (this upload didn't land).
+  const errorAlertMessage = inlineError ?? (apiError ? apiError.message : null);
+  const fileLabel =
+    attachments.length === 0
+      ? 'Safety information attachments'
+      : `Safety information attachments (${attachments.length}/${MAX_SAFETY_ATTACHMENTS})`;
+
   return (
     <>
-      <FormField
-        label={`Safety information attachments (${attachments.length}/${MAX_SAFETY_ATTACHMENTS})`}
-        name="sellerDefaults.safetyInformation.attachments"
-        error={errorMessage}
-        description="Upload one or more PDF files. Allegro stores the file; OL keeps only the returned id."
-      >
-        <FileUpload
-          accept="application/pdf"
-          maxBytes={MAX_SAFETY_ATTACHMENT_BYTES}
-          onFileSelected={handleUpload}
-          onError={setInlineError}
-          disabled={disabled || atCap}
-          busy={uploadMutation.isPending}
-          invalid={Boolean(errorMessage) || Boolean(inlineError) || Boolean(apiError)}
-          hint={
-            atCap
-              ? `Reached max of ${MAX_SAFETY_ATTACHMENTS} attachments. Remove one to add another.`
-              : undefined
-          }
-        />
-      </FormField>
-
-      {inlineError ? <Alert tone="error">{inlineError}</Alert> : null}
-      {!inlineError && apiError ? <Alert tone="error">{apiError.message}</Alert> : null}
-
       {attachments.length > 0 ? (
         <ul className="file-upload__list" aria-label="Uploaded safety attachments">
           {attachments.map((att, index) => (
@@ -430,7 +415,7 @@ function SafetyAttachmentsField({
               <Button
                 type="button"
                 tone="ghost"
-                className="button--sm"
+                className="button--sm file-upload__list-item-remove"
                 onClick={() => removeAt(index)}
                 disabled={disabled}
                 aria-label={`Remove ${att.fileName ?? att.id}`}
@@ -441,6 +426,31 @@ function SafetyAttachmentsField({
           ))}
         </ul>
       ) : null}
+
+      <FormField
+        label={fileLabel}
+        name="sellerDefaults.safetyInformation.attachments"
+        error={errorMessage}
+        description="Upload one or more PDF files. Allegro stores the file; OL keeps only the returned id."
+      >
+        <FileUpload
+          accept="application/pdf"
+          maxBytes={MAX_SAFETY_ATTACHMENT_BYTES}
+          onFileSelected={handleUpload}
+          onError={setInlineError}
+          disabled={disabled || atCap}
+          busy={uploadMutation.isPending}
+          invalid={Boolean(errorMessage) || Boolean(errorAlertMessage)}
+          label={atCap ? `Maximum ${MAX_SAFETY_ATTACHMENTS} attachments reached` : undefined}
+          hint={
+            atCap
+              ? 'Remove one to add another.'
+              : undefined
+          }
+        />
+      </FormField>
+
+      {errorAlertMessage ? <Alert tone="error">{errorAlertMessage}</Alert> : null}
     </>
   );
 }

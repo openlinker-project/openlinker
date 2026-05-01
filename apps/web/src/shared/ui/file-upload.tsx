@@ -33,6 +33,13 @@ export interface FileUploadProps {
   disabled?: boolean;
   invalid?: boolean;
   busy?: boolean;
+  /**
+   * Override the visible label text. Defaults to "Drop a file here, or
+   * click to choose" (or "Uploading…" while busy, "Release to upload"
+   * during drag-over). Callers use this to communicate disabled-cause
+   * states like "Maximum N attachments reached".
+   */
+  label?: string;
   /** Override the default helper line; otherwise renders accepted types + size cap. */
   hint?: string;
   className?: string;
@@ -57,6 +64,7 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
     disabled = false,
     invalid = false,
     busy = false,
+    label,
     hint,
     className = '',
   }: FileUploadProps,
@@ -165,8 +173,11 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
         onChange={onChange}
         className="file-upload__input"
       />
+      {/* No aria-live on the label — the <label> already exposes
+          aria-busy / aria-disabled, and announcing on every drag-over
+          would spam screen-reader users. */}
       <span className="file-upload__label">
-        {busy ? 'Uploading…' : 'Drop a file here, or click to choose'}
+        {resolveLabel({ busy, isDragOver, label })}
       </span>
       <span className="file-upload__hint">
         {hint ?? `Accepted: ${accept}. Max ${formatBytes(maxBytes)}.`}
@@ -174,6 +185,21 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
     </label>
   );
 });
+
+function resolveLabel({
+  busy,
+  isDragOver,
+  label,
+}: {
+  busy: boolean;
+  isDragOver: boolean;
+  label: string | undefined;
+}): string {
+  if (busy) return 'Uploading…';
+  if (isDragOver) return 'Release to upload';
+  if (label) return label;
+  return 'Drop a file here, or click to choose';
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
