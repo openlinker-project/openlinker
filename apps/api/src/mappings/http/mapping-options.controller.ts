@@ -300,6 +300,9 @@ export class MappingOptionsController {
       // because a disabled or errored Allegro pairing isn't a real partner —
       // the mappings page would then call `getCapabilityAdapter` against it
       // and fail downstream anyway.
+      // TODO(#479): when `ConnectionFilters` grows a `configKeyEquals` shape,
+      // push the filter into the repository instead of fetching all active
+      // Allegro connections and filtering in code.
       const candidates = await this.connectionPort.list({
         platformType: PLATFORM_ALLEGRO,
         status: 'active',
@@ -320,7 +323,8 @@ export class MappingOptionsController {
             `Multi-source mapping is not yet supported — disable the duplicates on the connection-edit page.`,
         );
       }
-      return paired[0].id;
+      const [only] = paired;
+      return only.id;
     }
 
     throw new BadRequestException(

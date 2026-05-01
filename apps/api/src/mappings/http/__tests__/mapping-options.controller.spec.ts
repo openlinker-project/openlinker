@@ -239,10 +239,9 @@ describe('MappingOptionsController', () => {
       });
       connectionPort.get.mockResolvedValueOnce(orphanedAllegro);
 
-      await expect(controller.getDestinationCarriers('orphan-allegro')).rejects.toMatchObject({
-        constructor: BadRequestException,
-        message: expect.stringContaining('no destination paired'),
-      });
+      const promise = controller.getDestinationCarriers('orphan-allegro');
+      await expect(promise).rejects.toBeInstanceOf(BadRequestException);
+      await expect(promise).rejects.toThrow(/no destination paired/);
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
@@ -251,10 +250,9 @@ describe('MappingOptionsController', () => {
       // No Allegro connection points at this PS.
       connectionPort.list.mockResolvedValueOnce([]);
 
-      await expect(controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID)).rejects.toMatchObject({
-        constructor: BadRequestException,
-        message: expect.stringContaining('no source paired'),
-      });
+      const promise = controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
+      await expect(promise).rejects.toBeInstanceOf(BadRequestException);
+      await expect(promise).rejects.toThrow(/no source paired/);
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
@@ -274,19 +272,16 @@ describe('MappingOptionsController', () => {
 
       const promise = controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
       await expect(promise).rejects.toBeInstanceOf(BadRequestException);
-      await expect(promise).rejects.toMatchObject({
-        message: expect.stringMatching(/multiple paired Allegro connections \(allegro-a, allegro-b\)/),
-      });
+      await expect(promise).rejects.toThrow(/multiple paired Allegro connections \(allegro-a, allegro-b\)/);
     });
 
     it('URL connection has unsupported platform → 400', async () => {
       const shopify = makeConnection({ id: 'shopify-1', platformType: 'shopify' });
       connectionPort.get.mockResolvedValueOnce(shopify);
 
-      await expect(controller.getDestinationCarriers('shopify-1')).rejects.toMatchObject({
-        constructor: BadRequestException,
-        message: expect.stringContaining('unsupported platform'),
-      });
+      const promise = controller.getDestinationCarriers('shopify-1');
+      await expect(promise).rejects.toBeInstanceOf(BadRequestException);
+      await expect(promise).rejects.toThrow(/unsupported platform/);
     });
 
     it('URL is PrestaShop, side=source: ignores Allegro connections paired to other PS instances', async () => {
