@@ -254,7 +254,6 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         payload: payload as unknown as Record<string, unknown>,
         idempotencyKey,
         maxAttempts: RUNNER_RETRY_BUDGET,
-        outcome: null,
       },
       { runAfter },
     );

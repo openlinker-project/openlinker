@@ -114,7 +114,6 @@ describe('OfferStatusPollService', () => {
         connectionId: CONNECTION_ID,
         idempotencyKey: `pollCreationStatus:${RECORD_ID}:1`,
         maxAttempts: 3,
-        outcome: null,
       });
       expect(job.payload).toEqual({
         schemaVersion: 1,
