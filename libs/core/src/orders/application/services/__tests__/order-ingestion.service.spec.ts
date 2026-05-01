@@ -15,7 +15,10 @@ import {
   SyncLockPort,
 } from '@openlinker/core/sync';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
-import { ICustomerIdentityResolverService } from '@openlinker/core/customers';
+import {
+  ICustomerIdentityResolverService,
+  IOrderCustomerProjectionUpdaterService,
+} from '@openlinker/core/customers';
 import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
@@ -34,6 +37,7 @@ describe('OrderIngestionService', () => {
   let orderSource: jest.Mocked<OrderSourcePort>;
   let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
+  let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -100,6 +104,10 @@ describe('OrderIngestionService', () => {
       }),
     } as unknown as jest.Mocked<ICustomerIdentityResolverService>;
 
+    customerProjectionUpdater = {
+      updateProjectionsForOrder: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IOrderCustomerProjectionUpdaterService>;
+
     service = new OrderIngestionService(
       integrationsService,
       cursorRepository,
@@ -110,6 +118,7 @@ describe('OrderIngestionService', () => {
       orderSyncService,
       customerIdentityResolver,
       orderRecordService,
+      customerProjectionUpdater,
     );
   });
 
@@ -329,6 +338,65 @@ describe('OrderIngestionService', () => {
         'Failed to update order record sync status',
         expect.any(Error),
       );
+    });
+
+    it('should call customerProjectionUpdater after persistOrder and before syncOrder when internalCustomerId is resolved', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerExternalId: 'buyer-ext-1',
+        customerEmail: 'buyer@example.com',
+      });
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(customerProjectionUpdater.updateProjectionsForOrder).toHaveBeenCalledTimes(1);
+      expect(customerProjectionUpdater.updateProjectionsForOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ol_order_test' }),
+        'ol_customer_test',
+        connectionId,
+      );
+      // Order: persistOrder → updateProjectionsForOrder → syncOrder
+      expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0],
+      );
+      expect(
+        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0],
+      ).toBeLessThan(orderSyncService.syncOrder.mock.invocationCallOrder[0]);
+    });
+
+    it('should swallow errors from customerProjectionUpdater and still call syncOrder', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerExternalId: 'buyer-ext-1',
+        customerEmail: 'buyer@example.com',
+      });
+      customerProjectionUpdater.updateProjectionsForOrder.mockRejectedValueOnce(
+        new Error('projection write failed'),
+      );
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId),
+      ).resolves.not.toThrow();
+
+      expect(orderSyncService.syncOrder).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to update customer projections'),
+        expect.any(Error),
+      );
+    });
+
+    it('should skip customerProjectionUpdater when internalCustomerId is not resolved', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderSource.getOrder.mockResolvedValueOnce(baseIncoming); // no buyer info → no resolution call
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(customerProjectionUpdater.updateProjectionsForOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).toHaveBeenCalled();
     });
   });
 

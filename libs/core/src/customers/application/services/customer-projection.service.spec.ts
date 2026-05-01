@@ -28,6 +28,7 @@ describe('CustomerProjectionService', () => {
       upsert: jest.fn(),
       upsertAddress: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      findById: jest.fn(),
       findByEmailHash: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
     } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
@@ -57,6 +58,37 @@ describe('CustomerProjectionService', () => {
     } else {
       delete process.env.OL_PII_HASH_SALT;
     }
+  });
+
+  describe('getProjection', () => {
+    it('should return the domain projection when the repository finds a row', async () => {
+      const projection = new CustomerProjection(
+        'internal-customer-123',
+        'emailHash123',
+        'customer@example.com',
+        'John',
+        'Doe',
+        new Date(),
+        'connection-456',
+        new Date(),
+        new Date(),
+      );
+      repository.findById.mockResolvedValue(projection);
+
+      const result = await service.getProjection('internal-customer-123');
+
+      expect(result).toBe(projection);
+      expect(repository.findById).toHaveBeenCalledWith('internal-customer-123');
+    });
+
+    it('should return null when no projection exists', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      const result = await service.getProjection('internal-customer-missing');
+
+      expect(result).toBeNull();
+      expect(repository.findById).toHaveBeenCalledWith('internal-customer-missing');
+    });
   });
 
   describe('upsertProjection - PII enabled', () => {

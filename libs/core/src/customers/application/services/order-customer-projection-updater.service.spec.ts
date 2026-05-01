@@ -11,6 +11,7 @@ import { OrderCustomerProjectionUpdaterService } from './order-customer-projecti
 import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
 import { Order } from '@openlinker/core/orders';
 import { CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../interfaces/customer-projection.service.interface';
+import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
 
 describe('OrderCustomerProjectionUpdaterService', () => {
@@ -24,6 +25,19 @@ describe('OrderCustomerProjectionUpdaterService', () => {
     // Set required environment variable for PII config
     process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
     customerProjectionService = {
+      getProjection: jest.fn().mockResolvedValue(
+        new CustomerProjection(
+          'internal-customer-456',
+          'emailHash-test',
+          null, // normalizedEmail
+          null, // firstName — base case: identity-resolver wrote a names-null projection
+          null, // lastName
+          new Date(),
+          'connection-123',
+          new Date(),
+          new Date(),
+        ),
+      ),
       upsertProjection: jest.fn(),
       upsertAddressProjection: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
@@ -280,6 +294,229 @@ describe('OrderCustomerProjectionUpdaterService', () => {
       const billingHash = (customerProjectionService.upsertAddressProjection.mock.calls[1][0]).addressHash;
 
       expect(shippingHash).not.toBe(billingHash);
+    });
+  });
+
+  describe('Customer name backfill', () => {
+    type ProjectionOverrides = {
+      firstName?: string | null;
+      lastName?: string | null;
+      lastSourceConnectionId?: string | null;
+    };
+
+    const baseProjection = (overrides: ProjectionOverrides = {}): CustomerProjection =>
+      new CustomerProjection(
+        'internal-customer-456',
+        'emailHash-test',
+        null, // normalizedEmail
+        'firstName' in overrides ? overrides.firstName ?? null : null,
+        'lastName' in overrides ? overrides.lastName ?? null : null,
+        new Date('2026-04-30T00:00:00Z'),
+        'lastSourceConnectionId' in overrides
+          ? overrides.lastSourceConnectionId ?? null
+          : 'connection-123',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-30T00:00:00Z'),
+      );
+
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+    });
+
+    it('upserts projection with merged names when shipping has firstName/lastName and existing has nulls', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({ firstName: null, lastName: null }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          firstName: 'Piotr',
+          lastName: 'Swierzy',
+        },
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).toHaveBeenCalledTimes(1);
+      const written = customerProjectionService.upsertProjection.mock.calls[0][0];
+      expect(written.firstName).toBe('Piotr');
+      expect(written.lastName).toBe('Swierzy');
+      expect(written.lastSourceConnectionId).toBe('connection-123');
+      expect(written.emailHash).toBe('emailHash-test'); // preserved
+    });
+
+    it('falls back to billing address names when shipping is missing them', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(baseProjection());
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          // no firstName/lastName
+        },
+        billingAddress: {
+          address1: '456 Billing St',
+          city: 'Krakow',
+          postalCode: '30-001',
+          country: 'PL',
+          firstName: 'Anna',
+          lastName: 'Kowalska',
+        },
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).toHaveBeenCalledTimes(1);
+      const written = customerProjectionService.upsertProjection.mock.calls[0][0];
+      expect(written.firstName).toBe('Anna');
+      expect(written.lastName).toBe('Kowalska');
+    });
+
+    it('does not call upsertProjection when neither address has names and existing names are also null', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(baseProjection());
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+        },
+        billingAddress: undefined,
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+    });
+
+    it('preserves existing names when neither address has names (no clobber to null)', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+        },
+        billingAddress: undefined,
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      // sameNames === true, sameConn === true → idempotent skip
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+    });
+
+    it('treats whitespace-only and empty-string incoming names as null (no clobber)', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          firstName: '   ',
+          lastName: '',
+        },
+        billingAddress: undefined,
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+    });
+
+    it('updates names when incoming differs from existing', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          firstName: 'New',
+          lastName: 'Name',
+        },
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).toHaveBeenCalledTimes(1);
+      const written = customerProjectionService.upsertProjection.mock.calls[0][0];
+      expect(written.firstName).toBe('New');
+      expect(written.lastName).toBe('Name');
+    });
+
+    it('forces names to null when OL_STORE_PII=false (intentional clobber)', async () => {
+      process.env.OL_STORE_PII = 'false';
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          firstName: 'New',
+          lastName: 'Name',
+        },
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).toHaveBeenCalledTimes(1);
+      const written = customerProjectionService.upsertProjection.mock.calls[0][0];
+      expect(written.firstName).toBeNull();
+      expect(written.lastName).toBeNull();
+    });
+
+    it('skips name backfill but still runs address projections when getProjection returns null', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(null);
+      const order = createOrder(); // shipping + billing both populated
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      // No upsertProjection call (no projection to merge into)
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+      // BUT addresses still get written — this is the structural fix
+      expect(customerProjectionService.upsertAddressProjection).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips upsert when names match existing AND lastSourceConnectionId matches (idempotent)', async () => {
+      customerProjectionService.getProjection.mockResolvedValue(
+        baseProjection({
+          firstName: 'Piotr',
+          lastName: 'Swierzy',
+          lastSourceConnectionId: 'connection-123',
+        }),
+      );
+      const order = createOrder({
+        shippingAddress: {
+          address1: '123 Main St',
+          city: 'Warsaw',
+          postalCode: '00-001',
+          country: 'PL',
+          firstName: 'Piotr',
+          lastName: 'Swierzy',
+        },
+      });
+
+      await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
+
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+      // Addresses still upserted as a separate concern
+      expect(customerProjectionService.upsertAddressProjection).toHaveBeenCalled();
     });
   });
 });

@@ -27,6 +27,10 @@ export class CustomerProjectionService implements ICustomerProjectionService {
     private readonly repository: CustomerProjectionRepositoryPort,
   ) {}
 
+  async getProjection(internalCustomerId: string): Promise<CustomerProjection | null> {
+    return this.repository.findById(internalCustomerId);
+  }
+
   async upsertProjection(projection: CustomerProjection): Promise<CustomerProjection> {
     // If PII storage is disabled, clear PII fields but keep emailHash
     const projectionToSave = this.piiConfig.storePii
