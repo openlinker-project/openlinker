@@ -72,12 +72,17 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
   // Reset the form (and any prior mutation error) when the dialog opens or
   // is reassigned to a different provider — operators rotating multiple
   // keys back-to-back should never see a stale field value or banner.
+  // #478: depend on the destructured stable methods, not the wrapping
+  // `form` / `mutation` objects — `useMutation` returns a fresh wrapper
+  // each render, which loops the effect.
+  const { reset: resetForm } = form;
+  const { reset: resetMutation } = mutation;
   useEffect(() => {
     if (provider !== null) {
-      form.reset({ apiKey: '' });
-      mutation.reset();
+      resetForm({ apiKey: '' });
+      resetMutation();
     }
-  }, [provider, form, mutation]);
+  }, [provider, resetForm, resetMutation]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     if (provider === null || provider === 'fake') return;
