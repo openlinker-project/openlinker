@@ -101,6 +101,28 @@ export interface PrestashopOrderRow {
 }
 
 /**
+ * PrestaShop order_carrier row.
+ *
+ * One row per (order, carrier). PrestaShop auto-creates the row when an order
+ * is POSTed with `id_carrier`; consumers can then PUT the row back to set the
+ * per-order shipping cost independently of the carrier's zone-priced rules
+ * (#467). The shape mirrors what `GET /order_carriers/{id}` returns; PS WS
+ * `PUT` requires the full resource body, so callers must read-then-write.
+ */
+export interface PrestashopOrderCarrier {
+  id: string | number;
+  id_order: string | number;
+  id_carrier: string | number;
+  id_order_invoice?: string | number;
+  weight?: string | number;
+  shipping_cost_tax_excl?: string | number;
+  shipping_cost_tax_incl?: string | number;
+  tracking_number?: string;
+  date_add?: string;
+  [key: string]: unknown;
+}
+
+/**
  * PrestaShop Product Mapper Interface
  */
 export interface IPrestashopProductMapper {

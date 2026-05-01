@@ -8,13 +8,27 @@ import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
+import { ListingMarketplaceOfferSection } from '../../features/listings/components/listing-marketplace-offer-section';
 import { OfferCreationStatusBadge } from '../../features/listings/components/OfferCreationStatusBadge';
 import { OfferCreationErrorList } from '../../features/listings/components/OfferCreationErrorList';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { useVariantQuery } from '../../features/products/hooks/use-variant-query';
+import type { ProductVariantSummary } from '../../features/products/api/products.types';
 import {
   KNOWN_MAPPING_ENTITY_TYPES,
   type KnownMappingEntityType,
 } from '../../features/listings/api/listings.types';
+
+/**
+ * Both `entityType === 'ProductVariant'` and `entityType === 'Offer'` mappings
+ * store the linked variant's id as `internalId` (verified in the BE
+ * `OfferMappingSyncService.linkOffer` path). Other entity types (`Product`,
+ * `InventoryItem`, plus forward-compat unknowns) don't link to a variant —
+ * we skip the SKU/EAN enrichment for those.
+ */
+function isVariantLinkedEntityType(value: string): boolean {
+  return value === 'ProductVariant' || value === 'Offer';
+}
 
 const ENTITY_TYPE_ROUTES: Record<KnownMappingEntityType, (id: string) => string> = {
   Product: (id) => `/products/${id}`,
@@ -26,13 +40,37 @@ function isKnownEntityType(value: string): value is KnownMappingEntityType {
   return (KNOWN_MAPPING_ENTITY_TYPES as readonly string[]).includes(value);
 }
 
-function renderInternalIdValue(entityType: string, internalId: string): ReactNode {
-  if (!isKnownEntityType(entityType)) return internalId;
+function renderInternalIdValue(
+  entityType: string,
+  internalId: string,
+  variant: ProductVariantSummary | undefined,
+): ReactNode {
+  // SKU/EAN enrichment renders inline next to the linked id when the variant
+  // query has resolved (#464). Errors / 404s render quietly — the bare ID is
+  // still useful by itself.
+  const enrichment = variant ? (
+    <span className="listing-detail-variant-tags">
+      {variant.sku ? <span className="mono-text">SKU {variant.sku}</span> : null}
+      {variant.ean ? <span className="mono-text">EAN {variant.ean}</span> : null}
+    </span>
+  ) : null;
+
+  if (!isKnownEntityType(entityType)) {
+    return (
+      <>
+        <span className="mono-text">{internalId}</span>
+        {enrichment}
+      </>
+    );
+  }
   const to = ENTITY_TYPE_ROUTES[entityType](internalId);
   return (
-    <Link to={to} className="mono-text">
-      {internalId}
-    </Link>
+    <>
+      <Link to={to} className="mono-text">
+        {internalId}
+      </Link>
+      {enrichment}
+    </>
   );
 }
 
@@ -40,6 +78,15 @@ export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useListingQuery(id);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+
+  // The mapping query has to resolve before we can decide whether to fetch
+  // the linked variant — disabled until then. The `enabled` flag in
+  // useVariantQuery means an unset id never fires.
+  const linkedVariantId =
+    query.data && isVariantLinkedEntityType(query.data.entityType)
+      ? query.data.internalId
+      : undefined;
+  const variantQuery = useVariantQuery(linkedVariantId);
 
   if (query.isLoading) {
     return (
@@ -85,7 +132,11 @@ export function ListingDetailPage(): ReactElement {
             {
               id: 'internalId',
               label: 'Internal ID',
-              value: renderInternalIdValue(mapping.entityType, mapping.internalId),
+              value: renderInternalIdValue(
+                mapping.entityType,
+                mapping.internalId,
+                variantQuery.data,
+              ),
               mono: true,
             },
             { id: 'platform', label: 'Platform Type', value: mapping.platformType, mono: true },
@@ -99,6 +150,11 @@ export function ListingDetailPage(): ReactElement {
           ]}
         />
       </section>
+
+      <ListingMarketplaceOfferSection
+        mappingId={mapping.id}
+        enabled={mapping.entityType === 'Offer'}
+      />
 
       {mapping.offerCreation ? (
         <section className="detail-section">

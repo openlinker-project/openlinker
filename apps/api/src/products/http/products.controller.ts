@@ -31,6 +31,7 @@ import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
+import { ProductVariantSummaryResponseDto } from './dto/product-variant-summary-response.dto';
 import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
 import { PaginatedProductVariantsResponseDto } from './dto/paginated-product-variants-response.dto';
 import { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
@@ -94,6 +95,30 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  // Declared before @Get(':id') so /products/variants/:variantId is matched
+  // by this handler rather than getProduct (which would treat 'variants' as
+  // an invalid product ID). Nest's pattern matcher follows registration order,
+  // so route ordering matters here.
+  @Get('variants/:variantId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get variant summary by internal variant ID',
+    description:
+      'Lightweight projection of a product variant — id, parent product id, SKU, EAN, optional name. Used by the listing-detail page (#464) to surface the linked variant inline next to the Internal ID row without forcing the FE to know the parent product first.',
+  })
+  @ApiParam({ name: 'variantId', description: 'Internal variant ID (e.g. ol_variant_...)' })
+  @ApiResponse({ status: 200, description: 'Variant summary', type: ProductVariantSummaryResponseDto })
+  @ApiResponse({ status: 404, description: 'Variant not found' })
+  async getVariantSummary(
+    @Param('variantId') variantId: string,
+  ): Promise<ProductVariantSummaryResponseDto> {
+    const variant = await this.productsService.getVariant(variantId);
+    if (!variant) {
+      throw new NotFoundException(`Variant not found: ${variantId}`);
+    }
+    return this.toVariantSummaryDto(variant);
   }
 
   @Get(':id')
@@ -189,6 +214,29 @@ export class ProductsController {
 
   private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
     return variantToDto(variant);
+  }
+
+  /**
+   * Lightweight projection used by `GET /products/variants/:variantId` (#464).
+   * Builds a human label from the variant's attribute map when present
+   * (e.g. `{ color: 'Red', size: '42' }` → `"Red / 42"`); falls back to
+   * undefined so the FE can render the SKU as the primary label. Sorts by
+   * attribute key so the label is deterministic regardless of how the
+   * variant came off the wire (JSONB column reads, future projections,
+   * etc.) — `Object.values` would otherwise rely on insertion order.
+   */
+  private toVariantSummaryDto(variant: ProductVariant): ProductVariantSummaryResponseDto {
+    const attributeValues = Object.entries(variant.attributes ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => (typeof v === 'string' ? v.trim() : ''))
+      .filter((v) => v.length > 0);
+    return {
+      id: variant.id,
+      productId: variant.productId,
+      sku: variant.sku,
+      ean: variant.ean ?? null,
+      name: attributeValues.length > 0 ? attributeValues.join(' / ') : undefined,
+    };
   }
 
   private toExternalIdDto(mapping: { externalId: string; platformType: string; connectionId: string }): ExternalIdMappingDto {

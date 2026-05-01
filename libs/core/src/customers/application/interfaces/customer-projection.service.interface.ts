@@ -16,6 +16,15 @@ import { DestinationAddressMapping } from '../../domain/entities/destination-add
 
 export interface ICustomerProjectionService {
   /**
+   * Get customer projection by internal id, or null if missing.
+   *
+   * Used by callers that need to merge with existing projection state
+   * (e.g. backfilling names from an order without clobbering values that
+   * are already populated). Returns the domain entity, not the ORM row.
+   */
+  getProjection(internalCustomerId: string): Promise<CustomerProjection | null>;
+
+  /**
    * Upsert customer projection
    * Updates lastSeenAt and other fields if projection exists
    */

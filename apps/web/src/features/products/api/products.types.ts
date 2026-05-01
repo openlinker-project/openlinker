@@ -63,3 +63,17 @@ export interface PaginatedProductVariants {
   limit: number;
   offset: number;
 }
+
+/**
+ * Lightweight variant projection returned by `GET /products/variants/:id`.
+ * Used by the listing-detail page (#464) to surface the linked variant's
+ * SKU/EAN inline next to the Internal ID row.
+ */
+export interface ProductVariantSummary {
+  id: string;
+  productId: string;
+  sku: string | null;
+  ean: string | null;
+  /** Display label assembled from variant attributes (e.g. "Red / 42"). */
+  name?: string;
+}

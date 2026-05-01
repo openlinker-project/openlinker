@@ -50,6 +50,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     upsertProduct: jest.fn(),
     upsertVariants: jest.fn(),
     getProduct: jest.fn(),
+    getVariant: jest.fn(),
     listProducts: jest.fn(),
     listVariants: jest.fn(),
   };
@@ -197,6 +198,47 @@ describe('ProductsController', () => {
         { productId: 'ol_product_1', search: undefined },
         { limit: 20, offset: 0 },
       );
+    });
+  });
+
+  describe('getVariantSummary (#464)', () => {
+    it('should return id, productId, sku, ean, and attribute-derived name on hit', async () => {
+      productsService.getVariant.mockResolvedValue(
+        makeVariant({
+          id: 'ol_variant_42',
+          productId: 'ol_product_1',
+          sku: 'SKU-RED-42',
+          ean: '5901234123457',
+          attributes: { color: 'Red', size: '42' },
+        }),
+      );
+
+      const result = await controller.getVariantSummary('ol_variant_42');
+
+      expect(result).toEqual({
+        id: 'ol_variant_42',
+        productId: 'ol_product_1',
+        sku: 'SKU-RED-42',
+        ean: '5901234123457',
+        name: 'Red / 42',
+      });
+      expect(productsService.getVariant).toHaveBeenCalledWith('ol_variant_42');
+    });
+
+    it('should leave name undefined when the variant has no string attributes', async () => {
+      productsService.getVariant.mockResolvedValue(
+        makeVariant({ id: 'ol_variant_43', attributes: {} }),
+      );
+
+      const result = await controller.getVariantSummary('ol_variant_43');
+
+      expect(result.name).toBeUndefined();
+    });
+
+    it('should throw NotFoundException when variant not found', async () => {
+      productsService.getVariant.mockResolvedValue(null);
+
+      await expect(controller.getVariantSummary('missing')).rejects.toThrow(NotFoundException);
     });
   });
 });

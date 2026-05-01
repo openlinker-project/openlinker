@@ -22,7 +22,11 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { IPrestashopOrderMapper, PrestashopOrder } from '../mappers/prestashop.mapper.interface';
+import {
+  IPrestashopOrderMapper,
+  PrestashopOrder,
+  PrestashopOrderCarrier,
+} from '../mappers/prestashop.mapper.interface';
 import {
   PrestashopResourceNotFoundException,
   PrestashopApiException,
@@ -77,6 +81,15 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         if (existingPrestashopOrder) {
           this.logger.log(
             `Order already exists in PrestaShop: internalOrderId=${metadataInternalOrderId}, externalOrderId=${existingPrestashopOrder.externalId}`,
+          );
+          // Self-heal a partial first run (#467): if the previous invocation
+          // created the order + mapping but crashed before reconciling the
+          // shipping cost, reconcile it now. Best-effort; no-ops when the
+          // cost is already correct.
+          await this.reconcileShippingCost(
+            order,
+            existingPrestashopOrder.externalId,
+            metadataInternalOrderId,
           );
           // Return existing order reference
           // Note: We don't have the order number from the mapping, so we'll use the external ID
@@ -441,6 +454,13 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`,
       );
 
+      // Step 6.5: Reconcile shipping cost on order_carriers (#467).
+      // PS silently zeros total_shipping on POST /orders when id_carrier
+      // doesn't resolve to a zone-priced carrier; PUT /order_carriers/{id}
+      // honours per-order cost regardless. Best-effort — failures are logged
+      // but never fail the order, which is already created and mapped.
+      await this.reconcileShippingCost(order, externalOrderId, internalOrderId);
+
       // Step 7: Return order reference
       return {
         orderId: internalOrderId,
@@ -461,6 +481,85 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         `Failed to create PrestaShop order: ${errorMessage}`,
         undefined,
         undefined,
+      );
+    }
+  }
+
+  /**
+   * Reconcile per-order shipping cost on `order_carriers` (#467).
+   *
+   * Background: PrestaShop's WebService silently zeroes `total_shipping`
+   * when the carrier on `POST /orders` doesn't resolve to a zone-priced
+   * carrier (a common situation when `defaultCarrierId` isn't configured
+   * and we fall back to `id_carrier=1`). The fix is a follow-up
+   * `PUT /order_carriers/{id}` that writes the per-order
+   * `shipping_cost_tax_excl` / `shipping_cost_tax_incl` directly. PS WS
+   * honours these regardless of carrier zone configuration.
+   *
+   * Contract: best-effort. The order is already created and the identifier
+   * mapping is durable; a reconcile failure is logged at warn level and
+   * swallowed. Re-running with the same inputs is a no-op (idempotent PUT).
+   *
+   * Skipped when `order.totals.shipping <= 0` to save a round-trip.
+   */
+  private async reconcileShippingCost(
+    order: OrderCreate,
+    externalOrderId: string,
+    internalOrderId: string,
+  ): Promise<void> {
+    const shipping = order.totals.shipping;
+    // Skip the round-trip for zero, negative, or non-finite shipping.
+    // OrderTotals doesn't model negative shipping today; if that changes,
+    // revisit whether refunds/discounts should also write back through here.
+    if (!Number.isFinite(shipping) || shipping <= 0) {
+      return;
+    }
+
+    try {
+      // 1. Find the auto-created order_carrier row for this order.
+      const rows = await this.httpClient.listResources<PrestashopOrderCarrier>(
+        'order_carriers',
+        { custom: { id_order: externalOrderId } },
+        1,
+        0,
+      );
+      if (rows.length === 0) {
+        this.logger.warn(
+          `Shipping cost reconcile: no order_carrier row found for externalOrderId=${externalOrderId} (internalOrderId=${internalOrderId}). PS may have failed to attach a carrier — verify carrier mapping for connection ${this.connection.id}.`,
+        );
+        return;
+      }
+
+      const orderCarrierId = rows[0].id;
+
+      // 2. Read the full row — PS WS PUT requires the complete resource body.
+      const full = await this.httpClient.getResource<PrestashopOrderCarrier>(
+        'order_carriers',
+        orderCarrierId,
+      );
+
+      // 3. Overlay the cost fields and write back. Same value for tax-incl
+      //    and tax-excl mirrors the existing OrderTotals tax-included
+      //    assumption in the mapper (revisit when OrderTotals grows a
+      //    shippingTax field).
+      const shippingCost = shipping.toFixed(2);
+      await this.httpClient.updateResource<PrestashopOrderCarrier>(
+        'order_carriers',
+        orderCarrierId,
+        {
+          ...full,
+          shipping_cost_tax_excl: shippingCost,
+          shipping_cost_tax_incl: shippingCost,
+        },
+      );
+
+      this.logger.log(
+        `Shipping cost reconciled: externalOrderId=${externalOrderId}, orderCarrierId=${String(orderCarrierId)}, shipping=${shippingCost}`,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Shipping cost reconcile failed for internalOrderId=${internalOrderId} externalOrderId=${externalOrderId}: ${errorMessage}`,
       );
     }
   }

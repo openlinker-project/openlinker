@@ -71,6 +71,29 @@ export interface IPrestashopWebserviceClient {
    * @throws PrestashopApiException for other API errors
    */
   createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T>;
+
+  /**
+   * Update an existing resource (PUT).
+   *
+   * PrestaShop's WebService PUT contract requires the **full resource body**
+   * (not a partial patch). Callers should read the resource first, overlay
+   * the fields they want to change, and then pass the merged object as `data`.
+   * The resource's `id` must be present in `data` — PS WS validates that the
+   * body's id matches the path id.
+   *
+   * @param resource - Resource name (e.g., 'order_carriers', 'orders')
+   * @param id - Resource ID (target of the PUT)
+   * @param data - Full resource data, including `id`
+   * @returns Updated resource data
+   * @throws PrestashopAuthenticationException if authentication fails
+   * @throws PrestashopResourceNotFoundException if resource not found
+   * @throws PrestashopApiException for other API errors
+   */
+  updateResource<T = unknown>(
+    resource: string,
+    id: string | number,
+    data: Record<string, unknown>,
+  ): Promise<T>;
 }
 
 

@@ -48,6 +48,12 @@ export interface IProductsService {
   getProduct(id: string): Promise<Product | null>;
 
   /**
+   * Get a single product variant by internal ID. Returns null when no row
+   * matches; the caller decides between 404 and a soft fallback.
+   */
+  getVariant(id: string): Promise<ProductVariant | null>;
+
+  /**
    * List products with optional filters and pagination
    */
   listProducts(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts>;

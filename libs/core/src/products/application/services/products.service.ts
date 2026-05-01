@@ -72,6 +72,10 @@ export class ProductsService implements IProductsService {
     return this.productRepository.findById(id);
   }
 
+  async getVariant(id: string): Promise<ProductVariant | null> {
+    return this.variantRepository.findById(id);
+  }
+
   async listProducts(
     filters: ProductListFilters,
     pagination: ProductPagination,

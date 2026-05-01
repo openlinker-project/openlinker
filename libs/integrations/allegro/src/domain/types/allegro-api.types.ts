@@ -306,6 +306,12 @@ export interface AllegroProductSetEntry {
 
 /**
  * Allegro product offer (from GET /sale/product-offers/{offerId})
+ *
+ * Fields required by the existing `fetchOfferIdentifiers` (#411) consumer
+ * are baseline; the additional optional fields below are consumed by
+ * `getOffer` (#464) to populate the neutral `MarketplaceOffer` DTO. Optional
+ * because Allegro's response shape varies — synced-in offers may have empty
+ * `images[]` or no `description.sections[]`.
  */
 export interface AllegroProductOffer {
   id: string;
@@ -318,16 +324,42 @@ export interface AllegroProductOffer {
   external?: {
     id?: string | null;
   };
+  /** #464 — primary description, structured by Allegro as a list of sections of items. */
+  description?: {
+    sections?: Array<{
+      items?: Array<{
+        type?: string;
+        content?: string;
+        url?: string;
+      }>;
+    }>;
+  };
+  /** #464 — primary image is the first entry; subsequent entries are gallery shots. */
+  images?: Array<{ url: string }>;
+  /** #464 — current selling price. `BUY_NOW` is the only mode we currently consume. */
+  sellingMode?: {
+    price?: { amount: string; currency: string };
+  };
+  /** #464 — available stock quantity reported by Allegro. */
+  stock?: {
+    available?: number;
+  };
   /**
-   * Async-validation lifecycle. Only present once Allegro starts processing
-   * the offer; absent on freshly-pulled drafts. Read by the offer-creation
-   * poller (#447) via `OfferStatusReader.getOfferStatus`.
+   * #464 — publication lifecycle (ACTIVE / ENDED / INACTIVE / etc.).
+   * #447 — also read by the offer-creation poller via
+   * `OfferStatusReader.getOfferStatus`. The status enum is typed strictly
+   * to keep the poller's exhaustive-switch checks honest; consumers that
+   * only need to display it (#464) cast through `string`.
    */
-  publication?: { status?: AllegroOfferPublicationStatus };
+  publication?: {
+    status?: AllegroOfferPublicationStatus;
+    endingAt?: string;
+  };
   /**
    * Validation errors returned alongside the offer resource. Mirrors the
    * shape returned on `POST /sale/product-offers` 2xx-with-errors responses;
-   * the same array can appear here once Allegro finishes async validation.
+   * the same array can appear here once Allegro finishes async validation
+   * (#447).
    */
   validation?: { errors?: AllegroValidationError[] };
 }

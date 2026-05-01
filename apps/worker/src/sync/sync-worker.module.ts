@@ -13,7 +13,6 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
-import { CustomersModule } from '@openlinker/core/customers';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { JobIntakeConsumer } from './job-intake.consumer';
@@ -42,7 +41,6 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
-    CustomersModule, // Import CustomersModule to access OrderCustomerProjectionUpdaterService
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
     AllegroIntegrationModule, // Import AllegroIntegrationModule to access ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN
   ],

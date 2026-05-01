@@ -172,6 +172,13 @@ export type {
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
+export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';
+export { isOfferReader } from './domain/ports/capabilities/offer-reader.capability';
+export type {
+  MarketplaceOffer,
+  MarketplaceOfferPrice,
+  MarketplaceOfferCategory,
+} from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
