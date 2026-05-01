@@ -26,8 +26,10 @@ import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/of
 import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_STATUS_POLL_SERVICE_TOKEN,
 } from '../../../listings.tokens';
 import type { IOfferBuilderService } from '../../interfaces/offer-builder.service.interface';
+import type { IOfferStatusPollService } from '../../interfaces/offer-status-poll.service.interface';
 
 const VARIANT_ID = 'ol_variant_123';
 const CONNECTION_ID = 'conn-allegro';
@@ -40,6 +42,7 @@ describe('OfferCreationExecutionService', () => {
   let identifierMapping: jest.Mocked<Pick<IIdentifierMappingService, 'createMapping'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let adapter: { createOffer: jest.Mock };
+  let offerStatusPoll: jest.Mocked<IOfferStatusPollService>;
 
   const builtCommand: CreateOfferCommand = {
     internalVariantId: VARIANT_ID,
@@ -103,6 +106,10 @@ describe('OfferCreationExecutionService', () => {
         .fn()
         .mockResolvedValue(adapter as unknown as OfferManagerPort),
     };
+    offerStatusPoll = {
+      scheduleFirstPoll: jest.fn().mockResolvedValue(undefined),
+      pollOnce: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -111,6 +118,7 @@ describe('OfferCreationExecutionService', () => {
         { provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useValue: records },
         { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: identifierMapping },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
+        { provide: OFFER_STATUS_POLL_SERVICE_TOKEN, useValue: offerStatusPoll },
       ],
     }).compile();
 
@@ -177,30 +185,10 @@ describe('OfferCreationExecutionService', () => {
     expect(offerCreationRecord.status).toBe('active');
   });
 
-  it('logs a warning when the result is validating', async () => {
-    adapter.createOffer.mockResolvedValueOnce({
-      externalOfferId: EXTERNAL_OFFER_ID,
-      status: 'validating',
-    });
-    records.updateExternalIdAndStatus.mockResolvedValueOnce(
-      buildRecord({ status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
-    );
-    const warnSpy = jest
-      .spyOn(Logger.prototype, 'warn')
-      .mockImplementation(() => undefined);
-
-    try {
-      await service.executeCreation(baseInput);
-
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      const firstCall = warnSpy.mock.calls[0][0];
-      expect(typeof firstCall).toBe('string');
-      expect(firstCall as string).toContain('validating');
-      expect(firstCall as string).toContain(EXTERNAL_OFFER_ID);
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
+  // The pre-existing "logs a warning when the result is validating" test was
+  // removed in #447: the TODO warn was replaced by `scheduleFirstPoll`, which
+  // is covered by the "validating outcome → schedules poll" describe below.
+  // The warn is now reserved for the failure-to-enqueue safety net.
 
   it('persists validation errors from a 2xx result', async () => {
     adapter.createOffer.mockResolvedValueOnce({
@@ -458,6 +446,58 @@ describe('OfferCreationExecutionService', () => {
       await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
         OfferCreationInvariantException,
       );
+    });
+  });
+
+  describe('validating outcome → schedules poll (#447)', () => {
+    it('schedules iteration #1 with recordId, externalOfferId, connectionId', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'validating',
+      } satisfies CreateOfferResult);
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusPoll.scheduleFirstPoll).toHaveBeenCalledWith({
+        offerCreationRecordId: 'rec-1',
+        externalOfferId: EXTERNAL_OFFER_ID,
+        connectionId: CONNECTION_ID,
+      });
+    });
+
+    it('does not schedule when status is terminal (active/draft/failed)', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+      } satisfies CreateOfferResult);
+
+      await service.executeCreation(baseInput);
+
+      expect(offerStatusPoll.scheduleFirstPoll).not.toHaveBeenCalled();
+    });
+
+    it('logs a warning but does not fail the create flow if scheduleFirstPoll throws', async () => {
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'validating',
+      } satisfies CreateOfferResult);
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
+      );
+      offerStatusPoll.scheduleFirstPoll.mockRejectedValueOnce(new Error('redis down'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      // Must resolve normally — the offer was already created on Allegro.
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('failed to schedule poll'),
+      );
+      warnSpy.mockRestore();
     });
   });
 });

@@ -14,6 +14,7 @@ import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
+import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
@@ -31,6 +32,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
+    private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
@@ -47,6 +49,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register('marketplace.offerQuantity.update', this.marketplaceOfferQuantityUpdateHandler);
     this.handlerRegistry.register('marketplace.offer.updateFields', this.marketplaceOfferFieldUpdateHandler);
     this.handlerRegistry.register('marketplace.offer.create', this.marketplaceOfferCreateHandler);
+    this.handlerRegistry.register(
+      'marketplace.offer.pollCreationStatus',
+      this.marketplaceOfferPollCreationStatusHandler,
+    );
 
     // Register generic master handlers (Option B)
     this.handlerRegistry.register('master.product.syncByExternalId', this.masterProductSyncHandler);

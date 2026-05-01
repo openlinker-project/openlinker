@@ -28,9 +28,17 @@ export {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_STATUS_POLL_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
+export type { IOfferStatusPollService } from './application/interfaces/offer-status-poll.service.interface';
+export type {
+  ScheduleFirstPollInput,
+  PollOnceInput,
+  PollOnceResult,
+  OfferPollCadenceConfig,
+} from './application/types/offer-status-poll.types';
 export type { ICategoryResolutionService } from './application/interfaces/category-resolution.service.interface';
 export type {
   CategoryResolutionInput,
@@ -155,6 +163,15 @@ export {
 export { CategoryNotFoundException } from './domain/exceptions/category-not-found.exception';
 export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
+export type { OfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
+export { isOfferStatusReader } from './domain/ports/capabilities/offer-status-reader.capability';
+export type {
+  OfferPublicationStatus,
+  OfferStatusReadResult,
+} from './domain/types/offer-status-read.types';
+export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
+export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
+export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
 export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';
 export { isOfferReader } from './domain/ports/capabilities/offer-reader.capability';
 export type {

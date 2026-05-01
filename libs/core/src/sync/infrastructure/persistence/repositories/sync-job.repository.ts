@@ -67,6 +67,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       | 'createdAt'
       | 'updatedAt'
     >,
+    options?: { runAfter?: Date },
   ): Promise<SyncJob> {
     // Try to create job - handle race condition with unique constraint
     try {
@@ -78,8 +79,8 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.status = 'queued';
       entity.idempotencyKey = job.idempotencyKey;
       entity.attempts = 0;
-      entity.maxAttempts = 10;
-      entity.nextRunAt = new Date();
+      entity.maxAttempts = job.maxAttempts ?? 10;
+      entity.nextRunAt = options?.runAfter ?? new Date();
       entity.lockedAt = null;
       entity.lockedBy = null;
       entity.lastError = null;

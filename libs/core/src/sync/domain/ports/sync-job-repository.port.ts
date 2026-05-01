@@ -35,9 +35,17 @@ export interface SyncJobRepositoryPort {
    * Otherwise, creates new job with status 'queued'.
    *
    * @param job - Sync job domain entity (without id, status, attempts, etc. - these are set by repository)
+   * @param options.runAfter - Optional schedule timestamp. When provided, the
+   *   row's `nextRunAt` is set to this date so the runner only picks the job
+   *   up at that time. Defaults to `new Date()` (immediate). Used by the
+   *   self-rescheduling offer-creation-status poller (#447) to space out
+   *   iterations without going through Redis Streams.
    * @returns Created or existing sync job domain entity
    */
-  createIfNotExistsByIdempotencyKey(job: Omit<SyncJob, 'id' | 'status' | 'attempts' | 'nextRunAt' | 'lockedAt' | 'lockedBy' | 'lastError' | 'createdAt' | 'updatedAt'>): Promise<SyncJob>;
+  createIfNotExistsByIdempotencyKey(
+    job: Omit<SyncJob, 'id' | 'status' | 'attempts' | 'nextRunAt' | 'lockedAt' | 'lockedBy' | 'lastError' | 'createdAt' | 'updatedAt'>,
+    options?: { runAfter?: Date },
+  ): Promise<SyncJob>;
 
   /**
    * Find and lock due jobs (transactional, atomic)

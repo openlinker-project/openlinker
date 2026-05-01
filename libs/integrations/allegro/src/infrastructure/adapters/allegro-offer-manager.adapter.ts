@@ -18,6 +18,9 @@ import type {
   CategoryBarcodeMatcher,
   CategoryParametersReader,
   OfferCreator,
+  OfferStatusReader,
+  OfferStatusReadResult,
+  OfferPublicationStatus,
   OfferReader,
   SellerPoliciesReader,
   ResponsibleProducerReader,
@@ -35,7 +38,11 @@ import type {
   MarketplaceOffer,
   SellerPolicies,
 } from '@openlinker/core/listings';
-import { OfferCreateRejectedException, CategoryNotFoundException } from '@openlinker/core/listings';
+import {
+  OfferCreateRejectedException,
+  CategoryNotFoundException,
+  OfferNotFoundOnMarketplaceException,
+} from '@openlinker/core/listings';
 import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
 import {
   resolveAllegroProductCardByEan,
@@ -51,6 +58,7 @@ import {
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
   AllegroOfferParameter,
+  AllegroOfferPublicationStatus,
   AllegroProductOffer,
   AllegroOffersResponse,
   AllegroOfferEventsResponse,
@@ -185,6 +193,7 @@ export class AllegroOfferManagerAdapter
     CategoryBarcodeMatcher,
     CategoryParametersReader,
     OfferCreator,
+    OfferStatusReader,
     OfferReader,
     SellerPoliciesReader,
     ResponsibleProducerReader {
@@ -470,15 +479,24 @@ export class AllegroOfferManagerAdapter
     }
   }
 
+  /**
+   * Single source of truth for `GET /sale/product-offers/{id}`. Both
+   * `fetchOfferIdentifiers` (sync linking) and `getOfferStatus` (creation
+   * poller, #447) call this so they stay in lock-step on transport, headers,
+   * and exception shape.
+   */
+  private async fetchProductOfferById(offerId: string): Promise<AllegroProductOffer> {
+    const response = await this.httpClient.get<AllegroProductOffer>(
+      `/sale/product-offers/${offerId}`,
+    );
+    return response.data;
+  }
+
   private async fetchOfferIdentifiers(
     offerId: string,
     categoryId?: string,
   ): Promise<{ sku: string | null; ean: string | null; gtin: string | null }> {
-    const response = await this.httpClient.get<AllegroProductOffer>(
-      `/sale/product-offers/${offerId}`,
-    );
-
-    const offer = response.data;
+    const offer = await this.fetchProductOfferById(offerId);
     const resolvedCategoryId = categoryId ?? offer.category?.id ?? null;
 
     let eanIds: Set<string> = new Set();
@@ -507,14 +525,75 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * `OfferStatusReader.getOfferStatus` — neutral read of the marketplace-side
+   * publication state of an existing offer. Used by `OfferStatusPollService`
+   * (#447) to follow up on creates that returned with Allegro still in
+   * async-validation (`publication.status: ACTIVATING`).
+   *
+   * Maps Allegro's UPPERCASE publication.status enum onto the lowercase
+   * neutral `OfferPublicationStatus` union; faithful translation — no
+   * lifecycle decisions taken here. A 404 from `GET /sale/product-offers/{id}`
+   * surfaces as `OfferNotFoundOnMarketplaceException` so the service can map
+   * to a terminal `'failed'` record state. Other transport errors propagate.
+   */
+  async getOfferStatus(externalOfferId: string): Promise<OfferStatusReadResult> {
+    let offer: AllegroProductOffer;
+    try {
+      offer = await this.fetchProductOfferById(externalOfferId);
+    } catch (err) {
+      if (err instanceof AllegroApiException && err.statusCode === 404) {
+        throw new OfferNotFoundOnMarketplaceException(externalOfferId, this.connectionId);
+      }
+      throw err;
+    }
+
+    const rawStatus = offer.publication?.status;
+    if (!rawStatus) {
+      // Allegro returned the offer but without a publication block. Treat as
+      // `'inactive'` (offer exists but is in an unspecified non-live state) —
+      // the service maps `inactive + no errors` to `'draft'`, which matches
+      // the practical "offer exists, isn't live yet" semantic.
+      this.logger.warn(
+        `Allegro offer ${externalOfferId} returned without publication.status — treating as 'inactive'. connection=${this.connectionId}`,
+      );
+    }
+
+    const publicationStatus = this.mapAllegroPublicationStatus(rawStatus);
+    const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
+
+    return { publicationStatus, validationErrors };
+  }
+
+  private mapAllegroPublicationStatus(
+    raw: AllegroOfferPublicationStatus | undefined,
+  ): OfferPublicationStatus {
+    switch (raw) {
+      case 'ACTIVE':
+        return 'active';
+      case 'ACTIVATING':
+        return 'activating';
+      case 'INACTIVATING':
+        return 'inactivating';
+      case 'INACTIVE':
+        return 'inactive';
+      case 'ENDED':
+        return 'ended';
+      default:
+        // No status → treat as inactive (see comment in caller). Defensive
+        // default also covers any unrecognised future Allegro state.
+        return 'inactive';
+    }
+  }
+
+  /**
    * Fetch a single offer's live state (#464 — `OfferReader`).
    *
-   * Hits `GET /sale/product-offers/{externalId}` (same endpoint as
-   * `fetchOfferIdentifiers`, different projection of the response) and maps
-   * Allegro's native shape into the neutral `MarketplaceOffer` DTO consumed
-   * by the listing-detail page. Sparse upstream fields (missing description /
-   * images / category name / updatedAt) cleanly degrade to `undefined` on
-   * the result.
+   * Same endpoint as `fetchOfferIdentifiers` and `getOfferStatus` (#447) —
+   * goes through the shared `fetchProductOfferById` helper to keep transport,
+   * headers, and exception handling in lock-step. Maps Allegro's native shape
+   * into the neutral `MarketplaceOffer` DTO consumed by the listing-detail
+   * page. Sparse upstream fields (missing description / images / category
+   * name / endsAt) cleanly degrade to `undefined` on the result.
    */
   async getOffer(input: { externalId: string }): Promise<MarketplaceOffer> {
     const { externalId } = input;
@@ -522,10 +601,7 @@ export class AllegroOfferManagerAdapter
       `Fetching Allegro offer detail: connection=${this.connectionId} offerId=${externalId}`,
     );
 
-    const response = await this.httpClient.get<AllegroProductOffer>(
-      `/sale/product-offers/${externalId}`,
-    );
-    const offer = response.data;
+    const offer = await this.fetchProductOfferById(externalId);
 
     const price = offer.sellingMode?.price;
     if (!price) {

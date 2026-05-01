@@ -344,11 +344,24 @@ export interface AllegroProductOffer {
   stock?: {
     available?: number;
   };
-  /** #464 — publication lifecycle (ACTIVE / ENDED / INACTIVE / etc.). */
+  /**
+   * #464 — publication lifecycle (ACTIVE / ENDED / INACTIVE / etc.).
+   * #447 — also read by the offer-creation poller via
+   * `OfferStatusReader.getOfferStatus`. The status enum is typed strictly
+   * to keep the poller's exhaustive-switch checks honest; consumers that
+   * only need to display it (#464) cast through `string`.
+   */
   publication?: {
-    status?: string;
+    status?: AllegroOfferPublicationStatus;
     endingAt?: string;
   };
+  /**
+   * Validation errors returned alongside the offer resource. Mirrors the
+   * shape returned on `POST /sale/product-offers` 2xx-with-errors responses;
+   * the same array can appear here once Allegro finishes async validation
+   * (#447).
+   */
+  validation?: { errors?: AllegroValidationError[] };
 }
 
 /**
