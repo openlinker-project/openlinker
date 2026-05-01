@@ -173,13 +173,37 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   }
 
   async createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T> {
-    const path = PrestashopQueryBuilder.buildResourcePath(resource);
+    return this.writeResource<T>(resource, undefined, data);
+  }
+
+  async updateResource<T = unknown>(
+    resource: string,
+    id: string | number,
+    data: Record<string, unknown>,
+  ): Promise<T> {
+    return this.writeResource<T>(resource, id, data);
+  }
+
+  /**
+   * Shared POST/PUT writer.
+   *
+   * PrestaShop's WebService accepts both POST (create) and PUT (update) with
+   * the same XML envelope (`{ prestashop: { <singular>: data } }`) and returns
+   * the same response shape. The only difference is the URL: PUT targets a
+   * specific id. Keeping a single writer means the response-unwrap logic
+   * doesn't drift between create and update paths.
+   */
+  private async writeResource<T = unknown>(
+    resource: string,
+    id: string | number | undefined,
+    data: Record<string, unknown>,
+  ): Promise<T> {
+    const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
     const url = `${this.baseUrl}${path}`;
 
-    this.logger.debug(`Creating resource: ${resource}`);
+    const isUpdate = id !== undefined;
+    this.logger.debug(`${isUpdate ? 'Updating' : 'Creating'} resource: ${resource}${isUpdate ? `/${id}` : ''}`);
 
-    // PrestaShop WebService API requires XML format for POST requests (creating resources)
-    // Even though PrestaShop 1.7+ supports JSON for responses, POST requests must be XML
     const configResponseFormat = this.config.responseFormat;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
 
@@ -196,12 +220,12 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       },
     };
 
-    // Always use XML for POST requests (PrestaShop requirement)
+    // Always use XML for write requests (PrestaShop requirement for both POST and PUT)
     const body = this.convertToXml(wrappedData);
     const contentType = 'application/xml';
 
     const response = await this.requestWithRetry(url, {
-      method: 'POST',
+      method: isUpdate ? 'PUT' : 'POST',
       body,
       headers: {
         'Content-Type': contentType,
@@ -221,62 +245,32 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // In XML format, IDs are often attributes: { customer: { '@_id': '123', ... } }
     // Note: Some resources have irregular singular forms (e.g., 'addresses' → 'address', not 'addresse')
     const parsedObj = parsed as Record<string, unknown>;
-    
+
     // Handle special cases for resource singularization
     // 'addresses' → 'address' (not 'addresse')
     const singularResourceKey = resource === 'addresses' ? 'address' : resourceKey;
-    
+
     // Try with prestashop wrapper first
     if (parsedObj.prestashop && typeof parsedObj.prestashop === 'object') {
       const prestashop = parsedObj.prestashop as Record<string, unknown>;
       // Try singular form first (correct for most resources)
       if (prestashop[singularResourceKey] && typeof prestashop[singularResourceKey] === 'object') {
-        const resource = prestashop[singularResourceKey] as Record<string, unknown>;
-        // Normalize ID: PrestaShop XML returns IDs as attributes (@_id) or in <id> tag, convert to id property
-        if (resource['@_id'] !== undefined && resource.id === undefined) {
-          resource.id = resource['@_id'];
-        }
-        // Ensure ID is a string (handles both @_id attribute and <id> tag cases)
-        if (resource.id !== undefined) {
-          resource.id = String(resource.id);
-        }
-        return resource as T;
+        return this.normalizeWriteResponseId(prestashop[singularResourceKey] as Record<string, unknown>) as T;
       }
       // Fallback: try original resourceKey (for edge cases)
       if (prestashop[resourceKey] && typeof prestashop[resourceKey] === 'object') {
-        const resource = prestashop[resourceKey] as Record<string, unknown>;
-        if (resource['@_id'] !== undefined && resource.id === undefined) {
-          resource.id = resource['@_id'];
-        }
-        if (resource.id !== undefined) {
-          resource.id = String(resource.id);
-        }
-        return resource as T;
+        return this.normalizeWriteResponseId(prestashop[resourceKey] as Record<string, unknown>) as T;
       }
     }
-    
+
     // Try without prestashop wrapper (direct resource key)
     if (parsedObj[singularResourceKey] && typeof parsedObj[singularResourceKey] === 'object') {
-      const resource = parsedObj[singularResourceKey] as Record<string, unknown>;
-      if (resource['@_id'] !== undefined && resource.id === undefined) {
-        resource.id = resource['@_id'];
-      }
-      if (resource.id !== undefined) {
-        resource.id = String(resource.id);
-      }
-      return resource as T;
+      return this.normalizeWriteResponseId(parsedObj[singularResourceKey] as Record<string, unknown>) as T;
     }
-    
+
     // Fallback: try original resourceKey
     if (parsedObj[resourceKey] && typeof parsedObj[resourceKey] === 'object') {
-      const resource = parsedObj[resourceKey] as Record<string, unknown>;
-      if (resource['@_id'] !== undefined && resource.id === undefined) {
-        resource.id = resource['@_id'];
-      }
-      if (resource.id !== undefined) {
-        resource.id = String(resource.id);
-      }
-      return resource as T;
+      return this.normalizeWriteResponseId(parsedObj[resourceKey] as Record<string, unknown>) as T;
     }
 
     // Final fallback: return as-is and log warning
@@ -284,6 +278,21 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       `Could not extract resource from PrestaShop response. Resource: ${resource}, ResourceKey: ${resourceKey}, SingularKey: ${singularResourceKey}. Response structure: ${JSON.stringify(Object.keys(parsedObj))}`,
     );
     return parsed as T;
+  }
+
+  /**
+   * Normalize the `id` field of a written-back resource: PrestaShop's XML
+   * envelope returns the id either as an `@_id` attribute or as a child
+   * `<id>` tag. Either way callers expect `resource.id` as a string.
+   */
+  private normalizeWriteResponseId(resource: Record<string, unknown>): Record<string, unknown> {
+    if (resource['@_id'] !== undefined && resource.id === undefined) {
+      resource.id = resource['@_id'];
+    }
+    if (resource.id !== undefined) {
+      resource.id = String(resource.id);
+    }
+    return resource;
   }
 
   /**

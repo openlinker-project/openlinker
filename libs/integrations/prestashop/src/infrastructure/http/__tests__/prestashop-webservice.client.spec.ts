@@ -317,6 +317,79 @@ describe('PrestashopWebserviceClient', () => {
     });
   });
 
+  describe('updateResource', () => {
+    it('should issue a PUT to /{resource}/{id} with an XML-wrapped body', async () => {
+      const mockResponse = {
+        prestashop: {
+          order_carrier: {
+            id: '5001',
+            id_order: '999',
+            id_carrier: '1',
+            shipping_cost_tax_excl: '10.95',
+            shipping_cost_tax_incl: '10.95',
+          },
+        },
+      };
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        // Body is JSON — content-type must match so the response parser
+        // doesn't try to parse it as XML (PS WS happily returns either).
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.updateResource('order_carriers', '5001', {
+        id: '5001',
+        id_order: '999',
+        id_carrier: '1',
+        shipping_cost_tax_excl: '10.95',
+        shipping_cost_tax_incl: '10.95',
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const url = fetchCall[0] as string;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const init = fetchCall[1] as RequestInit;
+      const headers = init.headers as Headers;
+
+      expect(url).toBe('https://shop.example.com/api/order_carriers/5001');
+      expect(init.method).toBe('PUT');
+      expect(headers.get('Content-Type')).toBe('application/xml');
+      expect(headers.get('Authorization')).toBe('Basic dGVzdC1hcGkta2V5LTEyMzQ1Og==');
+      // Body wraps the data under the singular resource key with the
+      // `<prestashop>` envelope, identical to createResource's POST shape.
+      const body = init.body as string;
+      expect(body).toContain('<prestashop>');
+      expect(body).toContain('<order_carrier>');
+      expect(body).toContain('<shipping_cost_tax_excl>10.95</shipping_cost_tax_excl>');
+      expect(body).toContain('<shipping_cost_tax_incl>10.95</shipping_cost_tax_incl>');
+
+      expect(result).toMatchObject({ id: '5001', id_order: '999' });
+    });
+
+    it('should bubble PrestashopApiException on non-2xx', async () => {
+      const clientNoRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+        maxRetries: 0,
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        headers: new Headers(),
+        text: () => Promise.resolve('Bad Request'),
+      });
+
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+        clientNoRetry.updateResource('order_carriers', '5001', { id: '5001' }),
+      ).rejects.toThrow(PrestashopApiException);
+    });
+  });
+
   describe('retry logic', () => {
     it('should retry on server errors (5xx)', async () => {
       const mockResponse = {

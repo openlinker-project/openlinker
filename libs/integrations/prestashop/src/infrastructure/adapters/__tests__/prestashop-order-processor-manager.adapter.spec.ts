@@ -886,6 +886,208 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     });
   });
 
+  describe('shipping cost reconciliation (#467)', () => {
+    const EXTERNAL_ORDER_ID = '999';
+    const EXTERNAL_ORDER_CARRIER_ID = '5001';
+    const EXTERNAL_ORDER_NUMBER = 'TEST-ORDER-001';
+
+    const buildOrderWithShippingTotal = (shipping: number): OrderCreate => ({
+      ...createTestOrder(),
+      totals: {
+        subtotal: 109.97,
+        tax: 10.0,
+        shipping,
+        total: 109.97 + 10.0 + shipping,
+        currency: 'EUR',
+      },
+    });
+
+    /**
+     * Wire mocks for a happy-path first-time order create so the only
+     * variable across these tests is the order_carriers reconcile path.
+     */
+    const wireFirstTimeCreatePath = (): void => {
+      // Step 0: no existing destination mapping → falls through to create.
+      // Steps 1-5: customer / product / variant resolutions all succeed.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string) => {
+          if (entityType === 'Customer') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
+            ]);
+          }
+          if (entityType === 'Product') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+            ]);
+          }
+          if (entityType === 'ProductVariant') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+            ]);
+          }
+          // 'Order' lookup at Step 0 — return empty so we don't short-circuit.
+          return Promise.resolve([]);
+        });
+
+      mockOrderMapper.mapOrderCreate.mockReturnValue({
+        id_customer: '42',
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      });
+
+      // createResource is called twice: cart, then order.
+      mockHttpClient.createResource = jest
+        .fn()
+        .mockResolvedValueOnce({ id: '123' }) // cart
+        .mockResolvedValueOnce({
+          id: EXTERNAL_ORDER_ID,
+          reference: EXTERNAL_ORDER_NUMBER,
+        } as PrestashopOrder);
+
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+    };
+
+    it('should write shipping_cost_* via order_carriers PUT when totals.shipping > 0', async () => {
+      wireFirstTimeCreatePath();
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
+        id: EXTERNAL_ORDER_CARRIER_ID,
+        id_order: EXTERNAL_ORDER_ID,
+        id_carrier: '1',
+        weight: '0.000',
+        shipping_cost_tax_excl: '0.000000',
+        shipping_cost_tax_incl: '0.000000',
+        tracking_number: '',
+      });
+      mockHttpClient.updateResource = jest.fn().mockResolvedValueOnce(undefined);
+
+      await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'order_carriers',
+        { custom: { id_order: EXTERNAL_ORDER_ID } },
+        1,
+        0,
+      );
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith(
+        'order_carriers',
+        EXTERNAL_ORDER_CARRIER_ID,
+      );
+      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
+        'order_carriers',
+        EXTERNAL_ORDER_CARRIER_ID,
+        expect.objectContaining({
+          // Existing fields are spread through (full-resource PUT contract).
+          id: EXTERNAL_ORDER_CARRIER_ID,
+          id_order: EXTERNAL_ORDER_ID,
+          id_carrier: '1',
+          weight: '0.000',
+          tracking_number: '',
+          // Cost fields are overwritten with the order's shipping total.
+          shipping_cost_tax_excl: '10.95',
+          shipping_cost_tax_incl: '10.95',
+        }),
+      );
+    });
+
+    it('should skip the order_carriers round-trip when totals.shipping is zero', async () => {
+      wireFirstTimeCreatePath();
+      mockHttpClient.listResources = jest.fn();
+      mockHttpClient.getResource = jest.fn();
+      mockHttpClient.updateResource = jest.fn();
+
+      const ref = await adapter.createOrder(buildOrderWithShippingTotal(0));
+
+      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
+      expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+    });
+
+    it('should warn and skip the PUT when no order_carrier row is found', async () => {
+      wireFirstTimeCreatePath();
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+      mockHttpClient.getResource = jest.fn();
+      mockHttpClient.updateResource = jest.fn();
+
+      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+
+      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(1);
+      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
+      expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+    });
+
+    it('should swallow and log when the order_carriers update throws', async () => {
+      wireFirstTimeCreatePath();
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
+        id: EXTERNAL_ORDER_CARRIER_ID,
+        id_order: EXTERNAL_ORDER_ID,
+        id_carrier: '1',
+      });
+      mockHttpClient.updateResource = jest
+        .fn()
+        .mockRejectedValueOnce(new PrestashopApiException('boom', 500, 'server error'));
+
+      // The whole createOrder must still resolve and return the OrderRef —
+      // the order is already created in PS, only the cost reconcile failed.
+      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+
+      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
+      expect(ref.orderNumber).toBe(EXTERNAL_ORDER_NUMBER);
+      expect(mockHttpClient.updateResource).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reconcile shipping cost on retry when the destination order mapping already exists', async () => {
+      // Step 0 short-circuits: getExternalIds('Order', ...) returns an
+      // existing PS order. The reconcile step must STILL run so that a
+      // partial first run (mapping committed but reconcile crashed) can
+      // self-heal on retry.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string) => {
+          if (entityType === 'Order') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: EXTERNAL_ORDER_ID, entityType: 'Order' },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
+
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
+        id: EXTERNAL_ORDER_CARRIER_ID,
+        id_order: EXTERNAL_ORDER_ID,
+        id_carrier: '1',
+      });
+      mockHttpClient.updateResource = jest.fn().mockResolvedValueOnce(undefined);
+
+      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+
+      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
+      // No order create was attempted — Step 0 returned early — but the
+      // reconcile path was still exercised.
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
+        'order_carriers',
+        EXTERNAL_ORDER_CARRIER_ID,
+        expect.objectContaining({
+          shipping_cost_tax_excl: '10.95',
+          shipping_cost_tax_incl: '10.95',
+        }),
+      );
+    });
+  });
+
   describe('pickup-point forwarding (#458)', () => {
     it('forwards order.pickupPoint into addressProvisioner.resolveOrCreateAddress', async () => {
       const order: OrderCreate = {
