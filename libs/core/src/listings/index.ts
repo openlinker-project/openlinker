@@ -155,6 +155,13 @@ export {
 export { CategoryNotFoundException } from './domain/exceptions/category-not-found.exception';
 export type { OfferCreator } from './domain/ports/capabilities/offer-creator.capability';
 export { isOfferCreator } from './domain/ports/capabilities/offer-creator.capability';
+export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';
+export { isOfferReader } from './domain/ports/capabilities/offer-reader.capability';
+export type {
+  MarketplaceOffer,
+  MarketplaceOfferPrice,
+  MarketplaceOfferCategory,
+} from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';

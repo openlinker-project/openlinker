@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import type { ApiClient } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
+import { ApiError } from '../shared/api/api-error';
 import type { Connection } from '../features/connections/api/connections.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
@@ -225,6 +226,12 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      // #464 — default to a 422 (capability missing) so component tests that
+      // don't override fall through to the soft "live data unavailable"
+      // branch rather than a real network round-trip.
+      getMarketplaceOffer: vi.fn().mockRejectedValue(
+        new ApiError('Adapter does not support live offer reading', 422, null),
+      ),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
       createOffer: vi.fn().mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       // Tests that render the tracker must override with a full-shape response — the `null`
@@ -249,6 +256,10 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      // #464 — quiet 404 default so the listing-detail page's variant
+      // enrichment renders the bare ID without an error in tests that don't
+      // care about the SKU/EAN tags.
+      getVariant: vi.fn().mockRejectedValue(new ApiError('Variant not found', 404, null)),
       ...overrides.products,
     } as ApiClient['products'],
     promptTemplates: {

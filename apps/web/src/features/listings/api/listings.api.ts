@@ -12,6 +12,7 @@ import type {
   CreateOfferResponse,
   ListingsFilters,
   ListingsPagination,
+  MarketplaceOfferResponse,
   OfferCreationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
@@ -31,6 +32,13 @@ export interface CreateOfferOptions {
 export interface ListingsApi {
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) => Promise<PaginatedOfferMappings>;
   getById: (id: string) => Promise<OfferMapping>;
+  /**
+   * Fetches the live marketplace-side offer (#464). Returns 404 if the
+   * mapping doesn't exist or isn't `entityType=Offer`; 422 if the connection's
+   * adapter does not implement `OfferReader`. Callers handle both as a soft
+   * "live data unavailable" fallback.
+   */
+  getMarketplaceOffer: (mappingId: string) => Promise<MarketplaceOfferResponse>;
   updateOfferFields: (connectionId: string, offerId: string, fields: UpdateOfferFieldsPayload) => Promise<UpdateOfferFieldsResult>;
   createOffer: (
     connectionId: string,
@@ -71,6 +79,9 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     },
     getById(id): Promise<OfferMapping> {
       return request<OfferMapping>(`/listings/${id}`);
+    },
+    getMarketplaceOffer(mappingId): Promise<MarketplaceOfferResponse> {
+      return request<MarketplaceOfferResponse>(`/listings/${mappingId}/offer`);
     },
     updateOfferFields(connectionId, offerId, fields): Promise<UpdateOfferFieldsResult> {
       return request<UpdateOfferFieldsResult>(

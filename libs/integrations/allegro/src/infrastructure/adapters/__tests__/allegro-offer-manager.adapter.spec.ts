@@ -626,6 +626,136 @@ describe('AllegroOfferManagerAdapter', () => {
     });
   });
 
+  describe('getOffer (#464)', () => {
+    function buildAdapterWithStorefront(storefrontBaseUrl?: string): AllegroOfferManagerAdapter {
+      return new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        DEFAULT_SELLER_DEFAULTS,
+        storefrontBaseUrl,
+      );
+    }
+
+    it('should map a fully-populated Allegro offer to MarketplaceOffer', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562863',
+          name: 'Vintage Camera Lens 50mm f/1.4',
+          category: { id: '12345' },
+          description: {
+            sections: [
+              { items: [{ type: 'TEXT', content: 'Mint condition lens.' }] },
+              { items: [{ type: 'TEXT', content: 'Original case included.' }] },
+            ],
+          },
+          images: [
+            { url: 'https://a.allegroimg.com/lens-1.jpg' },
+            { url: 'https://a.allegroimg.com/lens-2.jpg' },
+          ],
+          sellingMode: { price: { amount: '249.00', currency: 'PLN' } },
+          stock: { available: 3 },
+          publication: { status: 'ACTIVE', endingAt: '2026-05-15T12:00:00Z' },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl.allegrosandbox.pl');
+      const result = await subject.getOffer({ externalId: '7781562863' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
+      expect(result).toEqual({
+        externalId: '7781562863',
+        title: 'Vintage Camera Lens 50mm f/1.4',
+        description: 'Mint condition lens.\n\nOriginal case included.',
+        imageUrl: 'https://a.allegroimg.com/lens-1.jpg',
+        price: { amount: '249.00', currency: 'PLN' },
+        availableQuantity: 3,
+        status: 'ACTIVE',
+        category: { id: '12345' },
+        marketplaceUrl: 'https://allegro.pl.allegrosandbox.pl/oferta/7781562863',
+        endsAt: '2026-05-15T12:00:00Z',
+      });
+    });
+
+    it('should degrade gracefully when description / images / category / publication are absent', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562864',
+          name: 'Sparse Offer',
+          sellingMode: { price: { amount: '10.00', currency: 'PLN' } },
+          stock: { available: 0 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const subject = buildAdapterWithStorefront('https://allegro.pl');
+      const result = await subject.getOffer({ externalId: '7781562864' });
+
+      expect(result).toEqual({
+        externalId: '7781562864',
+        title: 'Sparse Offer',
+        description: undefined,
+        imageUrl: undefined,
+        price: { amount: '10.00', currency: 'PLN' },
+        availableQuantity: 0,
+        status: 'UNKNOWN',
+        category: undefined,
+        marketplaceUrl: 'https://allegro.pl/oferta/7781562864',
+        endsAt: undefined,
+      });
+    });
+
+    it('should omit marketplaceUrl when storefrontBaseUrl is unset', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'offer-no-host',
+          name: 'No Host Offer',
+          sellingMode: { price: { amount: '5.00', currency: 'PLN' } },
+          stock: { available: 1 },
+          publication: { status: 'ACTIVE' },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      // Default `adapter` from outer beforeEach has no storefrontBaseUrl arg.
+      const result = await adapter.getOffer({ externalId: 'offer-no-host' });
+
+      expect(result.marketplaceUrl).toBeUndefined();
+    });
+
+    it('should throw AllegroApiException when sellingMode.price is missing', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'offer-malformed',
+          name: 'Malformed',
+          stock: { available: 0 },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      await expect(adapter.getOffer({ externalId: 'offer-malformed' })).rejects.toThrow(
+        /sellingMode\.price/,
+      );
+    });
+
+    it('should propagate upstream HTTP errors verbatim', async () => {
+      httpClient.get.mockRejectedValueOnce(new Error('Allegro 404'));
+
+      await expect(adapter.getOffer({ externalId: 'missing' })).rejects.toThrow('Allegro 404');
+    });
+  });
+
   describe('createOffer', () => {
     const baseCmd: CreateOfferCommand = {
       internalVariantId: 'ol_variant_abc',

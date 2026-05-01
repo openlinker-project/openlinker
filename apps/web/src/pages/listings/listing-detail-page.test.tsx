@@ -3,7 +3,13 @@ import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ListingDetailPage } from './listing-detail-page';
-import type { OfferCreationStatusResponse, OfferMapping } from '../../features/listings/api/listings.types';
+import { ApiError } from '../../shared/api/api-error';
+import type {
+  MarketplaceOfferResponse,
+  OfferCreationStatusResponse,
+  OfferMapping,
+} from '../../features/listings/api/listings.types';
+import type { ProductVariantSummary } from '../../features/products/api/products.types';
 
 function buildMapping(overrides: Partial<OfferMapping>): OfferMapping {
   return {
@@ -131,5 +137,125 @@ describe('ListingDetailPage', () => {
     // Wait for the page to fully render by asserting on a known element first
     await screen.findByText('mapping_1');
     expect(screen.queryByRole('heading', { name: /offer creation/i })).toBeNull();
+  });
+
+  describe('Listing details section (#464)', () => {
+    const liveOffer: MarketplaceOfferResponse = {
+      externalId: 'allegro-offer-456',
+      title: 'Vintage Camera Lens 50mm',
+      description: 'Mint condition.\n\nOriginal case included.',
+      imageUrl: 'https://a.allegroimg.com/lens.jpg',
+      price: { amount: '249.00', currency: 'PLN' },
+      availableQuantity: 3,
+      status: 'ACTIVE',
+      category: { id: '12345', name: 'Lenses' },
+      marketplaceUrl: 'https://allegro.pl/oferta/allegro-offer-456',
+      endsAt: '2026-04-30T10:00:00Z',
+    };
+
+    function renderWithOfferData(
+      mapping: OfferMapping,
+      offerOverride?: typeof liveOffer | Error,
+      variant?: ProductVariantSummary,
+    ): void {
+      const getMarketplaceOffer =
+        offerOverride instanceof Error
+          ? vi.fn().mockRejectedValue(offerOverride)
+          : vi.fn().mockResolvedValue(offerOverride ?? liveOffer);
+      const getVariant = variant
+        ? vi.fn().mockResolvedValue(variant)
+        : undefined;
+      const api = createMockApiClient({
+        listings: {
+          getById: vi.fn().mockResolvedValue(mapping),
+          getMarketplaceOffer,
+        },
+        ...(getVariant ? { products: { getVariant } } : {}),
+      });
+      renderWithProviders(
+        <Routes>
+          <Route path="/listings/:id" element={<ListingDetailPage />} />
+        </Routes>,
+        { apiClient: api, route: `/listings/${mapping.id}` },
+      );
+    }
+
+    it('renders title, status, price, qty, and marketplace URL when entityType is Offer and the offer fetch succeeds', async () => {
+      renderWithOfferData(buildMapping({ entityType: 'Offer' }));
+
+      expect(
+        await screen.findByRole('heading', { name: 'Vintage Camera Lens 50mm' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('ACTIVE')).toBeInTheDocument();
+      expect(screen.getByText('249.00 PLN')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('Lenses')).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: /open on marketplace/i });
+      expect(link).toHaveAttribute('href', 'https://allegro.pl/oferta/allegro-offer-456');
+      expect(link).toHaveAttribute('target', '_blank');
+      // Description preview rendered in a <details> element (collapsed by default).
+      expect(screen.getByText(/description preview/i)).toBeInTheDocument();
+    });
+
+    it('renders the soft fallback panel when the adapter does not implement OfferReader (422)', async () => {
+      renderWithOfferData(
+        buildMapping({ entityType: 'Offer' }),
+        new ApiError('not supported', 422, null),
+      );
+
+      expect(await screen.findByText('Live data unavailable for this adapter.')).toBeInTheDocument();
+      // Raw mapping fields still render below the soft fallback.
+      expect(screen.getByText('mapping_1')).toBeInTheDocument();
+    });
+
+    it('renders the error panel with retry on 5xx and keeps raw mapping visible', async () => {
+      renderWithOfferData(
+        buildMapping({ entityType: 'Offer' }),
+        new ApiError('Allegro upstream 502', 502, null),
+      );
+
+      expect(await screen.findByText('Unable to load listing details')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+      expect(screen.getByText('mapping_1')).toBeInTheDocument();
+    });
+
+    it('does not fetch the live offer when entityType is not Offer', async () => {
+      const getMarketplaceOffer = vi.fn();
+      const api = createMockApiClient({
+        listings: {
+          getById: vi.fn().mockResolvedValue(buildMapping({ entityType: 'Product' })),
+          getMarketplaceOffer,
+        },
+      });
+      renderWithProviders(
+        <Routes>
+          <Route path="/listings/:id" element={<ListingDetailPage />} />
+        </Routes>,
+        { apiClient: api, route: '/listings/mapping_1' },
+      );
+
+      await screen.findByText('mapping_1');
+      expect(getMarketplaceOffer).not.toHaveBeenCalled();
+      // Section heading not rendered.
+      expect(screen.queryByRole('heading', { name: /listing details/i })).toBeNull();
+    });
+
+    it('renders SKU and EAN tags inline next to the Internal ID when the variant query resolves', async () => {
+      const variantSummary: ProductVariantSummary = {
+        id: 'ol_variant_xyz',
+        productId: 'ol_product_abc',
+        sku: 'SKU-RED-42',
+        ean: '5901234123457',
+        name: 'Red / 42',
+      };
+      renderWithOfferData(
+        buildMapping({ entityType: 'ProductVariant', internalId: 'ol_variant_xyz' }),
+        undefined,
+        variantSummary,
+      );
+
+      expect(await screen.findByText('SKU SKU-RED-42')).toBeInTheDocument();
+      expect(screen.getByText('EAN 5901234123457')).toBeInTheDocument();
+    });
   });
 });
