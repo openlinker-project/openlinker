@@ -618,4 +618,153 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
   });
+
+  describe('SourceOptionsReader (#472 / #474)', () => {
+    describe('listOrderStatuses', () => {
+      it('returns the documented Allegro order-status enum', async () => {
+        const result = await adapter.listOrderStatuses();
+        expect(result).toEqual(
+          expect.arrayContaining([
+            { value: 'BOUGHT', label: 'Bought (awaiting payment)' },
+            { value: 'READY_FOR_PROCESSING', label: 'Ready for processing (paid)' },
+            { value: 'CANCELLED', label: 'Cancelled' },
+          ]),
+        );
+        expect(result).toHaveLength(4);
+      });
+
+      it('does not call the Allegro HTTP client', async () => {
+        await adapter.listOrderStatuses();
+        expect(httpClient.get).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('listPaymentMethods', () => {
+      it('returns the documented Allegro payment-type enum', async () => {
+        const result = await adapter.listPaymentMethods();
+        expect(result).toEqual(
+          expect.arrayContaining([
+            { value: 'ONLINE', label: 'Online payment (Allegro Pay / card / instant transfer)' },
+            { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
+            { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+          ]),
+        );
+        expect(result.length).toBeGreaterThanOrEqual(6);
+      });
+
+      it('does not call the Allegro HTTP client', async () => {
+        await adapter.listPaymentMethods();
+        expect(httpClient.get).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('listDeliveryMethods', () => {
+      const PACZKOMAT_ID = '1fa56f79-aaa1-aaaa-aaaa-aaaaaaaaaaaa';
+      const KURIER_ID = '2bc67g80-bbb2-bbbb-bbbb-bbbbbbbbbbbb';
+      const DPD_ID = '3cd78h91-ccc3-cccc-cccc-cccccccccccc';
+
+      it('flattens carrier methods across rate-tables, deduped by methodId', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            shippingRates: [
+              { id: 'rate-set-1', name: 'Cennik główny' },
+              { id: 'rate-set-2', name: 'Cennik premium' },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik główny',
+            rates: [
+              { method: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } },
+              { method: { id: KURIER_ID, name: 'Allegro Kurier24 InPost' } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-2',
+            name: 'Cennik premium',
+            rates: [
+              { method: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } }, // dup
+              { method: { id: DPD_ID, name: 'DPD' } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+
+        expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/shipping-rates');
+        expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/shipping-rates/rate-set-1');
+        expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/shipping-rates/rate-set-2');
+        expect(result).toEqual([
+          { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
+          { value: KURIER_ID, label: 'Allegro Kurier24 InPost' },
+          { value: DPD_ID, label: 'DPD' },
+        ]);
+      });
+
+      it('returns empty list when seller has no rate-tables', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [] },
+          status: 200,
+          headers: {},
+        });
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([]);
+        expect(httpClient.get).toHaveBeenCalledTimes(1);
+      });
+
+      it('falls back to method.id as label when name is missing', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik główny' }] },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik główny',
+            rates: [{ method: { id: PACZKOMAT_ID } }],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([{ value: PACZKOMAT_ID, label: PACZKOMAT_ID }]);
+      });
+
+      it('skips rate entries without method.id', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik główny' }] },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik główny',
+            rates: [
+              { method: { id: PACZKOMAT_ID, name: 'Paczkomat' } },
+              {}, // malformed entry
+              { method: { name: 'No id' } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([{ value: PACZKOMAT_ID, label: 'Paczkomat' }]);
+      });
+    });
+  });
 });

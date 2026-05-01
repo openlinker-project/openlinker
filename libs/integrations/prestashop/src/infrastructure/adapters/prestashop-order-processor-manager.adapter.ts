@@ -13,7 +13,13 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderProcessorManagerPort}
  */
-import { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
+import {
+  OrderProcessorManagerPort,
+  OrderCreate,
+  OrderRef,
+  type DestinationOptionsReader,
+  type MappingOption,
+} from '@openlinker/core/orders';
 import {
   IdentifierMappingPort,
   Connection,
@@ -27,6 +33,11 @@ import {
   PrestashopOrder,
   PrestashopOrderCarrier,
 } from '../mappers/prestashop.mapper.interface';
+import {
+  PrestashopCarrier,
+  PrestashopOrderState,
+  PrestashopModule,
+} from '../../domain/types/prestashop-options.types';
 import {
   PrestashopResourceNotFoundException,
   PrestashopApiException,
@@ -45,7 +56,8 @@ import { hashEmail } from '@openlinker/shared/config';
  *
  * Handles order creation in PrestaShop via WebService API.
  */
-export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorManagerPort {
+export class PrestashopOrderProcessorManagerAdapter
+  implements OrderProcessorManagerPort, DestinationOptionsReader {
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
 
   constructor(
@@ -619,6 +631,95 @@ export class PrestashopOrderProcessorManagerAdapter implements OrderProcessorMan
         `and no defaultCarrierId on connection config. Falling back to PrestaShop's first carrier (id_carrier=1).`,
     );
     return undefined;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DestinationOptionsReader (#472 / #473)
+  //
+  // Live PS WS list endpoints powering the carrier-mapping UI dropdowns. Each
+  // method maps the raw PS row to the neutral `MappingOption` shape; `value`
+  // is the stable identifier persisted by mapping config (id_reference for
+  // carriers, id for order_states, name for modules), `label` is the human
+  // string the operator picks from.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async listCarriers(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.listResources<PrestashopCarrier>(
+      'carriers',
+      { custom: { active: '1', deleted: '0' } },
+      1000,
+      0,
+    );
+    return rows.map((row) => ({
+      value: String(row.id_reference),
+      label: this.flattenLanguageField(row.name),
+    }));
+  }
+
+  async listOrderStatuses(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.listResources<PrestashopOrderState>(
+      'order_states',
+      { custom: { deleted: '0' } },
+      1000,
+      0,
+    );
+    return rows.map((row) => ({
+      value: String(row.id),
+      label: this.flattenLanguageField(row.name),
+    }));
+  }
+
+  async listPaymentMethods(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.listResources<PrestashopModule>(
+      'modules',
+      { custom: { active: '1' } },
+      1000,
+      0,
+    );
+    // Filter to payment modules. PS exposes the indicator differently across
+    // versions: `is_payment_module` (PS 1.7+) takes precedence; `tab` ===
+    // 'payments_gateways' covers older installs. If neither field is present
+    // on any row in the response, fall back to "include all active modules"
+    // rather than silently dropping legitimate payment gateways — third-party
+    // modules (payu, przelewy24, stripe, dotpay) don't follow a consistent
+    // naming scheme, so name-prefix matching is unreliable.
+    const hasIndicator = rows.some(
+      (m) => m.is_payment_module !== undefined || m.tab !== undefined,
+    );
+    const payments = hasIndicator
+      ? rows.filter(
+          (m) =>
+            this.isTruthy(m.is_payment_module) || m.tab === 'payments_gateways',
+        )
+      : rows;
+    return payments.map((row) => ({
+      value: row.name,
+      label: this.flattenLanguageField(row.displayName ?? row.display_name ?? row.name),
+    }));
+  }
+
+  /** PS WS booleans arrive as `'1'` / `'0'` strings or numeric `1` / `0`. */
+  private isTruthy(value: string | number | boolean | undefined): boolean {
+    return value === '1' || value === 1 || value === true;
+  }
+
+  /**
+   * PS WS multi-language fields can come back as either a flat string (when
+   * the install has `id_lang=1` configured as the default response language)
+   * or as `{ language: [{ '@attributes': { id: '1' }, '#text': 'Carrier name' }] }`
+   * (when JSON is requested without a language pin). Defensively unwrap.
+   */
+  private flattenLanguageField(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object') {
+      const langArray = (value as { language?: unknown }).language;
+      if (Array.isArray(langArray) && langArray.length > 0) {
+        const first = langArray[0] as { '#text'?: unknown; value?: unknown };
+        if (typeof first['#text'] === 'string') return first['#text'];
+        if (typeof first.value === 'string') return first.value;
+      }
+    }
+    return '';
   }
 }
 
