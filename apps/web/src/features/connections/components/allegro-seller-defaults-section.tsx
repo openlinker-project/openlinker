@@ -1,6 +1,7 @@
-import { type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { useResponsibleProducersQuery } from '../../allegro/hooks/use-responsible-producers-query';
+import { useUploadSafetyAttachmentMutation } from '../../allegro/hooks/use-upload-safety-attachment-mutation';
 import {
   POLISH_VOIVODESHIP_LABELS,
   POLISH_VOIVODESHIP_VALUES,
@@ -8,10 +9,21 @@ import {
 import type { EditConnectionFormValues } from './edit-connection.schema';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { FileUpload } from '../../../shared/ui/file-upload';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
+
+/** Allegro hard cap — max 20 attachments per product (#449). */
+const MAX_SAFETY_ATTACHMENTS = 20;
+/**
+ * Mirrors the BE constant `ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES`. Kept as
+ * a literal here (not imported from `@openlinker/integrations-allegro`) to
+ * avoid pulling a backend package into the FE bundle. Verify both values
+ * stay in sync if either changes.
+ */
+const MAX_SAFETY_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 interface AllegroSellerDefaultsSectionProps {
   connectionId: string;
@@ -227,12 +239,10 @@ export function AllegroSellerDefaultsSection({
         <h4 className="seller-defaults__group-title">Safety information</h4>
         <p className="seller-defaults__group-description">
           Pick <strong>None applies</strong> for products without GPSR safety
-          obligations, or provide free-text safety details. Some categories
-          (cameras, electronics with batteries, etc.) require <strong>TEXT</strong>
-          and reject the &quot;None applies&quot; option. The
-          <strong> ATTACHMENTS</strong> variant (referencing pre-uploaded
-          attachment ids) is supported by the API but no upload UI is shipped
-          yet — operators using attachments must edit the JSON view directly.
+          obligations, provide free-text safety details, or upload PDFs as
+          attachments. Some categories (cameras, electronics with batteries,
+          etc.) require <strong>TEXT</strong> or <strong>ATTACHMENTS</strong>
+          and reject the &quot;None applies&quot; option.
         </p>
 
         <FormField
@@ -254,6 +264,7 @@ export function AllegroSellerDefaultsSection({
           >
             <option value="NO_SAFETY_INFORMATION">None applies</option>
             <option value="TEXT">Provide safety information (text)</option>
+            <option value="ATTACHMENTS">Provide safety information (file)</option>
           </Select>
         </FormField>
 
@@ -281,7 +292,171 @@ export function AllegroSellerDefaultsSection({
             />
           </FormField>
         ) : null}
+
+        {safetyType === 'ATTACHMENTS' ? (
+          <SafetyAttachmentsField
+            connectionId={connectionId}
+            form={form}
+            onChange={onChange}
+            disabled={disabled}
+            errorMessage={
+              // RHF surfaces superRefine errors at the path they were
+              // attached to ('attachments') as `_errors`/'message' on the
+              // intermediate node; pull the nested message defensively.
+              (errors?.safetyInformation?.attachments as { message?: string } | undefined)
+                ?.message ??
+              (errors?.safetyInformation as unknown as { message?: string } | undefined)?.message
+            }
+          />
+        ) : null}
       </div>
     </section>
   );
+}
+
+/**
+ * The ATTACHMENTS branch of the safety-information field. Renders a
+ * file-upload zone plus a list of currently-attached files. Uploaded
+ * file metadata is held in form state only — Allegro is the system of
+ * record for the binary, OL persists only the `id` (the existing
+ * serializer at `edit-connection.schema.ts` strips the extra fields
+ * before saving).
+ *
+ * Note on form-state shape: the existing schema persists `attachments`
+ * as `Array<{ id: string }>`. We extend the in-memory form value with
+ * client-only metadata (`fileName`, `mimeType`, `sizeBytes`) so the
+ * list renders nice labels — those fields are dropped on serialize.
+ */
+interface SafetyAttachment {
+  id: string;
+  fileName?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
+function SafetyAttachmentsField({
+  connectionId,
+  form,
+  onChange,
+  disabled,
+  errorMessage,
+}: {
+  connectionId: string;
+  form: UseFormReturn<EditConnectionFormValues>;
+  onChange: () => void;
+  disabled: boolean;
+  errorMessage?: string;
+}): ReactElement {
+  const uploadMutation = useUploadSafetyAttachmentMutation();
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  const attachments =
+    (form.watch('sellerDefaults.safetyInformation.attachments') as SafetyAttachment[] | undefined) ??
+    [];
+  const atCap = attachments.length >= MAX_SAFETY_ATTACHMENTS;
+
+  const handleUpload = async (file: File): Promise<void> => {
+    setInlineError(null);
+    try {
+      const result = await uploadMutation.mutateAsync({ connectionId, file });
+      const next: SafetyAttachment[] = [
+        ...attachments,
+        {
+          id: result.id,
+          fileName: result.fileName,
+          mimeType: result.mimeType,
+          sizeBytes: result.sizeBytes,
+        },
+      ];
+      form.setValue('sellerDefaults.safetyInformation.attachments', next, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      onChange();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed';
+      setInlineError(message);
+    }
+  };
+
+  const removeAt = (index: number): void => {
+    const next = attachments.filter((_, i) => i !== index);
+    form.setValue('sellerDefaults.safetyInformation.attachments', next, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    onChange();
+  };
+
+  const apiError = uploadMutation.error;
+
+  // Once anything is uploaded, surface the list above the dropzone so
+  // the operator sees what they have before adding more. The single
+  // alert below merges client-side validation and API errors — they're
+  // the same concern from the operator's POV (this upload didn't land).
+  const errorAlertMessage = inlineError ?? (apiError ? apiError.message : null);
+  const fileLabel =
+    attachments.length === 0
+      ? 'Safety information attachments'
+      : `Safety information attachments (${attachments.length}/${MAX_SAFETY_ATTACHMENTS})`;
+
+  return (
+    <>
+      {attachments.length > 0 ? (
+        <ul className="file-upload__list" aria-label="Uploaded safety attachments">
+          {attachments.map((att, index) => (
+            <li key={att.id} className="file-upload__list-item">
+              <span className="file-upload__list-item-name">
+                {att.fileName ?? att.id}
+              </span>
+              <span className="file-upload__list-item-meta">
+                {att.sizeBytes !== undefined ? formatSize(att.sizeBytes) : null}
+              </span>
+              <Button
+                type="button"
+                tone="ghost"
+                className="button--sm file-upload__list-item-remove"
+                onClick={() => removeAt(index)}
+                disabled={disabled}
+                aria-label={`Remove ${att.fileName ?? att.id}`}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <FormField
+        label={fileLabel}
+        name="sellerDefaults.safetyInformation.attachments"
+        error={errorMessage}
+        description="Upload one or more PDF files. Allegro stores the file; OL keeps only the returned id."
+      >
+        <FileUpload
+          accept="application/pdf"
+          maxBytes={MAX_SAFETY_ATTACHMENT_BYTES}
+          onFileSelected={handleUpload}
+          onError={setInlineError}
+          disabled={disabled || atCap}
+          busy={uploadMutation.isPending}
+          invalid={Boolean(errorMessage) || Boolean(errorAlertMessage)}
+          label={atCap ? `Maximum ${MAX_SAFETY_ATTACHMENTS} attachments reached` : undefined}
+          hint={
+            atCap
+              ? 'Remove one to add another.'
+              : undefined
+          }
+        />
+      </FormField>
+
+      {errorAlertMessage ? <Alert tone="error">{errorAlertMessage}</Alert> : null}
+    </>
+  );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -21,6 +21,7 @@ import {
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
   isOfferStatusReader,
+  isSafetyAttachmentUploader,
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
@@ -2288,6 +2289,33 @@ describe('AllegroOfferManagerAdapter', () => {
       // private-helper coverage is implicit: if the helper signature drifts,
       // both call sites fail TypeScript before the test runs.
       expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
+    });
+  });
+
+  describe('uploadSafetyAttachment (#449)', () => {
+    it('routes the upload through the upload-domain client (not the api-domain client)', async () => {
+      uploadHttpClient.postMultipart = jest.fn().mockResolvedValue({
+        data: { id: 'attach-123' },
+        status: 201,
+        headers: {},
+      });
+
+      const result = await adapter.uploadSafetyAttachment({
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+        mimeType: 'application/pdf',
+        fileName: 'safety.pdf',
+      });
+
+      expect(result).toEqual({ id: 'attach-123' });
+      expect(uploadHttpClient.postMultipart).toHaveBeenCalledTimes(1);
+      // The api-domain client must not have been used. The mock factory
+      // for `httpClient` doesn't set `postMultipart`, so any accidental
+      // call would `TypeError: ... is not a function` immediately —
+      // separate negative assertion would only re-validate the absence.
+    });
+
+    it('isSafetyAttachmentUploader narrow returns true for the adapter', () => {
+      expect(isSafetyAttachmentUploader(adapter)).toBe(true);
     });
   });
 });

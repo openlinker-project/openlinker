@@ -314,6 +314,84 @@ describe('AllegroHttpClient', () => {
     });
   });
 
+  describe('postMultipart', () => {
+    it('builds a multipart/form-data body with a generated boundary', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{"id":"attach-1"}'),
+      });
+
+      await client.postMultipart('/sale/sale-product-offer-attachments', [
+        {
+          name: 'file',
+          fileName: 'safety.pdf',
+          contentType: 'application/pdf',
+          bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+        },
+      ]);
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const headers = (fetchCall[1]?.headers as Record<string, string>) ?? {};
+      const contentType = headers['content-type'] ?? '';
+      expect(contentType).toMatch(/^multipart\/form-data; boundary=----OpenLinkerFormBoundary/);
+
+      const body = fetchCall[1]?.body as Uint8Array;
+      expect(body).toBeInstanceOf(Uint8Array);
+
+      const text = new TextDecoder().decode(body);
+      expect(text).toContain('Content-Disposition: form-data; name="file"; filename="safety.pdf"');
+      expect(text).toContain('Content-Type: application/pdf');
+      expect(text).toContain('%PDF');
+    });
+
+    it('returns the parsed response data', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve('{"id":"attach-42"}'),
+      });
+
+      const response = await client.postMultipart<{ id: string }>(
+        '/sale/sale-product-offer-attachments',
+        [
+          {
+            name: 'file',
+            fileName: 'x.pdf',
+            contentType: 'application/pdf',
+            bytes: new Uint8Array([0xff]),
+          },
+        ],
+      );
+
+      expect(response.data).toEqual({ id: 'attach-42' });
+    });
+
+    it('surfaces 4xx as AllegroApiException without retry', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(JSON.stringify({ errors: [{ message: 'invalid file' }] })),
+      });
+
+      await expect(
+        noRetryClient.postMultipart('/sale/sale-product-offer-attachments', [
+          {
+            name: 'file',
+            fileName: 'x.pdf',
+            contentType: 'application/pdf',
+            bytes: new Uint8Array([0xff]),
+          },
+        ]),
+      ).rejects.toThrow(AllegroApiException);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('authentication', () => {
     it('should include Bearer token in Authorization header', async () => {
       const mockData = { id: '123' };

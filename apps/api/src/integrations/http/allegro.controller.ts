@@ -19,8 +19,14 @@ import {
   BadRequestException,
   NotFoundException,
   Inject,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  FileTypeValidator,
+  MaxFileSizeValidator,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
@@ -43,7 +49,13 @@ import {
   type OfferManagerPort,
   type ResponsibleProducerEntry,
   isResponsibleProducerReader,
+  isSafetyAttachmentUploader,
 } from '@openlinker/core/listings';
+import {
+  ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES,
+  ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN,
+} from '@openlinker/integrations-allegro';
+import { UploadSafetyAttachmentResponseDto } from './dto/upload-safety-attachment-response.dto';
 
 @ApiTags('allegro')
 @Controller('integrations/allegro')
@@ -392,6 +404,76 @@ export class AllegroController {
       );
     }
     return adapter.fetchResponsibleProducers();
+  }
+
+  @Roles('admin')
+  @ApiBearerAuth()
+  @Post('connections/:id/safety-attachments')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES },
+    }),
+  )
+  @ApiOperation({
+    summary: 'Upload an Allegro safety-information attachment for a connection',
+    description:
+      'Forwards the file bytes to Allegro as multipart/form-data and returns the attachment id ' +
+      'to reference from `productSet[*].safetyInformation.attachments[].id` on offer create. ' +
+      'OL does not persist the file; Allegro is the system of record.',
+  })
+  @ApiParam({ name: 'id', description: 'Connection ID' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, type: UploadSafetyAttachmentResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation failed (mime type, size, missing capability)' })
+  async uploadSafetyAttachment(
+    @Param('id') connectionId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES }),
+          new FileTypeValidator({ fileType: ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ): Promise<UploadSafetyAttachmentResponseDto> {
+    this.logger.debug(
+      `Uploading Allegro safety attachment (connection: ${connectionId}, fileName: ${file.originalname}, ${file.size} bytes)`,
+    );
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+    // Defence-in-depth: this route lives under `integrations/allegro`, so a
+    // non-Allegro `connectionId` is rejected by the IntegrationsService
+    // resolver before reaching the capability narrow. The guard stays here
+    // for the day this surface goes capability-scoped (per #472).
+    if (!isSafetyAttachmentUploader(adapter)) {
+      throw new BadRequestException(
+        `Connection ${connectionId} does not support the SafetyAttachmentUploader capability`,
+      );
+    }
+    const result = await adapter.uploadSafetyAttachment({
+      bytes: new Uint8Array(file.buffer.buffer, file.buffer.byteOffset, file.buffer.byteLength),
+      mimeType: file.mimetype,
+      fileName: file.originalname,
+    });
+    return {
+      id: result.id,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+    };
   }
 }
 
