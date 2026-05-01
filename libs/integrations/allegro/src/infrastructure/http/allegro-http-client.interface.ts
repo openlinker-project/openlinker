@@ -105,6 +105,44 @@ export interface IAllegroHttpClient {
     body: Uint8Array,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>>;
+
+  /**
+   * Make POST request with a multipart/form-data body.
+   *
+   * Used for endpoints that accept file uploads with metadata
+   * (Allegro's safety-information attachment endpoint, etc.) where the
+   * filename has to travel alongside the bytes via
+   * `Content-Disposition`. A boundary is generated per request; each
+   * part carries its own `Content-Type` header. Otherwise behaves
+   * identically to `post` — same auth header, same retry +
+   * token-refresh machinery.
+   *
+   * @param path - API path (e.g., '/sale/sale-product-offer-attachments')
+   * @param parts - Ordered list of multipart parts to send
+   * @param options - Request options (headers, query params)
+   * @returns Response data
+   */
+  postMultipart<T = unknown>(
+    path: string,
+    parts: AllegroMultipartPart[],
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
+}
+
+/**
+ * One part of a multipart/form-data request.
+ *
+ * `name` is the field name in the form (`Content-Disposition: form-data;
+ * name="..."`). `fileName`, when present, is added to the
+ * `Content-Disposition` header so the receiving server can identify the
+ * upload by its original filename. `contentType` becomes the part's
+ * `Content-Type`. `bytes` is the raw payload — no encoding is applied.
+ */
+export interface AllegroMultipartPart {
+  name: string;
+  fileName?: string;
+  contentType: string;
+  bytes: Uint8Array;
 }
 
 

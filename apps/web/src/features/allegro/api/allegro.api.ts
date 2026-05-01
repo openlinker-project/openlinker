@@ -33,10 +33,27 @@ export interface AllegroResponsibleProducer {
     | 'FULFILLMENT_SERVICE_PROVIDER';
 }
 
+/**
+ * Result of `POST /integrations/allegro/connections/:id/safety-attachments`.
+ * Only `id` is referenced by Allegro on offer create; the remaining
+ * fields are echoed for the wizard's attachment list rendering.
+ */
+export interface AllegroSafetyAttachmentUploadResponse {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
 export interface AllegroApi {
   startOAuth: (input: StartAllegroOAuthInput) => Promise<StartAllegroOAuthResponse>;
   handleCallback: (code: string, state: string) => Promise<AllegroCallbackResponse>;
   listResponsibleProducers: (connectionId: string) => Promise<AllegroResponsibleProducer[]>;
+  uploadSafetyAttachment: (
+    connectionId: string,
+    file: File,
+  ) => Promise<AllegroSafetyAttachmentUploadResponse>;
 }
 
 interface ApiRequest {
@@ -60,6 +77,18 @@ export function createAllegroApi(request: ApiRequest): AllegroApi {
     listResponsibleProducers(connectionId): Promise<AllegroResponsibleProducer[]> {
       return request<AllegroResponsibleProducer[]>(
         `/integrations/allegro/connections/${connectionId}/responsible-producers`,
+      );
+    },
+
+    uploadSafetyAttachment(connectionId, file): Promise<AllegroSafetyAttachmentUploadResponse> {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+      return request<AllegroSafetyAttachmentUploadResponse>(
+        `/integrations/allegro/connections/${connectionId}/safety-attachments`,
+        {
+          method: 'POST',
+          body: formData,
+        },
       );
     },
   };

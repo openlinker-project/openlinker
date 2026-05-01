@@ -14,7 +14,12 @@
  * @implements {IAllegroHttpClient}
  * @see {@link AllegroConnectionTokenState} — owns the per-connection token
  */
-import { IAllegroHttpClient, AllegroHttpRequestOptions, AllegroHttpResponse } from './allegro-http-client.interface';
+import {
+  IAllegroHttpClient,
+  AllegroHttpRequestOptions,
+  AllegroHttpResponse,
+  AllegroMultipartPart,
+} from './allegro-http-client.interface';
 import { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
@@ -117,6 +122,17 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     body: Uint8Array,
     options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
   ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('POST', path, body, contentType, options);
+  }
+
+  async postMultipart<T = unknown>(
+    path: string,
+    parts: AllegroMultipartPart[],
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>> {
+    const boundary = `----OpenLinkerFormBoundary${randomUUID().replace(/-/g, '')}`;
+    const body = buildMultipartBody(parts, boundary);
+    const contentType = `multipart/form-data; boundary=${boundary}`;
     return this.request<T>('POST', path, body, contentType, options);
   }
 
@@ -454,4 +470,46 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * Build a `multipart/form-data` body from ordered parts.
+ *
+ * Each part is emitted as
+ *
+ *   --{boundary}\r\n
+ *   Content-Disposition: form-data; name="{name}"[; filename="{fileName}"]\r\n
+ *   Content-Type: {contentType}\r\n
+ *   \r\n
+ *   {bytes}\r\n
+ *
+ * followed by the closing `--{boundary}--\r\n`. Headers are
+ * UTF-8-encoded; `bytes` are concatenated as-is. The `boundary` string
+ * is the caller's responsibility — pick something with the
+ * `----` prefix recommended by RFC 7578 §4.1 and embed enough entropy
+ * (e.g. a UUID) to avoid colliding with anything that could appear in
+ * the bytes payload.
+ */
+function buildMultipartBody(parts: AllegroMultipartPart[], boundary: string): Uint8Array {
+  const CRLF = '\r\n';
+  const chunks: Uint8Array[] = [];
+  for (const part of parts) {
+    const disposition = part.fileName
+      ? `Content-Disposition: form-data; name="${part.name}"; filename="${part.fileName}"`
+      : `Content-Disposition: form-data; name="${part.name}"`;
+    const header = `--${boundary}${CRLF}${disposition}${CRLF}Content-Type: ${part.contentType}${CRLF}${CRLF}`;
+    chunks.push(new TextEncoder().encode(header));
+    chunks.push(part.bytes);
+    chunks.push(new TextEncoder().encode(CRLF));
+  }
+  chunks.push(new TextEncoder().encode(`--${boundary}--${CRLF}`));
+
+  const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
 }

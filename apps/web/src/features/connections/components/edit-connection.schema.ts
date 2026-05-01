@@ -28,15 +28,32 @@ const allegroSellerLocationSchema = z.object({
 });
 
 // FE schema is permissive (optional everywhere) so the operator can save
-// incremental progress. The BE DTO is the strict gate — see #445.
-const allegroSafetyInformationSchema = z.object({
-  type: z.enum(['NO_SAFETY_INFORMATION', 'TEXT', 'ATTACHMENTS']).optional(),
-  description: z.string().trim().max(5000).optional(),
-  attachments: z
-    .array(z.object({ id: z.string().trim().min(1) }))
-    .max(20)
-    .optional(),
-});
+// incremental progress. The BE DTO is the strict gate — see #445. The one
+// cross-field check added for #449 surfaces a clear error when the operator
+// has actively selected ATTACHMENTS but hasn't uploaded any file yet — the
+// BE DTO would reject this anyway, but catching it client-side gives a
+// targeted error next to the file-upload field rather than a generic
+// 400. We deliberately don't migrate to `z.discriminatedUnion` here because
+// it would force `attachments` to be required up-front and break the
+// incremental-progress contract.
+const allegroSafetyInformationSchema = z
+  .object({
+    type: z.enum(['NO_SAFETY_INFORMATION', 'TEXT', 'ATTACHMENTS']).optional(),
+    description: z.string().trim().max(5000).optional(),
+    attachments: z
+      .array(z.object({ id: z.string().trim().min(1) }))
+      .max(20)
+      .optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.type === 'ATTACHMENTS' && (!val.attachments || val.attachments.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['attachments'],
+        message: 'Add at least one attachment when "Provide safety information (file)" is selected.',
+      });
+    }
+  });
 
 const allegroSellerDefaultsSchema = z.object({
   location: allegroSellerLocationSchema.optional(),

@@ -181,6 +181,12 @@ export type {
 } from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export type {
+  SafetyAttachmentUploader,
+  SafetyAttachmentUploadInput,
+  SafetyAttachmentUploadResult,
+} from './domain/ports/capabilities/safety-attachment-uploader.capability';
+export { isSafetyAttachmentUploader } from './domain/ports/capabilities/safety-attachment-uploader.capability';
 export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export { isResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export type {

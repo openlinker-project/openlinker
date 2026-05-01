@@ -54,6 +54,13 @@ export { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
 export { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 export type { TokenRefreshResponse } from './infrastructure/token-refresh/allegro-token-refresh.service';
 
+// Safety attachments (#449)
+export {
+  ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+  ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES,
+  ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES,
+} from './domain/types/allegro-safety-attachments.types';
+
 // Module
 export { AllegroIntegrationModule } from './allegro-integration.module';
 

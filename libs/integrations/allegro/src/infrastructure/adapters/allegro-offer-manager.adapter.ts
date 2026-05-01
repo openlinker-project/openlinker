@@ -37,6 +37,9 @@ import type {
   CategoryParameter,
   MarketplaceOffer,
   SellerPolicies,
+  SafetyAttachmentUploader,
+  SafetyAttachmentUploadInput,
+  SafetyAttachmentUploadResult,
 } from '@openlinker/core/listings';
 import {
   OfferCreateRejectedException,
@@ -82,6 +85,7 @@ import { createHash } from 'crypto';
 import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
+import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
 import {
   AllegroQuantityCommandRepositoryPort,
   AllegroQuantityCommand,
@@ -196,7 +200,8 @@ export class AllegroOfferManagerAdapter
     OfferStatusReader,
     OfferReader,
     SellerPoliciesReader,
-    ResponsibleProducerReader {
+    ResponsibleProducerReader,
+    SafetyAttachmentUploader {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
   private readonly quantityPollConfig: QuantityPollConfig;
@@ -1142,6 +1147,25 @@ export class AllegroOfferManagerAdapter
         kind: e.type ?? 'PRODUCER',
       }),
     );
+  }
+
+  /**
+   * `SafetyAttachmentUploader.uploadSafetyAttachment` — upload a
+   * GPSR safety-information attachment so its returned id can be
+   * referenced from `productSet[*].safetyInformation.attachments[].id`
+   * on subsequent offer-create payloads. Routes through
+   * `this.uploadHttpClient` (the upload-domain client at
+   * `upload.allegro.pl[.allegrosandbox.pl]`) — using `this.httpClient`
+   * here would 404 since the API host doesn't expose this endpoint.
+   * (#449)
+   */
+  async uploadSafetyAttachment(
+    input: SafetyAttachmentUploadInput,
+  ): Promise<SafetyAttachmentUploadResult> {
+    this.logger.debug(
+      `Uploading Allegro safety attachment (connection: ${this.connectionId}, fileName: ${input.fileName}, ${input.bytes.byteLength} bytes)`,
+    );
+    return uploadSafetyAttachmentViaAllegro(this.uploadHttpClient, input);
   }
 
   /**
