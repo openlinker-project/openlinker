@@ -8,7 +8,7 @@
  * @module apps/web/src/features/mappings/components
  */
 
-import { useState, useEffect, type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
@@ -35,8 +35,46 @@ interface MappingPanelProps {
   optionsError: Error | null;
 }
 
-function labelFor(options: MappingOption[], value: string): string {
-  return options.find((o) => o.value === value)?.label ?? value;
+/**
+ * Truncates a long stable id (Allegro UUIDs are 36 chars) to 8 + "…" so it
+ * fits inline next to the human label without dominating the row. Short
+ * values (like PrestaShop carrier ids `5`, `12`) render verbatim — the
+ * length guard short-circuits anything ≤ 9 chars (#474).
+ */
+function shortValue(value: string): string {
+  return value.length <= 9 ? value : `${value.slice(0, 8)}…`;
+}
+
+function optionByValue(options: MappingOption[], value: string): MappingOption | null {
+  return options.find((o) => o.value === value) ?? null;
+}
+
+/**
+ * Renders a `MappingOption` with the human label as the primary text and a
+ * faded mono id-hint when the value differs from the label (#474). When
+ * `value === label` (degraded data — adapter fell back to using the id as
+ * the name), render a single label and skip the redundant hint.
+ */
+function renderOptionLabel(option: MappingOption): ReactNode {
+  if (option.label === option.value) {
+    return option.label;
+  }
+  return (
+    <>
+      {option.label}{' '}
+      <span className="mapping-panel__id-hint mono-text">{shortValue(option.value)}</span>
+    </>
+  );
+}
+
+/**
+ * Plain-text variant for `<option>` elements — native `<select>` strips
+ * styled children, so the id chip is approximated as parenthesised text.
+ */
+function optionPlainText(option: MappingOption): string {
+  return option.label === option.value
+    ? option.label
+    : `${option.label} (${shortValue(option.value)})`;
 }
 
 export function MappingPanel({
@@ -135,21 +173,37 @@ export function MappingPanel({
             </tr>
           </thead>
           <tbody>
-            {localRows.map((row) => (
-              <tr key={row.sourceValue}>
-                <td>{labelFor(sourceOptions, row.sourceValue)}</td>
-                <td>{labelFor(targetOptions, row.targetValue)}</td>
-                <td>
-                  <Button
-                    tone="ghost"
-                    aria-label={`Remove mapping for ${labelFor(sourceOptions, row.sourceValue)}`}
-                    onClick={() => { handleDeleteRow(row.sourceValue); }}
-                  >
-                    Remove
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {localRows.map((row) => {
+              const sourceOption = optionByValue(sourceOptions, row.sourceValue);
+              const targetOption = optionByValue(targetOptions, row.targetValue);
+              return (
+                <tr key={row.sourceValue}>
+                  <td>
+                    {sourceOption ? (
+                      renderOptionLabel(sourceOption)
+                    ) : (
+                      <span className="mono-text">{row.sourceValue}</span>
+                    )}
+                  </td>
+                  <td>
+                    {targetOption ? (
+                      renderOptionLabel(targetOption)
+                    ) : (
+                      <span className="mono-text">{row.targetValue}</span>
+                    )}
+                  </td>
+                  <td>
+                    <Button
+                      tone="ghost"
+                      aria-label={`Remove mapping for ${sourceOption?.label ?? row.sourceValue}`}
+                      onClick={() => { handleDeleteRow(row.sourceValue); }}
+                    >
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -164,7 +218,7 @@ export function MappingPanel({
         >
           <option value="">— {sourceLabel} —</option>
           {availableSourceOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>{optionPlainText(o)}</option>
           ))}
         </select>
 
@@ -175,7 +229,7 @@ export function MappingPanel({
         >
           <option value="">— {targetLabel} —</option>
           {targetOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>{optionPlainText(o)}</option>
           ))}
         </select>
 

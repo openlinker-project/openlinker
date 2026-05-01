@@ -2016,6 +2016,17 @@ textarea {
   margin-left: 0.5rem;
 }
 
+/*
+ * Mapping panel id-hint (#474) — muted, monospaced supplementary id chip
+ * rendered next to the human label on saved-mapping rows. Pairs with the
+ * `.mono-text` class for the mono treatment.
+ */
+.mapping-panel__id-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
