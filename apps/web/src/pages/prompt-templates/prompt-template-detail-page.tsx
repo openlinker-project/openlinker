@@ -72,6 +72,15 @@ export function PromptTemplateDetailPage(): ReactElement {
   const revertMutation = useRevertPromptTemplateMutation();
   const deleteMutation = useDeletePromptTemplateMutation();
 
+  // #478: depend on the destructured stable `mutateAsync` methods, not
+  // the wrapping mutation objects — `useMutation` returns a fresh wrapper
+  // each render, which churns these callback identities.
+  const { mutateAsync: updateDraft } = updateMutation;
+  const { mutateAsync: publishTemplate } = publishMutation;
+  const { mutateAsync: createTemplate } = createMutation;
+  const { mutateAsync: revertTemplate } = revertMutation;
+  const { mutateAsync: deleteTemplate } = deleteMutation;
+
   const [systemPrompt, setSystemPrompt] = useState('');
   const [userPromptTemplate, setUserPromptTemplate] = useState('');
   const [variables, setVariables] = useState<PromptTemplateVariable[]>([]);
@@ -99,7 +108,7 @@ export function PromptTemplateDetailPage(): ReactElement {
   const handleSave = useCallback(async (): Promise<void> => {
     if (template === undefined || !isDirty) return;
     try {
-      await updateMutation.mutateAsync({
+      await updateDraft({
         id: template.id,
         input: { systemPrompt, userPromptTemplate, variables },
       });
@@ -107,35 +116,35 @@ export function PromptTemplateDetailPage(): ReactElement {
     } catch {
       /* surfaced via updateMutation.error */
     }
-  }, [template, systemPrompt, userPromptTemplate, variables, isDirty, updateMutation, showToast]);
+  }, [template, systemPrompt, userPromptTemplate, variables, isDirty, updateDraft, showToast]);
 
   const handlePublish = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
     setShowPublishConfirm(false);
     try {
-      const result = await publishMutation.mutateAsync(template.id);
+      const result = await publishTemplate(template.id);
       showToast({ tone: 'success', description: `Published v${result.version}` });
     } catch {
       /* surfaced via publishMutation.error */
     }
-  }, [template, publishMutation, showToast]);
+  }, [template, publishTemplate, showToast]);
 
   const handleDiscard = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
     setShowDiscardConfirm(false);
     try {
-      await deleteMutation.mutateAsync(template.id);
+      await deleteTemplate(template.id);
       showToast({ tone: 'success', description: 'Draft discarded' });
       void navigate('/ai/prompt-templates');
     } catch {
       /* surfaced via deleteMutation.error */
     }
-  }, [template, deleteMutation, showToast, navigate]);
+  }, [template, deleteTemplate, showToast, navigate]);
 
   const handleCreateDraftFromHere = useCallback(async (): Promise<void> => {
     if (template === undefined) return;
     try {
-      const draft = await createMutation.mutateAsync({
+      const draft = await createTemplate({
         key: template.key,
         channel: template.channel,
         systemPrompt: template.systemPrompt,
@@ -147,13 +156,13 @@ export function PromptTemplateDetailPage(): ReactElement {
     } catch {
       /* surfaced via createMutation.error */
     }
-  }, [template, createMutation, showToast, navigate]);
+  }, [template, createTemplate, showToast, navigate]);
 
   const handleRevertTo = useCallback(
     async (version: number): Promise<void> => {
       if (template === undefined) return;
       try {
-        const draft = await revertMutation.mutateAsync({
+        const draft = await revertTemplate({
           key: template.key,
           channel: template.channel,
           version,
@@ -167,7 +176,7 @@ export function PromptTemplateDetailPage(): ReactElement {
         /* surfaced via revertMutation.error */
       }
     },
-    [template, revertMutation, showToast, navigate],
+    [template, revertTemplate, showToast, navigate],
   );
 
   // Hook-order-safe: all hooks must run on every render. Compute the

@@ -43,13 +43,17 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
     resolver: zodResolver(editOfferFieldsSchema),
   });
 
-  // Stable reset callback — avoids including form/mutation in useEffect deps,
-  // which would cause an infinite render loop (useMutation returns a new object every render).
+  // #478: depend on the destructured stable `reset` methods, not the
+  // wrapping `form` / `mutation` objects — `useMutation` returns a fresh
+  // wrapper each render, which would churn this callback's identity and
+  // re-fire the consuming effect (the `prevIsOpenRef` guard masks it here).
+  const { reset: resetForm } = form;
+  const { reset: resetMutation } = mutation;
   const resetDrawerState = useCallback(() => {
     closeButtonRef.current?.focus();
-    form.reset();
-    mutation.reset();
-  }, [form, mutation]);
+    resetForm();
+    resetMutation();
+  }, [resetForm, resetMutation]);
 
   // Reset form and mutation state each time the drawer opens
   const prevIsOpenRef = useRef(false);

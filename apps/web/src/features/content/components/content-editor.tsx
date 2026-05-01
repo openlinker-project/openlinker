@@ -70,6 +70,13 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const saveMutation = useSaveContentDraftMutation();
   const discardMutation = useDiscardContentDraftMutation();
   const publishMutation = usePublishContentMutation();
+
+  // #478: depend on the destructured stable `mutateAsync` methods, not the
+  // wrapping mutation objects — `useMutation` returns a fresh wrapper each
+  // render, which churns these callback identities.
+  const { mutateAsync: saveDraft } = saveMutation;
+  const { mutateAsync: discardDraft } = discardMutation;
+  const { mutateAsync: publishDraft } = publishMutation;
   const { showToast } = useToast();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
@@ -96,7 +103,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const handleSave = useCallback(
     async (target: ActiveTarget, value: string): Promise<void> => {
       try {
-        await saveMutation.mutateAsync({
+        await saveDraft({
           productId,
           input: {
             connectionId: target.kind === 'master' ? null : target.connectionId,
@@ -109,13 +116,13 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
         /* surfaced via saveMutation.error */
       }
     },
-    [productId, saveMutation, showToast],
+    [productId, saveDraft, showToast],
   );
 
   const handleDiscard = useCallback(
     async (target: ActiveTarget): Promise<void> => {
       try {
-        await discardMutation.mutateAsync({
+        await discardDraft({
           productId,
           input: {
             connectionId: target.kind === 'master' ? null : target.connectionId,
@@ -127,7 +134,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
         /* surfaced via discardMutation.error */
       }
     },
-    [discardMutation, productId, showToast],
+    [discardDraft, productId, showToast],
   );
 
   const handlePublishConfirm = useCallback(async (): Promise<void> => {
@@ -135,7 +142,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
     const target = pendingPublish;
     setPendingPublish(null);
     try {
-      await publishMutation.mutateAsync({
+      await publishDraft({
         productId,
         input: {
           connectionId: target.kind === 'master' ? null : target.connectionId,
@@ -146,7 +153,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
     } catch {
       /* surfaced via publishMutation.error */
     }
-  }, [pendingPublish, productId, publishMutation, showToast]);
+  }, [pendingPublish, productId, publishDraft, showToast]);
 
   if (query.isLoading) {
     return <LoadingState title="Loading content" message="Fetching descriptions…" />;

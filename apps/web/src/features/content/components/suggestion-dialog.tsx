@@ -49,10 +49,15 @@ export function SuggestionDialog({
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
 
+  // #478: depend on the destructured stable methods, not the wrapping
+  // `mutation` object — `useMutation` returns a fresh wrapper each render,
+  // which churns these callback identities.
+  const { mutateAsync: generateSuggestion, reset: resetMutation } = mutation;
+
   const handleGenerate = useCallback(async () => {
     if (tone.length > MAX_TONE_LENGTH || extra.length > MAX_EXTRA_LENGTH) return;
     try {
-      const result = await mutation.mutateAsync({
+      const result = await generateSuggestion({
         productId,
         input: {
           channel,
@@ -65,7 +70,7 @@ export function SuggestionDialog({
     } catch {
       /* surfaced via mutation.error */
     }
-  }, [channel, extra, mutation, productId, tone]);
+  }, [channel, extra, generateSuggestion, productId, tone]);
 
   const handleApply = useCallback(() => {
     if (suggestion === null) return;
@@ -80,9 +85,9 @@ export function SuggestionDialog({
     if (!next) {
       setSuggestion(null);
       setRequestId(null);
-      mutation.reset();
+      resetMutation();
     }
-  }, [mutation]);
+  }, [resetMutation]);
 
   const channelLabel = channel === null ? 'master' : channel;
 

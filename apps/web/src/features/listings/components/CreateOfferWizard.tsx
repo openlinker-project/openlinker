@@ -241,6 +241,11 @@ export function CreateOfferWizard({
   // time the wizard opens — including the retry flow — so a failed record
   // stays on the previous key and a retry creates a new OfferCreationRecord
   // rather than colliding with the old one (issue #307 acceptance).
+  // #478: depend on the destructured stable `reset` methods, not the
+  // wrapping `form` / `mutation` objects — `useMutation` returns a fresh
+  // wrapper each render (the `prevIsOpenRef` guard masks the loop here).
+  const { reset: resetForm } = form;
+  const { reset: resetMutation } = mutation;
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
@@ -250,7 +255,7 @@ export function CreateOfferWizard({
           initialValues,
           defaultConnectionId ?? '',
         );
-        form.reset(prefilled);
+        resetForm(prefilled);
         // Jump to Step 2 with Steps 0 and 1 marked as completed so the
         // operator lands directly on the offer-details form with the
         // prior values visible. Step 0 is re-traversable via Back.
@@ -264,7 +269,7 @@ export function CreateOfferWizard({
         setSelectedProductId(null);
         setWasPrefilled(true);
       } else {
-        form.reset({ ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' });
+        resetForm({ ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' });
         setStepIndex(0);
         setCompletedSteps(new Set());
         setSelectedProductId(null);
@@ -274,10 +279,10 @@ export function CreateOfferWizard({
       setProductOffset(0);
       setPickedVariantEan(null);
       setPrefilledIds(new Set());
-      mutation.reset();
+      resetMutation();
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, defaultConnectionId, initialValues, form, mutation]);
+  }, [isOpen, defaultConnectionId, initialValues, resetForm, resetMutation]);
 
   // Abandon-prevention: warn if the operator closes the tab mid-flow.
   useEffect(() => {
