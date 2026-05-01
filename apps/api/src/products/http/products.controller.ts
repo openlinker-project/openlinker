@@ -219,12 +219,16 @@ export class ProductsController {
   /**
    * Lightweight projection used by `GET /products/variants/:variantId` (#464).
    * Builds a human label from the variant's attribute map when present
-   * (e.g. `{ size: '42', color: 'Red' }` → `"42 / Red"`); falls back to
-   * undefined so the FE can render the SKU as the primary label.
+   * (e.g. `{ color: 'Red', size: '42' }` → `"Red / 42"`); falls back to
+   * undefined so the FE can render the SKU as the primary label. Sorts by
+   * attribute key so the label is deterministic regardless of how the
+   * variant came off the wire (JSONB column reads, future projections,
+   * etc.) — `Object.values` would otherwise rely on insertion order.
    */
   private toVariantSummaryDto(variant: ProductVariant): ProductVariantSummaryResponseDto {
-    const attributeValues = Object.values(variant.attributes ?? {})
-      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    const attributeValues = Object.entries(variant.attributes ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => (typeof v === 'string' ? v.trim() : ''))
       .filter((v) => v.length > 0);
     return {
       id: variant.id,

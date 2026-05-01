@@ -153,12 +153,12 @@ export function ListingMarketplaceOfferSection({
                 },
               ]
             : []),
-          ...(offer.updatedAt
+          ...(offer.endsAt
             ? [
                 {
-                  id: 'updatedAt',
-                  label: 'Marketplace-side updated',
-                  value: <TimeDisplay iso={offer.updatedAt} />,
+                  id: 'endsAt',
+                  label: 'Ends at',
+                  value: <TimeDisplay iso={offer.endsAt} />,
                 },
               ]
             : []),

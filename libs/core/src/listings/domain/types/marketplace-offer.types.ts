@@ -43,6 +43,13 @@ export interface MarketplaceOffer {
   category?: MarketplaceOfferCategory;
   /** Public buyer-facing URL the operator can open in a new tab. */
   marketplaceUrl?: string;
-  /** ISO 8601 — last marketplace-side change. */
-  updatedAt?: string;
+  /**
+   * ISO 8601 — when the offer's marketplace-side validity ends (Allegro:
+   * `publication.endingAt`). Optional because not every marketplace publishes
+   * a fixed end date. Distinct from a "last modified" timestamp — the
+   * Allegro offer endpoint doesn't expose one cheaply, so we surface the
+   * scheduled end instead because that is what operators actually need to
+   * see on the detail page.
+   */
+  endsAt?: string;
 }

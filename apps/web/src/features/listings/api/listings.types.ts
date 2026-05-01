@@ -81,7 +81,12 @@ export interface MarketplaceOfferResponse {
   status: string;
   category?: MarketplaceOfferCategory;
   marketplaceUrl?: string;
-  updatedAt?: string;
+  /**
+   * ISO 8601 — when the offer's marketplace-side validity ends (Allegro:
+   * `publication.endingAt`). Optional because not every marketplace publishes
+   * a fixed end date.
+   */
+  endsAt?: string;
 }
 
 export interface UpdateOfferDescriptionSectionItem {

@@ -58,7 +58,7 @@ The issue's "Linked product side" bullet is in scope. Both `entityType === 'Offe
   - `status: string` (string passthrough — no leaky enum; the FE renders unknown strings as a neutral badge)
   - `category?: { id: string; name?: string }`
   - `marketplaceUrl?: string`
-  - `updatedAt?: string` (ISO)
+  - `endsAt?: string` (ISO — when the offer's marketplace-side validity ends; Allegro's `publication.endingAt`. Distinct from "last modified": the bare offer GET doesn't expose a cheap last-modified timestamp, and operators benefit more from seeing when the offer expires.)
 
 **`libs/core/src/listings/domain/ports/capabilities/offer-reader.capability.ts`** (new)
 - `OfferReader { getOffer(input: { externalId: string }): Promise<MarketplaceOffer> }`
@@ -85,7 +85,7 @@ Acceptance: types compile in isolation; capability guard table grows by one row,
   - `status` → `publication.status` (string).
   - `category` → `category.{id, name}` (name may not be present on the bare GET — leave undefined).
   - `marketplaceUrl` → derived per-environment: sandbox vs prod uses different host (`https://allegro.pl/oferta/{id}` for prod, `https://allegro.pl.allegrosandbox.pl/oferta/{id}` for sandbox). Use the existing config's `environment` flag.
-  - `updatedAt` → `publication.lastChangedAt` (or top-level `updatedAt` — verify in fixture).
+  - `endsAt` → `publication.endingAt` (Allegro's scheduled offer end; the bare GET does not expose a last-modified timestamp).
 
 **`libs/integrations/allegro/src/domain/types/allegro-api.types.ts`**
 - Extend `AllegroProductOffer` with the additional fields needed by `getOffer`: `description?`, `images?`, `sellingMode?`, `stock?`, `publication?`. Keep additions optional to avoid breaking the existing `fetchOfferIdentifiers` consumer.
@@ -93,7 +93,7 @@ Acceptance: types compile in isolation; capability guard table grows by one row,
 **`libs/integrations/allegro/src/infrastructure/adapters/__tests__/allegro-offer-manager.adapter.spec.ts`**
 - New describe `getOffer (#464)`:
   - happy-path: full response → `MarketplaceOffer` with every field populated.
-  - sparse-payload: missing `description` / `images` / `category.name` / `updatedAt` — adapter returns `MarketplaceOffer` with the optional fields undefined, the required ones present.
+  - sparse-payload: missing `description` / `images` / `category.name` / `endsAt` — adapter returns `MarketplaceOffer` with the optional fields undefined, the required ones present.
   - 404 from upstream: propagates as the existing HTTP error type (no special domain conversion needed in this PR — keep the HTTP layer's existing behavior; controller maps to 404).
 
 Acceptance: adapter spec covers happy + sparse + 404; the existing `fetchOfferIdentifiers` tests keep passing.

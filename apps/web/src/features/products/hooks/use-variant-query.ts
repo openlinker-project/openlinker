@@ -11,13 +11,14 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { productsQueryKeys } from '../api/products.query-keys';
 import type { ProductVariantSummary } from '../api/products.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { ApiError } from '../../../shared/api/api-error';
 
 export function useVariantQuery(
   variantId: string | undefined,
-): UseQueryResult<ProductVariantSummary> {
+): UseQueryResult<ProductVariantSummary, ApiError> {
   const apiClient = useApiClient();
 
-  return useQuery({
+  return useQuery<ProductVariantSummary, ApiError>({
     queryKey: productsQueryKeys.variant(variantId ?? ''),
     queryFn: () => apiClient.products.getVariant(variantId ?? ''),
     enabled: Boolean(variantId),

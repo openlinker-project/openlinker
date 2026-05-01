@@ -681,7 +681,7 @@ describe('AllegroOfferManagerAdapter', () => {
         status: 'ACTIVE',
         category: { id: '12345' },
         marketplaceUrl: 'https://allegro.pl.allegrosandbox.pl/oferta/7781562863',
-        updatedAt: '2026-05-15T12:00:00Z',
+        endsAt: '2026-05-15T12:00:00Z',
       });
     });
 
@@ -710,7 +710,7 @@ describe('AllegroOfferManagerAdapter', () => {
         status: 'UNKNOWN',
         category: undefined,
         marketplaceUrl: 'https://allegro.pl/oferta/7781562864',
-        updatedAt: undefined,
+        endsAt: undefined,
       });
     });
 

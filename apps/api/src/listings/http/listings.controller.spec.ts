@@ -233,7 +233,7 @@ describe('ListingsController', () => {
       status: 'ACTIVE',
       category: { id: '12345', name: 'Lenses' },
       marketplaceUrl: 'https://allegro.pl/oferta/allegro-offer-456',
-      updatedAt: '2026-04-30T10:00:00Z',
+      endsAt: '2026-04-30T10:00:00Z',
     };
 
     function makeOfferReaderAdapter(getOffer: jest.Mock): OfferManagerPort {
@@ -263,7 +263,7 @@ describe('ListingsController', () => {
         status: 'ACTIVE',
         category: { id: '12345', name: 'Lenses' },
         marketplaceUrl: 'https://allegro.pl/oferta/allegro-offer-456',
-        updatedAt: '2026-04-30T10:00:00Z',
+        endsAt: '2026-04-30T10:00:00Z',
       });
     });
 

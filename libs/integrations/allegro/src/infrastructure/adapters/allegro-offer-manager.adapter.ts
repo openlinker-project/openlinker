@@ -550,7 +550,7 @@ export class AllegroOfferManagerAdapter
       status: offer.publication?.status ?? 'UNKNOWN',
       category: offer.category ? { id: offer.category.id } : undefined,
       marketplaceUrl: this.buildMarketplaceUrl(offer.id),
-      updatedAt: offer.publication?.endingAt,
+      endsAt: offer.publication?.endingAt,
     };
   }
 

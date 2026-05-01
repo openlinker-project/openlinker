@@ -57,8 +57,11 @@ export class MarketplaceOfferResponseDto {
   @ApiPropertyOptional({ description: 'Public buyer-facing URL' })
   marketplaceUrl?: string;
 
-  @ApiPropertyOptional({ description: 'ISO 8601 — last marketplace-side change' })
-  updatedAt?: string;
+  @ApiPropertyOptional({
+    description:
+      'ISO 8601 — when the offer\'s marketplace-side validity ends (Allegro: publication.endingAt). Optional; not every marketplace publishes a fixed end date.',
+  })
+  endsAt?: string;
 
   static fromDomain(offer: MarketplaceOffer): MarketplaceOfferResponseDto {
     return {
@@ -71,7 +74,7 @@ export class MarketplaceOfferResponseDto {
       status: offer.status,
       category: offer.category ? { id: offer.category.id, name: offer.category.name } : undefined,
       marketplaceUrl: offer.marketplaceUrl,
-      updatedAt: offer.updatedAt,
+      endsAt: offer.endsAt,
     };
   }
 }
