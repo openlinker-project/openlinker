@@ -55,4 +55,42 @@ describe('OfferCreationErrorList', () => {
     const list = screen.getByRole('list', { name: /offer creation errors/i });
     expect(list.querySelectorAll('li')).toHaveLength(2);
   });
+
+  describe('Allegro friendly-message allowlist (#448)', () => {
+    it('renders the friendly message for mapped codes and keeps the raw message in a collapsed <details>', () => {
+      const errors: OfferCreationError[] = [
+        {
+          code: 'SAFETY_INFO_NOT_DEFINED',
+          message: 'Safety information was not defined for product',
+        },
+      ];
+      render(<OfferCreationErrorList errors={errors} />);
+
+      // Primary message slot now carries the friendly text.
+      expect(
+        screen.getByText(/verify the discriminator/i),
+      ).toBeInTheDocument();
+      // Code badge remains visible for grep / debugging.
+      expect(screen.getByText('SAFETY_INFO_NOT_DEFINED')).toBeInTheDocument();
+      // Raw message is rendered inside a <details>, collapsed by default.
+      const details = screen.getByText(/Allegro's original message/i).closest('details');
+      expect(details).not.toBeNull();
+      expect(details).not.toHaveAttribute('open');
+      expect(
+        screen.getByText('Safety information was not defined for product'),
+      ).toBeInTheDocument();
+    });
+
+    it('does not render the <details> block for unmapped codes (existing behaviour preserved)', () => {
+      const errors: OfferCreationError[] = [
+        { field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' },
+      ];
+      render(<OfferCreationErrorList errors={errors} />);
+
+      // Allegro's raw message is the only message rendered.
+      expect(screen.getByText('EAN is required.')).toBeInTheDocument();
+      // No <details> block means no "Allegro's original message" summary.
+      expect(screen.queryByText(/Allegro's original message/i)).toBeNull();
+    });
+  });
 });

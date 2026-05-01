@@ -4832,6 +4832,30 @@ a.kpi-card:focus-visible {
   font-size: 0.75rem;
 }
 
+/*
+ * Collapsible "Allegro's original message" disclosure (#448). Spans the
+ * full row of the item grid so the summary + body align with the message
+ * column above it. Kept visually quiet — the summary is muted, no CTA
+ * weight; the friendly message above is the primary affordance.
+ */
+.offer-creation-errors__raw {
+  grid-column: 1 / -1;
+  margin-top: 0.25rem;
+}
+
+.offer-creation-errors__raw > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.offer-creation-errors__raw-body {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 @media (max-width: 767.98px) {
   .offer-creation-errors__item {
     grid-template-columns: 1fr;
