@@ -14,7 +14,7 @@
  * Intended to live in the user-chip dropdown once AppShell is rebuilt;
  * callers can also place it elsewhere.
  */
-import { useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { useMemo, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useTheme } from '../theme/use-theme';
 import { ThemeValues, type Theme } from '../theme/theme.types';
 
@@ -49,6 +49,24 @@ export function ThemeToggle({
   const { theme, setTheme } = useTheme();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const classes = ['theme-toggle', className].filter(Boolean).join(' ');
+
+  // Pre-build per-index ref callbacks once. The previous inline form
+  // `ref={(el) => { optionRefs.current[i] = el; }}` produced a fresh
+  // function identity on every render, which under React 19's stricter
+  // ref-cleanup contract — combined with merged-ref machinery in ancestor
+  // components like Radix's DropdownMenu slots and react-router's Link —
+  // tore down and reattached the ref on every render, dispatching state
+  // updates that triggered re-renders → infinite loop (#461). The explicit
+  // `: void` return type guards future refactors that drop the braces and
+  // accidentally return the assignment value (which React 19 treats as a
+  // cleanup callback).
+  const setOptionRef = useMemo(
+    () =>
+      THEME_OPTIONS.map((_, index) => (el: HTMLButtonElement | null): void => {
+        optionRefs.current[index] = el;
+      }),
+    [],
+  );
 
   function moveTo(nextIndex: number): void {
     const option = THEME_OPTIONS[nextIndex];
@@ -90,9 +108,7 @@ export function ThemeToggle({
         return (
           <button
             key={option.value}
-            ref={(el) => {
-              optionRefs.current[index] = el;
-            }}
+            ref={setOptionRef[index]}
             type="button"
             role="radio"
             aria-checked={selected}

@@ -1,4 +1,6 @@
+import { StrictMode } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { Link, MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '../theme/theme-provider';
 import { THEME_STORAGE_KEY } from '../theme/theme.types';
@@ -129,6 +131,45 @@ describe('ThemeToggle', () => {
     light.focus();
     act(() => keyDown(light, 'End'));
     expect(screen.getByRole('radio', { name: 'System' }).getAttribute('aria-checked')).toBe('true');
+
+    restore();
+  });
+
+  it('survives a re-render under StrictMode + router ancestry (forward-guard for #461)', () => {
+    // Forward-guard against the class of bug fixed in #461: the inline
+    // `ref={(el) => { ... }}` pattern produces a fresh callback identity on
+    // every render, which under React 19's stricter ref-cleanup contract
+    // combined with merged-ref machinery (react-router-dom Link refs, Radix
+    // DropdownMenu slots) repeatedly tears down and reattaches the ref —
+    // dispatching state updates that trigger re-renders → infinite loop.
+    //
+    // The literal production crash requires the full Radix DropdownMenu
+    // provider tree (where AppShell mounts ThemeToggle), which is too heavy
+    // to reconstruct here — even with StrictMode + MemoryRouter + Link the
+    // bug doesn't reproduce in jsdom. This test instead exercises the
+    // broader path so any future refactor that re-introduces an unstable
+    // per-option ref identity has at least one tripwire. The real
+    // correctness guarantee comes from the useMemo-built stable callback
+    // array in theme-toggle.tsx itself.
+    const { restore } = stubLightPreferred();
+
+    function Harness(): React.ReactElement {
+      return (
+        <StrictMode>
+          <MemoryRouter>
+            <ThemeProvider>
+              <Link to="/">
+                <ThemeToggle />
+              </Link>
+            </ThemeProvider>
+          </MemoryRouter>
+        </StrictMode>
+      );
+    }
+
+    const { rerender } = render(<Harness />);
+    expect(() => rerender(<Harness />)).not.toThrow();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
 
     restore();
   });
