@@ -2016,6 +2016,17 @@ textarea {
   margin-left: 0.5rem;
 }
 
+/*
+ * Mapping id-hint (#474) — muted, monospaced supplementary id chip rendered
+ * next to the human label on saved-mapping rows. Flat-name helper (no BEM
+ * parent block) — matches `.sku-label` / `.num` siblings above.
+ */
+.mapping-id-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
