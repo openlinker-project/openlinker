@@ -62,7 +62,7 @@ function renderOptionLabel(option: MappingOption): ReactNode {
   return (
     <>
       {option.label}{' '}
-      <span className="mapping-panel__id-hint mono-text">{shortValue(option.value)}</span>
+      <span className="mapping-id-hint mono-text">{shortValue(option.value)}</span>
     </>
   );
 }
@@ -195,7 +195,7 @@ export function MappingPanel({
                   <td>
                     <Button
                       tone="ghost"
-                      aria-label={`Remove mapping for ${sourceOption?.label ?? row.sourceValue}`}
+                      aria-label={`Remove mapping for ${sourceOption?.label ?? 'orphaned source'}`}
                       onClick={() => { handleDeleteRow(row.sourceValue); }}
                     >
                       Remove

@@ -59,7 +59,7 @@ describe('MappingPanel', () => {
       // Id-hint truncated to 8 chars + ellipsis (matches the issue example shape).
       expect(screen.getByText('1fa56f79…')).toBeInTheDocument();
       const hint = screen.getByText('1fa56f79…');
-      expect(hint).toHaveClass('mapping-panel__id-hint');
+      expect(hint).toHaveClass('mapping-id-hint');
     });
 
     it('skips the id-hint when value === label (degraded data)', () => {
