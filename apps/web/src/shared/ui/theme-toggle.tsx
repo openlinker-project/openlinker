@@ -14,7 +14,7 @@
  * Intended to live in the user-chip dropdown once AppShell is rebuilt;
  * callers can also place it elsewhere.
  */
-import { useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { useMemo, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useTheme } from '../theme/use-theme';
 import { ThemeValues, type Theme } from '../theme/theme.types';
 
@@ -49,6 +49,20 @@ export function ThemeToggle({
   const { theme, setTheme } = useTheme();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const classes = ['theme-toggle', className].filter(Boolean).join(' ');
+
+  // Stable ref-callback identities. Inline `ref={(el) => {...}}` produces
+  // a fresh function each render, which under React 19's stricter
+  // ref-cleanup contract — combined with merged-ref machinery in ancestors
+  // like Radix's DropdownMenu Slot and react-router's Link — tears down
+  // and reattaches the ref on every render, dispatching state updates
+  // that trigger more renders → infinite loop (#461).
+  const setOptionRef = useMemo(
+    () =>
+      THEME_OPTIONS.map((_, index) => (el: HTMLButtonElement | null): void => {
+        optionRefs.current[index] = el;
+      }),
+    [],
+  );
 
   function moveTo(nextIndex: number): void {
     const option = THEME_OPTIONS[nextIndex];
@@ -90,9 +104,7 @@ export function ThemeToggle({
         return (
           <button
             key={option.value}
-            ref={(el) => {
-              optionRefs.current[index] = el;
-            }}
+            ref={setOptionRef[index]}
             type="button"
             role="radio"
             aria-checked={selected}
