@@ -37,6 +37,7 @@ export { AllegroConfigException } from './domain/exceptions/allegro-config.excep
 export { AllegroApiException } from './domain/exceptions/allegro-api.exception';
 export { AllegroAuthenticationException } from './domain/exceptions/allegro-authentication.exception';
 export { AllegroRateLimitException } from './domain/exceptions/allegro-rate-limit.exception';
+export { AllegroNetworkException } from './domain/exceptions/allegro-network.exception';
 export { DuplicateAllegroQuantityCommandError } from './domain/exceptions/duplicate-allegro-quantity-command.error';
 export { AllegroQuantityCommandNotFoundException } from './domain/exceptions/allegro-quantity-command-not-found.error';
 export type { AllegroValidationError } from './domain/types/allegro-api.types';

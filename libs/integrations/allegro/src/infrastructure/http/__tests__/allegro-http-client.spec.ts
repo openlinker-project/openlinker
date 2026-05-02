@@ -16,6 +16,7 @@ import {
   AllegroCredentials,
   AllegroApiException,
   AllegroAuthenticationException,
+  AllegroNetworkException,
   AllegroRateLimitException,
 } from '@openlinker/integrations-allegro';
 
@@ -514,6 +515,73 @@ describe('AllegroHttpClient', () => {
       });
 
       await expect(client.get('/test')).rejects.toThrow(AllegroAuthenticationException);
+    });
+
+    it('should throw AllegroNetworkException on 401 when token refresh fails with a network error (#499)', async () => {
+      // The reactive 401 path tries to refresh; if the refresh callback
+      // surfaces an `AllegroNetworkException` (transient network failure on
+      // the auth endpoint), the HTTP client must NOT collapse this into
+      // `AllegroAuthenticationException` — that would mark the worker job
+      // dead on attempt 1/10 instead of letting the runner retry.
+      const refreshCallback = jest
+        .fn()
+        .mockRejectedValue(new AllegroNetworkException('fetch failed', 'https://allegro.pl/auth/oauth/token'));
+      const tokenState = new AllegroConnectionTokenState(
+        connectionId,
+        { accessToken: 'stale-token' },
+        refreshCallback,
+      );
+      // maxRetries: 0 keeps the assertion focused on the single-attempt
+      // throw shape; the request-loop's retry-on-network-error behavior is
+      // covered separately and would just delay this test under fake timers.
+      const networkClient = new AllegroHttpClient(connectionId, baseUrl, tokenState, {
+        maxRetries: 0,
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: () => Promise.resolve('{"error":"expired_token"}'),
+      });
+
+      const captured = await networkClient
+        .get('/test')
+        .catch((err: Error) => err);
+
+      expect(captured).toBeInstanceOf(AllegroNetworkException);
+      expect(captured).not.toBeInstanceOf(AllegroAuthenticationException);
+      // Original cause (the AllegroNetworkException from the refresh callback)
+      // is chained via Error.cause for forensic logging.
+      expect((captured as Error & { cause?: unknown }).cause).toBeInstanceOf(
+        AllegroNetworkException,
+      );
+    });
+
+    it('still throws AllegroAuthenticationException on 401 when refresh fails with a generic Error (#499)', async () => {
+      // Regression: a non-network refresh failure (e.g., refresh token
+      // revoked, returned as a plain Error) must remain non-retryable —
+      // otherwise the runner would loop on a job that can never succeed.
+      const refreshCallback = jest
+        .fn()
+        .mockRejectedValue(new Error('Failed to refresh access token: invalid_grant'));
+      const tokenState = new AllegroConnectionTokenState(
+        connectionId,
+        { accessToken: 'stale-token' },
+        refreshCallback,
+      );
+      const credentialClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: () => Promise.resolve('{"error":"expired_token"}'),
+      });
+
+      await expect(credentialClient.get('/test')).rejects.toBeInstanceOf(
+        AllegroAuthenticationException,
+      );
     });
 
     it('should throw AllegroRateLimitException on 429', async () => {

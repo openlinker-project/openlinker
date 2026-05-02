@@ -15,6 +15,7 @@ import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../../domain/exceptions/allegro-config.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
+import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
 import { RedisClientType } from 'redis';
 
 /**
@@ -205,14 +206,28 @@ export class AllegroTokenRefreshService {
 
     this.logger.debug(`Refreshing access token via ${tokenUrl.toString()}`);
 
-    const response = await fetch(tokenUrl.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${credentials}`,
-      },
-      body: new URLSearchParams(tokenRequest).toString(),
-    });
+    // #499: Network-level failures (DNS, TLS, connection refused, abort) get
+    // their own exception class so the worker classifier can retry transient
+    // outages instead of permanently killing jobs on attempt 1/10. The
+    // `!response.ok` path below — auth endpoint actually responded with a
+    // non-2xx — stays as the credential-rejection branch (non-retryable).
+    let response: Response;
+    try {
+      response = await fetch(tokenUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams(tokenRequest).toString(),
+      });
+    } catch (cause) {
+      throw new AllegroNetworkException(
+        `Token refresh network failure: ${(cause as Error).message}`,
+        tokenUrl.toString(),
+        { cause },
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

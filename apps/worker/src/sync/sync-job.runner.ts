@@ -339,6 +339,12 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    *   sync cadence and may simply not exist yet when the order job first fires.
    * - AllegroApiException with 5xx / 408 / 425 — transient; the HTTP client already
    *   retries internally, and the runner gives the job more attempts.
+   * - AllegroNetworkException — network-level failure during token refresh / API
+   *   request (DNS / TLS / connection refused / `TypeError: fetch failed`). Always
+   *   transient: the runner MUST retry with backoff. Do NOT add this class here.
+   *   Pre-#499 these failures were swallowed by `refreshOnUnauthorized` and
+   *   re-classified as `AllegroAuthenticationException`, which killed jobs on
+   *   attempt 1/10 the moment `auth.allegro.pl` had a 1-second blip.
    *
    * @param error - Error to check
    * @returns True if error is non-retryable
