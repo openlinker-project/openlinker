@@ -16,7 +16,7 @@ import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
 import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
-import { AllegroApiException } from '@openlinker/integrations-allegro';
+import { AllegroApiException, AllegroNetworkException } from '@openlinker/integrations-allegro';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { randomUUID } from 'crypto';
 
@@ -328,6 +328,36 @@ describe('SyncJobRunner', () => {
       const cause = new AllegroApiException('Service unavailable', 503, 'body', url);
       const error = new SyncJobExecutionError(
         'Allegro transient failure',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause,
+      );
+      jobRepository.markFailed.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date),
+      );
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('should keep retrying when AllegroNetworkException is thrown (#499)', async () => {
+      // #499: pre-fix, transient `TypeError: fetch failed` errors during
+      // Allegro token refresh got reclassified as
+      // `AllegroAuthenticationException` and killed the job on attempt 1/10.
+      // The new `AllegroNetworkException` must NOT be on the non-retryable
+      // list — runner should retry with backoff.
+      const job = createMockJob(1, 10);
+      const cause = new AllegroNetworkException(
+        'Token refresh network failure: fetch failed',
+        'https://allegro.pl/auth/oauth/token',
+      );
+      const error = new SyncJobExecutionError(
+        'Marketplace orders poll failed: ' + cause.message,
         job.id,
         job.jobType,
         job.connectionId,

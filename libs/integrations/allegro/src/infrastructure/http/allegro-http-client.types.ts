@@ -30,3 +30,34 @@ export interface TokenRefreshResult {
  * `AllegroTokenRefreshService`).
  */
 export type TokenRefreshCallback = (connectionId: string) => Promise<TokenRefreshResult>;
+
+/**
+ * Reason a reactive (401) token refresh did not succeed (#499).
+ *
+ *  - `no-callback` — no `tokenRefreshCallback` was registered on the
+ *    `AllegroConnectionTokenState`. Should be impossible at runtime in
+ *    production wiring; treated as auth failure for safety.
+ *  - `credential-rejected` — the auth endpoint responded with 4xx/5xx,
+ *    or the local pre-flight check rejected (missing refresh token /
+ *    client credentials). Non-retryable: requires manual re-auth.
+ *  - `network-failure` — the auth endpoint could not be reached
+ *    (DNS / TLS / connection refused / abort / `TypeError: fetch failed`).
+ *    Transient: callers should retry with backoff.
+ */
+export const RefreshOutcomeReasonValues = [
+  'no-callback',
+  'credential-rejected',
+  'network-failure',
+] as const;
+export type RefreshOutcomeReason = (typeof RefreshOutcomeReasonValues)[number];
+
+/**
+ * Tagged-result return type for
+ * `AllegroConnectionTokenState.refreshOnUnauthorized` (#499). Replaces the
+ * previous lossy `boolean`, which collapsed transient network failures
+ * into the same path as genuine credential rejection — the worker
+ * classifier then marked otherwise-retryable jobs dead on attempt 1.
+ */
+export type RefreshOnUnauthorizedOutcome =
+  | { ok: true }
+  | { ok: false; reason: RefreshOutcomeReason; cause?: Error };

@@ -11,6 +11,7 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import { AllegroConnectionTokenState } from '../allegro-connection-token-state';
+import { AllegroNetworkException } from '../../../domain/exceptions/allegro-network.exception';
 
 describe('AllegroConnectionTokenState', () => {
   const NOW = new Date('2026-04-26T10:00:00.000Z').getTime();
@@ -163,7 +164,7 @@ describe('AllegroConnectionTokenState', () => {
   });
 
   describe('refreshOnUnauthorized', () => {
-    it('returns true on success and updates accessToken', async () => {
+    it('returns { ok: true } on success and updates accessToken', async () => {
       const callback = jest.fn().mockResolvedValue({
         accessToken: 'recovered',
         expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
@@ -174,27 +175,107 @@ describe('AllegroConnectionTokenState', () => {
         callback,
       );
 
-      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toBe(true);
+      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toEqual({ ok: true });
       expect(state.getAccessToken()).toBe('recovered');
     });
 
-    it('returns false (without throwing) when no callback is registered', async () => {
+    it('returns { ok: false, reason: "no-callback" } when no callback is registered', async () => {
       const state = new AllegroConnectionTokenState(connectionId, { accessToken: 'token' });
 
-      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toBe(false);
+      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toEqual({
+        ok: false,
+        reason: 'no-callback',
+      });
       expect(state.getAccessToken()).toBe('token');
     });
 
-    it('returns false (without throwing) when the refresh callback throws', async () => {
-      const callback = jest.fn().mockRejectedValue(new Error('refresh endpoint down'));
+    it('returns { ok: false, reason: "credential-rejected", cause } when the callback throws a generic Error', async () => {
+      const cause = new Error('refresh endpoint rejected: invalid_grant');
+      const callback = jest.fn().mockRejectedValue(cause);
       const state = new AllegroConnectionTokenState(
         connectionId,
         { accessToken: 'stale' },
         callback,
       );
 
-      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toBe(false);
+      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toEqual({
+        ok: false,
+        reason: 'credential-rejected',
+        cause,
+      });
       expect(state.getAccessToken()).toBe('stale');
+    });
+
+    it('returns { ok: false, reason: "network-failure", cause } when the callback throws AllegroNetworkException (#499)', async () => {
+      const cause = new AllegroNetworkException('fetch failed', 'https://allegro.pl/auth/oauth/token');
+      const callback = jest.fn().mockRejectedValue(cause);
+      const state = new AllegroConnectionTokenState(
+        connectionId,
+        { accessToken: 'stale' },
+        callback,
+      );
+
+      await expect(state.refreshOnUnauthorized(TRACE, logger)).resolves.toEqual({
+        ok: false,
+        reason: 'network-failure',
+        cause,
+      });
+      // Token is NOT updated — caller will surface a transient error and retry.
+      expect(state.getAccessToken()).toBe('stale');
+    });
+
+    it('logs network failures at warn (not error) so on-call doesn\'t see noise for transient failures (#499)', async () => {
+      const callback = jest
+        .fn()
+        .mockRejectedValue(new AllegroNetworkException('fetch failed'));
+      const state = new AllegroConnectionTokenState(
+        connectionId,
+        { accessToken: 'stale' },
+        callback,
+      );
+      const warnSpy = jest.spyOn(logger, 'warn');
+      const errorSpy = jest.spyOn(logger, 'error');
+
+      await state.refreshOnUnauthorized(TRACE, logger);
+
+      // The "Access token expired, attempting refresh" line + the network-
+      // failure breadcrumb both go to warn. No error-level log fired.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Token refresh network failure (transient)'),
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('proactive-refresh — regression guards (#499)', () => {
+    it('still records the cooldown when the proactive refresh fails with AllegroNetworkException', async () => {
+      // Plan §6 R1: the proactive cooldown is correct regardless of the
+      // failure cause (network vs auth) — it prevents a refresh storm
+      // against a sick endpoint. This test locks that behavior.
+      const callback = jest
+        .fn()
+        .mockRejectedValueOnce(new AllegroNetworkException('fetch failed'))
+        .mockResolvedValue({
+          accessToken: 'recovered',
+          expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+        });
+      const state = new AllegroConnectionTokenState(
+        connectionId,
+        {
+          accessToken: 'stale',
+          expiresAt: new Date(NOW + 30_000).toISOString(),
+        },
+        callback,
+      );
+
+      // First call hits the network-failed branch — cooldown set.
+      await state.ensureFreshToken(TRACE, logger);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(state.getAccessToken()).toBe('stale');
+
+      // Within the cooldown window, a subsequent call short-circuits.
+      await state.ensureFreshToken(TRACE, logger);
+      expect(callback).toHaveBeenCalledTimes(1);
     });
   });
 });

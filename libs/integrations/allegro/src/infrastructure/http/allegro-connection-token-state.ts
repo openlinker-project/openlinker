@@ -28,7 +28,12 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
-import { TokenRefreshCallback, TokenRefreshResult } from './allegro-http-client.types';
+import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
+import {
+  RefreshOnUnauthorizedOutcome,
+  TokenRefreshCallback,
+  TokenRefreshResult,
+} from './allegro-http-client.types';
 
 /**
  * Proactive token-refresh window.
@@ -97,17 +102,31 @@ export class AllegroConnectionTokenState {
   }
 
   /**
-   * Reactive 401 path. Invokes the refresh callback and returns whether
-   * the refresh succeeded — the caller decides whether to retry.
+   * Reactive 401 path. Invokes the refresh callback and returns a tagged
+   * outcome describing why the refresh did not succeed (#499) — the caller
+   * decides whether to retry, mark dead, or re-auth.
    *
-   * Returns `false` (without throwing) when:
-   *  - no refresh callback is registered, OR
-   *  - the refresh callback throws (the original 401 path stays as the
-   *    authoritative failure).
+   * Returns `{ ok: false }` (without throwing) for:
+   *  - `'no-callback'`: no refresh callback registered (defensive — never
+   *    reached in production wiring).
+   *  - `'network-failure'`: the auth endpoint could not be reached
+   *    (`AllegroNetworkException`). Transient — the HTTP client surfaces
+   *    this as a retryable error so the worker doesn't kill the job.
+   *  - `'credential-rejected'`: any other failure (auth endpoint responded
+   *    4xx/5xx, refresh token missing, client creds missing). Non-retryable
+   *    by the worker.
+   *
+   * The original cause is preserved on the result so the HTTP client can
+   * chain it through the exception it ultimately throws — forensic
+   * logging downstream can walk `error.cause` to the underlying fetch
+   * failure.
    */
-  async refreshOnUnauthorized(traceId: string, logger: Logger): Promise<boolean> {
+  async refreshOnUnauthorized(
+    traceId: string,
+    logger: Logger,
+  ): Promise<RefreshOnUnauthorizedOutcome> {
     if (!this.tokenRefreshCallback) {
-      return false;
+      return { ok: false, reason: 'no-callback' };
     }
     try {
       logger.warn(
@@ -118,12 +137,21 @@ export class AllegroConnectionTokenState {
       logger.log(
         `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`,
       );
-      return true;
+      return { ok: true };
     } catch (error) {
+      const cause = error as Error;
+      if (cause instanceof AllegroNetworkException) {
+        // Transient — log as warn, not error, so on-call doesn't see noise
+        // for failures the runner is going to retry anyway.
+        logger.warn(
+          `[${traceId}] Token refresh network failure (transient): ${cause.message} (connection: ${this.connectionId})`,
+        );
+        return { ok: false, reason: 'network-failure', cause };
+      }
       logger.error(
-        `[${traceId}] Token refresh failed: ${(error as Error).message} (connection: ${this.connectionId})`,
+        `[${traceId}] Token refresh failed: ${cause.message} (connection: ${this.connectionId})`,
       );
-      return false;
+      return { ok: false, reason: 'credential-rejected', cause };
     }
   }
 

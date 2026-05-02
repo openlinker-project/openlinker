@@ -23,6 +23,7 @@ import {
 import { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
+import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
 import { parseAllegroErrorBody } from './parse-allegro-error-body';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
@@ -364,6 +365,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       if (
         error instanceof AllegroApiException ||
         error instanceof AllegroAuthenticationException ||
+        error instanceof AllegroNetworkException ||
         error instanceof AllegroRateLimitException ||
         // TokenRefreshedError is an internal control-flow signal for request()
         // to retry immediately with the new access token. Without this re-throw
@@ -408,12 +410,27 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         bodyLower.includes('access_token');
 
       if (isTokenExpired) {
-        const refreshed = await this.tokenState.refreshOnUnauthorized(traceId, this.logger);
-        if (refreshed) {
+        const outcome = await this.tokenState.refreshOnUnauthorized(traceId, this.logger);
+        if (outcome.ok) {
           // Signal caller to retry with the freshly-rotated token.
           throw new TokenRefreshedError('Token refreshed, retry request');
         }
-        // Refresh path didn't help — fall through to authentication exception.
+        // #499: distinguish transient network failure from genuine credential
+        // rejection. The runner classifies `AllegroAuthenticationException`
+        // as non-retryable (job marked dead immediately). A 1-second blip on
+        // `auth.allegro.pl` should not have that effect — surface it as
+        // `AllegroNetworkException` so the runner retries with backoff.
+        if (outcome.reason === 'network-failure') {
+          this.logger.warn(
+            `[${traceId}] Token refresh failed due to network error — surfacing as transient: ${outcome.cause?.message ?? 'unknown'}`,
+          );
+          throw new AllegroNetworkException(
+            `Allegro token refresh failed due to network error: ${outcome.cause?.message ?? 'unknown'}`,
+            url,
+            { cause: outcome.cause },
+          );
+        }
+        // 'no-callback' or 'credential-rejected' — fall through to auth exception.
       }
 
       this.logger.error(`[${traceId}] Authentication failed: Invalid or expired access token`);
