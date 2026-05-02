@@ -33,7 +33,17 @@ export function ConnectionMappingsPage(): ReactElement {
   const statusQuery = useStatusMappingsQuery(connectionId);
   const carrierQuery = useCarrierMappingsQuery(connectionId);
   const paymentQuery = usePaymentMappingsQuery(connectionId);
-  const { options, isLoading: optionsLoading, error: optionsError } = useMappingOptions(connectionId);
+  const { options, isLoading: optionsLoading, errors: optionsErrors } = useMappingOptions(connectionId);
+
+  // Per-panel error isolation (#484): a failure in one bundle key must not
+  // block the other tabs. Each panel only watches the two keys it actually
+  // reads from.
+  const statusOptionsError =
+    optionsErrors.allegroOrderStatuses ?? optionsErrors.prestashopOrderStatuses ?? null;
+  const carrierOptionsError =
+    optionsErrors.allegroDeliveryMethods ?? optionsErrors.prestashopCarriers ?? null;
+  const paymentOptionsError =
+    optionsErrors.allegroPaymentProviders ?? optionsErrors.prestashopPaymentModules ?? null;
 
   const upsertStatus = useUpsertStatusMappings(connectionId);
   const upsertCarrier = useUpsertCarrierMappings(connectionId);
@@ -125,7 +135,7 @@ export function ConnectionMappingsPage(): ReactElement {
             isSaving={upsertStatus.isPending}
             saveError={upsertStatus.error}
             optionsLoading={optionsLoading}
-            optionsError={optionsError}
+            optionsError={statusOptionsError}
           />
         </TabsContent>
 
@@ -142,7 +152,7 @@ export function ConnectionMappingsPage(): ReactElement {
             isSaving={upsertCarrier.isPending}
             saveError={upsertCarrier.error}
             optionsLoading={optionsLoading}
-            optionsError={optionsError}
+            optionsError={carrierOptionsError}
           />
         </TabsContent>
 
@@ -159,7 +169,7 @@ export function ConnectionMappingsPage(): ReactElement {
             isSaving={upsertPayment.isPending}
             saveError={upsertPayment.error}
             optionsLoading={optionsLoading}
-            optionsError={optionsError}
+            optionsError={paymentOptionsError}
           />
         </TabsContent>
       </Tabs>

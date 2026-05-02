@@ -1,11 +1,16 @@
 /**
  * PrestaShop Options Types (#472)
  *
- * Response shapes for the three PS WS list endpoints powering
+ * Response shapes for the two PS WS list endpoints powering
  * `DestinationOptionsReader` on `PrestashopOrderProcessorManagerAdapter`:
- * `/carriers`, `/order_states`, and `/modules`. Only the fields the adapter
- * actually consumes are typed — PS WS returns much more, but we ignore the
- * rest to keep the surface tight.
+ * `/carriers` and `/order_states`. Only the fields the adapter actually
+ * consumes are typed — PS WS returns much more, but we ignore the rest to
+ * keep the surface tight.
+ *
+ * `/modules` was removed in #483: PS Webservice keys are not granted access
+ * to that resource by default, so payment modules are sourced from a curated
+ * list (`PRESTASHOP_PAYMENT_MODULES`) instead. See
+ * `prestashop-payment-module.types.ts`.
  *
  * @module libs/integrations/prestashop/src/domain/types
  */
@@ -45,28 +50,3 @@ export interface PrestashopOrderState {
   deleted: string | number;
 }
 
-/**
- * `GET /modules` row.
- *
- * The relevant fields for "which payment gateways does this PS install
- * have?" are `active`, `name` (machine code persisted by mapping config),
- * `displayName` / `display_name` (human label), and the payment-module
- * indicator. PS WS exposes the indicator differently across versions:
- *   - PS 1.7+: a top-level boolean `is_payment_module` on the module row
- *   - older PS: the module's `tab` field equals `'payments_gateways'`
- * The adapter treats either signal as truthy and falls through to "include
- * the module" if neither is present (lets the operator pick from a wider
- * list rather than silently dropping legitimate gateways).
- */
-export interface PrestashopModule {
-  id: string;
-  name: string;
-  /** Display name — PS WS sometimes uses snake_case, sometimes camelCase. */
-  displayName?: PrestashopLanguageField;
-  display_name?: PrestashopLanguageField;
-  active: string | number;
-  /** PS 1.7+ payment-module indicator. */
-  is_payment_module?: string | number | boolean;
-  /** Older PS module-category indicator. */
-  tab?: string;
-}

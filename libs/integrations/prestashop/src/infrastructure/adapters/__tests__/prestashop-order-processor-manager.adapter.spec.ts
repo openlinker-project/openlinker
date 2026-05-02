@@ -1223,51 +1223,84 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       });
     });
 
-    describe('listPaymentMethods', () => {
-      it('filters to is_payment_module=1 (PS 1.7+)', async () => {
-        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
-          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1', is_payment_module: '1' },
-          { id: '2', name: 'ps_emailalerts', display_name: 'Email alerts', active: '1', is_payment_module: '0' },
-          { id: '3', name: 'payu', displayName: 'PayU', active: '1', is_payment_module: '1' },
-        ]);
-
-        const result = await adapter.listPaymentMethods();
-
-        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
-          'modules',
-          { custom: { active: '1' } },
-          1000,
-          0,
+    describe('listPaymentMethods (#483)', () => {
+      function adapterWithOverrides(overrides: string[] | undefined): PrestashopOrderProcessorManagerAdapter {
+        const baseConfig = connection.config as Record<string, unknown>;
+        const cfg: Record<string, unknown> =
+          overrides === undefined
+            ? baseConfig
+            : { ...baseConfig, paymentModuleOverrides: overrides };
+        const connectionWithOverrides = createTestConnection({
+          config: cfg,
+        });
+        return new PrestashopOrderProcessorManagerAdapter(
+          mockHttpClient,
+          mockIdentifierMapping,
+          mockOrderMapper,
+          connectionWithOverrides,
+          mockCustomerProvisioner,
+          mockAddressProvisioner,
+          mockCurrencyResolver,
+          mockCustomerProjectionRepository,
         );
-        expect(result).toEqual([
-          { value: 'ps_wirepayment', label: 'Wire transfer' },
-          { value: 'payu', label: 'PayU' },
-        ]);
-      });
+      }
 
-      it('falls back to tab=payments_gateways when is_payment_module is absent', async () => {
-        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
-          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1', tab: 'payments_gateways' },
-          { id: '2', name: 'ps_emailalerts', display_name: 'Email alerts', active: '1', tab: 'administration' },
-        ]);
+      it('returns the curated list verbatim when no overrides are configured', async () => {
+        mockHttpClient.listResources = jest.fn();
 
         const result = await adapter.listPaymentMethods();
 
-        expect(result).toEqual([{ value: 'ps_wirepayment', label: 'Wire transfer' }]);
+        // PS WS keys cannot read /api/modules — the adapter must not call it.
+        expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+        // Curated list covers ps_wirepayment, payu, etc.; spot-check a few entries.
+        expect(result).toEqual(
+          expect.arrayContaining([
+            { value: 'ps_wirepayment', label: 'Bank wire transfer (ps_wirepayment)' },
+            { value: 'payu', label: 'PayU' },
+            { value: 'paypal', label: 'PayPal' },
+          ]),
+        );
+        // All values are unique.
+        const values = result.map((m) => m.value);
+        expect(new Set(values).size).toBe(values.length);
       });
 
-      it('falls through to "include all active" when no indicator field exists on any row', async () => {
-        // Defensive: rather than silently dropping legitimate gateways on a PS
-        // version that doesn't expose either field, return everything and let
-        // the operator filter in the UI.
-        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
-          { id: '1', name: 'ps_wirepayment', display_name: 'Wire transfer', active: '1' },
-          { id: '2', name: 'payu', displayName: 'PayU', active: '1' },
-        ]);
+      it('appends override entries to the curated list', async () => {
+        const overrideAdapter = adapterWithOverrides(['custom_gateway_xyz']);
+        mockHttpClient.listResources = jest.fn();
 
-        const result = await adapter.listPaymentMethods();
+        const result = await overrideAdapter.listPaymentMethods();
 
-        expect(result).toHaveLength(2);
+        expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+        expect(result).toContainEqual({
+          value: 'custom_gateway_xyz',
+          label: 'custom_gateway_xyz',
+        });
+      });
+
+      it('dedups overrides whose value collides with a curated entry', async () => {
+        // 'payu' is already in the curated list — must not appear twice and
+        // the curated label must win.
+        const overrideAdapter = adapterWithOverrides(['payu', 'unique_override']);
+
+        const result = await overrideAdapter.listPaymentMethods();
+
+        const payuEntries = result.filter((m) => m.value === 'payu');
+        expect(payuEntries).toHaveLength(1);
+        expect(payuEntries[0].label).toBe('PayU');
+        expect(result).toContainEqual({
+          value: 'unique_override',
+          label: 'unique_override',
+        });
+      });
+
+      it('dedups overrides whose value is repeated within the override list', async () => {
+        const overrideAdapter = adapterWithOverrides(['custom_a', 'custom_a', 'custom_b']);
+
+        const result = await overrideAdapter.listPaymentMethods();
+
+        expect(result.filter((m) => m.value === 'custom_a')).toHaveLength(1);
+        expect(result.filter((m) => m.value === 'custom_b')).toHaveLength(1);
       });
     });
   });

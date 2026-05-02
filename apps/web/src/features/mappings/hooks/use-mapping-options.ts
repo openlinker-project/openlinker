@@ -2,7 +2,10 @@
  * Mapping Options Hook
  *
  * Fetches all 6 dropdown option lists in parallel for a given connection.
- * Returns a combined MappingOptions bundle plus loading/error state.
+ * Returns a combined MappingOptions bundle plus loading state and a per-bundle
+ * error record. Failures are isolated per bundle key (#484): if Allegro
+ * payment-providers fail, the operator can still configure Order Statuses and
+ * Carriers — only the affected panel renders an inline error.
  *
  * Each query has its own (side, kind) key so a single panel's options can
  * be invalidated independently when needed.
@@ -15,10 +18,12 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { MappingOptions, MappingSide, MappingOptionKind } from '../api/mappings.types';
 
+export type MappingOptionsErrors = Partial<Record<keyof MappingOptions, Error>>;
+
 interface UseMappingOptionsResult {
   options: MappingOptions;
   isLoading: boolean;
-  error: Error | null;
+  errors: MappingOptionsErrors;
 }
 
 const EMPTY_OPTIONS: MappingOptions = {
@@ -54,16 +59,15 @@ export function useMappingOptions(connectionId: string): UseMappingOptionsResult
   });
 
   const isLoading = results.some((r) => r.isLoading);
-  const firstError = results.find((r) => r.error)?.error ?? null;
-
-  if (isLoading) {
-    return { options: EMPTY_OPTIONS, isLoading, error: firstError instanceof Error ? firstError : null };
-  }
-
   const options: MappingOptions = { ...EMPTY_OPTIONS };
+  const errors: MappingOptionsErrors = {};
   results.forEach((result, index) => {
-    options[QUERY_SPEC[index].bundleKey] = result.data ?? [];
+    const { bundleKey } = QUERY_SPEC[index];
+    options[bundleKey] = result.data ?? [];
+    if (result.error instanceof Error) {
+      errors[bundleKey] = result.error;
+    }
   });
 
-  return { options, isLoading, error: firstError instanceof Error ? firstError : null };
+  return { options, isLoading, errors };
 }
