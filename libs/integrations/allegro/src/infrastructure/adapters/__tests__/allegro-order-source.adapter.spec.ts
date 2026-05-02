@@ -663,7 +663,31 @@ describe('AllegroOrderSourceAdapter', () => {
       const KURIER_ID = '2bc67g80-bbb2-bbbb-bbbb-bbbbbbbbbbbb';
       const DPD_ID = '3cd78h91-ccc3-cccc-cccc-cccccccccccc';
 
-      it('flattens carrier methods across rate-tables, deduped by methodId', async () => {
+      // Helper: queue the canonical method-catalogue mock so the parallel
+      // `/sale/delivery-methods` fetch resolves with operator-friendly names
+      // (#496). Dispatched in Promise.all order with `/sale/shipping-rates`
+      // — see resolution semantics below.
+      function mockDeliveryMethodsCatalogue(
+        entries: Array<{ id: string; name: string }>,
+      ): void {
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            deliveryMethods: entries.map((e) => ({
+              id: e.id,
+              name: e.name,
+              marketplaces: ['allegro.pl'],
+              dispatchCountry: 'PL',
+              destinationCountry: 'PL',
+            })),
+          },
+          status: 200,
+          headers: {},
+        });
+      }
+
+      it('flattens carrier methods across rate-tables, deduped by methodId, with names resolved from the catalogue', async () => {
+        // Step 1 fires `/sale/shipping-rates` and `/sale/delivery-methods` in
+        // parallel; jest's mockResolvedValueOnce queue dequeues in call order.
         httpClient.get.mockResolvedValueOnce({
           data: {
             shippingRates: [
@@ -674,13 +698,20 @@ describe('AllegroOrderSourceAdapter', () => {
           status: 200,
           headers: {},
         });
+        mockDeliveryMethodsCatalogue([
+          { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' },
+          { id: KURIER_ID, name: 'Allegro Kurier24 InPost' },
+          { id: DPD_ID, name: 'DPD' },
+        ]);
+        // Rate-table response carries only `id` on each rate's deliveryMethod
+        // — names live on the catalogue. Mirrors the live API shape (#496).
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
             name: 'Cennik główny',
             rates: [
-              { deliveryMethod: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } },
-              { deliveryMethod: { id: KURIER_ID, name: 'Allegro Kurier24 InPost' } },
+              { deliveryMethod: { id: PACZKOMAT_ID } },
+              { deliveryMethod: { id: KURIER_ID } },
             ],
           },
           status: 200,
@@ -691,8 +722,8 @@ describe('AllegroOrderSourceAdapter', () => {
             id: 'rate-set-2',
             name: 'Cennik premium',
             rates: [
-              { deliveryMethod: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } }, // dup
-              { deliveryMethod: { id: DPD_ID, name: 'DPD' } },
+              { deliveryMethod: { id: PACZKOMAT_ID } }, // dup
+              { deliveryMethod: { id: DPD_ID } },
             ],
           },
           status: 200,
@@ -702,8 +733,9 @@ describe('AllegroOrderSourceAdapter', () => {
         const result = await adapter.listDeliveryMethods();
 
         expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/shipping-rates');
-        expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/shipping-rates/rate-set-1');
-        expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/shipping-rates/rate-set-2');
+        expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/delivery-methods');
+        expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/shipping-rates/rate-set-1');
+        expect(httpClient.get).toHaveBeenNthCalledWith(4, '/sale/shipping-rates/rate-set-2');
         expect(result).toEqual([
           { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
           { value: KURIER_ID, label: 'Allegro Kurier24 InPost' },
@@ -711,23 +743,91 @@ describe('AllegroOrderSourceAdapter', () => {
         ]);
       });
 
+      it('falls back to the id as label when a method is absent from the catalogue (#496 defensive)', async () => {
+        const ORPHAN_ID = '99999999-aaaa-bbbb-cccc-dddddddddddd';
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        // Catalogue only knows about PACZKOMAT — the rate-table also references
+        // ORPHAN_ID, which should fall through to id-as-label.
+        mockDeliveryMethodsCatalogue([
+          { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' },
+        ]);
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            rates: [
+              { deliveryMethod: { id: PACZKOMAT_ID } },
+              { deliveryMethod: { id: ORPHAN_ID } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([
+          { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
+          { value: ORPHAN_ID, label: ORPHAN_ID },
+        ]);
+      });
+
+      it('prefers the catalogue name over a name carried on the rate itself', async () => {
+        // Edge case: if Allegro ever does inline a name on the rate (legacy
+        // shape, or a future-shape change), the canonical catalogue still
+        // wins — single source of truth.
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        mockDeliveryMethodsCatalogue([
+          { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' },
+        ]);
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            rates: [{ deliveryMethod: { id: PACZKOMAT_ID, name: 'Stale name from rate' } }],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([
+          { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
+        ]);
+      });
+
       it('returns empty list when seller has no rate-tables', async () => {
+        // Step 1 still fires both calls in parallel; the catalogue load is
+        // wasted work in this branch but the early-return on empty rate-set
+        // ids prevents any per-id detail fetches.
         httpClient.get.mockResolvedValueOnce({
           data: { shippingRates: [] },
           status: 200,
           headers: {},
         });
+        mockDeliveryMethodsCatalogue([]);
+
         const result = await adapter.listDeliveryMethods();
         expect(result).toEqual([]);
-        expect(httpClient.get).toHaveBeenCalledTimes(1);
+        expect(httpClient.get).toHaveBeenCalledTimes(2);
       });
 
-      it('falls back to deliveryMethod.id as label when name is missing', async () => {
+      it('falls back to deliveryMethod.id as label when name is missing from both catalogue and rate', async () => {
         httpClient.get.mockResolvedValueOnce({
           data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik główny' }] },
           status: 200,
           headers: {},
         });
+        // Catalogue empty — forces the chain to fall through to the
+        // rate-inline name (also missing here), then to the id.
+        mockDeliveryMethodsCatalogue([]);
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
@@ -748,6 +848,9 @@ describe('AllegroOrderSourceAdapter', () => {
           status: 200,
           headers: {},
         });
+        // Catalogue empty here so the rate-inline 'Paczkomat' name is the one
+        // that lands as the label — covers the legacy fallback path.
+        mockDeliveryMethodsCatalogue([]);
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
@@ -780,6 +883,7 @@ describe('AllegroOrderSourceAdapter', () => {
           status: 200,
           headers: {},
         });
+        mockDeliveryMethodsCatalogue([]);
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
