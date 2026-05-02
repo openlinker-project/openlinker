@@ -14,8 +14,10 @@
  *  2. The proactive-refresh path (`ensureFreshToken`) — single-flight via
  *     `refreshInFlight`, with a post-failure cooldown so a sick refresh
  *     endpoint can't trigger a refresh storm.
- *  3. The reactive 401 path (`refreshOnUnauthorized`) — returns whether a
- *     refresh actually happened so the caller can decide to retry.
+ *  3. The reactive 401 path (`refreshOnUnauthorized`) — returns a tagged
+ *     `RefreshOnUnauthorizedOutcome` distinguishing success / network
+ *     failure / credential rejection so the caller can map to the right
+ *     exception class (#499).
  *
  * Cross-process coordination (e.g., serializing refresh attempts across
  * worker pods) is the `AllegroTokenRefreshService` callback's job, not this
