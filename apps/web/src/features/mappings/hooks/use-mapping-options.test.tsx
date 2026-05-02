@@ -1,10 +1,9 @@
 /**
- * useMappingOptions tests (#472 / #474)
+ * useMappingOptions tests (#472 / #474 / #484)
  *
  * Verifies the parameterised `getMappingOptions(connectionId, side, kind)`
- * call shape and that #474's acceptance criterion holds — Allegro delivery
- * methods reach the dropdown bundle as `{value, label}` pairs (label is the
- * human-readable rate-method name, not a bare UUID).
+ * call shape, #474's delivery-method label hydration, and #484's per-bundle
+ * error isolation — a single failed query must not poison the other five.
  *
  * @module apps/web/src/features/mappings/hooks
  */
@@ -87,15 +86,18 @@ describe('useMappingOptions', () => {
     expect(result.current.options.prestashopCarriers).toEqual(PS_CARRIERS);
     expect(result.current.options.allegroPaymentProviders).toEqual([]);
     expect(result.current.options.prestashopPaymentModules).toEqual([]);
-    expect(result.current.error).toBeNull();
+    expect(result.current.errors).toEqual({});
   });
 
-  it('surfaces the first error when any side fails to load', async () => {
+  it('isolates per-bundle errors so one failed query does not block the others (#484)', async () => {
     const failure = new Error('Adapter does not implement SourceOptionsReader');
     const getMappingOptions = vi.fn(
       (_connectionId: string, side: MappingSide, kind: MappingOptionKind) => {
         if (side === 'source' && kind === 'delivery-methods') {
           return Promise.reject(failure);
+        }
+        if (side === 'destination' && kind === 'carriers') {
+          return Promise.resolve(PS_CARRIERS);
         }
         return Promise.resolve<MappingOption[]>([]);
       },
@@ -106,7 +108,49 @@ describe('useMappingOptions', () => {
       wrapper: wrapper(apiClient),
     });
 
-    await waitFor(() => expect(result.current.error).not.toBeNull());
-    expect(result.current.error?.message).toContain('SourceOptionsReader');
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The failing query lands in `errors` under its bundle key…
+    expect(result.current.errors.allegroDeliveryMethods?.message).toContain(
+      'SourceOptionsReader',
+    );
+    // …and only that key — the other five must not be marked as errored.
+    expect(result.current.errors.allegroOrderStatuses).toBeUndefined();
+    expect(result.current.errors.allegroPaymentProviders).toBeUndefined();
+    expect(result.current.errors.prestashopOrderStatuses).toBeUndefined();
+    expect(result.current.errors.prestashopCarriers).toBeUndefined();
+    expect(result.current.errors.prestashopPaymentModules).toBeUndefined();
+    // The successful sibling query still hydrates its bundle.
+    expect(result.current.options.prestashopCarriers).toEqual(PS_CARRIERS);
+  });
+
+  it('reports both keys when two queries fail in parallel (#484)', async () => {
+    const sourceFailure = new Error('source/payment-methods failed');
+    const destinationFailure = new Error('destination/payment-methods failed');
+    const getMappingOptions = vi.fn(
+      (_connectionId: string, side: MappingSide, kind: MappingOptionKind) => {
+        if (kind === 'payment-methods' && side === 'source') {
+          return Promise.reject(sourceFailure);
+        }
+        if (kind === 'payment-methods' && side === 'destination') {
+          return Promise.reject(destinationFailure);
+        }
+        return Promise.resolve<MappingOption[]>([]);
+      },
+    );
+    const apiClient = createMockApiClient({ mappings: { getMappingOptions } });
+
+    const { result } = renderHook(() => useMappingOptions('conn-1'), {
+      wrapper: wrapper(apiClient),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(Object.keys(result.current.errors).sort()).toEqual([
+      'allegroPaymentProviders',
+      'prestashopPaymentModules',
+    ]);
+    expect(result.current.errors.allegroPaymentProviders).toBe(sourceFailure);
+    expect(result.current.errors.prestashopPaymentModules).toBe(destinationFailure);
   });
 });

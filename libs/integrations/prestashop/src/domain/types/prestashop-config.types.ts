@@ -103,6 +103,25 @@ export interface PrestashopConnectionConfig {
    * time.
    */
   defaultCarrierId?: number;
+
+  /**
+   * Additional PrestaShop payment-module names installed on this connection's
+   * shop that aren't in the curated `PRESTASHOP_PAYMENT_MODULES` list. Each
+   * entry is a module's technical name (matches the `payment` field on
+   * PrestaShop orders, e.g. `'custom_module_xyz'`).
+   *
+   * Resolution at dropdown-render time (see
+   * `PrestashopOrderProcessorManagerAdapter.listPaymentMethods`):
+   *   1. Curated `PRESTASHOP_PAYMENT_MODULES` list (always included).
+   *   2. These overrides, deduped against the curated list and against
+   *      themselves so the same name is never rendered twice.
+   *
+   * Use this when an operator's shop has a payment module that's not common
+   * enough to bake into the curated list. Existing saved mappings continue
+   * to resolve by exact-string match regardless of whether the module is in
+   * the curated list — overrides only affect *adding* new mappings.
+   */
+  paymentModuleOverrides?: string[];
 }
 
 

@@ -36,8 +36,8 @@ import {
 import {
   PrestashopCarrier,
   PrestashopOrderState,
-  PrestashopModule,
 } from '../../domain/types/prestashop-options.types';
+import { PRESTASHOP_PAYMENT_MODULES } from '../../domain/types/prestashop-payment-module.types';
 import {
   PrestashopResourceNotFoundException,
   PrestashopApiException,
@@ -669,38 +669,25 @@ export class PrestashopOrderProcessorManagerAdapter
     }));
   }
 
-  async listPaymentMethods(): Promise<MappingOption[]> {
-    const rows = await this.httpClient.listResources<PrestashopModule>(
-      'modules',
-      { custom: { active: '1' } },
-      1000,
-      0,
-    );
-    // Filter to payment modules. PS exposes the indicator differently across
-    // versions: `is_payment_module` (PS 1.7+) takes precedence; `tab` ===
-    // 'payments_gateways' covers older installs. If neither field is present
-    // on any row in the response, fall back to "include all active modules"
-    // rather than silently dropping legitimate payment gateways — third-party
-    // modules (payu, przelewy24, stripe, dotpay) don't follow a consistent
-    // naming scheme, so name-prefix matching is unreliable.
-    const hasIndicator = rows.some(
-      (m) => m.is_payment_module !== undefined || m.tab !== undefined,
-    );
-    const payments = hasIndicator
-      ? rows.filter(
-          (m) =>
-            this.isTruthy(m.is_payment_module) || m.tab === 'payments_gateways',
-        )
-      : rows;
-    return payments.map((row) => ({
-      value: row.name,
-      label: this.flattenLanguageField(row.displayName ?? row.display_name ?? row.name),
-    }));
-  }
-
-  /** PS WS booleans arrive as `'1'` / `'0'` strings or numeric `1` / `0`. */
-  private isTruthy(value: string | number | boolean | undefined): boolean {
-    return value === '1' || value === 1 || value === true;
+  // PS Webservice keys are not granted access to `/api/modules` by default
+  // (see #483) — the dropdown reads from a curated list of common modules
+  // composed with an optional per-connection `paymentModuleOverrides`.
+  // Saved mappings still resolve by exact-string match at order-create time,
+  // so the curated list constrains adding new mappings only.
+  listPaymentMethods(): Promise<MappingOption[]> {
+    const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    const overrides = config.paymentModuleOverrides ?? [];
+    if (overrides.length === 0) {
+      return Promise.resolve([...PRESTASHOP_PAYMENT_MODULES]);
+    }
+    const seen = new Set(PRESTASHOP_PAYMENT_MODULES.map((m) => m.value));
+    const extra: MappingOption[] = [];
+    for (const name of overrides) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      extra.push({ value: name, label: name });
+    }
+    return Promise.resolve([...PRESTASHOP_PAYMENT_MODULES, ...extra]);
   }
 
   /**
