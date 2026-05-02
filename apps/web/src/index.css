@@ -721,6 +721,10 @@ textarea {
   white-space: nowrap;
 }
 
+/* Mobile-only refinements for the FileUpload primitive. The
+   `.file-upload__list-item-remove` class is applied at all viewport
+   widths but only carries styles inside this media query — on desktop
+   the row-level remove button keeps `button--sm` defaults. */
 @media (max-width: 767px) {
   .file-upload {
     /* Tap target — operator may upload from a phone. */
