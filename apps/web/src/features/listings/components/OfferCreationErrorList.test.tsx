@@ -23,13 +23,16 @@ describe('OfferCreationErrorList', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders field, message, and code for each error when field is present', () => {
+  it('renders field as breadcrumb, plus message and code when field is present', () => {
     const errors: OfferCreationError[] = [
       { field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' },
     ];
     render(<OfferCreationErrorList errors={errors} />);
 
-    expect(screen.getByText('parameters.EAN')).toBeInTheDocument();
+    // Path renders as a copy-button. Trail segment + leaf segment exist.
+    const fieldButton = screen.getByRole('button', { name: /Copy field path parameters\.EAN/i });
+    expect(fieldButton).toHaveTextContent(/parameters/);
+    expect(fieldButton).toHaveTextContent(/EAN/);
     expect(screen.getByText('EAN is required.')).toBeInTheDocument();
     expect(screen.getByText('MISSING_EAN')).toBeInTheDocument();
   });
@@ -42,7 +45,7 @@ describe('OfferCreationErrorList', () => {
 
     expect(screen.getByText('Something went wrong.')).toBeInTheDocument();
     expect(screen.getByText('GENERIC_FAILURE')).toBeInTheDocument();
-    expect(screen.queryByText(/parameters\./)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copy field path/i })).not.toBeInTheDocument();
   });
 
   it('renders one row per error', () => {
@@ -52,7 +55,7 @@ describe('OfferCreationErrorList', () => {
     ];
     render(<OfferCreationErrorList errors={errors} />);
 
-    const list = screen.getByRole('list', { name: /offer creation errors/i });
+    const list = screen.getByRole('list', { name: /allegro errors/i });
     expect(list.querySelectorAll('li')).toHaveLength(2);
   });
 

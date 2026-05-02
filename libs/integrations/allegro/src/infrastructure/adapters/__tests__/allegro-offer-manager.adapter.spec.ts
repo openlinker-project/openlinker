@@ -918,29 +918,26 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
-    it('preserves Allegro error codes through full responseBody round-trip (#409)', async () => {
-      // Pre-#409 the http-client truncated `responseBody` to 500 chars before
-      // it reached `parseAllegroErrors`, which silently swallowed the
-      // resulting `JSON.parse` failure on the half-message and produced an
-      // `OfferCreateRejectedException` with empty `errors[]`. This regression
-      // guard ensures the full body now round-trips end-to-end.
-      const longBody = JSON.stringify({
-        errors: [
-          {
-            code: 'ConstraintViolationException.MissingRequiredParameters',
-            message: 'Missing required parameters',
-            details: 'd'.repeat(6000),
-          },
-        ],
-      });
-      expect(longBody.length).toBeGreaterThan(500);
-
+    it('forwards pre-parsed Allegro errors from the exception to OfferCreateRejectedException (#486)', async () => {
+      // Post-#486: `AllegroHttpClient.handleError` parses the body once and
+      // attaches `allegroErrors` to the exception. The adapter trusts that
+      // pre-parsed array — it no longer re-parses `responseBody`. Tests that
+      // construct `AllegroApiException` directly must therefore seed
+      // `allegroErrors` to mirror production behavior. The body-truncation
+      // regression guard for #409 lives in `allegro-http-client.spec.ts`,
+      // where parsing actually happens.
       httpClient.post.mockRejectedValue(
         new AllegroApiException(
           'Allegro API error (422)',
           422,
-          longBody,
+          '{"errors":[{"code":"ConstraintViolationException.MissingRequiredParameters","message":"Missing required parameters"}]}',
           'https://api.allegro.pl/sale/product-offers',
+          [
+            {
+              code: 'ConstraintViolationException.MissingRequiredParameters',
+              message: 'Missing required parameters',
+            },
+          ],
         ),
       );
 
@@ -953,29 +950,25 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
-    it('logs warn when Allegro response body is not parseable JSON (#409)', async () => {
-      // Access the private logger to assert the breadcrumb warn fires; no
-      // existing log-spy pattern in this suite to follow.
-      const warnSpy = jest.spyOn(
-        (adapter as unknown as { logger: { warn: jest.Mock } }).logger,
-        'warn',
-      );
-
+    it('produces an empty-errors OfferCreateRejectedException when allegroErrors is undefined (#486)', async () => {
+      // Mirrors the case where `AllegroHttpClient.handleError` got an
+      // unparseable body — it leaves `allegroErrors` undefined. The adapter
+      // must still throw `OfferCreateRejectedException` (not bubble the raw
+      // exception) so the calling pipeline marks the record failed cleanly.
       httpClient.post.mockRejectedValue(
         new AllegroApiException(
           'Allegro API error (502)',
           502,
           '<html>upstream proxy error</html>',
           'https://api.allegro.pl/sale/product-offers',
+          undefined,
         ),
       );
 
-      await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
-        OfferCreateRejectedException,
-      );
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to parse Allegro error body as JSON'),
-      );
+      await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
+        statusCode: 502,
+        errors: [],
+      });
     });
 
     it('maps platformParams to delivery/return/warranty/invoice/parameters', async () => {

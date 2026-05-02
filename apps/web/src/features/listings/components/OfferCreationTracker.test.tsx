@@ -97,7 +97,8 @@ describe('OfferCreationTracker', () => {
     );
 
     expect(await screen.findByText('Failed')).toBeInTheDocument();
-    expect(screen.getByText('parameters.EAN')).toBeInTheDocument();
+    // Field path renders as a breadcrumb copy-button (#486 design refresh).
+    expect(screen.getByRole('button', { name: /Copy field path parameters\.EAN/i })).toBeInTheDocument();
     expect(screen.getByText('EAN is required.')).toBeInTheDocument();
   });
 

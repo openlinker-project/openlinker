@@ -46,6 +46,7 @@ import {
   PromptTemplateRenderException,
   PromptTemplateStateException,
 } from '@openlinker/core/ai';
+import { AllegroApiException } from '@openlinker/integrations-allegro';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -200,6 +201,32 @@ export class ContentController {
         throw new BadRequestException(error.message);
       }
       if (error instanceof AiCompletionError) {
+        throw new BadGatewayException(error.message);
+      }
+      // #486: surface Allegro 4xx with structured `errors[]` as an
+      // operator-actionable 422 body. Single-platform scope today (Allegro is
+      // the only channel publisher); when a second platform-specific
+      // exception emerges, hoist this into a neutral
+      // `ChannelPublishRejectedException` in core/content.
+      if (error instanceof AllegroApiException) {
+        if (error.statusCode === 422 && error.allegroErrors && error.allegroErrors.length > 0) {
+          throw new UnprocessableEntityException({
+            message: 'Channel publish rejected by Allegro',
+            code: 'CHANNEL_PUBLISH_FAILED',
+            errors: error.allegroErrors.map((e) => ({
+              field: e.path && e.path !== 'null' ? e.path : undefined,
+              code: e.code,
+              // Polish `userMessage` first — operators are PL-first per the
+              // issue. FE translator (`translateAllegroError`) replaces this
+              // with operator-actionable English when the code is in the
+              // allowlist; otherwise it renders verbatim.
+              message: e.userMessage ?? e.message,
+            })),
+          });
+        }
+        // Non-422 (5xx, auth-shaped 4xx, ...) or 422 with no parseable body:
+        // not the operator's problem to fix. Surface as bad-gateway so the
+        // FE doesn't render an empty error list under a 422 header.
         throw new BadGatewayException(error.message);
       }
       throw error;

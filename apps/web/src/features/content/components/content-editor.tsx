@@ -19,6 +19,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
+import { extractAllegroErrors } from '../lib/extract-allegro-errors';
 import { useContentQuery } from '../hooks/use-content-query';
 import {
   useDiscardContentDraftMutation,
@@ -179,6 +180,10 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
     formatMutationError(saveMutation.error) ||
     formatMutationError(discardMutation.error) ||
     formatMutationError(publishMutation.error);
+  // #486: when the publish failure is a CHANNEL_PUBLISH_FAILED 422, surface
+  // the structured per-field errors instead of the bare "Allegro API error
+  // (422):" string. Save / discard never produce this shape.
+  const publishStructuredErrors = extractAllegroErrors(publishMutation.error);
 
   return (
     <div className="content-editor">
@@ -226,6 +231,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
             isDesktop={isDesktop}
             busy={busy}
             error={mutationError}
+            errors={publishStructuredErrors}
             suggestSlot={
               <SuggestionDialog
                 productId={productId}
