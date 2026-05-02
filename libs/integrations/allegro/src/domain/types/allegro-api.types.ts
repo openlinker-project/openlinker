@@ -669,6 +669,29 @@ export interface AllegroShippingRateDetailResponse {
 }
 
 /**
+ * Response from `GET /sale/delivery-methods` — the canonical catalogue of
+ * delivery methods available to the seller, with their human-readable names
+ * (#496). Used by `listDeliveryMethods()` to resolve the bare method-ids
+ * returned by the rate-table walk into operator-friendly labels in the
+ * carrier-mapping dropdown.
+ *
+ * Per developer.allegro.pl/news/get-sale-delivery-methods-dodatkowe-informacje-o-metodach-dostawy-E7Zbq7OBnSE
+ * the response includes `marketplaces`, `dispatchCountry`, and
+ * `destinationCountry` per entry; we currently only consume `id` and `name`,
+ * but the full shape is declared so future filtering (e.g. dispatch-country
+ * scoping) doesn't need a type change.
+ */
+export interface AllegroDeliveryMethodsResponse {
+  deliveryMethods: Array<{
+    id: string;
+    name: string;
+    marketplaces?: string[];
+    dispatchCountry?: string | null;
+    destinationCountry?: string | null;
+  }>;
+}
+
+/**
  * Response from `GET /after-sales-service-conditions/return-policies`.
  */
 export interface AllegroReturnPoliciesResponse {

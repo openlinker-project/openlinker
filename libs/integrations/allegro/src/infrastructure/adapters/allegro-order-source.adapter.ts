@@ -25,6 +25,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import {
   AllegroCheckoutForm,
+  AllegroDeliveryMethodsResponse,
   AllegroOrderEventsResponse,
   AllegroShippingRatesResponse,
   AllegroShippingRateDetailResponse,
@@ -342,11 +343,18 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
   }
 
   async listDeliveryMethods(): Promise<MappingOption[]> {
-    // Step 1: list the seller's rate-tables (cheap — single response).
-    const rateSets = await this.httpClient.get<AllegroShippingRatesResponse>(
-      '/sale/shipping-rates',
-    );
+    // Step 1: list the seller's rate-tables AND fetch the canonical
+    // method catalogue in parallel. The catalogue (`/sale/delivery-methods`)
+    // resolves bare method-ids into operator-friendly names (#496) since the
+    // rate-table response itself only carries `deliveryMethod.id`, not name.
+    const [rateSets, methodsResponse] = await Promise.all([
+      this.httpClient.get<AllegroShippingRatesResponse>('/sale/shipping-rates'),
+      this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods'),
+    ]);
     const rateSetIds = (rateSets.data.shippingRates ?? []).map((r) => r.id);
+    const nameById = new Map<string, string>(
+      (methodsResponse.data.deliveryMethods ?? []).map((m) => [m.id, m.name]),
+    );
 
     if (rateSetIds.length === 0) {
       this.logger.warn(
@@ -370,13 +378,16 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     // Step 3: flatten + dedup by methodId. Allegro returns the method object
     // under `deliveryMethod` per developer.allegro.pl/documentation#operation/getShippingRateUsingGET
     // — #494 fixed an earlier `rate.method` typo that silently produced [].
+    // Resolve labels via the catalogue (#496); fall back to the rate's own
+    // name if present, then the id (defensive — should be rare for properly-
+    // configured cenniki).
     const seen = new Map<string, string>();
     for (const detail of details) {
       for (const rate of detail.data.rates ?? []) {
         const id = rate.deliveryMethod?.id;
         if (!id) continue;
         if (!seen.has(id)) {
-          seen.set(id, rate.deliveryMethod?.name ?? id);
+          seen.set(id, nameById.get(id) ?? rate.deliveryMethod?.name ?? id);
         }
       }
     }
