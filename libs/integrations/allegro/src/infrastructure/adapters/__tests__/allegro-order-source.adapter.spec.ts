@@ -765,6 +765,42 @@ describe('AllegroOrderSourceAdapter', () => {
         const result = await adapter.listDeliveryMethods();
         expect(result).toEqual([{ value: PACZKOMAT_ID, label: 'Paczkomat' }]);
       });
+
+      // Defensive coverage for the #494 failure mode: rate-tables exist and
+      // contain rates, but the parser recognises zero of them. Asserts the
+      // operator-visible warn fires so the next API-shape regression is loud,
+      // not silent.
+      it('warns when rate-tables have rates but parser yields zero methods', async () => {
+        const warnSpy = jest
+          .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+          .mockImplementation(() => {});
+
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            // Two rates, neither has a recognised `deliveryMethod.id` — mirrors
+            // the live shape we'd see if Allegro renamed the field again.
+            rates: [{}, { deliveryMethod: { name: 'No id' } }],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+
+        expect(result).toEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/produced 0 delivery methods.*possible API shape regression/i),
+        );
+
+        warnSpy.mockRestore();
+      });
     });
   });
 });

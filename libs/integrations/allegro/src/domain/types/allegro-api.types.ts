@@ -652,9 +652,10 @@ export interface AllegroShippingRatesResponse {
  * layer #474's `listDeliveryMethods()` flattens + dedupes from across all
  * rate-tables.
  *
- * #494: the previous declaration named the field `method`, matching neither
- * the live API nor the documented schema. The empty-dropdown bug it caused
- * went undetected because the unit-test fixtures used the same wrong shape.
+ * #494: the previous declaration named the field `method`, which doesn't
+ * match the schema documented at developer.allegro.pl/documentation#operation/getShippingRateUsingGET.
+ * The resulting empty-dropdown bug went undetected because the unit-test
+ * fixtures used the same wrong shape.
  */
 export interface AllegroShippingRateDetailResponse {
   id: string;
