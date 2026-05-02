@@ -367,14 +367,16 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       ),
     );
 
-    // Step 3: flatten + dedup by methodId.
+    // Step 3: flatten + dedup by methodId. Allegro returns the method object
+    // under `deliveryMethod` (verified live + per developer.allegro.pl) — #494
+    // fixed an earlier `rate.method` typo that silently produced [].
     const seen = new Map<string, string>();
     for (const detail of details) {
       for (const rate of detail.data.rates ?? []) {
-        const id = rate.method?.id;
+        const id = rate.deliveryMethod?.id;
         if (!id) continue;
         if (!seen.has(id)) {
-          seen.set(id, rate.method?.name ?? id);
+          seen.set(id, rate.deliveryMethod?.name ?? id);
         }
       }
     }

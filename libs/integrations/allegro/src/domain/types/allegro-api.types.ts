@@ -646,17 +646,21 @@ export interface AllegroShippingRatesResponse {
  * returns rate-table identifiers and names; this per-id endpoint returns the
  * full rate table including the underlying carrier methods.
  *
- * Each `rates[].method` entry carries the seller-stable Allegro carrier-
- * method identity (e.g. `1fa56f79-…` for "Allegro Paczkomaty InPost") used
- * by the order-checkout-form `delivery.method.id` field. This is the layer
- * #474's `listDeliveryMethods()` flattens + dedupes from across all
+ * Each `rates[].deliveryMethod` entry carries the seller-stable Allegro
+ * carrier-method identity (e.g. `1fa56f79-…` for "Allegro Paczkomaty InPost")
+ * used by the order-checkout-form `delivery.method.id` field. This is the
+ * layer #474's `listDeliveryMethods()` flattens + dedupes from across all
  * rate-tables.
+ *
+ * #494: the previous declaration named the field `method`, matching neither
+ * the live API nor the documented schema. The empty-dropdown bug it caused
+ * went undetected because the unit-test fixtures used the same wrong shape.
  */
 export interface AllegroShippingRateDetailResponse {
   id: string;
   name: string;
   rates?: Array<{
-    method?: {
+    deliveryMethod?: {
       id: string;
       name?: string;
     };
