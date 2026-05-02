@@ -343,27 +343,51 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
   }
 
   async listDeliveryMethods(): Promise<MappingOption[]> {
-    // Step 1: list the seller's rate-tables AND fetch the canonical
-    // method catalogue in parallel. The catalogue (`/sale/delivery-methods`)
-    // resolves bare method-ids into operator-friendly names (#496) since the
-    // rate-table response itself only carries `deliveryMethod.id`, not name.
+    // Step 1: list the seller's rate-tables AND fetch the canonical method
+    // catalogue per relevant marketplace in parallel. The catalogue
+    // (`/sale/delivery-methods`) is **per-marketplace-scoped**: querying
+    // `?marketplace=allegro-pl` returns only PL-side methods. Polish sellers
+    // doing cross-border have cenniki referencing methods from destination
+    // marketplaces too (the buyer-side variant of an "International ... do
+    // Czech" method lives under `allegro-cz`, etc.). To resolve every id a
+    // PL-seller's cenniki can reference, we union the catalogues across PL +
+    // CZ + SK + HU. Per-marketplace scoping is non-negotiable: dropping the
+    // param entirely returns an empty list on sandbox.
     //
-    // The catalogue MUST be scoped via `?marketplace=allegro-pl` — without it
-    // sandbox returns an empty list and every dropdown row falls back to its
-    // UUID. Hardcoded to `allegro-pl` because OL today only supports the PL
-    // marketplace; revisit when other Allegro markets come online.
-    const [rateSets, methodsResponse] = await Promise.all([
+    // The set is hardcoded because OL today only supports PL-anchored
+    // sellers; revisit when other Allegro markets come online.
+    const sellerMarketplaces = ['allegro-pl', 'allegro-cz', 'allegro-sk', 'allegro-hu'] as const;
+    const [rateSets, ...catalogueResponses] = await Promise.all([
       this.httpClient.get<AllegroShippingRatesResponse>('/sale/shipping-rates'),
-      this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods', {
-        queryParams: { marketplace: 'allegro-pl' },
-      }),
+      ...sellerMarketplaces.map((marketplace) =>
+        this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods', {
+          queryParams: { marketplace },
+        }),
+      ),
     ]);
     const rateSetIds = (rateSets.data.shippingRates ?? []).map((r) => r.id);
-    const catalogue = methodsResponse.data.deliveryMethods ?? [];
-    const nameById = new Map<string, string>(catalogue.map((m) => [m.id, m.name]));
+
+    // Union catalogues across marketplaces. First-seen wins, but in practice
+    // names are stable per id across markets — Allegro uses one global id
+    // namespace per method. Per-marketplace sizes logged below for diagnostic.
+    const nameById = new Map<string, string>();
+    const perMarketplaceSizes = new Map<string, number>();
+    for (let i = 0; i < sellerMarketplaces.length; i += 1) {
+      const marketplace = sellerMarketplaces[i];
+      const methods = catalogueResponses[i].data.deliveryMethods ?? [];
+      perMarketplaceSizes.set(marketplace, methods.length);
+      for (const method of methods) {
+        if (!nameById.has(method.id)) {
+          nameById.set(method.id, method.name);
+        }
+      }
+    }
 
     this.logger.debug(
-      `listDeliveryMethods: connection=${this.connectionId} rateSetIds=${rateSetIds.length} catalogue=${catalogue.length}`,
+      `listDeliveryMethods: connection=${this.connectionId} rateSetIds=${rateSetIds.length} ` +
+        `catalogue=${nameById.size} (per-marketplace: ${[...perMarketplaceSizes.entries()]
+          .map(([m, n]) => `${m}=${n}`)
+          .join(', ')})`,
     );
 
     if (rateSetIds.length === 0) {
@@ -422,7 +446,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     const unresolved = result.filter((r) => r.value === r.label);
     if (unresolved.length > 0) {
       this.logger.warn(
-        `listDeliveryMethods: ${unresolved.length}/${result.length} method ids could not be resolved from /sale/delivery-methods catalogue (size=${catalogue.length}) for connection ${this.connectionId} — labels falling back to UUIDs.`,
+        `listDeliveryMethods: ${unresolved.length}/${result.length} method ids could not be resolved from /sale/delivery-methods catalogue (size=${nameById.size}) for connection ${this.connectionId} — labels falling back to UUIDs.`,
       );
     }
     return result;

@@ -663,26 +663,39 @@ describe('AllegroOrderSourceAdapter', () => {
       const KURIER_ID = '2bc67g80-bbb2-bbbb-bbbb-bbbbbbbbbbbb';
       const DPD_ID = '3cd78h91-ccc3-cccc-cccc-cccccccccccc';
 
-      // Helper: queue the canonical method-catalogue mock so the parallel
-      // `/sale/delivery-methods` fetch resolves with operator-friendly names
-      // (#496). Dispatched in Promise.all order with `/sale/shipping-rates`
-      // — see resolution semantics below.
+      // Helper: queue the canonical method-catalogue mocks. The adapter
+      // queries `/sale/delivery-methods` once per seller-marketplace
+      // (allegro-pl, allegro-cz, allegro-sk, allegro-hu) in parallel, so we
+      // queue four responses. The default behavior — same content for every
+      // marketplace — is fine for tests that don't care about cross-marketplace
+      // overlap; tests that DO care pass `perMarketplace` to vary by index.
+      // Dispatched in Promise.all order with `/sale/shipping-rates`.
       function mockDeliveryMethodsCatalogue(
         entries: Array<{ id: string; name: string }>,
+        perMarketplace?: {
+          [K in 'allegro-pl' | 'allegro-cz' | 'allegro-sk' | 'allegro-hu']?: Array<{
+            id: string;
+            name: string;
+          }>;
+        },
       ): void {
-        httpClient.get.mockResolvedValueOnce({
-          data: {
-            deliveryMethods: entries.map((e) => ({
-              id: e.id,
-              name: e.name,
-              marketplaces: ['allegro.pl'],
-              dispatchCountry: 'PL',
-              destinationCountry: 'PL',
-            })),
-          },
-          status: 200,
-          headers: {},
-        });
+        const marketplaces = ['allegro-pl', 'allegro-cz', 'allegro-sk', 'allegro-hu'] as const;
+        for (const marketplace of marketplaces) {
+          const methods = perMarketplace?.[marketplace] ?? entries;
+          httpClient.get.mockResolvedValueOnce({
+            data: {
+              deliveryMethods: methods.map((e) => ({
+                id: e.id,
+                name: e.name,
+                marketplaces: [marketplace],
+                dispatchCountry: 'PL',
+                destinationCountry: marketplace === 'allegro-pl' ? 'PL' : marketplace.split('-')[1].toUpperCase(),
+              })),
+            },
+            status: 200,
+            headers: {},
+          });
+        }
       }
 
       it('flattens carrier methods across rate-tables, deduped by methodId, with names resolved from the catalogue', async () => {
@@ -733,13 +746,24 @@ describe('AllegroOrderSourceAdapter', () => {
         const result = await adapter.listDeliveryMethods();
 
         expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/shipping-rates');
-        // Catalogue MUST be scoped to allegro-pl — without the marketplace
-        // query param the sandbox returns an empty list (verified live).
+        // Catalogue is fanned out across PL + CZ + SK + HU because PL-seller
+        // cenniki carry method ids belonging to destination marketplaces too
+        // (the buyer-side "do Czech / do Słowacji / do Węgier" variants live
+        // under their own marketplace catalogue, not allegro-pl).
         expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/delivery-methods', {
           queryParams: { marketplace: 'allegro-pl' },
         });
-        expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/shipping-rates/rate-set-1');
-        expect(httpClient.get).toHaveBeenNthCalledWith(4, '/sale/shipping-rates/rate-set-2');
+        expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/delivery-methods', {
+          queryParams: { marketplace: 'allegro-cz' },
+        });
+        expect(httpClient.get).toHaveBeenNthCalledWith(4, '/sale/delivery-methods', {
+          queryParams: { marketplace: 'allegro-sk' },
+        });
+        expect(httpClient.get).toHaveBeenNthCalledWith(5, '/sale/delivery-methods', {
+          queryParams: { marketplace: 'allegro-hu' },
+        });
+        expect(httpClient.get).toHaveBeenNthCalledWith(6, '/sale/shipping-rates/rate-set-1');
+        expect(httpClient.get).toHaveBeenNthCalledWith(7, '/sale/shipping-rates/rate-set-2');
         expect(result).toEqual([
           { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
           { value: KURIER_ID, label: 'Allegro Kurier24 InPost' },
@@ -807,10 +831,49 @@ describe('AllegroOrderSourceAdapter', () => {
         ]);
       });
 
+      it('unions catalogues across PL/CZ/SK/HU marketplaces so cross-border ids resolve', async () => {
+        // PL-seller cennik referencing one PL-side method (Paczkomat) and
+        // one CZ-side method (the buyer-facing Czech variant) — if we only
+        // queried allegro-pl the CZ id would fall back to a UUID label.
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        mockDeliveryMethodsCatalogue(
+          [], // unused fallback
+          {
+            'allegro-pl': [{ id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' }],
+            'allegro-cz': [{ id: KURIER_ID, name: 'Allegro International Kurier Czechy, InPost' }],
+            'allegro-sk': [],
+            'allegro-hu': [],
+          },
+        );
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            rates: [
+              { deliveryMethod: { id: PACZKOMAT_ID } },
+              { deliveryMethod: { id: KURIER_ID } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+        expect(result).toEqual([
+          { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
+          { value: KURIER_ID, label: 'Allegro International Kurier Czechy, InPost' },
+        ]);
+      });
+
       it('returns empty list when seller has no rate-tables', async () => {
-        // Step 1 still fires both calls in parallel; the catalogue load is
-        // wasted work in this branch but the early-return on empty rate-set
-        // ids prevents any per-id detail fetches.
+        // Step 1 still fires the shipping-rates call AND the four
+        // catalogue calls (PL + CZ + SK + HU) in parallel; the catalogue
+        // loads are wasted work in this branch but the early-return on
+        // empty rate-set ids prevents any per-id detail fetches.
         httpClient.get.mockResolvedValueOnce({
           data: { shippingRates: [] },
           status: 200,
@@ -820,7 +883,7 @@ describe('AllegroOrderSourceAdapter', () => {
 
         const result = await adapter.listDeliveryMethods();
         expect(result).toEqual([]);
-        expect(httpClient.get).toHaveBeenCalledTimes(2);
+        expect(httpClient.get).toHaveBeenCalledTimes(5);
       });
 
       it('falls back to deliveryMethod.id as label when name is missing from both catalogue and rate', async () => {
