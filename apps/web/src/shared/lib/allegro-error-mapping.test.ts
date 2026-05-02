@@ -3,33 +3,25 @@
  *
  * Coverage per #448 acceptance: one assertion per mapped code, two for
  * `UnknownJSONProperty` (with and without `error.field`), one for the
- * fallback. Table-driven for the static codes; explicit `it()` blocks for
- * the field-aware code so the with/without-field branches read clearly.
+ * fallback. Extended for #486 with the
+ * `ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany`
+ * code that surfaced on content publish.
  *
- * @module apps/web/src/features/listings/lib
+ * @module apps/web/src/shared/lib
  */
 import { describe, expect, it } from 'vitest';
-import { translateAllegroError } from './allegro-error-mapping';
-import type { OfferCreationError } from '../api/listings.types';
+import { translateAllegroError, type AllegroLikeError } from './allegro-error-mapping';
 
 describe('translateAllegroError', () => {
   it.each([
+    ['SAFETY_INFO_NOT_DEFINED', /verify the discriminator/i],
+    ['NO_SAFETY_INFORMATION_OPTION_NOT_ALLOWED', /Provide safety information \(text\)/],
+    ['RESPONSIBLE_PRODUCER_NOT_SPECIFIED', /Responsible Producer/],
     [
-      'SAFETY_INFO_NOT_DEFINED',
-      /verify the discriminator/i,
+      'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
+      /after-sales policies/,
     ],
-    [
-      'NO_SAFETY_INFORMATION_OPTION_NOT_ALLOWED',
-      /Provide safety information \(text\)/,
-    ],
-    [
-      'RESPONSIBLE_PRODUCER_NOT_SPECIFIED',
-      /Responsible Producer/,
-    ],
-    [
-      'UnsupportedLanguageInAcceptLanguageHeader',
-      /unsupported Accept-Language/,
-    ],
+    ['UnsupportedLanguageInAcceptLanguageHeader', /unsupported Accept-Language/],
   ])('translates %s into an operator-actionable message', (code, expected) => {
     const result = translateAllegroError({
       code,
@@ -59,7 +51,7 @@ describe('translateAllegroError', () => {
   });
 
   it('returns null for codes that are not in the allowlist', () => {
-    const error: OfferCreationError = {
+    const error: AllegroLikeError = {
       code: 'SOME_NEW_ALLEGRO_CODE_WE_HAVE_NOT_SEEN_YET',
       message: 'Whatever Allegro said.',
     };

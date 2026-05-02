@@ -4959,8 +4959,16 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
-/* Structured error rows for the tracker's `failed` state. */
-.offer-creation-errors {
+/*
+ * Structured Allegro error rows (#448 / #486). Forensic-log aesthetic:
+ * the panel context already implies error, so we don't drench every row
+ * in `--status-error-soft`. A single 6 px severity dot + subtle border
+ * carries the tone; the dotted field path renders as a breadcrumb chain
+ * with the terminal segment (the actual offending field) at foreground
+ * weight. The whole trail is one button — click to copy the full path,
+ * which operators paste into Allegro docs.
+ */
+.allegro-error-list {
   list-style: none;
   margin: 0.5rem 0 0;
   padding: 0;
@@ -4968,60 +4976,169 @@ a.kpi-card:focus-visible {
   gap: 0.375rem;
 }
 
-.offer-creation-errors__item {
+.allegro-error-list__item {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0.5rem;
-  align-items: baseline;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--status-error-border);
+  gap: 0.625rem;
+  align-items: start;
+  padding: 0.5rem 0.625rem 0.5rem 0.5rem;
+  border: 1px solid var(--border-default);
+  border-left: 2px solid var(--status-error);
   border-radius: 0.375rem;
-  background: var(--status-error-soft);
+  background: var(--bg-surface);
   font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
-.offer-creation-errors__field {
-  color: var(--status-error-strong);
-  font-weight: 600;
+/* 6 px filled dot — subtle severity affordance that doesn't compete with
+ * the message text for attention. */
+.allegro-error-list__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+  background: var(--status-error);
+  flex-shrink: 0;
 }
 
-.offer-creation-errors__message {
-  color: var(--text-primary);
-}
-
-.offer-creation-errors__code {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+.allegro-error-list__body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
 /*
- * Collapsible "Allegro's original message" disclosure (#448). Spans the
- * full row of the item grid so the summary + body align with the message
- * column above it. Kept visually quiet — the summary is muted, no CTA
- * weight; the friendly message above is the primary affordance.
+ * Field path button. The whole breadcrumb is one focusable target — copies
+ * the full dotted path on click. Looks like a path label, not a button,
+ * until hovered.
  */
-.offer-creation-errors__raw {
-  grid-column: 1 / -1;
-  margin-top: 0.25rem;
+.allegro-error-list__field {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0;
+  padding: 0.0625rem 0.25rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  margin-left: -0.25rem; /* optical align with message text below */
 }
 
-.offer-creation-errors__raw > summary {
+.allegro-error-list__field:hover,
+.allegro-error-list__field:focus-visible {
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+}
+
+.allegro-error-list__field:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+.allegro-error-list__field-trail {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Chevron separator — `›` rendered as a tiny disabled-text glyph. */
+.allegro-error-list__field-sep {
+  margin: 0 0.25rem;
+  color: var(--text-disabled);
+  font-size: 0.6875rem;
+}
+
+/* Leaf segment — the actual offending field name. Foreground weight so the
+ * eye lands here first. */
+.allegro-error-list__field-leaf {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Single-segment paths (no breadcrumb). The JSX renders the segment as a
+ * bare text node, so the rule applies via the parent selector and the
+ * visual hierarchy matches multi-segment rows. */
+.allegro-error-list__field--single {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.allegro-error-list__copied {
+  margin-left: 0.375rem;
+  padding: 0 0.25rem;
+  color: var(--status-success-strong);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.allegro-error-list__message {
+  color: var(--text-primary);
+}
+
+/*
+ * Code chip — kbd-style. Small, mono, tinted background so operators can
+ * grep the page for codes without the chip fighting the message for
+ * attention.
+ */
+.allegro-error-list__code {
+  align-self: start;
+  margin-top: 0.0625rem;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.25rem;
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-family: inherit;
+  white-space: nowrap;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Collapsible "Allegro's original message" disclosure. Kept visually quiet
+ * — muted summary, no chevron icon; the friendly translated message above
+ * is the primary affordance.
+ */
+.allegro-error-list__raw {
+  margin-top: 0.125rem;
+}
+
+.allegro-error-list__raw > summary {
   cursor: pointer;
   color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-style: italic;
+  list-style: none;
+}
+
+.allegro-error-list__raw > summary::-webkit-details-marker {
+  display: none;
+}
+
+.allegro-error-list__raw-body {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border-left: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 0.75rem;
 }
 
-.offer-creation-errors__raw-body {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-}
-
 @media (max-width: 767.98px) {
-  .offer-creation-errors__item {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
+  .allegro-error-list__item {
+    grid-template-columns: auto 1fr;
+  }
+  .allegro-error-list__code {
+    grid-column: 2;
+    justify-self: start;
   }
 }
 

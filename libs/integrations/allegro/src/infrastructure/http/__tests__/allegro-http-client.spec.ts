@@ -596,6 +596,81 @@ describe('AllegroHttpClient', () => {
       });
     });
 
+    it('attaches parsed allegroErrors to AllegroApiException for structured 4xx bodies (#486)', async () => {
+      // The structured `errors[]` shape Allegro returns for validation
+      // failures is now parsed once at the chokepoint and available on the
+      // thrown exception — no re-parse needed in downstream adapters.
+      const structuredBody = JSON.stringify({
+        errors: [
+          {
+            code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED',
+            message: 'Responsible producer is required for every product in the offer',
+            userMessage: 'Producent odpowiedzialny jest obowiązkowy dla każdego produktu w ofercie',
+            path: 'offer.modules.productSafety.data.productsData[0].responsibleProducer',
+          },
+          {
+            code: 'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
+            message: 'Offer Terms (for returns and complaints) are required for Business Accounts.',
+            userMessage: 'Warunki oferty (zwroty, reklamacje) są wymagane dla kont firma.',
+            path: 'null',
+          },
+        ],
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        headers: new Headers(),
+        text: () => Promise.resolve(structuredBody),
+      });
+
+      await expect(noRetryClient.get('/test')).rejects.toMatchObject({
+        statusCode: 422,
+        allegroErrors: [
+          expect.objectContaining({ code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED' }),
+          expect.objectContaining({
+            code: 'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
+          }),
+        ],
+      });
+    });
+
+    it('leaves allegroErrors undefined when the body is not parseable JSON (#486)', async () => {
+      // Upstream proxy timeout / gateway HTML returns. Parser swallows
+      // silently and the exception still carries the raw body for forensics.
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        headers: new Headers(),
+        text: () => Promise.resolve('<html><body>upstream proxy error</body></html>'),
+      });
+
+      const captured = await noRetryClient
+        .get('/test')
+        .catch((err: AllegroApiException) => err);
+
+      expect(captured).toBeInstanceOf(AllegroApiException);
+      expect((captured as AllegroApiException).allegroErrors).toBeUndefined();
+      expect((captured as AllegroApiException).responseBody).toContain('upstream proxy error');
+    });
+
+    it('leaves allegroErrors undefined when the JSON has no errors array (#486)', async () => {
+      // 4xx with a different JSON shape — e.g. `{ message: "..." }`.
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        headers: new Headers(),
+        text: () => Promise.resolve(JSON.stringify({ message: 'Bad request' })),
+      });
+
+      const captured = await noRetryClient
+        .get('/test')
+        .catch((err: AllegroApiException) => err);
+
+      expect(captured).toBeInstanceOf(AllegroApiException);
+      expect((captured as AllegroApiException).allegroErrors).toBeUndefined();
+    });
+
     it('should throw AllegroApiException on timeout', async () => {
       // noRetryClient: get the timeout exception directly without a retry storm.
       // Mock fetch to resolve only when its AbortSignal fires.

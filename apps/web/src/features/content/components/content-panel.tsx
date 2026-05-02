@@ -13,12 +13,14 @@
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
+import { AllegroErrorList } from '../../../shared/ui/allegro-error-list';
 import { Button } from '../../../shared/ui/button';
 import { DesktopOnlyBanner } from '../../../shared/ui/desktop-only-banner';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
 import { formatDateTime } from '../../../shared/format/format-date';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
+import type { AllegroLikeError } from '../../../shared/lib/allegro-error-mapping';
 
 const MAX_VALUE_LENGTH = 65_536;
 
@@ -35,6 +37,13 @@ export interface ContentPanelProps {
   isDesktop: boolean;
   busy: boolean;
   error?: string | null;
+  /**
+   * Structured Allegro errors from a `CHANNEL_PUBLISH_FAILED` 422 (#486).
+   * When present + non-empty, takes visual precedence over the bare-string
+   * `error` Alert — the operator gets per-field, per-code rows instead of
+   * a useless "Allegro API error (422):" headline.
+   */
+  errors?: AllegroLikeError[] | null;
   suggestSlot?: ReactNode;
   onSave: (value: string) => void;
   onDiscard: () => void;
@@ -60,11 +69,13 @@ export function ContentPanel({
   isDesktop,
   busy,
   error,
+  errors,
   suggestSlot,
   onSave,
   onDiscard,
   onPublish,
 }: ContentPanelProps): ReactElement {
+  const hasStructuredErrors = errors !== null && errors !== undefined && errors.length > 0;
   const initialValue = computeEffectiveValue(draftValue, baseValue);
   const [value, setValue] = useState(initialValue);
 
@@ -109,7 +120,13 @@ export function ContentPanel({
         </Alert>
       )}
 
-      {error && <Alert tone="error">{error}</Alert>}
+      {hasStructuredErrors ? (
+        <Alert tone="error" title="Channel publish rejected by Allegro">
+          <AllegroErrorList errors={errors} />
+        </Alert>
+      ) : error ? (
+        <Alert tone="error">{error}</Alert>
+      ) : null}
 
       <Textarea
         className="content-panel__textarea"

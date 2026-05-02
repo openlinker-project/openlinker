@@ -24,6 +24,7 @@ import { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
+import { parseAllegroErrorBody } from './parse-allegro-error-body';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { randomUUID } from 'crypto';
 
@@ -442,25 +443,32 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       this.logger.error(`[${traceId}] Allegro API server error (${statusCode}): ${url}`);
       // Full body on the exception (#409); the operator-visible log line
       // above stays terse since callers don't read multi-KB scroll-back.
+      // 5xx bodies rarely contain the structured `errors[]` shape, but we
+      // parse anyway so consumers don't have to special-case the status.
+      const allegroErrors = parseAllegroErrorBody(body, this.logger);
       throw new AllegroApiException(
         `Allegro API server error (${statusCode}): ${url}`,
         statusCode,
         body,
         url,
+        allegroErrors.length > 0 ? allegroErrors : undefined,
       );
     }
 
     // Other client errors (4xx)
     this.logger.error(`[${traceId}] Allegro API error (${statusCode}): ${url} - ${formatBodyForLog(body)}`);
-    // Full body on the exception (#409) — `parseAllegroErrors` needs the
-    // complete JSON to pull out Allegro's `errors[]`. The log line above is
-    // formatted via `formatBodyForLog` (#416), which is uncapped by default
-    // and only truncates when an operator opts into `OL_LOG_BODY_MAX_BYTES`.
+    // Parse the structured `errors[]` once at the chokepoint (#486). Every
+    // downstream consumer (offer-create, content-publish, offer-update) then
+    // reads `error.allegroErrors` directly. Empty array → undefined so a
+    // caller can use `error.allegroErrors?.length` cleanly without checking
+    // for a sentinel empty array.
+    const allegroErrors = parseAllegroErrorBody(body, this.logger);
     throw new AllegroApiException(
       `Allegro API error (${statusCode}): ${url}`,
       statusCode,
       body,
       url,
+      allegroErrors.length > 0 ? allegroErrors : undefined,
     );
   }
 

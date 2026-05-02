@@ -133,4 +133,86 @@ describe('ContentEditor', () => {
     expect(await screen.findByText('Unable to load content')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
+
+  describe('publish failure surfaces (#486)', () => {
+    it('renders the structured AllegroErrorList when publish rejects with CHANNEL_PUBLISH_FAILED', async () => {
+      const { ApiError } = await import('../../../shared/api/api-error');
+      const stateWithPublishableMaster = makeState({
+        master: {
+          baseValue: 'old master',
+          draftValue: 'new master draft',
+          hasConflict: false,
+          updatedAt: '2026-05-01T10:00:00.000Z',
+          updatedBy: 'admin@example.com',
+        },
+      });
+      const mockApi = createMockApiClient({
+        content: {
+          get: vi.fn().mockResolvedValue(stateWithPublishableMaster),
+          publish: vi.fn().mockRejectedValue(
+            new ApiError('Channel publish rejected by Allegro', 422, {
+              message: 'Channel publish rejected by Allegro',
+              code: 'CHANNEL_PUBLISH_FAILED',
+              errors: [
+                {
+                  field: 'offer.modules.productSafety.data.productsData[0].responsibleProducer',
+                  code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED',
+                  message:
+                    'Producent odpowiedzialny jest obowiązkowy dla każdego produktu w ofercie',
+                },
+              ],
+            }),
+          ),
+        },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+
+      await screen.findByRole('tab', { name: /Master/ });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+      await user.click(screen.getByRole('button', { name: 'Publish' })); // confirm dialog
+
+      // Translated message renders (RESPONSIBLE_PRODUCER_NOT_SPECIFIED is in the
+      // translator allowlist).
+      expect(await screen.findByText(/Responsible Producer entry/i)).toBeInTheDocument();
+      // Field path renders as a copy-button breadcrumb.
+      expect(
+        screen.getByRole('button', {
+          name: /Copy field path offer\.modules\.productSafety\.data\.productsData\[0\]\.responsibleProducer/i,
+        }),
+      ).toBeInTheDocument();
+      // The bare-string "Allegro API error (422):" is NOT shown — that's the
+      // collapsed-error regression #486 was filed to fix.
+      expect(screen.queryByText(/Allegro API error \(422\):/)).toBeNull();
+    });
+
+    it('falls back to a bare-string Alert when publish rejects with a non-structured error', async () => {
+      const stateWithPublishableMaster = makeState({
+        master: {
+          baseValue: 'old master',
+          draftValue: 'new master draft',
+          hasConflict: false,
+          updatedAt: '2026-05-01T10:00:00.000Z',
+          updatedBy: 'admin@example.com',
+        },
+      });
+      const mockApi = createMockApiClient({
+        content: {
+          get: vi.fn().mockResolvedValue(stateWithPublishableMaster),
+          publish: vi.fn().mockRejectedValue(new Error('plain old error')),
+        },
+      });
+
+      renderWithProviders(<ContentEditor productId="ol_product_1" />, { apiClient: mockApi });
+
+      await screen.findByRole('tab', { name: /Master/ });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+      expect(await screen.findByText('plain old error')).toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: /allegro errors/i })).toBeNull();
+    });
+  });
 });

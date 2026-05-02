@@ -1053,7 +1053,11 @@ export class AllegroOfferManagerAdapter
       response = httpResponse.data;
     } catch (error) {
       if (error instanceof AllegroApiException && error.statusCode !== undefined) {
-        const parsedErrors = this.parseAllegroErrors(error.responseBody);
+        // `allegroErrors` is populated by `AllegroHttpClient.handleError`
+        // (#486) — every 4xx/5xx with a JSON body shaped `{ errors: [...] }`
+        // has it pre-parsed. Empty body / non-JSON / non-Allegro-shape →
+        // undefined, which we collapse to [] for the validation mapper.
+        const parsedErrors = error.allegroErrors ?? [];
         this.logger.error(
           `Allegro rejected offer creation: connection=${this.connectionId} status=${error.statusCode} errors=${parsedErrors.length}`,
           error,
@@ -1432,26 +1436,6 @@ export class AllegroOfferManagerAdapter
       code: err.code,
       message: err.userMessage ?? err.message,
     }));
-  }
-
-  private parseAllegroErrors(responseBody: string | undefined): AllegroValidationError[] {
-    if (!responseBody) return [];
-    try {
-      const parsed = JSON.parse(responseBody) as { errors?: AllegroValidationError[] };
-      if (Array.isArray(parsed.errors)) {
-        return parsed.errors;
-      }
-    } catch (err) {
-      // Genuinely malformed body (HTML proxy errors, etc.) — log breadcrumbs
-      // so operators don't see an opaque `errors=0` upstream (#409). Body is
-      // routed through `formatBodyForLog` (#416) — uncapped by default,
-      // operator-tunable via `OL_LOG_BODY_MAX_BYTES`.
-      this.logger.warn(
-        `Failed to parse Allegro error body as JSON: ${(err as Error).message}. ` +
-          `Raw body: ${formatBodyForLog(responseBody)}`,
-      );
-    }
-    return [];
   }
 
   /**
