@@ -367,18 +367,32 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       ),
     );
 
-    // Step 3: flatten + dedup by methodId.
+    // Step 3: flatten + dedup by methodId. Allegro returns the method object
+    // under `deliveryMethod` per developer.allegro.pl/documentation#operation/getShippingRateUsingGET
+    // — #494 fixed an earlier `rate.method` typo that silently produced [].
     const seen = new Map<string, string>();
     for (const detail of details) {
       for (const rate of detail.data.rates ?? []) {
-        const id = rate.method?.id;
+        const id = rate.deliveryMethod?.id;
         if (!id) continue;
         if (!seen.has(id)) {
-          seen.set(id, rate.method?.name ?? id);
+          seen.set(id, rate.deliveryMethod?.name ?? id);
         }
       }
     }
-    return Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
+    const result = Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
+
+    // Defensive: if N rate-tables yielded M total rates but zero recognised
+    // delivery methods, the API shape has likely regressed (or the parser is
+    // looking at the wrong field). Surface it loudly so the next #494-class
+    // bug doesn't ship silent.
+    if (result.length === 0) {
+      const totalRates = details.reduce((n, d) => n + (d.data.rates?.length ?? 0), 0);
+      this.logger.warn(
+        `Walked ${rateSetIds.length} rate-tables with ${totalRates} rates for connection ${this.connectionId} but produced 0 delivery methods — possible API shape regression.`,
+      );
+    }
+    return result;
   }
 }
 

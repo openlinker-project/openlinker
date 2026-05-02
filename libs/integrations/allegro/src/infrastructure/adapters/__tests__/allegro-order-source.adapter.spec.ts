@@ -679,8 +679,8 @@ describe('AllegroOrderSourceAdapter', () => {
             id: 'rate-set-1',
             name: 'Cennik główny',
             rates: [
-              { method: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } },
-              { method: { id: KURIER_ID, name: 'Allegro Kurier24 InPost' } },
+              { deliveryMethod: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } },
+              { deliveryMethod: { id: KURIER_ID, name: 'Allegro Kurier24 InPost' } },
             ],
           },
           status: 200,
@@ -691,8 +691,8 @@ describe('AllegroOrderSourceAdapter', () => {
             id: 'rate-set-2',
             name: 'Cennik premium',
             rates: [
-              { method: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } }, // dup
-              { method: { id: DPD_ID, name: 'DPD' } },
+              { deliveryMethod: { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' } }, // dup
+              { deliveryMethod: { id: DPD_ID, name: 'DPD' } },
             ],
           },
           status: 200,
@@ -722,7 +722,7 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(httpClient.get).toHaveBeenCalledTimes(1);
       });
 
-      it('falls back to method.id as label when name is missing', async () => {
+      it('falls back to deliveryMethod.id as label when name is missing', async () => {
         httpClient.get.mockResolvedValueOnce({
           data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik główny' }] },
           status: 200,
@@ -732,7 +732,7 @@ describe('AllegroOrderSourceAdapter', () => {
           data: {
             id: 'rate-set-1',
             name: 'Cennik główny',
-            rates: [{ method: { id: PACZKOMAT_ID } }],
+            rates: [{ deliveryMethod: { id: PACZKOMAT_ID } }],
           },
           status: 200,
           headers: {},
@@ -742,7 +742,7 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(result).toEqual([{ value: PACZKOMAT_ID, label: PACZKOMAT_ID }]);
       });
 
-      it('skips rate entries without method.id', async () => {
+      it('skips rate entries without deliveryMethod.id', async () => {
         httpClient.get.mockResolvedValueOnce({
           data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik główny' }] },
           status: 200,
@@ -753,9 +753,9 @@ describe('AllegroOrderSourceAdapter', () => {
             id: 'rate-set-1',
             name: 'Cennik główny',
             rates: [
-              { method: { id: PACZKOMAT_ID, name: 'Paczkomat' } },
+              { deliveryMethod: { id: PACZKOMAT_ID, name: 'Paczkomat' } },
               {}, // malformed entry
-              { method: { name: 'No id' } },
+              { deliveryMethod: { name: 'No id' } },
             ],
           },
           status: 200,
@@ -764,6 +764,42 @@ describe('AllegroOrderSourceAdapter', () => {
 
         const result = await adapter.listDeliveryMethods();
         expect(result).toEqual([{ value: PACZKOMAT_ID, label: 'Paczkomat' }]);
+      });
+
+      // Defensive coverage for the #494 failure mode: rate-tables exist and
+      // contain rates, but the parser recognises zero of them. Asserts the
+      // operator-visible warn fires so the next API-shape regression is loud,
+      // not silent.
+      it('warns when rate-tables have rates but parser yields zero methods', async () => {
+        const warnSpy = jest
+          .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+          .mockImplementation(() => {});
+
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            // Two rates, neither has a recognised `deliveryMethod.id` — mirrors
+            // the live shape we'd see if Allegro renamed the field again.
+            rates: [{}, { deliveryMethod: { name: 'No id' } }],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+
+        expect(result).toEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/produced 0 delivery methods.*possible API shape regression/i),
+        );
+
+        warnSpy.mockRestore();
       });
     });
   });
