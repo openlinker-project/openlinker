@@ -9,6 +9,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -23,6 +24,7 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Textarea } from '../../../shared/ui/textarea';
+import { ApiError } from '../../../shared/api/api-error';
 import { useSuggestContentMutation } from '../hooks/use-content-mutations';
 import type { PromptTemplateChannel } from '../api/content.types';
 
@@ -35,6 +37,21 @@ interface SuggestionDialogProps {
 
 const MAX_TONE_LENGTH = 64;
 const MAX_EXTRA_LENGTH = 1024;
+
+/**
+ * #490: detect the structured 404 the API returns when a prompt template is
+ * unseeded for the requested (key, channel) — most commonly the master tab's
+ * `offer.description.suggest` row before the seed migration runs. Stepping
+ * stone: the back-end could emit a typed error code, but the message-prefix
+ * match is good enough until the unified error-shape work picks it up.
+ */
+function isMissingTemplateError(error: Error): boolean {
+  return (
+    error instanceof ApiError &&
+    error.isNotFound() &&
+    error.message.startsWith('Prompt template not found')
+  );
+}
 
 export function SuggestionDialog({
   productId,
@@ -137,7 +154,17 @@ export function SuggestionDialog({
             />
           </FormField>
 
-          {mutation.error && <Alert tone="error">{mutation.error.message}</Alert>}
+          {mutation.error &&
+            (isMissingTemplateError(mutation.error) ? (
+              <Alert tone="error">
+                {mutation.error.message}{' '}
+                <Link to="/ai/prompt-templates" className="content-suggestion__alert-link">
+                  Open prompt templates →
+                </Link>
+              </Alert>
+            ) : (
+              <Alert tone="error">{mutation.error.message}</Alert>
+            ))}
 
           {suggestion !== null && (
             <div className="content-suggestion__preview">

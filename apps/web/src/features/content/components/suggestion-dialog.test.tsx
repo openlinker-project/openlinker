@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SuggestionDialog } from './suggestion-dialog';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import type { SuggestionResponse } from '../api/content.types';
 
 function makeSuggestionResponse(suggestion: string): SuggestionResponse {
@@ -93,6 +94,60 @@ describe('SuggestionDialog', () => {
     await user.click(within_.getByRole('button', { name: 'Apply to editor' }));
 
     expect(onApply).toHaveBeenCalledWith('Generated text');
+  });
+
+  it('renders a deep link to /ai/prompt-templates when the suggest API returns a 404 missing-template error (#490)', async () => {
+    const suggest = vi.fn().mockRejectedValue(
+      new ApiError(
+        'Prompt template not found: key=offer.description.suggest, channel=master, version=1. ' +
+          'Seed a template with channel=null for this key, or use a channel-specific template.',
+        404,
+        { statusCode: 404, message: 'Prompt template not found: ...' },
+      ),
+    );
+    const mockApi = createMockApiClient({ content: { suggest } });
+
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+    const dialog = await screen.findByRole('dialog');
+    const within_ = within(dialog);
+
+    await user.click(within_.getByRole('button', { name: 'Generate' }));
+
+    // The error body shows up inside the dialog's Alert.
+    expect(
+      await within_.findByText(/Prompt template not found/),
+    ).toBeInTheDocument();
+    // And it carries the actionable deep link to the admin UI.
+    const deepLink = within_.getByRole('link', { name: /Open prompt templates/ });
+    expect(deepLink).toHaveAttribute('href', '/ai/prompt-templates');
+  });
+
+  it('does not render the deep link for unrelated errors', async () => {
+    const suggest = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Server exploded', 500, { statusCode: 500 }));
+    const mockApi = createMockApiClient({ content: { suggest } });
+
+    renderWithProviders(
+      <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+      { apiClient: mockApi },
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+    const dialog = await screen.findByRole('dialog');
+    const within_ = within(dialog);
+
+    await user.click(within_.getByRole('button', { name: 'Generate' }));
+
+    expect(await within_.findByText('Server exploded')).toBeInTheDocument();
+    expect(within_.queryByRole('link', { name: /Open prompt templates/ })).toBeNull();
   });
 
   it('omits empty tone and extraInstructions from the request payload', async () => {

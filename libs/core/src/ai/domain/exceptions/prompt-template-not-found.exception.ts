@@ -26,7 +26,17 @@ export class PromptTemplateNotFoundException extends Error {
     if (args.key !== undefined) parts.push(`key=${args.key}`);
     if (args.channel !== undefined) parts.push(`channel=${args.channel ?? 'master'}`);
     if (args.version !== undefined) parts.push(`version=${args.version}`);
-    super(`Prompt template not found: ${parts.join(', ')}`);
+    const base = `Prompt template not found: ${parts.join(', ')}`;
+    // #490: master-channel lookups (channel === null) hit the unseeded gap
+    // most often. Append an operator-actionable hint so consumers — including
+    // the FE suggestion dialog — know the remediation. Gated on key being
+    // present so id-only lookups (which never carry channel) are unaffected.
+    const isMasterLookup = args.channel === null && args.key !== undefined;
+    super(
+      isMasterLookup
+        ? `${base}. Seed a template with channel=null for this key, or use a channel-specific template.`
+        : base,
+    );
     this.name = 'PromptTemplateNotFoundException';
     this.templateId = args.templateId ?? null;
     this.key = args.key ?? null;

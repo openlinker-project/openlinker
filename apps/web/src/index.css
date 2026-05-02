@@ -6312,6 +6312,18 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
 }
 
+.content-suggestion__alert-link {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.content-suggestion__alert-link:hover,
+.content-suggestion__alert-link:focus-visible {
+  color: var(--accent-primary-hover);
+}
+
 /* ============================================================
    AI Provider Settings — multi-provider table (#451 / #452)
    ============================================================ */
