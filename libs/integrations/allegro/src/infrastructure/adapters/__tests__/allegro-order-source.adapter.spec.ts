@@ -733,7 +733,11 @@ describe('AllegroOrderSourceAdapter', () => {
         const result = await adapter.listDeliveryMethods();
 
         expect(httpClient.get).toHaveBeenNthCalledWith(1, '/sale/shipping-rates');
-        expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/delivery-methods');
+        // Catalogue MUST be scoped to allegro-pl — without the marketplace
+        // query param the sandbox returns an empty list (verified live).
+        expect(httpClient.get).toHaveBeenNthCalledWith(2, '/sale/delivery-methods', {
+          queryParams: { marketplace: 'allegro-pl' },
+        });
         expect(httpClient.get).toHaveBeenNthCalledWith(3, '/sale/shipping-rates/rate-set-1');
         expect(httpClient.get).toHaveBeenNthCalledWith(4, '/sale/shipping-rates/rate-set-2');
         expect(result).toEqual([
@@ -901,6 +905,51 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(result).toEqual([]);
         expect(warnSpy).toHaveBeenCalledWith(
           expect.stringMatching(/produced 0 delivery methods.*possible API shape regression/i),
+        );
+
+        warnSpy.mockRestore();
+      });
+
+      // Diagnostic for the bug surfaced live on #496/PR #497: if the
+      // catalogue is empty (or scoped to the wrong marketplace), every
+      // method id misses the lookup and the dropdown shows UUIDs. Asserts
+      // the operator-visible warn fires so the cause is loud, not silent.
+      it('warns when method ids cannot be resolved from the catalogue', async () => {
+        const warnSpy = jest
+          .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+          .mockImplementation(() => {});
+
+        httpClient.get.mockResolvedValueOnce({
+          data: { shippingRates: [{ id: 'rate-set-1', name: 'Cennik' }] },
+          status: 200,
+          headers: {},
+        });
+        // Catalogue empty — simulates a scope mismatch (wrong marketplace,
+        // pagination cut, namespace drift, etc).
+        mockDeliveryMethodsCatalogue([]);
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            id: 'rate-set-1',
+            name: 'Cennik',
+            rates: [
+              { deliveryMethod: { id: PACZKOMAT_ID } },
+              { deliveryMethod: { id: KURIER_ID } },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapter.listDeliveryMethods();
+
+        // Result is non-empty (parser worked), but every label is the id
+        // — the unresolved diagnostic must fire.
+        expect(result).toEqual([
+          { value: PACZKOMAT_ID, label: PACZKOMAT_ID },
+          { value: KURIER_ID, label: KURIER_ID },
+        ]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/2\/2 method ids could not be resolved.*falling back to UUIDs/i),
         );
 
         warnSpy.mockRestore();

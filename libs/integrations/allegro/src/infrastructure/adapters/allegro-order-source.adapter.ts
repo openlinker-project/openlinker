@@ -347,13 +347,23 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     // method catalogue in parallel. The catalogue (`/sale/delivery-methods`)
     // resolves bare method-ids into operator-friendly names (#496) since the
     // rate-table response itself only carries `deliveryMethod.id`, not name.
+    //
+    // The catalogue MUST be scoped via `?marketplace=allegro-pl` — without it
+    // sandbox returns an empty list and every dropdown row falls back to its
+    // UUID. Hardcoded to `allegro-pl` because OL today only supports the PL
+    // marketplace; revisit when other Allegro markets come online.
     const [rateSets, methodsResponse] = await Promise.all([
       this.httpClient.get<AllegroShippingRatesResponse>('/sale/shipping-rates'),
-      this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods'),
+      this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods', {
+        queryParams: { marketplace: 'allegro-pl' },
+      }),
     ]);
     const rateSetIds = (rateSets.data.shippingRates ?? []).map((r) => r.id);
-    const nameById = new Map<string, string>(
-      (methodsResponse.data.deliveryMethods ?? []).map((m) => [m.id, m.name]),
+    const catalogue = methodsResponse.data.deliveryMethods ?? [];
+    const nameById = new Map<string, string>(catalogue.map((m) => [m.id, m.name]));
+
+    this.logger.debug(
+      `listDeliveryMethods: connection=${this.connectionId} rateSetIds=${rateSetIds.length} catalogue=${catalogue.length}`,
     );
 
     if (rateSetIds.length === 0) {
@@ -401,6 +411,18 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       const totalRates = details.reduce((n, d) => n + (d.data.rates?.length ?? 0), 0);
       this.logger.warn(
         `Walked ${rateSetIds.length} rate-tables with ${totalRates} rates for connection ${this.connectionId} but produced 0 delivery methods — possible API shape regression.`,
+      );
+    }
+
+    // Diagnostic: any method id whose label fell through to the id itself
+    // means the catalogue lookup missed. A few misses are tolerable (Allegro
+    // can have legacy method-ids no longer in the catalogue), but a high
+    // ratio means the marketplace scope is wrong, the catalogue is paginated,
+    // or the id namespaces have drifted. Helps next-time-this-breaks debug.
+    const unresolved = result.filter((r) => r.value === r.label);
+    if (unresolved.length > 0) {
+      this.logger.warn(
+        `listDeliveryMethods: ${unresolved.length}/${result.length} method ids could not be resolved from /sale/delivery-methods catalogue (size=${catalogue.length}) for connection ${this.connectionId} — labels falling back to UUIDs.`,
       );
     }
     return result;
