@@ -385,6 +385,12 @@ function SafetyAttachmentsField({
       shouldDirty: true,
       shouldValidate: true,
     });
+    // Clear any lingering upload-error surfaces — TanStack Query holds
+    // `mutation.error` until the next mutateAsync resolves, so without
+    // this a failed upload's red Alert would persist while the operator
+    // remediates by removing an unrelated attachment.
+    setInlineError(null);
+    uploadMutation.reset();
     onChange();
   };
 
@@ -406,7 +412,10 @@ function SafetyAttachmentsField({
         <ul className="file-upload__list" aria-label="Uploaded safety attachments">
           {attachments.map((att, index) => (
             <li key={att.id} className="file-upload__list-item">
-              <span className="file-upload__list-item-name">
+              <span
+                className="file-upload__list-item-name"
+                title={att.fileName ?? att.id}
+              >
                 {att.fileName ?? att.id}
               </span>
               <span className="file-upload__list-item-meta">

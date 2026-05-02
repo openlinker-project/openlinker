@@ -18,13 +18,25 @@ import { renderWithProviders, createMockApiClient } from '../../../test/test-uti
 import { AllegroSellerDefaultsSection } from './allegro-seller-defaults-section';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 
+interface HarnessAttachment {
+  id: string;
+  fileName?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
 interface HarnessProps {
   apiClient?: ReturnType<typeof createMockApiClient>;
   initialSafetyType?: 'NO_SAFETY_INFORMATION' | 'TEXT' | 'ATTACHMENTS';
+  initialAttachments?: HarnessAttachment[];
   onChange?: () => void;
 }
 
-function Harness({ initialSafetyType, onChange }: HarnessProps): ReactElement {
+function Harness({
+  initialSafetyType,
+  initialAttachments,
+  onChange,
+}: HarnessProps): ReactElement {
   const form = useForm<EditConnectionFormValues>({
     defaultValues: {
       name: 'Allegro sandbox',
@@ -36,6 +48,7 @@ function Harness({ initialSafetyType, onChange }: HarnessProps): ReactElement {
         safetyInformation: {
           type: initialSafetyType ?? 'NO_SAFETY_INFORMATION',
           description: '',
+          attachments: initialAttachments,
         },
       },
     },
@@ -142,5 +155,53 @@ describe('AllegroSellerDefaultsSection', () => {
     fireEvent.change(cityInput, { target: { value: 'Warszawa' } });
 
     expect(onChange).toHaveBeenCalled();
+  });
+
+  it('shows the full filename via title attribute on the truncated row', () => {
+    renderWithProviders(
+      <Harness
+        initialSafetyType="ATTACHMENTS"
+        initialAttachments={[
+          { id: 'att-1', fileName: 'Safety_Information_Long_Brand_Suffix_Q3.pdf', sizeBytes: 2048 },
+        ]}
+      />,
+    );
+
+    const nameSpan = screen.getByText('Safety_Information_Long_Brand_Suffix_Q3.pdf');
+    expect(nameSpan).toHaveAttribute('title', 'Safety_Information_Long_Brand_Suffix_Q3.pdf');
+  });
+
+  it('clears a lingering upload-error Alert when the operator removes an attachment', async () => {
+    const apiClient = createMockApiClient({
+      allegro: {
+        uploadSafetyAttachment: vi.fn().mockRejectedValue(new Error('Upload service down')),
+      },
+    });
+
+    renderWithProviders(
+      <Harness
+        initialSafetyType="ATTACHMENTS"
+        initialAttachments={[{ id: 'att-1', fileName: 'first.pdf', sizeBytes: 100 }]}
+      />,
+      { apiClient },
+    );
+
+    // Trigger an upload that fails so `uploadMutation.error` is set and the
+    // red Alert renders.
+    const fileInput = document.querySelector('input[type=file]') as HTMLInputElement;
+    const blob = new Blob([new Uint8Array(50)], { type: 'application/pdf' });
+    const newFile = new File([blob], 'second.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [newFile] } });
+
+    expect(await screen.findByText(/upload service down/i)).toBeInTheDocument();
+
+    // Removing the *existing* attachment must clear the stale error — without
+    // the explicit mutation.reset() in removeAt, TanStack Query keeps
+    // `error` set until a fresh upload resolves.
+    fireEvent.click(screen.getByRole('button', { name: /^remove first\.pdf$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/upload service down/i)).not.toBeInTheDocument();
+    });
   });
 });
