@@ -15,6 +15,18 @@ import { PrestashopProvisioningException } from '@openlinker/integrations-presta
 import { Logger } from '@openlinker/shared/logging';
 
 /**
+ * Default values for PrestaShop cart + order creation. Hoisted to
+ * module scope so both `mapOrderCreate` and `mapCartCreate` reference
+ * the same source of truth. Future enhancement: move to connection
+ * config so per-store overrides don't require a code change.
+ */
+const DEFAULT_CURRENCY_ID = 1; // EUR
+const DEFAULT_LANGUAGE_ID = 1; // First language
+const DEFAULT_CARRIER_ID = 1; // First carrier
+const DEFAULT_PAYMENT_MODULE = 'ps_checkpayment';
+const DEFAULT_PAYMENT_METHOD = 'Check payment';
+
+/**
  * PrestaShop Order Mapper
  *
  * Transforms PrestaShop order data to OpenLinker Order schema.
@@ -237,23 +249,8 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
      */
     const conversionRate = 1.0;
 
-    /**
-     * Default values for PrestaShop order creation
-     *
-     * These defaults are used when values are not provided:
-     * - id_currency: 1 (EUR - common default in PrestaShop)
-     * - id_lang: 1 (first language - common default in PrestaShop)
-     * - id_carrier: 1 (first carrier - common default in PrestaShop)
-     * - module: 'ps_checkpayment' (Check payment - common default payment module)
-     * - payment: 'Check payment' (Default payment method name)
-     *
-     * Future enhancement: Make these configurable via connection config or environment variables.
-     */
-    const DEFAULT_CURRENCY_ID = 1; // EUR
-    const DEFAULT_LANGUAGE_ID = 1; // First language
-    const DEFAULT_CARRIER_ID = 1; // First carrier
-    const DEFAULT_PAYMENT_MODULE = 'ps_checkpayment';
-    const DEFAULT_PAYMENT_METHOD = 'Check payment';
+    // Defaults are module-level constants so mapCartCreate and
+    // mapOrderCreate share the same source of truth.
 
     // Build PrestaShop order structure
     const prestashopOrder: Record<string, unknown> = {
@@ -315,6 +312,13 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    *
    * Creates a cart structure that can be used to create a cart in PrestaShop,
    * which is then required to create an order.
+   *
+   * #503: `externalCarrierId` MUST be set on the cart, not just the order
+   * body. PS resolves the order's `id_carrier` from the cart at `POST /orders`
+   * time and ignores the order body's `id_carrier` field. Without this every
+   * synced order lands at `id_carrier=0`, no `order_carriers` row is created,
+   * and `reconcileShippingCost` cannot write the buyer-paid shipping cost
+   * back into PS.
    */
   mapCartCreate(
     orderCreate: OrderCreate,
@@ -325,6 +329,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
+    externalCarrierId?: number,
   ): Record<string, unknown> {
     // Map cart rows (products)
     const cartRows = orderCreate.items.map((item, index) => {
@@ -367,17 +372,15 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       };
     });
 
-    /**
-     * Default values for PrestaShop cart creation (same as order defaults)
-     */
-    const DEFAULT_CURRENCY_ID = 1; // EUR
-    const DEFAULT_LANGUAGE_ID = 1; // First language
-
-    // Build PrestaShop cart structure
+    // Build PrestaShop cart structure. id_carrier is set here (not just on
+    // the order body) because PS resolves the order's carrier from the cart
+    // and ignores the order body's id_carrier (#503). DEFAULT_*_ID constants
+    // are module-level — same source of truth as mapOrderCreate.
     const prestashopCart: Record<string, unknown> = {
       id_customer: externalCustomerId,
       id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
       id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
+      id_carrier: externalCarrierId ?? DEFAULT_CARRIER_ID,
       associations: {
         cart_rows: {
           cart_row: cartRows,

@@ -202,7 +202,20 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-456');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-789');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'internal-variant-789');
-      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalled();
+      // #503: cart MUST be called with the same externalCarrierId as the
+      // order body. PS resolves id_carrier from the cart, ignoring the order
+      // body's field — so omitting it here lands every order at id_carrier=0.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        order,
+        externalCustomerId,
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1, // currencyId
+        1, // langId
+        undefined, // externalCarrierId — no mapping configured; mapper falls back to id_carrier=1
+      );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
         externalCustomerId,
@@ -802,7 +815,20 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
 
-      // 9th arg = externalCarrierId
+      // 9th arg = externalCarrierId — passed to BOTH mappers (#503).
+      // Cart-side is the load-bearing assertion: PS resolves the order's
+      // id_carrier from the cart, ignoring the order body's value.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        4,
+      );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
@@ -850,6 +876,58 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         1,
         1,
         7,
+      );
+    });
+
+    it('ignores invalid defaultCarrierId (0, negative, NaN) so the cart never lands at id_carrier=0 (#503 follow-up)', async () => {
+      // Operator sets defaultCarrierId=0 (or negative, or non-numeric) in
+      // connection config. Without the guard, the mapper writes id_carrier=0
+      // to the cart and PS reproduces the #503 failure mode through a
+      // different door — `??` doesn't fall back on 0, only null/undefined.
+      // Adapter must filter and let the mapper apply its DEFAULT_CARRIER_ID=1.
+      wireSuccessfulMappings('42');
+      const connWithBadDefault = createTestConnection();
+      (connWithBadDefault.config as Record<string, unknown>).defaultCarrierId = 0;
+
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
+      const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connWithBadDefault,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockMappingConfig,
+      );
+
+      await adapterWithMapping.createOrder(buildOrderWithShipping());
+
+      // Adapter returns undefined (not 0); mappers fall back to DEFAULT_CARRIER_ID=1.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        undefined,
+      );
+      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        undefined,
       );
     });
 

@@ -281,7 +281,10 @@ export class PrestashopOrderProcessorManagerAdapter
       // Step 5b: Resolve carrier id for #455 — carrier mapping at the destination.
       const externalCarrierId = await this.resolveExternalCarrierId(order, config);
 
-      // Step 6: Create cart in PrestaShop (required for order creation)
+      // Step 6: Create cart in PrestaShop (required for order creation).
+      // The carrier MUST be set on the cart, not just the order body — PS
+      // resolves the order's id_carrier from the cart at POST /orders time
+      // and ignores the order body's field (#503).
       this.logger.debug(`Creating cart in PrestaShop for order creation`);
       const prestashopCartData = this.orderMapper.mapCartCreate(
         order,
@@ -292,6 +295,7 @@ export class PrestashopOrderProcessorManagerAdapter
         externalBillingAddressId,
         externalCurrencyId,
         externalLangId,
+        externalCarrierId,
       );
 
       let externalCartId: string | number;
@@ -617,12 +621,22 @@ export class PrestashopOrderProcessorManagerAdapter
     }
 
     if (config.defaultCarrierId !== undefined) {
+      // Defend against operator-misconfigured defaults (0, negative, NaN).
+      // Without this guard the mapper writes id_carrier=0 to the cart and
+      // we reproduce the #503 failure mode through a different door — `??`
+      // doesn't fall back on 0, only null/undefined. Log and ignore.
+      if (Number.isFinite(config.defaultCarrierId) && config.defaultCarrierId > 0) {
+        this.logger.warn(
+          `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
+            `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}). ` +
+            `Falling back to connection.config.defaultCarrierId=${config.defaultCarrierId}.`,
+        );
+        return config.defaultCarrierId;
+      }
       this.logger.warn(
-        `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
-          `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}). ` +
-          `Falling back to connection.config.defaultCarrierId=${config.defaultCarrierId}.`,
+        `Connection config has invalid defaultCarrierId=${String(config.defaultCarrierId)} (must be a positive integer) ` +
+          `for connection ${this.connection.id} — ignoring; falling back to PrestaShop's first carrier (id_carrier=1).`,
       );
-      return config.defaultCarrierId;
     }
 
     this.logger.warn(
