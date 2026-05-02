@@ -315,6 +315,13 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    *
    * Creates a cart structure that can be used to create a cart in PrestaShop,
    * which is then required to create an order.
+   *
+   * #503: `externalCarrierId` MUST be set on the cart, not just the order
+   * body. PS resolves the order's `id_carrier` from the cart at `POST /orders`
+   * time and ignores the order body's `id_carrier` field. Without this every
+   * synced order lands at `id_carrier=0`, no `order_carriers` row is created,
+   * and `reconcileShippingCost` cannot write the buyer-paid shipping cost
+   * back into PS.
    */
   mapCartCreate(
     orderCreate: OrderCreate,
@@ -325,6 +332,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
+    externalCarrierId?: number,
   ): Record<string, unknown> {
     // Map cart rows (products)
     const cartRows = orderCreate.items.map((item, index) => {
@@ -372,12 +380,16 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
      */
     const DEFAULT_CURRENCY_ID = 1; // EUR
     const DEFAULT_LANGUAGE_ID = 1; // First language
+    const DEFAULT_CARRIER_ID = 1; // First carrier — mirrors mapOrderCreate
 
-    // Build PrestaShop cart structure
+    // Build PrestaShop cart structure. id_carrier is set here (not just on
+    // the order body) because PS resolves the order's carrier from the cart
+    // and ignores the order body's id_carrier (#503).
     const prestashopCart: Record<string, unknown> = {
       id_customer: externalCustomerId,
       id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
       id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
+      id_carrier: externalCarrierId ?? DEFAULT_CARRIER_ID,
       associations: {
         cart_rows: {
           cart_row: cartRows,

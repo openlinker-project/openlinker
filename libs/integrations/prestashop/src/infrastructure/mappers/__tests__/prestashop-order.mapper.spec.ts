@@ -735,6 +735,48 @@ describe('PrestashopOrderMapper', () => {
       expect(cartRow.id_product_attribute).toBe(5);
       expect(cartRow.quantity).toBe(2);
     });
+
+    // #503: PS resolves the order's id_carrier from the cart at POST /orders
+    // time and ignores the order body's field. Setting id_carrier on the
+    // order body alone (as we did before) leaves every synced order at
+    // id_carrier=0. These specs lock down the cart-side behaviour.
+    describe('carrier propagation onto the cart (#503)', () => {
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      it('sets id_carrier on the cart when externalCarrierId is provided', () => {
+        const result = mapper.mapCartCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          '1',
+          '1',
+          2, // resolved Allegro Paczkomat → PS "My carrier"
+        );
+
+        expect(result.id_carrier).toBe(2);
+      });
+
+      it('falls back to id_carrier=1 (PS default) when externalCarrierId is omitted', () => {
+        const result = mapper.mapCartCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          '1',
+          '1',
+          // externalCarrierId intentionally omitted — mirrors a connection
+          // with no carrier mapping AND no defaultCarrierId in config.
+        );
+
+        expect(result.id_carrier).toBe(1);
+      });
+    });
   });
 });
 

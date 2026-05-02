@@ -281,7 +281,10 @@ export class PrestashopOrderProcessorManagerAdapter
       // Step 5b: Resolve carrier id for #455 — carrier mapping at the destination.
       const externalCarrierId = await this.resolveExternalCarrierId(order, config);
 
-      // Step 6: Create cart in PrestaShop (required for order creation)
+      // Step 6: Create cart in PrestaShop (required for order creation).
+      // The carrier MUST be set on the cart, not just the order body — PS
+      // resolves the order's id_carrier from the cart at POST /orders time
+      // and ignores the order body's field (#503).
       this.logger.debug(`Creating cart in PrestaShop for order creation`);
       const prestashopCartData = this.orderMapper.mapCartCreate(
         order,
@@ -292,6 +295,7 @@ export class PrestashopOrderProcessorManagerAdapter
         externalBillingAddressId,
         externalCurrencyId,
         externalLangId,
+        externalCarrierId,
       );
 
       let externalCartId: string | number;

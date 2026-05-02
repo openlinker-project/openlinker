@@ -202,7 +202,20 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-456');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-789');
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'internal-variant-789');
-      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalled();
+      // #503: cart MUST be called with the same externalCarrierId as the
+      // order body. PS resolves id_carrier from the cart, ignoring the order
+      // body's field — so omitting it here lands every order at id_carrier=0.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        order,
+        externalCustomerId,
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1, // currencyId
+        1, // langId
+        undefined, // externalCarrierId — no mapping configured; mapper falls back to id_carrier=1
+      );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
         externalCustomerId,

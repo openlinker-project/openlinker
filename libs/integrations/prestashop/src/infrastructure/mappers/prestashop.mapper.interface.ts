@@ -223,6 +223,11 @@ export interface IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
+    /**
+     * #503: PS reads `id_carrier` off the cart (not the order body) at
+     * `POST /orders` time. Without this, every order lands at id_carrier=0.
+     */
+    externalCarrierId?: number,
   ): Record<string, unknown>;
 }
 
