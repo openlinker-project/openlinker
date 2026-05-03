@@ -13,6 +13,8 @@ import { OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_
 import type { IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
+import type { ProductVariant, ProductVariantRepositoryPort } from '@openlinker/core/products';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
@@ -26,6 +28,7 @@ describe('ListingsController', () => {
   let offerCreationEnqueue: jest.Mocked<IOfferCreationEnqueueService>;
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
+  let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -76,6 +79,16 @@ describe('ListingsController', () => {
     integrationsService = {
       getCapabilityAdapter: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
+    productVariantRepository = {
+      findById: jest.fn().mockResolvedValue(null),
+      findByProductId: jest.fn(),
+      findBySku: jest.fn(),
+      findBySkuIn: jest.fn(),
+      findByEanOrGtinIn: jest.fn(),
+      upsert: jest.fn(),
+      upsertMany: jest.fn(),
+      findMany: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -86,6 +99,7 @@ describe('ListingsController', () => {
         { provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, useValue: offerCreationEnqueue },
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
+        { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
       ],
     }).compile();
 
@@ -217,8 +231,40 @@ describe('ListingsController', () => {
       const result = await controller.getOfferMapping('uuid-2');
 
       expect(offerCreationRecords.findByExternalOfferIdAndConnectionId).not.toHaveBeenCalled();
+      expect(productVariantRepository.findById).not.toHaveBeenCalled();
       expect(result.offerCreation).toBeUndefined();
+      expect(result.linkedProductId).toBeUndefined();
       expect(result.entityType).toBe('Product');
+    });
+
+    it('should embed linkedProductId when the linked variant exists (#485)', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(null);
+      const linkedVariant: ProductVariant = {
+        id: 'ol_offer_variant123',
+        productId: 'ol_product_xyz789',
+        sku: 'SKU-1',
+        attributes: null,
+        ean: null,
+        gtin: null,
+      };
+      productVariantRepository.findById.mockResolvedValue(linkedVariant);
+
+      const result = await controller.getOfferMapping('uuid-1');
+
+      expect(productVariantRepository.findById).toHaveBeenCalledWith('ol_offer_variant123');
+      expect(result.linkedProductId).toBe('ol_product_xyz789');
+    });
+
+    it('should omit linkedProductId when the linked variant cannot be resolved (#485)', async () => {
+      repository.findById.mockResolvedValue(mockMapping);
+      offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(null);
+      productVariantRepository.findById.mockResolvedValue(null);
+
+      const result = await controller.getOfferMapping('uuid-1');
+
+      expect(productVariantRepository.findById).toHaveBeenCalledWith('ol_offer_variant123');
+      expect(result.linkedProductId).toBeUndefined();
     });
   });
 

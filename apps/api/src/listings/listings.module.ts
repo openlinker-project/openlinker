@@ -9,6 +9,7 @@
 import { Module } from '@nestjs/common';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
+import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { ListingsController } from './http/listings.controller';
 
@@ -16,7 +17,9 @@ import { ListingsController } from './http/listings.controller';
   // CoreIntegrationsModule supplies INTEGRATIONS_SERVICE_TOKEN, which the
   // controller injects to resolve the per-connection OfferManager adapter
   // for the category-parameters endpoint (#410).
-  imports: [CoreListingsModule, CoreSyncModule, CoreIntegrationsModule],
+  // CoreProductsModule supplies PRODUCT_VARIANT_REPOSITORY_TOKEN, used by
+  // GET /listings/:id to resolve the linked variant's productId (#485).
+  imports: [CoreListingsModule, CoreSyncModule, CoreIntegrationsModule, CoreProductsModule],
   controllers: [ListingsController],
 })
 export class ListingsApiModule {}
