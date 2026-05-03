@@ -8,6 +8,7 @@
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
 import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService } from '@openlinker/core/integrations';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import {
   MappingsModule,
   MAPPING_CONFIG_SERVICE_TOKEN,
@@ -29,7 +30,7 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { Logger } from '@openlinker/shared/logging';
 
 @Module({
-  imports: [IntegrationsModule, CustomersModule, RedisConfigModule, MappingsModule],
+  imports: [IntegrationsModule, IdentifierMappingModule, CustomersModule, RedisConfigModule, MappingsModule],
   providers: [
     PrestashopCustomerProvisioner,
     PrestashopAddressProvisioner,
