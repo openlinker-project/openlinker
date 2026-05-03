@@ -6019,6 +6019,35 @@ a.kpi-card:focus-visible {
   color: var(--text-secondary);
 }
 
+/* New-template + archive dialog (#488 / #489)
+   ------------------------------------------ */
+
+.new-prompt-template-dialog {
+  max-width: 640px;
+}
+
+.new-prompt-template-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.archive-prompt-template-dialog__force {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.625rem 0.75rem;
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--status-warning-strong);
+}
+
+.archive-prompt-template-dialog__force input {
+  margin-top: 0.125rem;
+}
+
 .prompt-detail-actions {
   display: flex;
   gap: 0.5rem;

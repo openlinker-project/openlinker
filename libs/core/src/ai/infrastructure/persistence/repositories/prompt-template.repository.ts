@@ -303,6 +303,44 @@ export class PromptTemplateRepository implements PromptTemplateRepositoryPort {
     });
   }
 
+  async archiveById(
+    id: string,
+    expectedPriorState: PromptTemplateState,
+  ): Promise<PromptTemplate> {
+    // State-conditional UPDATE — closes the race-window between the
+    // service-level guard and the write. If the row's state changed (e.g.
+    // a concurrent publish), `affected` is 0 and we surface a state
+    // exception so the caller refreshes and retries.
+    const result = await this.ormRepository
+      .createQueryBuilder()
+      .update(PromptTemplateOrmEntity)
+      .set({ state: 'archived' })
+      .where('id = :id AND state = :expectedPriorState', {
+        id,
+        expectedPriorState,
+      })
+      .execute();
+
+    if (result.affected === 0) {
+      const refreshed = await this.ormRepository.findOne({ where: { id } });
+      if (refreshed === null) {
+        throw new PromptTemplateNotFoundException({ templateId: id });
+      }
+      throw new PromptTemplateStateException({
+        templateId: id,
+        actualState: refreshed.state as PromptTemplateState,
+        requiredState: expectedPriorState,
+        operation: 'be archived (concurrent modification — refresh and retry)',
+      });
+    }
+
+    const updated = await this.ormRepository.findOne({ where: { id } });
+    if (updated === null) {
+      throw new PromptTemplateNotFoundException({ templateId: id });
+    }
+    return this.toDomain(updated);
+  }
+
   async nextVersion(
     key: string,
     channel: PromptTemplateChannel | null,

@@ -13,6 +13,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -29,6 +30,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  CannotArchivePublishedTemplateException,
   IPromptTemplateService,
   PROMPT_TEMPLATE_SERVICE_TOKEN,
   PromptTemplate,
@@ -41,6 +43,7 @@ import {
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { ArchivePromptTemplateDto } from './dto/archive-prompt-template.dto';
 import { CreatePromptTemplateDto } from './dto/create-prompt-template.dto';
 import { PromptTemplateResponseDto } from './dto/prompt-template-response.dto';
 import { PromptTemplateSummaryResponseDto } from './dto/prompt-template-summary-response.dto';
@@ -179,6 +182,36 @@ export class PromptTemplatesController {
   }
 
   @Roles('admin')
+  @Post(':id/archive')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Archive a draft or published prompt template (#489)',
+    description:
+      'Soft-archive a prompt template row. Idempotent for already-archived rows. ' +
+      'Refuses to archive a published row without `{ "force": true }` because the ' +
+      'partial unique index makes it the only published version for its (key, channel).',
+  })
+  @ApiResponse({ status: 200, type: PromptTemplateResponseDto })
+  @ApiResponse({ status: 404, description: 'Template not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Cannot archive the only published row for the (key, channel) pair without force',
+  })
+  async archive(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ArchivePromptTemplateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PromptTemplateResponseDto> {
+    return this.withDomainExceptionMapping(async () => {
+      const archived = await this.service.archive(id, {
+        force: dto.force,
+        actor: user.username,
+      });
+      return PromptTemplateResponseDto.fromDomain(archived);
+    });
+  }
+
+  @Roles('admin')
   @Post('revert')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Clone a historical version into a new draft' })
@@ -261,6 +294,9 @@ export class PromptTemplatesController {
     } catch (error) {
       if (error instanceof PromptTemplateNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof CannotArchivePublishedTemplateException) {
+        throw new ConflictException(error.message);
       }
       if (error instanceof PromptTemplateStateException) {
         throw new BadRequestException(error.message);

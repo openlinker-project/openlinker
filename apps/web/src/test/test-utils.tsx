@@ -270,6 +270,7 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       create: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue(null),
       publish: vi.fn().mockResolvedValue(null),
+      archive: vi.fn().mockResolvedValue(null),
       revert: vi.fn().mockResolvedValue(null),
       render: vi.fn().mockResolvedValue({ templateId: '', version: 1, systemPrompt: '', userPrompt: '' }),
       remove: vi.fn().mockResolvedValue(undefined),

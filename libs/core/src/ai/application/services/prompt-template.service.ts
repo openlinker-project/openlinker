@@ -11,6 +11,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
+import { CannotArchivePublishedTemplateException } from '../../domain/exceptions/cannot-archive-published-template.exception';
 import { PromptTemplateNotFoundException } from '../../domain/exceptions/prompt-template-not-found.exception';
 import { PromptTemplateStateException } from '../../domain/exceptions/prompt-template-state.exception';
 import type { PromptTemplate } from '../../domain/entities/prompt-template.entity';
@@ -185,6 +186,42 @@ export class PromptTemplateService implements IPromptTemplateService {
       });
     }
     await this.repository.deleteById(id);
+  }
+
+  async archive(
+    id: string,
+    opts: { force?: boolean; actor?: string | null },
+  ): Promise<PromptTemplate> {
+    const existing = await this.repository.findById(id);
+    if (existing === null) {
+      throw new PromptTemplateNotFoundException({ templateId: id });
+    }
+    // Idempotent — re-archiving an already-archived row is a no-op.
+    // The FE gates the Archive button on non-archived rows, so this branch
+    // is defensive-only; permissive semantics keep the API simple for
+    // scripts that retry.
+    if (existing.state === 'archived') {
+      return existing;
+    }
+    // The partial unique index on (key, channel, state='published') makes
+    // a published target the only published row for that pair — archiving
+    // it leaves the suggestion service with no template to render until a
+    // replacement is published. `force=true` bypasses the guard.
+    if (existing.state === 'published' && opts.force !== true) {
+      throw new CannotArchivePublishedTemplateException({
+        templateId: id,
+        key: existing.key,
+        channel: existing.channel,
+      });
+    }
+
+    const archived = await this.repository.archiveById(id, existing.state);
+    this.logger.log(
+      `[prompt-template] archived templateId=${archived.id} key=${archived.key} channel=${
+        archived.channel ?? 'master'
+      } version=${archived.version} priorState=${existing.state} actor=${opts.actor ?? 'system'} forced=${opts.force === true}`,
+    );
+    return archived;
   }
 
   private renderFromEntity(

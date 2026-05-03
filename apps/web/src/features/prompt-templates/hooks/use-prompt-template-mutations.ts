@@ -67,6 +67,27 @@ export function usePublishPromptTemplateMutation(): UseMutationResult<
   });
 }
 
+interface ArchiveArgs {
+  id: string;
+  force?: boolean;
+}
+
+export function useArchivePromptTemplateMutation(): UseMutationResult<
+  PromptTemplate,
+  Error,
+  ArchiveArgs
+> {
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, force }) =>
+      apiClient.promptTemplates.archive(id, force === undefined ? undefined : { force }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: promptTemplatesQueryKeys.all });
+    },
+  });
+}
+
 export function useRevertPromptTemplateMutation(): UseMutationResult<
   PromptTemplate,
   Error,

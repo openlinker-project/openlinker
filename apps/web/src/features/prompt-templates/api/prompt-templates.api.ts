@@ -33,6 +33,7 @@ export interface PromptTemplatesApi {
   create: (input: CreatePromptTemplateInput) => Promise<PromptTemplate>;
   update: (id: string, input: UpdatePromptTemplateInput) => Promise<PromptTemplate>;
   publish: (id: string) => Promise<PromptTemplate>;
+  archive: (id: string, opts?: { force?: boolean }) => Promise<PromptTemplate>;
   revert: (input: RevertPromptTemplateInput) => Promise<PromptTemplate>;
   render: (id: string, input: RenderPromptTemplateInput) => Promise<RenderedPrompt>;
   remove: (id: string) => Promise<void>;
@@ -89,6 +90,12 @@ export function createPromptTemplatesApi(request: ApiRequest): PromptTemplatesAp
     publish(id): Promise<PromptTemplate> {
       return request<PromptTemplate>(`/prompt-templates/${id}/publish`, {
         method: 'POST',
+      });
+    },
+    archive(id, opts): Promise<PromptTemplate> {
+      return request<PromptTemplate>(`/prompt-templates/${id}/archive`, {
+        method: 'POST',
+        body: JSON.stringify(opts ?? {}),
       });
     },
     revert(input): Promise<PromptTemplate> {

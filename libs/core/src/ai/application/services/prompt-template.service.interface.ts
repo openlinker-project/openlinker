@@ -61,4 +61,18 @@ export interface IPromptTemplateService {
 
   /** Delete a draft row. Rejects if state ≠ `draft`. */
   deleteDraft(id: string): Promise<void>;
+
+  /**
+   * Archive a `draft` or `published` row. Idempotent — re-archiving an
+   * already-archived row is a no-op that returns the row unchanged. The
+   * `force` flag is required to archive a `published` row, since the
+   * partial unique index on `(key, channel, state='published')` makes it
+   * the only published version for that pair; archiving leaves the
+   * suggestion service with no template to render until a replacement is
+   * published.
+   */
+  archive(
+    id: string,
+    opts: { force?: boolean; actor?: string | null },
+  ): Promise<PromptTemplate>;
 }
