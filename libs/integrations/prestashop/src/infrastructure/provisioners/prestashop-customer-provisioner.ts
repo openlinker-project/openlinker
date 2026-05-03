@@ -245,6 +245,25 @@ export class PrestashopCustomerProvisioner {
 
       // Step 5: Create customer if not found
       if (!prestashopCustomerId) {
+      // PS's stock-fixture "Guest" group. Carriers with group restrictions
+      // reject any group-0 customer at POST /orders time and silently zero
+      // the order's id_carrier (#505). Operators with non-standard group
+      // setups can override via connection.config.guestCustomerGroupId.
+      const PS_GUEST_GROUP_DEFAULT = 2;
+      const configuredGroupId = connectionConfig.guestCustomerGroupId;
+      let groupId = PS_GUEST_GROUP_DEFAULT;
+      if (configuredGroupId !== undefined) {
+        if (Number.isFinite(configuredGroupId) && configuredGroupId > 0) {
+          groupId = configuredGroupId;
+        } else {
+          this.logger.warn(
+            `Connection config has invalid guestCustomerGroupId=${String(configuredGroupId)} ` +
+              `(must be a positive integer) for connection ${destinationConnectionId} — ` +
+              `falling back to PS default Guest group (id=${PS_GUEST_GROUP_DEFAULT}).`,
+          );
+        }
+      }
+
       const customerData: PrestashopCustomerCreate = {
         is_guest: 1,
         passwd: generatePassword(),
@@ -252,6 +271,10 @@ export class PrestashopCustomerProvisioner {
         lastname: lastName || 'Customer',
         email: normalizedEmail,
         active: 1,
+        id_default_group: groupId,
+        associations: {
+          groups: { group: [{ id: groupId }] },
+        },
       };
 
       if (connectionConfig.shopId) {

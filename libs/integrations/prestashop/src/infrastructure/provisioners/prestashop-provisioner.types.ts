@@ -32,6 +32,23 @@ export interface PrestashopCustomerCreate {
   active: number;
   id_shop?: number;
   id_shop_group?: number;
+  /**
+   * Customer's default group id (#505). When omitted, PS defaults to 0,
+   * which orphans the customer from any carrier with group restrictions.
+   * The provisioner sets this from `connection.config.guestCustomerGroupId`
+   * (default: 2 — PS's stock "Guest" group).
+   */
+  id_default_group?: number;
+  /**
+   * PS WS associations block (#505). Group membership is populated from
+   * `associations.groups.group[]` at create time — `id_default_group`
+   * alone doesn't add the row to `ps_customer_group`. The double-nested
+   * shape matches the established PS WS JSON convention used by
+   * `PrestashopOrderMapper.mapOrderCreate` for `order_rows`.
+   */
+  associations?: {
+    groups?: { group?: Array<{ id: number }> };
+  };
   [key: string]: unknown;
 }
 

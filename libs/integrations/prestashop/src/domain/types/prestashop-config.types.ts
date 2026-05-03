@@ -105,6 +105,26 @@ export interface PrestashopConnectionConfig {
   defaultCarrierId?: number;
 
   /**
+   * Default PrestaShop customer-group ID applied to OL-provisioned guest
+   * customers (#505). PS WS validates the order's `id_carrier` against the
+   * customer's groups at `POST /orders` time and silently zeros the value
+   * if the carrier doesn't accept any of the customer's groups. Without
+   * this set explicitly, PS defaults the unspecified field to 0, the
+   * customer ends up in group 0 only, and any carrier with group
+   * restrictions (the standard configuration) silently rejects the order.
+   *
+   * Defaults to `2` — PS's stock-fixture "Guest" group, the standard slot
+   * for `is_guest=1` customers on a vanilla PS install. Override only when
+   * the destination shop has a non-standard group setup (group 2 missing
+   * or used for a different role).
+   *
+   * Must be a positive integer; `0`, negatives, and non-finite values are
+   * rejected at provisioning time with a `warn` log and fall back to 2.
+   * Mirrors the resolution-chain pattern of `defaultCarrierId` above.
+   */
+  guestCustomerGroupId?: number;
+
+  /**
    * Additional PrestaShop payment-module names installed on this connection's
    * shop that aren't in the curated `PRESTASHOP_PAYMENT_MODULES` list. Each
    * entry is a module's technical name (matches the `payment` field on
