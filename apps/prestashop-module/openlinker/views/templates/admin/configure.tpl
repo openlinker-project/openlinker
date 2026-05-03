@@ -1,4 +1,4 @@
-ze{*
+{*
  * OpenLinker Module Configuration Template
  *
  * @author OpenLinker Team
