@@ -122,7 +122,7 @@ export class PrestashopConnectionConfigDto {
 
   @ApiPropertyOptional({
     description: 'Response format preference for WS reads.',
-    enum: ResponseFormatValues,
+    enum: ResponseFormatValues as readonly string[],
   })
   @IsOptional()
   @IsIn(ResponseFormatValues as readonly string[])

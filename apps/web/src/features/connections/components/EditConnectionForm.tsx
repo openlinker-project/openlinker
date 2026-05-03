@@ -23,6 +23,8 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { AllegroSellerDefaultsSection } from './allegro-seller-defaults-section';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
+import { useMappingOptions } from '../../mappings/hooks/use-mapping-options';
+import type { MappingOption } from '../../mappings/api/mappings.types';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -33,7 +35,22 @@ type StructuredField =
   | 'shopId'
   | 'storefrontBaseUrl'
   | 'openlinkerCallbackBaseUrl'
-  | 'masterCatalogConnectionId';
+  | 'masterCatalogConnectionId'
+  | 'defaultCarrierId';
+
+/**
+ * Mirror of the dropdown decoration in `MappingPanel` (#517). Native
+ * `<option>` is text-only so the dynamic-kind cue is encoded as a label
+ * suffix; static options stay bare. Kept inline here (rather than
+ * imported from `features/mappings`) to keep the cross-feature surface
+ * narrow — only the `MappingOption` type is shared.
+ */
+function carrierOptionLabel(option: MappingOption): string {
+  return option.kind === 'dynamic'
+    ? `${option.label} — exact Allegro cost`
+    : option.label;
+}
+
 type PlatformBranch = 'prestashop' | 'marketplace' | 'raw';
 
 function readString(config: Record<string, unknown>, key: string): string {
@@ -146,6 +163,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           ? window.location.origin
           : ''),
       masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
+      // PS `defaultCarrierId` is persisted as a number; the form keeps it
+      // as a string so the same `<Select>` primitive serves both this
+      // field and the per-method mapping dropdown (#517).
+      defaultCarrierId:
+        typeof connection.config.defaultCarrierId === 'number'
+          ? String(connection.config.defaultCarrierId)
+          : '',
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
       sellerDefaults: readSellerDefaults(connection.config),
@@ -381,6 +405,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
               invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
             />
           </FormField>
+
+          <PrestashopFallbackCarrierField
+            connectionId={connection.id}
+            value={form.watch('defaultCarrierId') ?? ''}
+            errorMessage={form.formState.errors.defaultCarrierId?.message}
+            disabled={!configIsParseable}
+            onChange={(value) => syncStructuredToJson('defaultCarrierId', value)}
+          />
         </>
       ) : null}
 
@@ -536,6 +568,90 @@ function MarketplaceCatalogPicker({
           </Select>
         )}
       </FormField>
+    </>
+  );
+}
+
+interface PrestashopFallbackCarrierFieldProps {
+  connectionId: string;
+  value: string;
+  errorMessage: string | undefined;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Fallback-carrier picker for PrestaShop connections (#517).
+ *
+ * Backed by the same `getMappingOptions(connectionId, 'destination', 'carriers')`
+ * endpoint as the per-method mapping page, so the option set (and its
+ * dynamic-kind decoration) stays in lockstep. The field is allowed to
+ * stay blank: when unset, the BE adapter (#516) falls back to the
+ * OpenLinker Dynamic carrier at order-create time. A save-time warning
+ * banner fires only when (a) the field is blank, (b) the OL Dynamic
+ * carrier is NOT among the loaded options (operator hasn't installed
+ * the OL PS module on this connection) — i.e. the connection is in a
+ * state where any unmapped Allegro shipping method WILL fail at sync.
+ *
+ * No soft-prefill: per tech-review on #517, picking the OL Dynamic
+ * carrier as a phantom default would write a value the operator didn't
+ * choose. The runtime fallback chain handles the unset case, and the
+ * help text + warning banner make the consequence explicit.
+ */
+function PrestashopFallbackCarrierField({
+  connectionId,
+  value,
+  errorMessage,
+  disabled,
+  onChange,
+}: PrestashopFallbackCarrierFieldProps): ReactElement {
+  const { options, isLoading, errors } = useMappingOptions(connectionId);
+  const carriersError = errors.prestashopCarriers ?? null;
+  const carriers = options.prestashopCarriers;
+  const hasDynamicOption = carriers.some((c) => c.kind === 'dynamic');
+  const showNoFallbackWarning = value === '' && carriersError === null && !isLoading && !hasDynamicOption;
+
+  return (
+    <>
+      <FormField
+        label="Fallback carrier (optional)"
+        name="defaultCarrierId"
+        error={errorMessage}
+        description="Used when an Allegro shipping method has no carrier mapping. Leave unset to use the OpenLinker Dynamic carrier (exact Allegro shipping cost) at sync time — works only when the OL PrestaShop module is installed."
+      >
+        {isLoading ? (
+          <Select disabled>
+            <option>Loading carriers…</option>
+          </Select>
+        ) : carriersError ? (
+          <Select disabled>
+            <option>Failed to load carriers</option>
+          </Select>
+        ) : (
+          <Select
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            disabled={disabled}
+            invalid={Boolean(errorMessage)}
+          >
+            <option value="">None — use OpenLinker Dynamic at runtime</option>
+            {carriers.map((c) => (
+              <option key={c.value} value={c.value}>
+                {carrierOptionLabel(c)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      {showNoFallbackWarning ? (
+        <Alert tone="warning" className="edit-connection__fallback-warning">
+          No fallback carrier is set and the OpenLinker PrestaShop module isn't
+          installed on this connection. Sync will fail for any Allegro shipping
+          method without a carrier mapping until you pick a fallback or install
+          the OL PS module.
+        </Alert>
+      ) : null}
     </>
   );
 }

@@ -1549,6 +1549,39 @@ textarea {
   flex-shrink: 0;
 }
 
+/*
+ * Mono-treated counts inside alert bodies (#517). Used by the carrier-
+ * fallback banner to render the unmapped-method count in IBM Plex Mono
+ * so the number scans as data, matching the cockpit treatment of counts
+ * in tables and badges. Inherits color from the alert tone.
+ */
+.alert__count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: inherit;
+}
+
+/*
+ * Carrier-fallback banner — surface-scoped margin between the banner
+ * and the MappingPanel below it (#517). The banner is the same Alert
+ * primitive used elsewhere; this class only owns spacing in the
+ * mapping-panel context, not visual treatment.
+ */
+.mapping-panel__fallback-alert {
+  margin-bottom: 1rem;
+}
+
+/*
+ * Save-time warning banner under the connection-edit fallback-carrier
+ * field (#517). Tightens the gap below the field so the warning visibly
+ * couples to the field that triggered it.
+ */
+.edit-connection__fallback-warning {
+  margin-top: -0.5rem;
+  margin-bottom: 1rem;
+}
+
 /* Order detail — failed-destinations banner list */
 .order-detail__failed-list {
   list-style: none;
@@ -2026,6 +2059,19 @@ textarea {
  * parent block) — matches `.sku-label` / `.num` siblings above.
  */
 .mapping-id-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * Behaviour suffix on dynamic-kind mapping options (#517). Used in the
+ * saved-row table cells where styled children render. Matches the
+ * `.mapping-id-hint` muted treatment so the cue scans as metadata, not
+ * primary content. Native `<option>` elements append the same string as
+ * plain text via `optionPlainText` (style there is browser-default).
+ */
+.mapping-option__dynamic-suffix {
   color: var(--text-muted);
   font-size: 0.75rem;
   letter-spacing: -0.01em;

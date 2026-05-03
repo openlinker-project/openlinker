@@ -15,7 +15,7 @@ import { ApiClientProvider } from '../../../app/api/api-client-provider';
 import { createMockApiClient } from '../../../test/test-utils';
 import type {
   MappingOption,
-  MappingOptionKind,
+  MappingOptionListKind,
   MappingSide,
 } from '../api/mappings.types';
 import { useMappingOptions } from './use-mapping-options';
@@ -49,7 +49,7 @@ const PS_CARRIERS: MappingOption[] = [
 describe('useMappingOptions', () => {
   it('issues one request per (side, kind) pair and bundles them by domain key', async () => {
     const getMappingOptions = vi.fn(
-      (_connectionId: string, side: MappingSide, kind: MappingOptionKind) => {
+      (_connectionId: string, side: MappingSide, kind: MappingOptionListKind) => {
         const key = `${side}/${kind}` as const;
         switch (key) {
           case 'source/order-statuses':
@@ -92,7 +92,7 @@ describe('useMappingOptions', () => {
   it('isolates per-bundle errors so one failed query does not block the others (#484)', async () => {
     const failure = new Error('Adapter does not implement SourceOptionsReader');
     const getMappingOptions = vi.fn(
-      (_connectionId: string, side: MappingSide, kind: MappingOptionKind) => {
+      (_connectionId: string, side: MappingSide, kind: MappingOptionListKind) => {
         if (side === 'source' && kind === 'delivery-methods') {
           return Promise.reject(failure);
         }
@@ -128,7 +128,7 @@ describe('useMappingOptions', () => {
     const sourceFailure = new Error('source/payment-methods failed');
     const destinationFailure = new Error('destination/payment-methods failed');
     const getMappingOptions = vi.fn(
-      (_connectionId: string, side: MappingSide, kind: MappingOptionKind) => {
+      (_connectionId: string, side: MappingSide, kind: MappingOptionListKind) => {
         if (kind === 'payment-methods' && side === 'source') {
           return Promise.reject(sourceFailure);
         }
