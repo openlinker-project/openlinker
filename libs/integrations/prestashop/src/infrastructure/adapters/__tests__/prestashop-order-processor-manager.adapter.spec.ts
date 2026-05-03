@@ -1180,6 +1180,76 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.anything());
     });
 
+    it('warns and uses the first live row when multiple OL Dynamic carriers exist', async () => {
+      // Operator cloned the OL Dynamic carrier in BO (or a botched migration
+      // double-inserted). The adapter must keep working but warn so the
+      // operator notices and cleans up.
+      wireSuccessfulCreatePath();
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      mockHttpClient.listResources = jest.fn().mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
+            return Promise.resolve([
+              { id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' },
+              { id: OL_DYNAMIC_CARRIER_ID + 1, active: '1', deleted: '0' },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      await adapter.createOrder(buildOrderForSidecar(8.0));
+
+      // First-row id was used for both the cart's id_carrier and the sidecar.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        OL_DYNAMIC_CARRIER_ID,
+      );
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
+      // Operator-visible warn naming the duplicate set.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Multiple live OL Dynamic carrier rows'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('aborts when the OL Dynamic carrier row returns a non-positive id (PS WS trust-boundary guard)', async () => {
+      // PS WS edge: the row exists but `id` decodes to NaN / 0 / negative
+      // (operator BO edit, schema drift). Adapter must NOT propagate
+      // id_carrier=NaN into the cart mapper — treat as missing instead.
+      wireSuccessfulCreatePath();
+      mockHttpClient.listResources = jest.fn().mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
+            return Promise.resolve([{ id: 'not-a-number', active: '1', deleted: '0' }]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
+        PrestashopApiException,
+      );
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
+    });
+
     it('aborts before any PS write when the OL module is not installed (carrier discovery empty)', async () => {
       wireSuccessfulCreatePath();
       // Override the discovery default with an empty result — operator

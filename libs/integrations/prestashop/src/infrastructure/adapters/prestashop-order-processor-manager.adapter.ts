@@ -593,7 +593,20 @@ export class PrestashopOrderProcessorManagerAdapter
       );
     }
 
+    // PS WS is a trust boundary — `id` is typed `string | number` but the wire
+    // payload is operator-controlled (PS BO edits) and could in theory deliver
+    // garbage that coerces to NaN or a non-positive integer. Treat that as
+    // "module not installed" rather than letting NaN propagate into the cart
+    // mapper as `id_carrier=NaN` and reproduce #503 through a different door.
     const id = Number(live[0].id);
+    if (!Number.isFinite(id) || id <= 0) {
+      this.logger.warn(
+        `OL Dynamic carrier row on connection ${this.connection.id} has invalid id=${String(live[0].id)} ` +
+          `(must be a positive integer). Treating as missing; aborting order create.`,
+      );
+      throw new PrestashopOlCarrierMissingException(this.connection.id);
+    }
+
     this.logger.debug(
       `Resolved OL Dynamic carrier on connection ${this.connection.id}: id_carrier=${id}`,
     );
