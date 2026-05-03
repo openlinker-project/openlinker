@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
+import { useConfigureWebhooksMutation } from '../hooks/use-configure-webhooks-mutation';
 import { TriggerSyncDialog } from '../../sync-jobs/components/TriggerSyncDialog';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -16,11 +17,52 @@ interface ConnectionActionsPanelProps {
 export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelProps): ReactElement {
   const disableConnection = useDisableConnectionMutation();
   const testConnection = useTestConnectionMutation();
+  const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
 
   const isDisabled = connection.status === 'disabled';
+  const isPrestashop = connection.platformType === 'prestashop';
+  const webhooksConfigured =
+    typeof connection.config === 'object' &&
+    connection.config !== null &&
+    (connection.config as Record<string, unknown>).webhooksConfigured === true;
+
+  async function handleConfigureWebhooks(): Promise<void> {
+    try {
+      const result = await configureWebhooks.mutateAsync(connection.id);
+      if (result.webhooksConfigured && result.testPingTriggered) {
+        showToast({
+          tone: 'success',
+          title: 'Webhooks configured',
+          description:
+            "PrestaShop module updated and verified by a test ping. You're done.",
+        });
+      } else if (result.webhooksConfigured) {
+        // Push succeeded but ping didn't make it back. Configuration is correct;
+        // verification is incomplete. Operator can retry or wait for a real event.
+        showToast({
+          tone: 'warning',
+          title: 'Webhooks configured (ping not received)',
+          description:
+            'Configuration is in place but the test ping did not arrive. Click again to retry, or wait for the next real event.',
+        });
+      } else {
+        showToast({
+          tone: 'error',
+          title: 'Configuration push failed',
+          description: result.warning ?? 'PrestaShop did not accept the configuration push.',
+        });
+      }
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: 'Configuration push failed',
+        description: (error as Error).message,
+      });
+    }
+  }
 
   async function handleTest(): Promise<void> {
     try {
@@ -88,6 +130,30 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
             Edit
           </Link>
         </div>
+
+        {isPrestashop ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Configure webhooks</strong>
+              <p className="muted-text">
+                Push Base URL, Connection ID, and a freshly-rotated Webhook Secret to the
+                PrestaShop module via WS. Verifies with a synchronous test ping.
+                {webhooksConfigured ? ' Currently configured ✓' : ''}
+              </p>
+            </div>
+            <Button
+              tone={webhooksConfigured ? 'secondary' : 'primary'}
+              disabled={configureWebhooks.isPending}
+              onClick={() => void handleConfigureWebhooks()}
+            >
+              {configureWebhooks.isPending
+                ? 'Configuring...'
+                : webhooksConfigured
+                  ? 'Re-configure webhooks'
+                  : 'Configure webhooks'}
+            </Button>
+          </div>
+        ) : null}
 
         {!isDisabled ? (
           <div className="action-list__item">

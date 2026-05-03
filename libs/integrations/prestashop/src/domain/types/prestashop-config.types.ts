@@ -160,6 +160,34 @@ export interface PrestashopConnectionConfig {
    * the curated list — overrides only affect *adding* new mappings.
    */
   paymentModuleOverrides?: string[];
+
+  /**
+   * OL's externally-reachable base URL **from PrestaShop's perspective**.
+   * Used by the `openlinker` PS module to POST webhooks back to OL.
+   *
+   * Per-connection because dev (`host.docker.internal`), multi-network
+   * deploys, and reverse-proxy edge cases legitimately differ. The FE
+   * pre-fills this from `window.location.origin` on first connection-edit;
+   * the operator can override.
+   *
+   * Required at install time (#168). The `POST /connections/:id/webhooks/
+   * install` endpoint returns 400 when unset, with operator-actionable text
+   * pointing back to the connection-edit page. Deliberately **not** derived
+   * from request headers (Host header injection would let an attacker stuff
+   * a malicious URL into the PS module's config during a legitimate operator
+   * click).
+   */
+  openlinkerCallbackBaseUrl?: string;
+
+  /**
+   * Whether OL has successfully pushed webhook configuration (Base URL,
+   * Connection ID, Webhook Secret) to the PS `openlinker` module via the
+   * built-in PS WS `configurations` resource (#168). Set by the install
+   * endpoint after the WS push succeeds; cleared by rotate-without-push
+   * failures. Operators do not set this manually; the FE renders status from
+   * this field plus the most recent `test_ping` webhook delivery.
+   */
+  webhooksConfigured?: boolean;
 }
 
 

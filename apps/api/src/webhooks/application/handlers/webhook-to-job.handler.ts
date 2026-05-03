@@ -213,11 +213,21 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       // Map to inbound webhook event
       const event = this.mapToInboundWebhookEvent(envelope);
 
-      // Skip test events (they're just for verification, no job needed)
+      // Skip test events (they're just for verification, no job needed) but
+      // still record the delivery so the FE can surface "last test.ping at" —
+      // the connection-detail page (#168) reads this to confirm the install
+      // round-trip succeeded.
       if (event.eventType.startsWith('test.')) {
         this.logger.debug(
           `Skipping test event ${event.eventId} (eventType: ${event.eventType}) - no job created`,
         );
+        await this.recordDelivery({
+          eventId: event.eventId,
+          provider: event.provider,
+          connectionId: event.connectionId,
+          eventType: event.eventType,
+          status: 'received',
+        });
         // ACK test events immediately (they've served their purpose)
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
         return;
