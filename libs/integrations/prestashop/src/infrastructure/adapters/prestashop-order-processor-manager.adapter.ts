@@ -28,10 +28,10 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
 import {
   IPrestashopOrderMapper,
   PrestashopOrder,
-  PrestashopOrderCarrier,
 } from '../mappers/prestashop.mapper.interface';
 import {
   PrestashopCarrier,
@@ -49,7 +49,19 @@ import { PrestashopAddressProvisioner } from '../provisioners/prestashop-address
 import { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
 import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
 import { hashEmail } from '@openlinker/shared/config';
+
+/**
+ * Subset of PS `/api/carriers` row fields used by `discoverDynamicCarrierId`.
+ * Only `id`, `active`, `deleted` are inspected; the rest of the row (name,
+ * delay, etc.) is ignored.
+ */
+interface PrestashopCarrierRow {
+  id: string | number;
+  active?: string | number;
+  deleted?: string | number;
+}
 
 /**
  * PrestaShop Order Processor Manager Adapter
@@ -69,6 +81,8 @@ export class PrestashopOrderProcessorManagerAdapter
     private readonly addressProvisioner: PrestashopAddressProvisioner,
     private readonly currencyResolver: PrestashopCurrencyResolver,
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
+    // OL PrestaShop module client for HMAC-signed sidecar writes (#516).
+    private readonly openlinkerModuleClient: IPrestashopOpenLinkerModuleClient,
     private readonly mappingConfigService?: IMappingConfigService,
   ) {}
 
@@ -94,18 +108,11 @@ export class PrestashopOrderProcessorManagerAdapter
           this.logger.log(
             `Order already exists in PrestaShop: internalOrderId=${metadataInternalOrderId}, externalOrderId=${existingPrestashopOrder.externalId}`,
           );
-          // Self-heal a partial first run (#467): if the previous invocation
-          // created the order + mapping but crashed before reconciling the
-          // shipping cost, reconcile it now. Best-effort; no-ops when the
-          // cost is already correct.
-          await this.reconcileShippingCost(
-            order,
-            existingPrestashopOrder.externalId,
-            metadataInternalOrderId,
-          );
-          // Return existing order reference
-          // Note: We don't have the order number from the mapping, so we'll use the external ID
-          // metadataInternalOrderId is guaranteed to be string here because of the if check above
+          // No reconcile here post-#516 — totals are correct on first POST
+          // via the OL Dynamic carrier sidecar path (#515). Orders that
+          // landed under the pre-#516 reconcile-PUT path stay at their
+          // original totals (current_state may be 8); see epic #513
+          // out-of-scope: backfill SQL.
           return {
             orderId: metadataInternalOrderId,
             orderNumber: order.orderNumber || String(existingPrestashopOrder.externalId),
@@ -278,8 +285,21 @@ export class PrestashopOrderProcessorManagerAdapter
       const externalLangId: number = configLangId ?? 1; // Default to 1 if not specified
       this.logger.debug(`Using language ID: ${externalLangId} (from connection config)`);
 
-      // Step 5b: Resolve carrier id for #455 — carrier mapping at the destination.
-      const externalCarrierId = await this.resolveExternalCarrierId(order, config);
+      // Step 5b: Discover the OL Dynamic carrier id up front (#516). It's
+      // used for two things in the new flow: (1) as the runtime fallback in
+      // the resolution chain when neither mapping nor defaultCarrierId
+      // resolves (R5 / IMP-1), and (2) to decide whether to write the
+      // sidecar row before POST /orders. Discovery throws
+      // PrestashopOlCarrierMissingException if the OL module isn't installed
+      // — operator-actionable, aborts the sync cleanly before any PS write.
+      const olDynamicCarrierId = await this.discoverDynamicCarrierId();
+
+      // Step 5c: Resolve carrier id for #455 — carrier mapping at the destination.
+      const externalCarrierId = await this.resolveExternalCarrierId(
+        order,
+        config,
+        olDynamicCarrierId,
+      );
 
       // Step 6: Create cart in PrestaShop (required for order creation).
       // The carrier MUST be set on the cart, not just the order body — PS
@@ -308,6 +328,39 @@ export class PrestashopOrderProcessorManagerAdapter
         this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
         throw new PrestashopProvisioningException(
           `Failed to create cart in PrestaShop: ${errorMessage}`,
+        );
+      }
+
+      // Step 6.5: Sidecar write for the OL Dynamic carrier path (#516).
+      // When the resolved carrier matches the OL Dynamic carrier id, write
+      // the buyer-paid amount into the module's sidecar table BEFORE
+      // POST /orders so PS can read the authoritative value via
+      // getOrderShippingCostExternal() at order-total time. Static PS
+      // carriers don't need this — PS computes shipping from their own
+      // range tables. Throws PrestashopOlModuleException on non-2xx
+      // (NOT best-effort; abort before order create rather than ship at
+      // zero).
+      if (externalCarrierId === olDynamicCarrierId) {
+        const idCart = Number.parseInt(String(externalCartId), 10);
+        // Free-text debug label — not load-bearing. We don't know the source
+        // platform type from OrderSourceRef (only `connectionId` + `eventId`),
+        // so the label leans on whichever neutral identifier is available.
+        const sourceLabel = order.source
+          ? `connection:${order.source.connectionId}` +
+            (order.source.eventId ? `:event:${order.source.eventId}` : '') +
+            (order.orderNumber ? `:order:${order.orderNumber}` : '')
+          : order.orderNumber
+            ? `order:${order.orderNumber}`
+            : undefined;
+        await this.openlinkerModuleClient.writeCartShipping({
+          idCart,
+          amountTaxExcl: order.totals.shipping,
+          amountTaxIncl: order.totals.shipping,
+          source: sourceLabel,
+        });
+        this.logger.debug(
+          `OL sidecar written: idCart=${idCart} amountTaxIncl=${order.totals.shipping} ` +
+            `source=${sourceLabel ?? '<none>'}`,
         );
       }
 
@@ -470,12 +523,10 @@ export class PrestashopOrderProcessorManagerAdapter
         `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`,
       );
 
-      // Step 6.5: Reconcile shipping cost on order_carriers (#467).
-      // PS silently zeros total_shipping on POST /orders when id_carrier
-      // doesn't resolve to a zone-priced carrier; PUT /order_carriers/{id}
-      // honours per-order cost regardless. Best-effort — failures are logged
-      // but never fail the order, which is already created and mapped.
-      await this.reconcileShippingCost(order, externalOrderId, internalOrderId);
+      // Order created; PS computed shipping totals via the resolved carrier
+      // — no reconcile needed post-#516. The OL Dynamic carrier path wrote
+      // its sidecar row at Step 6.5; static carriers price from PS's own
+      // zone tables.
 
       // Step 7: Return order reference
       return {
@@ -502,99 +553,73 @@ export class PrestashopOrderProcessorManagerAdapter
   }
 
   /**
-   * Reconcile per-order shipping cost on `order_carriers` (#467).
+   * Discover the PrestaShop `id_carrier` of the OpenLinker Dynamic carrier
+   * row installed by the OL PS module (#515 / PR #524).
    *
-   * Background: PrestaShop's WebService silently zeroes `total_shipping`
-   * when the carrier on `POST /orders` doesn't resolve to a zone-priced
-   * carrier (a common situation when `defaultCarrierId` isn't configured
-   * and we fall back to `id_carrier=1`). The fix is a follow-up
-   * `PUT /order_carriers/{id}` that writes the per-order
-   * `shipping_cost_tax_excl` / `shipping_cost_tax_incl` directly. PS WS
-   * honours these regardless of carrier zone configuration.
+   * Filters on `external_module_name=openlinker` via PS WS `filter[…]=[…]`
+   * (handled by the http client's `custom` option). We deliberately do NOT
+   * filter `active`/`deleted` server-side — PrestaShop has a documented bug
+   * (forge issue #28424) where `filter[active]` returns inverted results;
+   * the safer fix is to fetch the (small, single-digit) result set keyed by
+   * `external_module_name` and post-filter `active=1, deleted=0` in TS.
    *
-   * Contract: best-effort. The order is already created and the identifier
-   * mapping is durable; a reconcile failure is logged at warn level and
-   * swallowed. Re-running with the same inputs is a no-op (idempotent PUT).
-   *
-   * Skipped when `order.totals.shipping <= 0` to save a round-trip.
+   * Throws PrestashopOlCarrierMissingException if no live row exists —
+   * surfaces operator-actionable installation/activation issues fast and
+   * aborts the sync before any PS-side write. Logs a warning if multiple
+   * live rows exist (operator likely cloned the carrier in BO) and uses
+   * the first; this is a benign-but-noisy state that the operator should
+   * resolve.
    */
-  private async reconcileShippingCost(
-    order: OrderCreate,
-    externalOrderId: string,
-    internalOrderId: string,
-  ): Promise<void> {
-    const shipping = order.totals.shipping;
-    // Skip the round-trip for zero, negative, or non-finite shipping.
-    // OrderTotals doesn't model negative shipping today; if that changes,
-    // revisit whether refunds/discounts should also write back through here.
-    if (!Number.isFinite(shipping) || shipping <= 0) {
-      return;
+  private async discoverDynamicCarrierId(): Promise<number> {
+    const rows = await this.httpClient.listResources<PrestashopCarrierRow>(
+      'carriers',
+      { custom: { external_module_name: 'openlinker' } },
+      100,
+      0,
+    );
+    const live = rows.filter(
+      (r) => Number(r.active) === 1 && Number(r.deleted) === 0,
+    );
+
+    if (live.length === 0) {
+      throw new PrestashopOlCarrierMissingException(this.connection.id);
     }
 
-    try {
-      // 1. Find the auto-created order_carrier row for this order.
-      const rows = await this.httpClient.listResources<PrestashopOrderCarrier>(
-        'order_carriers',
-        { custom: { id_order: externalOrderId } },
-        1,
-        0,
-      );
-      if (rows.length === 0) {
-        this.logger.warn(
-          `Shipping cost reconcile: no order_carrier row found for externalOrderId=${externalOrderId} (internalOrderId=${internalOrderId}). PS may have failed to attach a carrier — verify carrier mapping for connection ${this.connection.id}.`,
-        );
-        return;
-      }
-
-      const orderCarrierId = rows[0].id;
-
-      // 2. Read the full row — PS WS PUT requires the complete resource body.
-      const full = await this.httpClient.getResource<PrestashopOrderCarrier>(
-        'order_carriers',
-        orderCarrierId,
-      );
-
-      // 3. Overlay the cost fields and write back. Same value for tax-incl
-      //    and tax-excl mirrors the existing OrderTotals tax-included
-      //    assumption in the mapper (revisit when OrderTotals grows a
-      //    shippingTax field).
-      const shippingCost = shipping.toFixed(2);
-      await this.httpClient.updateResource<PrestashopOrderCarrier>(
-        'order_carriers',
-        orderCarrierId,
-        {
-          ...full,
-          shipping_cost_tax_excl: shippingCost,
-          shipping_cost_tax_incl: shippingCost,
-        },
-      );
-
-      this.logger.log(
-        `Shipping cost reconciled: externalOrderId=${externalOrderId}, orderCarrierId=${String(orderCarrierId)}, shipping=${shippingCost}`,
-      );
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+    if (live.length > 1) {
       this.logger.warn(
-        `Shipping cost reconcile failed for internalOrderId=${internalOrderId} externalOrderId=${externalOrderId}: ${errorMessage}`,
+        `Multiple live OL Dynamic carrier rows on connection ${this.connection.id} ` +
+          `(count=${live.length}, ids=[${live.map((r) => String(r.id)).join(',')}]). ` +
+          `Using first; operator should remove duplicates in PS Back Office.`,
       );
     }
+
+    const id = Number(live[0].id);
+    this.logger.debug(
+      `Resolved OL Dynamic carrier on connection ${this.connection.id}: id_carrier=${id}`,
+    );
+    return id;
   }
 
   /**
-   * Resolve the PrestaShop `id_carrier` to use when creating an order (#455).
+   * Resolve the PrestaShop `id_carrier` to use when creating an order (#455 / #516).
    *
    * Resolution chain:
    *   1. `MappingConfigService.resolveCarrierMapping(sourceConnectionId, methodId)`
    *   2. `connection.config.defaultCarrierId`
-   *   3. `undefined` — mapper falls back to its hardcoded `1`
+   *   3. `olDynamicCarrierId` — runtime fallback so unmapped methods still
+   *      get a working carrier without an operator config write. The OL
+   *      Dynamic carrier writes the buyer-paid amount via the sidecar at
+   *      Step 6.5.
    *
-   * Returns `undefined` to defer the final hardcoded default to the mapper,
-   * keeping the "every fallback gets a warn" semantics in one place.
+   * No throw path — `discoverDynamicCarrierId` already threw upstream if
+   * the OL module isn't installed, so this method always returns a
+   * positive integer.
    */
   private async resolveExternalCarrierId(
     order: OrderCreate,
     config: PrestashopConnectionConfig,
-  ): Promise<number | undefined> {
+    olDynamicCarrierId: number,
+  ): Promise<number> {
     const sourceConnectionId = order.source?.connectionId;
     const methodId = order.shipping?.methodId;
     const methodName = order.shipping?.methodName;
@@ -624,7 +649,7 @@ export class PrestashopOrderProcessorManagerAdapter
       // Defend against operator-misconfigured defaults (0, negative, NaN).
       // Without this guard the mapper writes id_carrier=0 to the cart and
       // we reproduce the #503 failure mode through a different door — `??`
-      // doesn't fall back on 0, only null/undefined. Log and ignore.
+      // doesn't fall back on 0, only null/undefined.
       if (Number.isFinite(config.defaultCarrierId) && config.defaultCarrierId > 0) {
         this.logger.warn(
           `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
@@ -635,16 +660,16 @@ export class PrestashopOrderProcessorManagerAdapter
       }
       this.logger.warn(
         `Connection config has invalid defaultCarrierId=${String(config.defaultCarrierId)} (must be a positive integer) ` +
-          `for connection ${this.connection.id} — ignoring; falling back to PrestaShop's first carrier (id_carrier=1).`,
+          `for connection ${this.connection.id} — ignoring; falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`,
       );
     }
 
     this.logger.warn(
       `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
         `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}) ` +
-        `and no defaultCarrierId on connection config. Falling back to PrestaShop's first carrier (id_carrier=1).`,
+        `and no defaultCarrierId on connection config. Falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`,
     );
-    return undefined;
+    return olDynamicCarrierId;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
