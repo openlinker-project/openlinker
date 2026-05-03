@@ -30,6 +30,7 @@ export * from './domain/ports/prompt-template-repository.port';
 export * from './domain/exceptions/prompt-template-not-found.exception';
 export * from './domain/exceptions/prompt-template-state.exception';
 export * from './domain/exceptions/prompt-template-render.exception';
+export * from './domain/exceptions/cannot-archive-published-template.exception';
 
 export * from './application/services/prompt-template.service.interface';
 export * from './application/types/prompt-template-commands.types';

@@ -3,12 +3,17 @@
  *
  * Admin-only list of prompt templates grouped by `(key, channel)`. Row
  * click navigates to the detail/editor page. Hidden from non-admin sessions.
+ * Page-header action launches the new-template dialog (#488). Each row
+ * exposes an Archive trigger (#489) that opens the archive dialog. The
+ * `?status=` filter (active | archived | all) hides fully-retired rows
+ * from the default Active view.
  *
  * @module apps/web/src/pages/prompt-templates
  */
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
+import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import {
   DataTable,
@@ -22,6 +27,8 @@ import { FormField } from '../../shared/ui/form-field';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
 import { usePromptTemplatesQuery } from '../../features/prompt-templates/hooks/use-prompt-templates-query';
+import { ArchivePromptTemplateDialog } from '../../features/prompt-templates/components/archive-prompt-template-dialog';
+import { NewPromptTemplateDialog } from '../../features/prompt-templates/components/new-prompt-template-dialog';
 import type {
   PromptTemplateChannel,
   PromptTemplateListFilters,
@@ -34,6 +41,9 @@ const CHANNEL_TONE: Record<string, StatusBadgeTone> = {
   master: 'neutral',
 };
 
+const STATUS_FILTER_VALUES = ['active', 'archived', 'all'] as const;
+type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number];
+
 function channelLabel(channel: PromptTemplateChannel | null): string {
   return channel === null ? 'master' : channel;
 }
@@ -42,6 +52,23 @@ function parseChannelParam(value: string | null): PromptTemplateListFilters['cha
   if (value === null || value === '') return undefined;
   if (value === 'master' || value === 'prestashop' || value === 'allegro') return value;
   return undefined;
+}
+
+function parseStatusParam(value: string | null): StatusFilterValue {
+  if (value !== null && (STATUS_FILTER_VALUES as readonly string[]).includes(value)) {
+    return value as StatusFilterValue;
+  }
+  return 'active';
+}
+
+/**
+ * Client-side status filter. The list endpoint returns one summary per
+ * (key, channel) — Active = at least one usable version exists.
+ */
+function matchesStatusFilter(row: PromptTemplateSummary, status: StatusFilterValue): boolean {
+  if (status === 'all') return true;
+  const isFullyArchived = !row.hasDraft && row.publishedVersion === null;
+  return status === 'archived' ? isFullyArchived : !isFullyArchived;
 }
 
 const CARD_VIEW: DataTableCardView<PromptTemplateSummary> = {
@@ -68,6 +95,7 @@ export function PromptTemplatesListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const channelFilter = parseChannelParam(searchParams.get('channel'));
+  const statusFilter = parseStatusParam(searchParams.get('status'));
 
   const filters = useMemo<PromptTemplateListFilters>(
     () => (channelFilter !== undefined ? { channel: channelFilter } : {}),
@@ -76,7 +104,12 @@ export function PromptTemplatesListPage(): ReactElement {
 
   const query = usePromptTemplatesQuery(filters);
 
-  if (session.status === 'authenticated' && session.user?.role !== 'admin') {
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<PromptTemplateSummary | null>(null);
+
+  const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
+
+  if (session.status === 'authenticated' && !isAdmin) {
     return (
       <PageLayout
         eyebrow="Settings"
@@ -103,7 +136,20 @@ export function PromptTemplatesListPage(): ReactElement {
     });
   };
 
-  const rows = query.data ?? [];
+  const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>): void => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (event.target.value === 'active') {
+        next.delete('status');
+      } else {
+        next.set('status', event.target.value);
+      }
+      return next;
+    });
+  };
+
+  const allRows = query.data ?? [];
+  const rows = allRows.filter((row) => matchesStatusFilter(row, statusFilter));
 
   const columns: DataTableColumn<PromptTemplateSummary>[] = [
     {
@@ -159,6 +205,26 @@ export function PromptTemplatesListPage(): ReactElement {
       sortable: true,
       hideBelow: 1024,
     },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Row actions</span>,
+      cell: (row) =>
+        row.latestState !== 'archived' ? (
+          <Button
+            tone="ghost"
+            onClick={(event) => {
+              // Stop the row-click navigation that DataTable wires via rowHref.
+              event.stopPropagation();
+              event.preventDefault();
+              setArchiveTarget(row);
+            }}
+          >
+            Archive
+          </Button>
+        ) : (
+          <span className="muted-text">archived</span>
+        ),
+    },
   ];
 
   return (
@@ -166,6 +232,13 @@ export function PromptTemplatesListPage(): ReactElement {
       eyebrow="Settings"
       title="Prompt templates"
       description="Author, version, and publish the prompts the AI suggestion flow sends to the model."
+      actions={
+        isAdmin ? (
+          <Button tone="primary" onClick={() => setNewDialogOpen(true)}>
+            New template
+          </Button>
+        ) : undefined
+      }
     >
       <div className="prompt-templates-toolbar">
         <FormField label="Channel" name="prompt-templates-channel-filter" description="Filter by target channel">
@@ -174,6 +247,13 @@ export function PromptTemplatesListPage(): ReactElement {
             <option value="master">Master (generic)</option>
             <option value="prestashop">PrestaShop</option>
             <option value="allegro">Allegro</option>
+          </Select>
+        </FormField>
+        <FormField label="Status" name="prompt-templates-status-filter" description="Hide fully-archived rows by default">
+          <Select value={statusFilter} onChange={handleStatusChange}>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
           </Select>
         </FormField>
       </div>
@@ -205,6 +285,13 @@ export function PromptTemplatesListPage(): ReactElement {
         />
       )}
 
+      <NewPromptTemplateDialog open={newDialogOpen} onOpenChange={setNewDialogOpen} />
+      <ArchivePromptTemplateDialog
+        row={archiveTarget}
+        onOpenChange={(next) => {
+          if (!next) setArchiveTarget(null);
+        }}
+      />
     </PageLayout>
   );
 }

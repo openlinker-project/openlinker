@@ -9,6 +9,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { PromptTemplate } from '../../domain/entities/prompt-template.entity';
+import { CannotArchivePublishedTemplateException } from '../../domain/exceptions/cannot-archive-published-template.exception';
 import { PromptTemplateNotFoundException } from '../../domain/exceptions/prompt-template-not-found.exception';
 import { PromptTemplateRenderException } from '../../domain/exceptions/prompt-template-render.exception';
 import { PromptTemplateStateException } from '../../domain/exceptions/prompt-template-state.exception';
@@ -54,6 +55,7 @@ describe('PromptTemplateService', () => {
       insert: jest.fn(),
       updateContent: jest.fn(),
       publishTransition: jest.fn(),
+      archiveById: jest.fn(),
       nextVersion: jest.fn(),
       deleteById: jest.fn(),
     };
@@ -343,6 +345,98 @@ describe('PromptTemplateService', () => {
         PromptTemplateStateException,
       );
       expect(repository.deleteById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('archive', () => {
+    it('should archive a draft row without requiring force', async () => {
+      const draft = makeTemplate({ state: 'draft' });
+      const archived = makeTemplate({ state: 'archived' });
+      repository.findById.mockResolvedValue(draft);
+      repository.archiveById.mockResolvedValue(archived);
+
+      const result = await service.archive('tmpl-1', { actor: 'admin' });
+
+      expect(result).toBe(archived);
+      expect(repository.archiveById).toHaveBeenCalledWith('tmpl-1', 'draft');
+    });
+
+    it('should archive a published row when force=true', async () => {
+      const published = makeTemplate({ state: 'published' });
+      const archived = makeTemplate({ state: 'archived' });
+      repository.findById.mockResolvedValue(published);
+      repository.archiveById.mockResolvedValue(archived);
+
+      const result = await service.archive('tmpl-1', { force: true, actor: 'admin' });
+
+      expect(result).toBe(archived);
+      expect(repository.archiveById).toHaveBeenCalledWith('tmpl-1', 'published');
+    });
+
+    it('should refuse to archive a published row without force', async () => {
+      repository.findById.mockResolvedValue(makeTemplate({ state: 'published' }));
+
+      await expect(
+        service.archive('tmpl-1', { actor: 'admin' }),
+      ).rejects.toBeInstanceOf(CannotArchivePublishedTemplateException);
+      expect(repository.archiveById).not.toHaveBeenCalled();
+    });
+
+    it('should be idempotent for already-archived rows (no-op)', async () => {
+      const alreadyArchived = makeTemplate({ state: 'archived' });
+      repository.findById.mockResolvedValue(alreadyArchived);
+
+      const result = await service.archive('tmpl-1', { actor: 'admin' });
+
+      expect(result).toBe(alreadyArchived);
+      expect(repository.archiveById).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFound when the template does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.archive('missing', { actor: 'admin' }),
+      ).rejects.toBeInstanceOf(PromptTemplateNotFoundException);
+      expect(repository.archiveById).not.toHaveBeenCalled();
+    });
+
+    it('should pass through state-exception from the repo (concurrent modification)', async () => {
+      const draft = makeTemplate({ state: 'draft' });
+      repository.findById.mockResolvedValue(draft);
+      repository.archiveById.mockRejectedValue(
+        new PromptTemplateStateException({
+          templateId: 'tmpl-1',
+          actualState: 'published',
+          requiredState: 'draft',
+          operation: 'be archived (concurrent modification — refresh and retry)',
+        }),
+      );
+
+      await expect(
+        service.archive('tmpl-1', { actor: 'admin' }),
+      ).rejects.toBeInstanceOf(PromptTemplateStateException);
+    });
+
+    it('should emit a structured archive log line with key/channel/version/actor/forced', async () => {
+      const published = makeTemplate({ state: 'published', version: 7 });
+      const archived = makeTemplate({ state: 'archived', version: 7 });
+      repository.findById.mockResolvedValue(published);
+      repository.archiveById.mockResolvedValue(archived);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const logSpy = jest.spyOn((service as unknown as { logger: { log: (m: string) => void } }).logger, 'log');
+
+      await service.archive('tmpl-1', { force: true, actor: 'admin' });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('templateId=tmpl-1'),
+      );
+      const message = logSpy.mock.calls[0][0];
+      expect(message).toContain('archived');
+      expect(message).toContain('priorState=published');
+      expect(message).toContain('version=7');
+      expect(message).toContain('actor=admin');
+      expect(message).toContain('forced=true');
     });
   });
 });

@@ -87,6 +87,20 @@ export interface PromptTemplateRepositoryPort {
    * target row inside the transaction — callers just pass the id.
    */
   publishTransition(id: string): Promise<PromptTemplate>;
+  /**
+   * Set state to `archived`, guarded by an expected prior state. Closes the
+   * race-window between the service-level state check and the write — if
+   * the row's state changed in the meantime (e.g. a concurrent publish),
+   * the UPDATE matches zero rows and the repo throws
+   * `PromptTemplateStateException` so the caller can re-fetch and retry.
+   *
+   * Mirrors the safety posture of `publishTransition` without the multi-
+   * statement transaction (archive is a single UPDATE).
+   */
+  archiveById(
+    id: string,
+    expectedPriorState: PromptTemplateState,
+  ): Promise<PromptTemplate>;
   nextVersion(key: string, channel: PromptTemplateChannel | null): Promise<number>;
   deleteById(id: string): Promise<void>;
 }
