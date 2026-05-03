@@ -329,7 +329,12 @@ describe('PrestashopOrderMapper', () => {
       expect(result.total_paid_real).toBe('88.96');
       expect(result.total_products).toBe('69.97');
       expect(result.total_products_wt).toBe('83.96'); // 69.97 + 13.99
-      expect(result.total_shipping).toBe('5.00');
+      // total_shipping[_tax_incl|_tax_excl] removed in #516 — PS computes
+      // shipping from the resolved carrier (OL Dynamic via sidecar / static
+      // via zone tables) at order-create time.
+      expect(result.total_shipping).toBeUndefined();
+      expect(result.total_shipping_tax_incl).toBeUndefined();
+      expect(result.total_shipping_tax_excl).toBeUndefined();
       expect(result.conversion_rate).toBe('1.000000');
       expect(result.id_address_delivery).toBe('200');
       expect(result.id_address_invoice).toBe('201');
@@ -468,9 +473,10 @@ describe('PrestashopOrderMapper', () => {
       expect(result.total_paid_tax_excl).toBeDefined();
       expect(result.total_products).toBeDefined();
       expect(result.total_products_wt).toBeDefined();
-      expect(result.total_shipping).toBeDefined();
-      expect(result.total_shipping_tax_incl).toBeDefined();
-      expect(result.total_shipping_tax_excl).toBeDefined();
+      // total_shipping[_tax_incl|_tax_excl] omitted post-#516.
+      expect(result.total_shipping).toBeUndefined();
+      expect(result.total_shipping_tax_incl).toBeUndefined();
+      expect(result.total_shipping_tax_excl).toBeUndefined();
       expect(result.conversion_rate).toBeDefined();
       expect(result.associations).toBeDefined();
     });

@@ -7,8 +7,16 @@
  * @module libs/integrations/prestashop/src
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
-import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import {
+  IntegrationsModule,
+  ADAPTER_FACTORY_RESOLVER_TOKEN,
+  AdapterFactoryResolverService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  ConnectionTesterRegistryService,
+  WEBHOOK_SECRET_PROVIDER_TOKEN,
+  WebhookSecretProviderPort,
+} from '@openlinker/core/integrations';
 import {
   MappingsModule,
   MAPPING_CONFIG_SERVICE_TOKEN,
@@ -59,6 +67,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
     private readonly mappingConfigService: IMappingConfigService,
+    @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
+    private readonly webhookSecretProvider: WebhookSecretProviderPort,
   ) {}
 
   onModuleInit(): void {
@@ -68,6 +78,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       this.addressProvisioner,
       this.customerProjectionRepository,
       this.mappingConfigService,
+      this.webhookSecretProvider,
     );
     this.factoryResolver.registerFactory('prestashop.webservice.v1', factory);
     this.connectionTesterRegistry.register(

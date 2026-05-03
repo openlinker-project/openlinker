@@ -227,17 +227,15 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     const totalProductsWt = orderCreate.totals.subtotal + orderCreate.totals.tax;
 
     /**
-     * Calculate shipping totals for PrestaShop order
-     *
-     * PrestaShop requires separate fields for shipping with and without tax:
-     * - total_shipping_tax_excl: Shipping cost without tax
-     * - total_shipping_tax_incl: Shipping cost with tax
-     *
-     * Note: For now, we assume shipping tax is 0 (shipping tax is not provided in OrderCreate.totals).
-     * Future enhancement: Add shippingTax field to OrderTotals if needed.
+     * Shipping totals are intentionally omitted from the create-order body
+     * post-#516. PrestaShop computes them from the resolved carrier at
+     * POST /orders time:
+     *   - OL Dynamic carrier: reads `getOrderShippingCostExternal()` from
+     *     the OL module's sidecar table written at Step 6.5 (#515 / #524).
+     *   - Static carriers: priced from the carrier's own zone/range tables.
+     * Writing total_shipping[_tax_incl|_tax_excl] here either gets ignored
+     * by PS or fights the carrier's own computation — both bad.
      */
-    const totalShippingTaxExcl = orderCreate.totals.shipping;
-    const totalShippingTaxIncl = orderCreate.totals.shipping; // Assuming no tax on shipping for now
 
     /**
      * Currency conversion rate
@@ -269,9 +267,9 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       total_paid_tax_excl: orderCreate.totals.subtotal.toFixed(2),
       total_products: totalProducts.toFixed(2), // Products total without tax
       total_products_wt: totalProductsWt.toFixed(2), // Products total with tax
-      total_shipping: orderCreate.totals.shipping.toFixed(2),
-      total_shipping_tax_incl: totalShippingTaxIncl.toFixed(2), // Shipping with tax
-      total_shipping_tax_excl: totalShippingTaxExcl.toFixed(2), // Shipping without tax
+      // total_shipping[_tax_incl|_tax_excl] intentionally omitted post-#516.
+      // PS computes shipping from the resolved carrier (OL Dynamic via sidecar
+      // or static via zone tables) at order-create time.
       conversion_rate: conversionRate.toFixed(6), // Currency conversion rate (6 decimals)
       // PrestaShop requires associations for order_rows
       associations: {
@@ -459,9 +457,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       'total_paid_tax_excl',
       'total_products',
       'total_products_wt',
-      'total_shipping',
-      'total_shipping_tax_incl',
-      'total_shipping_tax_excl',
+      // total_shipping[_tax_incl|_tax_excl] removed post-#516 — see mapOrderCreate JSDoc.
       'conversion_rate',
       'associations',
     ];

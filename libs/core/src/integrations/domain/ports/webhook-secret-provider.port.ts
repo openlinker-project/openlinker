@@ -7,6 +7,21 @@
  * the core domain to verify webhook signatures without depending on specific
  * credential storage.
  *
+ * Used in BOTH directions of HMAC-authenticated traffic for a connection:
+ *   - **Inbound** — webhook receivers (e.g. `WebhookController`) call
+ *     `getSecret(provider, connectionId)` to verify `X-OpenLinker-Signature`
+ *     on incoming requests.
+ *   - **Outbound** — adapters that POST HMAC-signed bodies to a partner's
+ *     module endpoints (e.g. `PrestashopOpenLinkerModuleClient` writing to
+ *     the OL PS module's `cartshipping` controller, #516) call
+ *     `getSecret(...)` to *sign* outgoing requests. Same secret bytes;
+ *     used to compute the signature instead of verifying it.
+ *
+ * The bidirectional reuse is intentional: rotating the shared secret on
+ * either side automatically invalidates BOTH the inbound verification and
+ * the outbound signing, keeping them consistent. Don't introduce a separate
+ * "outbound" port for this — same secret, same key, opposite verb.
+ *
  * @module libs/core/src/integrations/domain/ports
  * @see {@link CredentialsWebhookSecretAdapter} for the production implementation
  */

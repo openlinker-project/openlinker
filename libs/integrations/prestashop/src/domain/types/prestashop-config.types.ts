@@ -111,14 +111,21 @@ export interface PrestashopConnectionConfig {
    * Default PrestaShop carrier ID applied to incoming orders when no
    * connection-level carrier mapping resolves for the source delivery method.
    *
-   * Resolution chain at order-create time:
+   * Resolution chain at order-create time (#516):
    *   1. Per-method carrier mapping (`MappingConfigService.resolveCarrierMapping`)
    *   2. This `defaultCarrierId`
-   *   3. PrestaShop's hardcoded `id_carrier=1` (first carrier)
+   *   3. The OpenLinker Dynamic carrier installed by the OL PS module —
+   *      discovered per-order via `external_module_name=openlinker`. The
+   *      adapter writes the buyer-paid amount into the OL module's sidecar
+   *      table BEFORE `POST /orders`, so PS reads the authoritative shipping
+   *      total via `getOrderShippingCostExternal()` at order-total time.
    *
-   * Both fallbacks are logged at `warn` so unmapped methods are observable.
-   * Must be a positive integer; `0` and negatives are rejected at config-validation
-   * time.
+   * The fallback to `id_carrier=1` and the post-create `order_carriers`
+   * reconcile (#467) were both removed in #516.
+   *
+   * Both step-2 and step-3 fallbacks are logged at `warn` so unmapped
+   * methods are observable. Must be a positive integer; `0` and negatives
+   * are rejected at config-validation time.
    */
   defaultCarrierId?: number;
 

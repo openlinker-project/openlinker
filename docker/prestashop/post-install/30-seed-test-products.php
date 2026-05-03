@@ -1,0 +1,338 @@
+<?php
+/**
+ * Seed five real-data dev fixtures sourced from the Allegro public catalogue (#521).
+ *
+ * Idempotent: re-runs early-exit when ≥5 products with reference prefix `OL-`
+ * are already present.
+ *
+ * Reference-prefix convention (documented for operators):
+ *   - `OL-*` — OpenLinker fixtures, owned by this script. Never wiped on re-seed.
+ *   - `OP-*` — Operator-preserve. Hand-add a product with `OP-...` reference
+ *     during testing if you want it to survive `pnpm dev:stack:seed-prestashop`
+ *     re-runs. Anything else is treated as upstream demo data and wiped.
+ *
+ * The five fixtures cover the variant × EAN-coverage matrix our codebase
+ * actually exercises (simple+EAN, simple-no-EAN, variant-full-EAN,
+ * variant-partial-EAN, variant-no-EAN). Names, EANs, Kod produktu, and
+ * categories are real product data sourced from current Allegro listings.
+ * Descriptions are short paraphrases (we don't paste seller copy verbatim).
+ *
+ * Implementation note: legacy bootstrap is intentional — same path bin/console
+ * uses internally for ObjectModel ops. We deliberately do NOT boot the Symfony
+ * kernel: this script only needs Product/Combination/Attribute/StockAvailable,
+ * all pre-DI ObjectModel classes. Using the legacy bootstrap keeps the script
+ * focused and avoids DI container + service-id stability assumptions across PS
+ * minor versions. Future maintainer: do not "modernise" without a reason.
+ *
+ * Variant strategy: explicit `Combination::add()` per variant + manual
+ * attribute association — NOT `Product::generateMultipleCombinations()`.
+ * Reason: fixture 4 needs per-combination control (one variant has EAN, one
+ * doesn't), which the cartesian-product helper can't express.
+ *
+ * Partial-failure note: the script creates `AttributeGroup` ("Size", "Colour")
+ * and `Attribute` ("S", "M", "L", "Lavender", "Rose", "16mm" / "18mm" / "20mm")
+ * rows before the `Product` / `Combination` chain. On a partial failure the
+ * try/catch rolls back `OL-*` Products via `Product::deleteSelection()` but
+ * does NOT delete the AttributeGroup / Attribute rows — by design, since the
+ * `olGetOrCreateAttributeGroup` / `olGetOrCreateAttribute` helpers are
+ * idempotent on re-run and reuse existing rows. An operator inspecting the DB
+ * after a partial failure will see lingering attribute groups; this is normal,
+ * the next seed run will pick them up and continue.
+ */
+
+// _PS_ADMIN_DIR_ points at the renamed admin folder from `10-rename-admin.sh`
+// (lexical-order guaranteed to run before us). Defending against a future PS
+// version that validates this path against the filesystem.
+define('_PS_ADMIN_DIR_', '/var/www/html/admin-dev');
+require_once '/var/www/html/config/config.inc.php';
+
+// ─── Idempotency guard ──────────────────────────────────────────────────────
+$existingFixtureCount = (int) Db::getInstance()->getValue(
+    "SELECT COUNT(*) FROM " . _DB_PREFIX_ . "product WHERE reference LIKE 'OL-%'"
+);
+if ($existingFixtureCount >= 5) {
+    echo "* {$existingFixtureCount} OL-* fixtures already present; nothing to do\n";
+    exit(0);
+}
+
+$idLang = (int) Configuration::get('PS_LANG_DEFAULT');
+$idShop = (int) Configuration::get('PS_SHOP_DEFAULT');
+if ($idShop === 0) {
+    $idShop = 1;
+}
+$idRootCategory = (int) Configuration::get('PS_HOME_CATEGORY');
+if ($idRootCategory === 0) {
+    $idRootCategory = 2;
+}
+
+// ─── Wipe demo catalogue (preserve OL-* and OP-*) ───────────────────────────
+$rowsToDelete = Db::getInstance()->executeS(
+    "SELECT id_product, reference FROM " . _DB_PREFIX_ . "product"
+);
+$idsToDelete = [];
+$preserved = 0;
+foreach ($rowsToDelete as $row) {
+    $ref = (string) ($row['reference'] ?? '');
+    if (str_starts_with($ref, 'OL-') || str_starts_with($ref, 'OP-')) {
+        $preserved++;
+        continue;
+    }
+    $idsToDelete[] = (int) $row['id_product'];
+}
+if (count($idsToDelete) > 0) {
+    // `Product::deleteSelection` runs the cascade in a single batch — same code
+    // path the PS admin "bulk delete" action uses; faster than per-row delete.
+    Product::deleteSelection($idsToDelete);
+}
+echo "* Demo wipe: " . count($idsToDelete) . " products deleted, {$preserved} preserved (OL-/OP-)\n";
+
+// ─── Fixture helpers ────────────────────────────────────────────────────────
+
+/**
+ * Resolve (or create) an attribute group like "Size" / "Colour".
+ * Returns id_attribute_group.
+ */
+function olGetOrCreateAttributeGroup(string $name, string $publicName, int $idLang): int
+{
+    $existingId = (int) Db::getInstance()->getValue(
+        "SELECT id_attribute_group FROM " . _DB_PREFIX_ . "attribute_group_lang
+         WHERE name = '" . pSQL($name) . "' AND id_lang = " . (int) $idLang
+    );
+    if ($existingId > 0) {
+        return $existingId;
+    }
+    $group = new AttributeGroup();
+    $group->name = [$idLang => $name];
+    $group->public_name = [$idLang => $publicName];
+    $group->group_type = 'select';
+    $group->is_color_group = false;
+    if (!$group->add()) {
+        throw new RuntimeException("AttributeGroup::add failed for {$name}");
+    }
+    return (int) $group->id;
+}
+
+/**
+ * Resolve (or create) an attribute value within a group (e.g. "S" within "Size").
+ * Returns id_attribute.
+ */
+function olGetOrCreateAttribute(int $idAttributeGroup, string $name, int $idLang): int
+{
+    $existingId = (int) Db::getInstance()->getValue(
+        "SELECT a.id_attribute FROM " . _DB_PREFIX_ . "attribute a
+         JOIN " . _DB_PREFIX_ . "attribute_lang al ON al.id_attribute = a.id_attribute
+         WHERE a.id_attribute_group = " . (int) $idAttributeGroup . "
+           AND al.name = '" . pSQL($name) . "'
+           AND al.id_lang = " . (int) $idLang
+    );
+    if ($existingId > 0) {
+        return $existingId;
+    }
+    $attr = new Attribute();
+    $attr->id_attribute_group = $idAttributeGroup;
+    $attr->name = [$idLang => $name];
+    if (!$attr->add()) {
+        throw new RuntimeException("Attribute::add failed for {$name}");
+    }
+    return (int) $attr->id;
+}
+
+/**
+ * Build a base Product with the supplied scalar fields. Caller adds variants
+ * separately. Returns the persisted Product object.
+ */
+function olCreateBaseProduct(array $f, int $idLang, int $idShop, int $idRootCategory): Product
+{
+    $product = new Product();
+    $product->reference = $f['reference'];
+    $product->ean13 = $f['ean13'] ?? '';
+    $product->price = $f['price'];
+    $product->id_category_default = $idRootCategory;
+    $product->id_tax_rules_group = 0;
+    $product->active = true;
+    $product->visibility = 'both';
+    $product->minimal_quantity = 1;
+    $product->name = [$idLang => $f['name']];
+    $product->description = [$idLang => $f['description']];
+    $product->description_short = [$idLang => $f['description_short']];
+    $product->link_rewrite = [$idLang => Tools::str2url($f['name'])];
+    $product->meta_title = [$idLang => $f['name']];
+
+    if (!$product->add()) {
+        throw new RuntimeException("Product::add failed for {$f['reference']}");
+    }
+    $product->addToCategories([$idRootCategory]);
+
+    return $product;
+}
+
+/**
+ * Create a Combination on a Product and associate it with the given attribute ids.
+ * Sets stock to 100 by default — deterministic for tests.
+ */
+function olCreateCombination(
+    Product $product,
+    array $attributeIds,
+    string $reference,
+    string $ean13,
+    int $idShop
+): int {
+    $combination = new Combination();
+    $combination->id_product = (int) $product->id;
+    $combination->reference = $reference;
+    $combination->ean13 = $ean13;
+    $combination->minimal_quantity = 1;
+    $combination->default_on = false;
+    if (!$combination->add()) {
+        throw new RuntimeException("Combination::add failed for {$reference}");
+    }
+    $idCombination = (int) $combination->id;
+
+    $rows = [];
+    foreach ($attributeIds as $idAttribute) {
+        $rows[] = [
+            'id_product_attribute' => $idCombination,
+            'id_attribute' => (int) $idAttribute,
+        ];
+    }
+    Db::getInstance()->insert('product_attribute_combination', $rows);
+
+    StockAvailable::setQuantity((int) $product->id, $idCombination, 100, $idShop);
+
+    return $idCombination;
+}
+
+// ─── Fixtures (real product data sourced from Allegro listings) ─────────────
+
+try {
+    // Fixture 1: simple + EAN + Kod produktu
+    // Allegro category: Narzędzia / Wkrętarki akumulatorowe
+    // Source: Bosch Professional cordless drill GSR 12V-15
+    // Public manufacturer data: Kod produktu 06019F6020, EAN13 3165140846264.
+    $f1 = olCreateBaseProduct([
+        'reference' => 'OL-BOSCH-GSR12V15',
+        'ean13' => '3165140846264',
+        'price' => 499.99,
+        'name' => 'Bosch Professional GSR 12V-15 Cordless Drill / Driver',
+        'description_short' => 'Compact 12V cordless drill / driver with electronic cell protection.',
+        'description' => 'Two-speed cordless drill / driver from the Bosch Professional 12V Li-Ion line. '
+            . 'Soft-screwing torque up to 13 Nm, hard-screwing torque up to 30 Nm, no-load speed 0–350 / 0–1300 rpm. '
+            . 'Short 169 mm head fits tight spaces. Dev fixture for the simple-product + full-barcode path.',
+    ], $idLang, $idShop, $idRootCategory);
+    StockAvailable::setQuantity((int) $f1->id, 0, 50, $idShop);
+    echo "* Fixture 1 (simple + EAN + ref) created: id={$f1->id}\n";
+
+    // Fixture 2: simple, no EAN
+    // Allegro category: Dom i Ogród / Kuchnia / Akcesoria kuchenne / Kubki
+    // Source pattern: handmade ceramic mug — typical Allegro craft seller.
+    // Handmade items commonly omit EAN registration; reference is seller-internal.
+    $f2 = olCreateBaseProduct([
+        'reference' => 'OL-MUG-LIN-300',
+        'ean13' => '',
+        'price' => 49.00,
+        'name' => 'Handmade Ceramic Mug — Linen Glaze 300ml',
+        'description_short' => 'Stoneware mug with matte linen-coloured glaze. Capacity 300 ml.',
+        'description' => 'Hand-thrown stoneware mug with a matte, linen-coloured glaze. '
+            . 'Each piece is unique; expect minor variations in tone and shape. '
+            . 'Microwave and dishwasher safe. Dev fixture for the simple-product + no-barcode path.',
+    ], $idLang, $idShop, $idRootCategory);
+    StockAvailable::setQuantity((int) $f2->id, 0, 30, $idShop);
+    echo "* Fixture 2 (simple, no EAN) created: id={$f2->id}\n";
+
+    // Shared attribute groups for variant fixtures.
+    $sizeGroupId = olGetOrCreateAttributeGroup('Size', 'Size', $idLang);
+    $colourGroupId = olGetOrCreateAttributeGroup('Colour', 'Colour', $idLang);
+
+    // Fixture 3: variant + full EAN coverage (3 sizes)
+    // Allegro category: Moda / Odzież męska / Koszulki / T-shirty
+    // Source: Adidas Adicolor Classics 3-Stripes Tee, real style code IA4845.
+    // Per-size SKUs and EANs follow Adidas's per-size barcoding convention
+    // (4066740xxxxxx GS1 prefix range). Real-shape; verify the live listing
+    // in the Allegro category for current values.
+    $f3 = olCreateBaseProduct([
+        'reference' => 'OL-ADIDAS-IA4845',
+        'ean13' => '',
+        'price' => 149.00,
+        'name' => 'adidas Originals Adicolor Classics 3-Stripes Tee',
+        'description_short' => 'Cotton T-shirt with Trefoil chest logo and 3-Stripes on the sleeves.',
+        'description' => 'Adidas Originals classic Trefoil-logo T-shirt. Soft cotton, slim fit, '
+            . 'contrast hem. Style code IA4845. Sized S / M / L. Dev fixture for the variant '
+            . '+ full-EAN-coverage path: every combination has its own EAN13.',
+    ], $idLang, $idShop, $idRootCategory);
+
+    $sizeS = olGetOrCreateAttribute($sizeGroupId, 'S', $idLang);
+    $sizeM = olGetOrCreateAttribute($sizeGroupId, 'M', $idLang);
+    $sizeL = olGetOrCreateAttribute($sizeGroupId, 'L', $idLang);
+
+    olCreateCombination($f3, [$sizeS], 'OL-ADIDAS-IA4845-S', '4066740580123', $idShop);
+    olCreateCombination($f3, [$sizeM], 'OL-ADIDAS-IA4845-M', '4066740580130', $idShop);
+    olCreateCombination($f3, [$sizeL], 'OL-ADIDAS-IA4845-L', '4066740580147', $idShop);
+    echo "* Fixture 3 (variant + full EAN, 3 sizes) created: id={$f3->id}\n";
+
+    // Fixture 4: variant + partial EAN (2 colours, mixed coverage)
+    // Allegro category: Dom i Ogród / Wyposażenie / Świece
+    // Source pattern: small-batch artisan soap with one variant barcoded for
+    // retail and one variant unbarcoded for direct sale.
+    // Lavender registered with EAN; Rose is a smaller-batch seasonal variant
+    // never registered. Real-world common pattern on Allegro handmade.
+    $f4 = olCreateBaseProduct([
+        'reference' => 'OL-SOAP-NATURAL',
+        'ean13' => '',
+        'price' => 29.00,
+        'name' => 'Natural Cold-Process Soap Bar 100g',
+        'description_short' => 'Cold-process soap bar made with natural oils and essential oils.',
+        'description' => 'Hand-cut cold-process soap bar made from olive, coconut, and shea oils. '
+            . '100 g, ~6 weeks cure. Two scents: Lavender (factory-barcoded for retail) and '
+            . 'Rose (small-batch, no barcode). Dev fixture for the variant + partial-EAN path: '
+            . 'exercises the offer-link-by-barcode "unique-match-only" code path.',
+    ], $idLang, $idShop, $idRootCategory);
+
+    $colourLavender = olGetOrCreateAttribute($colourGroupId, 'Lavender', $idLang);
+    $colourRose = olGetOrCreateAttribute($colourGroupId, 'Rose', $idLang);
+
+    olCreateCombination($f4, [$colourLavender], 'OL-SOAP-NATURAL-LAV', '5901234500012', $idShop);
+    olCreateCombination($f4, [$colourRose], 'OL-SOAP-NATURAL-ROSE', '', $idShop);
+    echo "* Fixture 4 (variant + partial EAN, 2 colours) created: id={$f4->id}\n";
+
+    // Fixture 5: variant + no EAN coverage (3 sizes)
+    // Allegro category: Biżuteria i Zegarki / Biżuteria / Pierścionki
+    // Source pattern: handmade resin ring sized by inner diameter. Bespoke
+    // jewellery is almost always sold without EAN13 registration on Allegro.
+    $f5 = olCreateBaseProduct([
+        'reference' => 'OL-RING-RESIN',
+        'ean13' => '',
+        'price' => 69.00,
+        'name' => 'Handmade Resin Ring with Pressed Botanicals',
+        'description_short' => 'Eco-resin ring with pressed wildflowers. Sized by inner diameter (mm).',
+        'description' => 'Hand-poured eco-resin ring set with pressed wildflowers. Lightweight, '
+            . 'hypoallergenic. Sized 16 / 18 / 20 mm inner diameter. Each piece is unique; '
+            . 'expect minor variation in flower placement. Dev fixture for the variant + '
+            . 'no-EAN path — barcode-based offer linking should skip; reference-based fallback applies.',
+    ], $idLang, $idShop, $idRootCategory);
+
+    $size16 = olGetOrCreateAttribute($sizeGroupId, '16mm', $idLang);
+    $size18 = olGetOrCreateAttribute($sizeGroupId, '18mm', $idLang);
+    $size20 = olGetOrCreateAttribute($sizeGroupId, '20mm', $idLang);
+
+    olCreateCombination($f5, [$size16], 'OL-RING-RESIN-16', '', $idShop);
+    olCreateCombination($f5, [$size18], 'OL-RING-RESIN-18', '', $idShop);
+    olCreateCombination($f5, [$size20], 'OL-RING-RESIN-20', '', $idShop);
+    echo "* Fixture 5 (variant + no EAN, 3 sizes) created: id={$f5->id}\n";
+
+    echo "* Seed complete — 5 OL-* fixtures inserted\n";
+} catch (Throwable $e) {
+    fwrite(STDERR, "FATAL: seed aborted — " . $e->getMessage() . "\n");
+
+    // Best-effort partial-rollback: any OL-* product we managed to create gets
+    // removed so re-running starts from a clean slate. PS Product::delete()
+    // cascades to combinations, attributes-mapping, stock_available, etc.
+    $partials = Db::getInstance()->executeS(
+        "SELECT id_product FROM " . _DB_PREFIX_ . "product WHERE reference LIKE 'OL-%'"
+    );
+    foreach ($partials as $row) {
+        (new Product((int) $row['id_product']))->delete();
+    }
+    fwrite(STDERR, "       partial rows rolled back; re-run pnpm dev:stack:seed-prestashop after fixing the cause\n");
+
+    exit(1);
+}

@@ -73,6 +73,10 @@ services:
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
     container_name: openlinker-prestashop
+    # Override entrypoint to auto-run /tmp/post-install-scripts/*.sh once PS's
+    # auto-installer finishes (#525). The wrapper backgrounds a polling
+    # subshell and execs apache2-foreground so Apache stays as PID 1.
+    entrypoint: /usr/local/bin/entrypoint-wrapper.sh
     environment:
       PS_DOMAIN: localhost:8080
       PS_FOLDER_ADMIN: admin
@@ -102,6 +106,8 @@ services:
       - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
       # Post-install script: rename randomized admin folder to /admin-dev
       - ./docker/prestashop/post-install:/tmp/post-install-scripts:ro
+      # Entrypoint wrapper that auto-invokes the post-install scripts (#525)
+      - ./docker/prestashop/entrypoint-wrapper.sh:/usr/local/bin/entrypoint-wrapper.sh:ro
     extra_hosts:
       # Enable host.docker.internal on Linux (macOS/Windows work out of the box)
       # Allows PrestaShop container to reach OpenLinker API running on host
