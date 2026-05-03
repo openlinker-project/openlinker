@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <module>
-    <name>openlinkerwebhooks</name>
-    <displayName><![CDATA[OpenLinker Webhooks]]></displayName>
+    <name>openlinker</name>
+    <displayName><![CDATA[OpenLinker]]></displayName>
     <version><![CDATA[1.0.0]]></version>
-    <description><![CDATA[Emits secure webhook events to OpenLinker for event-driven synchronization triggers.]]></description>
+    <description><![CDATA[OpenLinker PrestaShop module: emits webhook events for event-driven sync and hosts additional OpenLinker capabilities.]]></description>
     <author><![CDATA[OpenLinker Team]]></author>
     <tab><![CDATA[administration]]></tab>
     <confirmUninstall><![CDATA[Are you sure you want to uninstall this module?]]></confirmUninstall>

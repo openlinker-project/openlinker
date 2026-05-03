@@ -3,7 +3,7 @@
  * Cron Front Controller
  *
  * Handles cron-triggered webhook delivery. Secured with token parameter.
- * URL: .../index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=...
+ * URL: .../index.php?fc=module&module=openlinker&controller=cron&token=...
  *
  * This controller processes webhook events from the outbox table:
  * 1. Requeues stale processing rows (recovery from crashes)
@@ -26,7 +26,7 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
-class OpenLinkerWebhooksCronModuleFrontController extends ModuleFrontController
+class OpenLinkerCronModuleFrontController extends ModuleFrontController
 {
     public function initContent()
     {
@@ -154,7 +154,7 @@ class OpenLinkerWebhooksCronModuleFrontController extends ModuleFrontController
             } catch (Exception $cleanupError) {
                 // Log cleanup error but don't fail the main error
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Failed to cleanup events after cron error: ' . $cleanupError->getMessage(),
+                    'OpenLinker: Failed to cleanup events after cron error: ' . $cleanupError->getMessage(),
                     3,
                     null,
                     'Module',

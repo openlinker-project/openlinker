@@ -1,11 +1,13 @@
 <?php
 /**
- * OpenLinker Webhooks Module
+ * OpenLinker PrestaShop Module
  *
- * PrestaShop module that emits secure webhook events to OpenLinker to support
- * event-driven sync triggers ("trigger pull"). Captures PrestaShop events via
- * hooks, writes to durable outbox table, and delivers via HTTP POST with HMAC
- * signature and retry/backoff.
+ * Host module for OpenLinker capabilities on PrestaShop. Currently provides
+ * the webhook outbox capability: emits secure webhook events to OpenLinker to
+ * support event-driven sync triggers ("trigger pull"). Captures PrestaShop
+ * events via hooks, writes to a durable outbox table, and delivers via HTTP
+ * POST with HMAC signature and retry/backoff. Additional capabilities (e.g.
+ * dynamic shipping carrier) live alongside this one in the same module.
  *
  * This module implements the outbox pattern for reliable event delivery:
  * - Hooks write events to a durable outbox table (non-blocking)
@@ -38,7 +40,7 @@ if (!defined('_PS_VERSION_')) {
  * Classes are loaded on-demand in methods that use them, with class_exists()
  * checks to prevent duplicate loading.
  */
-class OpenLinkerWebhooks extends Module
+class OpenLinker extends Module
 {
     // Configuration defaults
     const DEFAULT_BATCH_SIZE = 50;
@@ -48,7 +50,7 @@ class OpenLinkerWebhooks extends Module
 
     public function __construct()
     {
-        $this->name = 'openlinkerwebhooks';
+        $this->name = 'openlinker';
         $this->tab = 'administration';
         $this->version = '1.0.0';
         $this->author = 'OpenLinker Team';
@@ -61,8 +63,8 @@ class OpenLinkerWebhooks extends Module
 
         parent::__construct();
 
-        $this->displayName = $this->l('OpenLinker Webhooks');
-        $this->description = $this->l('Emits secure webhook events to OpenLinker for event-driven synchronization triggers.');
+        $this->displayName = $this->l('OpenLinker');
+        $this->description = $this->l('OpenLinker PrestaShop module: emits webhook events for event-driven sync and hosts additional OpenLinker capabilities.');
     }
 
     /**
@@ -341,7 +343,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Exception $e) {
             // Log the full error for debugging
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Test connection error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Test connection error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3, // Error level
                 null,
                 'Module',
@@ -359,7 +361,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Throwable $e) {
             // Catch PHP 7+ fatal errors and other throwables
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Test connection fatal error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Test connection fatal error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Module',
@@ -428,7 +430,7 @@ class OpenLinkerWebhooks extends Module
             foreach ($events as $event) {
                 try {
                     PrestaShopLogger::addLog(
-                        'OpenLinker Webhooks: Attempting to deliver event ' . $event->id . ' (eventId: ' . $event->event_id . ', type: ' . $event->event_type . ')',
+                        'OpenLinker:Attempting to deliver event ' . $event->id . ' (eventId: ' . $event->event_id . ', type: ' . $event->event_type . ')',
                         1, // Info level
                         null,
                         'Module',
@@ -440,7 +442,7 @@ class OpenLinkerWebhooks extends Module
                         $repository->markDelivered($event->id);
                         $delivered++;
                         PrestaShopLogger::addLog(
-                            'OpenLinker Webhooks: Successfully delivered event ' . $event->id,
+                            'OpenLinker:Successfully delivered event ' . $event->id,
                             1,
                             null,
                             'Module',
@@ -451,7 +453,7 @@ class OpenLinkerWebhooks extends Module
                         $repository->scheduleRetry($event->id, $event->attempts, 'Manual delivery failed');
                         $failed++;
                         PrestaShopLogger::addLog(
-                            'OpenLinker Webhooks: Event ' . $event->id . ' delivery returned false, scheduled retry',
+                            'OpenLinker:Event ' . $event->id . ' delivery returned false, scheduled retry',
                             2, // Warning level
                             null,
                             'Module',
@@ -463,7 +465,7 @@ class OpenLinkerWebhooks extends Module
                     $maxAttempts = (int)Configuration::get('MAX_RETRY_ATTEMPTS') ?: self::DEFAULT_MAX_RETRY_ATTEMPTS;
 
                     PrestaShopLogger::addLog(
-                        'OpenLinker Webhooks: Event ' . $event->id . ' delivery failed: ' . $errorMessage . ' (attempts: ' . $event->attempts . '/' . $maxAttempts . ')',
+                        'OpenLinker:Event ' . $event->id . ' delivery failed: ' . $errorMessage . ' (attempts: ' . $event->attempts . '/' . $maxAttempts . ')',
                         2, // Warning level
                         null,
                         'Module',
@@ -482,7 +484,7 @@ class OpenLinkerWebhooks extends Module
                     $maxAttempts = (int)Configuration::get('MAX_RETRY_ATTEMPTS') ?: self::DEFAULT_MAX_RETRY_ATTEMPTS;
 
                     PrestaShopLogger::addLog(
-                        'OpenLinker Webhooks: Event ' . $event->id . ' fatal error: ' . $errorMessage,
+                        'OpenLinker:Event ' . $event->id . ' fatal error: ' . $errorMessage,
                         3, // Error level
                         null,
                         'Module',
@@ -527,7 +529,7 @@ class OpenLinkerWebhooks extends Module
             } catch (Exception $cleanupError) {
                 // Log cleanup error but don't fail the main error
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Failed to cleanup events after error: ' . $cleanupError->getMessage(),
+                    'OpenLinker:Failed to cleanup events after error: ' . $cleanupError->getMessage(),
                     3,
                     null,
                     'Module',
@@ -536,7 +538,7 @@ class OpenLinkerWebhooks extends Module
             }
             
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Manual delivery failed: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Manual delivery failed: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Module',
@@ -552,7 +554,7 @@ class OpenLinkerWebhooks extends Module
                 }
             } catch (Exception $cleanupError) {
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Failed to cleanup events after fatal error: ' . $cleanupError->getMessage(),
+                    'OpenLinker:Failed to cleanup events after fatal error: ' . $cleanupError->getMessage(),
                     3,
                     null,
                     'Module',
@@ -561,7 +563,7 @@ class OpenLinkerWebhooks extends Module
             }
             
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Manual delivery fatal error: ' . $e->getMessage(),
+                'OpenLinker:Manual delivery fatal error: ' . $e->getMessage(),
                 3,
                 null,
                 'Module',
@@ -591,7 +593,7 @@ class OpenLinkerWebhooks extends Module
             
             // Debug logging (can be removed in production)
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Statistics - pending: ' . $stats['pending'] . ', processing: ' . $stats['processing'],
+                'OpenLinker:Statistics - pending: ' . $stats['pending'] . ', processing: ' . $stats['processing'],
                 1, // Info level
                 null,
                 'Module',
@@ -602,7 +604,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Exception $e) {
             // Log error but don't break the page
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Failed to get statistics: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Failed to get statistics: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3, // Error level
                 null,
                 'Module',
@@ -619,7 +621,7 @@ class OpenLinkerWebhooks extends Module
             ];
         } catch (Throwable $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Fatal error in getStatistics: ' . $e->getMessage(),
+                'OpenLinker:Fatal error in getStatistics: ' . $e->getMessage(),
                 3,
                 null,
                 'Module',
@@ -740,7 +742,7 @@ class OpenLinkerWebhooks extends Module
         }
 
         // Check if tab already exists
-        $tabId = (int)Tab::getIdFromClassName('AdminOpenLinkerWebhooks');
+        $tabId = (int)Tab::getIdFromClassName('AdminOpenLinker');
         if ($tabId) {
             // Tab already exists, just activate it
             $tab = new Tab($tabId);
@@ -750,7 +752,7 @@ class OpenLinkerWebhooks extends Module
             } catch (Exception $e) {
                 // Log but continue
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Error activating existing tab: ' . $e->getMessage(),
+                    'OpenLinker:Error activating existing tab: ' . $e->getMessage(),
                     2,
                     null,
                     'Module',
@@ -774,7 +776,7 @@ class OpenLinkerWebhooks extends Module
         // Create new tab
         $tab = new Tab();
         $tab->active = 1;
-        $tab->class_name = 'AdminOpenLinkerWebhooks';
+        $tab->class_name = 'AdminOpenLinker';
         $tab->name = [];
         
         // Set name for all languages
@@ -796,7 +798,7 @@ class OpenLinkerWebhooks extends Module
                 // If save fails, log but don't fail installation
                 $error = Db::getInstance()->getMsgError();
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Failed to create menu tab: ' . ($error ?: 'Unknown error'),
+                    'OpenLinker:Failed to create menu tab: ' . ($error ?: 'Unknown error'),
                     2, // Warning level
                     null,
                     'Module',
@@ -808,7 +810,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Exception $e) {
             // Log error but don't fail installation
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Error creating menu tab: ' . $e->getMessage(),
+                'OpenLinker:Error creating menu tab: ' . $e->getMessage(),
                 2, // Warning level
                 null,
                 'Module',
@@ -833,7 +835,7 @@ class OpenLinkerWebhooks extends Module
         }
 
         // Find and delete tab
-        $tabId = (int)Tab::getIdFromClassName('AdminOpenLinkerWebhooks');
+        $tabId = (int)Tab::getIdFromClassName('AdminOpenLinker');
         if ($tabId) {
             $tab = new Tab($tabId);
             try {
@@ -841,7 +843,7 @@ class OpenLinkerWebhooks extends Module
             } catch (Exception $e) {
                 // Log error but don't fail uninstallation
                 PrestaShopLogger::addLog(
-                    'OpenLinker Webhooks: Error deleting menu tab: ' . $e->getMessage(),
+                    'OpenLinker:Error deleting menu tab: ' . $e->getMessage(),
                     2, // Warning level
                     null,
                     'Module',
@@ -921,7 +923,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Exception $e) {
             // Log error but don't break the hook (non-fatal)
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Failed to enqueue product event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Failed to enqueue product event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3, // Error level
                 null,
                 'Product',
@@ -930,7 +932,7 @@ class OpenLinkerWebhooks extends Module
         } catch (Throwable $e) {
             // Catch PHP 7+ fatal errors
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Fatal error in product hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Fatal error in product hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Product',
@@ -996,7 +998,7 @@ class OpenLinkerWebhooks extends Module
             ]);
         } catch (Exception $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Failed to enqueue order.created event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Failed to enqueue order.created event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Order',
@@ -1004,7 +1006,7 @@ class OpenLinkerWebhooks extends Module
             );
         } catch (Throwable $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Fatal error in order.created hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Fatal error in order.created hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Order',
@@ -1091,7 +1093,7 @@ class OpenLinkerWebhooks extends Module
             ]);
         } catch (Exception $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Failed to enqueue order.status_changed event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Failed to enqueue order.status_changed event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Order',
@@ -1099,7 +1101,7 @@ class OpenLinkerWebhooks extends Module
             );
         } catch (Throwable $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Fatal error in order.status_changed hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Fatal error in order.status_changed hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Order',
@@ -1177,7 +1179,7 @@ class OpenLinkerWebhooks extends Module
             ]);
         } catch (Exception $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Failed to enqueue stock.changed event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Failed to enqueue stock.changed event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Product',
@@ -1185,7 +1187,7 @@ class OpenLinkerWebhooks extends Module
             );
         } catch (Throwable $e) {
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Fatal error in stock.changed hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'OpenLinker:Fatal error in stock.changed hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Product',

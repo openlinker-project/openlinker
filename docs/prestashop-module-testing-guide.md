@@ -20,7 +20,7 @@ docker compose exec prestashop rm -rf /var/www/html/install
 docker compose exec prestashop sed -i "s/define('_PS_MODE_DEMO_', true);/define('_PS_MODE_DEMO_', false);/g" /var/www/html/config/defines.inc.php
 
 # 4. Install module
-# → http://localhost:8080/admin → Modules → Module Manager → Install "OpenLinker Webhooks"
+# → http://localhost:8080/admin → Modules → Module Manager → Install "OpenLinker"
 
 # 5. Set up credentials (see Step 3 in full guide)
 # → Set CREDENTIALS_TEST_CREDENTIALS_REF='{"webserviceApiKey":"YOUR_API_KEY"}'
@@ -134,11 +134,11 @@ After disabling demo mode, clear cache and refresh the module manager page.
    - Go to: **Modules → Module Manager**
 
 3. **Find Module**:
-   - Search for "OpenLinker Webhooks"
+   - Search for "OpenLinker"
    - If not visible, clear cache: **Advanced Parameters → Performance → Clear cache**
 
 4. **Install Module**:
-   - Click **"Install"** on OpenLinker Webhooks module
+   - Click **"Install"** on OpenLinker module
    - Verify installation success (no errors)
    
    > **Troubleshooting**: If you see "This functionality has been disabled", ensure you've deleted the `/install` folder (see step above).
@@ -271,7 +271,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 ## Step 6: Configure Module
 
 1. **Navigate to Module Configuration**:
-   - Go to: **Modules → Module Manager → OpenLinker Webhooks → Configure**
+   - Go to: **Modules → Module Manager → OpenLinker → Configure**
 
 2. **Fill Required Settings**:
    - **Base URL**: `http://host.docker.internal:3000`
@@ -342,7 +342,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
    - **Option B**: Use "Run delivery now" button in module config
    - **Option C**: Manual cron call:
      ```bash
-     curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+     curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
      ```
 
 4. **Verify Delivery**:
@@ -411,7 +411,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 3. **Trigger Cron** (while API is down):
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
    ```
 
 4. **Verify Retry Scheduled**:
@@ -433,7 +433,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 6. **Wait for Next Attempt** (or manually trigger cron again):
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
    ```
 
 7. **Verify Event Delivered**:
@@ -457,7 +457,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 3. **Trigger Cron Again**:
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
    ```
 
 4. **Verify Idempotency**:
@@ -476,19 +476,19 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 1. **Test Cron Endpoint Without Token**:
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron"
    ```
    - Expected: `403 Forbidden`
 
 2. **Test Cron Endpoint With Wrong Token**:
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=wrong-token"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=wrong-token"
    ```
    - Expected: `403 Forbidden`
 
 3. **Test Cron Endpoint With Correct Token**:
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
    ```
    - Expected: `200 OK` with JSON response
 
@@ -501,7 +501,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 ## Step 14: Test Diagnostics
 
 1. **Check Diagnostics in Module Config**:
-   - Go to: **Modules → Module Manager → OpenLinker Webhooks → Configure**
+   - Go to: **Modules → Module Manager → OpenLinker → Configure**
    - Scroll to **Diagnostics** section
    - Verify statistics are displayed:
      - Pending events count
@@ -521,8 +521,8 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 1. **Trigger Two Cron Runs Simultaneously**:
    ```bash
    # Run two cron calls in parallel
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN" &
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN" &
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" &
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" &
    wait
    ```
 
@@ -552,7 +552,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 2. **Trigger Cron**:
    ```bash
-   curl "http://localhost:8080/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN"
+   curl "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN"
    ```
 
 3. **Verify Stale Row Requeued**:
@@ -666,8 +666,8 @@ LIMIT 10;
 4. **File permissions issue** (if install folder already deleted):
    ```bash
    # Fix module directory permissions
-   docker compose exec prestashop chown -R www-data:www-data /var/www/html/modules/openlinkerwebhooks
-   docker compose exec prestashop chmod -R 755 /var/www/html/modules/openlinkerwebhooks
+   docker compose exec prestashop chown -R www-data:www-data /var/www/html/modules/openlinker
+   docker compose exec prestashop chmod -R 755 /var/www/html/modules/openlinker
    ```
 
 5. **PrestaShop cache needs clearing**:
@@ -685,18 +685,18 @@ LIMIT 10;
    - Extract the prefix (e.g., if table is `usesj_module`, prefix is `usesj_`)
    - Check if module exists (replace `PREFIX_` with your actual prefix):
      ```sql
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM PREFIX_module WHERE name='openlinkerwebhooks';"
+     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM PREFIX_module WHERE name='openlinker';"
      ```
    - Example with `usesj_` prefix:
      ```sql
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM usesj_module WHERE name='openlinkerwebhooks';"
+     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM usesj_module WHERE name='openlinker';"
      ```
    - If found but not working, try uninstalling first:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Uninstall**
+     - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
      - Then try installing again
 
 7. **Try uploading as ZIP instead of bind-mount**:
-   - Create ZIP: `cd apps/prestashop-module && zip -r openlinkerwebhooks.zip openlinkerwebhooks/`
+   - Create ZIP: `cd apps/prestashop-module && zip -r openlinker.zip openlinker/`
    - In PrestaShop: **Modules → Module Manager → Upload a module**
    - Upload the ZIP file
    - Then install from the uploaded module
@@ -706,7 +706,7 @@ After trying these solutions, refresh the module manager page and try installing
 ### Module Not Appearing
 
 - Clear PrestaShop cache: **Advanced Parameters → Performance → Clear cache**
-- Check module directory exists: `docker exec openlinker-prestashop ls -la /var/www/html/modules/openlinkerwebhooks`
+- Check module directory exists: `docker exec openlinker-prestashop ls -la /var/www/html/modules/openlinker`
 - Check PrestaShop logs for installation errors
 
 ### Configuration Page Error ("Oops... looks like an unexpected error occurred")
@@ -737,15 +737,15 @@ After trying these solutions, refresh the module manager page and try installing
      docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Uninstall**
-     - Then: **Modules → Module Manager → OpenLinker Webhooks → Install**
+     - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
+     - Then: **Modules → Module Manager → OpenLinker → Install**
 
 4. **File permissions**:
    - Module files may not have correct permissions
    - **Solution**: Fix permissions:
      ```bash
-     docker compose exec prestashop chown -R www-data:www-data /var/www/html/modules/openlinkerwebhooks
-     docker compose exec prestashop chmod -R 755 /var/www/html/modules/openlinkerwebhooks
+     docker compose exec prestashop chown -R www-data:www-data /var/www/html/modules/openlinker
+     docker compose exec prestashop chmod -R 755 /var/www/html/modules/openlinker
      ```
 
 5. **PHP errors**:
@@ -761,7 +761,7 @@ After trying these solutions, refresh the module manager page and try installing
    - The template file may not exist or be in wrong location
    - **Solution**: Verify template exists:
      ```bash
-     docker compose exec prestashop ls -la /var/www/html/modules/openlinkerwebhooks/views/templates/admin/configure.tpl
+     docker compose exec prestashop ls -la /var/www/html/modules/openlinker/views/templates/admin/configure.tpl
      ```
    - Should show the file exists
 
@@ -769,7 +769,7 @@ After trying these solutions, refresh the module manager page and try installing
 
 ### Events Not Enqueued
 
-- Verify hooks registered: **Modules → Module Manager → OpenLinker Webhooks → Hooks**
+- Verify hooks registered: **Modules → Module Manager → OpenLinker → Hooks**
 - Check event type toggles enabled in configuration
 - Check PrestaShop logs for hook errors
 - Verify connection ID is configured
@@ -810,8 +810,8 @@ After trying these solutions, refresh the module manager page and try installing
      docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Uninstall**
-     - Then: **Modules → Module Manager → OpenLinker Webhooks → Install**
+     - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
+     - Then: **Modules → Module Manager → OpenLinker → Install**
 
 3. **Check PrestaShop error logs**:
    - View logs to see the actual PHP error:
@@ -860,8 +860,8 @@ After trying these solutions, refresh the module manager page and try installing
      docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Uninstall**
-     - Then: **Modules → Module Manager → OpenLinker Webhooks → Install**
+     - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
+     - Then: **Modules → Module Manager → OpenLinker → Install**
 
 3. **Check PrestaShop error logs**:
    - View logs to see the actual PHP error:
@@ -874,13 +874,13 @@ After trying these solutions, refresh the module manager page and try installing
 4. **Module not configured**:
    - Connection ID may not be set
    - **Solution**: Ensure module is configured with Connection ID before using hooks
-   - Go to: **Modules → Module Manager → OpenLinker Webhooks → Configure**
+   - Go to: **Modules → Module Manager → OpenLinker → Configure**
    - Fill in Connection ID and save
 
 5. **Product events disabled**:
    - Product events may be disabled in module configuration
    - **Solution**: Check module configuration:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Configure**
+     - Go to: **Modules → Module Manager → OpenLinker → Configure**
      - Ensure "Enable Product Events" checkbox is checked
      - Click "Save"
 
@@ -962,7 +962,7 @@ ORDER BY created_at DESC;
 3. **Diagnostics not showing processing events**:
    - Processing events should appear in diagnostics
    - **Solution**: Check if `getStatistics()` is working:
-     - Go to: **Modules → Module Manager → OpenLinker Webhooks → Configure**
+     - Go to: **Modules → Module Manager → OpenLinker → Configure**
      - Check if "Processing Events" count is displayed
      - If showing 0 but database has processing events, check PrestaShop logs
 
@@ -1027,7 +1027,7 @@ CRON_TOKEN="your-cron-token-here"
 OPENLINKER_URL="http://localhost:3000"
 
 echo "1. Testing cron endpoint..."
-curl -s "${PRESTASHOP_URL}/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=${CRON_TOKEN}" | jq .
+curl -s "${PRESTASHOP_URL}/index.php?fc=module&module=openlinker&controller=cron&token=${CRON_TOKEN}" | jq .
 
 echo ""
 echo "2. Checking outbox status..."
@@ -1053,7 +1053,7 @@ After successful testing:
 
 ## Related Documentation
 
-- [Module README](../../apps/prestashop-module/openlinkerwebhooks/README.md) - Complete module documentation
+- [Module README](../../apps/prestashop-module/openlinker/README.md) - Complete module documentation
 - [Implementation Plan](../prestashop-module-implementation-plan.md) - Architecture and design decisions
 - [Webhook Overview](./webhooks/overview.md) - OpenLinker webhook ingestion system
 

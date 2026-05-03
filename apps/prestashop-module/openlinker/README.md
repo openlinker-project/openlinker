@@ -1,6 +1,6 @@
-# OpenLinker Webhooks PrestaShop Module
+# OpenLinker PrestaShop Module
 
-PrestaShop module that emits secure webhook events to OpenLinker to support event-driven synchronization triggers ("trigger pull").
+Host module for OpenLinker capabilities on PrestaShop. Currently provides the webhook outbox capability — emits secure webhook events to OpenLinker to support event-driven synchronization triggers ("trigger pull"). Additional capabilities (e.g. dynamic shipping carrier) live alongside this one in the same module.
 
 ## Overview
 
@@ -26,7 +26,7 @@ After installation, the OpenLinker module is accessible in two ways:
 
 2. **Module Manager**:
    - Navigate to **Modules** → **Module Manager**
-   - Search for "OpenLinker Webhooks"
+   - Search for "OpenLinker"
    - Click **Configure**
 
 ## Installation
@@ -38,20 +38,20 @@ After installation, the OpenLinker module is accessible in two ways:
    services:
      prestashop:
        volumes:
-         - ./apps/prestashop-module/openlinkerwebhooks:/var/www/html/modules/openlinkerwebhooks
+         - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
        extra_hosts:
          - "host.docker.internal:host-gateway"
    ```
 
 2. **Start PrestaShop**: `docker compose up -d prestashop`
 
-3. **Install module**: PrestaShop Backoffice → Modules → Module Manager → Install "OpenLinker Webhooks"
+3. **Install module**: PrestaShop Backoffice → Modules → Module Manager → Install "OpenLinker"
 
 4. **Edit code locally**: Changes apply instantly (no ZIP upload needed)
 
 ### Production (ZIP Upload)
 
-1. **Create ZIP**: `cd apps/prestashop-module && zip -r openlinkerwebhooks.zip openlinkerwebhooks/`
+1. **Create ZIP**: `cd apps/prestashop-module && zip -r openlinker.zip openlinker/`
 
 2. **Upload**: PrestaShop Backoffice → Modules → Module Manager → Upload a module
 
@@ -97,7 +97,7 @@ Set up a system cron to trigger webhook delivery:
 
 ```bash
 # Every 2 minutes
-*/2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinkerwebhooks&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
+*/2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
 ```
 
 **Recommended frequency**: Every 1-5 minutes
@@ -133,7 +133,7 @@ Triggered when product stock quantity changes.
 ### Module Not Appearing in Module Manager
 
 - Clear PrestaShop cache: **Advanced Parameters → Performance → Clear cache**
-- Check module files exist in `/modules/openlinkerwebhooks/`
+- Check module files exist in `/modules/openlinker/`
 - Verify `config.xml` is present and valid
 
 ### Events Not Being Created

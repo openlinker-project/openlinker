@@ -450,7 +450,7 @@ class OutboxRepository
         } catch (Exception $e) {
             // Log error but return partial stats
             PrestaShopLogger::addLog(
-                'OpenLinker Webhooks: Error in getStatistics: ' . $e->getMessage() . ' | SQL Error: ' . $db->getMsgError(),
+                'OpenLinker: Error in getStatistics: ' . $e->getMessage() . ' | SQL Error: ' . $db->getMsgError(),
                 3,
                 null,
                 'Module',
