@@ -159,6 +159,28 @@ export function ConnectionMappingsPage(): ReactElement {
     targetValue: m.prestashopCarrierId,
   }));
 
+  // Carrier-fallback banner (#517) — single banner above the carrier panel
+  // summarising the BE runtime fallback chain (#516). Computed up here
+  // rather than inline in the JSX so the conditions (loading/errored/no
+  // unmapped methods) read top-to-bottom. Suppressed when any required
+  // input isn't ready; the BE still does the right thing at sync time.
+  const carriersReady =
+    !optionsLoading && carrierOptionsError === null && connectionQuery.data !== undefined;
+  const connectionConfig = connectionQuery.data?.config as
+    | { defaultCarrierId?: unknown }
+    | undefined;
+  const carrierFallbackBanner = carriersReady
+    ? deriveCarrierFallbackBanner({
+        unmappedCount: options.allegroDeliveryMethods.length - carrierRows.length,
+        defaultCarrierId:
+          connectionConfig?.defaultCarrierId !== undefined &&
+          connectionConfig.defaultCarrierId !== null
+            ? String(connectionConfig.defaultCarrierId)
+            : null,
+        carriers: options.prestashopCarriers,
+      })
+    : null;
+
   const paymentRows: MappingRow[] = (paymentQuery.data ?? []).map((m) => ({
     sourceValue: m.allegroPaymentProvider,
     targetValue: m.prestashopPaymentModule,
@@ -221,32 +243,14 @@ export function ConnectionMappingsPage(): ReactElement {
         </TabsContent>
 
         <TabsContent value="carriers">
-          {(() => {
-            // Banner suppression: only render when both option lists +
-            // the connection are loaded and the carriers options query
-            // didn't error. Otherwise the banner copy can't be trusted.
-            const carriersReady =
-              !optionsLoading && carrierOptionsError === null && connectionQuery.data !== undefined;
-            if (!carriersReady) return null;
-            const cfg = connectionQuery.data?.config as
-              | { defaultCarrierId?: unknown }
-              | undefined;
-            const defaultCarrierId =
-              cfg?.defaultCarrierId !== undefined && cfg.defaultCarrierId !== null
-                ? String(cfg.defaultCarrierId)
-                : null;
-            const banner = deriveCarrierFallbackBanner({
-              unmappedCount: options.allegroDeliveryMethods.length - carrierRows.length,
-              defaultCarrierId,
-              carriers: options.prestashopCarriers,
-            });
-            if (!banner) return null;
-            return (
-              <Alert tone={banner.tone} className="mapping-panel__fallback-alert">
-                {banner.message}
-              </Alert>
-            );
-          })()}
+          {carrierFallbackBanner ? (
+            <Alert
+              tone={carrierFallbackBanner.tone}
+              className="mapping-panel__fallback-alert"
+            >
+              {carrierFallbackBanner.message}
+            </Alert>
+          ) : null}
           <MappingPanel
             title="Carrier Mappings"
             description="Map Allegro delivery method IDs to the corresponding PrestaShop carrier IDs."
