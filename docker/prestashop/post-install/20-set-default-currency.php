@@ -13,8 +13,11 @@
  * minor versions. Future maintainer: do not "modernise" without a reason.
  */
 
-// PrestaShop bootstrap.
-define('_PS_ADMIN_DIR_', __DIR__);
+// PrestaShop bootstrap. _PS_ADMIN_DIR_ points at the renamed admin folder
+// from `10-rename-admin.sh` (lexical-order guaranteed to run before us).
+// Defending against a future PS version that validates this path against
+// the filesystem.
+define('_PS_ADMIN_DIR_', '/var/www/html/admin-dev');
 require_once '/var/www/html/config/config.inc.php';
 
 $existingPlnId = (int) Currency::getIdByIsoCode('PLN', 0, true);

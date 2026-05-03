@@ -28,9 +28,22 @@
  * attribute association — NOT `Product::generateMultipleCombinations()`.
  * Reason: fixture 4 needs per-combination control (one variant has EAN, one
  * doesn't), which the cartesian-product helper can't express.
+ *
+ * Partial-failure note: the script creates `AttributeGroup` ("Size", "Colour")
+ * and `Attribute` ("S", "M", "L", "Lavender", "Rose", "16mm" / "18mm" / "20mm")
+ * rows before the `Product` / `Combination` chain. On a partial failure the
+ * try/catch rolls back `OL-*` Products via `Product::deleteSelection()` but
+ * does NOT delete the AttributeGroup / Attribute rows — by design, since the
+ * `olGetOrCreateAttributeGroup` / `olGetOrCreateAttribute` helpers are
+ * idempotent on re-run and reuse existing rows. An operator inspecting the DB
+ * after a partial failure will see lingering attribute groups; this is normal,
+ * the next seed run will pick them up and continue.
  */
 
-define('_PS_ADMIN_DIR_', __DIR__);
+// _PS_ADMIN_DIR_ points at the renamed admin folder from `10-rename-admin.sh`
+// (lexical-order guaranteed to run before us). Defending against a future PS
+// version that validates this path against the filesystem.
+define('_PS_ADMIN_DIR_', '/var/www/html/admin-dev');
 require_once '/var/www/html/config/config.inc.php';
 
 // ─── Idempotency guard ──────────────────────────────────────────────────────
@@ -56,7 +69,7 @@ if ($idRootCategory === 0) {
 $rowsToDelete = Db::getInstance()->executeS(
     "SELECT id_product, reference FROM " . _DB_PREFIX_ . "product"
 );
-$wiped = 0;
+$idsToDelete = [];
 $preserved = 0;
 foreach ($rowsToDelete as $row) {
     $ref = (string) ($row['reference'] ?? '');
@@ -64,14 +77,14 @@ foreach ($rowsToDelete as $row) {
         $preserved++;
         continue;
     }
-    $product = new Product((int) $row['id_product']);
-    if (!Validate::isLoadedObject($product)) {
-        continue;
-    }
-    $product->delete();
-    $wiped++;
+    $idsToDelete[] = (int) $row['id_product'];
 }
-echo "* Demo wipe: {$wiped} products deleted, {$preserved} preserved (OL-/OP-)\n";
+if (count($idsToDelete) > 0) {
+    // `Product::deleteSelection` runs the cascade in a single batch — same code
+    // path the PS admin "bulk delete" action uses; faster than per-row delete.
+    Product::deleteSelection($idsToDelete);
+}
+echo "* Demo wipe: " . count($idsToDelete) . " products deleted, {$preserved} preserved (OL-/OP-)\n";
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -251,9 +264,9 @@ try {
     $sizeM = olGetOrCreateAttribute($sizeGroupId, 'M', $idLang);
     $sizeL = olGetOrCreateAttribute($sizeGroupId, 'L', $idLang);
 
-    olCreateCombination($f3, [$sizeS], 'OL-ADIDAS-IA4845-S', '4066740580127', $idShop);
-    olCreateCombination($f3, [$sizeM], 'OL-ADIDAS-IA4845-M', '4066740580134', $idShop);
-    olCreateCombination($f3, [$sizeL], 'OL-ADIDAS-IA4845-L', '4066740580141', $idShop);
+    olCreateCombination($f3, [$sizeS], 'OL-ADIDAS-IA4845-S', '4066740580123', $idShop);
+    olCreateCombination($f3, [$sizeM], 'OL-ADIDAS-IA4845-M', '4066740580130', $idShop);
+    olCreateCombination($f3, [$sizeL], 'OL-ADIDAS-IA4845-L', '4066740580147', $idShop);
     echo "* Fixture 3 (variant + full EAN, 3 sizes) created: id={$f3->id}\n";
 
     // Fixture 4: variant + partial EAN (2 colours, mixed coverage)
@@ -277,7 +290,7 @@ try {
     $colourLavender = olGetOrCreateAttribute($colourGroupId, 'Lavender', $idLang);
     $colourRose = olGetOrCreateAttribute($colourGroupId, 'Rose', $idLang);
 
-    olCreateCombination($f4, [$colourLavender], 'OL-SOAP-NATURAL-LAV', '5901234500017', $idShop);
+    olCreateCombination($f4, [$colourLavender], 'OL-SOAP-NATURAL-LAV', '5901234500012', $idShop);
     olCreateCombination($f4, [$colourRose], 'OL-SOAP-NATURAL-ROSE', '', $idShop);
     echo "* Fixture 4 (variant + partial EAN, 2 colours) created: id={$f4->id}\n";
 
