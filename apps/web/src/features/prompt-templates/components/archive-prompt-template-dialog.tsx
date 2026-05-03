@@ -1,11 +1,12 @@
 /**
  * Archive Prompt Template Dialog
  *
- * Confirms archiving a draft or published row (#489). Body copy adapts to
- * the row's `latestState`; archiving a published row also shows a `force`
- * checkbox that bypasses the BE safety guard. After a successful archive,
- * the toast surfaces a hint about whether the row will visually disappear
- * from the Active filter (Suggestion 4).
+ * Confirms archiving a draft or published row (#489). Body surfaces the
+ * row's operational metadata via `KeyValueList` (cockpit pattern: scan-
+ * able status, not prose). Archiving a published row also shows a
+ * danger-zone force checkbox that bypasses the BE safety guard. Confirm
+ * button copy adapts to the row's state and the force flag so the
+ * operator can re-read the action right before clicking.
  *
  * @module apps/web/src/features/prompt-templates/components
  */
@@ -19,17 +20,65 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../../shared/ui/dialog';
+import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { formatRelativeTime } from '../../../shared/format/format-relative-time';
 import { useArchivePromptTemplateMutation } from '../hooks/use-prompt-template-mutations';
-import type { PromptTemplateSummary } from '../api/prompt-templates.types';
+import type {
+  PromptTemplateState,
+  PromptTemplateSummary,
+} from '../api/prompt-templates.types';
 
 interface ArchivePromptTemplateDialogProps {
   row: PromptTemplateSummary | null;
   onOpenChange: (open: boolean) => void;
 }
 
+const STATE_TONE: Record<PromptTemplateState, StatusBadgeTone> = {
+  draft: 'review',
+  published: 'success',
+  archived: 'neutral',
+};
+
 function channelLabel(channel: PromptTemplateSummary['channel']): string {
   return channel === null ? 'master' : channel;
+}
+
+function buildMetadataItems(row: PromptTemplateSummary): KeyValueItem[] {
+  return [
+    {
+      id: 'key',
+      label: 'Key',
+      mono: true,
+      value: row.key,
+    },
+    {
+      id: 'channel',
+      label: 'Channel',
+      value: channelLabel(row.channel),
+    },
+    {
+      id: 'version',
+      label: 'Version',
+      mono: true,
+      value: `v${row.latestVersion}`,
+    },
+    {
+      id: 'state',
+      label: 'State',
+      value: (
+        <StatusBadge tone={STATE_TONE[row.latestState]} compact>
+          {row.latestState}
+        </StatusBadge>
+      ),
+    },
+    {
+      id: 'updated',
+      label: 'Updated',
+      value: formatRelativeTime(row.updatedAt),
+    },
+  ];
 }
 
 export function ArchivePromptTemplateDialog({
@@ -41,11 +90,15 @@ export function ArchivePromptTemplateDialog({
   const { mutateAsync: archive, reset: resetMutation } = mutation;
   const [force, setForce] = useState(false);
 
-  // Reset transient state every time the dialog opens onto a new row.
+  // Reset transient state every time the dialog opens onto a *different*
+  // row. Keying on `row?.latestId` (not the object reference) avoids
+  // spurious resets when the parent's list query refetches and rebuilds
+  // the row object — same logical row, new reference.
+  const targetId = row?.latestId ?? null;
   useEffect(() => {
     setForce(false);
     resetMutation();
-  }, [row, resetMutation]);
+  }, [targetId, resetMutation]);
 
   const open = row !== null;
 
@@ -77,6 +130,18 @@ export function ArchivePromptTemplateDialog({
 
   const isPublishedTarget = row?.latestState === 'published';
 
+  // Confirm-button copy adapts to the path: cockpit pattern is "verb +
+  // explicit object", so the operator re-reads what they're committing
+  // to immediately before clicking.
+  const confirmLabel = ((): string => {
+    if (mutation.isPending) return 'Archiving…';
+    if (row === null) return 'Archive';
+    if (isPublishedTarget) {
+      return force ? `Archive published v${row.latestVersion} (force)` : `Archive published v${row.latestVersion}`;
+    }
+    return `Archive v${row.latestVersion}`;
+  })();
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="archive-prompt-template-dialog">
@@ -84,31 +149,33 @@ export function ArchivePromptTemplateDialog({
           Archive {row !== null ? `v${row.latestVersion}` : 'template'}
         </DialogTitle>
         <DialogDescription>
-          {row === null ? null : (
-            <>
-              Archive <span className="mono-text">{row.key}</span> (
-              {channelLabel(row.channel)}) v{row.latestVersion}? It will be hidden from the Active
-              list but kept in history for audit and revert.
-              {isPublishedTarget ? (
-                <>
-                  {' '}
-                  This is the only published version for the pair — active suggestions will fail
-                  until you publish a replacement.
-                </>
-              ) : null}
-            </>
-          )}
+          The row will be hidden from the Active list but kept in history for audit and revert.
         </DialogDescription>
 
+        {row !== null ? (
+          <div className="archive-prompt-template-dialog__metadata">
+            <KeyValueList items={buildMetadataItems(row)} />
+          </div>
+        ) : null}
+
         {isPublishedTarget ? (
-          <label className="archive-prompt-template-dialog__force">
-            <input
-              type="checkbox"
-              checked={force}
-              onChange={(event) => setForce(event.target.checked)}
-            />
-            <span>I understand — archive the published row anyway (force)</span>
-          </label>
+          <div className="archive-prompt-template-dialog__danger-zone">
+            <p className="archive-prompt-template-dialog__danger-heading">
+              Only published version
+            </p>
+            <p className="archive-prompt-template-dialog__danger-body">
+              Active suggestions for this <span className="mono-text">(key, channel)</span> will
+              fail until a replacement is published.
+            </p>
+            <label className="archive-prompt-template-dialog__force">
+              <input
+                type="checkbox"
+                checked={force}
+                onChange={(event) => setForce(event.target.checked)}
+              />
+              <span>Confirm: this is the only published version</span>
+            </label>
+          </div>
         ) : null}
 
         {mutation.error ? (
@@ -125,7 +192,7 @@ export function ArchivePromptTemplateDialog({
             disabled={mutation.isPending || (isPublishedTarget && !force)}
             onClick={() => void handleConfirm()}
           >
-            {mutation.isPending ? 'Archiving…' : 'Archive'}
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

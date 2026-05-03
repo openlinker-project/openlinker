@@ -6032,20 +6032,75 @@ a.kpi-card:focus-visible {
   gap: 0.75rem;
 }
 
+/* The `key` field is the durable identity of the template — give it a
+   bit more weight than its sibling fields so the hierarchy is obvious. */
+.new-prompt-template-dialog__key-input {
+  font-weight: 500;
+}
+
+.new-prompt-template-dialog__json-status {
+  margin: -0.25rem 0 0 0;
+  font-size: 0.75rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  letter-spacing: -0.005em;
+}
+
+.new-prompt-template-dialog__json-status--ok {
+  color: var(--status-success-strong);
+}
+
+.new-prompt-template-dialog__json-status--error {
+  color: var(--status-error-strong);
+}
+
+.archive-prompt-template-dialog__metadata {
+  padding: 0.75rem;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+}
+
+.archive-prompt-template-dialog__danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  border-top: 3px solid var(--status-warning);
+  border-radius: 0.625rem;
+}
+
+.archive-prompt-template-dialog__danger-heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--status-warning-strong);
+}
+
+.archive-prompt-template-dialog__danger-body {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--status-warning-strong);
+  line-height: 1.5;
+}
+
 .archive-prompt-template-dialog__force {
   display: flex;
   gap: 0.5rem;
   align-items: flex-start;
-  padding: 0.625rem 0.75rem;
-  background: var(--status-warning-soft);
-  border: 1px solid var(--status-warning-border);
-  border-radius: 0.625rem;
+  margin-top: 0.25rem;
   font-size: 0.8125rem;
   color: var(--status-warning-strong);
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .archive-prompt-template-dialog__force input {
   margin-top: 0.125rem;
+  cursor: pointer;
 }
 
 .prompt-detail-actions {

@@ -35,7 +35,7 @@ describe('ArchivePromptTemplateDialog', () => {
       { apiClient: client },
     );
     expect(
-      screen.queryByRole('checkbox', { name: /archive the published row/i }),
+      screen.queryByRole('checkbox', { name: /this is the only published version/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -50,7 +50,7 @@ describe('ArchivePromptTemplateDialog', () => {
       />,
       { apiClient: client },
     );
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
     await waitFor(() => {
       expect(archive).toHaveBeenCalledWith('tmpl-2', undefined);
     });
@@ -66,10 +66,10 @@ describe('ArchivePromptTemplateDialog', () => {
       />,
       { apiClient: client },
     );
-    const archiveButton = screen.getByRole('button', { name: /^archive$/i });
+    const archiveButton = screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i });
     expect(archiveButton).toBeDisabled();
 
-    const forceCheckbox = screen.getByRole('checkbox', { name: /archive the published row/i });
+    const forceCheckbox = screen.getByRole('checkbox', { name: /this is the only published version/i });
     fireEvent.click(forceCheckbox);
     expect(archiveButton).not.toBeDisabled();
   });
@@ -90,8 +90,8 @@ describe('ArchivePromptTemplateDialog', () => {
       />,
       { apiClient: client },
     );
-    fireEvent.click(screen.getByRole('checkbox', { name: /archive the published row/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /this is the only published version/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
     await waitFor(() => {
       expect(archive).toHaveBeenCalledWith('tmpl-2', { force: true });
     });
@@ -110,7 +110,7 @@ describe('ArchivePromptTemplateDialog', () => {
       />,
       { apiClient: client },
     );
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
     expect(await screen.findByText(/cannot archive published template/i)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
@@ -131,7 +131,7 @@ describe('ArchivePromptTemplateDialog', () => {
       />,
       { apiClient: client },
     );
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
     expect(await findToastTitle(/archived v2/i)).toBeInTheDocument();
     expect(screen.getByText(/published v1 is still active/i)).toBeInTheDocument();
   });

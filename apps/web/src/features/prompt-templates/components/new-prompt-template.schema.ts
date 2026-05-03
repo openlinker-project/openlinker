@@ -115,8 +115,14 @@ export interface NewPromptTemplateApiInput {
 /**
  * Map the validated form values to the `CreatePromptTemplateDto` wire
  * shape: `master` → `null` channel, parsed `variablesJson` → typed array.
- * Caller must invoke after `safeParse(success)` — the parse is repeated
- * here because `superRefine` does not transform.
+ *
+ * The `JSON.parse` repeats the work `superRefine` already did. We keep
+ * the redundancy on purpose — `superRefine` is validation-only (cannot
+ * transform without changing the schema's output type) and the cost
+ * (one parse of a tiny string per submit) is negligible vs. the
+ * complexity of switching to `.transform()`. Caller must invoke this
+ * only after `safeParse(success)` — the cast below is safe because
+ * `superRefine` already rejected any non-conforming variable shape.
  */
 export function toApiInput(values: NewPromptTemplateOutput): NewPromptTemplateApiInput {
   const variables = (

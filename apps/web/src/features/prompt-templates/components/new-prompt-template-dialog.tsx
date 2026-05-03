@@ -9,7 +9,7 @@
  *
  * @module apps/web/src/features/prompt-templates/components
  */
-import { type ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate } from 'react-router-dom';
@@ -66,6 +66,28 @@ export function NewPromptTemplateDialog({
     error?.message ? [String(error.message)] : [],
   );
 
+  // Live JSON-status indicator below the variables textarea — cockpit
+  // principle "status-first, fast to scan." Tells the operator instantly
+  // whether their JSON parses without waiting for submit.
+  const variablesJsonValue = form.watch('variablesJson');
+  const variablesStatus = useMemo<
+    | { tone: 'ok'; count: number }
+    | { tone: 'error'; message: string }
+    | null
+  >(() => {
+    const trimmed = variablesJsonValue.trim();
+    if (trimmed === '') return { tone: 'ok', count: 0 };
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (!Array.isArray(parsed)) {
+        return { tone: 'error', message: 'must be a JSON array' };
+      }
+      return { tone: 'ok', count: parsed.length };
+    } catch {
+      return { tone: 'error', message: 'invalid JSON syntax' };
+    }
+  }, [variablesJsonValue]);
+
   const handleOpenChange = (next: boolean): void => {
     onOpenChange(next);
     if (!next) {
@@ -115,14 +137,14 @@ export function NewPromptTemplateDialog({
           <FormField
             label="Key"
             name="key"
-            description="Stable identifier the suggestion service looks up. Lowercase, dot- or dash-separated."
+            description="Stable identifier the suggestion service looks up. Lowercase, dot- or dash-separated. Cannot change after publish."
             error={form.formState.errors.key?.message}
           >
             <Input
               {...form.register('key')}
               placeholder="offer.description.suggest"
               maxLength={128}
-              className="mono-text"
+              className="mono-text new-prompt-template-dialog__key-input"
             />
           </FormField>
 
@@ -180,6 +202,18 @@ export function NewPromptTemplateDialog({
               placeholder="[]"
             />
           </FormField>
+          {variablesStatus !== null ? (
+            <p
+              className={`new-prompt-template-dialog__json-status new-prompt-template-dialog__json-status--${
+                variablesStatus.tone === 'ok' ? 'ok' : 'error'
+              }`}
+              aria-live="polite"
+            >
+              {variablesStatus.tone === 'ok'
+                ? `✓ valid JSON · ${variablesStatus.count} variable${variablesStatus.count === 1 ? '' : 's'}`
+                : `✗ ${variablesStatus.message}`}
+            </p>
+          ) : null}
         </form>
 
         <DialogFooter>

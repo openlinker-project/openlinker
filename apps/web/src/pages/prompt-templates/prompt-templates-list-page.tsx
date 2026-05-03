@@ -55,7 +55,9 @@ function parseChannelParam(value: string | null): PromptTemplateListFilters['cha
 }
 
 function parseStatusParam(value: string | null): StatusFilterValue {
-  if (value === 'archived' || value === 'all') return value;
+  if (value !== null && (STATUS_FILTER_VALUES as readonly string[]).includes(value)) {
+    return value as StatusFilterValue;
+  }
   return 'active';
 }
 
@@ -205,7 +207,7 @@ export function PromptTemplatesListPage(): ReactElement {
     },
     {
       id: 'actions',
-      header: '',
+      header: <span className="sr-only">Row actions</span>,
       cell: (row) =>
         row.latestState !== 'archived' ? (
           <Button
