@@ -29,6 +29,7 @@
     "dev:stack:up": "docker compose up -d postgres redis mysql phpmyadmin prestashop",
     "dev:stack:down": "docker compose down",
     "dev:stack:logs": "docker compose logs -f",
+    "dev:stack:seed-prestashop": "docker compose exec prestashop sh -c 'for f in /tmp/post-install-scripts/*.sh; do echo \"--- $f ---\"; sh \"$f\"; done'",
     "dev:health": "curl -s http://localhost:3000/health/dev-stack | jq . || curl -s http://localhost:3000/health/dev-stack",
     "prepare": "husky install || true"
   },
