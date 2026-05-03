@@ -8,6 +8,24 @@
  */
 
 /**
+ * Response format preference values
+ *
+ * Runtime array of all valid `responseFormat` values. Used by the API-layer
+ * `PrestashopConnectionConfigDto` (#509) to validate operator input via
+ * `@IsIn(ResponseFormatValues as readonly string[])` and as the source of
+ * truth for the derived `ResponseFormat` union below.
+ */
+export const ResponseFormatValues = ['auto', 'json', 'xml'] as const;
+
+/**
+ * Response format preference type
+ *
+ * Derived union from `ResponseFormatValues` — keeps the runtime array and
+ * type definition in lockstep without a TypeScript `enum`.
+ */
+export type ResponseFormat = (typeof ResponseFormatValues)[number];
+
+/**
  * PrestaShop connection configuration
  *
  * Configuration stored in Connection.config for PrestaShop WebService integrations.
@@ -78,7 +96,7 @@ export interface PrestashopConnectionConfig {
    * - 'json': Force JSON (will fail if not supported)
    * - 'xml': Force XML
    */
-  responseFormat?: 'auto' | 'json' | 'xml';
+  responseFormat?: ResponseFormat;
 
   /**
    * Default ISO 4217 currency code for products synced from this PrestaShop

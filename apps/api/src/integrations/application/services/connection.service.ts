@@ -112,6 +112,18 @@ export class ConnectionService implements IConnectionService {
         );
       }
 
+      // #509 — validate the platform-specific config shape on create as well
+      // as on update (#437 only wired update). Closes the same DTO bypass on
+      // `CreateConnectionDto.config: Record<string, unknown>`. Runs *before*
+      // credentials are persisted so a 400 from validation doesn't leave an
+      // orphan credential row. Per-platform validators are registered in
+      // `CONNECTION_CONFIG_VALIDATORS`; absence is a deliberate skip (no
+      // platform-specific shape to enforce yet).
+      const configValidator = CONNECTION_CONFIG_VALIDATORS[rest.platformType];
+      if (rest.config !== undefined && configValidator) {
+        await configValidator(rest.config);
+      }
+
       // Persist credentials if the caller supplied raw values. We write the
       // credential row *before* the connection row so the connection is never
       // persisted pointing at a missing credential. If connection creation
