@@ -254,6 +254,76 @@ describe('ConnectionService', () => {
       await expect(service.create(payload)).resolves.toEqual(mockConnection);
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
+
+    // #509 — create-path config validation. Mirrors the update-path hook
+    // (#437) so that operators get the same 400 surface on POST /connections
+    // as they do on PATCH /connections/:id.
+    describe('config validation on create (#509)', () => {
+      it('should reject PrestaShop create with invalid baseUrl', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { baseUrl: 'shop.example.com' }, // missing protocol
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject PrestaShop create with defaultCarrierId of 0', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { baseUrl: 'https://shop.example.com', defaultCarrierId: 0 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject Allegro create with malformed sellerDefaults', async () => {
+        // Side effect of #509 wiring: Allegro create is now validated too.
+        // Closes the same DTO bypass that #437 only fixed on update.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'allegro.publicapi.v1',
+          platformType: 'allegro',
+          supportedCapabilities: ['OrderSource', 'OfferManager'],
+        });
+        await expect(
+          service.create({
+            name: 'Allegro Conn',
+            platformType: 'allegro',
+            credentialsRef: 'db:existing-ref',
+            config: {
+              environment: 'sandbox',
+              sellerDefaults: {
+                location: { countryCode: 'PL' }, // missing province/city/postCode
+                responsibleProducerId: 'rp-1',
+                safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+              },
+            },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should skip create-path validation for platforms with no validator', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'shopify.unknown.v1',
+          platformType: 'shopify',
+          supportedCapabilities: [],
+        });
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            name: 'Shopify Conn',
+            platformType: 'shopify',
+            credentialsRef: 'db:existing-ref',
+            config: { whatever: 'goes' },
+          }),
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('list', () => {
@@ -479,19 +549,157 @@ describe('ConnectionService', () => {
         expect(connectionPort.update).toHaveBeenCalled();
       });
 
-      it('should skip Allegro validation for non-Allegro connections', async () => {
-        // The base mockConnection is a prestashop connection — passing nonsense
-        // in `config` must not raise here, since the validator only runs for
-        // `existing.platformType === 'allegro'`.
-        connectionPort.get.mockResolvedValue(mockConnection);
-        connectionPort.update.mockResolvedValue(mockConnection);
+      it('should skip config validation when no validator is registered for the platform', async () => {
+        // A platform with no validator (e.g. a hypothetical `shopify`) must
+        // skip the validation pass and persist whatever blob the operator
+        // sent. CONNECTION_CONFIG_VALIDATORS lookup returns `undefined` and
+        // the call site short-circuits.
+        const shopifyConnection = new Connection(
+          'shopify-conn-1',
+          'shopify',
+          'Shopify Store',
+          'active',
+          {},
+          'db:cred-ref-shopify',
+          new Date(),
+          new Date(),
+          undefined,
+          [],
+        );
+        connectionPort.get.mockResolvedValue(shopifyConnection);
+        connectionPort.update.mockResolvedValue(shopifyConnection);
 
         await expect(
-          service.update('connection-123', {
-            config: { sellerDefaults: { type: 'whatever' } },
+          service.update('shopify-conn-1', {
+            config: { whatever: 'goes' },
           }),
-        ).resolves.toEqual(mockConnection);
+        ).resolves.toEqual(shopifyConnection);
         expect(connectionPort.update).toHaveBeenCalled();
+      });
+    });
+
+    // #509 — service-layer PrestaShop config validation. Closes the same
+    // bypass on `UpdateConnectionDto.config: Record<string, unknown>` for
+    // the PrestaShop side (#437 wired Allegro only).
+    describe('PrestaShop config validation (#509)', () => {
+      const prestashopConnection = new Connection(
+        'ps-conn-1',
+        'prestashop',
+        'PS Shop',
+        'active',
+        { baseUrl: 'https://shop.example.com' },
+        'db:cred-ref-ps',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+      );
+
+      const validPsConfig = {
+        baseUrl: 'https://shop.example.com',
+        shopId: 1,
+        defaultCarrierId: 2,
+        guestCustomerGroupId: 2,
+        currency: 'PLN',
+        responseFormat: 'auto' as const,
+      };
+
+      beforeEach(() => {
+        connectionPort.get.mockResolvedValue(prestashopConnection);
+        connectionPort.update.mockResolvedValue(prestashopConnection);
+      });
+
+      it('should accept a fully-formed PrestaShop config', async () => {
+        await expect(
+          service.update('ps-conn-1', { config: validPsConfig }),
+        ).resolves.toEqual(prestashopConnection);
+        expect(connectionPort.update).toHaveBeenCalledWith('ps-conn-1', {
+          config: validPsConfig,
+        });
+      });
+
+      it('should reject baseUrl missing protocol', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, baseUrl: 'shop.example.com' },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject defaultCarrierId of 0', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, defaultCarrierId: 0 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject negative guestCustomerGroupId', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, guestCustomerGroupId: -1 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject lowercase currency', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, currency: 'pln' },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject responseFormat outside the allowed set', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, responseFormat: 'csv' },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject timeoutMs above the sanity max', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, timeoutMs: 999999999 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should reject pageSize above the sanity max', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, pageSize: 5000 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should accept config with adjacent unknown keys (whitelist=false)', async () => {
+        // The validator owns shape-correctness on what the DTO describes,
+        // not exhaustive ownership of the JSONB blob. Adjacent keys must not
+        // raise.
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, futureFlag: true },
+          }),
+        ).resolves.toEqual(prestashopConnection);
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
+
+      it('should reject paymentModuleOverrides containing non-string entries', async () => {
+        await expect(
+          service.update('ps-conn-1', {
+            config: { ...validPsConfig, paymentModuleOverrides: ['ok', 42] },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
       });
     });
   });

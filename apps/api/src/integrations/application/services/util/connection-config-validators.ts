@@ -19,6 +19,7 @@ import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AllegroConnectionConfigDto } from '../../dto/allegro-connection-config.dto';
+import { PrestashopConnectionConfigDto } from '../../dto/prestashop-connection-config.dto';
 import { flattenValidationErrors } from './flatten-validation-errors';
 
 export type ConnectionConfigValidator = (config: Record<string, unknown>) => Promise<void>;
@@ -41,6 +42,24 @@ async function validateAllegroConnectionConfig(config: Record<string, unknown>):
   }
 }
 
+async function validatePrestashopConnectionConfig(config: Record<string, unknown>): Promise<void> {
+  const instance = plainToInstance(PrestashopConnectionConfigDto, config);
+  // Same `whitelist: false` rationale as the Allegro validator above —
+  // shape-correctness on what the DTO describes, not exhaustive ownership
+  // of the JSONB blob.
+  const errors = await validate(instance, {
+    whitelist: false,
+    forbidNonWhitelisted: false,
+  });
+  if (errors.length > 0) {
+    throw new BadRequestException({
+      message: 'Invalid PrestaShop connection config',
+      errors: flattenValidationErrors(errors),
+    });
+  }
+}
+
 export const CONNECTION_CONFIG_VALIDATORS: Record<string, ConnectionConfigValidator> = {
   allegro: validateAllegroConnectionConfig,
+  prestashop: validatePrestashopConnectionConfig,
 };
