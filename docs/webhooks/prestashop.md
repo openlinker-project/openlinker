@@ -46,9 +46,9 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=your-secret-key
 
 ### 3. Install PrestaShop Webhook Module
 
-Install the OpenLinker Webhooks module in your PrestaShop instance:
+Install the OpenLinker module in your PrestaShop instance:
 
-**For detailed installation instructions**, see: [PrestaShop Module README](../../apps/prestashop-module/openlinkerwebhooks/README.md)
+**For detailed installation instructions**, see: [PrestaShop Module README](../../apps/prestashop-module/openlinker/README.md)
 
 **Quick Start**:
 1. Upload module ZIP to PrestaShop (or use bind-mount for development)
@@ -326,6 +326,6 @@ ORDER BY created_at DESC;
 ## Related Documentation
 
 - [Webhook Overview](./overview.md) - OpenLinker webhook ingestion system
-- [PrestaShop Module README](../../apps/prestashop-module/openlinkerwebhooks/README.md) - **Module installation and configuration guide**
+- [PrestaShop Module README](../../apps/prestashop-module/openlinker/README.md) - **Module installation and configuration guide**
 - [Architecture Overview](../architecture-overview.md) - System architecture
 

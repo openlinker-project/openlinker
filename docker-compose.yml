@@ -99,7 +99,7 @@ services:
     volumes:
       - prestashop_data:/var/www/html
       # Bind-mount module source for fast dev iteration
-      - ./apps/prestashop-module/openlinkerwebhooks:/var/www/html/modules/openlinkerwebhooks
+      - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
       # Post-install script: rename randomized admin folder to /admin-dev
       - ./docker/prestashop/post-install:/tmp/post-install-scripts:ro
     extra_hosts:
