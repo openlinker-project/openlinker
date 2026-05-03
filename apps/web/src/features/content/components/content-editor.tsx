@@ -29,9 +29,8 @@ import {
 import type {
   ContentChannelState,
   ContentMasterState,
-  PromptTemplateChannel,
 } from '../api/content.types';
-import { PromptTemplateChannelValues } from '../api/content.types';
+import { resolveSuggestChannel } from '../api/content.utils';
 import { ContentPanel } from './content-panel';
 import { SuggestionDialog } from './suggestion-dialog';
 
@@ -51,12 +50,6 @@ function fromTabValue(value: string, channels: ContentChannelState[]): ActiveTar
   if (value === 'master') return { kind: 'master' };
   const found = channels.find((c) => c.connectionId === value);
   return found ? { kind: 'channel', connectionId: found.connectionId } : { kind: 'master' };
-}
-
-function resolveChannelPromptKey(platformType: string): PromptTemplateChannel | null {
-  return (PromptTemplateChannelValues as readonly string[]).includes(platformType)
-    ? (platformType as PromptTemplateChannel)
-    : null;
 }
 
 function formatMutationError(err: unknown): string | null {
@@ -256,7 +249,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
         {channels.map((channel) => {
           const target: ActiveTarget = { kind: 'channel', connectionId: channel.connectionId };
-          const promptChannel = resolveChannelPromptKey(channel.platformType);
+          const promptChannel = resolveSuggestChannel(channel.platformType);
           const disabledReason =
             channel.connectionStatus !== 'active'
               ? `Connection is ${channel.connectionStatus}. Re-activate to enable editing.`

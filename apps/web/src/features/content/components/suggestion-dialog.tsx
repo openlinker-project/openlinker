@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/content/components
  */
-import { useCallback, useState, type ReactElement } from 'react';
+import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -33,6 +33,13 @@ interface SuggestionDialogProps {
   channel: PromptTemplateChannel | null;
   disabled?: boolean;
   onApply: (suggestion: string) => void;
+  /**
+   * Optional banner rendered at the top of the dialog body. Used by the
+   * offer-edit drawer (#485) to remind operators that the suggestion is
+   * sourced from the product's master content — saving still writes only
+   * to the single offer the drawer is editing.
+   */
+  scopeWarning?: ReactNode;
 }
 
 const MAX_TONE_LENGTH = 64;
@@ -58,6 +65,7 @@ export function SuggestionDialog({
   channel,
   disabled = false,
   onApply,
+  scopeWarning,
 }: SuggestionDialogProps): ReactElement {
   const mutation = useSuggestContentMutation();
   const [open, setOpen] = useState(false);
@@ -123,6 +131,12 @@ export function SuggestionDialog({
         </DialogDescription>
 
         <div className="content-suggestion__body">
+          {scopeWarning ? (
+            <div className="content-suggestion__scope-warning" role="note">
+              {scopeWarning}
+            </div>
+          ) : null}
+
           <FormField
             label="Tone"
             name="tone"

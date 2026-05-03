@@ -48,4 +48,16 @@ export class OfferMappingResponseDto {
       'on non-Offer entity types (Product, Inventory, etc.).',
   })
   offerCreation?: OfferCreationStatusResponseDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Internal product ID owning the linked variant. Populated only by ' +
+      '`GET /listings/:id` (detail endpoint) for Offer-type mappings whose ' +
+      '`internalId` resolves to an existing variant. Drives the AI-suggest ' +
+      'flow on the offer-edit drawer (#485) — the suggest endpoint is keyed ' +
+      'on product, not variant. Absent on list responses, synced-in offers ' +
+      'whose variant has been deleted, and non-Offer entity types.',
+  })
+  linkedProductId?: string | null;
 }

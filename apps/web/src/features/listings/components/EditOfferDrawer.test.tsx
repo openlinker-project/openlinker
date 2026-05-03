@@ -18,7 +18,7 @@ const mockMapping: OfferMapping = {
   entityType: 'Offer',
   internalId: 'ol_offer_abc123',
   externalId: 'allegro-offer-999',
-  platformType: 'Allegro',
+  platformType: 'allegro',
   connectionId: 'conn-1',
   context: null,
   createdAt: '2026-01-01T00:00:00Z',
@@ -29,10 +29,11 @@ function renderDrawer(
   isOpen: boolean,
   overrides: Parameters<typeof createMockApiClient>[0] = {},
   onClose = vi.fn(),
+  mapping: OfferMapping = mockMapping,
 ) {
   const mockApi = createMockApiClient(overrides);
   renderWithProviders(
-    <EditOfferDrawer isOpen={isOpen} onClose={onClose} mapping={mockMapping} />,
+    <EditOfferDrawer isOpen={isOpen} onClose={onClose} mapping={mapping} />,
     { apiClient: mockApi },
   );
   return { mockApi, onClose };
@@ -139,5 +140,76 @@ describe('EditOfferDrawer', () => {
     expect(await screen.findByText(/update failed/i)).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('AI suggest (#485)', () => {
+    it('should render the Suggest button when linkedProductId and platformType resolve to a channel', () => {
+      const mappingWithLink: OfferMapping = {
+        ...mockMapping,
+        linkedProductId: 'ol_product_xyz789',
+      };
+      renderDrawer(true, {}, undefined, mappingWithLink);
+      expect(
+        screen.getByRole('button', { name: /suggest with ai/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('should show a hint instead of the Suggest button when no variant is linked', () => {
+      const mappingWithoutLink: OfferMapping = { ...mockMapping, linkedProductId: null };
+      renderDrawer(true, {}, undefined, mappingWithoutLink);
+      expect(
+        screen.queryByRole('button', { name: /suggest with ai/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/link this offer to a product variant/i)).toBeInTheDocument();
+    });
+
+    it('should populate description and mark form dirty when applying a suggestion (#485)', async () => {
+      const suggest = vi.fn().mockResolvedValue({
+        suggestion: 'Generated copy',
+        requestId: 'req-1',
+        templateKey: 'offer.description.suggest',
+        templateVersion: 1,
+        templateChannel: 'allegro',
+        modelUsed: 'fake',
+        latencyMs: 0,
+        usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      });
+      const mappingWithLink: OfferMapping = {
+        ...mockMapping,
+        linkedProductId: 'ol_product_xyz789',
+      };
+      renderDrawer(true, { content: { suggest } }, undefined, mappingWithLink);
+
+      // Save is disabled while pristine.
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
+
+      const applyButton = await screen.findByRole('button', { name: /apply to editor/i });
+      fireEvent.click(applyButton);
+
+      await waitFor(() => {
+        const textarea = screen.getByLabelText(/description/i);
+        expect(textarea).toHaveValue('Generated copy');
+      });
+      // Apply must mark the form dirty so Save activates.
+      expect(screen.getByRole('button', { name: /save changes/i })).not.toBeDisabled();
+    });
+
+    it('should show the offer-scope warning copy inside the suggestion dialog (#485)', async () => {
+      const mappingWithLink: OfferMapping = {
+        ...mockMapping,
+        linkedProductId: 'ol_product_xyz789',
+      };
+      renderDrawer(true, {}, undefined, mappingWithLink);
+
+      fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
+
+      expect(await screen.findByText(/this offer only/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/does not update the product master/i),
+      ).toBeInTheDocument();
+    });
   });
 });

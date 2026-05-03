@@ -21,6 +21,8 @@ import type { OfferMapping } from '../api/listings.types';
 import type { UpdateOfferFieldsPayload } from '../api/listings.types';
 import { editOfferFieldsSchema, type EditOfferFieldsValues } from './edit-offer-fields.schema';
 import { OfferDescriptionEditor } from './OfferDescriptionEditor';
+import { SuggestionDialog } from '../../content/components/suggestion-dialog';
+import { resolveSuggestChannel } from '../../content/api/content.utils';
 
 interface EditOfferDrawerProps {
   isOpen: boolean;
@@ -66,6 +68,32 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
 
   const { dirtyFields } = form.formState;
   const isDirty = Object.keys(dirtyFields).length > 0;
+
+  const linkedProductId = mapping.linkedProductId ?? null;
+  const suggestChannel = resolveSuggestChannel(mapping.platformType);
+  const canSuggest = linkedProductId !== null && suggestChannel !== null;
+  // Pick the first applicable disabled-hint so the operator knows *why* the
+  // button is unavailable. linkedProductId missing wins because no other
+  // gate is recoverable without re-linking the variant; the channel-not-
+  // supported hint is informational (will resolve when the channel's prompt
+  // template is seeded).
+  const disabledHint =
+    linkedProductId === null
+      ? 'AI suggestions require a linked variant — link this offer to a product variant first.'
+      : suggestChannel === null
+        ? `AI suggestions are not available for ${mapping.platformType} yet.`
+        : null;
+
+  const { setValue: setFormValue } = form;
+  const handleApplySuggestion = useCallback(
+    (suggestion: string) => {
+      setFormValue('descriptionText', suggestion, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [setFormValue],
+  );
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -196,16 +224,45 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
               </FormField>
             </div>
 
-            <FormField
-              label="Description"
-              name="descriptionText"
-              error={form.formState.errors.descriptionText?.message}
-            >
-              <OfferDescriptionEditor
-                registration={form.register('descriptionText')}
+            <div className="edit-offer-drawer__description">
+              {canSuggest || disabledHint ? (
+                <div className="edit-offer-drawer__description-actions">
+                  {canSuggest && linkedProductId !== null ? (
+                    <SuggestionDialog
+                      productId={linkedProductId}
+                      channel={suggestChannel}
+                      disabled={mutation.isPending}
+                      onApply={handleApplySuggestion}
+                      scopeWarning={
+                        <>
+                          Suggestions are sourced from the product's master content.
+                          Applying replaces the description on <strong>this offer only</strong> —
+                          saving does not update the product master or any other linked offers.
+                        </>
+                      }
+                    />
+                  ) : (
+                    <span
+                      className="edit-offer-drawer__description-hint"
+                      aria-live="polite"
+                    >
+                      {disabledHint}
+                    </span>
+                  )}
+                </div>
+              ) : null}
+
+              <FormField
+                label="Description"
+                name="descriptionText"
                 error={form.formState.errors.descriptionText?.message}
-              />
-            </FormField>
+              >
+                <OfferDescriptionEditor
+                  registration={form.register('descriptionText')}
+                  error={form.formState.errors.descriptionText?.message}
+                />
+              </FormField>
+            </div>
           </form>
         </div>
 

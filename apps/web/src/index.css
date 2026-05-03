@@ -6324,6 +6324,39 @@ a.kpi-card:focus-visible {
   color: var(--accent-primary-hover);
 }
 
+.content-suggestion__scope-warning {
+  padding: 0.625rem 0.75rem;
+  background: var(--status-info-soft);
+  border: 1px solid var(--status-info-border);
+  border-radius: 0.625rem;
+  color: var(--status-info-fg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Edit-offer drawer — Suggest button row above the Description
+   field (#485)
+   ============================================================ */
+
+.edit-offer-drawer__description {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.edit-offer-drawer__description-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.edit-offer-drawer__description-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ============================================================
    AI Provider Settings — multi-provider table (#451 / #452)
    ============================================================ */

@@ -49,6 +49,8 @@ import type {
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { EntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
+import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
@@ -85,6 +87,8 @@ export class ListingsController {
     private readonly sellerPolicies: ISellerPoliciesService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
+    private readonly productVariantRepository: ProductVariantRepositoryPort,
   ) {}
 
   @Get()
@@ -128,17 +132,26 @@ export class ListingsController {
     }
 
     const dto = this.toDto(mapping);
-    // Enrich Offer-type mappings with the matching OfferCreationRecord so the
-    // detail page can show creation status + errors for OL-initiated offers
-    // without a second round-trip. Synced-in offers (no matching record) and
-    // non-Offer entity types fall through to a plain DTO.
+    // Enrich Offer-type mappings with two independent lookups in parallel:
+    //   - the matching OfferCreationRecord (so the detail page can show
+    //     creation status + errors for OL-initiated offers without a second
+    //     round-trip — synced-in offers fall through to a plain DTO),
+    //   - the linked variant's productId (drives the AI-suggest flow on the
+    //     edit drawer — #485 — which is keyed on product, not variant).
+    // Non-Offer entity types skip both lookups entirely.
     if (mapping.entityType === ('Offer' satisfies EntityType)) {
-      const record = await this.offerCreationRecords.findByExternalOfferIdAndConnectionId(
-        mapping.externalId,
-        mapping.connectionId,
-      );
+      const [record, linkedVariant] = await Promise.all([
+        this.offerCreationRecords.findByExternalOfferIdAndConnectionId(
+          mapping.externalId,
+          mapping.connectionId,
+        ),
+        this.productVariantRepository.findById(mapping.internalId),
+      ]);
       if (record) {
         dto.offerCreation = this.toOfferCreationStatusDto(record);
+      }
+      if (linkedVariant) {
+        dto.linkedProductId = linkedVariant.productId;
       }
     }
     return dto;
