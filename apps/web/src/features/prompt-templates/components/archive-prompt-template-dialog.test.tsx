@@ -133,6 +133,11 @@ describe('ArchivePromptTemplateDialog', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /^archive(\s+published)?\s+v\d+(\s+\(force\))?$/i }));
     expect(await findToastTitle(/archived v2/i)).toBeInTheDocument();
-    expect(screen.getByText(/published v1 is still active/i)).toBeInTheDocument();
+    // Radix Toast renders the description twice: once visibly inside the
+    // toast and once in an `aria-live` mirror for screen readers. Both are
+    // intentional — assert that at least one occurrence is present.
+    expect(
+      (await screen.findAllByText(/published v1 is still active/i)).length,
+    ).toBeGreaterThan(0);
   });
 });
