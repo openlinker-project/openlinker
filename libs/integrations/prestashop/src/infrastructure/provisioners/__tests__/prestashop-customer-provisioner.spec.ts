@@ -113,45 +113,61 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
     );
   });
 
-  it('falls back to 2 with a warn when guestCustomerGroupId is invalid (0, negative, NaN)', async () => {
-    const warnSpy = jest
-      .spyOn(
-        (provisioner as unknown as { logger: { warn: (m: string) => void } }).logger,
-        'warn',
-      )
-      .mockImplementation(() => {});
+  // Defensive guard is `Number.isFinite(x) && x > 0`. Parametrize across
+  // the three realistic operator-misconfig values (zero, negative, NaN) so
+  // a future refactor that drops one branch fails the suite.
+  it.each<[string, number]>([
+    ['zero', 0],
+    ['negative', -1],
+    ['NaN', Number.NaN],
+  ])(
+    'falls back to 2 with a warn when guestCustomerGroupId is invalid (%s)',
+    async (label, badValue) => {
+      const warnSpy = jest
+        .spyOn(
+          (provisioner as unknown as { logger: { warn: (m: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => {});
 
-    const config: PrestashopConnectionConfig = {
-      baseUrl: 'https://shop.test',
-      guestCustomerGroupId: 0,
-    };
+      const config: PrestashopConnectionConfig = {
+        baseUrl: 'https://shop.test',
+        guestCustomerGroupId: badValue,
+      };
 
-    await provisioner.resolveOrCreateGuestCustomer(
-      'ol_customer_test_3',
-      'buyer3@example.com',
-      'hash_3',
-      'Piotr',
-      'Swierzy',
-      'connection-3',
-      webserviceClient,
-      config,
-      identifierMapping,
-    );
+      await provisioner.resolveOrCreateGuestCustomer(
+        `ol_customer_test_invalid_${label}`,
+        `buyer-${label}@example.com`,
+        `hash_${label}`,
+        'Piotr',
+        'Swierzy',
+        `connection-${label}`,
+        webserviceClient,
+        config,
+        identifierMapping,
+      );
 
-    const body = captureCustomerCreateBody();
-    expect(body).toEqual(
-      expect.objectContaining({
-        is_guest: 1,
-        id_default_group: 2,
-        associations: {
-          groups: { group: [{ id: 2 }] },
-        },
-      }),
-    );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/invalid guestCustomerGroupId=0.*falling back/i),
-    );
+      const body = captureCustomerCreateBody();
+      expect(body).toEqual(
+        expect.objectContaining({
+          is_guest: 1,
+          id_default_group: 2,
+          associations: {
+            groups: { group: [{ id: 2 }] },
+          },
+        }),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/invalid guestCustomerGroupId=.*falling back/i),
+      );
 
-    warnSpy.mockRestore();
-  });
+      warnSpy.mockRestore();
+
+      // Reset the captured-body queue between iterations so the next case
+      // doesn't read the previous case's body.
+      createCalls.length = 0;
+      webserviceClient.createResource.mockClear();
+      identifierMapping.getOrCreateExactMapping.mockClear();
+    },
+  );
 });
