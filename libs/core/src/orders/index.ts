@@ -18,7 +18,8 @@ export type { DestinationOptionsReader } from './domain/ports/capabilities/desti
 export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
 export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
 export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
-export type { MappingOption } from './domain/types/mapping-option.types';
+export type { MappingOption, MappingOptionKind } from './domain/types/mapping-option.types';
+export { MappingOptionKindValues } from './domain/types/mapping-option.types';
 
 // Types
 export {

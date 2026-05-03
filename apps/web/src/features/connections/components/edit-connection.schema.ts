@@ -83,6 +83,20 @@ export const editConnectionSchema = z.object({
   masterCatalogConnectionId: z
     .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
     .optional(),
+  // PrestaShop-only structured field surfacing `config.defaultCarrierId`
+  // (#517). Stored as a string on the form so the same `<Select>`
+  // primitive can serve both this field and the per-method mapping
+  // dropdown (which uses string `id_reference` values). `mergeStructuredIntoConfig`
+  // coerces to an integer at submit; non-integer/zero/negative input is
+  // refused with a Zod refine.
+  defaultCarrierId: z
+    .union([
+      z.string().refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), {
+        message: 'Default carrier ID must be a positive integer.',
+      }),
+      z.literal(''),
+    ])
+    .optional(),
   configText: z
     .string()
     .trim()
@@ -117,6 +131,14 @@ export interface StructuredConfigPatch {
   shopId?: string;
   storefrontBaseUrl?: string;
   masterCatalogConnectionId?: string;
+  /**
+   * PrestaShop fallback carrier id (#517). Empty string clears the key;
+   * a non-empty value is coerced to a positive integer. Values that fail
+   * coercion are filtered out by the Zod refine on the schema, so by the
+   * time `mergeStructuredIntoConfig` sees the value it's already either
+   * `""` or a valid digit-only string.
+   */
+  defaultCarrierId?: string;
   /**
    * #430 — Allegro seller defaults. The merge helper writes a fully
    * resolved object into `config.sellerDefaults` whenever `sellerDefaults`
@@ -164,6 +186,14 @@ export function mergeStructuredIntoConfig(
   // value verbatim instead of deleting on empty.
   if (structured.masterCatalogConnectionId !== undefined) {
     next.masterCatalogConnectionId = structured.masterCatalogConnectionId;
+  }
+  if (structured.defaultCarrierId !== undefined) {
+    if (structured.defaultCarrierId.length === 0) {
+      delete next.defaultCarrierId;
+    } else {
+      // Schema's Zod refine guarantees this is a positive-integer string.
+      next.defaultCarrierId = Number.parseInt(structured.defaultCarrierId, 10);
+    }
   }
   if (structured.sellerDefaults !== undefined) {
     if (structured.sellerDefaults === null) {

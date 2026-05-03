@@ -117,6 +117,76 @@ describe('MappingPanel', () => {
       expect(options[2]).toHaveTextContent('Allegro Kurier24 InPost (7c2b3d4e…)');
     });
 
+    it("decorates dynamic-kind options with the runtime-behaviour suffix in the dropdown (#517)", () => {
+      // The OL Dynamic carrier (kind: 'dynamic') means PS reads buyer-paid
+      // shipping from the sidecar at order-total time (#516). Native
+      // <option> is text-only, so the cue is encoded as a label suffix.
+      const PS_OL_DYNAMIC: MappingOption = {
+        value: '99',
+        label: 'OpenLinker Dynamic',
+        kind: 'dynamic',
+      };
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST, PS_OL_DYNAMIC]}
+          savedRows={[]}
+          onSave={vi.fn()}
+        />,
+      );
+
+      const targetSelect = screen.getByRole('combobox', { name: /select prestashop carrier/i });
+      const options = within(targetSelect).getAllByRole('option');
+      // Static option: bare label + (id) — no behaviour suffix.
+      expect(options[1]).toHaveTextContent('InPost Paczkomat (5)');
+      // Dynamic option: same shape + " — exact Allegro cost" suffix.
+      expect(options[2]).toHaveTextContent('OpenLinker Dynamic (99) — exact Allegro cost');
+    });
+
+    it('decorates dynamic-kind options in the saved-row table cell (#517)', () => {
+      const PS_OL_DYNAMIC: MappingOption = {
+        value: '99',
+        label: 'OpenLinker Dynamic',
+        kind: 'dynamic',
+      };
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_OL_DYNAMIC]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: '99' }]}
+          onSave={vi.fn()}
+        />,
+      );
+
+      // Both the saved-row table cell and the (native) <option> in the
+      // re-pick dropdown carry the suffix text. The styled cell wraps it
+      // in a <span class="mapping-option__dynamic-suffix">; the native
+      // <option> renders flat text. Scope the assertion to the styled
+      // span by class so we only catch the cell instance.
+      const styledSuffixes = screen
+        .getAllByText(/— exact Allegro cost/)
+        .filter((el) => el.classList.contains('mapping-option__dynamic-suffix'));
+      expect(styledSuffixes).toHaveLength(1);
+    });
+
+    it('does NOT add the dynamic suffix to static options', () => {
+      // Regression guard: only `kind === 'dynamic'` triggers the cue. A
+      // static option with no `kind` field stays bare.
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[PS_INPOST]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: PS_INPOST.value }]}
+          onSave={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText(/exact Allegro cost/)).toBeNull();
+    });
+
     it('falls back to the raw value when a saved mapping references a value missing from the source options', () => {
       // Seller deleted the cennik on Allegro's side — saved row points at a
       // method id no longer in the live list. Render the raw value so the

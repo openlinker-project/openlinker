@@ -1381,6 +1381,56 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         expect(result).toEqual([{ value: '1', label: 'Click and collect' }]);
       });
 
+      it("marks the OL Dynamic carrier with kind='dynamic' (#517) when external_module_name='openlinker'", async () => {
+        // The OL PS module installs the carrier with
+        // `external_module_name='openlinker'` (#515 / #524). FE relies on
+        // `kind: 'dynamic'` to decorate the dropdown — runtime routing is
+        // already handled by the order-processor adapter (#516).
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          { id: '1', id_reference: '1', name: 'Click and collect', active: '1', deleted: '0' },
+          {
+            id: '99',
+            id_reference: '99',
+            name: 'OpenLinker Dynamic',
+            active: '1',
+            deleted: '0',
+            external_module_name: 'openlinker',
+          },
+          { id: '4', id_reference: '4', name: 'My light carrier', active: '1', deleted: '0' },
+        ]);
+
+        const result = await adapter.listCarriers();
+
+        // OL Dynamic carries kind='dynamic'; siblings stay static (no kind).
+        expect(result).toEqual([
+          { value: '1', label: 'Click and collect' },
+          { value: '99', label: 'OpenLinker Dynamic', kind: 'dynamic' },
+          { value: '4', label: 'My light carrier' },
+        ]);
+      });
+
+      it('treats unrelated external_module_name values as static (no kind set)', async () => {
+        // Defensive: if some other PS carrier module ships with its own
+        // `external_module_name` (e.g. a third-party InPost integration),
+        // we don't accidentally light it up as dynamic. Only the literal
+        // `'openlinker'` value enables the discriminator.
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+          {
+            id: '7',
+            id_reference: '7',
+            name: 'Some other carrier module',
+            active: '1',
+            deleted: '0',
+            external_module_name: 'thirdparty_carrier',
+          },
+        ]);
+
+        const result = await adapter.listCarriers();
+
+        expect(result).toEqual([{ value: '7', label: 'Some other carrier module' }]);
+        expect(result[0]).not.toHaveProperty('kind');
+      });
+
       it('returns empty array when PS reports no carriers', async () => {
         mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
         await expect(adapter.listCarriers()).resolves.toEqual([]);

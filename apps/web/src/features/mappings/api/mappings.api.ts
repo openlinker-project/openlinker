@@ -24,7 +24,7 @@ import type {
   PrestashopCategory,
   MappingOption,
   MappingSide,
-  MappingOptionKind,
+  MappingOptionListKind,
   UpsertStatusMappingsPayload,
   UpsertCarrierMappingsPayload,
   UpsertPaymentMappingsPayload,
@@ -50,7 +50,7 @@ export interface MappingsApi {
   getMappingOptions: (
     connectionId: string,
     side: MappingSide,
-    kind: MappingOptionKind,
+    kind: MappingOptionListKind,
   ) => Promise<MappingOption[]>;
 
   getCategoryMappings: (connectionId: string) => Promise<CategoryMapping[]>;

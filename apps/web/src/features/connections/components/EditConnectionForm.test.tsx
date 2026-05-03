@@ -127,6 +127,139 @@ describe('EditConnectionForm', () => {
       expect(screen.getByLabelText('Shop ID (optional)')).toHaveValue('');
     });
 
+    describe('fallback carrier (#517)', () => {
+      it('renders the fallback-carrier picker with the dynamic option decorated', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getMappingOptions: vi.fn().mockImplementation(
+              (_connectionId: string, _side: string, kind: string) =>
+                Promise.resolve(
+                  kind === 'carriers'
+                    ? [
+                        { value: '1', label: 'Click and collect' },
+                        { value: '99', label: 'OpenLinker Dynamic', kind: 'dynamic' },
+                      ]
+                    : [],
+                ),
+            ),
+          },
+        });
+        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+        // Wait for the carriers query to resolve and the picker to swap
+        // out of its loading-state placeholder.
+        const select = await screen.findByLabelText('Fallback carrier (optional)');
+        await waitFor(() => {
+          expect(
+            (select as HTMLSelectElement).querySelector('option[value="99"]'),
+          ).not.toBeNull();
+        });
+
+        // Field renders blank (NO soft-prefill — regression guard for the
+        // tech-review decision to drop the auto-suggest behaviour).
+        expect(select).toHaveValue('');
+
+        // Static option shows bare; dynamic option carries the suffix.
+        const options = Array.from(
+          (select as HTMLSelectElement).querySelectorAll('option'),
+        ).map((o) => o.textContent ?? '');
+        expect(options).toContain('Click and collect');
+        expect(options).toContain('OpenLinker Dynamic — exact Allegro cost');
+      });
+
+      it('does NOT show the no-fallback warning when OL Dynamic is installed', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getMappingOptions: vi.fn().mockImplementation(
+              (_connectionId: string, _side: string, kind: string) =>
+                Promise.resolve(
+                  kind === 'carriers'
+                    ? [
+                        { value: '1', label: 'Click and collect' },
+                        { value: '99', label: 'OpenLinker Dynamic', kind: 'dynamic' },
+                      ]
+                    : [],
+                ),
+            ),
+          },
+        });
+        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+        await screen.findByLabelText('Fallback carrier (optional)');
+        // OL Dynamic carrier is in the options, so even though defaultCarrierId
+        // is blank, the runtime fallback chain (#516) covers the operator.
+        expect(screen.queryByText(/OpenLinker PrestaShop module isn't installed/i)).toBeNull();
+      });
+
+      it('shows the no-fallback warning when defaultCarrierId is blank AND OL Dynamic is missing', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getMappingOptions: vi.fn().mockImplementation(
+              (_connectionId: string, _side: string, kind: string) =>
+                Promise.resolve(
+                  kind === 'carriers'
+                    ? [
+                        { value: '1', label: 'Click and collect' },
+                        { value: '7', label: 'DPD courier' },
+                      ]
+                    : [],
+                ),
+            ),
+          },
+        });
+        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+        // Operator-actionable warning. Wait until the carriers query
+        // resolves — the warning is suppressed during loading.
+        await waitFor(() => {
+          expect(
+            screen.queryByText(
+              /No fallback carrier is set and the OpenLinker PrestaShop module isn't installed/i,
+            ),
+          ).toBeInTheDocument();
+        });
+      });
+
+      it('hides the warning once the operator picks a static fallback', async () => {
+        const apiClient = createMockApiClient({
+          mappings: {
+            getMappingOptions: vi.fn().mockImplementation(
+              (_connectionId: string, _side: string, kind: string) =>
+                Promise.resolve(
+                  kind === 'carriers'
+                    ? [
+                        { value: '1', label: 'Click and collect' },
+                        { value: '7', label: 'DPD courier' },
+                      ]
+                    : [],
+                ),
+            ),
+          },
+        });
+        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+        const select = await screen.findByLabelText('Fallback carrier (optional)');
+        // Wait for warning to appear after carriers settle.
+        await waitFor(() => {
+          expect(
+            screen.queryByText(
+              /No fallback carrier is set and the OpenLinker PrestaShop module isn't installed/i,
+            ),
+          ).toBeInTheDocument();
+        });
+
+        fireEvent.change(select, { target: { value: '7' } });
+
+        await waitFor(() => {
+          expect(
+            screen.queryByText(
+              /No fallback carrier is set and the OpenLinker PrestaShop module isn't installed/i,
+            ),
+          ).toBeNull();
+        });
+      });
+    });
+
     it('keeps the raw JSON textarea hidden by default and reveals it via the toggle', () => {
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
       expect(screen.queryByLabelText('Config JSON')).toBeNull();

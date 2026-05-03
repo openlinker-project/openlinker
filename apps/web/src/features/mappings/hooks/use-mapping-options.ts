@@ -16,7 +16,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
-import type { MappingOptions, MappingSide, MappingOptionKind } from '../api/mappings.types';
+import type { MappingOptions, MappingSide, MappingOptionListKind } from '../api/mappings.types';
 
 export type MappingOptionsErrors = Partial<Record<keyof MappingOptions, Error>>;
 
@@ -37,7 +37,7 @@ const EMPTY_OPTIONS: MappingOptions = {
 
 const QUERY_SPEC: Array<{
   side: MappingSide;
-  kind: MappingOptionKind;
+  kind: MappingOptionListKind;
   bundleKey: keyof MappingOptions;
 }> = [
   { side: 'source', kind: 'order-statuses', bundleKey: 'allegroOrderStatuses' },

@@ -50,31 +50,58 @@ function optionByValue(options: MappingOption[], value: string): MappingOption |
 }
 
 /**
+ * Suffix appended to `kind === 'dynamic'` options to distinguish them from
+ * static carriers (#517). Native `<option>` is text-only so the cue lives
+ * in the label string itself; the cockpit-style separator is the em-dash
+ * established elsewhere in OpenLinker FE copy. Keep this short — it
+ * appends to a 32 px-tall native select cell at 13.5 px IBM Plex Sans.
+ */
+const DYNAMIC_OPTION_SUFFIX = ' — exact Allegro cost';
+
+/**
  * Renders a `MappingOption` with the human label as the primary text and a
  * faded mono id-hint when the value differs from the label (#474). When
  * `value === label` (degraded data — adapter fell back to using the id as
  * the name), render a single label and skip the redundant hint.
+ *
+ * Dynamic-kind options (#517) carry a muted suffix explaining the runtime
+ * behaviour. Suffix lives outside the mono id-hint span so it stays in
+ * the body sans, not the monospace id treatment.
  */
 function renderOptionLabel(option: MappingOption): ReactNode {
+  const dynamicSuffix =
+    option.kind === 'dynamic' ? (
+      <span className="mapping-option__dynamic-suffix">{DYNAMIC_OPTION_SUFFIX}</span>
+    ) : null;
+
   if (option.label === option.value) {
-    return option.label;
+    return (
+      <>
+        {option.label}
+        {dynamicSuffix}
+      </>
+    );
   }
   return (
     <>
       {option.label}{' '}
       <span className="mapping-id-hint mono-text">{shortValue(option.value)}</span>
+      {dynamicSuffix}
     </>
   );
 }
 
 /**
  * Plain-text variant for `<option>` elements — native `<select>` strips
- * styled children, so the id chip is approximated as parenthesised text.
+ * styled children, so the id chip is approximated as parenthesised text
+ * and the dynamic-kind cue is appended as a label suffix (#517).
  */
 function optionPlainText(option: MappingOption): string {
-  return option.label === option.value
-    ? option.label
-    : `${option.label} (${shortValue(option.value)})`;
+  const base =
+    option.label === option.value
+      ? option.label
+      : `${option.label} (${shortValue(option.value)})`;
+  return option.kind === 'dynamic' ? `${base}${DYNAMIC_OPTION_SUFFIX}` : base;
 }
 
 export function MappingPanel({

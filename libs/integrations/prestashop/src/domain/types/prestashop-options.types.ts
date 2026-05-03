@@ -31,6 +31,12 @@ export type PrestashopLanguageField =
  * `id_carrier` mutates whenever the operator edits a carrier. Mappings persist
  * `id_reference`. `active=1` and `deleted=0` are the active-and-extant filter
  * (PS soft-deletes carriers rather than hard-removing).
+ *
+ * `external_module_name` is non-empty when the carrier is installed by a PS
+ * carrier module (`is_module=1`, `shipping_external=1`). For OpenLinker's
+ * Dynamic carrier (#515 / #516) the value is the literal string `'openlinker'`;
+ * the adapter uses it to mark the matching `MappingOption` with
+ * `kind: 'dynamic'`. Static carriers leave it empty.
  */
 export interface PrestashopCarrier {
   id: string;
@@ -38,6 +44,7 @@ export interface PrestashopCarrier {
   name: PrestashopLanguageField;
   active: string | number;
   deleted: string | number;
+  external_module_name?: string;
 }
 
 /**

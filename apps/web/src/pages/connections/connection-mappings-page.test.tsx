@@ -6,14 +6,16 @@
 
 import { cleanup, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Routes, Route } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { ConnectionMappingsPage } from './connection-mappings-page';
+import { sampleConnection } from '../../test/test-utils';
 import type {
   StatusMapping,
   MappingOption,
   MappingSide,
-  MappingOptionKind,
+  MappingOptionListKind,
 } from '../../features/mappings/api/mappings.types';
 
 /**
@@ -21,9 +23,9 @@ import type {
  * Mirrors the new capability-scoped routes (#472).
  */
 function buildOptionsResolver(
-  byKey: Partial<Record<`${MappingSide}/${MappingOptionKind}`, MappingOption[]>>,
+  byKey: Partial<Record<`${MappingSide}/${MappingOptionListKind}`, MappingOption[]>>,
 ) {
-  return vi.fn((_connectionId: string, side: MappingSide, kind: MappingOptionKind) =>
+  return vi.fn((_connectionId: string, side: MappingSide, kind: MappingOptionListKind) =>
     Promise.resolve(byKey[`${side}/${kind}`] ?? []),
   );
 }
@@ -171,6 +173,170 @@ describe('ConnectionMappingsPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Server error');
+    });
+  });
+
+  describe('carrier-fallback banner (#517)', () => {
+    const ALLEGRO_DELIVERY_OPTIONS: MappingOption[] = [
+      { value: 'method-1', label: 'InPost Paczkomat' },
+      { value: 'method-2', label: 'Kurier24' },
+    ];
+    const PS_CARRIERS_WITH_DYNAMIC: MappingOption[] = [
+      { value: '1', label: 'Click and collect' },
+      { value: '99', label: 'OpenLinker Dynamic', kind: 'dynamic' },
+    ];
+    const PS_CARRIERS_NO_DYNAMIC: MappingOption[] = [
+      { value: '1', label: 'Click and collect' },
+      { value: '7', label: 'DPD courier' },
+    ];
+
+    /**
+     * Banner tests need `useParams()` to return a non-empty connectionId
+     * because `useConnectionQuery` is `enabled: connectionId.length > 0`.
+     * The other tests on this page don't depend on the connection query,
+     * which is why they get away with no <Routes> wrapper.
+     */
+    function renderWithRoute(apiClient: ReturnType<typeof createMockApiClient>): void {
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId/mappings" element={<ConnectionMappingsPage />} />
+        </Routes>,
+        { apiClient, route: '/connections/conn_1/mappings' },
+      );
+    }
+
+    function selectCarriersTab(): Promise<void> {
+      const user = userEvent.setup();
+      return user.click(screen.getByRole('tab', { name: 'Carriers' }));
+    }
+
+    /**
+     * The banner wraps `{N}` in a `<span.alert__count>` so the count
+     * renders in IBM Plex Mono. That splits the visible string across
+     * elements, which `getByText` won't traverse — use the carriers
+     * tab's `tabpanel` as the scope and match against `textContent`.
+     *
+     * The banner depends on 3 async queries (connection, mappings,
+     * mapping-options) all having settled, so we poll instead of
+     * single-shotting the lookup.
+     */
+    async function findFallbackBanner(): Promise<HTMLElement> {
+      const tabpanel = await screen.findByRole('tabpanel', { name: /carriers/i });
+      let alert: Element | null = null;
+      await waitFor(() => {
+        alert = tabpanel.querySelector('.mapping-panel__fallback-alert');
+        if (!alert) throw new Error('not yet');
+      });
+      return alert as unknown as HTMLElement;
+    }
+
+    it('renders an info banner with the static fallback name when defaultCarrierId is set', async () => {
+      const apiClient = buildApiClient({
+        getMappingOptions: buildOptionsResolver({
+          'source/order-statuses': STATUS_OPTIONS,
+          'destination/order-statuses': PS_STATUS_OPTIONS,
+          'source/delivery-methods': ALLEGRO_DELIVERY_OPTIONS,
+          'destination/carriers': PS_CARRIERS_WITH_DYNAMIC,
+        }),
+      });
+      apiClient.connections.getById = vi.fn().mockResolvedValue({
+        ...sampleConnection,
+        config: { ...sampleConnection.config, defaultCarrierId: 1 },
+      });
+      renderWithRoute(apiClient);
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      await selectCarriersTab();
+
+      const banner = await findFallbackBanner();
+      expect(banner.textContent).toMatch(/using fallback: Click and collect/i);
+      expect(banner.querySelector('.alert__count')).toHaveTextContent('2');
+      expect(banner).toHaveClass('alert--info');
+    });
+
+    it("renders an info banner pointing to OpenLinker Dynamic when defaultCarrierId is unset and OL Dynamic is installed", async () => {
+      const apiClient = buildApiClient({
+        getMappingOptions: buildOptionsResolver({
+          'source/order-statuses': STATUS_OPTIONS,
+          'destination/order-statuses': PS_STATUS_OPTIONS,
+          'source/delivery-methods': ALLEGRO_DELIVERY_OPTIONS,
+          'destination/carriers': PS_CARRIERS_WITH_DYNAMIC,
+        }),
+      });
+      // sampleConnection.config has no defaultCarrierId — leave default.
+      renderWithRoute(apiClient);
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      await selectCarriersTab();
+
+      const banner = await findFallbackBanner();
+      expect(banner.textContent).toMatch(
+        /using OpenLinker Dynamic \(exact Allegro cost\) at sync time/i,
+      );
+      expect(banner).toHaveClass('alert--info');
+    });
+
+    it('renders a warning banner when neither defaultCarrierId nor an OL Dynamic option is available', async () => {
+      const apiClient = buildApiClient({
+        getMappingOptions: buildOptionsResolver({
+          'source/order-statuses': STATUS_OPTIONS,
+          'destination/order-statuses': PS_STATUS_OPTIONS,
+          'source/delivery-methods': ALLEGRO_DELIVERY_OPTIONS,
+          'destination/carriers': PS_CARRIERS_NO_DYNAMIC,
+        }),
+      });
+      // No defaultCarrierId; OL Dynamic NOT in carriers list (operator
+      // hasn't installed the OL PS module).
+      renderWithRoute(apiClient);
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      await selectCarriersTab();
+
+      const banner = await findFallbackBanner();
+      expect(banner.textContent).toMatch(
+        /sync will fail until a mapping or fallback is configured/i,
+      );
+      expect(banner).toHaveClass('alert--warning');
+    });
+
+    it('does NOT render the banner when every Allegro method is mapped', async () => {
+      const apiClient = buildApiClient({
+        getMappingOptions: buildOptionsResolver({
+          'source/order-statuses': STATUS_OPTIONS,
+          'destination/order-statuses': PS_STATUS_OPTIONS,
+          'source/delivery-methods': ALLEGRO_DELIVERY_OPTIONS,
+          'destination/carriers': PS_CARRIERS_WITH_DYNAMIC,
+        }),
+        getCarrierMappings: vi.fn().mockResolvedValue([
+          {
+            id: 'cm-1',
+            connectionId: 'conn_1',
+            allegroDeliveryMethodId: 'method-1',
+            prestashopCarrierId: '1',
+          },
+          {
+            id: 'cm-2',
+            connectionId: 'conn_1',
+            allegroDeliveryMethodId: 'method-2',
+            prestashopCarrierId: '7',
+          },
+        ]),
+      });
+      renderWithRoute(apiClient);
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      await selectCarriersTab();
+
+      // Wait for the carriers tab content to be visible, then assert
+      // the banner element is absent. Selector-based check (rather than
+      // text matching) avoids false positives from dropdown options
+      // that happen to contain the carrier name.
+      const tabpanel = await screen.findByRole('tabpanel', { name: /carriers/i });
+      expect(tabpanel.querySelector('.mapping-panel__fallback-alert')).toBeNull();
     });
   });
 

@@ -702,10 +702,21 @@ export class PrestashopOrderProcessorManagerAdapter
       1000,
       0,
     );
-    return rows.map((row) => ({
-      value: String(row.id_reference),
-      label: this.flattenLanguageField(row.name),
-    }));
+    return rows.map((row) => {
+      const option: MappingOption = {
+        value: String(row.id_reference),
+        label: this.flattenLanguageField(row.name),
+      };
+      // OpenLinker Dynamic carrier (#515 / #516 / #517): the PS module
+      // installs the carrier with `external_module_name='openlinker'`.
+      // Mark the option so the FE can decorate the dropdown — runtime
+      // routing already happens in the order-processor adapter, this is
+      // presentation-only.
+      if (row.external_module_name === 'openlinker') {
+        option.kind = 'dynamic';
+      }
+      return option;
+    });
   }
 
   async listOrderStatuses(): Promise<MappingOption[]> {

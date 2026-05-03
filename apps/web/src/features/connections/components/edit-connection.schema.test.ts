@@ -64,6 +64,63 @@ describe('mergeStructuredIntoConfig', () => {
     expect(result).toEqual({ baseUrl: 'https://api.shop.example.com' });
     expect('storefrontBaseUrl' in result).toBe(false);
   });
+
+  describe('defaultCarrierId (#517)', () => {
+    it('coerces a positive integer string into a number on write', () => {
+      const result = mergeStructuredIntoConfig({}, { defaultCarrierId: '7' });
+      expect(result).toEqual({ defaultCarrierId: 7 });
+    });
+
+    it('deletes the key when cleared to an empty string', () => {
+      const base = { defaultCarrierId: 7, baseUrl: 'https://shop.example.com' };
+      const result = mergeStructuredIntoConfig(base, { defaultCarrierId: '' });
+      expect(result).toEqual({ baseUrl: 'https://shop.example.com' });
+      expect('defaultCarrierId' in result).toBe(false);
+    });
+
+    it('leaves the key untouched when the patch omits it', () => {
+      const base = { defaultCarrierId: 7 };
+      const result = mergeStructuredIntoConfig(base, { baseUrl: 'https://shop.example.com' });
+      expect(result).toEqual({ defaultCarrierId: 7, baseUrl: 'https://shop.example.com' });
+    });
+  });
+});
+
+describe('editConnectionSchema — defaultCarrierId (#517)', () => {
+  const validRest = {
+    name: 'Shop',
+    configText: '{}',
+  };
+
+  it('accepts an absent value', () => {
+    const result = editConnectionSchema.safeParse(validRest);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty string (unset signal)', () => {
+    const result = editConnectionSchema.safeParse({ ...validRest, defaultCarrierId: '' });
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['1', '7', '99'])(
+    'accepts a positive-integer string (%s)',
+    (value) => {
+      const result = editConnectionSchema.safeParse({ ...validRest, defaultCarrierId: value });
+      expect(result.success).toBe(true);
+    },
+  );
+
+  it.each(['0', '-1', '7.5', 'abc', '1abc', ' '])(
+    'rejects non-positive-integer input (%s) with the documented message',
+    (value) => {
+      const result = editConnectionSchema.safeParse({ ...validRest, defaultCarrierId: value });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const issue = result.error.issues.find((i) => i.path.includes('defaultCarrierId'));
+        expect(issue?.message).toBe('Default carrier ID must be a positive integer.');
+      }
+    },
+  );
 });
 
 // Direct-schema tests live here alongside the helper tests for symmetry with
