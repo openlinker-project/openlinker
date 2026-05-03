@@ -1,10 +1,13 @@
 # OpenLinker PrestaShop Module
 
-Host module for OpenLinker capabilities on PrestaShop. Currently provides the webhook outbox capability — emits secure webhook events to OpenLinker to support event-driven synchronization triggers ("trigger pull"). Additional capabilities (e.g. dynamic shipping carrier) live alongside this one in the same module.
+Host module for OpenLinker capabilities on PrestaShop. Provides two capabilities side-by-side:
+
+1. **Webhook outbox** — emits secure webhook events to OpenLinker to support event-driven synchronization triggers ("trigger pull").
+2. **Dynamic shipping carrier** — registers an OL-owned carrier on install. The OpenLinker backend writes per-cart shipping costs into a sidecar table; PrestaShop calls the carrier module at order-create time and reads the authoritative amount from the sidecar — no post-create reconcile, no `current_state=8`.
 
 ## Overview
 
-This module captures PrestaShop events (product/order/stock) via hooks, writes them to a durable outbox table, and delivers them to OpenLinker via HTTP POST with HMAC signature and retry/backoff support.
+This module captures PrestaShop events (product/order/stock) via hooks, writes them to a durable outbox table, and delivers them to OpenLinker via HTTP POST with HMAC signature and retry/backoff support. Alongside that, it registers a dynamic-pricing PrestaShop carrier (`is_module=1, shipping_external=1, external_module_name='openlinker'`) that lets the OpenLinker backend supply authoritative per-cart shipping costs.
 
 **Key Features**:
 - Non-blocking hook execution (fast writes to outbox)
@@ -15,6 +18,7 @@ This module captures PrestaShop events (product/order/stock) via hooks, writes t
 - Deterministic claiming to prevent overlap
 - **Automatic event deduplication** (prevents duplicate events from multiple hook fires)
 - **Custom menu tab** for easy access
+- **Dynamic shipping carrier** — OL-supplied amount is authoritative on first POST `/orders`
 
 ## Accessing the Module
 
@@ -183,6 +187,92 @@ Events flow through these states:
 - **Deterministic claiming**: Each cron run uses unique `runId` to claim events
 - **Processing lease**: `processing_owner` and `processing_started_at` prevent overlap
 - **Stale recovery**: Rows stuck in `processing` for >15 minutes are automatically requeued
+
+## Dynamic Shipping Carrier
+
+PrestaShop's `POST /orders` ignores `total_shipping` and recomputes shipping from the carrier's price-range tables. This module's second capability sidesteps that: it registers an OL-owned carrier with `is_module=1` + `shipping_external=1` + `external_module_name='openlinker'` so PS routes shipping cost queries through `getOrderShippingCostExternal($cart)`. The OpenLinker backend writes per-cart costs into a sidecar table (`{prefix}openlinker_cart_shipping`); the module reads from it. Result: OL's value is authoritative on first POST `/orders` — no reconcile, no `current_state=8`.
+
+### Install effects
+
+- Creates table `{prefix}openlinker_cart_shipping` (`id_cart` PK, `amount_tax_excl`, `amount_tax_incl`, `source`, timestamps).
+- Registers one carrier row: `name='OpenLinker Dynamic'`, `is_module=1`, `shipping_external=1`, `external_module_name='openlinker'`, `need_range=0`, `id_tax_rules_group=0`, `active=1`, `deleted=0`, all currently-active zones assigned via `addZone()`.
+- Copies `carrier.jpg` (shipped with the module) to `_PS_SHIP_IMG_DIR_/{id}.jpg`. Install **fails fast** if the copy fails — production PS-carrier-module convention (matches LP Express).
+- Persists the live `id_carrier` in `Configuration::OPENLINKER_DYNAMIC_CARRIER_ID`.
+- Registers `actionCarrierUpdate` hook — see "Editing the carrier in PS admin" below.
+
+**Tax handling:** the carrier ships with `id_tax_rules_group=0` so PrestaShop does **not** apply tax on top of the OL-supplied amount. The OpenLinker backend's contract is therefore "`amount_tax_incl` is final on the wire". Without this guard PS would multiply our tax-incl value by the shop's tax rate → double tax on every order.
+
+### Uninstall effects
+
+- Soft-deletes the OL Dynamic carrier (`deleted=1`) — preserves order history per the canonical PS pattern.
+- If the OL Dynamic carrier was set as `PS_CARRIER_DEFAULT`, reassigns to the next active non-OL carrier **before** soft-deleting (otherwise checkout would point at a `deleted=1` carrier and break).
+- Removes `OPENLINKER_DYNAMIC_CARRIER_ID` from `Configuration`.
+- Sidecar table is **preserved** by default (mirrors the outbox-table opt-in pattern). To drop it on uninstall, uncomment the `dropCartShippingTable()` call in `openlinker.php::uninstall()`.
+
+### Editing the carrier in PS admin
+
+PrestaShop **duplicates a carrier row and assigns a new `id_carrier`** when an operator clicks "Save" on the carrier-edit page in the BO. The module registers `actionCarrierUpdate` to refresh `OPENLINKER_DYNAMIC_CARRIER_ID` automatically — operators don't need to do anything special after editing.
+
+If you ever bypass the hook (e.g. by editing the row directly via SQL), refresh the config key manually:
+
+```sql
+UPDATE ps_configuration SET value = <new_id> WHERE name = 'OPENLINKER_DYNAMIC_CARRIER_ID';
+```
+
+### Cart-shipping endpoint (for the OpenLinker backend)
+
+The OpenLinker backend writes per-cart shipping costs to this endpoint **before** the cart is converted to an order:
+
+- **URL**: `{shop}/index.php?fc=module&module=openlinker&controller=cartshipping`
+- **Method**: `POST`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-OpenLinker-Timestamp: <unix ms>`
+  - `X-OpenLinker-Signature: sha256=<64-char hex>` (HMAC-SHA256 of `timestamp + "." + rawBody` with the configured `OPENLINKER_WEBHOOK_SECRET`)
+- **Body**: `{ "id_cart": <int>, "amount_tax_excl": <number>, "amount_tax_incl": <number>, "source": "<optional string>" }`
+- **Auth**: HMAC, ±5 min skew window, constant-time comparison via `hash_equals` — same contract as the outbound webhook signer.
+
+**Responses**:
+
+| Status | Body                                                                                          | When |
+|--------|-----------------------------------------------------------------------------------------------|------|
+| `200`  | `{"ok": true, "id_cart": <int>}`                                                              | Sidecar row upserted. |
+| `400`  | `{"ok": false, "error": "invalid-body"}` or `{"ok": false, "error": "invalid-fields"}`        | JSON malformed or required fields missing/non-numeric. |
+| `401`  | `{"ok": false, "error": "missing-headers"\|"bad-signature-format"\|"timestamp-out-of-window"\|"invalid-signature"\|"misconfigured"}` | HMAC verification failed. |
+| `405`  | `{"ok": false, "error": "method-not-allowed"}`                                                | Anything other than POST. |
+| `500`  | `{"ok": false, "error": "persist-failed"}`                                                    | DB write failed (check PS log). |
+
+**Idempotency**: re-posting the same `id_cart` rewrites the same row (only `updated_at` changes).
+
+**Example signed-request curl** (replace `${SECRET}`, `${BASE_URL}`, and the body):
+
+```bash
+TS=$(date +%s%3N)
+BODY='{"id_cart":42,"amount_tax_excl":12.20,"amount_tax_incl":15.00,"source":"allegro:order:abc123"}'
+SIG="sha256=$(printf '%s' "${TS}.${BODY}" | openssl dgst -sha256 -hmac "${SECRET}" | awk '{print $2}')"
+
+curl -sS -X POST "${BASE_URL}/index.php?fc=module&module=openlinker&controller=cartshipping" \
+    -H "Content-Type: application/json" \
+    -H "X-OpenLinker-Timestamp: ${TS}" \
+    -H "X-OpenLinker-Signature: ${SIG}" \
+    --data "${BODY}"
+# → 200 {"ok":true,"id_cart":42}
+```
+
+### Behaviour when no sidecar row exists
+
+If PrestaShop calls `getOrderShippingCostExternal()` for a cart that has no row in the sidecar, the module logs an **error**-level entry (`OpenLinker: no cart-shipping row for id_cart=<n> — refusing to ship via OL Dynamic carrier`) and returns `false`. PS then treats the OL Dynamic carrier as **unavailable for that cart**. This is intentional — silent zero-cost shipping would be worse than a loud refusal. Common causes: the OL backend never wrote the row (check OL-side logs), or the cart was created before OL-side dynamic-carrier resolution was wired up.
+
+### Reinstall caveat
+
+Each install/uninstall cycle leaves a soft-deleted carrier row behind plus stale `ps_carrier_zone` rows pointing at it. Behaviour is harmless to checkout, but operators wanting clean reinstalls can hard-delete soft-deleted OL carriers via SQL after confirming no order history references them:
+
+```sql
+SELECT id_carrier FROM ps_carrier
+  WHERE external_module_name = 'openlinker' AND deleted = 1;
+-- For each id, confirm `SELECT COUNT(*) FROM ps_orders WHERE id_carrier=<id>` is 0,
+-- then `DELETE FROM ps_carrier WHERE id_carrier=<id>; DELETE FROM ps_carrier_zone WHERE id_carrier=<id>;`.
+```
 
 ## Related Documentation
 

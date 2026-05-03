@@ -2,25 +2,32 @@
 /**
  * OpenLinker PrestaShop Module
  *
- * Host module for OpenLinker capabilities on PrestaShop. Currently provides
- * the webhook outbox capability: emits secure webhook events to OpenLinker to
- * support event-driven sync triggers ("trigger pull"). Captures PrestaShop
- * events via hooks, writes to a durable outbox table, and delivers via HTTP
- * POST with HMAC signature and retry/backoff. Additional capabilities (e.g.
- * dynamic shipping carrier) live alongside this one in the same module.
+ * Host module for OpenLinker capabilities on PrestaShop. Provides two
+ * capabilities side-by-side:
  *
- * This module implements the outbox pattern for reliable event delivery:
- * - Hooks write events to a durable outbox table (non-blocking)
- * - Cron job or manual delivery processes events with retry/backoff
- * - Events are idempotent and safe to retry
+ *   1. Webhook outbox — captures PrestaShop events (product/order/stock) via
+ *      hooks, writes to a durable outbox table, delivers to OpenLinker via
+ *      HMAC-signed HTTP POST with retry/backoff.
+ *   2. Dynamic shipping carrier — registers an OL-owned carrier with
+ *      is_module=1 + shipping_external=1 on install. The OL backend writes
+ *      per-cart shipping costs to a sidecar table via the cartshipping
+ *      front-controller endpoint; PrestaShop calls
+ *      getOrderShippingCostExternal() at order-create time and reads the
+ *      authoritative amount from the sidecar — no post-create reconcile.
+ *
+ * Extends CarrierModule (not Module) so the carrier capability is declared
+ * formally per the canonical PS pattern. CarrierModule itself extends Module,
+ * so the webhook-outbox behaviour is unchanged.
  *
  * @module prestashop-module
  * @see {@link OutboxRepository} for outbox persistence and state management
  * @see {@link WebhookSender} for HTTP delivery with HMAC signatures
  * @see {@link EventIdGenerator} for deterministic event ID generation
+ * @see {@link CartShippingRepository} for dynamic-carrier sidecar I/O
+ * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -40,7 +47,7 @@ if (!defined('_PS_VERSION_')) {
  * Classes are loaded on-demand in methods that use them, with class_exists()
  * checks to prevent duplicate loading.
  */
-class OpenLinker extends Module
+class OpenLinker extends CarrierModule
 {
     // Configuration defaults
     const DEFAULT_BATCH_SIZE = 50;
@@ -48,11 +55,18 @@ class OpenLinker extends Module
     const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2.0;
     const DEFAULT_DEDUPLICATION_WINDOW_MINUTES = 1;
 
+    // Dynamic shipping carrier — display name shown in PS admin carrier list.
+    const DYNAMIC_CARRIER_NAME = 'OpenLinker Dynamic';
+    // Configuration key holding the live id_carrier of the OL Dynamic carrier.
+    // Refreshed automatically by hookActionCarrierUpdate when an operator
+    // edits the carrier in PS admin (PS duplicates the row and assigns a new id).
+    const DYNAMIC_CARRIER_CONFIG_KEY = 'OPENLINKER_DYNAMIC_CARRIER_ID';
+
     public function __construct()
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -74,12 +88,16 @@ class OpenLinker extends Module
      */
     public function install()
     {
-        // Register hooks
+        // Register hooks. actionCarrierUpdate is required for the dynamic
+        // carrier capability — PS duplicates carrier rows on BO edit and
+        // reassigns id_carrier; the hook keeps DYNAMIC_CARRIER_CONFIG_KEY
+        // in sync with the live row.
         $hooks = [
             'actionProductSave',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
+            'actionCarrierUpdate',
         ];
 
         if (!parent::install()) {
@@ -92,8 +110,13 @@ class OpenLinker extends Module
             }
         }
 
-        // Create outbox table
+        // Create outbox table (webhook capability)
         if (!$this->createOutboxTable()) {
+            return false;
+        }
+
+        // Create cart-shipping sidecar table (dynamic-carrier capability)
+        if (!$this->createCartShippingTable()) {
             return false;
         }
 
@@ -102,6 +125,11 @@ class OpenLinker extends Module
 
         // Install custom tab in main menu
         if (!$this->installTab()) {
+            return false;
+        }
+
+        // Register the OL Dynamic carrier (dynamic-carrier capability)
+        if (!$this->installDynamicCarrier()) {
             return false;
         }
 
@@ -121,11 +149,16 @@ class OpenLinker extends Module
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
+            'actionCarrierUpdate',
         ];
 
         foreach ($hooks as $hook) {
             $this->unregisterHook($hook);
         }
+
+        // Soft-delete the OL Dynamic carrier and (if needed) reassign
+        // PS_CARRIER_DEFAULT first so checkout doesn't break.
+        $this->uninstallDynamicCarrier();
 
         // Clear configuration
         $this->clearConfiguration();
@@ -136,6 +169,12 @@ class OpenLinker extends Module
         // Optionally drop outbox table (or keep for audit)
         // Uncomment if you want to drop the table on uninstall:
         // $this->dropOutboxTable();
+
+        // Optionally drop cart-shipping sidecar table (or keep for audit)
+        // Same opt-in pattern as the outbox table — orders never reference
+        // the sidecar after order-create, so dropping it is usually safe,
+        // but kept commented to match the conservative outbox default.
+        // $this->dropCartShippingTable();
 
         return parent::uninstall();
     }
@@ -684,6 +723,251 @@ class OpenLinker extends Module
     {
         $sql = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'openlinker_webhook_outbox`;';
         return Db::getInstance()->execute($sql);
+    }
+
+    /**
+     * Create cart-shipping sidecar table
+     *
+     * Stores per-cart shipping costs written by the OpenLinker backend before
+     * order-create; read by getOrderShippingCostExternal() at order-create time.
+     *
+     * @return bool
+     */
+    private function createCartShippingTable()
+    {
+        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'openlinker_cart_shipping` (
+            `id_cart` INT(11) UNSIGNED NOT NULL,
+            `amount_tax_excl` DECIMAL(20,6) NOT NULL,
+            `amount_tax_incl` DECIMAL(20,6) NOT NULL,
+            `source` VARCHAR(255) NULL,
+            `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id_cart`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
+
+        return Db::getInstance()->execute($sql);
+    }
+
+    /**
+     * Drop cart-shipping sidecar table (optional, for uninstall)
+     *
+     * @return bool
+     */
+    private function dropCartShippingTable()
+    {
+        $sql = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'openlinker_cart_shipping`;';
+        return Db::getInstance()->execute($sql);
+    }
+
+    /**
+     * Register the OL Dynamic carrier on install
+     *
+     * Creates a single Carrier row with is_module=1 + shipping_external=1 so
+     * PS routes shipping-cost queries through this module's
+     * getOrderShippingCostExternal() at order-create time. Logo copy is
+     * fail-fast — install aborts if the file is missing or unwritable
+     * (matches LP Express + standard PS carrier-module behaviour).
+     *
+     * @return bool
+     */
+    private function installDynamicCarrier()
+    {
+        $carrier = new Carrier();
+        $carrier->name              = self::DYNAMIC_CARRIER_NAME;
+        $carrier->active            = 1;
+        $carrier->deleted           = 0;
+        $carrier->shipping_handling = false;
+        $carrier->range_behavior    = 0;
+        $carrier->is_module         = true;
+        $carrier->shipping_external = true;
+        $carrier->external_module_name = $this->name;
+        // OL is the source of truth for the per-cart amount; PS range tables
+        // are not consulted.
+        $carrier->need_range        = false;
+        // CRITICAL: OL supplies an authoritative tax-incl amount via the
+        // sidecar. id_tax_rules_group=0 means PS does NOT add tax on top —
+        // otherwise every order would be double-taxed (PS would multiply
+        // our tax-incl value by the shop tax rate).
+        $carrier->id_tax_rules_group = 0;
+
+        foreach (Language::getLanguages(true) as $lang) {
+            $carrier->delay[(int) $lang['id_lang']] = 'OpenLinker dynamic shipping';
+        }
+
+        if (!$carrier->add()) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: Carrier::add() failed for OL Dynamic carrier',
+                3, null, 'Module', null
+            );
+            return false;
+        }
+
+        // Assign all currently-active zones — operator can prune from the
+        // PS carrier admin page after install. An aggregator cannot pre-pick
+        // zones for the operator's market.
+        foreach (Zone::getZones(true) as $zone) {
+            $carrier->addZone((int) $zone['id_zone']);
+        }
+
+        // Logo is required — PS otherwise shows the broken-image placeholder
+        // in the carrier list. Production PS modules treat copy-failure as
+        // install failure (LP Express pattern); we follow suit.
+        $logoSrc = dirname(__FILE__) . '/carrier.jpg';
+        $logoDst = _PS_SHIP_IMG_DIR_ . '/' . (int) $carrier->id . '.jpg';
+        if (!@copy($logoSrc, $logoDst)) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: failed to copy carrier logo from ' . $logoSrc
+                . ' to ' . $logoDst,
+                3, null, 'Module', null
+            );
+            return false;
+        }
+
+        Configuration::updateValue(
+            self::DYNAMIC_CARRIER_CONFIG_KEY,
+            (int) $carrier->id
+        );
+
+        return true;
+    }
+
+    /**
+     * Soft-delete the OL Dynamic carrier on uninstall
+     *
+     * If the carrier is the shop's PS_CARRIER_DEFAULT, reassign to the next
+     * active non-OL carrier BEFORE soft-deleting (otherwise checkout points
+     * at a deleted=1 carrier and breaks). Pattern from the LP Express module.
+     *
+     * Soft-delete (deleted=1) preserves order history per the canonical PS
+     * pattern — past orders keep referencing the carrier id.
+     *
+     * @return bool
+     */
+    private function uninstallDynamicCarrier()
+    {
+        $carrierId = (int) Configuration::get(self::DYNAMIC_CARRIER_CONFIG_KEY);
+        if ($carrierId <= 0) {
+            return true;  // nothing to do
+        }
+
+        // If our carrier is the shop default, reassign before soft-deleting.
+        // Use ALL_CARRIERS rather than the narrower
+        // PS_CARRIERS_AND_CARRIER_MODULES_NEED_RANGE filter so we still find
+        // a candidate even on shops where every other active carrier is also
+        // a need_range=0 module-carrier (rare today, more likely as more
+        // OL-style dynamic modules appear). The id-and-module-name guards
+        // below already exclude our own carrier from the candidate list.
+        if ((int) Configuration::get('PS_CARRIER_DEFAULT') === $carrierId) {
+            $carriers = Carrier::getCarriers(
+                (int) Configuration::get('PS_LANG_DEFAULT'),
+                true,   // active only
+                false,
+                false,
+                null,
+                Carrier::ALL_CARRIERS
+            );
+            foreach ($carriers as $candidate) {
+                if (
+                    !empty($candidate['active'])
+                    && empty($candidate['deleted'])
+                    && (int) $candidate['id_carrier'] !== $carrierId
+                    && ($candidate['external_module_name'] ?? '') !== $this->name
+                ) {
+                    Configuration::updateValue(
+                        'PS_CARRIER_DEFAULT',
+                        (int) $candidate['id_carrier']
+                    );
+                    break;
+                }
+            }
+        }
+
+        $carrier = new Carrier($carrierId);
+        if (Validate::isLoadedObject($carrier)) {
+            $carrier->deleted = 1;
+            $carrier->update();
+        }
+
+        Configuration::deleteByName(self::DYNAMIC_CARRIER_CONFIG_KEY);
+        return true;
+    }
+
+    /**
+     * CarrierModule: PS-called accessor used when ranges are configured.
+     *
+     * For the OL Dynamic carrier need_range=0, but PS still calls this
+     * method on some code paths. Delegating to the external accessor keeps
+     * a single source of truth.
+     *
+     * @param Cart $params
+     * @param float $shipping_cost
+     * @return float|false
+     */
+    public function getOrderShippingCost($params, $shipping_cost)
+    {
+        return $this->getOrderShippingCostExternal($params);
+    }
+
+    /**
+     * CarrierModule: PS-called accessor for external (no-range) shipping.
+     *
+     * Reads the authoritative tax-incl amount from the sidecar table written
+     * by the OpenLinker backend before order-create. Returns false (PS treats
+     * as "carrier unavailable") when no sidecar row exists — loud failure
+     * surfaces operator misconfig immediately rather than silently shipping
+     * at zero.
+     *
+     * @param Cart $params
+     * @return float|false
+     */
+    public function getOrderShippingCostExternal($params)
+    {
+        $cartId = (int) (is_object($params) ? $params->id : 0);
+        if ($cartId <= 0) {
+            return false;
+        }
+
+        require_once dirname(__FILE__) . '/classes/CartShippingRepository.php';
+        $repo = new CartShippingRepository();
+        $row = $repo->findByCartId($cartId);
+
+        if (!$row) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: no cart-shipping row for id_cart=' . $cartId
+                . ' — refusing to ship via OL Dynamic carrier',
+                3,  // error
+                null, 'Cart', $cartId
+            );
+            return false;
+        }
+
+        return (float) $row['amount_tax_incl'];
+    }
+
+    /**
+     * Hook: actionCarrierUpdate
+     *
+     * PS docs: "editing a carrier in BO duplicates the row and assigns a new
+     * id_carrier". Without this hook, OPENLINKER_DYNAMIC_CARRIER_ID would go
+     * stale on the first BO edit and dynamic-carrier resolution would
+     * silently break.
+     *
+     * @param array $params
+     * @return void
+     */
+    public function hookActionCarrierUpdate($params)
+    {
+        if (!isset($params['id_carrier'], $params['carrier'])
+            || !is_object($params['carrier'])) {
+            return;
+        }
+
+        $idOld = (int) $params['id_carrier'];
+        $idNew = (int) $params['carrier']->id;
+
+        if ($idOld === (int) Configuration::get(self::DYNAMIC_CARRIER_CONFIG_KEY)) {
+            Configuration::updateValue(self::DYNAMIC_CARRIER_CONFIG_KEY, $idNew);
+        }
     }
 
     /**
