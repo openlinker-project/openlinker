@@ -15,6 +15,7 @@ import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { INTEGRATIONS_SERVICE_TOKEN, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN } from '@openlinker/integrations-prestashop';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 
@@ -104,6 +105,15 @@ describe('ConnectionController', () => {
         {
           provide: WEBHOOK_SECRET_SERVICE_TOKEN,
           useValue: { rotate: jest.fn().mockResolvedValue({ secret: 'deadbeef' }) },
+        },
+        {
+          provide: PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
+          useValue: {
+            install: jest.fn().mockResolvedValue({
+              webhooksConfigured: true,
+              testPingTriggered: true,
+            }),
+          },
         },
       ],
     }).compile();

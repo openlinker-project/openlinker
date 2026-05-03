@@ -100,6 +100,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
     const where: FindOptionsWhere<WebhookDeliveryOrmEntity> = {};
     if (filters.provider) where.provider = filters.provider;
     if (filters.connectionId) where.connectionId = filters.connectionId;
+    if (filters.eventType) where.eventType = filters.eventType;
     if (filters.status) where.status = filters.status;
     if (filters.since && filters.until) {
       where.receivedAt = Between(filters.since, filters.until);

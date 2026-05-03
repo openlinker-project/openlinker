@@ -4,6 +4,7 @@ import type {
   ConnectionFilters,
   ConnectionTestResult,
   CreateConnectionInput,
+  InstallWebhooksResult,
   UpdateConnectionInput,
 } from './connections.types';
 
@@ -12,6 +13,7 @@ export interface ConnectionsApi {
   disable: (connectionId: string) => Promise<Connection>;
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
+  installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
@@ -58,6 +60,11 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getById(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`);
+    },
+    installWebhooks(connectionId): Promise<InstallWebhooksResult> {
+      return request<InstallWebhooksResult>(`/connections/${connectionId}/webhooks/install`, {
+        method: 'POST',
+      });
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);

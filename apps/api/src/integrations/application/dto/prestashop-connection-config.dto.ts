@@ -19,6 +19,7 @@
  */
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -178,4 +179,31 @@ export class PrestashopConnectionConfigDto {
   @IsArray()
   @IsString({ each: true })
   paymentModuleOverrides?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'OL base URL from PrestaShop\'s perspective — used by the `openlinker` ' +
+      'PS module to POST webhooks back to OL. Per-connection because dev ' +
+      '(`host.docker.internal`), multi-network deploys, and reverse-proxy ' +
+      'edge cases legitimately differ. The FE pre-fills this from ' +
+      '`window.location.origin` on first connection-edit; operator can ' +
+      'override. Required at install time (#168) — install endpoint returns ' +
+      '400 when unset.',
+    example: 'http://host.docker.internal:3000',
+  })
+  @IsOptional()
+  @IsString()
+  @IsUrl({ require_protocol: true, require_tld: false })
+  openlinkerCallbackBaseUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether OL has successfully pushed webhook configuration (Base URL, ' +
+      'Connection ID, Webhook Secret) to the PS `openlinker` module. Set by ' +
+      '`POST /connections/:id/webhooks/install` on success; cleared by ' +
+      'rotate-without-push failures. Operators do not set this manually.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  webhooksConfigured?: boolean;
 }

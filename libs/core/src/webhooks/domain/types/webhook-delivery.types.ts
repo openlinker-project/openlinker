@@ -24,6 +24,7 @@ export type WebhookDedupResult = (typeof WebhookDedupResultValues)[number];
 export interface WebhookDeliveryFilters {
   provider?: string;
   connectionId?: string;
+  eventType?: string;
   status?: WebhookDeliveryStatus;
   since?: Date;
   until?: Date;

@@ -28,7 +28,12 @@ interface EditConnectionFormProps {
   connection: Connection;
 }
 
-type StructuredField = 'baseUrl' | 'shopId' | 'storefrontBaseUrl' | 'masterCatalogConnectionId';
+type StructuredField =
+  | 'baseUrl'
+  | 'shopId'
+  | 'storefrontBaseUrl'
+  | 'openlinkerCallbackBaseUrl'
+  | 'masterCatalogConnectionId';
 type PlatformBranch = 'prestashop' | 'marketplace' | 'raw';
 
 function readString(config: Record<string, unknown>, key: string): string {
@@ -130,6 +135,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       baseUrl: readString(connection.config, 'baseUrl'),
       shopId: readString(connection.config, 'shopId'),
       storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
+      // #168 — pre-fill OL callback URL from window.location.origin when the
+      // connection has none yet. Browser-context value, not server-trusted; the
+      // BE doesn't derive this from request headers (host-header injection risk),
+      // so the FE owns the convenience default. Operator can override for dev
+      // (e.g. http://host.docker.internal:3000) by editing the field.
+      openlinkerCallbackBaseUrl:
+        readString(connection.config, 'openlinkerCallbackBaseUrl') ||
+        (typeof window !== 'undefined' && connection.platformType === 'prestashop'
+          ? window.location.origin
+          : ''),
       masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
@@ -347,6 +362,23 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
               placeholder="1"
               disabled={!configIsParseable}
               invalid={Boolean(form.formState.errors.shopId)}
+            />
+          </FormField>
+
+          <FormField
+            label="OL callback URL"
+            name="openlinkerCallbackBaseUrl"
+            error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
+            description="OpenLinker's URL from PrestaShop's perspective — used by the PS module to POST webhooks back to OL. Pre-filled from your browser; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action."
+          >
+            <Input
+              value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
+              onChange={(event) =>
+                syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
+              }
+              placeholder="https://api.openlinker.example"
+              disabled={!configIsParseable}
+              invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
             />
           </FormField>
         </>

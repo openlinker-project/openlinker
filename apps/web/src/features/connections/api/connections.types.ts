@@ -71,6 +71,17 @@ export interface ConnectionTestResult {
   latencyMs: number;
 }
 
+/**
+ * Response from `POST /connections/:id/webhooks/install` (#168). Reports whether
+ * the WS push and the synchronous test ping both completed.
+ */
+export interface InstallWebhooksResult {
+  webhooksConfigured: boolean;
+  testPingTriggered: boolean;
+  /** Operator-actionable warning attached to partial-success states. */
+  warning?: string;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

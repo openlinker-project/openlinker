@@ -27,7 +27,12 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
+import { InstallWebhooksResponseDto } from './dto/install-webhooks-response.dto';
 import { IWebhookSecretService, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IPrestashopWebhookProvisioningService,
+  PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
+} from '@openlinker/integrations-prestashop';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -55,6 +60,8 @@ export class ConnectionController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
     private readonly webhookSecretService: IWebhookSecretService,
+    @Inject(PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN)
+    private readonly webhookProvisioningService: IPrestashopWebhookProvisioningService,
   ) {}
 
   private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
@@ -228,6 +235,37 @@ export class ConnectionController {
       warning:
         'Store this secret now. It cannot be retrieved again — rotate to generate a new one.',
     };
+  }
+
+  /**
+   * Auto-provision the PrestaShop `openlinker` module's webhook configuration
+   * via PS WS (#168). Operator clicks once on the FE; OL rotates the secret,
+   * pushes Base URL / Connection ID / Webhook Secret to PS, then synchronously
+   * verifies via a HMAC-signed test ping. No copy-paste, no install URL, no
+   * env-var pattern.
+   */
+  @Roles('admin')
+  @Post(':id/webhooks/install')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Auto-install webhook configuration on the PrestaShop module via PS WS (#168)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Configuration pushed. Body indicates whether the synchronous test ping ' +
+      'completed successfully and whether OL recorded the configured state.',
+    type: InstallWebhooksResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Connection unsupported or callback URL unset' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async installWebhooks(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<InstallWebhooksResponseDto> {
+    return this.webhookProvisioningService.install(id, user?.id);
   }
 
   @Roles('admin')
