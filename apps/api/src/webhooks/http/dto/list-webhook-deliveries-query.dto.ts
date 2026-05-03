@@ -24,6 +24,11 @@ export class ListWebhookDeliveriesQueryDto {
   @IsUUID()
   connectionId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by event type (e.g. test.ping, actionProductSave)' })
+  @IsOptional()
+  @IsString()
+  eventType?: string;
+
   @ApiPropertyOptional({ enum: WebhookDeliveryStatusValues, description: 'Filter by delivery status' })
   @IsOptional()
   @IsEnum(WebhookDeliveryStatusValues)

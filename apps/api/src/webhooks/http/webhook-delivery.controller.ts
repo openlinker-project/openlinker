@@ -51,12 +51,13 @@ export class WebhookDeliveryController {
   async list(
     @Query() query: ListWebhookDeliveriesQueryDto,
   ): Promise<PaginatedWebhookDeliveriesResponseDto> {
-    const { provider, connectionId, status, since, until, limit = 20, offset = 0 } = query;
+    const { provider, connectionId, eventType, status, since, until, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.queryService.list(
       {
         provider,
         connectionId,
+        eventType,
         status,
         since: since ? new Date(since) : undefined,
         until: until ? new Date(until) : undefined,

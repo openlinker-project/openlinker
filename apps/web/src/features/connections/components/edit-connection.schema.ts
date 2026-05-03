@@ -80,6 +80,21 @@ export const editConnectionSchema = z.object({
       z.literal(''),
     ])
     .optional(),
+  // OL's URL from PrestaShop's perspective — used by the webhook auto-install
+  // flow (#168). FE pre-fills this from `window.location.origin` on first
+  // render when empty so most operators don't have to think about it; dev
+  // override is `http://host.docker.internal:3000`.
+  openlinkerCallbackBaseUrl: z
+    .union([
+      z
+        .url('Callback URL must be a valid URL')
+        .refine(
+          (value) => value.startsWith('http://') || value.startsWith('https://'),
+          'Callback URL must use http:// or https://',
+        ),
+      z.literal(''),
+    ])
+    .optional(),
   masterCatalogConnectionId: z
     .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
     .optional(),
@@ -130,6 +145,7 @@ export interface StructuredConfigPatch {
   baseUrl?: string;
   shopId?: string;
   storefrontBaseUrl?: string;
+  openlinkerCallbackBaseUrl?: string;
   masterCatalogConnectionId?: string;
   /**
    * PrestaShop fallback carrier id (#517). Empty string clears the key;
@@ -178,6 +194,13 @@ export function mergeStructuredIntoConfig(
       delete next.storefrontBaseUrl;
     } else {
       next.storefrontBaseUrl = structured.storefrontBaseUrl;
+    }
+  }
+  if (structured.openlinkerCallbackBaseUrl !== undefined) {
+    if (structured.openlinkerCallbackBaseUrl.length === 0) {
+      delete next.openlinkerCallbackBaseUrl;
+    } else {
+      next.openlinkerCallbackBaseUrl = structured.openlinkerCallbackBaseUrl;
     }
   }
   // Unlike baseUrl/shopId, masterCatalogConnectionId uses `""` as an explicit

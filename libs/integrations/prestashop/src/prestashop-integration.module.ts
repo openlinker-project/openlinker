@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
@@ -26,6 +27,8 @@ import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/pre
 import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from './infrastructure/provisioners/prestashop-country-resolver';
+import { PrestashopWebhookProvisioningService } from './application/services/prestashop-webhook-provisioning.service';
+import { PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN } from './application/interfaces/prestashop-webhook-provisioning.service.interface';
 import {
   CustomersModule,
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
@@ -35,8 +38,20 @@ import { RedisConfigModule } from '@openlinker/shared/redis';
 import { Logger } from '@openlinker/shared/logging';
 
 @Module({
-  imports: [IntegrationsModule, CustomersModule, RedisConfigModule, MappingsModule],
-  providers: [PrestashopCustomerProvisioner, PrestashopAddressProvisioner, PrestashopCountryResolver],
+  imports: [IntegrationsModule, IdentifierMappingModule, CustomersModule, RedisConfigModule, MappingsModule],
+  providers: [
+    PrestashopCustomerProvisioner,
+    PrestashopAddressProvisioner,
+    PrestashopCountryResolver,
+    PrestashopWebhookProvisioningService,
+    {
+      provide: PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
+      useExisting: PrestashopWebhookProvisioningService,
+    },
+  ],
+  exports: [
+    PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
+  ],
 })
 export class PrestashopIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(PrestashopIntegrationModule.name);
