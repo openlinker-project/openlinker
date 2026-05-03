@@ -9,12 +9,13 @@
  */
 import { IPrestashopAdapterFactory, PrestashopAdapters } from './interfaces/prestashop-adapter.factory.interface';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
+import { CredentialsResolverPort, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
 import { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
 import { PrestashopConfigException } from '../domain/exceptions/prestashop-config.exception';
 import { PrestashopWebserviceClient } from '../infrastructure/http/prestashop-webservice.client';
+import { PrestashopOpenLinkerModuleClient } from '../infrastructure/http/prestashop-openlinker-module.client';
 import { PrestashopProductMapper } from '../infrastructure/mappers/prestashop-product.mapper';
 import { PrestashopInventoryMapper } from '../infrastructure/mappers/prestashop-inventory.mapper';
 import { PrestashopOrderMapper } from '../infrastructure/mappers/prestashop-order.mapper';
@@ -42,12 +43,18 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     private readonly addressProvisioner?: PrestashopAddressProvisioner,
     private readonly customerProjectionRepository?: CustomerProjectionRepositoryPort,
     private readonly mappingConfigService?: IMappingConfigService,
+    // Outbound HMAC signer for the OL PS module endpoints (#516). Required
+    // when the orderProcessorManager adapter is wired up — we only build a
+    // module client when both the secret provider and the customer-side
+    // dependencies (`customerProvisioner`, `customerProjectionRepository`)
+    // are present.
+    private readonly webhookSecretProvider?: WebhookSecretProviderPort,
   ) {
     // Validate that if orderProcessorManager is needed, dependencies are provided
     // Note: Dependencies are optional to allow factory creation without customer provisioning
     // The adapter will fail at runtime if dependencies are missing when needed
     // `mappingConfigService` is optional too — when absent the destination adapter
-    // skips carrier resolution and falls back to `defaultCarrierId` / `1`.
+    // skips carrier resolution and falls back to `defaultCarrierId` / OL Dynamic carrier.
   }
 
   async createAdapters(
@@ -101,14 +108,31 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection,
     );
 
-    // Create orderProcessorManager only if customer provisioning dependencies are provided
+    // Create orderProcessorManager only if customer provisioning dependencies
+    // and the outbound webhook-secret provider (#516) are provided.
     let orderProcessorManager: PrestashopOrderProcessorManagerAdapter | undefined;
-    if (this.customerProvisioner && this.customerProjectionRepository) {
+    if (
+      this.customerProvisioner &&
+      this.customerProjectionRepository &&
+      this.webhookSecretProvider
+    ) {
       // Create provisioners (if not provided, create new instances)
       const countryResolver = new PrestashopCountryResolver();
       const currencyResolver = new PrestashopCurrencyResolver();
       const addressProvisioner =
         this.addressProvisioner || new PrestashopAddressProvisioner(null, countryResolver);
+
+      // Per-connection HMAC client for the OL PS module's storefront
+      // endpoints. Same secret bytes as the inbound webhook receiver — the
+      // shared `WebhookSecretProviderPort` is used in both directions
+      // (outbound signing here, inbound verification in the webhook
+      // controller). Storefront base URL falls back to the webservice URL
+      // when unset, matching the mappers.
+      const openlinkerModuleClient = new PrestashopOpenLinkerModuleClient(
+        connection.id,
+        config.storefrontBaseUrl ?? config.baseUrl,
+        this.webhookSecretProvider,
+      );
 
       orderProcessorManager = new PrestashopOrderProcessorManagerAdapter(
         httpClient,
@@ -119,12 +143,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         addressProvisioner,
         currencyResolver,
         this.customerProjectionRepository,
+        openlinkerModuleClient,
         this.mappingConfigService,
       );
     } else {
       this.logger.warn(
         `OrderProcessorManager adapter not created for connection ${connection.id}: ` +
-          `customerProvisioner or customerProjectionRepository not provided. ` +
+          `customerProvisioner, customerProjectionRepository, or webhookSecretProvider not provided. ` +
           `This adapter is required for order processing.`,
       );
     }

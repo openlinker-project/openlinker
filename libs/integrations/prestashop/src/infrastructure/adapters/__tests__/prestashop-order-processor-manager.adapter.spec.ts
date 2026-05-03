@@ -13,6 +13,8 @@ import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-ident
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import { IPrestashopOpenLinkerModuleClient } from '../../http/prestashop-openlinker-module.client.interface';
+import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
 import { IPrestashopOrderMapper, PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
 import {
   IdentifierMappingPort,
@@ -25,6 +27,15 @@ import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../../provisioners/prestashop-address-provisioner';
 
+/**
+ * The numeric `id_carrier` returned by the OL module's discovery row in
+ * these tests. Picked so it doesn't collide with any other carrier id used
+ * in the suite (#455 mapping tests use 4, fixture defaultCarrierId tests
+ * use 7). Tests that need to assert the OL Dynamic fallback compare against
+ * this constant.
+ */
+const OL_DYNAMIC_CARRIER_ID = 99;
+
 describe('PrestashopOrderProcessorManagerAdapter', () => {
   let adapter: PrestashopOrderProcessorManagerAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
@@ -34,6 +45,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
   let mockCustomerProjectionRepository: jest.Mocked<CustomerProjectionRepositoryPort>;
   let mockCustomerProvisioner: jest.Mocked<PrestashopCustomerProvisioner>;
   let mockAddressProvisioner: jest.Mocked<PrestashopAddressProvisioner>;
+  let mockOpenLinkerModuleClient: jest.Mocked<IPrestashopOpenLinkerModuleClient>;
   let connection: ReturnType<typeof createTestConnection>;
 
   const METADATA_INTERNAL_ORDER_ID = 'ol_order_allegro_abc123';
@@ -108,6 +120,33 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       resolveOrCreateAddress: jest.fn(),
     } as unknown as jest.Mocked<PrestashopAddressProvisioner>;
 
+    mockOpenLinkerModuleClient = {
+      writeCartShipping: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IPrestashopOpenLinkerModuleClient>;
+
+    // Default OL Dynamic carrier discovery: every createOrder call invokes
+    // `discoverDynamicCarrierId()` early, which calls
+    // `httpClient.listResources('carriers', { custom: { external_module_name: 'openlinker' } }, …)`.
+    // Tests in this suite that reassign `listResources` must remember to
+    // re-mock this path (none in createOrder do; the listCarriers /
+    // listOrderStatuses / listPaymentMethods describes don't go through
+    // createOrder, so they're unaffected).
+    mockHttpClient.listResources = jest
+      .fn()
+      .mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
+            return Promise.resolve([
+              { id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
     adapter = new PrestashopOrderProcessorManagerAdapter(
       mockHttpClient,
       mockIdentifierMapping,
@@ -117,6 +156,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       mockAddressProvisioner,
       mockCurrencyResolver,
       mockCustomerProjectionRepository,
+      mockOpenLinkerModuleClient,
     );
   });
 
@@ -214,7 +254,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1, // currencyId
         1, // langId
-        undefined, // externalCarrierId — no mapping configured; mapper falls back to id_carrier=1
+        OL_DYNAMIC_CARRIER_ID, // #516: no mapping/default → OL Dynamic carrier fallback
       );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
@@ -225,7 +265,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1, // currencyId
         1, // langId
-        undefined, // externalCarrierId — no mapping configured, no defaultCarrierId; mapper falls back to 1
+        OL_DYNAMIC_CARRIER_ID, // #516: no mapping/default → OL Dynamic carrier fallback
       );
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
@@ -810,6 +850,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockAddressProvisioner,
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
         mockMappingConfig,
       );
 
@@ -861,6 +902,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockAddressProvisioner,
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
         mockMappingConfig,
       );
 
@@ -879,12 +921,12 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       );
     });
 
-    it('ignores invalid defaultCarrierId (0, negative, NaN) so the cart never lands at id_carrier=0 (#503 follow-up)', async () => {
+    it('ignores invalid defaultCarrierId (0, negative, NaN) and falls back to OL Dynamic carrier (#503 / #516)', async () => {
       // Operator sets defaultCarrierId=0 (or negative, or non-numeric) in
       // connection config. Without the guard, the mapper writes id_carrier=0
       // to the cart and PS reproduces the #503 failure mode through a
       // different door — `??` doesn't fall back on 0, only null/undefined.
-      // Adapter must filter and let the mapper apply its DEFAULT_CARRIER_ID=1.
+      // Adapter must filter and use the OL Dynamic carrier id (#516).
       wireSuccessfulMappings('42');
       const connWithBadDefault = createTestConnection();
       (connWithBadDefault.config as Record<string, unknown>).defaultCarrierId = 0;
@@ -901,12 +943,12 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockAddressProvisioner,
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
         mockMappingConfig,
       );
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
 
-      // Adapter returns undefined (not 0); mappers fall back to DEFAULT_CARRIER_ID=1.
       expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
@@ -916,7 +958,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        undefined,
+        OL_DYNAMIC_CARRIER_ID,
       );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         expect.anything(),
@@ -927,11 +969,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        undefined,
+        OL_DYNAMIC_CARRIER_ID,
       );
     });
 
-    it('passes undefined externalCarrierId when neither mapping nor defaultCarrierId is set (mapper falls back to 1)', async () => {
+    it('falls back to OL Dynamic carrier when neither mapping nor defaultCarrierId is set (#516)', async () => {
       wireSuccessfulMappings('42');
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
@@ -945,6 +987,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockAddressProvisioner,
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
         mockMappingConfig,
       );
 
@@ -959,18 +1002,20 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        undefined,
+        OL_DYNAMIC_CARRIER_ID,
       );
     });
   });
 
-  describe('shipping cost reconciliation (#467)', () => {
-    const EXTERNAL_ORDER_ID = '999';
-    const EXTERNAL_ORDER_CARRIER_ID = '5001';
-    const EXTERNAL_ORDER_NUMBER = 'TEST-ORDER-001';
+  describe('OL module sidecar write (#516)', () => {
+    const ALLEGRO_CONNECTION_ID = 'conn-allegro-1';
+    const ALLEGRO_METHOD_ID = 'method-courier';
+    const STATIC_CARRIER_ID = 4;
 
-    const buildOrderWithShippingTotal = (shipping: number): OrderCreate => ({
+    const buildOrderForSidecar = (shipping = 12.5): OrderCreate => ({
       ...createTestOrder(),
+      shipping: { methodId: ALLEGRO_METHOD_ID, methodName: 'InPost Paczkomat' },
+      source: { connectionId: ALLEGRO_CONNECTION_ID },
       totals: {
         subtotal: 109.97,
         tax: 10.0,
@@ -980,13 +1025,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       },
     });
 
-    /**
-     * Wire mocks for a happy-path first-time order create so the only
-     * variable across these tests is the order_carriers reconcile path.
-     */
-    const wireFirstTimeCreatePath = (): void => {
-      // Step 0: no existing destination mapping → falls through to create.
-      // Steps 1-5: customer / product / variant resolutions all succeed.
+    const wireSuccessfulCreatePath = (): void => {
       mockIdentifierMapping.getExternalIds = jest
         .fn()
         .mockImplementation((entityType: string) => {
@@ -1005,7 +1044,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
               { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
             ]);
           }
-          // 'Order' lookup at Step 0 — return empty so we don't short-circuit.
           return Promise.resolve([]);
         });
 
@@ -1015,154 +1053,226 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         associations: { order_rows: { order_row: [] } },
       });
 
-      // createResource is called twice: cart, then order.
       mockHttpClient.createResource = jest
         .fn()
         .mockResolvedValueOnce({ id: '123' }) // cart
-        .mockResolvedValueOnce({
-          id: EXTERNAL_ORDER_ID,
-          reference: EXTERNAL_ORDER_NUMBER,
-        } as PrestashopOrder);
+        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
 
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
     };
 
-    it('should write shipping_cost_* via order_carriers PUT when totals.shipping > 0', async () => {
-      wireFirstTimeCreatePath();
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
-      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
-        id: EXTERNAL_ORDER_CARRIER_ID,
-        id_order: EXTERNAL_ORDER_ID,
-        id_carrier: '1',
-        weight: '0.000',
-        shipping_cost_tax_excl: '0.000000',
-        shipping_cost_tax_incl: '0.000000',
-        tracking_number: '',
-      });
-      mockHttpClient.updateResource = jest.fn().mockResolvedValueOnce(undefined);
-
-      await adapter.createOrder(buildOrderWithShippingTotal(10.95));
-
-      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
-        'order_carriers',
-        { custom: { id_order: EXTERNAL_ORDER_ID } },
-        1,
-        0,
+    it('writes the sidecar row when the resolved carrier is the OL Dynamic carrier (mapping branch)', async () => {
+      wireSuccessfulCreatePath();
+      const mockMappingConfig = {
+        // Mapping resolves to the OL Dynamic carrier id — adapter must write the sidecar.
+        resolveCarrierMapping: jest.fn().mockResolvedValue(String(OL_DYNAMIC_CARRIER_ID)),
+      } as unknown as IMappingConfigService;
+      const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connection,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
+        mockMappingConfig,
       );
-      expect(mockHttpClient.getResource).toHaveBeenCalledWith(
-        'order_carriers',
-        EXTERNAL_ORDER_CARRIER_ID,
-      );
-      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
-        'order_carriers',
-        EXTERNAL_ORDER_CARRIER_ID,
+
+      await adapterUnderTest.createOrder(buildOrderForSidecar(12.5));
+
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledWith(
         expect.objectContaining({
-          // Existing fields are spread through (full-resource PUT contract).
-          id: EXTERNAL_ORDER_CARRIER_ID,
-          id_order: EXTERNAL_ORDER_ID,
-          id_carrier: '1',
-          weight: '0.000',
-          tracking_number: '',
-          // Cost fields are overwritten with the order's shipping total.
-          shipping_cost_tax_excl: '10.95',
-          shipping_cost_tax_incl: '10.95',
+          idCart: 123,
+          amountTaxExcl: 12.5,
+          amountTaxIncl: 12.5,
+          source: expect.stringContaining(`connection:${ALLEGRO_CONNECTION_ID}`),
         }),
       );
     });
 
-    it('should skip the order_carriers round-trip when totals.shipping is zero', async () => {
-      wireFirstTimeCreatePath();
-      mockHttpClient.listResources = jest.fn();
-      mockHttpClient.getResource = jest.fn();
-      mockHttpClient.updateResource = jest.fn();
+    it('does NOT write the sidecar when a static carrier id is resolved via mapping', async () => {
+      wireSuccessfulCreatePath();
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(String(STATIC_CARRIER_ID)),
+      } as unknown as IMappingConfigService;
+      const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connection,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
+        mockMappingConfig,
+      );
 
-      const ref = await adapter.createOrder(buildOrderWithShippingTotal(0));
+      await adapterUnderTest.createOrder(buildOrderForSidecar());
 
-      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
-      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
-      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
-      expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
     });
 
-    it('should warn and skip the PUT when no order_carrier row is found', async () => {
-      wireFirstTimeCreatePath();
-      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
-      mockHttpClient.getResource = jest.fn();
-      mockHttpClient.updateResource = jest.fn();
+    it('does NOT write the sidecar when defaultCarrierId resolves to a static carrier', async () => {
+      wireSuccessfulCreatePath();
+      const connWithStaticDefault = createTestConnection();
+      (connWithStaticDefault.config as Record<string, unknown>).defaultCarrierId = STATIC_CARRIER_ID;
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
+      const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connWithStaticDefault,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
+        mockMappingConfig,
+      );
 
-      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+      await adapterUnderTest.createOrder(buildOrderForSidecar());
 
-      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
-      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(1);
-      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
-      expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
     });
 
-    it('should swallow and log when the order_carriers update throws', async () => {
-      wireFirstTimeCreatePath();
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
-      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
-        id: EXTERNAL_ORDER_CARRIER_ID,
-        id_order: EXTERNAL_ORDER_ID,
-        id_carrier: '1',
-      });
-      mockHttpClient.updateResource = jest
-        .fn()
-        .mockRejectedValueOnce(new PrestashopApiException('boom', 500, 'server error'));
+    it('writes the sidecar when no mapping/default resolves and falls back to OL Dynamic', async () => {
+      // No MappingConfigService and no defaultCarrierId — adapter falls
+      // back to the OL Dynamic carrier and must therefore write the sidecar.
+      wireSuccessfulCreatePath();
 
-      // The whole createOrder must still resolve and return the OrderRef —
-      // the order is already created in PS, only the cost reconcile failed.
-      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
+      await adapter.createOrder(buildOrderForSidecar(8.0));
 
-      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
-      expect(ref.orderNumber).toBe(EXTERNAL_ORDER_NUMBER);
-      expect(mockHttpClient.updateResource).toHaveBeenCalledTimes(1);
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idCart: 123,
+          amountTaxExcl: 8.0,
+          amountTaxIncl: 8.0,
+        }),
+      );
     });
 
-    it('should reconcile shipping cost on retry when the destination order mapping already exists', async () => {
-      // Step 0 short-circuits: getExternalIds('Order', ...) returns an
-      // existing PS order. The reconcile step must STILL run so that a
-      // partial first run (mapping committed but reconcile crashed) can
-      // self-heal on retry.
-      mockIdentifierMapping.getExternalIds = jest
-        .fn()
-        .mockImplementation((entityType: string) => {
-          if (entityType === 'Order') {
+    it('aborts order creation (does NOT POST /orders) when the sidecar write throws', async () => {
+      wireSuccessfulCreatePath();
+      const sidecarError = new PrestashopOlModuleException(
+        connection.id,
+        123,
+        500,
+        'persist-failed',
+      );
+      mockOpenLinkerModuleClient.writeCartShipping.mockRejectedValueOnce(sidecarError);
+
+      // Adapter wraps non-domain errors in PrestashopApiException ("Failed to
+      // create PrestaShop order: …"); the underlying reason is preserved in
+      // the message.
+      await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
+        PrestashopApiException,
+      );
+
+      // createResource was called once (cart), never twice (cart + order).
+      expect(mockHttpClient.createResource).toHaveBeenCalledTimes(1);
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.anything());
+    });
+
+    it('warns and uses the first live row when multiple OL Dynamic carriers exist', async () => {
+      // Operator cloned the OL Dynamic carrier in BO (or a botched migration
+      // double-inserted). The adapter must keep working but warn so the
+      // operator notices and cleans up.
+      wireSuccessfulCreatePath();
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      mockHttpClient.listResources = jest.fn().mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
             return Promise.resolve([
-              { connectionId: connection.id, externalId: EXTERNAL_ORDER_ID, entityType: 'Order' },
+              { id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' },
+              { id: OL_DYNAMIC_CARRIER_ID + 1, active: '1', deleted: '0' },
             ]);
           }
           return Promise.resolve([]);
-        });
-
-      mockHttpClient.listResources = jest
-        .fn()
-        .mockResolvedValueOnce([{ id: EXTERNAL_ORDER_CARRIER_ID, id_order: EXTERNAL_ORDER_ID, id_carrier: '1' }]);
-      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce({
-        id: EXTERNAL_ORDER_CARRIER_ID,
-        id_order: EXTERNAL_ORDER_ID,
-        id_carrier: '1',
-      });
-      mockHttpClient.updateResource = jest.fn().mockResolvedValueOnce(undefined);
-
-      const ref = await adapter.createOrder(buildOrderWithShippingTotal(10.95));
-
-      expect(ref.orderId).toBe(METADATA_INTERNAL_ORDER_ID);
-      // No order create was attempted — Step 0 returned early — but the
-      // reconcile path was still exercised.
-      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
-      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
-        'order_carriers',
-        EXTERNAL_ORDER_CARRIER_ID,
-        expect.objectContaining({
-          shipping_cost_tax_excl: '10.95',
-          shipping_cost_tax_incl: '10.95',
-        }),
+        },
       );
+
+      await adapter.createOrder(buildOrderForSidecar(8.0));
+
+      // First-row id was used for both the cart's id_carrier and the sidecar.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.any(Map),
+        expect.any(Map),
+        undefined,
+        undefined,
+        1,
+        1,
+        OL_DYNAMIC_CARRIER_ID,
+      );
+      expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
+      // Operator-visible warn naming the duplicate set.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Multiple live OL Dynamic carrier rows'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('aborts when the OL Dynamic carrier row returns a non-positive id (PS WS trust-boundary guard)', async () => {
+      // PS WS edge: the row exists but `id` decodes to NaN / 0 / negative
+      // (operator BO edit, schema drift). Adapter must NOT propagate
+      // id_carrier=NaN into the cart mapper — treat as missing instead.
+      wireSuccessfulCreatePath();
+      mockHttpClient.listResources = jest.fn().mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
+            return Promise.resolve([{ id: 'not-a-number', active: '1', deleted: '0' }]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
+        PrestashopApiException,
+      );
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
+    });
+
+    it('aborts before any PS write when the OL module is not installed (carrier discovery empty)', async () => {
+      wireSuccessfulCreatePath();
+      // Override the discovery default with an empty result — operator
+      // hasn't installed/activated the OL module.
+      mockHttpClient.listResources = jest.fn().mockImplementation(
+        (resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (
+            resource === 'carriers' &&
+            params?.custom?.external_module_name === 'openlinker'
+          ) {
+            return Promise.resolve([]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+
+      await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
+        PrestashopApiException,
+      );
+
+      // No cart, no order, no sidecar — discovery threw before any write.
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
     });
   });
 
@@ -1320,6 +1430,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           mockAddressProvisioner,
           mockCurrencyResolver,
           mockCustomerProjectionRepository,
+          mockOpenLinkerModuleClient,
         );
       }
 

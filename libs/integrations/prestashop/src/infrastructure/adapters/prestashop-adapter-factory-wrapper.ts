@@ -8,7 +8,12 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {AdapterFactoryPort}
  */
-import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
+import {
+  AdapterFactoryPort,
+  CredentialsResolverPort,
+  Capability,
+  WebhookSecretProviderPort,
+} from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopAdapterFactory } from '../../application/prestashop-adapter.factory';
@@ -31,12 +36,14 @@ export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
     private readonly _addressProvisioner?: PrestashopAddressProvisioner,
     private readonly _customerProjectionRepository?: CustomerProjectionRepositoryPort,
     private readonly _mappingConfigService?: IMappingConfigService,
+    private readonly _webhookSecretProvider?: WebhookSecretProviderPort,
   ) {
     this.factory = new PrestashopAdapterFactory(
       this._customerProvisioner,
       this._addressProvisioner,
       this._customerProjectionRepository,
       this._mappingConfigService,
+      this._webhookSecretProvider,
     );
   }
 
