@@ -114,7 +114,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
       'INSERT INTO ps_api_access (api_key, description, active) VALUES (?, ?, 1)',
       [apiKey, 'OpenLinker integration test key'],
     );
-    idApiAccess = (result as { insertId: number }).insertId;
+    idApiAccess = result.insertId;
   }
 
   // Wipe and re-grant (cheap on a fresh install, idempotent on re-run).
@@ -167,7 +167,7 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
         99, 0, 0, 0, 0, 0,
         0)`,
   );
-  const idCarrier = (insertResult as { insertId: number }).insertId;
+  const idCarrier = insertResult.insertId;
   // PS uses id_carrier as the new id_reference for first-installed rows.
   await conn.execute('UPDATE ps_carrier SET id_reference = ? WHERE id_carrier = ?', [idCarrier, idCarrier]);
 
@@ -179,9 +179,15 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
   const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
     'SELECT id_shop FROM ps_shop WHERE active = 1',
   );
+  // ps_carrier_zone is required for PS to consider the carrier available;
+  // grant against every zone to keep the fixture insensitive to country setup.
+  // Hoisted out of the lang loop — zones don't change per language.
+  const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
+    'SELECT id_zone FROM ps_zone',
+  );
 
-  for (const lang of langRows as Array<{ id_lang: number }>) {
-    for (const shop of shopRows as Array<{ id_shop: number }>) {
+  for (const lang of langRows) {
+    for (const shop of shopRows) {
       await conn.execute(
         `INSERT INTO ps_carrier_lang (id_carrier, id_shop, id_lang, delay)
          VALUES (?, ?, ?, ?)
@@ -189,18 +195,16 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
         [idCarrier, shop.id_shop, lang.id_lang, 'OL dynamic test stub'],
       );
     }
-    // ps_carrier_zone is required for PS to consider the carrier available;
-    // grant against every zone to keep the fixture insensitive to country setup.
-    const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>('SELECT id_zone FROM ps_zone');
-    for (const zone of zones as Array<{ id_zone: number }>) {
-      await conn.execute(
-        `INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)`,
-        [idCarrier, zone.id_zone],
-      );
-    }
   }
 
-  for (const shop of shopRows as Array<{ id_shop: number }>) {
+  for (const zone of zones) {
+    await conn.execute(
+      `INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)`,
+      [idCarrier, zone.id_zone],
+    );
+  }
+
+  for (const shop of shopRows) {
     await conn.execute(
       `INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)`,
       [idCarrier, shop.id_shop],
@@ -234,7 +238,7 @@ async function seedPlnCurrency(conn: Connection): Promise<number> {
      VALUES
        ('PLN', '985', 2, 4.5, 0, 1, 0, 0)`,
   );
-  const idCurrency = (insertResult as { insertId: number }).insertId;
+  const idCurrency = insertResult.insertId;
   await ensureCurrencyShopLink(conn, idCurrency);
   await ensureCurrencyLangLink(conn, idCurrency, 'Polish złoty', 'zł', 'PLN');
   return idCurrency;
@@ -244,7 +248,7 @@ async function ensureCurrencyShopLink(conn: Connection, idCurrency: number): Pro
   const [shops] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
     'SELECT id_shop FROM ps_shop WHERE active = 1',
   );
-  for (const shop of shops as Array<{ id_shop: number }>) {
+  for (const shop of shops) {
     await conn.execute(
       `INSERT IGNORE INTO ps_currency_shop (id_currency, id_shop, conversion_rate)
        VALUES (?, ?, 4.5)`,
@@ -263,7 +267,7 @@ async function ensureCurrencyLangLink(
   const [langs] = await conn.execute<(RowDataPacket & { id_lang: number })[]>(
     'SELECT id_lang FROM ps_lang WHERE active = 1',
   );
-  for (const lang of langs as Array<{ id_lang: number }>) {
+  for (const lang of langs) {
     await conn.execute(
       `INSERT INTO ps_currency_lang (id_currency, id_lang, name, symbol, pattern)
        VALUES (?, ?, ?, ?, ?)
