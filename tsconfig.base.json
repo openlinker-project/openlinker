@@ -36,7 +36,9 @@
       "@openlinker/integrations-allegro": ["libs/integrations/allegro/src/index.ts"],
       "@openlinker/integrations-allegro/*": ["libs/integrations/allegro/src/*"],
       "@openlinker/integrations-ai": ["libs/integrations/ai/src/index.ts"],
-      "@openlinker/integrations-ai/*": ["libs/integrations/ai/src/*"]
+      "@openlinker/integrations-ai/*": ["libs/integrations/ai/src/*"],
+      "@openlinker/integrations-prestashop": ["libs/integrations/prestashop/src/index.ts"],
+      "@openlinker/integrations-prestashop/*": ["libs/integrations/prestashop/src/*"]
     }
   }
 }
