@@ -219,6 +219,93 @@ async setup(): Promise<void> {
 
 ---
 
+## PrestaShop Testcontainer Pattern (#506)
+
+A second, **opt-in** Testcontainer pattern lives in
+`apps/api/test/integration/helpers/prestashop-container.helper.ts`. It boots a
+real PrestaShop 9.0.x instance (PS image + MySQL 8.4 companion) and seeds the
+minimum DB state the carrier-mapping vertical-slice int-spec needs (#506).
+
+### When to use it
+
+Use this harness when an int-spec needs to verify behaviour that depends on
+PrestaShop's actual response — typically because a unit test asserts request
+*shape* but not what PS does with that shape. The current motivating bugs
+(#503 cart `id_carrier`, #505 customer-group provisioning, #467 zone-zero
+shipping) all surface this way.
+
+For everything else, prefer mocking `OrderProcessorManagerPort` /
+`ProductMasterPort` / etc. The PS Testcontainer is **not** a replacement for
+adapter unit tests — it's a backstop for the small set of behaviours where PS
+is the source of truth.
+
+### How to opt in
+
+```typescript
+import {
+  startPrestashopContainer,
+  PrestashopTestContainer,
+} from '../helpers/prestashop-container.helper';
+
+describe('My PS-dependent int-spec', () => {
+  let prestashop: PrestashopTestContainer;
+
+  beforeAll(async () => {
+    prestashop = await startPrestashopContainer();
+    // prestashop.baseUrl, prestashop.webserviceApiKey,
+    // prestashop.olDynamicCarrierId, prestashop.plnCurrencyId
+  }, 15 * 60_000); // long timeout — first-run image pull is slow
+
+  afterAll(async () => {
+    if (prestashop) await prestashop.cleanup();
+  });
+
+  // ... tests ...
+});
+```
+
+The harness is **suite-scoped** — one boot per int-spec file, NOT global. The
+existing `getTestHarness()` (Postgres + Redis) is unaffected; you can use both
+in the same spec.
+
+### Boot-time budget
+
+| Cache state | Realistic boot time |
+|---|---|
+| Warm Docker image cache (developer laptop, CI re-runs) | 60-90 s |
+| Cold cache (CI first run, image pull + auto-install) | 5-10 min |
+
+The wait strategy polls MySQL for `ps_configuration.PS_VERSION_DB`; PS writes
+that row only at the very end of auto-install, so it's the most reliable
+completion signal (HTTP probes race the install). Default deadline is 12 min.
+
+### What gets seeded
+
+`applyPrestashopFixture` (in `prestashop-fixture.helper.ts`) inserts:
+
+1. A **WS API key** (random per run) granted CRUD on the resources our
+   adapters touch (carriers, carts, orders, customers, addresses, products,
+   currencies, languages, …).
+2. The **OpenLinker Dynamic carrier stub** (`external_module_name='openlinker'`)
+   — sufficient for `discoverDynamicCarrierId()` to succeed. **Important**:
+   this is a stub row only. The runtime OL Dynamic path
+   (`writeCartShipping` → module front-controller) requires the OL PHP module
+   loaded; the SQL stub does NOT enable that path. Source of truth for the
+   real install is `apps/prestashop-module/openlinker/openlinker.php`'s
+   `installCarrier()` method.
+3. The **PLN currency** (PS install with `PS_COUNTRY=us|en` defaults to
+   USD/EUR; the spec mirrors an Allegro-PL order).
+
+### Pinned versions
+
+- PrestaShop: `prestashop/prestashop:9.0.2-2.0-classic-8.4` (matches dev-stack)
+- MySQL: `mysql:8.4`
+
+When the dev-stack PS image is bumped, this helper must follow — keep the
+two pins aligned to avoid version-drift bugs that would only surface in CI.
+
+---
+
 ## Running Tests
 
 ### Unit Tests
