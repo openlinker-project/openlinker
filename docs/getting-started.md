@@ -43,7 +43,7 @@ pnpm dev:stack:seed-prestashop
 
 > If you're upgrading from a pre-#525 dev stack, the entrypoint change requires a one-time `docker compose down && docker compose up -d prestashop` (Compose's `restart` doesn't recreate containers on entrypoint change).
 >
-> If you're upgrading from a pre-#514 install (where the bind-mount module was named `openlinkerwebhooks`), follow [`docs/operations/prestashop-module-rename-migration.md`](./operations/prestashop-module-rename-migration.md) **once** before continuing — it walks the uninstall-old / recreate-container / install-new / re-configure-cron sequence.
+> If your `ps_module` table still has a row with `name='openlinkerwebhooks'` (a pre-#514 install), follow [`docs/operations/prestashop-module-rename-migration.md`](./operations/prestashop-module-rename-migration.md) **once** before continuing — it walks the uninstall-old / recreate-container / install-new / re-configure-cron sequence.
 
 Log in to the PrestaShop admin at **http://localhost:8080/admin-dev/** with the default credentials (set in `docker-compose.yml`):
 

@@ -47,11 +47,11 @@ Operator-facing one-shot runbook. Sections:
    - `mysql ... -e "SELECT name, active FROM ps_module WHERE name LIKE 'openlinker%'"` — if you see `openlinkerwebhooks` instead of `openlinker`, you have the old registration.
    - `ls /var/www/html/modules/openlinker/` — if missing, the bind-mount didn't apply.
 
-2. **Drain the backlog FIRST** (only if `Pending Events` > 0). The `uninstall()` hook in `openlinker.php` **drops** `ps_openlinker_webhook_outbox` and `ps_openlinker_cart_shipping` tables, destroying any pending events. Operators with backlog should hit "Run Delivery Now" on the (still-loadable) old module's Configure page until `Pending Events` reaches 0 — or accept the loss if the events are no longer relevant.
+2. **Backlog handling**. The `uninstall()` hook in `openlinker.php` **preserves** `ps_openlinker_webhook_outbox` and `ps_openlinker_cart_shipping` — both `dropOutboxTable()` and `dropCartShippingTable()` calls are commented out by design (`openlinker.php:171,177`). The install hook re-creates each table with `CREATE TABLE IF NOT EXISTS`, so existing rows survive uninstall + reinstall. No drain step is required; the new cron URL resumes delivery on the next tick. The runbook documents an opt-in cleanup snippet for operators who explicitly want a clean slate.
 
 3. **Migration steps**:
    1. **Uninstall the old module.** Two paths:
-      - **(A) Module loadable** (`/var/www/html/modules/openlinkerwebhooks/openlinkerwebhooks.php` exists): use PS admin → `Module Manager → Modules → openlinkerwebhooks → Uninstall`. The uninstall hook drops the outbox + cart_shipping tables and removes hooks cleanly.
+      - **(A) Module loadable** (`/var/www/html/modules/openlinkerwebhooks/openlinkerwebhooks.php` exists): use PS admin → `Module Manager → Modules → openlinkerwebhooks → Uninstall`. The uninstall hook removes hooks, deletes the admin tab, soft-deletes the OL Dynamic carrier, and clears `OPENLINKER_*` configuration keys; it does **not** drop the outbox or cart_shipping tables.
       - **(B) Module stale** (directory empty post-#514, like the dev shop today): the GUI uninstall fails because PS can't autoload the missing class. Use the SQL fallback recipe:
         ```sql
         SET @id_module := (SELECT id_module FROM ps_module WHERE name = 'openlinkerwebhooks');

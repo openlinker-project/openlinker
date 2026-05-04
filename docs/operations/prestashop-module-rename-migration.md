@@ -33,15 +33,21 @@ docker compose exec prestashop sh -c \
    "SELECT status, COUNT(*) FROM ps_openlinker_webhook_outbox GROUP BY status;" 2>/dev/null'
 ```
 
-If `pending` > 0, jump to **Drain the backlog FIRST** before continuing — uninstall drops the outbox table.
+A non-zero `pending` count is informational only — both migration paths below preserve the outbox table and any rows in it (see "Backlog handling" below).
 
-## Drain the backlog FIRST
+## Backlog handling
 
-⚠️ The `uninstall()` hook in `openlinker.php` **drops** `ps_openlinker_webhook_outbox` and `ps_openlinker_cart_shipping`. Pending events are destroyed if you uninstall before draining.
+The `uninstall()` hook in `openlinker.php` **preserves** `ps_openlinker_webhook_outbox` and `ps_openlinker_cart_shipping` — both `dropOutboxTable()` and `dropCartShippingTable()` calls are commented out by design (see `openlinker.php:171,177`, "kept commented to match the conservative outbox default"). The install hook re-creates each table with `CREATE TABLE IF NOT EXISTS`, so existing rows survive uninstall + reinstall.
 
-If your old module is still loadable (path A in the next section), open its Configure page and click **Run Delivery Now** until `Pending Events` reaches 0.
+Practical implication: any pending events queued during the broken-cron window stay in place. After step 5 finishes, the new cron URL resumes delivering them on the next tick — no manual drain needed.
 
-If your old module is in the stale-directory state (path B — files missing on disk), the cron URL has been 404ing for some time and the events were never going anywhere. Accept the loss; nothing has been delivered, but nothing critical was queued either (any new events from product/order/inventory hooks would simply re-fire on the next sync run after migration).
+If you'd rather start fresh and discard the backlog (e.g., the events are stale and you want a clean slate), run this opt-in cleanup at any point during the migration:
+
+```bash
+docker compose exec prestashop sh -c \
+  'mysql -h mysql -u prestashop -pprestashop prestashop -e \
+   "DROP TABLE IF EXISTS ps_openlinker_webhook_outbox; DROP TABLE IF EXISTS ps_openlinker_cart_shipping;"'
+```
 
 ## Migration steps
 
@@ -49,7 +55,7 @@ If your old module is in the stale-directory state (path B — files missing on 
 
 **Path A — module loadable** (`/var/www/html/modules/openlinkerwebhooks/openlinkerwebhooks.php` exists on disk):
 
-PS admin → **Modules → Module Manager → openlinkerwebhooks → Uninstall**. The uninstall hook drops the outbox + cart_shipping tables and removes hooks cleanly.
+PS admin → **Modules → Module Manager → openlinkerwebhooks → Uninstall**. The uninstall hook removes hooks, deletes the admin tab, soft-deletes the OL Dynamic carrier, and clears `OPENLINKER_*` configuration keys. It does **not** drop the outbox or cart_shipping tables — they survive the uninstall (and the reinstall, since `CREATE TABLE IF NOT EXISTS` is a no-op when the tables already exist).
 
 **Path B — module stale** (directory exists but is empty post-#514; common case if you skipped this migration when #514 shipped):
 
@@ -79,14 +85,16 @@ DELETE FROM ps_authorization_role
 DELETE FROM ps_tab_lang WHERE id_tab IN (SELECT id_tab FROM ps_tab WHERE module = "openlinkerwebhooks");
 DELETE FROM ps_tab WHERE module = "openlinkerwebhooks";
 
-DROP TABLE IF EXISTS ps_openlinker_webhook_outbox;
-DROP TABLE IF EXISTS ps_openlinker_cart_shipping;
+-- Outbox + cart_shipping tables are intentionally NOT dropped here. The
+-- install hook in step 3 uses CREATE TABLE IF NOT EXISTS, so existing
+-- rows survive into the new module. See "Backlog handling" above for the
+-- opt-in cleanup snippet if you want a clean slate.
 SELECT "Uninstall complete" AS status;
 SQL
 '
 ```
 
-This recipe leaves `ps_configuration` untouched, so `OPENLINKER_BASE_URL` / `..._CONNECTION_ID` / `..._WEBHOOK_SECRET` / `..._CRON_TOKEN` are preserved across the migration.
+This recipe leaves `ps_configuration` rows intact on disk, but the install hook in step 3 calls `setDefaultConfiguration()` and **resets all four `OPENLINKER_*` keys** regardless: `OPENLINKER_BASE_URL` / `..._CONNECTION_ID` / `..._WEBHOOK_SECRET` are reset to empty strings, and `OPENLINKER_CRON_TOKEN` is regenerated. Plan to re-enter every config value in step 4.
 
 ### 2. Recreate the container to apply the new bind-mount
 
@@ -106,11 +114,11 @@ docker compose exec prestashop ls -la /var/www/html/modules/openlinker/openlinke
 
 **Recommended: PS admin GUI** → **Modules → Module Manager → search "openlinker" → Install**. The legacy install hook fires reliably via this path and:
 
-- Creates `ps_openlinker_webhook_outbox` empty.
-- Creates `ps_openlinker_cart_shipping` empty.
+- Ensures `ps_openlinker_webhook_outbox` exists (`CREATE TABLE IF NOT EXISTS` — preserves any pre-existing rows).
+- Ensures `ps_openlinker_cart_shipping` exists (same idempotent create).
 - Seeds the OL Dynamic carrier (per #515) — visible as `OpenLinker Dynamic` in the carrier-mapping picker; persists `OPENLINKER_DYNAMIC_CARRIER_ID` to `ps_configuration`.
 - Registers the standard hook set (`actionProductSave`, `actionValidateOrderAfter`, `actionOrderHistoryAddAfter`, `actionUpdateQuantity`, `actionCarrierUpdate`).
-- Generates a fresh `OPENLINKER_CRON_TOKEN` (a 64-char hex secret).
+- Calls `setDefaultConfiguration()`, which resets `OPENLINKER_BASE_URL` / `..._CONNECTION_ID` / `..._WEBHOOK_SECRET` to empty strings and generates a fresh `OPENLINKER_CRON_TOKEN` (64-char hex).
 
 **CLI alternative (for automation only):**
 ```bash
@@ -130,7 +138,7 @@ Open the module's Configure page (Module Manager → openlinker → Configure) a
 - `OPENLINKER_CONNECTION_ID` — the PrestaShop connection's UUID from the OpenLinker app
 - `OPENLINKER_WEBHOOK_SECRET` — the HMAC shared secret (must match `OL_WEBHOOK_SECRET` on the OpenLinker side)
 
-⚠️ **`OPENLINKER_CRON_TOKEN` is regenerated on every install path** — the GUI install, `bin/console install`, and the SQL recipe → install sequence all generate a fresh hex token via `parent::install()`. The path B SQL recipe **preserves** the old token in `ps_configuration` (it only deletes `ps_module` rows), but the **install hook then overwrites it** with a new value. Practical implication: **always copy the new token from the Configure page after install and update host crontabs in step 5** — there's no operator path that preserves the original token across uninstall/install.
+⚠️ **All four `OPENLINKER_*` configuration keys are reset by every install path.** The GUI install, `bin/console install`, and the SQL recipe → install sequence all run `setDefaultConfiguration()` (`openlinker.php:124`), which unconditionally calls `Configuration::updateValue()` for `OPENLINKER_BASE_URL`, `OPENLINKER_CONNECTION_ID`, `OPENLINKER_WEBHOOK_SECRET` (all reset to `''`) and `OPENLINKER_CRON_TOKEN` (regenerated to a fresh 64-char hex). The path B SQL recipe leaves the underlying `ps_configuration` rows intact, but the install hook overwrites them anyway. Practical implication: **always copy the new token from the Configure page after install and update host crontabs in step 5** — there's no operator path that preserves the original token across uninstall/install.
 
 ### 5. Update host crontab(s)
 
