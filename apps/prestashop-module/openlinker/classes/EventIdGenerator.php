@@ -41,8 +41,11 @@ class EventIdGenerator
      * @param string $objectType Object type (e.g., 'product')
      * @param string $externalId External object ID
      * @param string $occurredAt ISO 8601 timestamp when event occurred
-     * @param int    $windowMinutes Deduplication window in minutes (default: 1). The production
-     *                             caller resolves this from Configuration::get('DEDUPLICATION_WINDOW_MINUTES').
+     * @param int    $windowMinutes Deduplication window in minutes (default: 1). Values < 1
+     *                             (zero, negative, non-numeric) are clamped to 1 to preserve the
+     *                             pre-refactor `?: 1` fallback when Configuration::get returns empty.
+     *                             The production caller resolves this from
+     *                             Configuration::get('DEDUPLICATION_WINDOW_MINUTES').
      * @return string Event ID (deterministic hash-based, UUID-like format)
      */
     public static function generateEventId(

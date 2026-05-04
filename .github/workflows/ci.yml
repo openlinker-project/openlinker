@@ -131,6 +131,14 @@ jobs:
         with:
           php-version: '8.1'
           tools: composer
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.composer/cache
+            apps/prestashop-module/openlinker/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/prestashop-module/openlinker/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
       - uses: pnpm/action-setup@v2
         with:
           version: 9

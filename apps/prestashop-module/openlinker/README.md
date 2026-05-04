@@ -288,6 +288,10 @@ composer install
 vendor/bin/phpunit
 ```
 
+### PHP version
+
+The module **runtime** targets PHP `>=7.4` (PrestaShop 1.7 baseline). The **dev/test** toolchain (PHPUnit 10) requires PHP `>=8.1`. CI uses 8.1 to run tests; production deploys are unaffected. Contributors on PHP 7.4 can edit module classes but cannot run `composer install` for the dev dependencies — install PHP 8.1+ locally to run the unit suite.
+
 ### Scope and non-goals
 
 The PHPUnit harness covers **pure-function classes only** — those with no PrestaShop globals (`Db::`, `Configuration::`, `Cart`, etc.):
