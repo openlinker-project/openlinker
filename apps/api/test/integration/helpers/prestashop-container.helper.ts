@@ -88,6 +88,16 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
 
     const baseUrl = `http://${prestashop.getHost()}:${prestashop.getMappedPort(80)}`;
 
+    // Confirm Apache is genuinely serving before handing the harness back to
+    // the caller. PS's default entrypoint has been observed to exit on some
+    // CI runners after install completes (likely via `apache2-foreground`
+    // crash on a missing config / OOM kill / wrong PS_DOMAIN handling) — in
+    // that case the MySQL `PS_VERSION_DB` poll succeeds but the next `fetch`
+    // fails with the cryptic docker-modem "container not running" 409. A
+    // probe here surfaces that failure with a much clearer message *and* a
+    // log dump (see `verifyApacheUp` below) before tests start running.
+    await verifyApacheUp(prestashop, baseUrl, seed.webserviceApiKey);
+
     // Hoist into stable locals so the cleanup closure doesn't rely on
     // mutable outer-scope bindings.
     const startedPrestashop = prestashop;
@@ -112,6 +122,20 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
       cleanup,
     };
   } catch (err) {
+    // Diagnostic capture — best-effort dump of container logs + state to
+    // surface why setup failed in CI logs (where we can't `docker logs`
+    // post-mortem). Done BEFORE stopping containers so tail-able state is
+    // still readable.
+    if (prestashop) {
+      await dumpContainerState('prestashop', prestashop).catch(() => {
+        /* best-effort */
+      });
+    }
+    if (mysql) {
+      await dumpContainerState('mysql', mysql).catch(() => {
+        /* best-effort */
+      });
+    }
     await Promise.allSettled([
       prestashop?.stop() ?? Promise.resolve(),
       mysql?.stop() ?? Promise.resolve(),
@@ -121,6 +145,95 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     });
     throw err;
   }
+}
+
+/**
+ * HTTP-probe Apache with retries until the WS responds or we time out.
+ *
+ * Hits `/api/carriers` (an authenticated WS endpoint) rather than the
+ * storefront root — this confirms BOTH Apache is listening AND the
+ * fixture-seeded WS API key is wired correctly. A failure here means
+ * one of: Apache isn't running, the WS module isn't loaded, or the API
+ * key fixture didn't take.
+ *
+ * On exhaustion, dumps PS container logs + exit state to stderr so the
+ * CI log makes the failure mode legible without an interactive debugger.
+ */
+async function verifyApacheUp(
+  prestashop: StartedTestContainer,
+  baseUrl: string,
+  apiKey: string,
+): Promise<void> {
+  const probeUrl = `${baseUrl.replace(/\/$/, '')}/api/carriers?display=full&output_format=JSON&limit=1`;
+  const auth = Buffer.from(`${apiKey}:`).toString('base64');
+  const deadline = Date.now() + 60_000; // 1 min — fixture is in place by now, this is just an Apache health check
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        headers: { Authorization: `Basic ${auth}` },
+      });
+      if (response.ok) {
+        // Drain body to free the underlying socket; we only care about the status.
+        await response.text().catch(() => undefined);
+        return;
+      }
+      lastError = new Error(`PS WS probe HTTP ${response.status}: ${response.statusText}`);
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  await dumpContainerState('prestashop', prestashop).catch(() => undefined);
+  throw new Error(
+    `PrestaShop Apache did not respond to authenticated WS probe within 60s. ` +
+      `Last error: ${formatError(lastError)}. ` +
+      `Container logs were dumped above for diagnosis.`,
+  );
+}
+
+/**
+ * Best-effort container-log + state dump to stderr. Wraps stop-mode info
+ * (exit code, OOM flag) and the tail of the container's stdout/stderr.
+ *
+ * Designed to fail silently — diagnostic capture must never bury the
+ * original error. If the container is already gone or Docker's API is
+ * unhappy, we just give up and let the caller throw the upstream error.
+ */
+async function dumpContainerState(
+  label: string,
+  container: StartedTestContainer | StartedMySqlContainer,
+): Promise<void> {
+  const tag = `[${label}-container]`;
+  try {
+    // testcontainers exposes `logs()` which returns a Readable stream.
+    const stream = await container.logs();
+    const lines: string[] = [];
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer | string) => {
+        lines.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+      });
+      stream.on('end', () => resolve());
+      stream.on('err', reject);
+      // Cap collection time — if the stream is hung, give up after 5s rather
+      // than blocking the diagnostic dump.
+      setTimeout(() => resolve(), 5_000);
+    });
+    const tail = lines.join('').split('\n').slice(-80).join('\n');
+    // eslint-disable-next-line no-console
+    console.error(`${tag} log tail (last 80 lines):\n${tail}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`${tag} log capture failed: ${formatError(err)}`);
+  }
+}
+
+function formatError(err: unknown): string {
+  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  return String(err);
 }
 
 async function startMysql(network: StartedNetwork): Promise<StartedMySqlContainer> {
@@ -142,9 +255,20 @@ async function startPrestashop(network: StartedNetwork): Promise<StartedTestCont
     .withNetwork(network)
     .withExposedPorts(80)
     .withEnvironment({
+      // Env-var set mirrors the dev-stack `docker-compose.yml` PS service so
+      // we exercise the same install path. Notable choices:
+      // - `PS_COUNTRY=US` (uppercase) — the install CLI is case-sensitive on
+      //   country codes; the dev-stack value is the proven one. Country choice
+      //   is otherwise irrelevant to the smoke test (we don't depend on tax
+      //   rules / currency defaults; PLN is added by the fixture).
+      // - `PS_DOMAIN=localhost` (no port) — testcontainers picks a random host
+      //   port at start time, so we can't bake the mapped port into the install.
+      //   This is fine for WS calls (we hit the mapped port directly via baseUrl)
+      //   but means storefront-redirect-based flows would misbehave; not an
+      //   issue for the smoke spec or for Phase 2.
       PS_DOMAIN: 'localhost',
       PS_FOLDER_ADMIN: 'admin',
-      PS_COUNTRY: 'pl',
+      PS_COUNTRY: 'US',
       PS_LANGUAGE: 'en',
       PS_DB_SERVER: MYSQL_NETWORK_ALIAS,
       PS_DB_NAME: MYSQL_DATABASE,
