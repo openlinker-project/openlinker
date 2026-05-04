@@ -19,6 +19,9 @@
  * @module apps/api/test/integration/helpers
  */
 import { execFileSync } from 'child_process';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Readable } from 'stream';
 import { GenericContainer, Network, StartedNetwork, StartedTestContainer } from 'testcontainers';
 import { MySqlContainer, StartedMySqlContainer } from '@testcontainers/mysql';
@@ -69,6 +72,16 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
   // when setup throws), so without this guard a failed PS boot would leak
   // the MySQL container + network until ryuk reaps them.
   const network = await new Network().start();
+  // Bind-mount target for PS's `/var/www/html`. Required because PS's CLI
+  // installer renames `/var/www/html/admin` to a randomized name (security
+  // best-practice — see #506 / PS install code). On Docker's overlayfs,
+  // renaming a directory inherited from the lower image layer to a new name
+  // in the upper writable layer fails on some kernel/runtime combinations
+  // (notably the self-hosted runner this CI lives on). A bind-mount onto a
+  // real host directory uses the host filesystem's rename semantics and
+  // works everywhere. The PS image's entrypoint detects the empty mount and
+  // copies bundled PHP files into it before install runs.
+  const psDataDir = mkdtempSync(join(tmpdir(), 'ol-ps-data-'));
   let mysql: StartedMySqlContainer | undefined;
   let prestashop: StartedTestContainer | undefined;
 
@@ -82,7 +95,7 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
 
   try {
     mysql = await startMysql(network, mysqlLogBuffer);
-    prestashop = await startPrestashop(network, psLogBuffer);
+    prestashop = await startPrestashop(network, psLogBuffer, psDataDir);
 
     const mysqlOptions = {
       host: mysql.getHost(),
@@ -122,6 +135,15 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
         // Network teardown is best-effort — if Docker has already pruned it,
         // nothing else this test owns is affected.
       });
+      // Remove the bind-mount tmpdir last — PS containers running as root
+      // sometimes leave files owned by the container's user; force-remove
+      // ignores the resulting EPERM if any. Best-effort; a leaked /tmp dir
+      // doesn't affect correctness.
+      try {
+        rmSync(psDataDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
     };
 
     return {
@@ -159,6 +181,11 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     await network.stop().catch(() => {
       /* best-effort */
     });
+    try {
+      rmSync(psDataDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
     throw err;
   }
 }
@@ -378,10 +405,19 @@ async function startMysql(
 async function startPrestashop(
   network: StartedNetwork,
   logBuffer: LogBuffer,
+  dataDir: string,
 ): Promise<StartedTestContainer> {
   return await new GenericContainer(PRESTASHOP_IMAGE)
     .withNetwork(network)
     .withExposedPorts(80)
+    // Bind-mount a host tmpdir onto /var/www/html. The PS image's entrypoint
+    // detects the empty mount and copies bundled PHP source into it before
+    // install runs ("Reapplying PrestaShop files for enabled volumes" /
+    // "Copying files from tmp directory" log lines). Required to make PS's
+    // admin-folder rename succeed — see #506 / the install error
+    // "The admin folder could not be renamed into admin..." that surfaced
+    // on overlayfs without a bind-mount.
+    .withBindMounts([{ source: dataDir, target: '/var/www/html', mode: 'rw' }])
     .withLogConsumer(makeLogConsumer(logBuffer))
     .withEnvironment({
       // Env-var set mirrors the dev-stack `docker-compose.yml` PS service so
