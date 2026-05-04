@@ -13,6 +13,7 @@
     "test:watch": "pnpm -r test:watch",
     "test:cov": "pnpm -r test:cov",
     "test:integration": "pnpm --filter @openlinker/api test:integration",
+    "test:php": "cd apps/prestashop-module/openlinker && composer install --no-interaction --quiet && vendor/bin/phpunit",
     "lint": "pnpm -r lint && pnpm check:invariants",
     "check:invariants": "bash scripts/check-fixture-purity.sh && node scripts/check-render-template-fixture-drift.mjs && node scripts/check-migration-timestamps.mjs",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",

@@ -41,6 +41,8 @@ class EventIdGenerator
      * @param string $objectType Object type (e.g., 'product')
      * @param string $externalId External object ID
      * @param string $occurredAt ISO 8601 timestamp when event occurred
+     * @param int    $windowMinutes Deduplication window in minutes (default: 1). The production
+     *                             caller resolves this from Configuration::get('DEDUPLICATION_WINDOW_MINUTES').
      * @return string Event ID (deterministic hash-based, UUID-like format)
      */
     public static function generateEventId(
@@ -49,10 +51,10 @@ class EventIdGenerator
         $eventType,
         $objectType,
         $externalId,
-        $occurredAt
+        $occurredAt,
+        $windowMinutes = 1
     ) {
-        // Get deduplication window from configuration (default: 1 minute)
-        $windowMinutes = (int)Configuration::get('DEDUPLICATION_WINDOW_MINUTES') ?: 1;
+        $windowMinutes = max(1, (int) $windowMinutes);
         $windowSeconds = $windowMinutes * 60;
 
         // Round timestamp to the nearest window boundary to create a time window
