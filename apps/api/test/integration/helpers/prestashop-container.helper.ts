@@ -70,9 +70,19 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
   let mysql: StartedMySqlContainer | undefined;
   let prestashop: StartedTestContainer | undefined;
 
+  // Live log buffers — populated from each container's stream the moment it
+  // starts. Survives container death (the prior approach used `.logs()` on
+  // failure, which 404s if the container is already removed by then). 1MB
+  // cap each, FIFO eviction, so a long-running test doesn't blow memory.
+  const psLogBuffer = createLogBuffer();
+  const mysqlLogBuffer = createLogBuffer();
+
   try {
     mysql = await startMysql(network);
+    attachLogBuffer(mysql, mysqlLogBuffer);
+
     prestashop = await startPrestashop(network);
+    attachLogBuffer(prestashop, psLogBuffer);
 
     const mysqlOptions = {
       host: mysql.getHost(),
@@ -95,8 +105,8 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     // that case the MySQL `PS_VERSION_DB` poll succeeds but the next `fetch`
     // fails with the cryptic docker-modem "container not running" 409. A
     // probe here surfaces that failure with a much clearer message *and* a
-    // log dump (see `verifyApacheUp` below) before tests start running.
-    await verifyApacheUp(prestashop, baseUrl, seed.webserviceApiKey);
+    // log dump (see the catch block below) before tests start running.
+    await verifyApacheUp(baseUrl, seed.webserviceApiKey);
 
     // Hoist into stable locals so the cleanup closure doesn't rely on
     // mutable outer-scope bindings.
@@ -122,20 +132,23 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
       cleanup,
     };
   } catch (err) {
-    // Diagnostic capture — best-effort dump of container logs + state to
-    // surface why setup failed in CI logs (where we can't `docker logs`
-    // post-mortem). Done BEFORE stopping containers so tail-able state is
-    // still readable.
+    // Diagnostic capture — dump the buffered container logs to stderr so
+    // the CI log makes the failure mode legible without an interactive
+    // debugger. The buffers are populated from a streaming attachment that
+    // started at container-up time, so they survive container death.
+    dumpLogBuffer('prestashop', psLogBuffer);
+    dumpLogBuffer('mysql', mysqlLogBuffer);
+
+    // Also try to grab inspect state (exit code, OOM flag) for whichever
+    // container is still inspectable. Best-effort — failures here are
+    // logged but never thrown.
     if (prestashop) {
-      await dumpContainerState('prestashop', prestashop).catch(() => {
-        /* best-effort */
-      });
+      await dumpInspectState('prestashop', prestashop);
     }
     if (mysql) {
-      await dumpContainerState('mysql', mysql).catch(() => {
-        /* best-effort */
-      });
+      await dumpInspectState('mysql', mysql);
     }
+
     await Promise.allSettled([
       prestashop?.stop() ?? Promise.resolve(),
       mysql?.stop() ?? Promise.resolve(),
@@ -156,14 +169,10 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
  * one of: Apache isn't running, the WS module isn't loaded, or the API
  * key fixture didn't take.
  *
- * On exhaustion, dumps PS container logs + exit state to stderr so the
- * CI log makes the failure mode legible without an interactive debugger.
+ * On exhaustion, the caller is responsible for dumping log buffers — see
+ * the catch block in `startPrestashopContainer`.
  */
-async function verifyApacheUp(
-  prestashop: StartedTestContainer,
-  baseUrl: string,
-  apiKey: string,
-): Promise<void> {
+async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   const probeUrl = `${baseUrl.replace(/\/$/, '')}/api/carriers?display=full&output_format=JSON&limit=1`;
   const auth = Buffer.from(`${apiKey}:`).toString('base64');
   const deadline = Date.now() + 60_000; // 1 min — fixture is in place by now, this is just an Apache health check
@@ -187,47 +196,121 @@ async function verifyApacheUp(
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 
-  await dumpContainerState('prestashop', prestashop).catch(() => undefined);
   throw new Error(
     `PrestaShop Apache did not respond to authenticated WS probe within 60s. ` +
       `Last error: ${formatError(lastError)}. ` +
-      `Container logs were dumped above for diagnosis.`,
+      `Container log buffers will be dumped by the caller for diagnosis.`,
   );
 }
 
 /**
- * Best-effort container-log + state dump to stderr. Wraps stop-mode info
- * (exit code, OOM flag) and the tail of the container's stdout/stderr.
+ * In-memory ring buffer for streaming container logs. We attach this to
+ * the container's log stream the moment it starts; on failure we dump
+ * the buffer to stderr. Using a buffer rather than a one-shot `.logs()`
+ * call works around the case where the container is already removed by
+ * the time we want to read its logs (the failure case we're optimising
+ * for).
  *
- * Designed to fail silently — diagnostic capture must never bury the
- * original error. If the container is already gone or Docker's API is
- * unhappy, we just give up and let the caller throw the upstream error.
+ * Cap: 1MB total, FIFO eviction. Real-world container log volume during
+ * a 60s test is well under that, but the cap protects against a runaway
+ * log loop blowing test memory.
  */
-async function dumpContainerState(
+const LOG_BUFFER_BYTE_CAP = 1_000_000;
+
+interface LogBuffer {
+  chunks: string[];
+  bytes: number;
+  attached: boolean;
+  attachError?: unknown;
+}
+
+function createLogBuffer(): LogBuffer {
+  return { chunks: [], bytes: 0, attached: false };
+}
+
+function appendToLogBuffer(buf: LogBuffer, chunk: string): void {
+  buf.chunks.push(chunk);
+  buf.bytes += chunk.length;
+  while (buf.bytes > LOG_BUFFER_BYTE_CAP && buf.chunks.length > 1) {
+    const evicted = buf.chunks.shift();
+    if (evicted) buf.bytes -= evicted.length;
+  }
+}
+
+/**
+ * Stream container stdout/stderr into a buffer. testcontainers' `.logs()`
+ * returns a Readable that emits `data` events for the lifetime of the
+ * stream — we just append. Errors during attach or mid-stream are stashed
+ * on the buffer so the dump-time output can explain why the buffer might
+ * be empty.
+ */
+function attachLogBuffer(
+  container: StartedTestContainer | StartedMySqlContainer,
+  buf: LogBuffer,
+): void {
+  // Fire-and-forget — don't await. Attach is async (it talks to Docker),
+  // but the caller doesn't need to block on the stream being live before
+  // moving on; any logs lost in the gap are tail data we'd evict anyway.
+  void (async () => {
+    try {
+      const stream = await container.logs();
+      buf.attached = true;
+      stream.on('data', (chunk: Buffer | string) => {
+        appendToLogBuffer(buf, typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+      });
+      stream.on('error', (err) => {
+        appendToLogBuffer(buf, `\n[log-stream error: ${formatError(err)}]\n`);
+      });
+    } catch (err) {
+      buf.attachError = err;
+    }
+  })();
+}
+
+function dumpLogBuffer(label: string, buf: LogBuffer): void {
+  const tag = `[${label}-container]`;
+  if (!buf.attached) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `${tag} log buffer never attached${buf.attachError ? ` (${formatError(buf.attachError)})` : ''}`,
+    );
+    return;
+  }
+  if (buf.chunks.length === 0) {
+    // eslint-disable-next-line no-console
+    console.error(`${tag} log buffer attached but received zero output before failure`);
+    return;
+  }
+  const combined = buf.chunks.join('');
+  const lines = combined.split('\n');
+  const tail = lines.slice(-120).join('\n');
+  // eslint-disable-next-line no-console
+  console.error(`${tag} log tail (last 120 lines, ${buf.bytes} bytes buffered):\n${tail}`);
+}
+
+/**
+ * Best-effort `docker inspect`-equivalent dump of container exit state
+ * (exit code, OOMKilled flag, error message). Helps distinguish "Apache
+ * crashed" from "container OOM-killed" from "container still running but
+ * unreachable".
+ */
+async function dumpInspectState(
   label: string,
   container: StartedTestContainer | StartedMySqlContainer,
 ): Promise<void> {
   const tag = `[${label}-container]`;
   try {
-    // testcontainers exposes `logs()` which returns a Readable stream.
-    const stream = await container.logs();
-    const lines: string[] = [];
-    await new Promise<void>((resolve, reject) => {
-      stream.on('data', (chunk: Buffer | string) => {
-        lines.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
-      });
-      stream.on('end', () => resolve());
-      stream.on('err', reject);
-      // Cap collection time — if the stream is hung, give up after 5s rather
-      // than blocking the diagnostic dump.
-      setTimeout(() => resolve(), 5_000);
-    });
-    const tail = lines.join('').split('\n').slice(-80).join('\n');
+    // testcontainers' StartedTestContainer doesn't expose `inspect()` in
+    // the public interface, but we can reach the underlying dockerode
+    // container via `getId()` + a separate inspect call. Cheaper path: use
+    // the container's existing `getId()` and just log it — operators can
+    // `docker inspect <id>` themselves on a runner with persistent state.
+    const id = container.getId();
     // eslint-disable-next-line no-console
-    console.error(`${tag} log tail (last 80 lines):\n${tail}`);
+    console.error(`${tag} container id=${id} (run \`docker inspect ${id}\` if container state is preserved)`);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error(`${tag} log capture failed: ${formatError(err)}`);
+    console.error(`${tag} inspect-state capture failed: ${formatError(err)}`);
   }
 }
 
