@@ -98,38 +98,125 @@ export async function applyPrestashopFixture(
   }
 }
 
+/**
+ * Detect the PS legacy-WebService schema variant present in this database.
+ *
+ * PrestaShop 8.x and earlier use:
+ *   - `ps_api_access` (id_api_access, api_key, description, active)
+ *   - `ps_api_access_resource` (id_api_access, resource, get/post/put/delete/head/all)
+ *
+ * PrestaShop 9.x renamed both tables to align with the new
+ * `WebserviceKey` ObjectModel:
+ *   - `ps_webservice_account` (id_webservice_account, key, description, active, ...)
+ *   - `ps_webservice_account_permission` or `ps_webservice_permission`
+ *     (varies by minor release)
+ *
+ * To stay forward-compatible, we probe `INFORMATION_SCHEMA.TABLES` for
+ * the actual names and pick a matching code path. Throws a descriptive
+ * error (with table list) if neither is found, so a future PS image
+ * bump produces an actionable diagnostic instead of a `Table 'x' doesn't
+ * exist` mid-test.
+ */
+interface WebserviceSchema {
+  variant: 'legacy' | 'v9';
+  /** account table (e.g. `ps_api_access` or `ps_webservice_account`) */
+  accountTable: string;
+  /** PK column on the account table */
+  accountPk: string;
+  /** API-key column on the account table */
+  keyColumn: string;
+  /** Per-resource permission table */
+  permissionTable: string;
+}
+
+async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchema> {
+  const [rows] = await conn.execute<(RowDataPacket & { TABLE_NAME: string })[]>(
+    `SELECT TABLE_NAME FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND (TABLE_NAME LIKE 'ps_%api%' OR TABLE_NAME LIKE 'ps_%webservice%')
+     ORDER BY TABLE_NAME`,
+  );
+  const names = rows.map((r) => r.TABLE_NAME);
+  const has = (name: string): boolean => names.includes(name);
+
+  if (has('ps_api_access') && has('ps_api_access_resource')) {
+    return {
+      variant: 'legacy',
+      accountTable: 'ps_api_access',
+      accountPk: 'id_api_access',
+      keyColumn: 'api_key',
+      permissionTable: 'ps_api_access_resource',
+    };
+  }
+  if (has('ps_webservice_account')) {
+    // PS 9.x rolled the per-resource permission rows out into either
+    // `ps_webservice_account_permission` or `ps_webservice_permission`
+    // depending on the minor release. Pick whichever exists.
+    const permTable =
+      (has('ps_webservice_account_permission') && 'ps_webservice_account_permission') ||
+      (has('ps_webservice_permission') && 'ps_webservice_permission') ||
+      null;
+    if (!permTable) {
+      throw new Error(
+        `PS 9.x WebService account table (ps_webservice_account) is present but ` +
+          `no matching permission table found. Looked for: ` +
+          `ps_webservice_account_permission, ps_webservice_permission. ` +
+          `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
+      );
+    }
+    return {
+      variant: 'v9',
+      accountTable: 'ps_webservice_account',
+      accountPk: 'id_webservice_account',
+      keyColumn: 'key',
+      permissionTable: permTable,
+    };
+  }
+
+  throw new Error(
+    `Cannot find a PrestaShop WebService account table. ` +
+      `Looked for: ps_api_access (legacy 8.x) or ps_webservice_account (9.x). ` +
+      `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
+  );
+}
+
 async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<void> {
+  const schema = await detectWebserviceSchema(conn);
+
   // Idempotency: if a row with this key exists, treat as already seeded. The
   // int-spec generates a fresh key per run so collisions only happen if the
   // same fixture is applied twice — re-asserting permissions is harmless.
-  const [existingRows] = await conn.execute<(RowDataPacket & { id_api_access: number })[]>(
-    'SELECT id_api_access FROM ps_api_access WHERE api_key = ? LIMIT 1',
+  const [existingRows] = await conn.execute<RowDataPacket[]>(
+    `SELECT \`${schema.accountPk}\` AS pk FROM \`${schema.accountTable}\` WHERE \`${schema.keyColumn}\` = ? LIMIT 1`,
     [apiKey],
   );
-  let idApiAccess: number;
+  let accountId: number;
   if (Array.isArray(existingRows) && existingRows.length > 0) {
-    idApiAccess = existingRows[0].id_api_access;
+    accountId = existingRows[0].pk as number;
   } else {
     const [result] = await conn.execute<ResultSetHeader>(
-      'INSERT INTO ps_api_access (api_key, description, active) VALUES (?, ?, 1)',
+      `INSERT INTO \`${schema.accountTable}\` (\`${schema.keyColumn}\`, description, active) VALUES (?, ?, 1)`,
       [apiKey, 'OpenLinker integration test key'],
     );
-    idApiAccess = result.insertId;
+    accountId = result.insertId;
   }
 
   // Wipe and re-grant (cheap on a fresh install, idempotent on re-run).
-  await conn.execute('DELETE FROM ps_api_access_resource WHERE id_api_access = ?', [idApiAccess]);
+  await conn.execute(
+    `DELETE FROM \`${schema.permissionTable}\` WHERE \`${schema.accountPk}\` = ?`,
+    [accountId],
+  );
 
-  // PS 9.x stores per-resource ACLs as a single row per (id_api_access, resource)
-  // with bitfield-flagged HTTP verbs. Schema columns: id_api_access, resource,
+  // Both schema variants store per-resource ACLs as one row per (account, resource)
+  // with bitfield-flagged HTTP verbs. Schema columns: account FK, resource,
   // get, post, put, delete, head, all. Granting `all=1` is the simplest way to
   // mirror the dev-stack admin's hand-configured key without enumerating verbs.
   for (const resource of WS_RESOURCES) {
     await conn.execute(
-      `INSERT INTO ps_api_access_resource
-         (id_api_access, resource, \`get\`, \`post\`, \`put\`, \`delete\`, \`head\`, \`all\`)
+      `INSERT INTO \`${schema.permissionTable}\`
+         (\`${schema.accountPk}\`, resource, \`get\`, \`post\`, \`put\`, \`delete\`, \`head\`, \`all\`)
        VALUES (?, ?, 1, 1, 1, 1, 1, 1)`,
-      [idApiAccess, resource],
+      [accountId, resource],
     );
   }
 }
