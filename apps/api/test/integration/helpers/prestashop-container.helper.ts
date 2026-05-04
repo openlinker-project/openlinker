@@ -18,6 +18,8 @@
  *
  * @module apps/api/test/integration/helpers
  */
+import { execFileSync } from 'child_process';
+import { Readable } from 'stream';
 import { GenericContainer, Network, StartedNetwork, StartedTestContainer } from 'testcontainers';
 import { MySqlContainer, StartedMySqlContainer } from '@testcontainers/mysql';
 import {
@@ -70,19 +72,17 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
   let mysql: StartedMySqlContainer | undefined;
   let prestashop: StartedTestContainer | undefined;
 
-  // Live log buffers — populated from each container's stream the moment it
-  // starts. Survives container death (the prior approach used `.logs()` on
-  // failure, which 404s if the container is already removed by then). 1MB
-  // cap each, FIFO eviction, so a long-running test doesn't blow memory.
+  // Live log buffers — populated from each container's stream via
+  // `withLogConsumer`, which testcontainers attaches at builder time
+  // (before the container even starts). The previous approach used
+  // post-start `.logs()` and raced container death; this one can't.
+  // 1MB cap each, FIFO eviction.
   const psLogBuffer = createLogBuffer();
   const mysqlLogBuffer = createLogBuffer();
 
   try {
-    mysql = await startMysql(network);
-    attachLogBuffer(mysql, mysqlLogBuffer);
-
-    prestashop = await startPrestashop(network);
-    attachLogBuffer(prestashop, psLogBuffer);
+    mysql = await startMysql(network, mysqlLogBuffer);
+    prestashop = await startPrestashop(network, psLogBuffer);
 
     const mysqlOptions = {
       host: mysql.getHost(),
@@ -134,20 +134,23 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
   } catch (err) {
     // Diagnostic capture — dump the buffered container logs to stderr so
     // the CI log makes the failure mode legible without an interactive
-    // debugger. The buffers are populated from a streaming attachment that
-    // started at container-up time, so they survive container death.
+    // debugger. The buffers are populated by testcontainers'
+    // `withLogConsumer` (set up at builder time), so they survive
+    // container death.
     dumpLogBuffer('prestashop', psLogBuffer);
     dumpLogBuffer('mysql', mysqlLogBuffer);
 
-    // Also try to grab inspect state (exit code, OOM flag) for whichever
-    // container is still inspectable. Best-effort — failures here are
-    // logged but never thrown.
-    if (prestashop) {
-      await dumpInspectState('prestashop', prestashop);
-    }
-    if (mysql) {
-      await dumpInspectState('mysql', mysql);
-    }
+    // Belt-and-braces: also try `docker logs <id>` directly via child_process.
+    // Survives the case where testcontainers' streaming consumer never got
+    // any output (e.g. container died before a single chunk arrived). Docker
+    // retains stopped-container logs by default, so this works post-mortem.
+    if (prestashop) dockerLogsFallback('prestashop', prestashop);
+    if (mysql) dockerLogsFallback('mysql', mysql);
+
+    // Inspect state (exit code, OOM flag, etc.) — most legible via direct
+    // `docker inspect`, again routed through child_process for reliability.
+    if (prestashop) dockerInspectFallback('prestashop', prestashop);
+    if (mysql) dockerInspectFallback('mysql', mysql);
 
     await Promise.allSettled([
       prestashop?.stop() ?? Promise.resolve(),
@@ -238,33 +241,20 @@ function appendToLogBuffer(buf: LogBuffer, chunk: string): void {
 }
 
 /**
- * Stream container stdout/stderr into a buffer. testcontainers' `.logs()`
- * returns a Readable that emits `data` events for the lifetime of the
- * stream — we just append. Errors during attach or mid-stream are stashed
- * on the buffer so the dump-time output can explain why the buffer might
- * be empty.
+ * Build a `withLogConsumer` callback that streams container output into
+ * the supplied buffer. Hooked at builder time, so it can't race container
+ * death the way a post-start `.logs()` call does.
  */
-function attachLogBuffer(
-  container: StartedTestContainer | StartedMySqlContainer,
-  buf: LogBuffer,
-): void {
-  // Fire-and-forget — don't await. Attach is async (it talks to Docker),
-  // but the caller doesn't need to block on the stream being live before
-  // moving on; any logs lost in the gap are tail data we'd evict anyway.
-  void (async () => {
-    try {
-      const stream = await container.logs();
-      buf.attached = true;
-      stream.on('data', (chunk: Buffer | string) => {
-        appendToLogBuffer(buf, typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
-      });
-      stream.on('error', (err) => {
-        appendToLogBuffer(buf, `\n[log-stream error: ${formatError(err)}]\n`);
-      });
-    } catch (err) {
-      buf.attachError = err;
-    }
-  })();
+function makeLogConsumer(buf: LogBuffer): (stream: Readable) => void {
+  return (stream: Readable) => {
+    buf.attached = true;
+    stream.on('data', (chunk: Buffer | string) => {
+      appendToLogBuffer(buf, typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+    });
+    stream.on('error', (err) => {
+      appendToLogBuffer(buf, `\n[log-stream error: ${formatError(err)}]\n`);
+    });
+  };
 }
 
 function dumpLogBuffer(label: string, buf: LogBuffer): void {
@@ -289,28 +279,76 @@ function dumpLogBuffer(label: string, buf: LogBuffer): void {
 }
 
 /**
- * Best-effort `docker inspect`-equivalent dump of container exit state
- * (exit code, OOMKilled flag, error message). Helps distinguish "Apache
- * crashed" from "container OOM-killed" from "container still running but
- * unreachable".
+ * Belt-and-braces fallback: shell out to `docker logs <id>` directly.
+ * Works even when testcontainers' streaming consumer received zero data
+ * (e.g. container died before stdout flushed). Docker retains
+ * stopped-container logs by default, so this is post-mortem-safe.
  */
-async function dumpInspectState(
+function dockerLogsFallback(
   label: string,
   container: StartedTestContainer | StartedMySqlContainer,
-): Promise<void> {
-  const tag = `[${label}-container]`;
+): void {
+  const tag = `[${label}-container fallback]`;
+  let id: string;
   try {
-    // testcontainers' StartedTestContainer doesn't expose `inspect()` in
-    // the public interface, but we can reach the underlying dockerode
-    // container via `getId()` + a separate inspect call. Cheaper path: use
-    // the container's existing `getId()` and just log it — operators can
-    // `docker inspect <id>` themselves on a runner with persistent state.
-    const id = container.getId();
-    // eslint-disable-next-line no-console
-    console.error(`${tag} container id=${id} (run \`docker inspect ${id}\` if container state is preserved)`);
+    id = container.getId();
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error(`${tag} inspect-state capture failed: ${formatError(err)}`);
+    console.error(`${tag} could not resolve container id: ${formatError(err)}`);
+    return;
+  }
+  try {
+    const out = execFileSync('docker', ['logs', '--tail', '200', id], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    // eslint-disable-next-line no-console
+    console.error(`${tag} docker logs --tail 200 ${id}:\n${out.toString('utf8')}`);
+  } catch (err) {
+    const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
+    // eslint-disable-next-line no-console
+    console.error(`${tag} docker logs failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
+  }
+}
+
+/**
+ * Belt-and-braces: shell out to `docker inspect` for exit code + OOM flag.
+ * Helps distinguish Apache crashed from OOM-killed from still-running.
+ */
+function dockerInspectFallback(
+  label: string,
+  container: StartedTestContainer | StartedMySqlContainer,
+): void {
+  const tag = `[${label}-container fallback]`;
+  let id: string;
+  try {
+    id = container.getId();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`${tag} could not resolve container id: ${formatError(err)}`);
+    return;
+  }
+  try {
+    const out = execFileSync(
+      'docker',
+      [
+        'inspect',
+        '--format',
+        '{{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} startedAt={{.State.StartedAt}} finishedAt={{.State.FinishedAt}}',
+        id,
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 5_000,
+      },
+    );
+    // eslint-disable-next-line no-console
+    console.error(`${tag} docker inspect ${id}: ${out.toString('utf8').trim()}`);
+  } catch (err) {
+    const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
+    // eslint-disable-next-line no-console
+    console.error(`${tag} docker inspect failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
   }
 }
 
@@ -319,7 +357,10 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
-async function startMysql(network: StartedNetwork): Promise<StartedMySqlContainer> {
+async function startMysql(
+  network: StartedNetwork,
+  logBuffer: LogBuffer,
+): Promise<StartedMySqlContainer> {
   return await new MySqlContainer(MYSQL_IMAGE)
     .withDatabase(MYSQL_DATABASE)
     .withUsername(MYSQL_USER)
@@ -327,16 +368,21 @@ async function startMysql(network: StartedNetwork): Promise<StartedMySqlContaine
     .withRootPassword(MYSQL_ROOT_PASSWORD)
     .withNetwork(network)
     .withNetworkAliases(MYSQL_NETWORK_ALIAS)
+    .withLogConsumer(makeLogConsumer(logBuffer))
     // Cold-cache CI: MySQL 8.4 image is ~700MB, pull + boot can hit 3-4 min.
     // 240s gives enough headroom without masking real container failures.
     .withStartupTimeout(240_000)
     .start();
 }
 
-async function startPrestashop(network: StartedNetwork): Promise<StartedTestContainer> {
+async function startPrestashop(
+  network: StartedNetwork,
+  logBuffer: LogBuffer,
+): Promise<StartedTestContainer> {
   return await new GenericContainer(PRESTASHOP_IMAGE)
     .withNetwork(network)
     .withExposedPorts(80)
+    .withLogConsumer(makeLogConsumer(logBuffer))
     .withEnvironment({
       // Env-var set mirrors the dev-stack `docker-compose.yml` PS service so
       // we exercise the same install path. Notable choices:
