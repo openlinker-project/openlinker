@@ -27,6 +27,7 @@ import { GenericContainer, Network, StartedNetwork, StartedTestContainer } from 
 import { MySqlContainer, StartedMySqlContainer } from '@testcontainers/mysql';
 import {
   applyPrestashopFixture,
+  configurePrestashopAccessUrl,
   PrestashopFixtureSeed,
   waitForPrestashopInstall,
 } from './prestashop-fixture.helper';
@@ -109,7 +110,16 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
 
     const seed: PrestashopFixtureSeed = await applyPrestashopFixture(mysqlOptions);
 
-    const baseUrl = `http://${prestashop.getHost()}:${prestashop.getMappedPort(80)}`;
+    const externalHost = prestashop.getHost();
+    const externalPort = prestashop.getMappedPort(80);
+    const externalHostPort = `${externalHost}:${externalPort}`;
+    const baseUrl = `http://${externalHostPort}`;
+
+    // Tell PS its canonical URL is the test-container's mapped host:port
+    // (not the install-time "localhost" without a port). Without this,
+    // every WS request 302s to the canonical URL via Tools::redirectCanonical,
+    // which the test runner can't follow back into the container.
+    await configurePrestashopAccessUrl(mysqlOptions, externalHostPort);
 
     // Confirm Apache is genuinely serving before handing the harness back to
     // the caller. PS's default entrypoint has been observed to exit on some
@@ -207,19 +217,32 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   const auth = Buffer.from(`${apiKey}:`).toString('base64');
   const deadline = Date.now() + 60_000; // 1 min — fixture is in place by now, this is just an Apache health check
   let lastError: unknown;
+  let lastRedirectLocation: string | null = null;
 
   while (Date.now() < deadline) {
     try {
+      // Don't follow redirects automatically. PS will 302 to its configured
+      // canonical domain (PS_DOMAIN = "localhost" with no port) when SSL or
+      // canonical-URL logic kicks in, and a follow into "localhost:80" fails
+      // from outside the container with an opaque "fetch failed". Capturing
+      // the Location explicitly gives us actionable info.
       const response = await fetch(probeUrl, {
         method: 'GET',
         headers: { Authorization: `Basic ${auth}` },
+        redirect: 'manual',
       });
       if (response.ok) {
-        // Drain body to free the underlying socket; we only care about the status.
         await response.text().catch(() => undefined);
         return;
       }
-      lastError = new Error(`PS WS probe HTTP ${response.status}: ${response.statusText}`);
+      if (response.status >= 300 && response.status < 400) {
+        lastRedirectLocation = response.headers.get('location');
+        lastError = new Error(
+          `PS WS probe HTTP ${response.status} → Location: ${lastRedirectLocation ?? '<none>'}`,
+        );
+      } else {
+        lastError = new Error(`PS WS probe HTTP ${response.status}: ${response.statusText}`);
+      }
     } catch (err) {
       lastError = err;
     }
@@ -227,9 +250,10 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   }
 
   throw new Error(
-    `PrestaShop Apache did not respond to authenticated WS probe within 60s. ` +
-      `Last error: ${formatError(lastError)}. ` +
-      `Container log buffers will be dumped by the caller for diagnosis.`,
+    `PrestaShop Apache did not respond OK to authenticated WS probe within 60s. ` +
+      `Last error: ${formatError(lastError)}` +
+      (lastRedirectLocation ? ` (redirect target: ${lastRedirectLocation})` : '') +
+      `. Container log buffers will be dumped by the caller for diagnosis.`,
   );
 }
 

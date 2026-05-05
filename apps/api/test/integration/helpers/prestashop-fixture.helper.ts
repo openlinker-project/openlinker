@@ -518,6 +518,70 @@ async function assertNoUnsuppliedNotNullColumns(
 }
 
 /**
+ * Update PS configuration so the shop is reachable from outside the container
+ * via testcontainers' mapped host:port — not via the install-time PS_DOMAIN
+ * (which is "localhost" without a port and fails for any caller hitting the
+ * mapped port). Also disables URL rewriting + SSL redirects so the WS probe
+ * gets a clean response instead of a 302 to the "canonical" URL.
+ *
+ * Touches:
+ *   - `ps_shop_url`: sets the registered domain rows so PS sees `<host>:<port>` as canonical.
+ *   - `ps_configuration`: disables PS_SSL_ENABLED, PS_REWRITING_SETTINGS, PS_FORCE_SMARTY_2.
+ *
+ * Idempotent — safe to run multiple times against the same DB.
+ */
+export async function configurePrestashopAccessUrl(
+  options: ApplyFixtureOptions,
+  externalHostPort: string,
+): Promise<void> {
+  const conn = await createConnection({
+    host: options.host,
+    port: options.port,
+    user: options.user,
+    password: options.password,
+    database: options.database,
+    multipleStatements: false,
+  });
+  try {
+    // ps_shop_url controls which (domain, physical_uri) tuple PS treats as
+    // canonical for each shop. The default install seeds `localhost` with
+    // no port; updating to the real host:port silences PS's
+    // canonical-URL redirect in `Tools::redirectCanonical`.
+    await conn.execute(
+      `UPDATE ps_shop_url
+         SET domain = ?, domain_ssl = ?, physical_uri = '/'
+       WHERE main = 1`,
+      [externalHostPort, externalHostPort],
+    );
+
+    // Configuration values we want to override so PS doesn't 302 the WS:
+    //   - PS_SSL_ENABLED / PS_SSL_ENABLED_EVERYWHERE: keep HTTP-only.
+    //   - PS_REWRITING_SETTINGS: 0 = don't rely on .htaccess being generated
+    //     (the install doesn't write one; /api/* would otherwise hit the
+    //     storefront router and 302 home).
+    //   - PS_SHOP_DOMAIN / PS_SHOP_DOMAIN_SSL: also stored in
+    //     ps_configuration in some PS versions; align with ps_shop_url.
+    const overrides: Array<[string, string]> = [
+      ['PS_SSL_ENABLED', '0'],
+      ['PS_SSL_ENABLED_EVERYWHERE', '0'],
+      ['PS_REWRITING_SETTINGS', '0'],
+      ['PS_SHOP_DOMAIN', externalHostPort],
+      ['PS_SHOP_DOMAIN_SSL', externalHostPort],
+    ];
+    for (const [name, value] of overrides) {
+      await conn.execute(
+        `INSERT INTO ps_configuration (name, value, date_add, date_upd)
+         VALUES (?, ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE value = VALUES(value), date_upd = NOW()`,
+        [name, value],
+      );
+    }
+  } finally {
+    await conn.end();
+  }
+}
+
+/**
  * Poll the PS install marker until non-null or the deadline expires.
  *
  * PS auto-install writes `ps_configuration.PS_VERSION_DB` only at the very
