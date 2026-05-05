@@ -316,25 +316,8 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
     id_tax_rules_group: 0,
   };
 
-  const [carrierCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_carrier'`,
-  );
-  const liveCols = new Set(carrierCols.map((r) => r.COLUMN_NAME));
-  const usedCols = Object.keys(desiredColumns).filter((c) => liveCols.has(c));
-  if (usedCols.length === 0) {
-    throw new Error(
-      `ps_carrier has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`,
-    );
-  }
-  const placeholders = usedCols.map(() => '?').join(', ');
-  const colList = usedCols.map((c) => `\`${c}\``).join(', ');
-  const values = usedCols.map((c) => desiredColumns[c]);
-
-  const [insertResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_carrier (${colList}) VALUES (${placeholders})`,
-    values,
-  );
+  await assertNoUnsuppliedNotNullColumns(conn, 'ps_carrier', desiredColumns);
+  const insertResult = await dynamicInsert(conn, 'ps_carrier', desiredColumns);
   const idCarrier = insertResult.insertId;
   // PS uses id_carrier as the new id_reference for first-installed rows.
   await conn.execute('UPDATE ps_carrier SET id_reference = ? WHERE id_carrier = ?', [idCarrier, idCarrier]);
@@ -409,23 +392,18 @@ async function seedPlnCurrency(conn: Connection): Promise<number> {
     conversion_rate: 4.5,
     deleted: 0,
     active: 1,
-    // Legacy in some 8.x → maybe absent in 9.x
+    // Legacy in some 8.x → maybe absent in 9.x.
     unofficial: 0,
     modified: 0,
+    // Added in PS 9.x — ps_currency now stores the canonical name/symbol/pattern
+    // on the row itself; per-language overrides still go to ps_currency_lang
+    // via ensureCurrencyLangLink below.
+    name: 'Polish złoty',
+    symbol: 'zł',
+    pattern: '#,##0.00 PLN',
   };
-  const [currencyCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_currency'`,
-  );
-  const liveCurCols = new Set(currencyCols.map((r) => r.COLUMN_NAME));
-  const usedCurCols = Object.keys(desiredCurrencyColumns).filter((c) => liveCurCols.has(c));
-  const curPlaceholders = usedCurCols.map(() => '?').join(', ');
-  const curColList = usedCurCols.map((c) => `\`${c}\``).join(', ');
-  const curValues = usedCurCols.map((c) => desiredCurrencyColumns[c]);
-  const [insertResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_currency (${curColList}) VALUES (${curPlaceholders})`,
-    curValues,
-  );
+  await assertNoUnsuppliedNotNullColumns(conn, 'ps_currency', desiredCurrencyColumns);
+  const insertResult = await dynamicInsert(conn, 'ps_currency', desiredCurrencyColumns);
   const idCurrency = insertResult.insertId;
   await ensureCurrencyShopLink(conn, idCurrency);
   await ensureCurrencyLangLink(conn, idCurrency, 'Polish złoty', 'zł', 'PLN');
@@ -461,6 +439,80 @@ async function ensureCurrencyLangLink(
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE name = VALUES(name), symbol = VALUES(symbol)`,
       [idCurrency, lang.id_lang, name, symbol, `#,##0.00 ${isoCode}`],
+    );
+  }
+}
+
+/**
+ * INSERT one row into a PS table using only columns that exist in the live
+ * schema. Resilient to PS version drift — extra desired columns are
+ * silently dropped, missing required columns produce a precise error.
+ */
+async function dynamicInsert(
+  conn: Connection,
+  table: string,
+  desired: Record<string, string | number>,
+): Promise<ResultSetHeader> {
+  const [cols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table],
+  );
+  const liveCols = new Set(cols.map((r) => r.COLUMN_NAME));
+  const usedCols = Object.keys(desired).filter((c) => liveCols.has(c));
+  if (usedCols.length === 0) {
+    throw new Error(
+      `${table} has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`,
+    );
+  }
+  const placeholders = usedCols.map(() => '?').join(', ');
+  const colList = usedCols.map((c) => `\`${c}\``).join(', ');
+  const values = usedCols.map((c) => desired[c]);
+  const [result] = await conn.execute<ResultSetHeader>(
+    `INSERT INTO \`${table}\` (${colList}) VALUES (${placeholders})`,
+    values,
+  );
+  return result;
+}
+
+/**
+ * Throw if the live table has any NOT-NULL columns (with no default) that
+ * we don't have a value for. Catches the "Field 'name' doesn't have a
+ * default value" pattern at fixture-build time with a precise list of
+ * what's missing — turning N CI iterations into 1.
+ */
+async function assertNoUnsuppliedNotNullColumns(
+  conn: Connection,
+  table: string,
+  desired: Record<string, string | number>,
+): Promise<void> {
+  const [cols] = await conn.execute<
+    (RowDataPacket & {
+      COLUMN_NAME: string;
+      IS_NULLABLE: string;
+      COLUMN_DEFAULT: string | null;
+      EXTRA: string;
+    })[]
+  >(
+    `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, EXTRA
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table],
+  );
+  const supplied = new Set(Object.keys(desired));
+  const missingRequired = cols
+    .filter(
+      (c) =>
+        c.IS_NULLABLE === 'NO' &&
+        c.COLUMN_DEFAULT === null &&
+        !c.EXTRA.includes('auto_increment') &&
+        !supplied.has(c.COLUMN_NAME),
+    )
+    .map((c) => c.COLUMN_NAME);
+  if (missingRequired.length > 0) {
+    throw new Error(
+      `${table} has NOT-NULL columns without a default that aren't in the desired map: ` +
+        `[${missingRequired.join(', ')}]. Add values for these to the desired map.`,
     );
   }
 }
