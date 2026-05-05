@@ -245,6 +245,29 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
     [accountId],
   );
 
+  // PS 9.x: bind the WS account to all active shops via ps_webservice_account_shop.
+  // Without this junction the account is "unbound" and every WS call 503s
+  // "The PrestaShop webservice is disabled" with PSWS-Version: 0 — even when
+  // PS_WEBSERVICE is enabled. Confirmed locally with a manual repro.
+  if (schema.variant === 'v9') {
+    const [shopJunctionRows] = await conn.execute<(RowDataPacket & { TABLE_NAME: string })[]>(
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_webservice_account_shop'`,
+    );
+    if (shopJunctionRows.length > 0) {
+      const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
+        'SELECT id_shop FROM ps_shop WHERE active = 1',
+      );
+      for (const shop of shopRows) {
+        await conn.execute(
+          `INSERT IGNORE INTO ps_webservice_account_shop (id_webservice_account, id_shop)
+           VALUES (?, ?)`,
+          [accountId, shop.id_shop],
+        );
+      }
+    }
+  }
+
   if (schema.permissionShape === 'bitfield') {
     // Legacy schema: one row per (account, resource) with bitfield-flagged
     // HTTP verbs. `all=1` mirrors a "grant everything" key.
@@ -567,6 +590,11 @@ export async function configurePrestashopAccessUrl(
       ['PS_REWRITING_SETTINGS', '0'],
       ['PS_SHOP_DOMAIN', externalHostPort],
       ['PS_SHOP_DOMAIN_SSL', externalHostPort],
+      // PS 9.x ships with the WebService DISABLED by default. Without this,
+      // every authenticated WS request returns 503 "The PrestaShop
+      // webservice is disabled. Please activate it in the PrestaShop Back
+      // Office" — confirmed locally with a manual repro before this commit.
+      ['PS_WEBSERVICE', '1'],
     ];
     for (const [name, value] of overrides) {
       await conn.execute(
