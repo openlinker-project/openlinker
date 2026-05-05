@@ -127,6 +127,14 @@ interface WebserviceSchema {
   keyColumn: string;
   /** Per-resource permission table */
   permissionTable: string;
+  /**
+   * Permission row shape:
+   *   - 'bitfield': one row per (account, resource) with get/post/put/delete/head/all columns
+   *     (PS ≤ 8.x).
+   *   - 'method-row': one row per (account, resource, method) where method is an ENUM
+   *     ('GET','POST','PUT','DELETE','HEAD') — PS 9.x.
+   */
+  permissionShape: 'bitfield' | 'method-row';
 }
 
 async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchema> {
@@ -146,6 +154,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
       accountPk: 'id_api_access',
       keyColumn: 'api_key',
       permissionTable: 'ps_api_access_resource',
+      permissionShape: 'bitfield',
     };
   }
   if (has('ps_webservice_account')) {
@@ -164,12 +173,38 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
           `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
       );
     }
+    // Inspect the permission table column layout to choose the insert
+    // shape. PS 9.x uses one row per (account, resource, method) with a
+    // `method` ENUM column; the older bitfield layout (get/post/put/...
+    // boolean columns) was retired in this transition. Probing the
+    // column list keeps the helper resilient to either, which matters
+    // because the rename + reshape didn't always land in lockstep
+    // across PS 9.x point releases.
+    const [permCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [permTable],
+    );
+    const colNames = permCols.map((r) => r.COLUMN_NAME.toLowerCase());
+    const hasMethodColumn = colNames.includes('method');
+    const hasBitfieldColumns = colNames.includes('get') && colNames.includes('post');
+    const shape: WebserviceSchema['permissionShape'] = hasMethodColumn
+      ? 'method-row'
+      : hasBitfieldColumns
+        ? 'bitfield'
+        : (() => {
+            throw new Error(
+              `PS WebService permission table ${permTable} has neither a 'method' column ` +
+                `nor get/post/put/delete/head bitfield columns. Columns: [${colNames.join(', ')}]`,
+            );
+          })();
     return {
       variant: 'v9',
       accountTable: 'ps_webservice_account',
       accountPk: 'id_webservice_account',
       keyColumn: 'key',
       permissionTable: permTable,
+      permissionShape: shape,
     };
   }
 
@@ -179,6 +214,9 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
       `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
   );
 }
+
+/** HTTP methods to grant on every resource — same set as the dev-stack hand-configured key. */
+const WS_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD'] as const;
 
 async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<void> {
   const schema = await detectWebserviceSchema(conn);
@@ -207,17 +245,30 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
     [accountId],
   );
 
-  // Both schema variants store per-resource ACLs as one row per (account, resource)
-  // with bitfield-flagged HTTP verbs. Schema columns: account FK, resource,
-  // get, post, put, delete, head, all. Granting `all=1` is the simplest way to
-  // mirror the dev-stack admin's hand-configured key without enumerating verbs.
-  for (const resource of WS_RESOURCES) {
-    await conn.execute(
-      `INSERT INTO \`${schema.permissionTable}\`
-         (\`${schema.accountPk}\`, resource, \`get\`, \`post\`, \`put\`, \`delete\`, \`head\`, \`all\`)
-       VALUES (?, ?, 1, 1, 1, 1, 1, 1)`,
-      [accountId, resource],
-    );
+  if (schema.permissionShape === 'bitfield') {
+    // Legacy schema: one row per (account, resource) with bitfield-flagged
+    // HTTP verbs. `all=1` mirrors a "grant everything" key.
+    for (const resource of WS_RESOURCES) {
+      await conn.execute(
+        `INSERT INTO \`${schema.permissionTable}\`
+           (\`${schema.accountPk}\`, resource, \`get\`, \`post\`, \`put\`, \`delete\`, \`head\`, \`all\`)
+         VALUES (?, ?, 1, 1, 1, 1, 1, 1)`,
+        [accountId, resource],
+      );
+    }
+  } else {
+    // PS 9.x: one row per (account, resource, method) where method is an
+    // ENUM. Insert one row per HTTP verb per resource.
+    for (const resource of WS_RESOURCES) {
+      for (const method of WS_METHODS) {
+        await conn.execute(
+          `INSERT INTO \`${schema.permissionTable}\`
+             (\`${schema.accountPk}\`, resource, method)
+           VALUES (?, ?, ?)`,
+          [accountId, resource, method],
+        );
+      }
+    }
   }
 }
 
