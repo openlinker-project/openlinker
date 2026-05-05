@@ -283,27 +283,57 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
     return existing[0].id_carrier;
   }
 
-  // Mirror the install shape from `apps/prestashop-module/openlinker/openlinker.php`
-  // `installCarrier()` — id_tax_rules_group=0 so PS doesn't double-tax,
-  // shipping_external=1 + is_module=1 so PS routes shipping cost calculation
-  // to the OL module's `getOrderShippingCostExternal()`. The runtime path
-  // also requires the module's PHP front controllers; this stub satisfies
-  // only `discoverDynamicCarrierId()` (#516).
+  // Build the INSERT dynamically from the actual `ps_carrier` columns that
+  // exist in this PS version. The legacy `id_tax_rules_group` column was
+  // removed in PS 9.x; other columns may follow. Probing INFORMATION_SCHEMA
+  // makes the fixture resilient to additions/removals — we only insert
+  // columns we have a value for AND that the live table accepts. The OL
+  // module's `installCarrier()` (apps/prestashop-module/openlinker/openlinker.php)
+  // remains the source of truth for what the carrier row must look like to
+  // make `discoverDynamicCarrierId()` happy; this stub is the minimal
+  // intersection of that and the test's needs.
+  const desiredColumns: Record<string, string | number> = {
+    id_reference: 0,
+    name: 'OpenLinker Dynamic (test stub)',
+    url: '',
+    active: 1,
+    deleted: 0,
+    shipping_handling: 0,
+    range_behavior: 0,
+    is_module: 1,
+    is_free: 0,
+    shipping_external: 1,
+    need_range: 0,
+    external_module_name: 'openlinker',
+    shipping_method: 0,
+    position: 99,
+    max_width: 0,
+    max_height: 0,
+    max_depth: 0,
+    max_weight: 0,
+    grade: 0,
+    // Legacy PS ≤ 8.x — silently dropped if the column doesn't exist in 9.x+.
+    id_tax_rules_group: 0,
+  };
+
+  const [carrierCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_carrier'`,
+  );
+  const liveCols = new Set(carrierCols.map((r) => r.COLUMN_NAME));
+  const usedCols = Object.keys(desiredColumns).filter((c) => liveCols.has(c));
+  if (usedCols.length === 0) {
+    throw new Error(
+      `ps_carrier has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`,
+    );
+  }
+  const placeholders = usedCols.map(() => '?').join(', ');
+  const colList = usedCols.map((c) => `\`${c}\``).join(', ');
+  const values = usedCols.map((c) => desiredColumns[c]);
+
   const [insertResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_carrier
-       (id_reference, name, url,
-        active, deleted, shipping_handling, range_behavior,
-        is_module, is_free, shipping_external, need_range,
-        external_module_name, shipping_method,
-        position, max_width, max_height, max_depth, max_weight, grade,
-        id_tax_rules_group)
-     VALUES
-       (0, 'OpenLinker Dynamic (test stub)', '',
-        1, 0, 0, 0,
-        1, 0, 1, 0,
-        'openlinker', 0,
-        99, 0, 0, 0, 0, 0,
-        0)`,
+    `INSERT INTO ps_carrier (${colList}) VALUES (${placeholders})`,
+    values,
   );
   const idCarrier = insertResult.insertId;
   // PS uses id_carrier as the new id_reference for first-installed rows.
@@ -370,11 +400,31 @@ async function seedPlnCurrency(conn: Connection): Promise<number> {
     return row.id_currency;
   }
 
+  // Same dynamic-column trick as `seedOlDynamicCarrier`: PS 9.x dropped /
+  // renamed columns on `ps_currency`. Insert only what the live table has.
+  const desiredCurrencyColumns: Record<string, string | number> = {
+    iso_code: 'PLN',
+    numeric_iso_code: '985',
+    precision: 2,
+    conversion_rate: 4.5,
+    deleted: 0,
+    active: 1,
+    // Legacy in some 8.x → maybe absent in 9.x
+    unofficial: 0,
+    modified: 0,
+  };
+  const [currencyCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_currency'`,
+  );
+  const liveCurCols = new Set(currencyCols.map((r) => r.COLUMN_NAME));
+  const usedCurCols = Object.keys(desiredCurrencyColumns).filter((c) => liveCurCols.has(c));
+  const curPlaceholders = usedCurCols.map(() => '?').join(', ');
+  const curColList = usedCurCols.map((c) => `\`${c}\``).join(', ');
+  const curValues = usedCurCols.map((c) => desiredCurrencyColumns[c]);
   const [insertResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_currency
-       (iso_code, numeric_iso_code, precision, conversion_rate, deleted, active, unofficial, modified)
-     VALUES
-       ('PLN', '985', 2, 4.5, 0, 1, 0, 0)`,
+    `INSERT INTO ps_currency (${curColList}) VALUES (${curPlaceholders})`,
+    curValues,
   );
   const idCurrency = insertResult.insertId;
   await ensureCurrencyShopLink(conn, idCurrency);
