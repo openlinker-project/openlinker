@@ -64,6 +64,16 @@ describe('sanitizeAllegroDescription', () => {
     );
   });
 
+  it('wraps bare <br>-only input in <p>…</p> (plan §5 R4)', () => {
+    // `<br>` is inline; an input of just `<br>` (or a few of them) needs to
+    // gain a block-level wrapper to satisfy Allegro's TEXT validator. This
+    // case is rare in practice but locks the R4 contract from the plan as
+    // a regression guard.
+    expect(sanitizeAllegroDescription('<br>')).toBe('<p><br></p>');
+    expect(sanitizeAllegroDescription('<br><br>')).toBe('<p><br><br></p>');
+    expect(sanitizeAllegroDescription('<br />')).toBe('<p><br></p>');
+  });
+
   it("doesn't double-wrap content that already starts with a block tag (#540)", () => {
     expect(sanitizeAllegroDescription('<p>x</p>')).toBe('<p>x</p>');
     expect(sanitizeAllegroDescription('<h1>title</h1>')).toBe('<h1>title</h1>');

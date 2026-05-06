@@ -51,6 +51,15 @@ const TAG_PATTERN = /<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
 // malformed regardless of Allegro, and a bare `<br>` doesn't satisfy the
 // "must open with a block tag" rule (an input of just `<br>` ends up wrapped
 // as `<p><br></p>`, which Allegro accepts).
+//
+// NOTE: this is a *positionless* match — pathological inputs like
+// `"prefix text <p>x</p>"` will be detected as already having a block opener
+// and pass through unwrapped, even though Allegro's validator wants the
+// leading element to be the block tag. The current input surface (PrestaShop
+// TinyMCE HTML always starts with a block tag; plain-text / AI-generated
+// content has no tags) doesn't produce this shape, so the simpler test wins.
+// If a future input surface ever ingests free-form HTML, switch to an
+// anchored regex on `stripped.trimStart()` (`/^<(p|h1|h2|ul|ol)\b/i`).
 const BLOCK_TAG_OPENER_PATTERN = /<(p|h1|h2|ul|ol)\b/i;
 
 const WRAPPER_PREFIX = '<p>';
@@ -75,6 +84,15 @@ export function sanitizeAllegroDescription(html: string): string {
   // Empty/whitespace-only contract: collapse to `''` so callers (notably
   // `updateOfferFields`, which has no `.trim()` gate at the call site) never
   // ship bare whitespace to Allegro.
+  //
+  // Scope: this collapses *post-tag-strip* whitespace (`<div>   </div>` →
+  // strip → `'   '` → collapse to `''`). Content with surviving block tags
+  // wrapping only whitespace (e.g. `<p>   </p>`) does NOT collapse — the
+  // tags are valid markup and Allegro accepts them. The #392 PrestaShop
+  // fixture relies on this pass-through (it has a trailing `<p> </p>`
+  // spacer paragraph). If the input surface ever needs "fully empty content
+  // → empty" semantics, walk the post-strip string for non-whitespace text
+  // outside tags.
   if (stripped.trim().length === 0) {
     return '';
   }
