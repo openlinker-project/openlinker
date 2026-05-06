@@ -104,8 +104,13 @@ services:
       - prestashop_data:/var/www/html
       # Bind-mount module source for fast dev iteration
       - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
-      # Post-install script: rename randomized admin folder to /admin-dev
+      # Post-install scripts: rename randomized admin folder, seed currency + products
       - ./docker/prestashop/post-install:/tmp/post-install-scripts:ro
+      # PHP companions invoked by post-install/*.sh — kept outside the
+      # /tmp/post-install-scripts/ directory because the upstream image's
+      # docker_run.sh execs every entry in that directory directly, and the
+      # .php files lack a shebang + +x mode.
+      - ./docker/prestashop/post-install-lib:/tmp/post-install-lib:ro
       # Entrypoint wrapper that auto-invokes the post-install scripts (#525)
       - ./docker/prestashop/entrypoint-wrapper.sh:/usr/local/bin/entrypoint-wrapper.sh:ro
     extra_hosts:

@@ -93,8 +93,9 @@ SCRIPT_DIR=/tmp/post-install-scripts
   echo '* [ps-post-install] post-install scripts complete.'
 ) &
 
-# Hand off to apache as PID 1 (matches upstream behaviour: docker-php-entrypoint
-# is a 7-line shim whose only purpose is rewriting `-XYZ`-style args into
-# `apache2-foreground -XYZ` — we're calling apache directly, so the shim is
-# a no-op we can skip).
-exec apache2-foreground
+# Hand off to the upstream CMD (/tmp/docker_run.sh) via the docker-php-entrypoint
+# shim. docker_run.sh is what actually performs the PS_INSTALL_AUTO=1 install
+# (waits for MySQL, copies /tmp/data-ps/prestashop/ into the volume, runs the
+# installer, creates install.lock) and then ends with `exec apache2-foreground`,
+# so Apache still ends up as PID 1.
+exec docker-php-entrypoint /tmp/docker_run.sh

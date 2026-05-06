@@ -9,5 +9,4 @@ if ! command -v php >/dev/null 2>&1; then
     exit 1
 fi
 
-SCRIPT_DIR=$(dirname "$0")
-exec php -d memory_limit=256M "$SCRIPT_DIR/30-seed-test-products.php"
+exec php -d memory_limit=256M /tmp/post-install-lib/30-seed-test-products.php
