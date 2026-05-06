@@ -115,10 +115,12 @@ describe('PrestashopWebhookProvisioningService', () => {
       expect(mockWsClient.listResources).toHaveBeenCalledTimes(3);
       expect(mockWsClient.createResource).toHaveBeenCalledTimes(3);
 
+      // PS WS body must be flat (`{ name, value }`) — the WS client adds the
+      // `{ prestashop: { configuration: ... } }` wrapper itself. (#541)
       const namesPushed = mockWsClient.createResource.mock.calls.map(
         (call: unknown[]) => {
-          const body = call[1] as { configuration: { name: string } };
-          return body.configuration.name;
+          const body = call[1] as { name: string };
+          return body.name;
         },
       );
       expect(namesPushed).toEqual([
@@ -126,6 +128,15 @@ describe('PrestashopWebhookProvisioningService', () => {
         'OPENLINKER_CONNECTION_ID',
         'OPENLINKER_WEBHOOK_SECRET',
       ]);
+      // Defensive: assert the body is flat, not `{ configuration: {...} }`.
+      // Catches the #541 double-wrap regression at the unit-test layer.
+      const createCalls = mockWsClient.createResource.mock.calls as unknown[][];
+      for (const call of createCalls) {
+        const body = call[1] as Record<string, unknown>;
+        expect(body).not.toHaveProperty('configuration');
+        expect(body).toHaveProperty('name');
+        expect(body).toHaveProperty('value');
+      }
 
       // Connection.config.webhooksConfigured set true.
       expect(connectionPort.update).toHaveBeenCalledWith(
@@ -155,16 +166,19 @@ describe('PrestashopWebhookProvisioningService', () => {
 
       await service.install('connection-123');
 
+      // PS WS PUT body is flat, with `id` stringified to match the path id.
+      // No `configuration:` wrapper — the WS client adds it. (#541)
       expect(mockWsClient.updateResource).toHaveBeenCalledWith(
         'configurations',
         42,
         expect.objectContaining({
-          configuration: expect.objectContaining({
-            id: '42',
-            name: 'OPENLINKER_BASE_URL',
-          }),
+          id: '42',
+          name: 'OPENLINKER_BASE_URL',
         }),
       );
+      const updateCalls = mockWsClient.updateResource.mock.calls as unknown[][];
+      const updateBody = updateCalls[0][1] as Record<string, unknown>;
+      expect(updateBody).not.toHaveProperty('configuration');
       expect(mockWsClient.createResource).toHaveBeenCalledTimes(2); // remaining two
     });
   });

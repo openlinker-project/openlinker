@@ -304,6 +304,14 @@ completion signal (HTTP probes race the install). Default deadline is 12 min.
 When the dev-stack PS image is bumped, this helper must follow — keep the
 two pins aligned to avoid version-drift bugs that would only surface in CI.
 
+### File placement
+
+PS-Testcontainer int-specs live under `apps/api/test/integration/prestashop/`.
+The carrier-mapping smoke spec at `apps/api/test/integration/orders/` predates
+this convention and stays where it is for now (it's an orders-flow assertion
+that happens to use the harness); new specs whose primary subject is the PS
+adapter belong under `prestashop/`.
+
 ---
 
 ## Running Tests

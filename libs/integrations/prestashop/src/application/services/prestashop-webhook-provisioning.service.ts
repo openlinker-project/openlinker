@@ -208,14 +208,18 @@ export class PrestashopWebhookProvisioningService
     );
     if (existing.length > 0) {
       const id = existing[0].id;
+      // PS WS PUT requires `id` in the body to match the path id; the
+      // singular-resource wrapper (`{ prestashop: { configuration: ... } }`)
+      // is added by `writeResource` in the WS client — callers must pass
+      // flat fields. (#541)
       await wsClient.updateResource('configurations', id, {
-        configuration: { id: String(id), name, value },
+        id: String(id),
+        name,
+        value,
       });
       return;
     }
-    await wsClient.createResource('configurations', {
-      configuration: { name, value },
-    });
+    await wsClient.createResource('configurations', { name, value });
   }
 
   /**
