@@ -429,9 +429,16 @@ describe('AllegroOfferManagerAdapter', () => {
         fields: { description },
       });
 
+      // Plain-text content is wrapped in <p>…</p> by `sanitizeAllegroDescription`
+      // (#540) before the body is sent — Allegro's TEXT validator requires a
+      // block-level opener. The PATCH still carries only the description field.
       expect(httpClient.patch).toHaveBeenCalledWith(
         '/sale/product-offers/allegro-offer-1',
-        expect.objectContaining({ description: { sections: [{ items: [{ type: 'TEXT', content: 'Hello world' }] }] } }),
+        expect.objectContaining({
+          description: {
+            sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+          },
+        }),
       );
       const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
       expect(body).not.toHaveProperty('name');

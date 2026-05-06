@@ -16,6 +16,15 @@
  * Allegro caps the field at 40000 bytes; we truncate at the last closing-tag boundary
  * before the cap so we never push a payload that would 422 on length.
  *
+ * Block-wrap contract (#540): Allegro's TEXT validator further requires the content
+ * to open with a block-level tag (`<p>`, `<h1>`, `<h2>`, `<ul>`, `<ol>`). Plain text
+ * and inline-only output (e.g. `<b>bold</b>`) get wrapped in `<p>…</p>` so AI-generated
+ * descriptions, CSV imports, or simple operator copy don't fail with
+ * `VALIDATION_ERROR / "Nieprawidłowy podzbiór HTML"`. Empty and whitespace-only inputs
+ * collapse to `''` — both call sites (offer create, field update) treat empty content
+ * as "no description", so the contract stays symmetric with the existing empty-input
+ * case and avoids ever shipping bare whitespace to Allegro.
+ *
  * @module infrastructure/util
  * @see https://developer.allegro.pl/documentation — DescriptionSectionItemText, StandardizedDescription
  */
@@ -37,6 +46,17 @@ const ALLOWED_TAGS = new Set([
 
 const TAG_PATTERN = /<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
 
+// Block-level tags Allegro's TEXT validator accepts as the leading element.
+// `<li>` and `<br>` are deliberately excluded — `<li>` outside `<ul>`/`<ol>` is
+// malformed regardless of Allegro, and a bare `<br>` doesn't satisfy the
+// "must open with a block tag" rule (an input of just `<br>` ends up wrapped
+// as `<p><br></p>`, which Allegro accepts).
+const BLOCK_TAG_OPENER_PATTERN = /<(p|h1|h2|ul|ol)\b/i;
+
+const WRAPPER_PREFIX = '<p>';
+const WRAPPER_SUFFIX = '</p>';
+const WRAPPER_OVERHEAD = Buffer.byteLength(WRAPPER_PREFIX + WRAPPER_SUFFIX, 'utf8');
+
 const MAX_BYTES = 40000;
 
 export function sanitizeAllegroDescription(html: string): string {
@@ -51,7 +71,18 @@ export function sanitizeAllegroDescription(html: string): string {
     const isClosing = /^<\s*\//.test(match);
     return isClosing ? `</${lower}>` : `<${lower}>`;
   });
-  return capByteLength(stripped, MAX_BYTES);
+
+  // Empty/whitespace-only contract: collapse to `''` so callers (notably
+  // `updateOfferFields`, which has no `.trim()` gate at the call site) never
+  // ship bare whitespace to Allegro.
+  if (stripped.trim().length === 0) {
+    return '';
+  }
+
+  const wrap = !BLOCK_TAG_OPENER_PATTERN.test(stripped);
+  const budget = wrap ? MAX_BYTES - WRAPPER_OVERHEAD : MAX_BYTES;
+  const capped = capByteLength(stripped, budget);
+  return wrap ? `${WRAPPER_PREFIX}${capped}${WRAPPER_SUFFIX}` : capped;
 }
 
 function capByteLength(html: string, maxBytes: number): string {
