@@ -9,5 +9,6 @@ if ! command -v php >/dev/null 2>&1; then
     exit 1
 fi
 
-SCRIPT_DIR=$(dirname "$0")
-exec php -d memory_limit=256M "$SCRIPT_DIR/30-seed-test-products.php"
+# Run as www-data (matches the install phase on docker_run.sh:89). See
+# 20-set-default-currency.sh for rationale (cache ownership).
+exec runuser -g www-data -u www-data -- php -d memory_limit=256M /tmp/post-install-lib/30-seed-test-products.php

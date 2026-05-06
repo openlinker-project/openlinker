@@ -9,5 +9,7 @@ if ! command -v php >/dev/null 2>&1; then
     exit 1
 fi
 
-SCRIPT_DIR=$(dirname "$0")
-exec php -d memory_limit=256M "$SCRIPT_DIR/20-set-default-currency.php"
+# Run as www-data (matches the install phase on docker_run.sh:89). PrestaShop's
+# legacy bootstrap warms `var/cache/prod/` on first call; if we run as root the
+# cache files end up root-owned and Apache (www-data) hits 500s on every page.
+exec runuser -g www-data -u www-data -- php -d memory_limit=256M /tmp/post-install-lib/20-set-default-currency.php
