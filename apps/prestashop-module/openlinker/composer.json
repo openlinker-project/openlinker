@@ -1,0 +1,17 @@
+{
+  "name": "openlinker/prestashop-module",
+  "description": "OpenLinker PrestaShop module",
+  "type": "prestashop-module",
+  "license": "MIT",
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.0"
+  },
+  "autoload-dev": {
+    "classmap": [
+      "classes/"
+    ]
+  }
+}

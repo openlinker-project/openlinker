@@ -121,6 +121,33 @@ jobs:
         timeout-minutes: 15 # Integration tests can take longer due to container startup
         # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
 
+  test-php:
+    name: PHP Unit Tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.composer/cache
+            apps/prestashop-module/openlinker/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/prestashop-module/openlinker/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run PHP unit tests
+        run: pnpm test:php
+
   build:
     name: Build
     timeout-minutes: 30

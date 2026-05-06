@@ -274,6 +274,45 @@ SELECT id_carrier FROM ps_carrier
 -- then `DELETE FROM ps_carrier WHERE id_carrier=<id>; DELETE FROM ps_carrier_zone WHERE id_carrier=<id>;`.
 ```
 
+## Running PHP Unit Tests
+
+Pure-function classes (`HmacRequestVerifier`, `EventIdGenerator`) have PHPUnit tests that run without a live PrestaShop instance.
+
+```bash
+# From repo root — installs Composer deps then runs PHPUnit
+pnpm test:php
+
+# Or directly inside the module directory
+cd apps/prestashop-module/openlinker
+composer install
+vendor/bin/phpunit
+```
+
+### PHP version
+
+The module **runtime** targets PHP `>=7.4` (PrestaShop 1.7 baseline). The **dev/test** toolchain (PHPUnit 10) requires PHP `>=8.1`. CI uses 8.1 to run tests; production deploys are unaffected. Contributors on PHP 7.4 can edit module classes but cannot run `composer install` for the dev dependencies — install PHP 8.1+ locally to run the unit suite.
+
+### Scope and non-goals
+
+The PHPUnit harness covers **pure-function classes only** — those with no PrestaShop globals (`Db::`, `Configuration::`, `Cart`, etc.):
+
+| Class | Tests |
+|---|---|
+| `HmacRequestVerifier` | Happy path + all documented failure modes (missing headers, bad format, replay, tampered body/timestamp) |
+| `EventIdGenerator` | Determinism, window grouping, UUID-like output format, per-entity uniqueness |
+
+**Out of scope (explicit non-goals)**:
+- `OutboxRepository`, `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).
+- No PHPStan / Psalm / phpcs — static analysis is a separate concern.
+
+### Adding new pure-function tests
+
+1. Confirm the class has **no calls** to `Db::`, `Configuration::`, `PrestaShopLogger::`, `Cart`, `Carrier`, or `Module`.
+2. Create `tests/Unit/{ClassName}Test.php` extending `PHPUnit\Framework\TestCase`.
+3. Run `vendor/bin/phpunit` to verify.
+
+If a class does touch PS globals, it belongs in the real-PS integration test suite (#506), not here.
+
 ## Related Documentation
 
 - [PrestaShop Webhook Integration](../../docs/webhooks/prestashop.md) - OpenLinker webhook integration guide

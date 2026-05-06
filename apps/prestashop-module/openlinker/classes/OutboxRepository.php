@@ -64,13 +64,15 @@ class OutboxRepository
     {
         // Generate eventId if not provided
         if (empty($eventData['eventId'])) {
+            $windowMinutes = (int) Configuration::get('DEDUPLICATION_WINDOW_MINUTES') ?: 1;
             $eventData['eventId'] = EventIdGenerator::generateEventId(
                 'prestashop',
                 $eventData['connectionId'],
                 $eventData['eventType'],
                 $eventData['objectType'],
                 $eventData['externalId'],
-                $eventData['occurredAt'] ?? date('Y-m-d H:i:s')
+                $eventData['occurredAt'] ?? date('Y-m-d H:i:s'),
+                $windowMinutes
             );
         }
 
