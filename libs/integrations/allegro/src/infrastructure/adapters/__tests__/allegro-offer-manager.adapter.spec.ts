@@ -520,6 +520,149 @@ describe('AllegroOfferManagerAdapter', () => {
         expect.objectContaining({ name: 'Updated - model "Pro"' }),
       );
     });
+
+    describe('sellerDefaults backfill (#487)', () => {
+      it('merges location and productSet[0] GPSR siblings on description-only updates when sellerDefaults is configured', async () => {
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-487',
+          fields: {
+            description: {
+              sections: [{ items: [{ type: 'TEXT', content: 'Updated copy' }] }],
+            },
+          },
+        });
+
+        const [, body] = httpClient.patch.mock.calls[0] as [
+          string,
+          Record<string, unknown>,
+        ];
+        // Caller field still present and sanitized as before.
+        expect(body.description).toEqual({
+          sections: [{ items: [{ type: 'TEXT', content: '<p>Updated copy</p>' }] }],
+        });
+        // Backfilled `location` mirrors `sellerDefaults.location` exactly.
+        expect(body.location).toEqual({
+          countryCode: 'PL',
+          province: 'MAZOWIECKIE',
+          city: 'Warszawa',
+          postCode: '00-001',
+        });
+        // Backfilled GPSR fields sit at productSet[0].{responsibleProducer,
+        // safetyInformation} — entry-level siblings, not nested under .product.
+        expect(body.productSet).toEqual([
+          {
+            responsibleProducer: { id: 'rp-test-1' },
+            safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
+          },
+        ]);
+      });
+
+      it('produces the same PATCH body shape as before (#487 regression guard) when sellerDefaults is not configured', async () => {
+        const adapterWithoutDefaults = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined, // no sellerDefaults
+        );
+
+        await adapterWithoutDefaults.updateOfferFields({
+          externalOfferId: 'allegro-offer-no-defaults',
+          fields: {
+            description: {
+              sections: [{ items: [{ type: 'TEXT', content: 'Plain' }] }],
+            },
+          },
+        });
+
+        const [, body] = httpClient.patch.mock.calls[0] as [
+          string,
+          Record<string, unknown>,
+        ];
+        expect(body).toEqual({
+          description: {
+            sections: [{ items: [{ type: 'TEXT', content: '<p>Plain</p>' }] }],
+          },
+        });
+        expect(body).not.toHaveProperty('location');
+        expect(body).not.toHaveProperty('productSet');
+      });
+
+      it('preserves all caller-supplied fields when defaults are merged in', async () => {
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-merge',
+          fields: {
+            price: { amount: '19.99', currency: 'PLN' },
+            title: 'Caller title',
+            description: {
+              sections: [{ items: [{ type: 'TEXT', content: 'Caller copy' }] }],
+            },
+          },
+        });
+
+        const [, body] = httpClient.patch.mock.calls[0] as [
+          string,
+          Record<string, unknown>,
+        ];
+        // All three caller-documented fields land unchanged. The backfill
+        // never collides with them because the defaults patch only touches
+        // `location` / `productSet`.
+        expect(body.sellingMode).toEqual({
+          price: { amount: '19.99', currency: 'PLN' },
+        });
+        expect(body.name).toBe('Caller title');
+        expect(body.description).toEqual({
+          sections: [{ items: [{ type: 'TEXT', content: '<p>Caller copy</p>' }] }],
+        });
+        // Backfill is still present alongside.
+        expect(body).toHaveProperty('location');
+        expect(body).toHaveProperty('productSet');
+      });
+
+      it('emits a structured debug log naming the backfilled fields', async () => {
+        const debugSpy = jest
+          .spyOn(adapter['logger'], 'debug')
+          .mockImplementation(() => undefined);
+
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-log',
+          fields: { title: 'Anything' },
+        });
+
+        const backfillLog = debugSpy.mock.calls.find(([msg]) =>
+          typeof msg === 'string' && msg.includes('backfilled from sellerDefaults'),
+        );
+        expect(backfillLog).toBeDefined();
+        const message = backfillLog![0] as string;
+        expect(message).toContain('offerId=allegro-offer-log');
+        expect(message).toContain(`connection=${connectionId}`);
+        expect(message).toContain('location');
+        expect(message).toContain('productSet[0].responsibleProducer');
+        expect(message).toContain('productSet[0].safetyInformation');
+      });
+
+      it('does not call HTTP and does not emit the backfill log when fields are empty', async () => {
+        const debugSpy = jest
+          .spyOn(adapter['logger'], 'debug')
+          .mockImplementation(() => undefined);
+
+        await adapter.updateOfferFields({
+          externalOfferId: 'allegro-offer-empty',
+          fields: {},
+        });
+
+        expect(httpClient.patch).not.toHaveBeenCalled();
+        const backfillLog = debugSpy.mock.calls.find(([msg]) =>
+          typeof msg === 'string' && msg.includes('backfilled from sellerDefaults'),
+        );
+        expect(backfillLog).toBeUndefined();
+      });
+    });
   });
 
   describe('fetchCategories', () => {
