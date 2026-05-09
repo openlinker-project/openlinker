@@ -12,6 +12,8 @@ import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   AdapterFactoryResolverService,
+  ADAPTER_REGISTRY_TOKEN,
+  AdapterRegistryPort,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   ConnectionTesterRegistryService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
@@ -57,6 +59,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(PrestashopIntegrationModule.name);
 
   constructor(
+    @Inject(ADAPTER_REGISTRY_TOKEN)
+    private readonly adapterRegistry: AdapterRegistryPort,
     @Inject(ADAPTER_FACTORY_RESOLVER_TOKEN)
     private readonly factoryResolver: AdapterFactoryResolverService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
@@ -72,7 +76,26 @@ export class PrestashopIntegrationModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.logger.log('Registering PrestaShop adapter factory...');
+    this.logger.log('Registering PrestaShop adapter (metadata + factory + tester)...');
+    // Register metadata first — what this adapter is and what it can do.
+    // Mirrors the inline literal previously hardcoded in core's
+    // AdapterRegistryService (#570). isDefault: true means
+    // `IntegrationsService` resolves connections without an explicit
+    // adapterKey to this adapter for the 'prestashop' platformType (#571).
+    this.adapterRegistry.register({
+      adapterKey: 'prestashop.webservice.v1',
+      platformType: 'prestashop',
+      supportedCapabilities: [
+        'ProductMaster',
+        'InventoryMaster',
+        'OrderSource',
+        'OrderProcessorManager',
+      ],
+      displayName: 'PrestaShop WebService v1',
+      version: '1.0.0',
+      isDefault: true,
+    });
+    // Then the factory + connection tester — runtime instantiation surface.
     const factory = new PrestashopAdapterFactoryWrapper(
       this.customerProvisioner,
       this.addressProvisioner,
@@ -85,7 +108,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       'prestashop.webservice.v1',
       new PrestashopConnectionTesterAdapter(),
     );
-    this.logger.log('PrestaShop adapter factory registered successfully');
+    this.logger.log('PrestaShop adapter registered successfully');
   }
 }
 

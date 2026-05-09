@@ -13,6 +13,7 @@ import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
 import { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
 import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
+import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -28,10 +29,19 @@ export class AdapterFactoryResolverService {
   /**
    * Register an adapter factory
    *
+   * Throws `DuplicateAdapterKeyException` on a second registration for the
+   * same adapterKey — fail-loud at boot rather than silently overwrite.
+   * Mirrors `AdapterRegistryService.register()` (#570) so duplicate-key
+   * semantics are consistent across both registries.
+   *
    * @param adapterKey - Adapter key (e.g., 'prestashop.webservice.v1')
    * @param factory - Factory implementation
+   * @throws DuplicateAdapterKeyException if `adapterKey` is already registered
    */
   registerFactory(adapterKey: string, factory: AdapterFactoryPort): void {
+    if (this.factories.has(adapterKey)) {
+      throw new DuplicateAdapterKeyException(adapterKey);
+    }
     this.logger.debug(`Registering adapter factory: ${adapterKey}`);
     this.factories.set(adapterKey, factory);
   }

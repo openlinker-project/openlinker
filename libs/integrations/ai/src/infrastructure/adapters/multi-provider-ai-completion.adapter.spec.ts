@@ -1,10 +1,12 @@
 /**
  * Multi-Provider AI Completion Adapter — Unit Tests
  *
- * The router holds a static map of per-provider adapters and resolves the
- * active provider on every call through `IAiProviderActiveSettingsService`.
- * Tests cover: dispatch to each branch, propagation of input/output, and
- * the defensive "no adapter for provider" path.
+ * After #570/#571 the router is empty on construction; per-provider adapters
+ * are added via `register(provider, adapter)`, then `complete()` reads the
+ * active provider on every call and dispatches to the matching registered
+ * adapter. Tests cover: registration (happy + duplicate-fail), dispatch to
+ * each branch, propagation of input/output, and the "no adapter for active
+ * provider" defensive path.
  *
  * @module libs/integrations/ai/infrastructure/adapters
  */
@@ -16,6 +18,7 @@ import type {
 } from '@openlinker/core/ai/domain/types/ai-completion.types';
 import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
 import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
+import { DuplicateAiProviderError } from '@openlinker/core/ai/domain/exceptions/duplicate-ai-provider.exception';
 import { MultiProviderAiCompletionAdapter } from './multi-provider-ai-completion.adapter';
 
 const buildResult = (text: string): AiCompletionResult => ({
@@ -43,94 +46,117 @@ const sampleInput: AiCompletionInput = {
   requestId: 'req-1',
 };
 
+/**
+ * Build a router pre-populated with anthropic/openai/fake adapters — the
+ * standard module-wired shape. Returns the router and the underlying stubs
+ * so dispatch assertions can probe each branch.
+ */
+function buildRouter(activeProvider: AiProvider): {
+  router: MultiProviderAiCompletionAdapter;
+  anthropic: AiCompletionPort & { complete: jest.Mock };
+  openai: AiCompletionPort & { complete: jest.Mock };
+  fake: AiCompletionPort & { complete: jest.Mock };
+  activeSettings: jest.Mocked<IAiProviderActiveSettingsService>;
+} {
+  const anthropic = buildAdapterStub('A');
+  const openai = buildAdapterStub('O');
+  const fake = buildAdapterStub('F');
+  const activeSettings = buildActiveSettings(activeProvider);
+  const router = new MultiProviderAiCompletionAdapter(activeSettings);
+  router.register('anthropic', anthropic);
+  router.register('openai', openai);
+  router.register('fake', fake);
+  return { router, anthropic, openai, fake, activeSettings };
+}
+
 describe('MultiProviderAiCompletionAdapter', () => {
-  it('routes to the anthropic adapter when active=anthropic', async () => {
-    const anthropic = buildAdapterStub('A');
-    const openai = buildAdapterStub('O');
-    const fake = buildAdapterStub('F');
-    const router = new MultiProviderAiCompletionAdapter(
-      anthropic,
-      openai,
-      fake,
-      buildActiveSettings('anthropic'),
-    );
+  describe('register', () => {
+    it('accepts a per-provider adapter and dispatches to it on complete()', async () => {
+      const adapter = buildAdapterStub('X');
+      const activeSettings = buildActiveSettings('anthropic');
+      const router = new MultiProviderAiCompletionAdapter(activeSettings);
 
-    const result = await router.complete(sampleInput);
+      router.register('anthropic', adapter);
+      const result = await router.complete(sampleInput);
 
-    expect(result.text).toBe('A');
-    expect(anthropic.complete).toHaveBeenCalledWith(sampleInput);
-    expect(openai.complete).not.toHaveBeenCalled();
-    expect(fake.complete).not.toHaveBeenCalled();
+      expect(result.text).toBe('X');
+      expect(adapter.complete).toHaveBeenCalledWith(sampleInput);
+    });
+
+    it('throws DuplicateAiProviderError when the same provider is registered twice', () => {
+      const router = new MultiProviderAiCompletionAdapter(buildActiveSettings('anthropic'));
+
+      router.register('anthropic', buildAdapterStub('A1'));
+
+      expect(() => router.register('anthropic', buildAdapterStub('A2'))).toThrow(
+        DuplicateAiProviderError,
+      );
+    });
+
+    it('allows registering different providers independently', () => {
+      const router = new MultiProviderAiCompletionAdapter(buildActiveSettings('anthropic'));
+
+      expect(() => {
+        router.register('anthropic', buildAdapterStub('A'));
+        router.register('openai', buildAdapterStub('O'));
+        router.register('fake', buildAdapterStub('F'));
+      }).not.toThrow();
+    });
   });
 
-  it('routes to the openai adapter when active=openai', async () => {
-    const anthropic = buildAdapterStub('A');
-    const openai = buildAdapterStub('O');
-    const fake = buildAdapterStub('F');
-    const router = new MultiProviderAiCompletionAdapter(
-      anthropic,
-      openai,
-      fake,
-      buildActiveSettings('openai'),
-    );
+  describe('complete', () => {
+    it('routes to the anthropic adapter when active=anthropic', async () => {
+      const { router, anthropic, openai, fake } = buildRouter('anthropic');
 
-    const result = await router.complete(sampleInput);
+      const result = await router.complete(sampleInput);
 
-    expect(result.text).toBe('O');
-    expect(openai.complete).toHaveBeenCalledWith(sampleInput);
-  });
+      expect(result.text).toBe('A');
+      expect(anthropic.complete).toHaveBeenCalledWith(sampleInput);
+      expect(openai.complete).not.toHaveBeenCalled();
+      expect(fake.complete).not.toHaveBeenCalled();
+    });
 
-  it('routes to the fake adapter when active=fake', async () => {
-    const anthropic = buildAdapterStub('A');
-    const openai = buildAdapterStub('O');
-    const fake = buildAdapterStub('F');
-    const router = new MultiProviderAiCompletionAdapter(
-      anthropic,
-      openai,
-      fake,
-      buildActiveSettings('fake'),
-    );
+    it('routes to the openai adapter when active=openai', async () => {
+      const { router, openai } = buildRouter('openai');
 
-    const result = await router.complete(sampleInput);
+      const result = await router.complete(sampleInput);
 
-    expect(result.text).toBe('F');
-    expect(fake.complete).toHaveBeenCalledWith(sampleInput);
-  });
+      expect(result.text).toBe('O');
+      expect(openai.complete).toHaveBeenCalledWith(sampleInput);
+    });
 
-  it('reads the active provider on every call (no cache)', async () => {
-    const anthropic = buildAdapterStub('A');
-    const openai = buildAdapterStub('O');
-    const fake = buildAdapterStub('F');
-    const activeSettings = buildActiveSettings('anthropic');
-    const router = new MultiProviderAiCompletionAdapter(
-      anthropic,
-      openai,
-      fake,
-      activeSettings,
-    );
+    it('routes to the fake adapter when active=fake', async () => {
+      const { router, fake } = buildRouter('fake');
 
-    await router.complete(sampleInput);
-    activeSettings.getActive.mockResolvedValueOnce('openai');
-    await router.complete(sampleInput);
+      const result = await router.complete(sampleInput);
 
-    expect(activeSettings.getActive).toHaveBeenCalledTimes(2);
-    expect(anthropic.complete).toHaveBeenCalledTimes(1);
-    expect(openai.complete).toHaveBeenCalledTimes(1);
-  });
+      expect(result.text).toBe('F');
+      expect(fake.complete).toHaveBeenCalledWith(sampleInput);
+    });
 
-  it('throws AiCompletionError if the active-settings service returns an unknown provider', async () => {
-    const anthropic = buildAdapterStub('A');
-    const openai = buildAdapterStub('O');
-    const fake = buildAdapterStub('F');
-    const activeSettings = buildActiveSettings('anthropic');
-    activeSettings.getActive.mockResolvedValueOnce('cohere' as AiProvider);
-    const router = new MultiProviderAiCompletionAdapter(
-      anthropic,
-      openai,
-      fake,
-      activeSettings,
-    );
+    it('reads the active provider on every call (no cache)', async () => {
+      const { router, anthropic, openai, activeSettings } = buildRouter('anthropic');
 
-    await expect(router.complete(sampleInput)).rejects.toBeInstanceOf(AiCompletionError);
+      await router.complete(sampleInput);
+      activeSettings.getActive.mockResolvedValueOnce('openai');
+      await router.complete(sampleInput);
+
+      expect(activeSettings.getActive).toHaveBeenCalledTimes(2);
+      expect(anthropic.complete).toHaveBeenCalledTimes(1);
+      expect(openai.complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws AiCompletionError if the active-settings service returns an unregistered provider', async () => {
+      const { router, activeSettings } = buildRouter('anthropic');
+      activeSettings.getActive.mockResolvedValueOnce('cohere' as AiProvider);
+
+      await expect(router.complete(sampleInput)).rejects.toBeInstanceOf(AiCompletionError);
+    });
+
+    it('throws AiCompletionError if no providers are registered yet', async () => {
+      const router = new MultiProviderAiCompletionAdapter(buildActiveSettings('anthropic'));
+
+      await expect(router.complete(sampleInput)).rejects.toBeInstanceOf(AiCompletionError);
+    });
   });
 });

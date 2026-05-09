@@ -67,7 +67,8 @@ export class IntegrationsService implements IIntegrationsService {
     }
 
     // Determine adapterKey
-    const adapterKey = connection.adapterKey ?? this.deriveAdapterKey(connection.platformType);
+    const adapterKey =
+      connection.adapterKey ?? (await this.adapterRegistry.getDefaultAdapterKey(connection.platformType));
     this.logger.debug(
       `Resolved adapterKey: ${adapterKey}${connection.adapterKey ? ' (explicit)' : ` (derived from platformType: ${connection.platformType})`}`,
     );
@@ -156,7 +157,8 @@ export class IntegrationsService implements IIntegrationsService {
     platformType: string;
     adapterKey?: string;
   }): Promise<AdapterMetadata> {
-    const adapterKey = params.adapterKey ?? this.deriveAdapterKey(params.platformType);
+    const adapterKey =
+      params.adapterKey ?? (await this.adapterRegistry.getDefaultAdapterKey(params.platformType));
     return this.adapterRegistry.getAdapterMetadata(adapterKey);
   }
 
@@ -195,7 +197,8 @@ export class IntegrationsService implements IIntegrationsService {
     for (const connection of connections) {
       try {
         const adapterKey =
-          connection.adapterKey ?? this.deriveAdapterKey(connection.platformType);
+          connection.adapterKey ??
+          (await this.adapterRegistry.getDefaultAdapterKey(connection.platformType));
 
         const metadata = await this.adapterRegistry.getAdapterMetadata(adapterKey);
 
@@ -285,33 +288,5 @@ export class IntegrationsService implements IIntegrationsService {
     return results;
   }
 
-  /**
-   * Derives adapterKey from platformType if not explicitly set.
-   *
-   * Hardcoded for MVP, but extracted to enable easy configuration later.
-   * Future: Can be replaced with:
-   * - Configuration service injection
-   * - Database lookup
-   * - Environment variable mapping
-   *
-   * @param platformType - The platform type (e.g., 'prestashop', 'allegro')
-   * @returns The default adapter key for the platform type
-   * @throws AdapterNotFoundException if no default adapter key found
-   */
-  private deriveAdapterKey(platformType: string): string {
-    const mapping: Record<string, string> = {
-      prestashop: 'prestashop.webservice.v1',
-      allegro: 'allegro.publicapi.v1',
-    };
-
-    const adapterKey = mapping[platformType];
-    if (!adapterKey) {
-      throw new AdapterNotFoundException(
-        `No default adapterKey found for platformType: ${platformType}`,
-      );
-    }
-
-    return adapterKey;
-  }
 }
 
