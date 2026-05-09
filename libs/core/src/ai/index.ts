@@ -23,6 +23,7 @@ export * from './domain/exceptions/ai-completion.exception';
 export * from './domain/exceptions/ai-rate-limit.exception';
 export * from './domain/exceptions/ai-timeout.exception';
 export * from './domain/exceptions/ai-invalid-response.exception';
+export * from './domain/exceptions/duplicate-ai-provider.exception';
 
 export * from './domain/entities/prompt-template.entity';
 export * from './domain/types/prompt-template.types';

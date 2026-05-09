@@ -64,6 +64,15 @@ export interface AdapterMetadata {
    * Optional adapter version
    */
   version?: string;
+
+  /**
+   * When true, this adapter is the default for its platformType — i.e.
+   * `IntegrationsService` resolves an unspecified `connection.adapterKey`
+   * to this adapter's key. At most one default per platformType is
+   * permitted; the registry rejects a second default registration with
+   * `DuplicatePlatformDefaultException`. (#571)
+   */
+  isDefault?: boolean;
 }
 
 /**

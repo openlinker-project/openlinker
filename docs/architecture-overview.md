@@ -1147,23 +1147,35 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
 ```
 
 **Adapter Registry** (Code-Level):
-```typescript
-// Adapters declare their capabilities in code
-{
-  adapterKey: 'prestashop.webservice.v1',
-  platformType: 'prestashop',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
-  displayName: 'PrestaShop WebService v1',
-  version: '1.0.0'
-}
 
-{
+Each integration module self-registers its adapter metadata via
+`adapterRegistry.register({...})` in `onModuleInit` (#570/#571), mirroring
+how `AdapterFactoryResolverService.registerFactory` works. `libs/core`
+no longer carries platform-specific knowledge of which adapters exist —
+the registry is empty on construct and populated by integration modules
+at boot. The `isDefault: true` flag marks the platform-default adapterKey
+for connections without an explicit `adapterKey` field.
+
+```typescript
+// In AllegroIntegrationModule.onModuleInit():
+this.adapterRegistry.register({
   adapterKey: 'allegro.publicapi.v1',
   platformType: 'allegro',
   supportedCapabilities: ['OrderSource', 'OfferManager'],
   displayName: 'Allegro Public API v1',
-  version: '1.0.0'
-}
+  version: '1.0.0',
+  isDefault: true,
+});
+
+// In PrestashopIntegrationModule.onModuleInit():
+this.adapterRegistry.register({
+  adapterKey: 'prestashop.webservice.v1',
+  platformType: 'prestashop',
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+  displayName: 'PrestaShop WebService v1',
+  version: '1.0.0',
+  isDefault: true,
+});
 ```
 
 **Service Usage** (Per-Connection):
