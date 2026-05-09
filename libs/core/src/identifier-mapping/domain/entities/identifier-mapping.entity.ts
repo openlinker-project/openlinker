@@ -12,12 +12,12 @@
  *
  * @module libs/core/src/identifier-mapping/domain/entities
  */
-import { EntityType, MappingContext } from '../types/identifier-mapping.types';
+import { MappingContext } from '../types/identifier-mapping.types';
 
 export class IdentifierMapping {
   constructor(
     public readonly id: string,
-    public readonly entityType: EntityType,
+    public readonly entityType: string,
     public readonly internalId: string,
     public readonly externalId: string,
     public readonly platformType: string,

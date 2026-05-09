@@ -15,7 +15,6 @@ import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/
 import {
   AdapterMetadata,
   AdapterInstance,
-  Capability,
 } from '@openlinker/core/integrations/domain/types/adapter.types';
 import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
 
@@ -32,14 +31,14 @@ export class AdapterRegistryService implements AdapterRegistryPort {
           'InventoryMaster',
           'OrderSource',
           'OrderProcessorManager',
-        ] as Capability[],
+        ],
         displayName: 'PrestaShop WebService v1',
         version: '1.0.0',
       },
       {
         adapterKey: 'allegro.publicapi.v1',
         platformType: 'allegro',
-        supportedCapabilities: ['OrderSource', 'OfferManager'] as Capability[],
+        supportedCapabilities: ['OrderSource', 'OfferManager'],
         displayName: 'Allegro Public API v1',
         version: '1.0.0',
       },

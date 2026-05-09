@@ -9,7 +9,7 @@
 import { IsString, IsOptional, IsObject, IsEnum, IsArray, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ConnectionStatusValues } from '@openlinker/core/identifier-mapping';
-import { Capability, CapabilityValues } from '@openlinker/core/integrations';
+import { CoreCapability, CoreCapabilityValues } from '@openlinker/core/integrations';
 
 export class UpdateConnectionDto {
   @ApiPropertyOptional({
@@ -48,11 +48,11 @@ export class UpdateConnectionDto {
   @ApiPropertyOptional({
     description: 'Capabilities enabled on this connection. Subset of the adapter\u2019s supportedCapabilities.',
     isArray: true,
-    enum: CapabilityValues,
+    enum: CoreCapabilityValues,
   })
   @IsArray()
-  @IsIn(CapabilityValues, { each: true })
+  @IsIn(CoreCapabilityValues, { each: true })
   @IsOptional()
-  enabledCapabilities?: Capability[];
+  enabledCapabilities?: CoreCapability[];
 }
 

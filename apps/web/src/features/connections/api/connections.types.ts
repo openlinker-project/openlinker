@@ -4,7 +4,12 @@ export type PlatformType = (typeof PLATFORM_TYPES)[number];
 
 export type ConnectionStatus = 'active' | 'disabled' | 'error';
 
-export const CAPABILITY_VALUES = [
+/**
+ * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.
+ * Plugin adapters can register additional capability names; FE accepts those
+ * as plain strings without runtime narrowing failures (#576).
+ */
+export const CORE_CAPABILITY_VALUES = [
   'ProductMaster',
   'InventoryMaster',
   'OrderProcessorManager',
@@ -12,7 +17,12 @@ export const CAPABILITY_VALUES = [
   'OfferManager',
 ] as const;
 
-export type Capability = (typeof CAPABILITY_VALUES)[number];
+/**
+ * Closed type for the well-known core capabilities. Use where exhaustiveness
+ * matters (UI dropdowns, dispatch dialog gating). Use `string`
+ * where the FE consumes adapter-supplied capability names.
+ */
+export type CoreCapability = (typeof CORE_CAPABILITY_VALUES)[number];
 
 export interface Connection {
   id: string;
@@ -23,8 +33,8 @@ export interface Connection {
   /** True when credentials are stored in the database and can be rotated via PUT /credentials. */
   credentialsBacked: boolean;
   adapterKey?: string;
-  enabledCapabilities: Capability[];
-  supportedCapabilities: Capability[];
+  enabledCapabilities: string[];
+  supportedCapabilities: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -43,7 +53,13 @@ export interface CreateConnectionInput {
   /** Existing db-backed reference (must start with `db:`). Used by OAuth flows. */
   credentialsRef?: string;
   adapterKey?: string;
-  enabledCapabilities?: Capability[];
+  /**
+   * Capabilities to enable on this connection. Strict on the well-known core
+   * set today — mirrors the BE request DTO contract. Plugin-registered
+   * capabilities are out of scope for the create/update path until the
+   * runtime-aware DTO validator follow-up lands (#576).
+   */
+  enabledCapabilities?: CoreCapability[];
 }
 
 export interface UpdateConnectionInput {
@@ -51,7 +67,7 @@ export interface UpdateConnectionInput {
   status?: ConnectionStatus;
   config?: Record<string, unknown>;
   adapterKey?: string;
-  enabledCapabilities?: Capability[];
+  enabledCapabilities?: CoreCapability[];
 }
 
 export interface RecentJobSummary {

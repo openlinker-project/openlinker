@@ -333,7 +333,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    *
    * Maps webhook events to sync job requests based on event type and provider.
    * Acts as a translation layer: provider-specific terminology → canonical job types.
-   * Normalizes objectType to PascalCase to match EntityType enum values.
+   * Normalizes objectType to PascalCase to match the well-known core entity types.
    *
    * @throws Error if job type cannot be constructed or validated
    */
@@ -424,7 +424,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   /**
    * Normalize objectType to PascalCase
    *
-   * Converts lowercase/snake_case object types to PascalCase to match EntityType enum.
+   * Converts lowercase/snake_case object types to PascalCase to match the well-known core entity types.
    * Examples:
    * - "product" -> "Product"
    * - "product_variant" -> "ProductVariant"

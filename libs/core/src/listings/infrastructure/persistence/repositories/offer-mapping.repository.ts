@@ -13,7 +13,7 @@ import { Repository } from 'typeorm';
 import {
   IdentifierMappingOrmEntity,
   IdentifierMapping,
-  EntityType,
+  CoreEntityType,
 } from '@openlinker/core/identifier-mapping';
 import { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
@@ -22,7 +22,7 @@ import {
   PaginatedOfferMappings,
 } from '../../../domain/types/offer-mapping.types';
 
-const OFFER_ENTITY_TYPE: EntityType = 'Offer';
+const OFFER_ENTITY_TYPE: CoreEntityType = 'Offer';
 
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
@@ -107,7 +107,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
     return new IdentifierMapping(
       entity.id,
-      entity.entityType as EntityType,
+      entity.entityType,
       entity.internalId,
       entity.externalId,
       entity.platformType,

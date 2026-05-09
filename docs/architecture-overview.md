@@ -479,6 +479,8 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 - **ShippingProviderManagerPort**: Orchestrates shipping and tracking
 - **PaymentProcessorPort**: Handles payment processing
 
+**Capability is open at the registry boundary** (#576). The well-known set lives in `CoreCapabilityValues` as the closed `CoreCapability` type; adapter metadata (`AdapterMetadata.supportedCapabilities`), the `IntegrationsService` resolution methods, and the connection entity's `enabledCapabilities` accept `CoreCapability | string`. Plugin adapters can register new capability names without a core PR — the runtime gate at `IntegrationsService.getCapabilityAdapter` validates against `metadata.supportedCapabilities`. The HTTP request DTOs remain strict on `CoreCapabilityValues` until a runtime-aware DTO validator follow-up lands.
+
 ---
 
 ## Identifier Mapping Service
@@ -526,7 +528,7 @@ interface IdentifierMappingService {
    * If not, generates new internal ID and creates mapping
    */
   getOrCreateInternalId(
-    entityType: 'Product' | 'Order' | 'Offer' | 'Inventory' | 'Customer' | string,
+    entityType: CoreEntityType | string,
     externalId: string,
     connectionId: string,  // ✅ Connection ID (not platform ID)
     context?: MappingContext
@@ -537,7 +539,7 @@ interface IdentifierMappingService {
    * Returns null if mapping doesn't exist
    */
   getInternalId(
-    entityType: string,
+    entityType: CoreEntityType | string,
     externalId: string,
     connectionId: string  // ✅ Connection ID
   ): Promise<string | null>;
@@ -547,7 +549,7 @@ interface IdentifierMappingService {
    * Returns all connection-specific external IDs mapped to this internal ID
    */
   getExternalIds(
-    entityType: string,
+    entityType: CoreEntityType | string,
     internalId: string
   ): Promise<ExternalIdMapping[]>;
 
@@ -556,7 +558,7 @@ interface IdentifierMappingService {
    * Used for manual mapping or when internal ID already exists
    */
   createMapping(
-    entityType: string,
+    entityType: CoreEntityType | string,
     externalId: string,
     connectionId: string,  // ✅ Connection ID
     internalId: string
@@ -578,7 +580,7 @@ interface MappingContext {
 }
 
 interface IdentifierMappingRequest {
-  entityType: string;
+  entityType: CoreEntityType | string;
   externalId: string;
   connectionId: string;  // ✅ Connection ID
   context?: MappingContext;

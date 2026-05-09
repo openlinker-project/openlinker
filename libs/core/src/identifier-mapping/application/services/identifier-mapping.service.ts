@@ -27,7 +27,6 @@ import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplica
 import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-already-exists.error';
 import { IdentifierMappingConflictException } from '../../domain/exceptions/identifier-mapping-conflict.exception';
 import {
-  EntityType,
   ENTITY_TYPE_ID_PREFIX,
   MappingContext,
   IdentifierMappingRequest,
@@ -47,7 +46,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   ) {}
 
   async getOrCreateInternalId(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
     context?: MappingContext,
@@ -63,7 +62,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   async getInternalId(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
   ): Promise<string | null> {
@@ -81,7 +80,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   async getExternalIds(
-    entityType: EntityType,
+    entityType: string,
     internalId: string,
   ): Promise<ExternalIdMapping[]> {
     const mappings = await this.repository.findByInternalId(entityType, internalId);
@@ -94,7 +93,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   async createMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
     internalId: string,
@@ -130,7 +129,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   async deleteMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
   ): Promise<void> {
@@ -148,7 +147,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   async listExternalIdsByConnection(
-    entityType: EntityType,
+    entityType: string,
     connectionId: string,
   ): Promise<string[]> {
     const mappings = await this.repository.findByEntityTypeAndConnection(
@@ -209,7 +208,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
    * @private
    */
   private async getOrCreateInternalIdWithPlatform(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
     platformType: string,
@@ -278,7 +277,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
    * Returns the external ID if mapping exists or was created successfully
    */
   async getOrCreateExactMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     internalId: string,
     connectionId: string,
@@ -326,11 +325,15 @@ export class IdentifierMappingService implements IIdentifierMappingService {
 
   }
 
-  private generateInternalId(entityType: EntityType): string {
+  private generateInternalId(entityType: string): string {
     // Format: ol_{prefix}_{uuid} — prefix defaults to entityType.toLowerCase()
     // unless overridden in ENTITY_TYPE_ID_PREFIX (e.g. ProductVariant → 'variant').
+    // The override map is keyed by CoreEntityType; widen to a string index here
+    // so plugin-registered entity types (#577) fall through to the default
+    // lowercased prefix instead of failing the indexed access.
+    const overrides: Record<string, string | undefined> = ENTITY_TYPE_ID_PREFIX;
     const uuid = randomUUID().replace(/-/g, '');
-    const prefix = ENTITY_TYPE_ID_PREFIX[entityType] ?? entityType.toLowerCase();
+    const prefix = overrides[entityType] ?? entityType.toLowerCase();
     return `ol_${prefix}_${uuid}`;
   }
 }

@@ -8,7 +8,8 @@
  * @module apps/web/src/features/connections/components
  */
 import { useState, type ReactElement } from 'react';
-import type { Capability, Connection } from '../api/connections.types';
+import type { Connection, CoreCapability } from '../api/connections.types';
+import { CORE_CAPABILITY_VALUES } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -18,7 +19,7 @@ interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
 }
 
-const CAPABILITY_HELP: Record<Capability, string> = {
+const CAPABILITY_HELP: Record<CoreCapability, string> = {
   ProductMaster: 'Read the product catalog (variants, attributes, categories) from this connection.',
   InventoryMaster: 'Read stock levels from this connection as the inventory source of truth.',
   OrderProcessorManager: 'Create and manage orders in this connection (typically the destination shop).',
@@ -26,17 +27,28 @@ const CAPABILITY_HELP: Record<Capability, string> = {
   OfferManager: 'Manage offers and listings on this marketplace connection.',
 };
 
+const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
+
+function isCoreCapability(value: string): value is CoreCapability {
+  return CORE_CAPABILITY_SET.has(value);
+}
+
 export function ConnectionCapabilitiesPanel({
   connection,
 }: ConnectionCapabilitiesPanelProps): ReactElement {
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
-  const [pending, setPending] = useState<Capability | null>(null);
+  const [pending, setPending] = useState<CoreCapability | null>(null);
 
-  const supported = connection.supportedCapabilities;
-  const enabled = new Set(connection.enabledCapabilities);
+  // Today the panel only renders well-known core capabilities. Plugin-registered
+  // capabilities (#576) are valid on the connection entity but not editable from
+  // this UI yet — the backend's request DTO is still strict on CoreCapabilityValues
+  // (see plan §3.1). When the runtime-aware DTO validator follow-up lands, this
+  // narrow can be removed.
+  const supported = connection.supportedCapabilities.filter(isCoreCapability);
+  const enabled = new Set(connection.enabledCapabilities.filter(isCoreCapability));
 
-  async function handleToggle(capability: Capability, checked: boolean): Promise<void> {
+  async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
     const next = new Set(enabled);
     if (checked) {
       next.add(capability);
@@ -69,6 +81,11 @@ export function ConnectionCapabilitiesPanel({
           <h3 className="section-title">Enabled roles</h3>
         </div>
         <span className="panel__meta">
+          {/* Counter reflects the well-known core caps only — both sides
+           * were narrowed via `isCoreCapability` above. If a connection
+           * ever stores plugin-registered capabilities, those are
+           * excluded from both numerator and denominator until this
+           * panel grows a separate plugin-cap surface. */}
           {enabled.size} of {supported.length} enabled
         </span>
       </div>

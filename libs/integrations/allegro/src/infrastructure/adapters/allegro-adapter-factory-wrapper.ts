@@ -7,7 +7,7 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @implements {AdapterFactoryPort}
  */
-import { AdapterFactoryPort, CredentialsResolverPort, Capability } from '@openlinker/core/integrations';
+import { AdapterFactoryPort, CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import type { CachePort } from '@openlinker/shared';
@@ -47,7 +47,7 @@ export class AllegroAdapterFactoryWrapper implements AdapterFactoryPort {
 
   async createCapabilityAdapter<T>(
     connection: Connection,
-    capability: Capability,
+    capability: string,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
   ): Promise<T> {

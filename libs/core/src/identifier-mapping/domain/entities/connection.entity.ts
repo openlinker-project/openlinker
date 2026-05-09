@@ -16,8 +16,6 @@ import {
   ConnectionStatus,
   ConnectionConfig,
 } from '../types/connection.types';
-import type { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
-
 export class Connection {
   constructor(
     public readonly id: string,
@@ -29,6 +27,13 @@ export class Connection {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly adapterKey: string | undefined,
-    public readonly enabledCapabilities: Capability[],
+    /**
+     * Capabilities the operator has enabled on this connection. Subset of
+     * the resolved adapter's `supportedCapabilities`. Open string set —
+     * the well-known values are listed in the integrations module's
+     * `CoreCapability` / `CoreCapabilityValues`; plugin adapters may
+     * register additional names (#576).
+     */
+    public readonly enabledCapabilities: string[],
   ) {}
 }

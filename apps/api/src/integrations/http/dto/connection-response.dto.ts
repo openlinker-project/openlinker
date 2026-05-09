@@ -8,7 +8,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import { Capability, CapabilityValues } from '@openlinker/core/integrations';
+import { CoreCapabilityValues } from '@openlinker/core/integrations';
 
 export class ConnectionResponseDto {
   @ApiProperty({ description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
@@ -36,18 +36,18 @@ export class ConnectionResponseDto {
   adapterKey?: string;
 
   @ApiProperty({
-    description: 'Capabilities enabled on this connection (operator-chosen subset of supportedCapabilities)',
+    description: 'Capabilities enabled on this connection (operator-chosen subset of supportedCapabilities). Well-known values listed in `enum`; plugin-registered capability names also accepted.',
     isArray: true,
-    enum: CapabilityValues,
+    enum: CoreCapabilityValues,
   })
-  enabledCapabilities!: Capability[];
+  enabledCapabilities!: string[];
 
   @ApiProperty({
-    description: 'Capabilities supported by the resolved adapter (derived, not persisted)',
+    description: 'Capabilities supported by the resolved adapter (derived, not persisted). Well-known values listed in `enum`; plugin-registered capability names also accepted.',
     isArray: true,
-    enum: CapabilityValues,
+    enum: CoreCapabilityValues,
   })
-  supportedCapabilities!: Capability[];
+  supportedCapabilities!: string[];
 
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt!: Date;
@@ -57,7 +57,7 @@ export class ConnectionResponseDto {
 
   static fromDomain(
     connection: Connection,
-    supportedCapabilities: Capability[],
+    supportedCapabilities: string[],
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;

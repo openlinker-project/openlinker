@@ -48,7 +48,7 @@ import type {
 } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { EntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import type { CoreEntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
 import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -139,7 +139,7 @@ export class ListingsController {
     //   - the linked variant's productId (drives the AI-suggest flow on the
     //     edit drawer — #485 — which is keyed on product, not variant).
     // Non-Offer entity types skip both lookups entirely.
-    if (mapping.entityType === ('Offer' satisfies EntityType)) {
+    if (mapping.entityType === ('Offer' satisfies CoreEntityType)) {
       const [record, linkedVariant] = await Promise.all([
         this.offerCreationRecords.findByExternalOfferIdAndConnectionId(
           mapping.externalId,
@@ -185,7 +185,7 @@ export class ListingsController {
     // Treat non-Offer mappings as 404 rather than a separate 4xx — the
     // existence of the mapping isn't actionable for the live-offer surface
     // and the response shape is identical to "mapping doesn't exist".
-    if (mapping.entityType !== ('Offer' satisfies EntityType)) {
+    if (mapping.entityType !== ('Offer' satisfies CoreEntityType)) {
       throw new NotFoundException(
         `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`,
       );

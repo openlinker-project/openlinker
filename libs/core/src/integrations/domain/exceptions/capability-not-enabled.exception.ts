@@ -9,14 +9,13 @@
  *
  * @module libs/core/src/integrations/domain/exceptions
  */
-import { Capability } from '../types/adapter.types';
 import { CapabilityNotSupportedException } from './capability-not-supported.exception';
 
 export class CapabilityNotEnabledException extends CapabilityNotSupportedException {
   constructor(
     public readonly connectionId: string,
     adapterKey: string,
-    capability: Capability,
+    capability: string,
   ) {
     super(adapterKey, capability);
     this.message = `Connection ${connectionId} has capability ${capability} disabled (adapter ${adapterKey} supports it)`;

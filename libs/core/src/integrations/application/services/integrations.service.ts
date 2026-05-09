@@ -18,7 +18,6 @@ import { Inject } from '@nestjs/common';
 import {
   AdapterMetadata,
   AdapterInstance,
-  Capability,
 } from '../../domain/types/adapter.types';
 import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import {
@@ -91,7 +90,7 @@ export class IntegrationsService implements IIntegrationsService {
 
   async getCapabilityAdapter<T>(
     connectionId: string,
-    capability: Capability,
+    capability: string,
   ): Promise<T> {
     this.logger.debug(`Resolving ${capability} adapter for connection: ${connectionId}`);
 
@@ -161,7 +160,7 @@ export class IntegrationsService implements IIntegrationsService {
   }
 
   async listCapabilityAdapters<T>(filters: {
-    capability: Capability;
+    capability: string;
     platformType?: string;
   }): Promise<
     Array<{

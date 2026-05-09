@@ -29,7 +29,7 @@ import {
   ValidationArguments,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Capability, CapabilityValues } from '@openlinker/core/integrations';
+import { CoreCapability, CoreCapabilityValues } from '@openlinker/core/integrations';
 
 @ValidatorConstraint({ name: 'CredentialsXor', async: false })
 class CredentialsXorConstraint implements ValidatorConstraintInterface {
@@ -109,10 +109,10 @@ export class CreateConnectionDto {
     description:
       'Capabilities this connection should fulfil. Defaults to the adapter\u2019s full supported set when omitted. Must be a subset of supportedCapabilities.',
     isArray: true,
-    enum: CapabilityValues,
+    enum: CoreCapabilityValues,
   })
   @IsArray()
-  @IsIn(CapabilityValues, { each: true })
+  @IsIn(CoreCapabilityValues, { each: true })
   @IsOptional()
-  enabledCapabilities?: Capability[];
+  enabledCapabilities?: CoreCapability[];
 }
