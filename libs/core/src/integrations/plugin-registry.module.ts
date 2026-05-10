@@ -16,9 +16,8 @@
  */
 import { DynamicModule, Inject, Module, OnModuleInit } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
+import { PLUGIN_REGISTRY_OPTIONS_TOKEN } from './integrations.tokens';
 import { PluginEntry, PluginRegistryOptions } from './plugin-registry.types';
-
-export const PLUGIN_REGISTRY_OPTIONS_TOKEN = Symbol('PluginRegistryOptions');
 
 @Module({})
 export class PluginRegistryModule implements OnModuleInit {
@@ -40,7 +39,8 @@ export class PluginRegistryModule implements OnModuleInit {
 
   onModuleInit(): void {
     const names = this.options.plugins.map((plugin) => pluginName(plugin));
-    this.logger.log(`Composed ${names.length} plugin(s): [${names.join(', ')}]`);
+    const noun = names.length === 1 ? 'plugin' : 'plugins';
+    this.logger.log(`Composed ${names.length} ${noun}: [${names.join(', ')}]`);
   }
 }
 

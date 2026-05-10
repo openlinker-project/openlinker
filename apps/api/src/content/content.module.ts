@@ -33,7 +33,7 @@ import { ContentController } from './http/content.controller';
     CoreIntegrationsModule,
     CoreListingsModule,
     CoreAiModule,
-    IntegrationsModule, // API-side — re-exports `PluginRegistryModule`, through which `AiIntegrationModule.register()` binds `AI_COMPLETION_PORT_TOKEN`.
+    IntegrationsModule, // `AI_COMPLETION_PORT_TOKEN` resolves via `PluginRegistryModule` re-export.
   ],
   controllers: [ContentController],
   providers: [

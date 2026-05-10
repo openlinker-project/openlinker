@@ -4,15 +4,18 @@
  * Verifies the composition contract of `PluginRegistryModule.forRoot({ plugins })`:
  * - the returned `DynamicModule` lists every plugin in `imports` and `exports`
  * - a token provided by a plugin resolves at a consumer that imports the registry
+ * - a `DynamicModule` plugin (the production shape used by `AiIntegrationModule.register()`)
+ *   resolves through the registry the same way a static `@Module()` plugin does
  * - the boot log fires with the composed plugin names
  *
  * @module libs/core/src/integrations
  */
-import { Logger as NestLogger, Module } from '@nestjs/common';
+import { DynamicModule, Logger as NestLogger, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PluginRegistryModule } from './plugin-registry.module';
 
 const FAKE_PLUGIN_A_TOKEN = Symbol('FakePluginAToken');
+const FAKE_PLUGIN_C_TOKEN = Symbol('FakePluginCToken');
 
 @Module({
   providers: [{ provide: FAKE_PLUGIN_A_TOKEN, useValue: 'fake-plugin-a-value' }],
@@ -22,6 +25,16 @@ class FakePluginAModule {}
 
 @Module({})
 class FakePluginBModule {}
+
+class FakePluginCModule {
+  static register(value: string): DynamicModule {
+    return {
+      module: FakePluginCModule,
+      providers: [{ provide: FAKE_PLUGIN_C_TOKEN, useValue: value }],
+      exports: [FAKE_PLUGIN_C_TOKEN],
+    };
+  }
+}
 
 describe('PluginRegistryModule', () => {
   describe('forRoot', () => {
@@ -35,7 +48,7 @@ describe('PluginRegistryModule', () => {
       expect(dynamicModule.exports).toEqual([FakePluginAModule, FakePluginBModule]);
     });
 
-    it('should resolve a token provided by a plugin through the registry', async () => {
+    it('should resolve a token provided by a static plugin through the registry', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
           PluginRegistryModule.forRoot({ plugins: [FakePluginAModule, FakePluginBModule] }),
@@ -44,6 +57,24 @@ describe('PluginRegistryModule', () => {
 
       const value = moduleRef.get(FAKE_PLUGIN_A_TOKEN);
       expect(value).toBe('fake-plugin-a-value');
+
+      await moduleRef.close();
+    });
+
+    it('should resolve a token provided by a DynamicModule plugin through the registry', async () => {
+      // This mirrors the production shape: `AiIntegrationModule.register()` returns a
+      // `DynamicModule`, and `ContentApiModule` must resolve `AI_COMPLETION_PORT_TOKEN`
+      // through the chain `IntegrationsModule` → `PluginRegistryModule` re-export.
+      const moduleRef = await Test.createTestingModule({
+        imports: [
+          PluginRegistryModule.forRoot({
+            plugins: [FakePluginCModule.register('fake-plugin-c-value')],
+          }),
+        ],
+      }).compile();
+
+      const value = moduleRef.get(FAKE_PLUGIN_C_TOKEN);
+      expect(value).toBe('fake-plugin-c-value');
 
       await moduleRef.close();
     });
@@ -66,7 +97,7 @@ describe('PluginRegistryModule', () => {
         .find((message) => message.includes('Composed'));
       expect(logged).toContain('FakePluginAModule');
       expect(logged).toContain('FakePluginBModule');
-      expect(logged).toContain('2 plugin(s)');
+      expect(logged).toContain('2 plugins');
 
       await moduleRef.close();
       logSpy.mockRestore();
