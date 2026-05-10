@@ -32,9 +32,11 @@ import {
   AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   AiModule as CoreAiModule,
 } from '@openlinker/core/ai';
-import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
-import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
-import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
+import type {
+  AiCompletionPort,
+  AiProviderCredentialsPort,
+  IAiProviderActiveSettingsService,
+} from '@openlinker/core/ai';
 import { FakeAiCompletionAdapter } from './infrastructure/adapters/fake-ai-completion.adapter';
 import { MultiProviderAiCompletionAdapter } from './infrastructure/adapters/multi-provider-ai-completion.adapter';
 import {

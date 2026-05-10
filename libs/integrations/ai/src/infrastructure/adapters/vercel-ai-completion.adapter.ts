@@ -41,20 +41,22 @@ import { generateText } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { Logger } from '@openlinker/shared/logging';
-import { AI_PROVIDER_CREDENTIALS_PORT_TOKEN } from '@openlinker/core/ai/ai.tokens';
-import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
-import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
+import {
+  AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
+  AiCompletionError,
+  AiInvalidResponseError,
+  AiProviderKeyMissingError,
+  AiProviderSettingsNotApplicableError,
+  AiRateLimitError,
+  AiTimeoutError,
+} from '@openlinker/core/ai';
 import type {
   AiCompletionInput,
+  AiCompletionPort,
   AiCompletionResult,
   AiProvider,
-} from '@openlinker/core/ai/domain/types/ai-completion.types';
-import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
-import { AiInvalidResponseError } from '@openlinker/core/ai/domain/exceptions/ai-invalid-response.exception';
-import { AiProviderKeyMissingError } from '@openlinker/core/ai/domain/exceptions/ai-provider-key-missing.exception';
-import { AiProviderSettingsNotApplicableError } from '@openlinker/core/ai/domain/exceptions/ai-provider-settings-not-applicable.exception';
-import { AiRateLimitError } from '@openlinker/core/ai/domain/exceptions/ai-rate-limit.exception';
-import { AiTimeoutError } from '@openlinker/core/ai/domain/exceptions/ai-timeout.exception';
+  AiProviderCredentialsPort,
+} from '@openlinker/core/ai';
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
 const DEFAULT_TIMEOUT_MS = 60_000;
