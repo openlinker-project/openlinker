@@ -26,8 +26,13 @@ import {
 // New cross-package import (#581): the retry-classifier registry lives in
 // `@openlinker/core/sync` (the runner's package). Architecturally fine —
 // integrations may depend on core — and mirrors how this module already
-// depends on `@openlinker/core/integrations`.
+// depends on `@openlinker/core/integrations`. The `SyncModule` import
+// below is what brings `RETRY_CLASSIFIER_REGISTRY_TOKEN` into DI scope;
+// without it Nest can't resolve the constructor argument when the host
+// (apps/api or apps/worker) boots, because tokens flow only through
+// `imports`/`exports`, never via direct package imports.
 import {
+  SyncModule,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
 } from '@openlinker/core/sync';
@@ -48,6 +53,7 @@ import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 @Module({
   imports: [
     IntegrationsModule,
+    SyncModule, // Brings RETRY_CLASSIFIER_REGISTRY_TOKEN into DI scope (#581)
     CustomersModule, // Import CustomersModule to access CustomerIdentityResolverPort
     TypeOrmModule.forFeature([AllegroQuantityCommandOrmEntity]),
   ],
