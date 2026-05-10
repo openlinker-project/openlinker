@@ -28,7 +28,7 @@ import {
   type PrestashopSetupFormValues,
 } from './prestashop-setup.schema';
 import { PrestashopSetupSummary } from './prestashop-setup-summary';
-import type { Capability } from '../api/connections.types';
+import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
 import { useAdaptersQuery } from '../../adapters/hooks/use-adapters-query';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
@@ -41,7 +41,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 
-const CAPABILITY_HELP: Record<Capability, string> = {
+const CAPABILITY_HELP: Record<CoreCapability, string> = {
   ProductMaster: 'Read the product catalog (variants, attributes, categories) from this shop.',
   InventoryMaster: 'Read stock levels from this shop as the inventory source of truth.',
   OrderProcessorManager: 'Create and manage orders in this shop (typically the order destination).',
@@ -100,8 +100,16 @@ export function PrestashopSetupForm(): ReactElement {
   }, [form.formState.isDirty]);
 
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === PRESTASHOP_ADAPTER_KEY);
-  const supportedCapabilities: Capability[] =
-    adapterMetadata?.supportedCapabilities ?? PRESTASHOP_FALLBACK_CAPABILITIES;
+  // The form's checkbox list is gated on the well-known core capabilities. Plugin
+  // adapters (#576) may register additional names, but the create-connection
+  // request DTO is still strict on `CoreCapabilityValues`, so the wizard only
+  // exposes core caps for editing today. Lift the narrow when the runtime-aware
+  // DTO validator follow-up lands.
+  const supportedCapabilities: CoreCapability[] = (
+    adapterMetadata?.supportedCapabilities ?? PRESTASHOP_FALLBACK_CAPABILITIES
+  ).filter((capability): capability is CoreCapability =>
+    (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
+  );
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : []

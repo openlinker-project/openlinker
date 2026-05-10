@@ -7,8 +7,6 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
-import type { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
-
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
  */
@@ -60,7 +58,7 @@ export interface ConnectionCreate {
    * supportedCapabilities. When omitted at create time, ConnectionService defaults
    * this to the adapter's full supported set (behavior-preserving).
    */
-  enabledCapabilities?: Capability[];
+  enabledCapabilities?: string[];
 }
 
 /**
@@ -79,7 +77,7 @@ export interface ConnectionUpdate {
    * here so existing callers that pass the unchanged value still type-check.
    */
   adapterKey?: string;
-  enabledCapabilities?: Capability[];
+  enabledCapabilities?: string[];
 }
 
 /**

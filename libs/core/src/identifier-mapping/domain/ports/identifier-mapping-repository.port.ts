@@ -13,7 +13,6 @@
  * @see {@link IdentifierMappingRepository} for the implementation
  */
 import { IdentifierMapping } from '../entities/identifier-mapping.entity';
-import { EntityType } from '../types/identifier-mapping.types';
 
 export interface IdentifierMappingRepositoryPort {
   /**
@@ -21,7 +20,7 @@ export interface IdentifierMappingRepositoryPort {
    * Used by service after resolving platformType from Connection
    */
   findByExternalKey(
-    entityType: EntityType,
+    entityType: string,
     platformType: string,
     connectionId: string,
     externalId: string,
@@ -31,7 +30,7 @@ export interface IdentifierMappingRepositoryPort {
    * Find all mappings for a given internal ID (reverse lookup)
    * Returns all external IDs mapped to this internal ID
    */
-  findByInternalId(entityType: EntityType, internalId: string): Promise<IdentifierMapping[]>;
+  findByInternalId(entityType: string, internalId: string): Promise<IdentifierMapping[]>;
 
   /**
    * Create mapping (standard save operation)
@@ -50,7 +49,7 @@ export interface IdentifierMappingRepositoryPort {
    * Idempotent: no-op if mapping does not exist.
    */
   deleteByExternalKey(
-    entityType: EntityType,
+    entityType: string,
     platformType: string,
     connectionId: string,
     externalId: string,
@@ -60,7 +59,7 @@ export interface IdentifierMappingRepositoryPort {
    * Find all mappings for a given entity type and connection.
    */
   findByEntityTypeAndConnection(
-    entityType: EntityType,
+    entityType: string,
     connectionId: string,
   ): Promise<IdentifierMapping[]>;
 }

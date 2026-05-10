@@ -6,7 +6,7 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import type { Capability, Connection } from '../../connections/api/connections.types';
+import type { CoreCapability, Connection } from '../../connections/api/connections.types';
 
 export interface PayloadField {
   name: string;
@@ -30,7 +30,7 @@ export interface TriggerableJob {
   description: string;
   payloadFields: PayloadField[];
   /** If set, only show this job when the connection supports this capability. */
-  requiredCapability?: Capability;
+  requiredCapability?: CoreCapability;
 }
 
 export interface TriggerSyncDialogProps {

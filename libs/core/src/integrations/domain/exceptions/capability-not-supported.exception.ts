@@ -7,10 +7,8 @@
  *
  * @module libs/core/src/integrations/domain/exceptions
  */
-import { Capability } from '../types/adapter.types';
-
 export class CapabilityNotSupportedException extends Error {
-  constructor(adapterKey: string, capability: Capability) {
+  constructor(adapterKey: string, capability: string) {
     super(`Adapter ${adapterKey} does not support capability: ${capability}`);
     this.name = 'CapabilityNotSupportedException';
     Error.captureStackTrace(this, this.constructor);

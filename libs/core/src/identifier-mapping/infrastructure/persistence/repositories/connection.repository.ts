@@ -24,7 +24,6 @@ import {
 } from '../../../domain/types/connection.types';
 import { ConnectionNotFoundException } from '../../../domain/exceptions/connection-not-found.exception';
 import { Logger } from '@openlinker/shared/logging';
-import type { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
 
 @Injectable()
 export class ConnectionRepository implements ConnectionPort {
@@ -153,7 +152,7 @@ export class ConnectionRepository implements ConnectionPort {
       entity.createdAt,
       entity.updatedAt,
       entity.adapterKey,
-      (entity.enabledCapabilities ?? []) as Capability[],
+      (entity.enabledCapabilities ?? []),
     );
   }
 

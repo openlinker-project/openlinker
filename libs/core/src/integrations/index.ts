@@ -27,8 +27,8 @@ export {
 
 // Types
 export {
-  Capability,
-  CapabilityValues,
+  CoreCapability,
+  CoreCapabilityValues,
   AdapterMetadata,
   AdapterInstance,
 } from './domain/types/adapter.types';

@@ -9,7 +9,7 @@
  * `db:<uuid>` reference automatically.
  */
 import { z } from 'zod';
-import type { Capability, CreateConnectionInput } from '../api/connections.types';
+import type { CoreCapability, CreateConnectionInput } from '../api/connections.types';
 
 export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
 
@@ -18,7 +18,7 @@ export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
  * failure, stale cache, etc.). The source of truth is the `/adapters` endpoint
  * consumed by the wizard via `useAdaptersQuery`.
  */
-export const PRESTASHOP_FALLBACK_CAPABILITIES: Capability[] = [
+export const PRESTASHOP_FALLBACK_CAPABILITIES: CoreCapability[] = [
   'ProductMaster',
   'InventoryMaster',
   'OrderProcessorManager',

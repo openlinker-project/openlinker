@@ -11,7 +11,6 @@ import { AdapterFactoryPort } from '@openlinker/core/integrations/domain/ports/a
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { Capability } from '@openlinker/core/integrations/domain/types/adapter.types';
 import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
 import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -60,7 +59,7 @@ export class AdapterFactoryResolverService {
   async createCapabilityAdapter<T>(
     adapterKey: string,
     connection: Connection,
-    capability: Capability,
+    capability: string,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
   ): Promise<T> {

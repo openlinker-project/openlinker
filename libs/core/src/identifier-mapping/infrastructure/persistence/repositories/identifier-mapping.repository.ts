@@ -21,11 +21,7 @@ import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-e
 import { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
 import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
-import {
-  EntityType,
-  EntityTypeValues,
-  MappingContext,
-} from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
+import { MappingContext } from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
 
 @Injectable()
 export class IdentifierMappingRepository implements IdentifierMappingRepositoryPort {
@@ -39,7 +35,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
    * Used by service after resolving platformType from Connection
    */
   async findByExternalKey(
-    entityType: EntityType,
+    entityType: string,
     platformType: string,
     connectionId: string,
     externalId: string,
@@ -61,7 +57,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   async findByInternalId(
-    entityType: EntityType,
+    entityType: string,
     internalId: string,
   ): Promise<IdentifierMapping[]> {
     const entities = await this.repository.find({
@@ -117,7 +113,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   async findByEntityTypeAndConnection(
-    entityType: EntityType,
+    entityType: string,
     connectionId: string,
   ): Promise<IdentifierMapping[]> {
     const entities = await this.repository.find({
@@ -130,7 +126,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   async deleteByExternalKey(
-    entityType: EntityType,
+    entityType: string,
     platformType: string,
     connectionId: string,
     externalId: string,
@@ -144,12 +140,13 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   private toDomain(entity: IdentifierMappingOrmEntity): IdentifierMapping {
-    if (!(EntityTypeValues as readonly string[]).includes(entity.entityType)) {
-      throw new Error(`Invalid entityType in database: ${entity.entityType}`);
-    }
+    // No `entityType` validation here. Pre-#577 this method threw on values
+    // outside `EntityTypeValues`; with the boundary now widened to `string`,
+    // plugin-registered entity types (Refund, Fulfilment, Subscription, …)
+    // are legitimate ORM rows. The closed-set check would reject them.
     return new IdentifierMapping(
       entity.id,
-      entity.entityType as EntityType,
+      entity.entityType,
       entity.internalId,
       entity.externalId,
       entity.platformType,

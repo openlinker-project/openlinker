@@ -12,7 +12,6 @@ import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/
 import {
   AdapterMetadata,
   AdapterInstance,
-  Capability,
 } from '@openlinker/core/integrations/domain/types/adapter.types';
 
 export interface IIntegrationsService {
@@ -48,7 +47,7 @@ export interface IIntegrationsService {
    * @throws AdapterNotFoundException if adapter key not found in registry
    * @throws CapabilityNotSupportedException if adapter doesn't support the capability
    */
-  getCapabilityAdapter<T>(connectionId: string, capability: Capability): Promise<T>;
+  getCapabilityAdapter<T>(connectionId: string, capability: string): Promise<T>;
 
   /**
    * List all adapters supporting a capability
@@ -75,7 +74,7 @@ export interface IIntegrationsService {
   }): Promise<AdapterMetadata>;
 
   listCapabilityAdapters<T>(filters: {
-    capability: Capability;
+    capability: string;
     platformType?: string;
   }): Promise<
     Array<{

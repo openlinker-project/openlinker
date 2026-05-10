@@ -13,7 +13,6 @@
  * @see {@link IdentifierMappingService} for the implementation
  */
 import {
-  EntityType,
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
@@ -31,7 +30,7 @@ export interface IdentifierMappingQueryPort {
    * Returns null if mapping doesn't exist
    */
   getInternalId(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
   ): Promise<string | null>;
@@ -40,7 +39,7 @@ export interface IdentifierMappingQueryPort {
    * Get external identifier(s) for an internal ID
    * Returns all platform-specific external IDs mapped to this internal ID
    */
-  getExternalIds(entityType: EntityType, internalId: string): Promise<ExternalIdMapping[]>;
+  getExternalIds(entityType: string, internalId: string): Promise<ExternalIdMapping[]>;
 
   /**
    * List all external IDs for a given entity type and connection.
@@ -49,7 +48,7 @@ export interface IdentifierMappingQueryPort {
    * without calling the external platform API.
    */
   listExternalIdsByConnection(
-    entityType: EntityType,
+    entityType: string,
     connectionId: string,
   ): Promise<string[]>;
 }
@@ -64,7 +63,7 @@ export interface IdentifierMappingCommandPort {
    * internal ID and creates the mapping.
    */
   getOrCreateInternalId(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
     context?: MappingContext,
@@ -75,7 +74,7 @@ export interface IdentifierMappingCommandPort {
    * @throws Error if mapping already exists
    */
   createMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
     internalId: string,
@@ -96,7 +95,7 @@ export interface IdentifierMappingCommandPort {
    * @throws Error on conflict (external ID mapped to different internal ID)
    */
   getOrCreateExactMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     internalId: string,
     connectionId: string,
@@ -107,7 +106,7 @@ export interface IdentifierMappingCommandPort {
    * Delete mapping by external key (idempotent).
    */
   deleteMapping(
-    entityType: EntityType,
+    entityType: string,
     externalId: string,
     connectionId: string,
   ): Promise<void>;

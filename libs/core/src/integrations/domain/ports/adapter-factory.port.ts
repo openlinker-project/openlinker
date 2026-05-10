@@ -9,7 +9,6 @@
 import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from './credentials-resolver.port';
-import { Capability } from '../types/adapter.types';
 
 /**
  * Adapter Factory Port
@@ -29,7 +28,7 @@ export interface AdapterFactoryPort {
    */
   createCapabilityAdapter<T>(
     connection: Connection,
-    capability: Capability,
+    capability: string,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
   ): Promise<T>;

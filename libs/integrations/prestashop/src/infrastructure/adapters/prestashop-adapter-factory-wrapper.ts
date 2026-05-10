@@ -11,7 +11,6 @@
 import {
   AdapterFactoryPort,
   CredentialsResolverPort,
-  Capability,
   WebhookSecretProviderPort,
 } from '@openlinker/core/integrations';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -49,7 +48,7 @@ export class PrestashopAdapterFactoryWrapper implements AdapterFactoryPort {
 
   async createCapabilityAdapter<T>(
     connection: Connection,
-    capability: Capability,
+    capability: string,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
   ): Promise<T> {
