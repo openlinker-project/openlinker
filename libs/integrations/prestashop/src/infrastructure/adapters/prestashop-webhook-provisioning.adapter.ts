@@ -21,13 +21,6 @@
  * Failure-mode policy: accept-and-surface. Partial states return a `warning`
  * field so the FE can render operator-actionable text.
  *
- * Renamed from `PrestashopWebhookProvisioningService` (#583): the previous
- * service lived in `application/services/` with a PS-specific interface that
- * the API layer injected directly — preventing `apps/api` from booting
- * without PrestaShop. Moving to `infrastructure/adapters/` and implementing
- * the CORE port aligns with `engineering-standards.md` §"Naming Conventions"
- * (`{System}{Capability}Adapter` for adapters that implement ports).
- *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {WebhookProvisioningPort}
  */
@@ -77,10 +70,9 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     connectionId: string,
     actorUserId?: string,
   ): Promise<WebhookProvisioningResult> {
-    // Step 1 — validate connection config. The platformType check is gone:
-    // the registry only ever routes PS connections to this adapter, so the
-    // dead branch was just noise. `ConnectionService.installWebhooks` is the
-    // single layer that returns the unsupported-platform 400 now.
+    // Step 1 — validate connection config. Routing by adapterKey via the
+    // registry guarantees this adapter only sees PS connections; the
+    // unsupported-platform 400 lives in `ConnectionService.installWebhooks`.
     const connection = await this.connectionPort.get(connectionId);
     const config = connection.config as Partial<PrestashopConnectionConfig>;
     const callbackUrl = config.openlinkerCallbackBaseUrl;

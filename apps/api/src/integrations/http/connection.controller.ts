@@ -264,7 +264,8 @@ export class ConnectionController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<InstallWebhooksResponseDto> {
-    return this.connectionService.installWebhooks(id, user?.id);
+    const result = await this.connectionService.installWebhooks(id, user?.id);
+    return InstallWebhooksResponseDto.fromDomain(result);
   }
 
   @Roles('admin')

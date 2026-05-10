@@ -9,8 +9,25 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { WebhookProvisioningResult } from '@openlinker/core/integrations';
 
 export class InstallWebhooksResponseDto {
+  /**
+   * Build the HTTP response shape from the neutral core result.
+   * Mirrors `ConnectionTestResultDto.fromDomain` — keeps the domain → HTTP
+   * boundary explicit so a future field on `WebhookProvisioningResult`
+   * doesn't silently leak through structural typing.
+   */
+  static fromDomain(result: WebhookProvisioningResult): InstallWebhooksResponseDto {
+    const dto = new InstallWebhooksResponseDto();
+    dto.webhooksConfigured = result.webhooksConfigured;
+    dto.testPingTriggered = result.testPingTriggered;
+    if (result.warning !== undefined) {
+      dto.warning = result.warning;
+    }
+    return dto;
+  }
+
   @ApiProperty({
     description:
       'Whether OL has successfully pushed the webhook configuration to the ' +
