@@ -165,9 +165,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       await handler.execute(job);
 
-      // Both platforms produce enqueue calls — per-platform behaviour belongs
-      // in the downstream adapter via the OfferManagerPort capability resolver,
-      // not here. The handler is platform-agnostic.
+      // Per-platform capability narrowing happens downstream via
+      // `IntegrationsService.getCapabilityAdapter`, not here.
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({

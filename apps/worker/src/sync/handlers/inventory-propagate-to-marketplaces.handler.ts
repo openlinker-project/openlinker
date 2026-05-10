@@ -106,10 +106,12 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
 
       // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job.
       // Per-platform behaviour belongs in the adapter, not in this thin handler
-      // (#582). The downstream MarketplaceOfferQuantityUpdateHandler resolves
-      // `OfferManager` via `IntegrationsService.getCapabilityAdapter` and
-      // surfaces a missing-capability connection as a clean domain error, so a
-      // capability check at enqueue time would duplicate that policy.
+      // (#582). The downstream MarketplaceOfferQuantityUpdateHandler delegates
+      // to `InventorySyncService.updateOfferQuantity`
+      // (`libs/core/src/inventory/application/services/inventory-sync.service.ts:41-43`),
+      // which resolves `OfferManager` via `IntegrationsService.getCapabilityAdapter`
+      // and surfaces a missing-capability connection as a clean domain error —
+      // so a capability check at enqueue time would duplicate that policy.
       const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
       const enqueuePromises = mappings.map(async (mapping) => {
         // Include write-event token to avoid suppressing legitimate quantity oscillations (e.g. 5->6->5).
