@@ -64,3 +64,7 @@ export {
 // Module
 export { IntegrationsModule } from './integrations.module';
 
+// Plugin Registry
+export { PluginRegistryModule, PLUGIN_REGISTRY_OPTIONS_TOKEN } from './plugin-registry.module';
+export { PluginEntry, PluginRegistryOptions } from './plugin-registry.types';
+

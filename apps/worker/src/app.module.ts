@@ -11,12 +11,14 @@ import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
-import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
-import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
-import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
+import {
+  IntegrationsModule as CoreIntegrationsModule,
+  PluginRegistryModule,
+} from '@openlinker/core/integrations';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
+import { workerPlugins } from './plugins';
 import { SyncWorkerModule } from './sync/sync-worker.module';
 import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
 
@@ -30,8 +32,7 @@ import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
     RedisConfigModule,
     IdentifierMappingModule,
     CoreIntegrationsModule,
-    PrestashopIntegrationModule, // Register PrestaShop adapter factory
-    AllegroIntegrationModule, // Register Allegro adapter factory
+    PluginRegistryModule.forRoot({ plugins: workerPlugins }),
     ProductsModule,
     InventoryModule,
     SyncModule,
@@ -40,4 +41,3 @@ import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
   providers: [WorkerHeartbeatService],
 })
 export class AppModule {}
-
