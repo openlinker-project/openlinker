@@ -21,7 +21,7 @@ import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN } from '@openlinker/core/customers/customers.tokens';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { DataSource } from 'typeorm';
-import { normalizeEmail, hashEmail } from '@openlinker/shared/config';
+import { hashEmail } from '@openlinker/shared/config';
 
 describe('Allegro Masked Email Identity Integration', () => {
   let harness: WorkerIntegrationTestHarness;
@@ -102,9 +102,14 @@ describe('Allegro Masked Email Identity Integration', () => {
     // Verify both orders resolve to the same internal customer ID
     expect(internalCustomerId1).toBe(internalCustomerId2);
 
-    // Verify customer projections have normalized email
-    const normalizedEmail = normalizeEmail(maskedEmail1, 'allegro');
-    const expectedHash = hashEmail(normalizedEmail, 'allegro');
+    // The expected normalized form for an Allegro masked email — fixedPart
+    // before `+`, drop the volatile transactionId suffix. Inlined (rather
+    // than importing AllegroEmailNormalizerAdapter from the integrations
+    // package) so this int-spec asserts the *contract* the resolver
+    // dispatches to, independent of the adapter file path (#585).
+    const [localPart, domain] = maskedEmail1.toLowerCase().split('@');
+    const normalizedEmail = `${localPart.split('+')[0]}@${domain}`;
+    const expectedHash = hashEmail(normalizedEmail);
     const projections = await customerProjectionRepository.findByEmailHash(expectedHash);
 
     expect(projections.length).toBeGreaterThan(0);

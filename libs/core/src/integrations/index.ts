@@ -13,6 +13,7 @@ export { IIntegrationsService } from './application/interfaces/integrations.serv
 export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
+export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
@@ -20,6 +21,7 @@ export { CredentialsResolverPort } from './domain/ports/credentials-resolver.por
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.port';
+export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
 export {
   IntegrationCredentialRepositoryPort,
@@ -60,6 +62,7 @@ export {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+  EMAIL_NORMALIZER_REGISTRY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
