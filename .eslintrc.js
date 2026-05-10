@@ -200,6 +200,34 @@ module.exports = {
         'no-restricted-imports': 'off',
       },
     },
+    {
+      // Port, capability, and port-local type files form the public contract
+      // surface plugin adapters implement. They must import cross-context
+      // types via the top-level package barrel — never deep sub-paths — so
+      // plugin authors can model their imports on the contract without
+      // copying brittle internal paths. Importing from an integration
+      // package at all would invert the dependency direction (#592).
+      files: ['libs/core/src/**/domain/ports/**/*.{port,capability,types}.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '@openlinker/core/*/domain/**',
+                  '@openlinker/core/*/application/**',
+                  '@openlinker/core/*/infrastructure/**',
+                  '@openlinker/integrations-*/**',
+                ],
+                message:
+                  "Port and capability files must import cross-context types via the top-level package barrel — e.g. `import { Connection } from '@openlinker/core/identifier-mapping'` — never via deep sub-paths. Ports are the contract surface plugin authors implement; deep-path imports leak unstable internals, and integration-package imports invert the dependency direction.",
+              },
+            ],
+          },
+        ],
+      },
+    },
   ],
 };
 
