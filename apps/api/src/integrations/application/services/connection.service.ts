@@ -24,7 +24,7 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTestResult } from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTestResult, WebhookProvisioningRegistryService, WEBHOOK_PROVISIONING_REGISTRY_TOKEN, WebhookProvisioningResult } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -48,9 +48,36 @@ export class ConnectionService implements IConnectionService {
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
+    @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
+    private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
   ) {}
+
+  async installWebhooks(
+    connectionId: string,
+    actorUserId?: string,
+  ): Promise<WebhookProvisioningResult> {
+    // Resolve the connection's adapter and look up the matching webhook
+    // provisioner. Routing by adapterKey (mirrors `testConnection`) keeps the
+    // controller framework-pure and lets `apps/api` boot without
+    // PrestaShop-specific bindings (#583).
+    const connection = await this.get(connectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    const provisioner = this.webhookProvisioningRegistry.get(metadata.adapterKey);
+    if (!provisioner) {
+      throw new BadRequestException(
+        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`,
+      );
+    }
+    this.logger.log(
+      `Installing webhooks on connection ${connectionId} (adapter: ${metadata.adapterKey})`,
+    );
+    return provisioner.install(connectionId, actorUserId);
+  }
 
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
     // Disabled connections are intentionally still testable: operators use the

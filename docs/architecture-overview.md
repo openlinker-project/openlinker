@@ -206,9 +206,10 @@ The system is organized into the following core bounded contexts:
 - **Architecture**: Core infrastructure service used by all adapters
 
 ### 10. Plugin Manager / Integrations
-- **Responsibility**: Adapter registry, per-connection adapter resolution, capability validation
-- **Key Services**: IntegrationsService, AdapterRegistryService, ConnectionService
-- **Location**: `apps/api/src/integrations/` (API layer), `libs/core/src/integrations/` (core domain)
+- **Responsibility**: Adapter registry, per-connection adapter resolution, capability validation, registries for cross-cutting per-adapter capabilities (connection-test, webhook provisioning).
+- **Key Services**: IntegrationsService, AdapterRegistryService, ConnectionService, ConnectionTesterRegistryService, WebhookProvisioningRegistryService.
+- **Location**: `apps/api/src/integrations/` (API layer), `libs/core/src/integrations/` (core domain).
+- **Webhook provisioning (#583)**: `WebhookProvisioningPort` defines `install(connectionId, actorUserId?)` returning a neutral `WebhookProvisioningResult` (`webhooksConfigured`, `testPingTriggered`, optional `warning`). Each integration package self-registers its adapter against `WebhookProvisioningRegistryService` in `onModuleInit` (today only `PrestashopWebhookProvisioningAdapter` at `prestashop.webservice.v1`). `ConnectionService.installWebhooks` is the single dispatch layer: it resolves the connection's adapter via `IntegrationsService.resolveAdapterMetadata`, looks the provisioner up by `adapterKey`, and returns 400 if no provisioner is registered. `ConnectionController.installWebhooks` is a thin pass-through — the API package boots without any PrestaShop-specific binding, which keeps Modularity Thread E HIGH closed.
 
 ### 11. Logging & Monitoring
 - **Responsibility**: Structured logging, metrics, tracing

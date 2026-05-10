@@ -67,7 +67,7 @@ const WS_RESOURCES = [
   'languages',
   'countries',
   'states',
-  // Used by PrestashopWebhookProvisioningService to write OPENLINKER_*
+  // Used by PrestashopWebhookProvisioningAdapter to write OPENLINKER_*
   // rows (#168 / #541). Carrier-mapping smoke spec doesn't touch this
   // resource, so adding it here is purely additive.
   'configurations',

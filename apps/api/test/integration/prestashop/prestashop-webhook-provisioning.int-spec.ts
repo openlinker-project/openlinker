@@ -2,7 +2,7 @@
  * PrestaShop Webhook Provisioning — Integration Test (#541)
  *
  * End-to-end guard for the install-webhooks flow: routes through the public
- * `PrestashopWebhookProvisioningService.install()` method against a real
+ * `PrestashopWebhookProvisioningAdapter.install()` method against a real
  * PrestaShop 9.0.2 instance (booted via the #506 Phase 1 Testcontainer
  * harness) with stubbed ports for connection / secret-rotation / credentials
  * resolution.
@@ -27,7 +27,7 @@ import type {
   CredentialsResolverPort,
   IWebhookSecretService,
 } from '@openlinker/core/integrations';
-import { PrestashopWebhookProvisioningService } from '@openlinker/integrations-prestashop';
+import { PrestashopWebhookProvisioningAdapter } from '@openlinker/integrations-prestashop';
 import {
   PrestashopTestContainer,
   startPrestashopContainer,
@@ -74,7 +74,7 @@ async function fetchConfigurationByName(
 
 describe('PrestaShop webhook provisioning — install() against real PS (#541)', () => {
   let container: PrestashopTestContainer;
-  let service: PrestashopWebhookProvisioningService;
+  let service: PrestashopWebhookProvisioningAdapter;
 
   // Stub state — a fresh secret is generated per `install()` call so we can
   // assert the second call rotated it. `connectionPort.update` captures the
@@ -140,7 +140,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
       }),
     } as unknown as jest.Mocked<CredentialsResolverPort>;
 
-    service = new PrestashopWebhookProvisioningService(
+    service = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
       credentialsResolver,
