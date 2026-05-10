@@ -7,8 +7,19 @@
  * @module libs/core/src/customers/application/services
  */
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Provider } from '@nestjs/common';
 import { CustomerIdentityResolverService } from './customer-identity-resolver.service';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  IdentifierMappingPort,
+} from '@openlinker/core/identifier-mapping';
+import {
+  EmailNormalizerRegistryService,
+  EMAIL_NORMALIZER_REGISTRY_TOKEN,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
 import { CustomerIdentityResolutionRequest } from '../../domain/types/customer-identity.types';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
@@ -16,16 +27,33 @@ import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mappi
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN, CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../../customers.tokens';
 import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
 import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
-import { normalizeEmail, hashEmail } from '@openlinker/shared/config';
+import { hashEmail } from '@openlinker/shared/config';
 
 describe('CustomerIdentityResolverService', () => {
   let service: CustomerIdentityResolverService;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let projectionRepository: jest.Mocked<CustomerProjectionRepositoryPort>;
   let customerProjectionService: jest.Mocked<ICustomerProjectionService>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
+  let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'resolveAdapterMetadata'>>;
+  let emailNormalizerRegistry: EmailNormalizerRegistryService;
 
   const originalEnv = process.env.OL_CUSTOMER_IDENTITY_MODE;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
+
+  // The adapterKey the IIntegrationsService mock returns for every
+  // resolution — varied per-test when a specific platform is needed.
+  let resolvedAdapterKey = 'test.adapter.v1';
+
+  const buildProviders = (): Provider[] => [
+    CustomerIdentityResolverService,
+    { provide: IDENTIFIER_MAPPING_PORT_TOKEN, useValue: identifierMapping },
+    { provide: CUSTOMER_PROJECTION_REPOSITORY_TOKEN, useValue: projectionRepository },
+    { provide: CUSTOMER_PROJECTION_SERVICE_TOKEN, useValue: customerProjectionService },
+    { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
+    { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
+    { provide: EMAIL_NORMALIZER_REGISTRY_TOKEN, useValue: emailNormalizerRegistry },
+  ];
 
   beforeEach(async () => {
     // Set required environment variable for PII config
@@ -56,22 +84,37 @@ describe('CustomerIdentityResolverService', () => {
       upsertDestinationAddressMapping: jest.fn(),
     } as unknown as jest.Mocked<ICustomerProjectionService>;
 
+    connectionPort = {
+      get: jest.fn().mockResolvedValue({
+        id: 'connection-123',
+        platformType: 'allegro',
+        adapterKey: undefined,
+      }),
+      list: jest.fn(),
+      save: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    } as unknown as jest.Mocked<ConnectionPort>;
+
+    resolvedAdapterKey = 'test.adapter.v1';
+    integrationsService = {
+      resolveAdapterMetadata: jest.fn().mockImplementation(() =>
+        Promise.resolve({
+          adapterKey: resolvedAdapterKey,
+          platformType: 'allegro',
+          supportedCapabilities: [],
+          displayName: 'Test Adapter',
+          version: '1.0.0',
+        }),
+      ),
+    };
+
+    // Real registry — small enough to instantiate directly; per-test setup
+    // registers (or doesn't register) a normalizer to drive each branch.
+    emailNormalizerRegistry = new EmailNormalizerRegistryService();
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CustomerIdentityResolverService,
-        {
-          provide: IDENTIFIER_MAPPING_PORT_TOKEN,
-          useValue: identifierMapping,
-        },
-        {
-          provide: CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
-          useValue: projectionRepository,
-        },
-        {
-          provide: CUSTOMER_PROJECTION_SERVICE_TOKEN,
-          useValue: customerProjectionService,
-        },
-      ],
+      providers: buildProviders(),
     }).compile();
 
     service = module.get<CustomerIdentityResolverService>(CustomerIdentityResolverService);
@@ -96,21 +139,7 @@ describe('CustomerIdentityResolverService', () => {
       process.env.OL_CUSTOMER_IDENTITY_MODE = 'external_only';
       // Recreate module to pick up new env var
       const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          CustomerIdentityResolverService,
-          {
-            provide: IDENTIFIER_MAPPING_PORT_TOKEN,
-            useValue: identifierMapping,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
-            useValue: projectionRepository,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_SERVICE_TOKEN,
-            useValue: customerProjectionService,
-          },
-        ],
+        providers: buildProviders(),
       }).compile();
       service = module.get<CustomerIdentityResolverService>(CustomerIdentityResolverService);
     });
@@ -166,21 +195,7 @@ describe('CustomerIdentityResolverService', () => {
       process.env.OL_CUSTOMER_IDENTITY_MODE = 'email_fallback';
       // Recreate module to pick up new env var
       const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          CustomerIdentityResolverService,
-          {
-            provide: IDENTIFIER_MAPPING_PORT_TOKEN,
-            useValue: identifierMapping,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
-            useValue: projectionRepository,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_SERVICE_TOKEN,
-            useValue: customerProjectionService,
-          },
-        ],
+        providers: buildProviders(),
       }).compile();
       service = module.get<CustomerIdentityResolverService>(CustomerIdentityResolverService);
     });
@@ -341,31 +356,32 @@ describe('CustomerIdentityResolverService', () => {
     });
   });
 
-  describe('Allegro masked email normalization', () => {
+  describe('Email normalization dispatch (#585 / E5)', () => {
     beforeEach(async () => {
       process.env.OL_CUSTOMER_IDENTITY_MODE = 'email_fallback';
       // Recreate module to pick up new env var
       const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          CustomerIdentityResolverService,
-          {
-            provide: IDENTIFIER_MAPPING_PORT_TOKEN,
-            useValue: identifierMapping,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
-            useValue: projectionRepository,
-          },
-          {
-            provide: CUSTOMER_PROJECTION_SERVICE_TOKEN,
-            useValue: customerProjectionService,
-          },
-        ],
+        providers: buildProviders(),
       }).compile();
       service = module.get<CustomerIdentityResolverService>(CustomerIdentityResolverService);
     });
 
-    it('should normalize Allegro masked email before hashing', async () => {
+    it('should apply the Allegro-registered normalizer to strip +transactionId before hashing', async () => {
+      // Wire the source connection's adapterKey to 'allegro.publicapi.v1'
+      // and register a stub normalizer with the same strip-on-allegromail
+      // contract the real AllegroEmailNormalizerAdapter implements. The
+      // assertion is that the resolver *dispatches through the registry*
+      // — that proves CORE no longer hardcodes the platform.
+      resolvedAdapterKey = 'allegro.publicapi.v1';
+      emailNormalizerRegistry.register('allegro.publicapi.v1', {
+        normalize: (email: string) => {
+          const trimmed = email.trim().toLowerCase();
+          if (!trimmed.includes('@allegromail.')) return trimmed;
+          const [local, domain] = trimmed.split('@');
+          return local.includes('+') ? `${local.split('+')[0]}@${domain}` : trimmed;
+        },
+      });
+
       const request: CustomerIdentityResolutionRequest = {
         externalBuyerId: 'allegro-buyer-123',
         email: '8awgqyk6a5+cub31c122@allegromail.pl',
@@ -373,20 +389,46 @@ describe('CustomerIdentityResolverService', () => {
       };
 
       identifierMapping.getInternalId.mockResolvedValue(null);
-      // Email should be normalized to 8awgqyk6a5@allegromail.pl before hashing
       projectionRepository.findByEmailHash.mockResolvedValue([]);
       identifierMapping.getOrCreateInternalId.mockResolvedValue('internal-customer-new');
 
-      // Compute expected hash using imported utilities
-      const normalizedEmail = normalizeEmail('8awgqyk6a5+cub31c122@allegromail.pl', 'allegro');
-      const expectedHash = hashEmail(normalizedEmail, 'allegro');
+      // Expected hash = hash of the *normalized* (stripped) email.
+      const expectedHash = hashEmail('8awgqyk6a5@allegromail.pl');
 
       await service.resolveCustomerIdentity(request);
 
-      // Verify that findByEmailHash was called with normalized email hash
       expect(projectionRepository.findByEmailHash).toHaveBeenCalledWith(expectedHash);
-      // Verify normalized email is 8awgqyk6a5@allegromail.pl (without +cub31c122)
-      expect(normalizedEmail).toBe('8awgqyk6a5@allegromail.pl');
+      expect(integrationsService.resolveAdapterMetadata).toHaveBeenCalledWith({
+        platformType: 'allegro',
+        adapterKey: undefined,
+      });
+    });
+
+    it('should fall back to the baseline normalizer when no per-adapter normalizer is registered', async () => {
+      // This is the load-bearing test for the modularity fix: when no
+      // platform-specific normalizer is registered for the resolved
+      // adapterKey, the resolver must apply only the shared trim+lowercase
+      // baseline — masked emails go through unchanged, which proves CORE
+      // is platform-clean.
+      resolvedAdapterKey = 'unregistered.adapter.v1';
+      // (no registry.register() call — registry is empty)
+
+      const request: CustomerIdentityResolutionRequest = {
+        externalBuyerId: 'allegro-buyer-123',
+        email: '8awgqyk6a5+cub31c122@allegromail.pl',
+        sourceConnectionId: 'connection-123',
+      };
+
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      projectionRepository.findByEmailHash.mockResolvedValue([]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('internal-customer-new');
+
+      // Expected hash = hash of the *un-stripped* email (+transactionId kept).
+      const expectedHash = hashEmail('8awgqyk6a5+cub31c122@allegromail.pl');
+
+      await service.resolveCustomerIdentity(request);
+
+      expect(projectionRepository.findByEmailHash).toHaveBeenCalledWith(expectedHash);
     });
 
     it('should handle empty email gracefully', async () => {

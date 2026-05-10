@@ -2,8 +2,16 @@
  * PII Hashing Utilities
  *
  * Provides utilities for hashing PII (Personally Identifiable Information) data
- * using SHA-256 with organization-level salt. Includes email normalization with
- * special handling for Allegro masked emails.
+ * using SHA-256 with organization-level salt. Email normalization is the
+ * platform-agnostic trim+lowercase baseline; platform-specific identity
+ * rules (e.g. Allegro `fixedPart+transactionId@allegromail.*`) live behind
+ * `EmailNormalizerPort` in `libs/core/src/integrations` and are dispatched
+ * by `EmailNormalizerRegistryService` (#585 / E5).
+ *
+ * NOTE: `normalizeEmail` / `hashEmail` keep an ignored `_source?: string`
+ * parameter as a back-compat shim for pre-#585 callers. Drop the param in
+ * a future minor once peerDep consumers have migrated (gated on #596 —
+ * semver discipline for `@openlinker/shared`).
  *
  * @module libs/shared/src/config
  */
@@ -12,55 +20,49 @@ import { createHash } from 'crypto';
 import { getPiiConfig } from './pii-config';
 
 /**
- * Normalize email address for hashing
+ * Normalize email address for hashing.
  *
- * Normalizes email by trimming whitespace and converting to lowercase.
- * For Allegro masked emails (domain `@allegromail.*`), strips anything after
- * `+` in the local part to use the stable buyer identifier.
+ * Trims whitespace and converts to lowercase — the platform-agnostic
+ * baseline used by every call site that does not need marketplace-specific
+ * rules. Idempotent: `normalizeEmail(normalizeEmail(x)) === normalizeEmail(x)`.
  *
- * Example:
- * - `8awgqyk6a5+cub31c122@allegromail.pl` → `8awgqyk6a5@allegromail.pl`
- * - `Customer@Example.com` → `customer@example.com`
+ * Marketplace-specific normalization (e.g. Allegro masked emails) is
+ * provided by per-adapter `EmailNormalizerPort` implementations registered
+ * in `EmailNormalizerRegistryService` — call those upstream and pass the
+ * result here.
  *
  * @param email - Email address to normalize
- * @param _source - Optional source identifier (e.g., 'allegro') for source-specific normalization (reserved for future use)
- * @returns Normalized email address
+ * @param _source - Deprecated. Kept as an ignored no-op for back-compat
+ *   with callers from before #585; new code should not pass it.
+ *   Will be removed in a future minor.
+ * @returns Normalized email address (trim+lowercase)
+ * @deprecated The `_source` parameter is ignored. Use
+ *   `EmailNormalizerPort` for source-specific normalization.
  */
 export function normalizeEmail(email: string, _source?: string): string {
   if (!email) {
     return '';
   }
-
-  // Trim and lowercase
-  let normalized = email.trim().toLowerCase();
-
-  // Handle Allegro masked emails: strip transaction identifier after '+'
-  // Allegro masked emails have format: fixedPart+transactionId@allegromail.*
-  // The fixed part is stable per buyer, transaction ID changes per order
-  if (normalized.includes('@allegromail.')) {
-    const [localPart, domain] = normalized.split('@');
-    if (localPart && localPart.includes('+')) {
-      // Strip everything after '+' in local part
-      const stablePart = localPart.split('+')[0];
-      normalized = `${stablePart}@${domain}`;
-    }
-  }
-
-  return normalized;
+  return email.trim().toLowerCase();
 }
 
 /**
- * Hash email address using SHA-256 with organization-level salt
+ * Hash an already-normalized email using SHA-256 with the org-level salt.
  *
- * Normalizes email first (handles Allegro masked emails), then hashes with salt.
- * Hash is deterministic per organization (same email + same salt = same hash).
+ * Re-applies the baseline `normalizeEmail` for safety — idempotent on
+ * already-normalized input. Marketplace-specific normalization (e.g.
+ * Allegro `+transactionId` stripping) must be applied **before** calling
+ * this function, via `EmailNormalizerPort`.
  *
  * @param email - Email address to hash
- * @param source - Optional source identifier for source-specific normalization
+ * @param _source - Deprecated. Ignored no-op for back-compat with
+ *   pre-#585 callers; new code should not pass it.
  * @returns SHA-256 hash of normalized email + salt (hex string)
+ * @deprecated The `_source` parameter is ignored. Use
+ *   `EmailNormalizerPort` for source-specific normalization upstream.
  */
-export function hashEmail(email: string, source?: string): string {
-  const normalized = normalizeEmail(email, source);
+export function hashEmail(email: string, _source?: string): string {
+  const normalized = normalizeEmail(email);
   const config = getPiiConfig();
 
   const hash = createHash('sha256');

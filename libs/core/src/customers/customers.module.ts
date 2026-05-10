@@ -24,6 +24,7 @@ import {
   ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from './customers.tokens';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { IntegrationsModule } from '@openlinker/core/integrations';
 
 @Module({
   imports: [
@@ -33,6 +34,10 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
       DestinationAddressMappingOrmEntity,
     ]),
     IdentifierMappingModule,
+    // For EMAIL_NORMALIZER_REGISTRY_TOKEN + INTEGRATIONS_SERVICE_TOKEN
+    // used by CustomerIdentityResolverService to dispatch email
+    // normalization per source-adapter (#585 / E5).
+    IntegrationsModule,
   ],
   providers: [
     // Provide classes directly first

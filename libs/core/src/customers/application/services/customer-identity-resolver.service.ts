@@ -18,9 +18,20 @@ import {
   CustomerIdentityResolutionResult,
   CustomerIdentityMode,
 } from '../../domain/types/customer-identity.types';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import {
+  IdentifierMappingPort,
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  EmailNormalizerPort,
+  EmailNormalizerRegistryService,
+  EMAIL_NORMALIZER_REGISTRY_TOKEN,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
-import { hashEmail, normalizeEmail, getEnv, getPiiConfig } from '@openlinker/shared/config';
+import { hashEmail, getEnv, getPiiConfig } from '@openlinker/shared/config';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN, CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../../customers.tokens';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
@@ -38,6 +49,12 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     private readonly projectionRepository: CustomerProjectionRepositoryPort,
     @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
     private readonly customerProjectionService: ICustomerProjectionService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
+    private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
   ) {
     // Read identity mode from environment (default: email_fallback)
     const modeValue = getEnv('OL_CUSTOMER_IDENTITY_MODE', 'email_fallback');
@@ -74,6 +91,17 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
   ): Promise<CustomerIdentityResolutionResult> {
     const { externalBuyerId, email, sourceConnectionId } = request;
 
+    // Resolve the per-platform email normalizer once up-front and thread
+    // it through the rest of the call — keeps the hot order-ingestion
+    // path to a single `connectionPort.get` + `resolveAdapterMetadata`
+    // round-trip even when both the primary external-mapping branch and
+    // the email-fallback branch ultimately upsert a projection.
+    // Skip the lookup entirely when `email` is empty (the normalizer is
+    // unused on that path).
+    const normalizer = email
+      ? await this.resolveEmailNormalizer(sourceConnectionId)
+      : null;
+
     // Primary: Try external buyer ID mapping
     const existingMapping = await this.identifierMapping.getInternalId(
       'Customer',
@@ -85,12 +113,12 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       this.logger.debug(
         `Resolved customer identity via external mapping: ${externalBuyerId} → ${existingMapping}`,
       );
-      
+
       // Update customer projection with email if available
-      if (email) {
-        await this.upsertCustomerProjection(existingMapping, email, sourceConnectionId);
+      if (email && normalizer) {
+        await this.upsertCustomerProjection(existingMapping, email, sourceConnectionId, normalizer);
       }
-      
+
       return {
         internalCustomerId: existingMapping,
         usedEmailFallback: false,
@@ -100,7 +128,14 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
     // Fallback: Email hash lookup (if enabled)
     if (this.identityMode === 'email_fallback') {
-      return this.resolveViaEmailFallback(externalBuyerId, email, sourceConnectionId);
+      return this.resolveViaEmailFallback(
+        externalBuyerId,
+        email,
+        sourceConnectionId,
+        // Email is always meaningful in the fallback path; ensure the
+        // baseline normalizer is used when caller passed an empty string.
+        normalizer ?? (await this.resolveEmailNormalizer(sourceConnectionId)),
+      );
     }
 
     // External-only mode: Create new internal customer
@@ -115,8 +150,8 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     );
 
     // Create customer projection with email if available
-    if (email) {
-      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId);
+    if (email && normalizer) {
+      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
     }
 
     return {
@@ -130,10 +165,14 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     externalBuyerId: string,
     email: string,
     sourceConnectionId: string,
+    normalizer: EmailNormalizerPort,
   ): Promise<CustomerIdentityResolutionResult> {
-    // Normalize and hash email (handles Allegro masked emails)
-    const normalizedEmail = normalizeEmail(email, 'allegro');
-    const emailHash = hashEmail(normalizedEmail, 'allegro');
+    // Normalize and hash email — per-platform rules (e.g. Allegro's
+    // `+transactionId` masked-email suffix) come from the source
+    // connection's registered EmailNormalizerPort, not from a hardcoded
+    // platform literal in core (#585 / E5).
+    const normalizedEmail = normalizer.normalize(email);
+    const emailHash = hashEmail(normalizedEmail);
 
     // Query projections by emailHash
     const matchingProjections = await this.projectionRepository.findByEmailHash(emailHash);
@@ -151,7 +190,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       );
 
       // Create customer projection with email
-      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId);
+      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
 
       return {
         internalCustomerId: newInternalId,
@@ -177,7 +216,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         );
 
         // Update customer projection with email
-        await this.upsertCustomerProjection(existingInternalId, email, sourceConnectionId);
+        await this.upsertCustomerProjection(existingInternalId, email, sourceConnectionId, normalizer);
 
         return {
           internalCustomerId: existingInternalId,
@@ -194,7 +233,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
         if (mapping) {
           // Update customer projection with email
-          await this.upsertCustomerProjection(mapping, email, sourceConnectionId);
+          await this.upsertCustomerProjection(mapping, email, sourceConnectionId, normalizer);
           
           return {
             internalCustomerId: mapping,
@@ -222,7 +261,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     );
 
     // Create customer projection with email (even in collision case)
-    await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId);
+    await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
 
     return {
       internalCustomerId: newInternalId,
@@ -241,10 +280,11 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     internalCustomerId: string,
     email: string,
     sourceConnectionId: string,
+    normalizer: EmailNormalizerPort,
   ): Promise<void> {
     try {
-      const normalizedEmail = normalizeEmail(email, 'allegro');
-      const emailHash = hashEmail(normalizedEmail, 'allegro');
+      const normalizedEmail = normalizer.normalize(email);
+      const emailHash = hashEmail(normalizedEmail);
       const piiConfig = getPiiConfig();
       const now = new Date();
 
@@ -268,5 +308,27 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         error,
       );
     }
+  }
+
+  /**
+   * Look up the `EmailNormalizerPort` registered for the source
+   * connection's adapter, falling back to the trim+lowercase baseline
+   * when no platform-specific normalizer is registered.
+   *
+   * Uses `ConnectionPort.get` + `IntegrationsService.resolveAdapterMetadata`
+   * — the same canonical dispatch path `ConnectionService.installWebhooks`
+   * uses (#583). Unlike `IntegrationsService.getAdapter`, this path does
+   * not throw on disabled connections, so customers from a now-disabled
+   * connection still resolve correctly.
+   */
+  private async resolveEmailNormalizer(
+    sourceConnectionId: string,
+  ): Promise<EmailNormalizerPort> {
+    const connection = await this.connectionPort.get(sourceConnectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    return this.emailNormalizerRegistry.resolve(metadata.adapterKey);
   }
 }

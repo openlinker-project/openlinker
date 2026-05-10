@@ -18,10 +18,13 @@ import {
   AdapterRegistryPort,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   ConnectionTesterRegistryService,
+  EMAIL_NORMALIZER_REGISTRY_TOKEN,
+  EmailNormalizerRegistryService,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   IntegrationCredentialRepositoryPort,
 } from '@openlinker/core/integrations';
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
+import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';
@@ -80,6 +83,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly factoryResolver: AdapterFactoryResolverService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
+    @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
+    private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN)
     private readonly customerIdentityResolver: CustomerIdentityResolverPort,
     @Optional()
@@ -129,6 +134,15 @@ export class AllegroIntegrationModule implements OnModuleInit {
     this.connectionTesterRegistry.register(
       'allegro.publicapi.v1',
       new AllegroConnectionTesterAdapter(),
+    );
+    // Email normalizer — strips Allegro's masked-email `+transactionId`
+    // suffix so customer-identity emailHash dedup remains stable across
+    // orders from the same buyer (#585 / E5). Previously hardcoded inside
+    // `@openlinker/shared/config::normalizeEmail`; now dispatched via the
+    // EmailNormalizerRegistry like the sister cross-cutting registries.
+    this.emailNormalizerRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroEmailNormalizerAdapter(),
     );
     this.logger.log('Allegro adapter registered successfully');
   }
