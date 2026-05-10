@@ -16,12 +16,14 @@ import {
   VercelAiCompletionAdapter,
   type VercelGenerateTextFn,
 } from './vercel-ai-completion.adapter';
-import { AiRateLimitError } from '@openlinker/core/ai/domain/exceptions/ai-rate-limit.exception';
-import { AiTimeoutError } from '@openlinker/core/ai/domain/exceptions/ai-timeout.exception';
-import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
-import { AiInvalidResponseError } from '@openlinker/core/ai/domain/exceptions/ai-invalid-response.exception';
-import { AiProviderKeyMissingError } from '@openlinker/core/ai/domain/exceptions/ai-provider-key-missing.exception';
-import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
+import {
+  AiCompletionError,
+  AiInvalidResponseError,
+  AiProviderKeyMissingError,
+  AiRateLimitError,
+  AiTimeoutError,
+} from '@openlinker/core/ai';
+import type { AiProviderCredentialsPort } from '@openlinker/core/ai';
 
 const buildCredentialsPort = (apiKey = 'test-api-key'): jest.Mocked<AiProviderCredentialsPort> => ({
   getApiKey: jest.fn().mockResolvedValue(apiKey),
