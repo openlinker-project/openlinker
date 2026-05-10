@@ -63,6 +63,12 @@ export {
   ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN,
 } from './domain/types/allegro-safety-attachments.types';
 
+// Adapters (exposed for test-wiring scenarios — production wiring goes
+// through `AllegroIntegrationModule.onModuleInit` registration, not this
+// barrel. The runner spec imports the retry classifier here to register
+// it against a real registry without going through the full Nest module.)
+export { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+
 // Module
 export { AllegroIntegrationModule } from './allegro-integration.module';
 

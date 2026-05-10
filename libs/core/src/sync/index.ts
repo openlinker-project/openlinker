@@ -12,6 +12,7 @@ export { JobEnqueuePort } from './domain/ports/job-enqueue.port';
 export { SyncJobRepositoryPort } from './domain/ports/sync-job-repository.port';
 export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
 export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
+export { RetryClassifierPort } from './domain/ports/retry-classifier.port';
 export { SyncJobQueuePort, EnqueueJobRequest, EnqueueJobOptions } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 
@@ -73,6 +74,7 @@ export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.err
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
@@ -88,6 +90,7 @@ export {
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)

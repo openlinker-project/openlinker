@@ -16,6 +16,7 @@ export const SYNC_JOB_QUEUE_TOKEN = Symbol('SyncJobQueuePort');
 export const SYNC_LOCK_TOKEN = Symbol('SyncLockPort');
 export const SYNC_JOB_RETRY_SERVICE_TOKEN = Symbol('SyncJobRetryServicePort');
 export const SYNC_JOB_BULK_RETRY_SERVICE_TOKEN = Symbol('SyncJobBulkRetryServicePort');
+export const RETRY_CLASSIFIER_REGISTRY_TOKEN = Symbol('RetryClassifierRegistryService');
 
 
 

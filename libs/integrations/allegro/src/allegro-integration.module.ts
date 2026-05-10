@@ -23,8 +23,17 @@ import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   IntegrationCredentialRepositoryPort,
 } from '@openlinker/core/integrations';
+// New cross-package import (#581): the retry-classifier registry lives in
+// `@openlinker/core/sync` (the runner's package). Architecturally fine —
+// integrations may depend on core — and mirrors how this module already
+// depends on `@openlinker/core/integrations`.
+import {
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  RetryClassifierRegistryService,
+} from '@openlinker/core/sync';
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
+import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';
@@ -85,6 +94,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
     @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
     private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
+    @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN)
     private readonly customerIdentityResolver: CustomerIdentityResolverPort,
     @Optional()
@@ -107,7 +118,9 @@ export class AllegroIntegrationModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.logger.log('Registering Allegro adapter (metadata + factory + tester)...');
+    this.logger.log(
+      'Registering Allegro adapter (metadata + factory + tester + email normalizer + retry classifier)...',
+    );
     // Register metadata first — what this adapter is and what it can do.
     // Mirrors the inline literal previously hardcoded in core's
     // AdapterRegistryService (#570). isDefault: true means
@@ -143,6 +156,15 @@ export class AllegroIntegrationModule implements OnModuleInit {
     this.emailNormalizerRegistry.register(
       'allegro.publicapi.v1',
       new AllegroEmailNormalizerAdapter(),
+    );
+    // Retry classifier — replaces the runner's hardcoded `instanceof
+    // AllegroApiException` / `AllegroAuthenticationException` sniffing
+    // (#581). The classifier owns Allegro's exception hierarchy; the
+    // runner asks the registry "is this non-retryable?" without importing
+    // platform-specific classes.
+    this.retryClassifierRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroRetryClassifierAdapter(),
     );
     this.logger.log('Allegro adapter registered successfully');
   }
