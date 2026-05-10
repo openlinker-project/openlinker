@@ -135,7 +135,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
-    it('should filter to only Allegro mappings', async () => {
+    it('should enqueue jobs for every offer mapping regardless of platform (#582)', async () => {
       const job = createJob({ productId: 'product-id' });
       const inventory = new InventoryItemEntity(
         'inventory-id',
@@ -151,27 +151,33 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         {
           entityType: 'Offer',
           platformType: 'allegro',
-          connectionId: 'connection-id',
-          externalId: 'offer-id',
+          connectionId: 'allegro-connection',
+          externalId: 'allegro-offer',
         },
         {
           entityType: 'Offer',
           platformType: 'amazon',
-          connectionId: 'connection-id',
-          externalId: 'offer-id',
+          connectionId: 'amazon-connection',
+          externalId: 'amazon-offer',
         },
       ]);
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
 
       await handler.execute(job);
 
-      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+      // Per-platform capability narrowing happens downstream via
+      // `IntegrationsService.getCapabilityAdapter`, not here.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          connectionId: 'connection-id',
-          payload: expect.objectContaining({
-            offerId: 'offer-id',
-          }),
+          connectionId: 'allegro-connection',
+          payload: expect.objectContaining({ offerId: 'allegro-offer' }),
+        }),
+      );
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'amazon-connection',
+          payload: expect.objectContaining({ offerId: 'amazon-offer' }),
         }),
       );
     });
@@ -294,7 +300,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       await expect(handler.execute(job)).rejects.toThrow(SyncJobExecutionError);
     });
 
-    it('should handle multiple mappings', async () => {
+    it('should handle multiple mappings across mixed platforms', async () => {
       const job = createJob({ productId: 'product-id' });
       const inventory = new InventoryItemEntity(
         'inventory-id',
@@ -307,6 +313,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
+      // Mix platforms across connections so the multi-mapping path explicitly
+      // exercises the capability-agnostic loop, not just multiple Allegro
+      // connections (#582).
       identifierMapping.getExternalIds.mockResolvedValue([
         {
           entityType: 'Offer',
@@ -316,7 +325,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         },
         {
           entityType: 'Offer',
-          platformType: 'allegro',
+          platformType: 'shopify',
           connectionId: 'connection-2',
           externalId: 'offer-2',
         },

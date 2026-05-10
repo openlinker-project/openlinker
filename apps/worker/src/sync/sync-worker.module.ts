@@ -14,7 +14,6 @@ import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ListingsModule } from '@openlinker/core/listings/services';
-import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
@@ -42,13 +41,6 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
-    // Localised exception to the `PluginRegistryModule` rewire (#572): the
-    // worker still reaches directly for `ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN`,
-    // and Nest only forwards exported providers to direct importers — not
-    // transitively through the parent app module's plugin composition. Cleanup
-    // is owned by Thread E (#581 / #582 / #583), which unwinds the
-    // platform-specific token coupling.
-    AllegroIntegrationModule,
   ],
   providers: [
     JobIntakeConsumer,

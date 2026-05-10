@@ -10,15 +10,14 @@
  *
  * @module libs/integrations/ai/infrastructure/adapters
  */
-import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
+import { AiCompletionError, DuplicateAiProviderError } from '@openlinker/core/ai';
 import type {
   AiCompletionInput,
+  AiCompletionPort,
   AiCompletionResult,
   AiProvider,
-} from '@openlinker/core/ai/domain/types/ai-completion.types';
-import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
-import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
-import { DuplicateAiProviderError } from '@openlinker/core/ai/domain/exceptions/duplicate-ai-provider.exception';
+  IAiProviderActiveSettingsService,
+} from '@openlinker/core/ai';
 import { MultiProviderAiCompletionAdapter } from './multi-provider-ai-completion.adapter';
 
 const buildResult = (text: string): AiCompletionResult => ({

@@ -12,12 +12,14 @@ export { IntegrationsService } from './application/services/integrations.service
 export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
 export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
+export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
 export { CredentialsResolverPort } from './domain/ports/credentials-resolver.port';
 export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
+export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.port';
 export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
 export {
   IntegrationCredentialRepositoryPort,
@@ -33,6 +35,7 @@ export {
   AdapterInstance,
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
+export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
 export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
 
 // Exceptions
@@ -56,6 +59,7 @@ export {
   CREDENTIALS_RESOLVER_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,

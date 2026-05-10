@@ -1,8 +1,13 @@
 /**
- * PrestaShop Webhook Provisioning Service — Unit Tests
+ * PrestaShop Webhook Provisioning Adapter — Unit Tests
  *
- * Covers the orchestrator's branches: happy path, missing/invalid callback URL,
- * non-PrestaShop platform, WS push failure, state-update failure, ping failure.
+ * Covers the orchestrator's branches: happy path, missing/invalid callback
+ * URL, missing baseUrl, WS push failure, state-update failure, ping failure.
+ *
+ * The non-PrestaShop platform branch was removed from the adapter (#583):
+ * the registry only ever routes PS connections to this adapter, and
+ * `ConnectionService.installWebhooks` is the single layer that returns the
+ * unsupported-platform 400 now.
  *
  * Mocks:
  *   - ConnectionPort        — get + update
@@ -11,11 +16,10 @@
  *   - global `fetch`        — ping HTTP call
  *   - PrestashopWebserviceClient — listResources / createResource / updateResource
  *
- * The WS client is constructed inside the service (not injected) so we mock
- * the underlying `fetch` for the WS calls too. We work around this by stubbing
- * the constructor via the module path.
+ * The WS client is constructed inside the adapter (not injected) so we mock
+ * the underlying constructor via the module path.
  *
- * @module libs/integrations/prestashop/src/application/services/__tests__
+ * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
 import { BadRequestException } from '@nestjs/common';
 import { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
@@ -23,11 +27,11 @@ import {
   IWebhookSecretService,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
-import { PrestashopWebhookProvisioningService } from '../prestashop-webhook-provisioning.service';
-import * as wsClientModule from '../../../infrastructure/http/prestashop-webservice.client';
+import { PrestashopWebhookProvisioningAdapter } from '../prestashop-webhook-provisioning.adapter';
+import * as wsClientModule from '../../http/prestashop-webservice.client';
 
-describe('PrestashopWebhookProvisioningService', () => {
-  let service: PrestashopWebhookProvisioningService;
+describe('PrestashopWebhookProvisioningAdapter', () => {
+  let adapter: PrestashopWebhookProvisioningAdapter;
   let connectionPort: jest.Mocked<ConnectionPort>;
   let webhookSecretService: jest.Mocked<IWebhookSecretService>;
   let credentialsResolver: jest.Mocked<CredentialsResolverPort>;
@@ -73,13 +77,13 @@ describe('PrestashopWebhookProvisioningService', () => {
     } as unknown as jest.Mocked<CredentialsResolverPort>;
 
     mockWsClient = {
-      // No existing configuration rows in the happy path → service falls into createResource.
+      // No existing configuration rows in the happy path → adapter falls into createResource.
       listResources: jest.fn().mockResolvedValue([]),
       createResource: jest.fn().mockResolvedValue({}),
       updateResource: jest.fn().mockResolvedValue({}),
       getResource: jest.fn(),
     };
-    // Stub the WS client constructor — service `new`s it inline.
+    // Stub the WS client constructor — adapter `new`s it inline.
     jest
       .spyOn(wsClientModule, 'PrestashopWebserviceClient')
       .mockImplementation(() => mockWsClient as never);
@@ -90,7 +94,7 @@ describe('PrestashopWebhookProvisioningService', () => {
       status: 200,
     } as Response);
 
-    service = new PrestashopWebhookProvisioningService(
+    adapter = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
       credentialsResolver,
@@ -103,7 +107,7 @@ describe('PrestashopWebhookProvisioningService', () => {
 
   describe('happy path', () => {
     it('rotates secret, pushes 3 configurations, marks configured, fires ping', async () => {
-      const result = await service.install('connection-123', 'user-1');
+      const result = await adapter.install('connection-123', 'user-1');
 
       expect(webhookSecretService.rotate).toHaveBeenCalledWith(
         'prestashop',
@@ -164,7 +168,7 @@ describe('PrestashopWebhookProvisioningService', () => {
       mockWsClient.listResources.mockResolvedValueOnce([{ id: 42 }]);
       mockWsClient.listResources.mockResolvedValue([]);
 
-      await service.install('connection-123');
+      await adapter.install('connection-123');
 
       // PS WS PUT body is flat, with `id` stringified to match the path id.
       // No `configuration:` wrapper — the WS client adds it. (#541)
@@ -184,25 +188,6 @@ describe('PrestashopWebhookProvisioningService', () => {
   });
 
   describe('input validation', () => {
-    it('throws BadRequestException for non-PrestaShop connection', async () => {
-      connectionPort.get.mockResolvedValue(
-        new Connection(
-          'allegro-1',
-          'allegro',
-          'Allegro',
-          'active',
-          {},
-          'db:cred',
-          new Date(),
-          new Date(),
-          undefined,
-          [],
-        ),
-      );
-      await expect(service.install('allegro-1')).rejects.toThrow(BadRequestException);
-      expect(webhookSecretService.rotate).not.toHaveBeenCalled();
-    });
-
     it('throws BadRequestException when openlinkerCallbackBaseUrl is unset', async () => {
       connectionPort.get.mockResolvedValue(
         new Connection(
@@ -218,7 +203,8 @@ describe('PrestashopWebhookProvisioningService', () => {
           [],
         ),
       );
-      await expect(service.install('connection-123')).rejects.toThrow(
+      await expect(adapter.install('connection-123')).rejects.toThrow(BadRequestException);
+      await expect(adapter.install('connection-123')).rejects.toThrow(
         /OL callback URL/,
       );
       expect(webhookSecretService.rotate).not.toHaveBeenCalled();
@@ -239,7 +225,7 @@ describe('PrestashopWebhookProvisioningService', () => {
           [],
         ),
       );
-      await expect(service.install('connection-123')).rejects.toThrow(/baseUrl/);
+      await expect(adapter.install('connection-123')).rejects.toThrow(/baseUrl/);
     });
   });
 
@@ -247,7 +233,7 @@ describe('PrestashopWebhookProvisioningService', () => {
     it('throws and surfaces partial-state warning when WS push fails', async () => {
       mockWsClient.listResources.mockRejectedValueOnce(new Error('PS WS 401'));
 
-      await expect(service.install('connection-123')).rejects.toThrow(
+      await expect(adapter.install('connection-123')).rejects.toThrow(
         /Configuration push to PrestaShop failed/,
       );
 
@@ -259,7 +245,7 @@ describe('PrestashopWebhookProvisioningService', () => {
     it('returns warning=state-update-failed when connection.update fails after push', async () => {
       connectionPort.update.mockRejectedValue(new Error('DB write failed'));
 
-      const result = await service.install('connection-123');
+      const result = await adapter.install('connection-123');
 
       expect(result.webhooksConfigured).toBe(false);
       expect(result.warning).toBe('state-update-failed');
@@ -268,7 +254,7 @@ describe('PrestashopWebhookProvisioningService', () => {
     it('returns warning=ping-not-received when ping returns non-2xx', async () => {
       fetchSpy.mockResolvedValueOnce({ ok: false, status: 502 } as Response);
 
-      const result = await service.install('connection-123');
+      const result = await adapter.install('connection-123');
 
       expect(result.webhooksConfigured).toBe(true);
       expect(result.testPingTriggered).toBe(false);
@@ -278,7 +264,7 @@ describe('PrestashopWebhookProvisioningService', () => {
     it('returns warning=ping-not-received when ping throws', async () => {
       fetchSpy.mockRejectedValueOnce(new Error('Network unreachable'));
 
-      const result = await service.install('connection-123');
+      const result = await adapter.install('connection-123');
 
       expect(result.webhooksConfigured).toBe(true);
       expect(result.testPingTriggered).toBe(false);

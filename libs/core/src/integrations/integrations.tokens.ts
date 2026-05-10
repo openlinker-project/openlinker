@@ -17,5 +17,6 @@ export const WEBHOOK_SECRET_PROVIDER_TOKEN = Symbol('WebhookSecretProviderPort')
 export const WEBHOOK_SECRET_SERVICE_TOKEN = Symbol('IWebhookSecretService');
 export const INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN = Symbol('IntegrationCredentialRepositoryPort');
 export const CONNECTION_TESTER_REGISTRY_TOKEN = Symbol('ConnectionTesterRegistryService');
+export const WEBHOOK_PROVISIONING_REGISTRY_TOKEN = Symbol('WebhookProvisioningRegistryService');
 export const PLUGIN_REGISTRY_OPTIONS_TOKEN = Symbol('PluginRegistryOptions');
 

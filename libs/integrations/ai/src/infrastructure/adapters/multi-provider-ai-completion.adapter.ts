@@ -31,16 +31,18 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/ai/ai.tokens';
-import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-completion.port';
+import {
+  AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
+  AiCompletionError,
+  DuplicateAiProviderError,
+} from '@openlinker/core/ai';
 import type {
   AiCompletionInput,
+  AiCompletionPort,
   AiCompletionResult,
   AiProvider,
-} from '@openlinker/core/ai/domain/types/ai-completion.types';
-import { AiCompletionError } from '@openlinker/core/ai/domain/exceptions/ai-completion.exception';
-import { DuplicateAiProviderError } from '@openlinker/core/ai/domain/exceptions/duplicate-ai-provider.exception';
-import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
+  IAiProviderActiveSettingsService,
+} from '@openlinker/core/ai';
 
 @Injectable()
 export class MultiProviderAiCompletionAdapter implements AiCompletionPort {
