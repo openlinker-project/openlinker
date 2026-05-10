@@ -64,7 +64,15 @@ describe('SyncJobRunner', () => {
 
     // Real registry + real Allegro classifier — the runner's behaviour
     // under each Allegro exception type is what these tests verify, and
-    // we want the production registration path exercised end-to-end.
+    // we want the production registration path exercised end-to-end
+    // rather than mocking the registry's `isNonRetryable` aggregation.
+    //
+    // FUTURE: when more platforms ship retry classifiers (Shopify,
+    // WooCommerce, etc.), each one needs to be registered here and
+    // covered by at least one behavioural assertion. Otherwise the
+    // runner-spec invariant "all platforms classify retry the same way
+    // they did before this PR" silently weakens. Track parallel work in
+    // Thread E follow-ups.
     const retryClassifierRegistry = new RetryClassifierRegistryService();
     retryClassifierRegistry.register(
       'allegro.publicapi.v1',
