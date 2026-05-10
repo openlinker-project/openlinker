@@ -1159,7 +1159,31 @@ the registry is empty on construct and populated by integration modules
 at boot. The `isDefault: true` flag marks the platform-default adapterKey
 for connections without an explicit `adapterKey` field.
 
+Each app composes the integration modules it ships with via a top-level
+plugin list, then hands the list to `PluginRegistryModule.forRoot({ plugins })`
+(#572). Apps no longer hard-code per-plugin names in their NestJS module
+graph — the registry is the single seam an OSS contributor edits to enable
+a third-party plugin. The adapter-registration mechanic itself is unchanged;
+only the import seam moved.
+
 ```typescript
+// apps/api/src/plugins.ts — single edit point for API plugins.
+export const apiPlugins: PluginEntry[] = [
+  PrestashopIntegrationModule,
+  AllegroIntegrationModule,
+  AiIntegrationModule.register(),
+];
+
+// apps/api/src/integrations/integrations.module.ts — composes the plugins.
+@Module({
+  imports: [
+    /* ... core modules ... */,
+    PluginRegistryModule.forRoot({ plugins: apiPlugins }),
+  ],
+  exports: [PluginRegistryModule],
+})
+export class IntegrationsModule {}
+
 // In AllegroIntegrationModule.onModuleInit():
 this.adapterRegistry.register({
   adapterKey: 'allegro.publicapi.v1',

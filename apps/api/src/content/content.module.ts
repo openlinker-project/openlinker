@@ -7,9 +7,11 @@
  * Binds `CONTENT_SUGGESTION_SERVICE_TOKEN` to `ContentSuggestionService` at
  * the API layer (not core) because the service depends on
  * `AI_COMPLETION_PORT_TOKEN`, which is only provided where
- * `AiIntegrationModule` is registered — i.e. inside the API-side
- * `IntegrationsModule`. See the core `content.module.ts` header for the
- * full rationale.
+ * `AiIntegrationModule` is registered — i.e. through the API-side
+ * `IntegrationsModule`, which composes `apiPlugins` (including
+ * `AiIntegrationModule.register()`) via `PluginRegistryModule.forRoot` and
+ * re-exports the registry. See the core `content.module.ts` header for
+ * the full rationale.
  *
  * @module apps/api/src/content
  */
@@ -31,7 +33,7 @@ import { ContentController } from './http/content.controller';
     CoreIntegrationsModule,
     CoreListingsModule,
     CoreAiModule,
-    IntegrationsModule, // API-side — pulls in `AiIntegrationModule.register()` which binds `AI_COMPLETION_PORT_TOKEN`.
+    IntegrationsModule, // `AI_COMPLETION_PORT_TOKEN` resolves via `PluginRegistryModule` re-export.
   ],
   controllers: [ContentController],
   providers: [
