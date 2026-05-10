@@ -6,8 +6,7 @@
  *
  * @module libs/core/src/integrations/domain/ports
  */
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from './credentials-resolver.port';
 
 /**

@@ -11,7 +11,7 @@
  *
  * @module libs/core/src/integrations/domain/ports
  */
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import { CredentialsResolverPort } from './credentials-resolver.port';
 import { ConnectionTestResult } from '../types/connection-test.types';
 
