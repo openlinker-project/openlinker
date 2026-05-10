@@ -16,6 +16,7 @@ import { IntegrationsService } from './application/services/integrations.service
 import { CredentialsResolverService } from './infrastructure/credentials/credentials-resolver.service';
 import { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 import { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
+import { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
 import { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
 import { WebhookSecretService } from './application/services/webhook-secret.service';
 import { CryptoService } from '@openlinker/shared';
@@ -30,6 +31,7 @@ import {
   WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 // Re-export tokens for convenience
@@ -42,6 +44,7 @@ export {
   WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   CONNECTION_TESTER_REGISTRY_TOKEN,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 @Module({
@@ -56,6 +59,7 @@ export {
     CredentialsResolverService,
     AdapterFactoryResolverService,
     ConnectionTesterRegistryService,
+    WebhookProvisioningRegistryService,
     CredentialsWebhookSecretAdapter,
     WebhookSecretService,
     CryptoService,
@@ -81,6 +85,10 @@ export {
       useExisting: ConnectionTesterRegistryService,
     },
     {
+      provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+      useExisting: WebhookProvisioningRegistryService,
+    },
+    {
       provide: WEBHOOK_SECRET_PROVIDER_TOKEN,
       useExisting: CredentialsWebhookSecretAdapter,
     },
@@ -99,6 +107,7 @@ export {
     CREDENTIALS_RESOLVER_TOKEN,
     ADAPTER_FACTORY_RESOLVER_TOKEN,
     CONNECTION_TESTER_REGISTRY_TOKEN,
+    WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
     WEBHOOK_SECRET_PROVIDER_TOKEN,
     WEBHOOK_SECRET_SERVICE_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
@@ -106,6 +115,7 @@ export {
     CredentialsResolverService,
     AdapterFactoryResolverService,
     ConnectionTesterRegistryService,
+    WebhookProvisioningRegistryService,
     WebhookSecretService,
   ],
 })

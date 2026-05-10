@@ -13,13 +13,8 @@ export { PrestashopAdapterFactory } from './application/prestashop-adapter.facto
 export { IPrestashopAdapterFactory } from './application/interfaces/prestashop-adapter.factory.interface';
 export { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
 
-// Webhook provisioning (#168)
-export { PrestashopWebhookProvisioningService } from './application/services/prestashop-webhook-provisioning.service';
-export {
-  IPrestashopWebhookProvisioningService,
-  InstallWebhooksResult,
-  PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
-} from './application/interfaces/prestashop-webhook-provisioning.service.interface';
+// Webhook provisioning (#168 / #583) — implements core's WebhookProvisioningPort
+export { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
 
 // Adapters
 export { PrestashopProductMasterAdapter } from './infrastructure/adapters/prestashop-product-master.adapter';

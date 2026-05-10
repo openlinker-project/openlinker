@@ -29,10 +29,6 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
 import { InstallWebhooksResponseDto } from './dto/install-webhooks-response.dto';
 import { IWebhookSecretService, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import {
-  IPrestashopWebhookProvisioningService,
-  PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
-} from '@openlinker/integrations-prestashop';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -60,8 +56,6 @@ export class ConnectionController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
     private readonly webhookSecretService: IWebhookSecretService,
-    @Inject(PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN)
-    private readonly webhookProvisioningService: IPrestashopWebhookProvisioningService,
   ) {}
 
   private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
@@ -238,18 +232,20 @@ export class ConnectionController {
   }
 
   /**
-   * Auto-provision the PrestaShop `openlinker` module's webhook configuration
-   * via PS WS (#168). Operator clicks once on the FE; OL rotates the secret,
-   * pushes Base URL / Connection ID / Webhook Secret to PS, then synchronously
-   * verifies via a HMAC-signed test ping. No copy-paste, no install URL, no
-   * env-var pattern.
+   * Auto-provision webhook configuration on the external platform for this
+   * connection (#168, #583). Operator clicks once on the FE; OL routes to the
+   * adapter-specific provisioner via `ConnectionService.installWebhooks`,
+   * which looks up the implementation in `WebhookProvisioningRegistryService`
+   * by adapterKey. PrestaShop today; other platforms follow the same shape
+   * once they register a provisioner. Returns 400 if the connection's
+   * adapter does not support webhook auto-provisioning.
    */
   @Roles('admin')
   @Post(':id/webhooks/install')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Auto-install webhook configuration on the PrestaShop module via PS WS (#168)',
+      'Auto-install webhook configuration on the external platform for this connection (#168, #583)',
   })
   @ApiResponse({
     status: 200,
@@ -258,14 +254,17 @@ export class ConnectionController {
       'completed successfully and whether OL recorded the configured state.',
     type: InstallWebhooksResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Connection unsupported or callback URL unset' })
+  @ApiResponse({
+    status: 400,
+    description: 'Adapter does not support webhook auto-provisioning, or connection config invalid',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async installWebhooks(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<InstallWebhooksResponseDto> {
-    return this.webhookProvisioningService.install(id, user?.id);
+    return this.connectionService.installWebhooks(id, user?.id);
   }
 
   @Roles('admin')

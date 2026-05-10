@@ -1,12 +1,18 @@
 /**
- * PrestaShop Webhook Provisioning Service
+ * PrestaShop Webhook Provisioning Adapter
  *
- * Orchestrates the auto-provisioning flow for the PS `openlinker` module's
+ * Implements `WebhookProvisioningPort` (#583) for the PrestaShop platform —
+ * orchestrates the auto-provisioning flow for the PS `openlinker` module's
  * webhook configuration (#168). Replaces the manual flow where an operator
  * pasted Base URL + Connection ID + Webhook Secret into the PS admin form.
  *
+ * Resolved per-connection by `ConnectionService.installWebhooks` via the
+ * `WebhookProvisioningRegistryService` indexed by `adapterKey`. Self-registers
+ * in `PrestashopIntegrationModule.onModuleInit` alongside the adapter
+ * factory and connection tester.
+ *
  * Flow:
- *   1. Validate connection (PS platformType, callback URL set).
+ *   1. Validate connection config (callback URL set, baseUrl set).
  *   2. Rotate the connection's webhook secret (one-shot plaintext return).
  *   3. Push the three config rows to PS via WS `configurations` resource.
  *   4. Mark `connection.config.webhooksConfigured = true`.
@@ -15,8 +21,15 @@
  * Failure-mode policy: accept-and-surface. Partial states return a `warning`
  * field so the FE can render operator-actionable text.
  *
- * @module libs/integrations/prestashop/src/application/services
- * @implements {IPrestashopWebhookProvisioningService}
+ * Renamed from `PrestashopWebhookProvisioningService` (#583): the previous
+ * service lived in `application/services/` with a PS-specific interface that
+ * the API layer injected directly — preventing `apps/api` from booting
+ * without PrestaShop. Moving to `infrastructure/adapters/` and implementing
+ * the CORE port aligns with `engineering-standards.md` §"Naming Conventions"
+ * (`{System}{Capability}Adapter` for adapters that implement ports).
+ *
+ * @module libs/integrations/prestashop/src/infrastructure/adapters
+ * @implements {WebhookProvisioningPort}
  */
 import { Inject, Injectable, BadRequestException } from '@nestjs/common';
 import { createHmac } from 'crypto';
@@ -30,16 +43,13 @@ import {
   WEBHOOK_SECRET_SERVICE_TOKEN,
   CredentialsResolverPort,
   CREDENTIALS_RESOLVER_TOKEN,
+  WebhookProvisioningPort,
+  WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
-import {
-  IPrestashopWebhookProvisioningService,
-  InstallWebhooksResult,
-} from '../interfaces/prestashop-webhook-provisioning.service.interface';
 import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
-// eslint-disable-next-line no-restricted-imports
-import { PrestashopWebserviceClient } from '../../infrastructure/http/prestashop-webservice.client';
-import { IPrestashopWebserviceClient } from '../../infrastructure/http/prestashop-webservice.client.interface';
+import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
+import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 
 const PROVIDER = 'prestashop';
 
@@ -51,10 +61,8 @@ const CONFIG_KEYS = {
 } as const;
 
 @Injectable()
-export class PrestashopWebhookProvisioningService
-  implements IPrestashopWebhookProvisioningService
-{
-  private readonly logger = new Logger(PrestashopWebhookProvisioningService.name);
+export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioningPort {
+  private readonly logger = new Logger(PrestashopWebhookProvisioningAdapter.name);
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -68,18 +76,12 @@ export class PrestashopWebhookProvisioningService
   async install(
     connectionId: string,
     actorUserId?: string,
-  ): Promise<InstallWebhooksResult> {
-    // Step 1 — validate connection
+  ): Promise<WebhookProvisioningResult> {
+    // Step 1 — validate connection config. The platformType check is gone:
+    // the registry only ever routes PS connections to this adapter, so the
+    // dead branch was just noise. `ConnectionService.installWebhooks` is the
+    // single layer that returns the unsupported-platform 400 now.
     const connection = await this.connectionPort.get(connectionId);
-
-    if (connection.platformType !== PROVIDER) {
-      throw new BadRequestException(
-        `Connection ${connectionId} is not a PrestaShop connection ` +
-          `(platformType=${connection.platformType}). Webhook auto-install only ` +
-          `applies to PrestaShop connections.`,
-      );
-    }
-
     const config = connection.config as Partial<PrestashopConnectionConfig>;
     const callbackUrl = config.openlinkerCallbackBaseUrl;
 
@@ -93,7 +95,7 @@ export class PrestashopWebhookProvisioningService
 
     if (!config.baseUrl || typeof config.baseUrl !== 'string') {
       // Defensive — should be caught by DTO at save time. Mirrored here so the
-      // service stays usable in tests / programmatic call paths.
+      // adapter stays usable in tests / programmatic call paths.
       throw new BadRequestException(
         `Connection ${connectionId} is missing baseUrl in config.`,
       );

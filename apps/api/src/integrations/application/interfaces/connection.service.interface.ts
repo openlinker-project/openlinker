@@ -8,7 +8,7 @@
  * @see {@link ConnectionService} for the implementation
  */
 import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
-import { ConnectionTestResult } from '@openlinker/core/integrations';
+import { ConnectionTestResult, WebhookProvisioningResult } from '@openlinker/core/integrations';
 import { ConnectionCreateInput } from './connection.service.types';
 
 export type { ConnectionCreateInput };
@@ -63,6 +63,21 @@ export interface IConnectionService {
    * @returns Structured test result
    */
   testConnection(connectionId: string): Promise<ConnectionTestResult>;
+
+  /**
+   * Auto-provision webhook configuration on the external platform for this
+   * connection. Routes to the adapter-specific provisioner via the registry;
+   * throws `BadRequestException` if the connection's adapter does not support
+   * webhook auto-provisioning.
+   *
+   * @param connectionId - The connection identifier (UUID)
+   * @param actorUserId - Optional ID of the user triggering the install (for audit)
+   * @returns Structured result with `webhooksConfigured`, `testPingTriggered`, optional `warning`
+   */
+  installWebhooks(
+    connectionId: string,
+    actorUserId?: string,
+  ): Promise<WebhookProvisioningResult>;
 
   /**
    * Disable a connection

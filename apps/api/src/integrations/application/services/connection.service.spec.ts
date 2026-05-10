@@ -17,7 +17,7 @@ import {
   ConnectionUpdate,
   ConnectionFilters,
 } from '@openlinker/core/identifier-mapping';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTesterPort } from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTesterPort, WebhookProvisioningRegistryService, WEBHOOK_PROVISIONING_REGISTRY_TOKEN, WebhookProvisioningPort } from '@openlinker/core/integrations';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
@@ -29,6 +29,8 @@ describe('ConnectionService', () => {
   let credentialRepository: jest.Mocked<IntegrationCredentialRepositoryPort>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
+  let webhookProvisioningRegistry: WebhookProvisioningRegistryService;
+  let mockWebhookProvisioner: jest.Mocked<WebhookProvisioningPort>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -93,6 +95,10 @@ describe('ConnectionService', () => {
     mockTester = { test: jest.fn() } as jest.Mocked<ConnectionTesterPort>;
     testerRegistry.register('prestashop.webservice.v1', mockTester);
 
+    webhookProvisioningRegistry = new WebhookProvisioningRegistryService();
+    mockWebhookProvisioner = { install: jest.fn() } as jest.Mocked<WebhookProvisioningPort>;
+    webhookProvisioningRegistry.register('prestashop.webservice.v1', mockWebhookProvisioner);
+
     const mockCredentialsResolver: CredentialsResolverPort = {
       get: jest.fn(),
     } as unknown as CredentialsResolverPort;
@@ -105,6 +111,7 @@ describe('ConnectionService', () => {
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
         { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: mockCredentialRepository },
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
+        { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: webhookProvisioningRegistry },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
       ],
     }).compile();
@@ -786,6 +793,55 @@ describe('ConnectionService', () => {
       });
 
       await expect(service.testConnection('connection-999')).rejects.toThrow(
+        /not supported/,
+      );
+    });
+  });
+
+  describe('installWebhooks', () => {
+    it('should delegate to the registered provisioner and return the result', async () => {
+      connectionPort.get.mockResolvedValue(mockConnection);
+      mockWebhookProvisioner.install.mockResolvedValue({
+        webhooksConfigured: true,
+        testPingTriggered: true,
+      });
+
+      const result = await service.installWebhooks('connection-123', 'user-1');
+
+      expect(result).toEqual({
+        webhooksConfigured: true,
+        testPingTriggered: true,
+      });
+      expect(mockWebhookProvisioner.install).toHaveBeenCalledWith(
+        'connection-123',
+        'user-1',
+      );
+    });
+
+    it('should throw BadRequest when no provisioner is registered for the adapter', async () => {
+      const adapterLessConnection = new Connection(
+        'connection-999',
+        'unknown-platform',
+        'X',
+        'active',
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        [],
+      );
+      connectionPort.get.mockResolvedValue(adapterLessConnection);
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'unknown.v1',
+        platformType: 'unknown-platform',
+        supportedCapabilities: [],
+      });
+
+      await expect(service.installWebhooks('connection-999')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.installWebhooks('connection-999')).rejects.toThrow(
         /not supported/,
       );
     });

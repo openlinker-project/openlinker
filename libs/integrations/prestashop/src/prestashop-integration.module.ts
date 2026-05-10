@@ -16,6 +16,8 @@ import {
   AdapterRegistryPort,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   ConnectionTesterRegistryService,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+  WebhookProvisioningRegistryService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WebhookSecretProviderPort,
 } from '@openlinker/core/integrations';
@@ -29,8 +31,7 @@ import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/pre
 import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from './infrastructure/provisioners/prestashop-country-resolver';
-import { PrestashopWebhookProvisioningService } from './application/services/prestashop-webhook-provisioning.service';
-import { PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN } from './application/interfaces/prestashop-webhook-provisioning.service.interface';
+import { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
 import {
   CustomersModule,
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
@@ -45,14 +46,7 @@ import { Logger } from '@openlinker/shared/logging';
     PrestashopCustomerProvisioner,
     PrestashopAddressProvisioner,
     PrestashopCountryResolver,
-    PrestashopWebhookProvisioningService,
-    {
-      provide: PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
-      useExisting: PrestashopWebhookProvisioningService,
-    },
-  ],
-  exports: [
-    PRESTASHOP_WEBHOOK_PROVISIONING_SERVICE_TOKEN,
+    PrestashopWebhookProvisioningAdapter,
   ],
 })
 export class PrestashopIntegrationModule implements OnModuleInit {
@@ -65,6 +59,9 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly factoryResolver: AdapterFactoryResolverService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
+    @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
+    private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
+    private readonly webhookProvisioningAdapter: PrestashopWebhookProvisioningAdapter,
     private readonly customerProvisioner: PrestashopCustomerProvisioner,
     private readonly addressProvisioner: PrestashopAddressProvisioner,
     @Inject(CUSTOMER_PROJECTION_REPOSITORY_TOKEN)
@@ -76,7 +73,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.logger.log('Registering PrestaShop adapter (metadata + factory + tester)...');
+    this.logger.log('Registering PrestaShop adapter (metadata + factory + tester + webhook provisioner)...');
     // Register metadata first — what this adapter is and what it can do.
     // Mirrors the inline literal previously hardcoded in core's
     // AdapterRegistryService (#570). isDefault: true means
@@ -107,6 +104,13 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     this.connectionTesterRegistry.register(
       'prestashop.webservice.v1',
       new PrestashopConnectionTesterAdapter(),
+    );
+    // Webhook provisioner — replaces direct injection of the PS-specific
+    // service in `apps/api`'s ConnectionController (#583). The controller
+    // now resolves provisioners by adapterKey via the registry.
+    this.webhookProvisioningRegistry.register(
+      'prestashop.webservice.v1',
+      this.webhookProvisioningAdapter,
     );
     this.logger.log('PrestaShop adapter registered successfully');
   }
