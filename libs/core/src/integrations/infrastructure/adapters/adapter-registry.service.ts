@@ -1,53 +1,66 @@
 /**
  * Adapter Registry Service
  *
- * In-memory static registry of adapters and their capabilities. Provides
- * adapter lookup and metadata retrieval for the integrations service.
- * In MVP, this uses a static in-memory registry. Future versions may
- * support dynamic registration or database-backed registry.
+ * In-memory registry of adapters and their metadata. Populated at boot by
+ * each `*IntegrationModule.onModuleInit()` calling `register(...)`, replacing
+ * the previous static inline literal that lived in this file (#570). Mirrors
+ * the sister `AdapterFactoryResolverService.registerFactory` pattern — both
+ * registries are populated by the integration modules they describe, and
+ * `libs/core` no longer carries platform-specific knowledge of which
+ * adapters exist. Also tracks the per-platform default adapterKey, replacing
+ * the hardcoded `IntegrationsService.deriveAdapterKey` map (#571).
+ *
+ * Future versions may swap the in-memory map for DB-backed persistence; the
+ * port keeps `getAdapter` / `getAdapterMetadata` / `listAdapters` /
+ * `getDefaultAdapterKey` async to leave that door open.
  *
  * @module libs/core/src/integrations/infrastructure/adapters
  * @implements {AdapterRegistryPort}
  * @see {@link AdapterRegistryPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
 import {
   AdapterMetadata,
   AdapterInstance,
 } from '@openlinker/core/integrations/domain/types/adapter.types';
 import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
+import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
+import { DuplicatePlatformDefaultException } from '@openlinker/core/integrations/domain/exceptions/duplicate-platform-default.exception';
 
 @Injectable()
 export class AdapterRegistryService implements AdapterRegistryPort {
-  // Static in-memory registry (MVP approach)
-  private readonly registry: Map<string, AdapterMetadata> = new Map(
-    [
-      {
-        adapterKey: 'prestashop.webservice.v1',
-        platformType: 'prestashop',
-        supportedCapabilities: [
-          'ProductMaster',
-          'InventoryMaster',
-          'OrderSource',
-          'OrderProcessorManager',
-        ],
-        displayName: 'PrestaShop WebService v1',
-        version: '1.0.0',
-      },
-      {
-        adapterKey: 'allegro.publicapi.v1',
-        platformType: 'allegro',
-        supportedCapabilities: ['OrderSource', 'OfferManager'],
-        displayName: 'Allegro Public API v1',
-        version: '1.0.0',
-      },
-    ].map((meta) => [meta.adapterKey, meta]),
-  );
+  private readonly logger = new Logger(AdapterRegistryService.name);
+  private readonly registry: Map<string, AdapterMetadata> = new Map();
+  private readonly defaultsByPlatform: Map<string, string> = new Map();
+
+  register(metadata: AdapterMetadata): void {
+    if (this.registry.has(metadata.adapterKey)) {
+      throw new DuplicateAdapterKeyException(metadata.adapterKey);
+    }
+    if (metadata.isDefault === true) {
+      const existing = this.defaultsByPlatform.get(metadata.platformType);
+      if (existing) {
+        throw new DuplicatePlatformDefaultException(
+          metadata.platformType,
+          existing,
+          metadata.adapterKey,
+        );
+      }
+      this.defaultsByPlatform.set(metadata.platformType, metadata.adapterKey);
+    }
+    this.registry.set(metadata.adapterKey, metadata);
+    this.logger.log(
+      `Registered adapter: ${metadata.adapterKey}` +
+        (metadata.isDefault === true ? ` (default for ${metadata.platformType})` : ''),
+    );
+  }
 
   async getAdapter(adapterKey: string): Promise<AdapterInstance> {
     const metadata = await this.getAdapterMetadata(adapterKey);
-    // Return placeholder/mock instance for MVP
+    // Return placeholder/mock instance for MVP — full instances come from
+    // AdapterFactoryResolverService. (#574 tracks deleting this fallback.)
     return { adapterKey: metadata.adapterKey } as AdapterInstance;
   }
 
@@ -62,5 +75,21 @@ export class AdapterRegistryService implements AdapterRegistryPort {
   listAdapters(): Promise<AdapterMetadata[]> {
     return Promise.resolve(Array.from(this.registry.values()));
   }
-}
 
+  // Mirrors `getAdapterMetadata` shape — returns a Promise without `async`
+  // so eslint's `require-await` doesn't flag a sync body. The port keeps
+  // the signature async-shaped to leave the door open for a future
+  // DB-backed registry without changing every call site.
+  getDefaultAdapterKey(platformType: string): Promise<string> {
+    const adapterKey = this.defaultsByPlatform.get(platformType);
+    if (!adapterKey) {
+      return Promise.reject(
+        new AdapterNotFoundException(
+          `No default adapter registered for platformType: ${platformType}. ` +
+            `Available platforms: [${Array.from(this.defaultsByPlatform.keys()).join(', ')}]`,
+        ),
+      );
+    }
+    return Promise.resolve(adapterKey);
+  }
+}

@@ -866,16 +866,26 @@ export class AllegroOfferManagerAdapter
    *
    * Partial update semantics: only fields present in cmd.fields are included
    * in the Allegro request payload. Uses PATCH /sale/product-offers/{offerId}.
+   *
+   * #487 — Allegro re-validates the whole offer on every PATCH. A description-
+   * only update will 422 if the offer happens to be missing required fields
+   * that live on `Connection.config.allegro.sellerDefaults` (GPSR
+   * `responsibleProducer` / `safetyInformation`, ship-from `location`). When
+   * `sellerDefaults` is configured, we opportunistically merge those into the
+   * PATCH body via `buildSellerDefaultsPatch`. Caller-supplied fields always
+   * win on overlap. The empty-fields guard runs *before* backfill so today's
+   * "empty fields → no HTTP call" semantics are preserved (we don't grow a
+   * new "republish-with-defaults" surface).
    */
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
     this.logger.debug(
       `Updating Allegro offer fields: offerId=${cmd.externalOfferId} (connection: ${this.connectionId}, fields=${Object.keys(cmd.fields).join(',')})`,
     );
 
-    const body: AllegroOfferFieldsPatchBody = {};
+    const callerBody: AllegroOfferFieldsPatchBody = {};
 
     if (cmd.fields.price !== undefined) {
-      body.sellingMode = {
+      callerBody.sellingMode = {
         price: {
           amount: cmd.fields.price.amount,
           currency: cmd.fields.price.currency,
@@ -894,11 +904,11 @@ export class AllegroOfferManagerAdapter
             `original=${JSON.stringify(cmd.fields.title)} sanitized=${JSON.stringify(sanitized)}`,
         );
       }
-      body.name = sanitized;
+      callerBody.name = sanitized;
     }
 
     if (cmd.fields.description !== undefined) {
-      body.description = {
+      callerBody.description = {
         sections: cmd.fields.description.sections.map((section) => ({
           items: section.items.map((item) => ({
             type: item.type,
@@ -908,11 +918,22 @@ export class AllegroOfferManagerAdapter
       };
     }
 
-    if (Object.keys(body).length === 0) {
+    if (Object.keys(callerBody).length === 0) {
       this.logger.warn(
         `updateOfferFields called with empty fields for offerId=${cmd.externalOfferId} — skipping`,
       );
       return;
+    }
+
+    // #487 — opportunistic seller-defaults backfill (see method JSDoc).
+    const { patch: defaultsPatch, fields: backfilled } = this.buildSellerDefaultsPatch();
+    const body: AllegroOfferFieldsPatchBody = { ...defaultsPatch, ...callerBody };
+    if (backfilled.length > 0) {
+      this.logger.debug(
+        `Allegro updateOfferFields backfilled from sellerDefaults: ` +
+          `offerId=${cmd.externalOfferId} connection=${this.connectionId} ` +
+          `fields=[${backfilled.join(',')}]`,
+      );
     }
 
     try {
@@ -931,6 +952,61 @@ export class AllegroOfferManagerAdapter
       );
       throw error;
     }
+  }
+
+  /**
+   * Build the slice of `AllegroOfferFieldsPatchBody` that the connection's
+   * `sellerDefaults` is willing to provide on PATCH. Each subfield is
+   * independently gated — partial configurations still help (the create-time
+   * preflight `collectMissingSellerDefaultsFields` is the all-or-nothing gate).
+   * Returns `{ patch: {}, fields: [] }` when `sellerDefaults` is undefined.
+   *
+   * GPSR fields sit at `productSet[0].responsibleProducer` and
+   * `productSet[0].safetyInformation` — entry-level siblings — to mirror the
+   * working create path (`applyPlatformParams` below). The wire shape is what
+   * Allegro accepts on POST, and we expect the same shape on partial product-
+   * set updates; sandbox verification is the AC closer (#487).
+   *
+   * After-sales backfill (`afterSalesServices.{returnPolicy,warranty,
+   * impliedWarranty}`) is intentionally not populated here. Those policy ids
+   * currently flow through `cmd.overrides.platformParams` per offer
+   * (`CreateOfferWizard.tsx`) and are not persisted on
+   * `AllegroSellerDefaultsConfig`. When connection-level storage for them
+   * lands, this helper grows a third branch — single-field, single-branch
+   * extension. Until then, the type slot on `AllegroOfferFieldsPatchBody`
+   * exists for forward-compatibility.
+   */
+  private buildSellerDefaultsPatch(): {
+    patch: Pick<AllegroOfferFieldsPatchBody, 'location' | 'productSet'>;
+    fields: string[];
+  } {
+    if (!this.sellerDefaults) {
+      return { patch: {}, fields: [] };
+    }
+    const patch: Pick<AllegroOfferFieldsPatchBody, 'location' | 'productSet'> = {};
+    const fields: string[] = [];
+
+    if (this.sellerDefaults.location) {
+      patch.location = { ...this.sellerDefaults.location };
+      fields.push('location');
+    }
+
+    const productSetEntry: AllegroProductSetEntry = {};
+    if (this.sellerDefaults.responsibleProducerId) {
+      productSetEntry.responsibleProducer = {
+        id: this.sellerDefaults.responsibleProducerId,
+      };
+      fields.push('productSet[0].responsibleProducer');
+    }
+    if (this.sellerDefaults.safetyInformation) {
+      productSetEntry.safetyInformation = this.sellerDefaults.safetyInformation;
+      fields.push('productSet[0].safetyInformation');
+    }
+    if (Object.keys(productSetEntry).length > 0) {
+      patch.productSet = [productSetEntry];
+    }
+
+    return { patch, fields };
   }
 
   /**

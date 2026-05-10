@@ -36,17 +36,17 @@ import type { AiCompletionPort } from '@openlinker/core/ai/domain/ports/ai-compl
 import type { AiProviderCredentialsPort } from '@openlinker/core/ai/domain/ports/ai-provider-credentials.port';
 import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
 import { FakeAiCompletionAdapter } from './infrastructure/adapters/fake-ai-completion.adapter';
-import {
-  ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
-  FAKE_AI_COMPLETION_ADAPTER_TOKEN,
-  MultiProviderAiCompletionAdapter,
-  OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
-} from './infrastructure/adapters/multi-provider-ai-completion.adapter';
+import { MultiProviderAiCompletionAdapter } from './infrastructure/adapters/multi-provider-ai-completion.adapter';
 import {
   VERCEL_GENERATE_TEXT_FN_TOKEN,
   VercelAiCompletionAdapter,
   type VercelGenerateTextFn,
 } from './infrastructure/adapters/vercel-ai-completion.adapter';
+import {
+  ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
+  FAKE_AI_COMPLETION_ADAPTER_TOKEN,
+  OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
+} from './ai-integration.tokens';
 
 @Module({})
 export class AiIntegrationModule {
@@ -100,7 +100,12 @@ export class AiIntegrationModule {
       },
       // Router: AI_COMPLETION_PORT_TOKEN resolves to this; it dispatches
       // per-call to the right per-provider adapter based on the active
-      // selection.
+      // selection. The router starts empty and the module registers each
+      // provider here — mirrors the #570/#571 pluggable-registry pattern
+      // for the connection-scoped `AdapterRegistryService`. Adding a new
+      // provider (Cohere, Mistral, …) means: extend `AiProviderValues`,
+      // add a per-provider adapter provider above with its own token, and
+      // add one `router.register(...)` line here.
       {
         provide: MultiProviderAiCompletionAdapter,
         useFactory: (
@@ -108,13 +113,13 @@ export class AiIntegrationModule {
           openaiAdapter: AiCompletionPort,
           fakeAdapter: AiCompletionPort,
           activeSettings: IAiProviderActiveSettingsService,
-        ) =>
-          new MultiProviderAiCompletionAdapter(
-            anthropicAdapter,
-            openaiAdapter,
-            fakeAdapter,
-            activeSettings,
-          ),
+        ) => {
+          const router = new MultiProviderAiCompletionAdapter(activeSettings);
+          router.register('anthropic', anthropicAdapter);
+          router.register('openai', openaiAdapter);
+          router.register('fake', fakeAdapter);
+          return router;
+        },
         inject: [
           ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
           OPENAI_AI_COMPLETION_ADAPTER_TOKEN,

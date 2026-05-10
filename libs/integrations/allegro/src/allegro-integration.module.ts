@@ -10,7 +10,17 @@
 import { Module, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { IntegrationsModule, ADAPTER_FACTORY_RESOLVER_TOKEN, AdapterFactoryResolverService, CONNECTION_TESTER_REGISTRY_TOKEN, ConnectionTesterRegistryService, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import {
+  IntegrationsModule,
+  ADAPTER_FACTORY_RESOLVER_TOKEN,
+  AdapterFactoryResolverService,
+  ADAPTER_REGISTRY_TOKEN,
+  AdapterRegistryPort,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  ConnectionTesterRegistryService,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  IntegrationCredentialRepositoryPort,
+} from '@openlinker/core/integrations';
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
@@ -64,6 +74,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(AllegroIntegrationModule.name);
 
   constructor(
+    @Inject(ADAPTER_REGISTRY_TOKEN)
+    private readonly adapterRegistry: AdapterRegistryPort,
     @Inject(ADAPTER_FACTORY_RESOLVER_TOKEN)
     private readonly factoryResolver: AdapterFactoryResolverService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
@@ -90,7 +102,21 @@ export class AllegroIntegrationModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.logger.log('Registering Allegro adapter factory...');
+    this.logger.log('Registering Allegro adapter (metadata + factory + tester)...');
+    // Register metadata first — what this adapter is and what it can do.
+    // Mirrors the inline literal previously hardcoded in core's
+    // AdapterRegistryService (#570). isDefault: true means
+    // `IntegrationsService` resolves connections without an explicit
+    // adapterKey to this adapter for the 'allegro' platformType (#571).
+    this.adapterRegistry.register({
+      adapterKey: 'allegro.publicapi.v1',
+      platformType: 'allegro',
+      supportedCapabilities: ['OrderSource', 'OfferManager'],
+      displayName: 'Allegro Public API v1',
+      version: '1.0.0',
+      isDefault: true,
+    });
+    // Then the factory + connection tester — runtime instantiation surface.
     const factory = new AllegroAdapterFactoryWrapper(
       this.customerIdentityResolver,
       this.tokenRefreshService,
@@ -104,7 +130,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
       'allegro.publicapi.v1',
       new AllegroConnectionTesterAdapter(),
     );
-    this.logger.log('Allegro adapter factory registered successfully');
+    this.logger.log('Allegro adapter registered successfully');
   }
 
   private readQuantityPollConfig(): Record<string, number> | undefined {

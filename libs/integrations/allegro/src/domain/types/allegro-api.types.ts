@@ -449,6 +449,14 @@ export interface AllegroCategoryParametersResponse {
  * Allegro offer fields PATCH request body (PATCH /sale/product-offers/{offerId})
  *
  * All fields are optional — only fields present in the object are sent to Allegro.
+ *
+ * `location`, `productSet`, and `afterSalesServices` are populated **only** by
+ * `AllegroOfferManagerAdapter.buildSellerDefaultsPatch` on the PATCH path
+ * (#487). They are not surfaced through the neutral `UpdateOfferFieldsCommand`
+ * shape — callers do not set them. The adapter merges them in opportunistically
+ * because Allegro re-validates the whole offer on every PATCH and a description-
+ * only update will 422 if the offer happens to be missing GPSR / location /
+ * after-sales fields. Caller-supplied fields always win on overlap.
  */
 export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
   name?: string;
@@ -466,6 +474,12 @@ export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
       }>;
     }>;
   };
+  /** Backfilled from `sellerDefaults.location` (#487). */
+  location?: AllegroProductOfferCreateRequest['location'];
+  /** Backfilled from `sellerDefaults.responsibleProducerId` + `safetyInformation` (#487). */
+  productSet?: AllegroProductSetEntry[];
+  /** Reserved for the after-sales backfill follow-up (#487). No connection-level storage exists yet. */
+  afterSalesServices?: AllegroProductOfferCreateRequest['afterSalesServices'];
 }
 
 /**

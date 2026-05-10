@@ -67,6 +67,12 @@ describe('IntegrationsService', () => {
       getAdapter: jest.fn(),
       getAdapterMetadata: jest.fn(),
       listAdapters: jest.fn(),
+      register: jest.fn(),
+      // Default to resolving prestashop's default adapterKey — most tests
+      // pass `mockConnection` with `platformType: 'prestashop'` and no
+      // explicit adapterKey, hitting this path. Tests that need a different
+      // platform override per-test.
+      getDefaultAdapterKey: jest.fn().mockResolvedValue('prestashop.webservice.v1'),
     } as unknown as jest.Mocked<AdapterRegistryPort>;
 
     const mockFactoryResolver = {
@@ -157,6 +163,10 @@ describe('IntegrationsService', () => {
       const result = await service.getAdapter('connection-123');
 
       expect(result.connection).toEqual(mockConnection);
+      // Documents the contract: when connection.adapterKey is unset,
+      // IntegrationsService asks the registry for the platform default
+      // (#571 — replaces the hardcoded deriveAdapterKey map).
+      expect(adapterRegistry.getDefaultAdapterKey).toHaveBeenCalledWith('prestashop');
       expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith(
         'prestashop.webservice.v1',
       );

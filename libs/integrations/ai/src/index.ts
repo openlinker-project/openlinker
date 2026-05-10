@@ -15,9 +15,9 @@ export {
   VERCEL_GENERATE_TEXT_FN_TOKEN,
   type VercelGenerateTextFn,
 } from './infrastructure/adapters/vercel-ai-completion.adapter';
+export { MultiProviderAiCompletionAdapter } from './infrastructure/adapters/multi-provider-ai-completion.adapter';
 export {
-  MultiProviderAiCompletionAdapter,
   ANTHROPIC_AI_COMPLETION_ADAPTER_TOKEN,
   OPENAI_AI_COMPLETION_ADAPTER_TOKEN,
   FAKE_AI_COMPLETION_ADAPTER_TOKEN,
-} from './infrastructure/adapters/multi-provider-ai-completion.adapter';
+} from './ai-integration.tokens';
