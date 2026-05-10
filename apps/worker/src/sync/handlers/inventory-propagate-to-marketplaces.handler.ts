@@ -20,7 +20,6 @@ import {
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
-  ExternalIdMapping,
 } from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 
@@ -105,19 +104,14 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`,
       );
 
-      // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job
-      // Filter to only Allegro mappings for MVP (platformType === 'allegro')
-      const allegroMappings = mappings.filter((m: ExternalIdMapping) => m.platformType === 'allegro');
-
-      if (allegroMappings.length === 0) {
-        this.logger.debug(
-          `No Allegro offer mappings found for product ${payload.productId}. Skipping propagation.`,
-        );
-        return { outcome: 'ok' };
-      }
-
+      // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job.
+      // Per-platform behaviour belongs in the adapter, not in this thin handler
+      // (#582). The downstream MarketplaceOfferQuantityUpdateHandler resolves
+      // `OfferManager` via `IntegrationsService.getCapabilityAdapter` and
+      // surfaces a missing-capability connection as a clean domain error, so a
+      // capability check at enqueue time would duplicate that policy.
       const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
-      const enqueuePromises = allegroMappings.map(async (mapping) => {
+      const enqueuePromises = mappings.map(async (mapping) => {
         // Include write-event token to avoid suppressing legitimate quantity oscillations (e.g. 5->6->5).
         const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}`;
 
@@ -145,7 +139,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       await Promise.all(enqueuePromises);
 
       this.logger.log(
-        `Successfully enqueued ${allegroMappings.length} offer quantity update job(s) for product ${payload.productId}`,
+        `Successfully enqueued ${mappings.length} offer quantity update job(s) for product ${payload.productId}`,
       );
 
       return { outcome: 'ok' };
