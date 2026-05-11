@@ -42,6 +42,7 @@ The `apps/web/src` folder is organized as:
 - `app/`: application shell, providers, router, layouts, and route registration
 - `pages/`: route-level page composition
 - `features/`: vertical slices with feature-specific API hooks, mutations, and UI
+- `plugins/`: build-time plugin registry — named extension points (routes, nav items, typed API namespaces) iterated by the host. The barrel at `plugins/index.ts` is the **single edit point** an OSS contributor touches to enable a new in-tree plugin. Mirrors the BE `apps/api/src/plugins.ts` shape (#604/#605).
 - `shared/`: reusable UI, utilities, config, and cross-feature types
 - `test/`: shared frontend test setup and helpers
 
@@ -283,12 +284,13 @@ See [`docs/ui-audit/library-analysis.md`](./ui-audit/library-analysis.md) for th
 
 Dependency direction must remain simple and enforceable:
 
-- `app` may import `pages`, `features`, and `shared`
+- `app` may import `pages`, `features`, `plugins`, and `shared`
 - `pages` may import `features` and `shared`
 - `features` may import `shared`
-- `shared` must not import `features` or `pages`
+- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
+- `shared` must not import `features`, `pages`, or `plugins`
 
-These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, and `pages/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
+These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, `pages/`, and `plugins/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 

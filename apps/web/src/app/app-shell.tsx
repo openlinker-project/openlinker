@@ -22,6 +22,8 @@ import {
 } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
+import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
+import { plugins } from '../plugins';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
@@ -38,7 +40,7 @@ import { useToast } from '../shared/ui/toast-provider';
 
 type NavCountKey = Exclude<keyof NavCounts, never>;
 
-interface LiveNavItem {
+export interface LiveNavItem {
   countKey?: NavCountKey;
   end?: boolean;
   label: string;
@@ -50,7 +52,7 @@ interface PlannedNavItem {
   reason?: string;
 }
 
-interface LiveNavGroup {
+export interface LiveNavGroup {
   items: LiveNavItem[];
   kind: 'live';
   label: string;
@@ -62,7 +64,7 @@ interface PlannedNavGroup {
   label: string;
 }
 
-type NavGroup = LiveNavGroup | PlannedNavGroup;
+export type NavGroup = LiveNavGroup | PlannedNavGroup;
 
 interface NavGroupOptions {
   isAdmin: boolean;
@@ -342,7 +344,11 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const counts = useNavCounts();
   const isAdmin =
     isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  const groups = useMemo(() => buildNavGroups({ isAdmin }), [isAdmin]);
+  const groups = useMemo(() => {
+    const baseGroups = buildNavGroups({ isAdmin });
+    const contributions = plugins.flatMap((plugin) => plugin.navItems ?? []);
+    return mergePluginNavContributions(baseGroups, contributions);
+  }, [isAdmin]);
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
