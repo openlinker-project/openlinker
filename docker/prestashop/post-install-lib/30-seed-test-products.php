@@ -1,6 +1,8 @@
 <?php
 /**
- * Seed five real-data dev fixtures sourced from the Allegro public catalogue (#521).
+ * Seed five real-data dev fixtures sourced from the Allegro public catalogue
+ * (#521), with CC0 cover images sourced from Wikimedia Commons (#544 —
+ * provenance in `seed-images/LICENSES.md`).
  *
  * Idempotent: re-runs early-exit when ≥5 products with reference prefix `OL-`
  * are already present.
@@ -217,6 +219,81 @@ function olCreateCombination(
     return $idCombination;
 }
 
+/**
+ * Attach an image to a Product (cover) or a Combination (per-variant). Uses the
+ * same Image + ImageManager code path the admin "upload image" UI uses: writes
+ * the source to `_PS_PROD_IMG_DIR_ . Image::getImgPath() . '.jpg'`, lets PS
+ * generate derivatives via `ImageType::getImagesTypes('products')`, and (for
+ * combinations) wires `product_attribute_image` via `INSERT IGNORE`.
+ *
+ * `$idCombination` null → product-level cover (legacy `ps_image.cover`).
+ * `$idCombination` set → still inserts a `ps_image` row, plus the link row.
+ *
+ * No `$idShop` parameter: `Image::add()` resolves `id_shop_default` from
+ * `Context::getContext()->shop` set by the AdminKernel boot above.
+ *
+ * Returns the new `ps_image.id_image`.
+ */
+function olAttachProductImage(
+    int $idProduct,
+    ?int $idCombination,
+    string $reference,
+    bool $isCover,
+    string $srcFilename
+): int {
+    $src = '/tmp/post-install-lib/seed-images/' . $srcFilename;
+    if (!is_readable($src)) {
+        throw new RuntimeException("Source image not readable: {$src}");
+    }
+    if (!is_writable(_PS_PROD_IMG_DIR_)) {
+        throw new RuntimeException('PS image dir not writable: ' . _PS_PROD_IMG_DIR_);
+    }
+
+    $image = new Image();
+    $image->id_product = $idProduct;
+    $image->position = Image::getHighestPosition($idProduct) + 1;
+    $image->cover = $isCover;
+    if (!$image->add()) {
+        throw new RuntimeException("Image::add failed for {$reference}");
+    }
+
+    $dst = _PS_PROD_IMG_DIR_ . $image->getImgPath() . '.jpg';
+    if (!@copy($src, $dst)) {
+        $image->delete();
+        throw new RuntimeException("Image copy failed: {$src} → {$dst}");
+    }
+    if (!ImageManager::resize($dst, $dst)) {
+        $image->delete();
+        throw new RuntimeException("ImageManager::resize failed for {$dst}");
+    }
+
+    foreach (ImageType::getImagesTypes('products') as $imageType) {
+        $derivative = _PS_PROD_IMG_DIR_ . $image->getImgPath()
+            . '-' . $imageType['name'] . '.jpg';
+        ImageManager::resize(
+            $dst,
+            $derivative,
+            (int) $imageType['width'],
+            (int) $imageType['height']
+        );
+    }
+
+    if ($idCombination !== null) {
+        Db::getInstance()->insert(
+            'product_attribute_image',
+            [
+                'id_image' => (int) $image->id,
+                'id_product_attribute' => $idCombination,
+            ],
+            false,
+            true,
+            Db::INSERT_IGNORE
+        );
+    }
+
+    return (int) $image->id;
+}
+
 // ─── Fixtures (real product data sourced from Allegro listings) ─────────────
 
 try {
@@ -235,6 +312,7 @@ try {
             . 'Short 169 mm head fits tight spaces. Dev fixture for the simple-product + full-barcode path.',
     ], $idLang, $idShop, $idRootCategory);
     StockAvailable::setQuantity((int) $f1->id, 0, 50, $idShop);
+    olAttachProductImage((int) $f1->id, null, 'OL-BOSCH-GSR12V15', true, 'OL-BOSCH-GSR12V15.jpg');
     echo "* Fixture 1 (simple + EAN + ref) created: id={$f1->id}\n";
 
     // Fixture 2: simple, no EAN
@@ -252,6 +330,7 @@ try {
             . 'Microwave and dishwasher safe. Dev fixture for the simple-product + no-barcode path.',
     ], $idLang, $idShop, $idRootCategory);
     StockAvailable::setQuantity((int) $f2->id, 0, 30, $idShop);
+    olAttachProductImage((int) $f2->id, null, 'OL-MUG-LIN-300', true, 'OL-MUG-LIN-300.jpg');
     echo "* Fixture 2 (simple, no EAN) created: id={$f2->id}\n";
 
     // Shared attribute groups for variant fixtures.
@@ -282,6 +361,8 @@ try {
     olCreateCombination($f3, [$sizeS], 'OL-ADIDAS-IA4845-S', '4066740580123', $idShop);
     olCreateCombination($f3, [$sizeM], 'OL-ADIDAS-IA4845-M', '4066740580130', $idShop);
     olCreateCombination($f3, [$sizeL], 'OL-ADIDAS-IA4845-L', '4066740580147', $idShop);
+    // One cover image at the product level; all three size combinations inherit it.
+    olAttachProductImage((int) $f3->id, null, 'OL-ADIDAS-IA4845', true, 'OL-ADIDAS-IA4845.jpg');
     echo "* Fixture 3 (variant + full EAN, 3 sizes) created: id={$f3->id}\n";
 
     // Fixture 4: variant + partial EAN (2 colours, mixed coverage)
@@ -305,8 +386,25 @@ try {
     $colourLavender = olGetOrCreateAttribute($colourGroupId, 'Lavender', $idLang);
     $colourRose = olGetOrCreateAttribute($colourGroupId, 'Rose', $idLang);
 
-    olCreateCombination($f4, [$colourLavender], 'OL-SOAP-NATURAL-LAV', '5901234500012', $idShop);
-    olCreateCombination($f4, [$colourRose], 'OL-SOAP-NATURAL-ROSE', '', $idShop);
+    $idCombinationLav = olCreateCombination(
+        $f4,
+        [$colourLavender],
+        'OL-SOAP-NATURAL-LAV',
+        '5901234500012',
+        $idShop
+    );
+    $idCombinationRose = olCreateCombination(
+        $f4,
+        [$colourRose],
+        'OL-SOAP-NATURAL-ROSE',
+        '',
+        $idShop
+    );
+    // Cover image (plain natural soap) + one image per combination so the
+    // storefront swaps the gallery image when the customer toggles Scent.
+    olAttachProductImage((int) $f4->id, null, 'OL-SOAP-NATURAL', true, 'OL-SOAP-NATURAL.jpg');
+    olAttachProductImage((int) $f4->id, $idCombinationLav, 'OL-SOAP-NATURAL-LAV', false, 'OL-SOAP-NATURAL-LAV.jpg');
+    olAttachProductImage((int) $f4->id, $idCombinationRose, 'OL-SOAP-NATURAL-ROSE', false, 'OL-SOAP-NATURAL-ROSE.jpg');
     echo "* Fixture 4 (variant + partial EAN, 2 colours) created: id={$f4->id}\n";
 
     // Fixture 5: variant + no EAN coverage (3 sizes)
@@ -332,6 +430,8 @@ try {
     olCreateCombination($f5, [$size16], 'OL-RING-RESIN-16', '', $idShop);
     olCreateCombination($f5, [$size18], 'OL-RING-RESIN-18', '', $idShop);
     olCreateCombination($f5, [$size20], 'OL-RING-RESIN-20', '', $idShop);
+    // One cover image at the product level; all three size combinations inherit it.
+    olAttachProductImage((int) $f5->id, null, 'OL-RING-RESIN', true, 'OL-RING-RESIN.jpg');
     echo "* Fixture 5 (variant + no EAN, 3 sizes) created: id={$f5->id}\n";
 
     echo "* Seed complete — 5 OL-* fixtures inserted\n";
@@ -340,7 +440,10 @@ try {
 
     // Best-effort partial-rollback: any OL-* product we managed to create gets
     // removed so re-running starts from a clean slate. PS Product::delete()
-    // cascades to combinations, attributes-mapping, stock_available, etc.
+    // cascades to combinations, attributes-mapping, stock_available, plus
+    // ps_image rows + their filesystem derivatives via Image::deleteAutoGeneratedImage
+    // (the AdminKernel boot at the top of this file exists exactly so that
+    // cascade works in PS 9.x). No image-specific rollback step needed.
     $partials = Db::getInstance()->executeS(
         "SELECT id_product FROM " . _DB_PREFIX_ . "product WHERE reference LIKE 'OL-%'"
     );
