@@ -10,10 +10,32 @@
  * platform-driven UI lists (e.g. setup-card sequence on `PlatformPicker`,
  * dropdown option order on connection filters / create-connection form).
  *
+ * Duplicate `platformType` keys are rejected at module load time below —
+ * the same check also runs inside `PluginRegistryProvider` so fixture
+ * plugins injected by tests can't accidentally shadow each other.
+ *
  * @module plugins
  */
 import type { PlatformPlugin } from '../shared/plugins';
 import { prestashopPlugin } from './prestashop/prestashop.plugin';
 import { allegroPlugin } from './allegro/allegro.plugin';
 
-export const IN_TREE_PLUGINS: readonly PlatformPlugin[] = [prestashopPlugin, allegroPlugin];
+const PLUGINS: readonly PlatformPlugin[] = [prestashopPlugin, allegroPlugin];
+
+// Module-load validation: catches the production-manifest case before any
+// provider mounts. The provider-level guard in `plugin-registry-context.tsx`
+// covers the test-fixture case (where a non-production array is passed in).
+function assertUniquePlatformTypes(plugins: readonly PlatformPlugin[]): void {
+  const seen = new Set<string>();
+  for (const p of plugins) {
+    if (seen.has(p.platformType)) {
+      throw new Error(
+        `Duplicate plugin platformType: "${p.platformType}". Each registered plugin must have a unique \`platformType\`.`,
+      );
+    }
+    seen.add(p.platformType);
+  }
+}
+assertUniquePlatformTypes(PLUGINS);
+
+export const IN_TREE_PLUGINS: readonly PlatformPlugin[] = PLUGINS;

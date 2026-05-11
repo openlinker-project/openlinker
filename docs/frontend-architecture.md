@@ -307,6 +307,25 @@ The in-tree platform plugins (#578 / #579) live in `apps/web/src/plugins/<platfo
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlugin()`, `usePlugins()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this.
 
+### Plugin slot reference
+
+Every slot is optional. A plugin contributes only the affordances its platform actually needs; the consuming surface falls back to a generic rendering (or hides the affordance entirely) when the slot is absent.
+
+| Slot | Type | Consumed by | Purpose |
+|---|---|---|---|
+| `platformType` | `string` | registry lookup | Stable key — matches `connection.platformType`. Required. |
+| `displayName` | `string` | dropdowns, alerts | Human-readable label. Required. |
+| `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
+| `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
+| `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. PrestaShop uses `window.location.origin`. |
+| `StructuredConfigSection` | `ComponentType<StructuredConfigSectionProps>` | `EditConnectionForm` | Platform-specific structured-config inputs (PS: shop URL / storefront / shop ID / OL callback / fallback carrier). When absent, the form falls back to raw JSON. |
+| `ExtraConfigSection` | `ComponentType<ExtraConfigSectionProps>` | `EditConnectionForm` | Extra section below the structured/raw block (Allegro: GPSR seller defaults). |
+| `CredentialsPanel` | `ComponentType<{ connection }>` | `EditConnectionForm` | Full credentials panel including the rotate-key UI shape that fits the platform's credential model. When absent, the form renders a read-only "Stored securely (managed by integration)" / "Environment variable" affordance. |
+| `ConnectionActions` | `ComponentType<{ connection }>` | `ConnectionActionsPanel` | Extra platform-specific actions on the connection-detail page (PS: "Configure webhooks"). |
+| `supportsListingEdit` | `boolean` | `ListingDetailPage` | Gates the "Edit offer" button on the listing-detail page. |
+
+Module-load validation in `apps/web/src/plugins/index.ts` rejects duplicate `platformType` keys before any provider mounts. `PluginRegistryProvider` re-runs the same check at mount time as belt-and-suspenders for test fixtures.
+
 ## Async UX Conventions
 
 All API-driven screens should implement the same baseline UX states:
