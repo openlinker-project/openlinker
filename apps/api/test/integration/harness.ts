@@ -61,10 +61,12 @@ export async function startHarness(): Promise<void> {
   // Cron jobs fire against an empty database and keep the Node.js event loop
   // alive, causing Jest to hang after tests complete.
   //
-  // If a future integration test needs to exercise scheduler behaviour, register
-  // the task via SchedulerService.registerTask() and then call scheduleTask()
-  // directly (or re-invoke onModuleInit()) — the env vars below will have already
-  // been evaluated by onModuleInit at boot, so they cannot be overridden mid-test.
+  // If a future integration test needs to exercise scheduler behaviour, write
+  // a `SchedulerTaskConfig` into the core `SchedulerTaskRegistryService` (or
+  // mirror a real Allegro task via `buildAllegroSchedulerTasks`) and re-invoke
+  // `SchedulerService.onApplicationBootstrap()` — the env vars below were
+  // evaluated at boot and cannot be flipped back on mid-test, but the registry
+  // is the seam for adding ad-hoc tasks (#584).
   process.env.OL_ALLEGRO_POLL_SCHEDULER_ENABLED = 'false';
   process.env.OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED = 'false';
   process.env.OL_INVENTORY_SYNC_ENABLED = 'false';
