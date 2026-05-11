@@ -1,4 +1,10 @@
+/**
+ * Route: `/connections/new/allegro` — guided Allegro wizard.
+ *
+ * @module plugins/allegro
+ */
 import type { RouteObject } from 'react-router-dom';
+
 import { AllegroSetupPage } from '../../pages/connections/allegro-setup-page';
 
 export const allegroSetupRoute: RouteObject = {

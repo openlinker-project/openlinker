@@ -69,8 +69,8 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['**/features/**', '**/pages/**', '**/app/**'],
-                message: 'Shared modules must not import feature, page, or app modules.',
+                group: ['**/features/**', '**/pages/**', '**/app/**', '**/plugins/**'],
+                message: 'Shared modules must not import feature, page, app, or plugin modules.',
               },
             ],
           },
@@ -92,8 +92,8 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['**/pages/**'],
-                message: 'Feature modules must not import page modules.',
+                group: ['**/pages/**', '**/plugins/**'],
+                message: 'Feature modules must not import page or plugin modules.',
               },
               {
                 group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
@@ -128,8 +128,8 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['**/app/**'],
-                message: 'Page modules must not import app modules.',
+                group: ['**/app/**', '**/plugins/**'],
+                message: 'Page modules must not import app or plugin modules.',
               },
               {
                 group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
@@ -162,6 +162,52 @@ module.exports = {
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      // Plugin boundary (#604): plugins compose pages/features/shared and may
+      // reference the public type seam at `app/api/api-client` only. Importing
+      // any other `app/` path would couple plugins to host internals (router,
+      // layouts, app-shell) and defeat the seam introduced for OSS plugin
+      // contribution. Enumerated explicitly because the `ignore`-style glob
+      // negation we'd normally use ('**/app/**', '!**/app/api/api-client') is
+      // unreliable across `ignore` versions; an explicit list is shorter than
+      // arguing about it and reads honestly in the diff.
+      files: ['apps/web/src/plugins/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '**/app/router*',
+                  '**/app/app',
+                  '**/app/app.tsx',
+                  '**/app/layouts/**',
+                  '**/app/routes/**',
+                  '**/app/hooks/**',
+                  '**/app/providers/**',
+                  '**/app/api/api-client-provider*',
+                ],
+                message:
+                  'Plugin modules must not import host internals (router, routes, layouts, hooks, providers, the API client provider hook). The public surface plugins may consume is app/api/api-client (types) and app/app-shell (NavGroup types) — anything else couples plugins to host implementation.',
+              },
+              {
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                message:
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
+              },
+            ],
+          },
+        ],
+        'no-restricted-globals': [
+          'error',
+          {
+            name: 'fetch',
+            message: 'Use API client modules from shared/api instead of raw fetch().',
           },
         ],
       },
