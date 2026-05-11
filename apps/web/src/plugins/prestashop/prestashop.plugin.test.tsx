@@ -8,34 +8,34 @@
  * `EditConnectionForm.test.tsx`).
  */
 import { describe, expect, it } from 'vitest';
-import { prestashopPlugin } from './prestashop.plugin';
+import { prestashopPlatformPlugin } from './prestashop.plugin';
 
-describe('prestashopPlugin', () => {
+describe('prestashopPlatformPlugin', () => {
   it('declares the expected platform key + display name', () => {
-    expect(prestashopPlugin.platformType).toBe('prestashop');
-    expect(prestashopPlugin.displayName).toBe('PrestaShop');
+    expect(prestashopPlatformPlugin.platformType).toBe('prestashop');
+    expect(prestashopPlatformPlugin.displayName).toBe('PrestaShop');
   });
 
   it('contributes the setup card pointing to the guided wizard', () => {
-    expect(prestashopPlugin.setupCard).toBeDefined();
-    expect(prestashopPlugin.setupCard?.to).toBe('/connections/new/prestashop');
+    expect(prestashopPlatformPlugin.setupCard).toBeDefined();
+    expect(prestashopPlatformPlugin.setupCard?.to).toBe('/connections/new/prestashop');
   });
 
   it('contributes structured-config + credentials + actions slots', () => {
-    expect(prestashopPlugin.StructuredConfigSection).toBeDefined();
-    expect(prestashopPlugin.CredentialsPanel).toBeDefined();
-    expect(prestashopPlugin.ConnectionActions).toBeDefined();
+    expect(prestashopPlatformPlugin.StructuredConfigSection).toBeDefined();
+    expect(prestashopPlatformPlugin.CredentialsPanel).toBeDefined();
+    expect(prestashopPlatformPlugin.ConnectionActions).toBeDefined();
   });
 
   it('does NOT contribute an extra config section (PS has no Allegro-like extra block)', () => {
-    expect(prestashopPlugin.ExtraConfigSection).toBeUndefined();
+    expect(prestashopPlatformPlugin.ExtraConfigSection).toBeUndefined();
   });
 
   it('does NOT mark itself as external-auth-redirect (PS uses inline credentials)', () => {
-    expect(prestashopPlugin.requiresExternalAuthRedirect).toBeUndefined();
+    expect(prestashopPlatformPlugin.requiresExternalAuthRedirect).toBeUndefined();
   });
 
   it('returns window.location.origin from getCallbackUrlDefault under jsdom', () => {
-    expect(prestashopPlugin.getCallbackUrlDefault?.()).toBe(window.location.origin);
+    expect(prestashopPlatformPlugin.getCallbackUrlDefault?.()).toBe(window.location.origin);
   });
 });

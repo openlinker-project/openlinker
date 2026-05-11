@@ -13,7 +13,7 @@
 import type { PlatformPlugin } from '../../shared/plugins';
 import { AllegroExtraSection } from './components/allegro-extra-section';
 
-export const allegroPlugin: PlatformPlugin = {
+export const allegroPlatformPlugin: PlatformPlugin = {
   platformType: 'allegro',
   displayName: 'Allegro',
   setupCard: {

@@ -1,7 +1,9 @@
 import type { RouteObject } from 'react-router-dom';
-import { NewConnectionPage } from '../../pages/connections/new-connection-page';
 
 export const newConnectionRoute: RouteObject = {
   path: 'connections/new',
-  element: <NewConnectionPage />,
+  lazy: async () => {
+    const { NewConnectionPage } = await import('../../pages/connections/new-connection-page');
+    return { Component: NewConnectionPage };
+  },
 };

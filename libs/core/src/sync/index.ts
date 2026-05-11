@@ -75,6 +75,10 @@ export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.err
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
+export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
+
+// Scheduler task contract (consumed by integration modules to contribute cron tasks)
+export type { SchedulerTaskConfig } from './domain/types/scheduler-task.types';
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
@@ -91,6 +95,7 @@ export {
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 // ORM Entities (exported for testing and TypeORM CLI usage)

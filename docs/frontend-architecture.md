@@ -42,6 +42,7 @@ The `apps/web/src` folder is organized as:
 - `app/`: application shell, providers, router, layouts, and route registration
 - `pages/`: route-level page composition
 - `features/`: vertical slices with feature-specific API hooks, mutations, and UI
+- `plugins/`: build-time plugin registry — named extension points (routes, nav items, typed API namespaces) iterated by the host. The barrel at `plugins/index.ts` is the **single edit point** an OSS contributor touches to enable a new in-tree plugin. Mirrors the BE `apps/api/src/plugins.ts` shape (#604/#605).
 - `shared/`: reusable UI, utilities, config, and cross-feature types
 - `test/`: shared frontend test setup and helpers
 
@@ -70,6 +71,25 @@ Each route should have:
 - a route module in `src/app/routes`
 - a page component in `src/pages/<domain>`
 - feature-level data hooks and UI under `src/features/<domain>`
+
+Page-bearing route modules use React Router's `lazy` field so each page becomes its own bundle chunk (#606):
+
+```ts
+export const dashboardRoute: RouteObject = {
+  index: true,
+  lazy: async () => {
+    const { DashboardPage } = await import('../../pages/dashboard/dashboard-page');
+    return { Component: DashboardPage };
+  },
+};
+```
+
+Exceptions kept intentionally eager:
+
+- `loginRoute` — first paint for unauthenticated cold visits; a lazy chunk there adds a blank-screen window for the most-common first impression.
+- `prompt-templates-legacy-redirects.route.tsx` — inline `<Navigate>` element, no page module to defer.
+
+A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the exact lazy-route count; bump `EXPECTED_LAZY_ROUTE_COUNT` when intentionally adding or removing a lazy route.
 
 ## API Client Conventions
 
@@ -285,11 +305,11 @@ Dependency direction must remain simple and enforceable:
 
 - `app` may import `pages`, `features`, `plugins`, and `shared`
 - `pages` may import `features` and `shared`
-- `plugins` may import `features` and `shared` (see [Platform Plugins](#platform-plugins-plugins))
+- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam — see [Plugins](#platform-plugins-plugins) for both the build-time `WebPlugin` and runtime `PlatformPlugin` contracts). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
 - `features` may import `shared`
 - `shared` must not import `features`, `pages`, or `plugins` — with one narrow exemption documented below
 
-These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, and `pages/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
+These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, `pages/`, and `plugins/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 
@@ -303,11 +323,18 @@ Additional rules:
 
 ## Platform Plugins (`plugins/`)
 
-The in-tree platform plugins (#578 / #579) live in `apps/web/src/plugins/<platformType>/`. Each plugin exposes a `PlatformPlugin` object describing the platform-specific UI affordances — setup card, callback-URL default, structured edit-form sections, extra edit-form sections, connection actions, etc. The plugin registry contract (`shared/plugins/`) is consumed by core feature components via `usePlugin(platformType)` and `usePlugins()`. Adding a new platform plugin is a single edit point: drop a new directory under `plugins/` and add it to `IN_TREE_PLUGINS` in `plugins/index.ts`.
+The in-tree plugins live in `apps/web/src/plugins/<name>/`. Two parallel concerns are surfaced from the same barrel (`plugins/index.ts`):
+
+1. **Build-time `WebPlugin`** (#604/#605) — host composition: routes, nav contributions, typed API client namespaces. Authored via `definePlugin({...})`; collected as the exported `plugins: WebPlugin[]` array. Iterated by the router and `createApiClient` at boot. Both runtime composition AND TS declaration-merging require the plugin to be in this array.
+2. **Runtime `PlatformPlugin`** (#578/#579) — per-platform UI affordances: setup card, callback-URL default, structured edit-form sections, extra sections, credentials panel, connection actions. Collected as the exported `IN_TREE_PLUGINS: readonly PlatformPlugin[]` array. Resolved at render time via `usePlugin(platformType)` / `usePlugins()` from `shared/plugins/`.
+
+The two contracts live side-by-side because they answer different questions ("what does this plugin contribute to the app shell?" vs "what platform-specific UI does this connection's platformType expose?"). A single per-platform directory typically contributes both: `plugins/allegro/index.ts` exports an `allegroPlugin: WebPlugin`; `plugins/allegro/allegro.plugin.tsx` exports an `allegroPlatformPlugin: PlatformPlugin`.
+
+Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append entries to both arrays in `plugins/index.ts`.
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlugin()`, `usePlugins()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this.
 
-### Plugin slot reference
+### PlatformPlugin slot reference
 
 Every slot is optional. A plugin contributes only the affordances its platform actually needs; the consuming surface falls back to a generic rendering (or hides the affordance entirely) when the slot is absent.
 

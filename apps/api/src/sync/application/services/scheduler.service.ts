@@ -1,84 +1,35 @@
 /**
  * Scheduler Service
  *
- * Generic scheduled service that periodically enqueues sync jobs
- * for multiple platforms and job types. Supports configurable cron schedules
- * and platform-specific job payload generation.
+ * Generic scheduled service that drains the platform-agnostic
+ * `SchedulerTaskRegistryService` and the two capability-based core tasks
+ * (`master-inventory-sync`, `master-product-sync`) at bootstrap, then
+ * schedules each with `@nestjs/schedule`. Platform-specific tasks (Allegro
+ * orders-poll, offers-sync, …) are contributed by integration modules at
+ * `onModuleInit` and picked up here at `onApplicationBootstrap` — NestJS
+ * guarantees the lifecycle order so every integration has registered
+ * before this drains (#584).
  *
  * @module apps/api/src/sync/application/services
  */
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
 import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, SyncJobRequest, JobType } from '@openlinker/core/sync';
+import {
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  SyncJobRequest,
+  SchedulerTaskConfig,
+  SchedulerTaskRegistryService,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
+} from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
-/**
- * Scheduler Task Configuration
- *
- * Defines a scheduled task that enqueues jobs for a specific platform and job type.
- */
-export interface SchedulerTaskConfig {
-  /**
-   * Unique task identifier (used for cron job name and logging)
-   */
-  taskId: string;
-
-  /**
-   * Platform type to filter connections (e.g., 'allegro', 'prestashop').
-   *
-   * Ignored when `connectionFilter` is provided. Required otherwise.
-   */
-  platformType?: string;
-
-  /**
-   * Job type to enqueue (e.g., 'allegro.orders.poll')
-   */
-  jobType: JobType;
-
-  /**
-   * Cron expression for scheduling
-   * Example: "*\/5 * * * *" for every 5 minutes
-   */
-  cronExpression: string;
-
-  /**
-   * Environment variable name to enable/disable this task (default: true)
-   * Example: 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED'
-   */
-  enabledEnvVar?: string;
-
-  /**
-   * Optional custom connection filter (overrides default platformType-based lookup).
-   *
-   * When provided, the scheduler calls this instead of filtering by platformType.
-   * Useful for capability-based filtering that spans multiple platform types.
-   */
-  connectionFilter?: () => Promise<Connection[]>;
-
-  /**
-   * Generate job payload for a connection
-   *
-   * @param connection - The connection to generate payload for
-   * @returns Job payload object
-   */
-  generatePayload: (connection: Connection) => Record<string, unknown>;
-
-  /**
-   * Generate idempotency key for a connection
-   *
-   * @param connection - The connection
-   * @param timestamp - Current timestamp (YYYY-MM-DD-HH-MM format)
-   * @returns Idempotency key string
-   */
-  generateIdempotencyKey: (connection: Connection, timestamp: string) => string;
-}
-
 @Injectable()
-export class SchedulerService implements OnModuleInit, OnModuleDestroy {
+export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
   private readonly tasks: SchedulerTaskConfig[] = [];
 
@@ -91,13 +42,26 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly integrationsService: IIntegrationsService,
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
   ) {}
 
-  onModuleInit(): void {
-    // Register default tasks (adds to this.tasks)
-    this.registerDefaultTasks();
+  onApplicationBootstrap(): void {
+    // Register the two capability-based core tasks (cross-platform — drain
+    // every connection that supports a given capability). These stay
+    // core-side; only platform-specific *triggers* move to integrations.
+    this.registerInventorySyncTask();
+    this.registerProductSyncTask();
 
-    // Register all configured tasks (schedules cron jobs)
+    // Drain plugin-contributed tasks. Integration modules have already
+    // populated the registry at `onModuleInit`; NestJS guarantees every
+    // `onModuleInit` hook fires before any `onApplicationBootstrap`, so
+    // the registry is fully populated by the time we read it here.
+    for (const task of this.schedulerTaskRegistry.getAll()) {
+      this.tasks.push(task);
+    }
+
+    // Schedule everything.
     this.tasks.forEach((task) => this.scheduleTask(task));
   }
 
@@ -118,94 +82,6 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         // Ignore errors during teardown — the process is shutting down anyway
       }
     }
-  }
-
-  /**
-   * Register a scheduler task
-   *
-   * Adds a task configuration that will be scheduled on module init.
-   * Can be called before or during module initialization.
-   */
-  registerTask(config: SchedulerTaskConfig): void {
-    this.tasks.push(config);
-  }
-
-  /**
-   * Register default scheduler tasks
-   *
-   * Registers platform-specific tasks based on environment configuration.
-   * Can be overridden or extended by calling registerTask().
-   */
-  private registerDefaultTasks(): void {
-    // Marketplace orders poll task (for Allegro connections)
-    const allegroPollEnabled = this.configService.get<string>(
-      'OL_ALLEGRO_POLL_SCHEDULER_ENABLED',
-      'true',
-    );
-    if (allegroPollEnabled !== 'false') {
-      const allegroCronExpression = this.configService.get<string>(
-        'OL_ALLEGRO_POLL_INTERVAL_CRON',
-        '*/5 * * * *', // Every 5 minutes
-      );
-
-      this.registerTask({
-        taskId: 'allegro-orders-poll',
-        platformType: 'allegro',
-        jobType: 'marketplace.orders.poll',
-        cronExpression: allegroCronExpression,
-        enabledEnvVar: 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED',
-        generatePayload: () => ({
-          schemaVersion: 1,
-          cursorKey: 'allegro.orders.lastEventId',
-          limit: 100,
-        }),
-        generateIdempotencyKey: (connection, timestamp) =>
-          `marketplace:${connection.id}:orders:poll:${timestamp}`,
-      });
-    }
-
-    // Marketplace offers sync task (for Allegro connections)
-    const allegroOffersSyncEnabled = this.configService.get<string>(
-      'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
-      'true',
-    );
-    if (allegroOffersSyncEnabled !== 'false') {
-      const offersCronExpression = this.configService.get<string>(
-        'OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
-        '*/30 * * * *', // Every 30 minutes
-      );
-      const pageLimit = Number(
-        this.configService.get<string>('OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
-      );
-      const offersFeedTypeRaw = this.configService
-        .get<string>('OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE', 'events')
-        .toLowerCase();
-      const offersFeedType = offersFeedTypeRaw === 'offers' ? 'offers' : 'events';
-
-      this.registerTask({
-        taskId: 'allegro-offers-sync',
-        platformType: 'allegro',
-        jobType: 'marketplace.offers.sync',
-        cronExpression: offersCronExpression,
-        enabledEnvVar: 'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
-        generatePayload: (connection) => ({
-          schemaVersion: 1,
-          limit: Number.isFinite(pageLimit) && pageLimit > 0 ? pageLimit : 100,
-          cursor: null,
-          cursorKey: offersFeedType === 'events' ? 'allegro.offers.lastEventId' : undefined,
-          feedType: offersFeedType,
-          masterConnectionId: this.getMasterCatalogConnectionId(connection),
-        }),
-        generateIdempotencyKey: (connection, timestamp) =>
-          `marketplace:${connection.id}:offers:sync:${timestamp}`,
-      });
-    }
-
-    // Periodic inventory sync (capability-based, cross-platform)
-    this.registerInventorySyncTask();
-
-    // Periodic product catalog sync (capability-based, cross-platform)
-    this.registerProductSyncTask();
   }
 
   /**
@@ -235,7 +111,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     cronJob.start();
 
     this.logger.log(
-      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'none')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
+      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'unknown')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
     );
   }
 
@@ -391,7 +267,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       '*/15 * * * *',
     );
 
-    this.registerTask({
+    this.tasks.push({
       taskId: 'master-inventory-sync',
       jobType: 'master.inventory.syncAll',
       cronExpression: inventoryCron,
@@ -432,7 +308,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       '*/20 * * * *',
     );
 
-    this.registerTask({
+    this.tasks.push({
       taskId: 'master-product-sync',
       jobType: 'master.product.syncAll',
       cronExpression: productCron,
@@ -450,11 +326,4 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         `master:${connection.id}:product:syncAll:${timestamp}`,
     });
   }
-
-  private getMasterCatalogConnectionId(connection: Connection): string | null {
-    const config = connection.config as Record<string, unknown>;
-    const masterConnectionId = config.masterCatalogConnectionId;
-    return typeof masterConnectionId === 'string' ? masterConnectionId : null;
-  }
 }
-

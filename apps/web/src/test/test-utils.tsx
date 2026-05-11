@@ -44,25 +44,29 @@ export const sampleConnection: Connection = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+/**
+ * Per-namespace partial of `ApiClient`. Function fields (e.g. `request`)
+ * stay as-is; object namespaces become `Partial<...>` so tests can override
+ * a subset of methods. The mapped form auto-tracks `PluginApiNamespaces` —
+ * when a plugin extends `ApiClient` via declaration merging, the new key is
+ * automatically a valid override slot here.
+ *
+ * Merge order in `createMockApiClient`: hardcoded vi.fn defaults → caller
+ * overrides. Caller overrides always win. (See `plugin-registry.test.ts`
+ * "caller overrides win over plugin contributions" — pinned.)
+ *
+ * Note on divergence from runtime composition: `createApiClient` iterates
+ * the real plugin registry and merges `plugin.apiNamespaces(request)`. The
+ * mock factory deliberately does NOT — invoking real plugin factories with
+ * a stubbed `request` would call through to feature-side fetchers in tests
+ * that don't override. Instead, the factory hardcodes plugin-namespace
+ * defaults inline (e.g. the `allegro` block below) with vi.fn defaults.
+ * Keep that block in sync with the runtime contributions of `apps/web/src/plugins/`.
+ */
 type DeepPartialApiClient = {
-  request?: ApiClient['request'];
-  adapters?: Partial<ApiClient['adapters']>;
-  aiProviderSettings?: Partial<ApiClient['aiProviderSettings']>;
-  allegro?: Partial<ApiClient['allegro']>;
-  auth?: Partial<ApiClient['auth']>;
-  connections?: Partial<ApiClient['connections']>;
-  content?: Partial<ApiClient['content']>;
-  cursors?: Partial<ApiClient['cursors']>;
-  customers?: Partial<ApiClient['customers']>;
-  health?: Partial<ApiClient['health']>;
-  inventory?: Partial<ApiClient['inventory']>;
-  listings?: Partial<ApiClient['listings']>;
-  orders?: Partial<ApiClient['orders']>;
-  products?: Partial<ApiClient['products']>;
-  promptTemplates?: Partial<ApiClient['promptTemplates']>;
-  mappings?: Partial<ApiClient['mappings']>;
-  syncJobs?: Partial<ApiClient['syncJobs']>;
-  webhookDeliveries?: Partial<ApiClient['webhookDeliveries']>;
+  [K in keyof ApiClient]?: ApiClient[K] extends (...args: never[]) => unknown
+    ? ApiClient[K]
+    : Partial<ApiClient[K]>;
 };
 
 export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiClient {

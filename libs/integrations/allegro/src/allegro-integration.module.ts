@@ -35,10 +35,13 @@ import {
   SyncModule,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
+  SchedulerTaskRegistryService,
 } from '@openlinker/core/sync';
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';
@@ -102,6 +105,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
     private readonly retryClassifierRegistry: RetryClassifierRegistryService,
+    @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN)
     private readonly customerIdentityResolver: CustomerIdentityResolverPort,
     @Optional()
@@ -125,7 +130,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger.log(
-      'Registering Allegro adapter (metadata + factory + tester + email normalizer + retry classifier)...',
+      'Registering Allegro adapter (metadata + factory + tester + email normalizer + retry classifier + scheduler tasks)...',
     );
     // Register metadata first — what this adapter is and what it can do.
     // Mirrors the inline literal previously hardcoded in core's
@@ -172,6 +177,17 @@ export class AllegroIntegrationModule implements OnModuleInit {
       'allegro.publicapi.v1',
       new AllegroRetryClassifierAdapter(),
     );
+    // Scheduler tasks (#584 / Thread E) — replaces the previously
+    // hardcoded `allegro-orders-poll` / `allegro-offers-sync` blocks in
+    // `apps/api/.../scheduler.service.ts`. Registration is unconditional
+    // w.r.t. host app: `apps/worker` imports this module too, where no
+    // scheduler drains the registry — that's benign (small Map retention,
+    // no side effects until something drains).
+    if (this.configService) {
+      for (const task of buildAllegroSchedulerTasks(this.configService)) {
+        this.schedulerTaskRegistry.register(task);
+      }
+    }
     this.logger.log('Allegro adapter registered successfully');
   }
 

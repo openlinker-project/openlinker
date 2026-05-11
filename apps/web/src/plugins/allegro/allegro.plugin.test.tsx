@@ -6,35 +6,35 @@
  * (`platform-picker.test.tsx`, `EditConnectionForm.test.tsx`, etc.).
  */
 import { describe, expect, it } from 'vitest';
-import { allegroPlugin } from './allegro.plugin';
+import { allegroPlatformPlugin } from './allegro.plugin';
 
-describe('allegroPlugin', () => {
+describe('allegroPlatformPlugin', () => {
   it('declares the expected platform key + display name', () => {
-    expect(allegroPlugin.platformType).toBe('allegro');
-    expect(allegroPlugin.displayName).toBe('Allegro');
+    expect(allegroPlatformPlugin.platformType).toBe('allegro');
+    expect(allegroPlatformPlugin.displayName).toBe('Allegro');
   });
 
   it('contributes the setup card pointing to the guided wizard', () => {
-    expect(allegroPlugin.setupCard).toBeDefined();
-    expect(allegroPlugin.setupCard?.to).toBe('/connections/new/allegro');
+    expect(allegroPlatformPlugin.setupCard).toBeDefined();
+    expect(allegroPlatformPlugin.setupCard?.to).toBe('/connections/new/allegro');
   });
 
   it('marks itself as requiring an external auth redirect (OAuth)', () => {
-    expect(allegroPlugin.requiresExternalAuthRedirect).toBe(true);
+    expect(allegroPlatformPlugin.requiresExternalAuthRedirect).toBe(true);
   });
 
   it('contributes the GPSR extra-config section and the edit-offer affordance', () => {
-    expect(allegroPlugin.ExtraConfigSection).toBeDefined();
-    expect(allegroPlugin.supportsListingEdit).toBe(true);
+    expect(allegroPlatformPlugin.ExtraConfigSection).toBeDefined();
+    expect(allegroPlatformPlugin.supportsListingEdit).toBe(true);
   });
 
   it('does NOT contribute structured-config / credentials / connection-actions slots', () => {
-    expect(allegroPlugin.StructuredConfigSection).toBeUndefined();
-    expect(allegroPlugin.CredentialsPanel).toBeUndefined();
-    expect(allegroPlugin.ConnectionActions).toBeUndefined();
+    expect(allegroPlatformPlugin.StructuredConfigSection).toBeUndefined();
+    expect(allegroPlatformPlugin.CredentialsPanel).toBeUndefined();
+    expect(allegroPlatformPlugin.ConnectionActions).toBeUndefined();
   });
 
   it('does NOT contribute a callback-URL default (PS-only affordance)', () => {
-    expect(allegroPlugin.getCallbackUrlDefault).toBeUndefined();
+    expect(allegroPlatformPlugin.getCallbackUrlDefault).toBeUndefined();
   });
 });

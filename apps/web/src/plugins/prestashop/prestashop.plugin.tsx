@@ -16,7 +16,7 @@ import { PrestashopStructuredSection } from './components/prestashop-structured-
 import { PrestashopConnectionActions } from './components/prestashop-connection-actions';
 import { PrestashopCredentialsPanel } from './components/prestashop-credentials-panel';
 
-export const prestashopPlugin: PlatformPlugin = {
+export const prestashopPlatformPlugin: PlatformPlugin = {
   platformType: 'prestashop',
   displayName: 'PrestaShop',
   setupCard: {
