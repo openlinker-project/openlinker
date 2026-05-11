@@ -10,9 +10,9 @@
  *
  * @module libs/core/src/ai/infrastructure/adapters
  */
-import { Logger as NestLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CryptoService } from '@openlinker/shared';
+import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import {
   IntegrationCredentialRepositoryPort,
   CredentialNotFoundException,
@@ -57,7 +57,7 @@ describe('CredentialsAiProviderAdapter', () => {
       encrypt: jest.fn(),
       decrypt: jest.fn(),
     };
-    warnSpy = jest.spyOn(NestLogger.prototype, 'warn').mockImplementation(() => undefined);
+    warnSpy = jest.spyOn(SharedLogger.prototype, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

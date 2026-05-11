@@ -10,7 +10,8 @@
  *
  * @module libs/core/src/integrations
  */
-import { DynamicModule, Logger as NestLogger, Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
+import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import { Test } from '@nestjs/testing';
 import { PluginRegistryModule } from './plugin-registry.module';
 
@@ -81,7 +82,7 @@ describe('PluginRegistryModule', () => {
 
     it('should log the composed plugin names when the module initialises', async () => {
       const logSpy = jest
-        .spyOn(NestLogger.prototype, 'log')
+        .spyOn(SharedLogger.prototype, 'log')
         .mockImplementation(() => undefined);
 
       const moduleRef = await Test.createTestingModule({

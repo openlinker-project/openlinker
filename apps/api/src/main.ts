@@ -11,10 +11,15 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
+import { installNestLogger } from '@openlinker/shared/logging/nest';
 import { AppModule } from './app.module';
 import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
 
 async function bootstrap(): Promise<void> {
+  // Route shared `Logger` calls through @nestjs/common before any other work,
+  // so module-init logs land in Nest's formatter from the very first emission.
+  installNestLogger();
+
   // Disable Nest's default body parser so we can control parser order
   // This ensures webhook routes capture raw body before JSON parsing
   const app = await NestFactory.create(AppModule, {

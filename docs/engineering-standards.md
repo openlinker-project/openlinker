@@ -1020,7 +1020,7 @@ async getProduct(productId: string): Promise<Product> {
 
 ### Logging
 
-**Use NestJS Logger wrapper** from shared library:
+**Use the `Logger` factory** from `@openlinker/shared/logging`. It implements the framework-neutral `LoggerPort` contract; the active backend is swapped at host boot (Nest in apps, console default everywhere else).
 
 ```typescript
 import { Logger } from '@openlinker/shared/logging';
@@ -1035,18 +1035,31 @@ export class ProductService {
       // ...
       this.logger.log(`Product synced successfully: ${productId}`);
     } catch (error) {
-      this.logger.error(`Failed to sync product: ${productId}`, error.stack);
+      this.logger.error(`Failed to sync product: ${productId}`, (error as Error).stack);
       throw error;
     }
   }
 }
 ```
 
-**Log levels**:
+**Host wiring** (apps/api, apps/worker only):
+
+```typescript
+import { installNestLogger } from '@openlinker/shared/logging/nest';
+
+async function bootstrap() {
+  installNestLogger(); // first statement — routes every Logger call through @nestjs/common
+  // ...
+}
+```
+
+Library code and plugins must NOT import from `@openlinker/shared/logging/nest`. The neutral `@openlinker/shared/logging` ships its own console-based default, so `new Logger(ctx)` works zero-config.
+
+**Log levels** (from `LogLevelValues` / `LogLevel`):
 - `log()`: General information
 - `debug()`: Detailed debugging information
 - `warn()`: Warnings
-- `error()`: Errors with stack traces
+- `error(message, stack?, context?)`: Errors with optional stack traces
 
 ### Async/Await
 

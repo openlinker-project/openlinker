@@ -19,6 +19,7 @@ module.exports = {
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),
+    '^@openlinker/shared$': path.resolve(__dirname, '../../libs/shared/src/index.ts'),
     '^@openlinker/shared/(.*)$': path.resolve(__dirname, '../../libs/shared/src/$1'),
     '^@openlinker/integrations-prestashop/(.*)$': path.resolve(__dirname, '../../libs/integrations/prestashop/src/$1'),
     '^@openlinker/integrations-allegro$': path.resolve(__dirname, '../../libs/integrations/allegro/src/index.ts'),

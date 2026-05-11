@@ -9,10 +9,15 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@openlinker/shared/logging';
+import { installNestLogger } from '@openlinker/shared/logging/nest';
 
 const logger = new Logger('WorkerBootstrap');
 
 async function bootstrap(): Promise<void> {
+  // Route shared `Logger` calls through @nestjs/common before any other work,
+  // so even pre-Nest-init failures from this bootstrap land in Nest's formatter.
+  installNestLogger();
+
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
