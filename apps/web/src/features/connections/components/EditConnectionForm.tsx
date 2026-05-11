@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
-import { useUpdateConnectionCredentialsMutation } from '../hooks/use-update-connection-credentials-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
   editConnectionSchema,
@@ -21,10 +20,8 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { AllegroSellerDefaultsSection } from './allegro-seller-defaults-section';
+import { usePlugin } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
-import { useMappingOptions } from '../../mappings/hooks/use-mapping-options';
-import type { MappingOption } from '../../mappings/api/mappings.types';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -37,21 +34,6 @@ type StructuredField =
   | 'openlinkerCallbackBaseUrl'
   | 'masterCatalogConnectionId'
   | 'defaultCarrierId';
-
-/**
- * Mirror of the dropdown decoration in `MappingPanel` (#517). Native
- * `<option>` is text-only so the dynamic-kind cue is encoded as a label
- * suffix; static options stay bare. Kept inline here (rather than
- * imported from `features/mappings`) to keep the cross-feature surface
- * narrow — only the `MappingOption` type is shared.
- */
-function carrierOptionLabel(option: MappingOption): string {
-  return option.kind === 'dynamic'
-    ? `${option.label} — exact Allegro cost`
-    : option.label;
-}
-
-type PlatformBranch = 'prestashop' | 'marketplace' | 'raw';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -145,6 +127,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [showRawJson, setShowRawJson] = useState(false);
+  const plugin = usePlugin(connection.platformType);
 
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
@@ -152,16 +135,15 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       baseUrl: readString(connection.config, 'baseUrl'),
       shopId: readString(connection.config, 'shopId'),
       storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
-      // #168 — pre-fill OL callback URL from window.location.origin when the
+      // #168 — pre-fill OL callback URL via the platform plugin when the
       // connection has none yet. Browser-context value, not server-trusted; the
       // BE doesn't derive this from request headers (host-header injection risk),
       // so the FE owns the convenience default. Operator can override for dev
       // (e.g. http://host.docker.internal:3000) by editing the field.
       openlinkerCallbackBaseUrl:
         readString(connection.config, 'openlinkerCallbackBaseUrl') ||
-        (typeof window !== 'undefined' && connection.platformType === 'prestashop'
-          ? window.location.origin
-          : ''),
+        plugin?.getCallbackUrlDefault?.() ||
+        '',
       masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
       // PS `defaultCarrierId` is persisted as a number; the form keeps it
       // as a string so the same `<Select>` primitive serves both this
@@ -181,13 +163,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     error?.message ? [String(error.message)] : [],
   );
 
-  const platformBranch: PlatformBranch =
-    connection.platformType === 'prestashop'
-      ? 'prestashop'
-      : connection.enabledCapabilities.includes('OfferManager')
-        ? 'marketplace'
-        : 'raw';
-  const hasStructuredInputs = platformBranch !== 'raw';
+  // Structured-config dispatch (#578/#579):
+  //   - A platform plugin may contribute its own structured inputs (today: PS).
+  //   - Independently, marketplace-class connections (capability `OfferManager`)
+  //     render the generic catalog picker.
+  //   - Either / both is "structured"; otherwise the operator only sees raw JSON.
+  const StructuredSection = plugin?.StructuredConfigSection;
+  const ExtraSection = plugin?.ExtraConfigSection;
+  const PluginCredentialsPanel = plugin?.CredentialsPanel;
+  const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
+  const hasStructuredInputs = StructuredSection !== undefined || isMarketplace;
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
   // structured inputs so typing in them can't silently drop custom keys that
@@ -255,7 +240,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const autoSelectFiredRef = useRef(false);
   useEffect(() => {
     if (autoSelectFiredRef.current) return;
-    if (platformBranch !== 'marketplace') return;
+    if (!isMarketplace) return;
     if (hasStoredMaster) return;
     if (!localAutoSelectId) return;
     if (connectionsQuery.isLoading) return;
@@ -268,7 +253,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     localAutoSelectId,
     connectionsQuery.isLoading,
     connectionsQuery.error,
-    platformBranch,
+    isMarketplace,
     hasStoredMaster,
   ]);
 
@@ -320,7 +305,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <Input value={connection.platformType} disabled />
       </FormField>
 
-      <CredentialsPanel connection={connection} />
+      {PluginCredentialsPanel ? (
+        <PluginCredentialsPanel connection={connection} />
+      ) : (
+        <FormField label="Credentials" name="credentials">
+          <Input
+            value={
+              connection.credentialsBacked
+                ? 'Stored securely (managed by integration)'
+                : 'Environment variable (not editable via UI)'
+            }
+            disabled
+          />
+        </FormField>
+      )}
 
       <FormField
         label="Adapter key"
@@ -342,81 +340,18 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         </Alert>
       ) : null}
 
-      {platformBranch === 'prestashop' ? (
-        <>
-          <FormField
-            label="Shop URL"
-            name="baseUrl"
-            error={form.formState.errors.baseUrl?.message}
-            description="The public URL of the PrestaShop storefront."
-          >
-            <Input
-              value={form.watch('baseUrl') ?? ''}
-              onChange={(event) => syncStructuredToJson('baseUrl', event.target.value)}
-              placeholder="https://shop.example.com"
-              disabled={!configIsParseable}
-              invalid={Boolean(form.formState.errors.baseUrl)}
-            />
-          </FormField>
-
-          <FormField
-            label="Storefront URL (optional)"
-            name="storefrontBaseUrl"
-            error={form.formState.errors.storefrontBaseUrl?.message}
-            description="Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same — defaults to Shop URL."
-          >
-            <Input
-              value={form.watch('storefrontBaseUrl') ?? ''}
-              onChange={(event) => syncStructuredToJson('storefrontBaseUrl', event.target.value)}
-              placeholder="https://shop.example.com"
-              disabled={!configIsParseable}
-              invalid={Boolean(form.formState.errors.storefrontBaseUrl)}
-            />
-          </FormField>
-
-          <FormField
-            label="Shop ID (optional)"
-            name="shopId"
-            error={form.formState.errors.shopId?.message}
-            description="Only needed for multi-shop PrestaShop installations."
-          >
-            <Input
-              value={form.watch('shopId') ?? ''}
-              onChange={(event) => syncStructuredToJson('shopId', event.target.value)}
-              placeholder="1"
-              disabled={!configIsParseable}
-              invalid={Boolean(form.formState.errors.shopId)}
-            />
-          </FormField>
-
-          <FormField
-            label="OL callback URL"
-            name="openlinkerCallbackBaseUrl"
-            error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-            description="OpenLinker's URL from PrestaShop's perspective — used by the PS module to POST webhooks back to OL. Pre-filled from your browser; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action."
-          >
-            <Input
-              value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
-              onChange={(event) =>
-                syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
-              }
-              placeholder="https://api.openlinker.example"
-              disabled={!configIsParseable}
-              invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
-            />
-          </FormField>
-
-          <PrestashopFallbackCarrierField
-            connectionId={connection.id}
-            value={form.watch('defaultCarrierId') ?? ''}
-            errorMessage={form.formState.errors.defaultCarrierId?.message}
-            disabled={!configIsParseable}
-            onChange={(value) => syncStructuredToJson('defaultCarrierId', value)}
-          />
-        </>
+      {StructuredSection ? (
+        <StructuredSection
+          connection={connection}
+          form={form}
+          configIsParseable={configIsParseable}
+          syncStructuredToJson={(field, value, options) =>
+            syncStructuredToJson(field as StructuredField, value, options)
+          }
+        />
       ) : null}
 
-      {platformBranch === 'marketplace' ? (
+      {isMarketplace ? (
         <MarketplaceCatalogPicker
           value={masterCatalogValue}
           candidates={candidates}
@@ -430,12 +365,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
-      {connection.platformType === 'allegro' ? (
-        <AllegroSellerDefaultsSection
-          connectionId={connection.id}
+      {ExtraSection ? (
+        <ExtraSection
+          connection={connection}
           form={form}
-          onChange={syncSellerDefaultsToJson}
-          disabled={!configIsParseable}
+          configIsParseable={configIsParseable}
+          syncSellerDefaultsToJson={syncSellerDefaultsToJson}
         />
       ) : null}
 
@@ -572,173 +507,3 @@ function MarketplaceCatalogPicker({
   );
 }
 
-interface PrestashopFallbackCarrierFieldProps {
-  connectionId: string;
-  value: string;
-  errorMessage: string | undefined;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}
-
-/**
- * Fallback-carrier picker for PrestaShop connections (#517).
- *
- * Backed by the same `getMappingOptions(connectionId, 'destination', 'carriers')`
- * endpoint as the per-method mapping page, so the option set (and its
- * dynamic-kind decoration) stays in lockstep. The field is allowed to
- * stay blank: when unset, the BE adapter (#516) falls back to the
- * OpenLinker Dynamic carrier at order-create time. A save-time warning
- * banner fires only when (a) the field is blank, (b) the OL Dynamic
- * carrier is NOT among the loaded options (operator hasn't installed
- * the OL PS module on this connection) — i.e. the connection is in a
- * state where any unmapped Allegro shipping method WILL fail at sync.
- *
- * No soft-prefill: per tech-review on #517, picking the OL Dynamic
- * carrier as a phantom default would write a value the operator didn't
- * choose. The runtime fallback chain handles the unset case, and the
- * help text + warning banner make the consequence explicit.
- */
-function PrestashopFallbackCarrierField({
-  connectionId,
-  value,
-  errorMessage,
-  disabled,
-  onChange,
-}: PrestashopFallbackCarrierFieldProps): ReactElement {
-  const { options, isLoading, errors } = useMappingOptions(connectionId);
-  const carriersError = errors.prestashopCarriers ?? null;
-  const carriers = options.prestashopCarriers;
-  const hasDynamicOption = carriers.some((c) => c.kind === 'dynamic');
-  const showNoFallbackWarning = value === '' && carriersError === null && !isLoading && !hasDynamicOption;
-
-  return (
-    <>
-      <FormField
-        label="Fallback carrier (optional)"
-        name="defaultCarrierId"
-        error={errorMessage}
-        description="Used when an Allegro shipping method has no carrier mapping. Leave unset to use the OpenLinker Dynamic carrier (exact Allegro shipping cost) at sync time — works only when the OL PrestaShop module is installed."
-      >
-        {isLoading ? (
-          <Select disabled>
-            <option>Loading carriers…</option>
-          </Select>
-        ) : carriersError ? (
-          <Select disabled>
-            <option>Failed to load carriers</option>
-          </Select>
-        ) : (
-          <Select
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            disabled={disabled}
-            invalid={Boolean(errorMessage)}
-          >
-            <option value="">None — use OpenLinker Dynamic at runtime</option>
-            {carriers.map((c) => (
-              <option key={c.value} value={c.value}>
-                {carrierOptionLabel(c)}
-              </option>
-            ))}
-          </Select>
-        )}
-      </FormField>
-
-      {showNoFallbackWarning ? (
-        <Alert tone="warning" className="edit-connection__fallback-warning">
-          No fallback carrier is set and the OpenLinker PrestaShop module isn't
-          installed on this connection. Sync will fail for any Allegro shipping
-          method without a carrier mapping until you pick a fallback or install
-          the OL PS module.
-        </Alert>
-      ) : null}
-    </>
-  );
-}
-
-function CredentialsPanel({ connection }: { connection: Connection }): ReactElement {
-  const [showRotate, setShowRotate] = useState(false);
-  const [newKey, setNewKey] = useState('');
-  const rotate = useUpdateConnectionCredentialsMutation();
-  const { showToast } = useToast();
-
-  if (!connection.credentialsBacked) {
-    return (
-      <FormField label="Credentials" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
-      </FormField>
-    );
-  }
-
-  if (connection.platformType !== 'prestashop') {
-    return (
-      <FormField label="Credentials" name="credentials">
-        <Input value="Stored securely (managed by integration)" disabled />
-      </FormField>
-    );
-  }
-
-  const onRotate = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (newKey.trim().length === 0) return;
-    try {
-      await rotate.mutateAsync({
-        connectionId: connection.id,
-        credentials: { webserviceApiKey: newKey.trim() },
-      });
-      showToast({
-        tone: 'success',
-        title: 'Credentials rotated',
-        description: 'The new webservice key is now in use.',
-      });
-      setNewKey('');
-      setShowRotate(false);
-    } catch {
-      // surfaced via rotate.error
-    }
-  };
-
-  return (
-    <FormField
-      label="Webservice key"
-      name="credentials"
-      description="Stored securely on the server. Rotate to replace the key without restarting the API."
-    >
-      {showRotate ? (
-        <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
-          <Input
-            type="password"
-            autoComplete="off"
-            placeholder="New webservice key"
-            value={newKey}
-            onChange={(event) => setNewKey(event.target.value)}
-          />
-          <div className="form-actions">
-            <Button
-              type="button"
-              onClick={(event) => void onRotate(event)}
-              disabled={rotate.isPending || newKey.trim().length === 0}
-            >
-              {rotate.isPending ? 'Rotating...' : 'Save new key'}
-            </Button>
-            <Button
-              tone="secondary"
-              type="button"
-              onClick={() => {
-                setShowRotate(false);
-                setNewKey('');
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate webservice key
-        </Button>
-      )}
-    </FormField>
-  );
-}

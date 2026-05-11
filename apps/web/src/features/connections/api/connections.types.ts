@@ -1,6 +1,19 @@
-export const PLATFORM_TYPES = ['prestashop', 'allegro'] as const;
+/**
+ * Well-known platform types shipped in-tree. Mirrors `CORE_CAPABILITY_VALUES`
+ * below — open at the boundary: plugin authors can register additional
+ * platform types without modifying core (#578). Use `string` where the FE
+ * consumes adapter-supplied values; use this constant only when an
+ * exhaustive in-tree list is genuinely needed (e.g. fixture defaults).
+ */
+export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro'] as const;
 
-export type PlatformType = (typeof PLATFORM_TYPES)[number];
+/**
+ * Connection platform type — an opaque string. Plugins are resolved by
+ * platform key via the FE plugin registry (`apps/web/src/plugins/`).
+ * Do not literal-equality-dispatch on this value — use `usePlugin()` or
+ * `supportedCapabilities` checks instead (enforced by ESLint).
+ */
+export type PlatformType = string;
 
 export type ConnectionStatus = 'active' | 'disabled' | 'error';
 

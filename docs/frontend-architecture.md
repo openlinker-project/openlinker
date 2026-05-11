@@ -305,9 +305,9 @@ Dependency direction must remain simple and enforceable:
 
 - `app` may import `pages`, `features`, `plugins`, and `shared`
 - `pages` may import `features` and `shared`
+- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam — see [Plugins](#platform-plugins-plugins) for both the build-time `WebPlugin` and runtime `PlatformPlugin` contracts). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
 - `features` may import `shared`
-- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
-- `shared` must not import `features`, `pages`, or `plugins`
+- `shared` must not import `features`, `pages`, or `plugins` — with one narrow exemption documented below
 
 These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, `pages/`, and `plugins/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
 
@@ -315,11 +315,45 @@ These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslin
 >
 > **Note (#608):** Features may also import `useOfferCreationWizard` from `app/plugin-bindings/` — same DI-boundary precedent. Features must NOT import `plugins/` directly; per-platform extension points go through the `app/`-tier hook that closes over the registry. The folder is named `plugin-bindings` (not `plugins`) so the `**/plugins/**` lint deny-glob can stay broad without carve-out exceptions.
 
+> **Exemption — `shared/plugins/` (#578/#579):** The FE plugin contract in `shared/plugins/plugin.types.ts` is a feature-aware surface by design — plugins receive `Connection` and `UseFormReturn<EditConnectionFormValues>` shapes from the connections feature. To keep the contract fully typed without hoisting feature-private types into `shared/`, the ESLint rule allows `shared/plugins/**` to type-import `Connection` and `EditConnectionFormValues` (and nothing else) from `features/connections/`. Hoisting the types into a `shared/types/` boundary is the cleaner long-term move; it's deferred until a second consumer needs them.
+
 Additional rules:
 
 - pages compose features but should not contain raw transport logic
 - feature modules may define feature-specific types, hooks, and view-model mapping
 - shared modules must remain generic enough to be reused across features
+
+## Platform Plugins (`plugins/`)
+
+The in-tree plugins live in `apps/web/src/plugins/<name>/`. Two parallel concerns are surfaced from the same barrel (`plugins/index.ts`):
+
+1. **Build-time `WebPlugin`** (#604/#605) — host composition: routes, nav contributions, typed API client namespaces. Authored via `definePlugin({...})`; collected as the exported `plugins: WebPlugin[]` array. Iterated by the router and `createApiClient` at boot. Both runtime composition AND TS declaration-merging require the plugin to be in this array.
+2. **Runtime `PlatformPlugin`** (#578/#579) — per-platform UI affordances: setup card, callback-URL default, structured edit-form sections, extra sections, credentials panel, connection actions. Collected as the exported `IN_TREE_PLUGINS: readonly PlatformPlugin[]` array. Resolved at render time via `usePlugin(platformType)` / `usePlugins()` from `shared/plugins/`.
+
+The two contracts live side-by-side because they answer different questions ("what does this plugin contribute to the app shell?" vs "what platform-specific UI does this connection's platformType expose?"). A single per-platform directory typically contributes both: `plugins/allegro/index.ts` exports an `allegroPlugin: WebPlugin`; `plugins/allegro/allegro.plugin.tsx` exports an `allegroPlatformPlugin: PlatformPlugin`.
+
+Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append entries to both arrays in `plugins/index.ts`.
+
+Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlugin()`, `usePlugins()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this.
+
+### PlatformPlugin slot reference
+
+Every slot is optional. A plugin contributes only the affordances its platform actually needs; the consuming surface falls back to a generic rendering (or hides the affordance entirely) when the slot is absent.
+
+| Slot | Type | Consumed by | Purpose |
+|---|---|---|---|
+| `platformType` | `string` | registry lookup | Stable key — matches `connection.platformType`. Required. |
+| `displayName` | `string` | dropdowns, alerts | Human-readable label. Required. |
+| `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
+| `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
+| `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. PrestaShop uses `window.location.origin`. |
+| `StructuredConfigSection` | `ComponentType<StructuredConfigSectionProps>` | `EditConnectionForm` | Platform-specific structured-config inputs (PS: shop URL / storefront / shop ID / OL callback / fallback carrier). When absent, the form falls back to raw JSON. |
+| `ExtraConfigSection` | `ComponentType<ExtraConfigSectionProps>` | `EditConnectionForm` | Extra section below the structured/raw block (Allegro: GPSR seller defaults). |
+| `CredentialsPanel` | `ComponentType<{ connection }>` | `EditConnectionForm` | Full credentials panel including the rotate-key UI shape that fits the platform's credential model. When absent, the form renders a read-only "Stored securely (managed by integration)" / "Environment variable" affordance. |
+| `ConnectionActions` | `ComponentType<{ connection }>` | `ConnectionActionsPanel` | Extra platform-specific actions on the connection-detail page (PS: "Configure webhooks"). |
+| `supportsListingEdit` | `boolean` | `ListingDetailPage` | Gates the "Edit offer" button on the listing-detail page. |
+
+Module-load validation in `apps/web/src/plugins/index.ts` rejects duplicate `platformType` keys before any provider mounts. `PluginRegistryProvider` re-runs the same check at mount time as belt-and-suspenders for test fixtures.
 
 ## Async UX Conventions
 

@@ -45,11 +45,11 @@ interface AllegroSellerDefaultsSectionProps {
  * information — required by `POST /sale/product-offers` since the GPSR
  * rollout on 2024-12-13.
  *
- * Lives inside the existing `EditConnectionForm`; rendered only when
- * `connection.platformType === 'allegro'`. The form already syncs the
- * structured fields into a single `configText` JSON via the merge helper —
- * this section follows that pattern (every input change calls `onChange`,
- * the parent re-serializes).
+ * Rendered by the Allegro platform plugin's `EditConnectionExtraSection`
+ * slot in `apps/web/src/plugins/allegro/`. The parent `EditConnectionForm`
+ * already syncs the structured fields into a single `configText` JSON via
+ * the merge helper — this section follows that pattern (every input change
+ * calls `onChange`, the parent re-serializes).
  */
 export function AllegroSellerDefaultsSection({
   connectionId,

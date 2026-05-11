@@ -1,9 +1,16 @@
 import { z } from 'zod';
-import { PLATFORM_TYPES, type CreateConnectionInput, type PlatformType } from '../api/connections.types';
+import type { CreateConnectionInput } from '../api/connections.types';
 
+/**
+ * `platformType` is an opaque string post-#578 — membership is enforced at
+ * the registry boundary, not the schema. The schema only ensures the field
+ * is non-empty; an unknown platform falls through to a clear runtime error
+ * from `usePlugin()` consumers or the BE registry.
+ */
 export const platformTypeFormSchema = z
-  .enum([...PLATFORM_TYPES, ''] as const)
-  .refine((value): value is PlatformType => value !== '', 'Platform type is required');
+  .string()
+  .trim()
+  .min(1, 'Platform type is required');
 
 export const createConnectionSchema = z.object({
   adapterKey: z.string().trim().optional(),

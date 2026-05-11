@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { PLATFORM_TYPES } from '../api/connections.types';
+import { usePlugin, usePlugins } from '../../../shared/plugins';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   createConnectionSchema,
@@ -37,25 +37,24 @@ const DEFAULT_VALUES: CreateConnectionFormValues = {
   platformType: '',
 };
 
-const PLATFORM_OPTIONS = [
-  { value: PLATFORM_TYPES[0], label: 'PrestaShop' },
-  { value: PLATFORM_TYPES[1], label: 'Allegro' },
-] as const;
-
 export function CreateConnectionForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const plugins = usePlugins();
+  const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
     resolver: zodResolver(createConnectionSchema),
   });
 
   const watchedPlatformType = form.watch('platformType');
-  // TODO: when a second OAuth platform is added, extract platform-specific
-  // form rendering into separate components rather than accumulating conditionals here.
-  const isAllegroSelected = watchedPlatformType === 'allegro';
+  // Platforms that drive the operator through an OAuth redirect (today:
+  // Allegro) suppress the inline create-submit affordances — the registered
+  // platform wizard owns the rest of the flow.
+  const selectedPlugin = usePlugin(watchedPlatformType);
+  const requiresExternalAuthRedirect = selectedPlugin?.requiresExternalAuthRedirect === true;
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -65,7 +64,7 @@ export function CreateConnectionForm(): ReactElement {
     // Guard against Enter-key form submission while a platform-specific wizard
     // (e.g. Allegro) is selected: the schema still validates hidden fields, so
     // submission would fail silently without visible feedback.
-    if (isAllegroSelected) return;
+    if (requiresExternalAuthRedirect) return;
     try {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
       showToast({
@@ -110,7 +109,7 @@ export function CreateConnectionForm(): ReactElement {
           >
             <Select {...form.register('platformType')} invalid={Boolean(form.formState.errors.platformType)}>
               <option value="">Select a platform</option>
-              {PLATFORM_OPTIONS.map((platform) => (
+              {platformOptions.map((platform) => (
                 <option key={platform.value} value={platform.value}>
                   {platform.label}
                 </option>
@@ -118,7 +117,7 @@ export function CreateConnectionForm(): ReactElement {
             </Select>
           </FormField>
 
-          {isAllegroSelected ? null : (
+          {requiresExternalAuthRedirect ? null : (
             <FormField label="Credentials reference" name="credentialsRef" error={form.formState.errors.credentialsRef?.message}>
               <Input
                 {...form.register('credentialsRef')}
@@ -128,7 +127,7 @@ export function CreateConnectionForm(): ReactElement {
             </FormField>
           )}
 
-          {isAllegroSelected ? null : (
+          {requiresExternalAuthRedirect ? null : (
             <FormField
               label="Adapter key"
               name="adapterKey"
@@ -144,11 +143,17 @@ export function CreateConnectionForm(): ReactElement {
           )}
         </div>
 
-        {isAllegroSelected ? (
-          <Alert tone="info" title="Allegro uses OAuth">
-            Allegro connections require OAuth authorization.{' '}
-            <Link to="/connections/new/allegro">Use the Allegro setup wizard</Link> to connect your
-            account securely.
+        {requiresExternalAuthRedirect && selectedPlugin ? (
+          <Alert tone="info" title={`${selectedPlugin.displayName} uses OAuth`}>
+            {selectedPlugin.displayName} connections require OAuth authorization.{' '}
+            {selectedPlugin.setupCard ? (
+              <Link to={selectedPlugin.setupCard.to}>
+                Use the {selectedPlugin.displayName} setup wizard
+              </Link>
+            ) : (
+              `Use the ${selectedPlugin.displayName} setup wizard`
+            )}{' '}
+            to connect your account securely.
           </Alert>
         ) : (
           <FormField
@@ -161,7 +166,7 @@ export function CreateConnectionForm(): ReactElement {
           </FormField>
         )}
 
-        {isAllegroSelected ? null : (
+        {requiresExternalAuthRedirect ? null : (
           <div className="form-actions">
             <Button type="submit" disabled={createConnection.isPending}>
               {createConnection.isPending ? 'Creating...' : 'Create connection'}

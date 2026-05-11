@@ -49,19 +49,17 @@ interface OfferCreationLauncherProps {
 }
 
 /**
- * Marketplace connections eligible for offer creation. Matches the filter
- * the previous in-wizard picker applied — `platformType === 'allegro'` is
- * grandfathered alongside connections that advertise the `OfferManager`
- * capability. Once the BE exposes `OfferCreator` capability metadata to
- * the FE (#573/#574 follow-up) this should narrow to that specifically.
+ * Marketplace connections eligible for offer creation. Filters by the
+ * `OfferManager` capability (#578/#579) — the previous `platformType ===
+ * 'allegro'` grandfather arm was a transitional backstop for connections
+ * registered before #570/#571 wired adapter metadata; every Allegro
+ * connection now reports `OfferManager` in `supportedCapabilities`. Once
+ * the BE exposes `OfferCreator` capability metadata to the FE (#573/#574
+ * follow-up) this should narrow to that specifically.
  */
 function selectMarketplaceConnections(all: ReadonlyArray<Connection>): Connection[] {
   return all
-    .filter(
-      (c) =>
-        c.status === 'active' &&
-        (c.platformType === 'allegro' || c.supportedCapabilities.includes('OfferManager')),
-    )
+    .filter((c) => c.status === 'active' && c.supportedCapabilities.includes('OfferManager'))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 }
