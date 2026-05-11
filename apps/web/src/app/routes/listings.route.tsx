@@ -1,11 +1,21 @@
 import type { RouteObject } from 'react-router-dom';
-import { ListingsListPage } from '../../pages/listings/listings-list-page';
-import { ListingDetailPage } from '../../pages/listings/listing-detail-page';
 
 export const listingsRoute: RouteObject = {
   path: 'listings',
   children: [
-    { index: true, element: <ListingsListPage /> },
-    { path: ':id', element: <ListingDetailPage /> },
+    {
+      index: true,
+      lazy: async () => {
+        const { ListingsListPage } = await import('../../pages/listings/listings-list-page');
+        return { Component: ListingsListPage };
+      },
+    },
+    {
+      path: ':id',
+      lazy: async () => {
+        const { ListingDetailPage } = await import('../../pages/listings/listing-detail-page');
+        return { Component: ListingDetailPage };
+      },
+    },
   ],
 };

@@ -39,7 +39,7 @@ import {
 import { settingsRoute } from './settings.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
-const coreChildren: RouteObject[] = [
+export const coreChildren: RouteObject[] = [
   dashboardRoute,
   ordersRoute,
   productsRoute,
