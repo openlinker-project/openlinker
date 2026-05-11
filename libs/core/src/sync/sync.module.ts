@@ -12,6 +12,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsModule } from '@openlinker/core/events';
 import { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 import { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
+import { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
 import { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
 import { SyncJobRepository } from './infrastructure/persistence/repositories/sync-job.repository';
 import { ConnectionCursorOrmEntity } from './infrastructure/persistence/entities/connection-cursor.orm-entity';
@@ -29,6 +30,7 @@ import {
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -41,6 +43,7 @@ export {
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 @Module({
@@ -104,6 +107,16 @@ export {
       provide: RETRY_CLASSIFIER_REGISTRY_TOKEN,
       useExisting: RetryClassifierRegistryService,
     },
+
+    // Scheduler task registry — integration modules contribute their cron
+    // tasks (Allegro orders-poll, offers-sync, …) at bootstrap; the API-side
+    // `SchedulerService` drains the registry at `onApplicationBootstrap`
+    // instead of carrying platform-specific knowledge in core (#584).
+    SchedulerTaskRegistryService,
+    {
+      provide: SCHEDULER_TASK_REGISTRY_TOKEN,
+      useExisting: SchedulerTaskRegistryService,
+    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -122,6 +135,8 @@ export {
     SyncJobBulkRetryService,
     RETRY_CLASSIFIER_REGISTRY_TOKEN,
     RetryClassifierRegistryService,
+    SCHEDULER_TASK_REGISTRY_TOKEN,
+    SchedulerTaskRegistryService,
   ],
 })
 export class SyncModule {}

@@ -1,14 +1,20 @@
 /**
  * Scheduler Service Tests
  *
- * Unit tests for SchedulerService. Tests task registration,
- * connection filtering, and inventory sync scheduler configuration.
+ * Unit tests for SchedulerService. Covers the two core capability-based
+ * tasks (inventory + product), the registry-drain bootstrap path that
+ * picks up plugin-contributed tasks (#584), executeTask scope routing,
+ * and onModuleDestroy teardown.
  *
  * @module apps/api/src/sync/application/services/__tests__
  */
 import { SchedulerService } from '../scheduler.service';
 import { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
-import { JobEnqueuePort } from '@openlinker/core/sync';
+import {
+  JobEnqueuePort,
+  SchedulerTaskConfig,
+  SchedulerTaskRegistryService,
+} from '@openlinker/core/sync';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +26,7 @@ describe('SchedulerService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let configService: jest.Mocked<ConfigService>;
   let schedulerRegistry: jest.Mocked<SchedulerRegistry>;
+  let schedulerTaskRegistry: SchedulerTaskRegistryService;
 
   const createConnection = (id: string, platformType = 'prestashop'): Connection =>
     new Connection(
@@ -34,6 +41,19 @@ describe('SchedulerService', () => {
       undefined,
       ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
     );
+
+  const makeTask = (
+    taskId: string,
+    overrides: Partial<SchedulerTaskConfig> = {},
+  ): SchedulerTaskConfig => ({
+    taskId,
+    platformType: 'allegro',
+    jobType: 'marketplace.orders.poll',
+    cronExpression: '*/5 * * * *',
+    generatePayload: () => ({ schemaVersion: 1 }),
+    generateIdempotencyKey: (c, t) => `${c.id}:${t}`,
+    ...overrides,
+  });
 
   beforeEach(() => {
     connectionPort = {
@@ -61,69 +81,105 @@ describe('SchedulerService', () => {
       deleteCronJob: jest.fn(),
     } as unknown as jest.Mocked<SchedulerRegistry>;
 
+    schedulerTaskRegistry = new SchedulerTaskRegistryService();
+
     service = new SchedulerService(
       connectionPort,
       jobEnqueue,
       integrationsService,
       configService,
       schedulerRegistry,
+      schedulerTaskRegistry,
     );
   });
 
-  describe('onModuleInit', () => {
+  describe('onApplicationBootstrap', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
-      const cronKeys = [
-        'OL_ALLEGRO_POLL_INTERVAL_CRON',
-        'OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
-        'OL_INVENTORY_SYNC_CRON',
-        'OL_PRODUCT_SYNC_CRON',
-      ];
+      const cronKeys = ['OL_INVENTORY_SYNC_CRON', 'OL_PRODUCT_SYNC_CRON'];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
-      if (key === 'OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT') return '100';
-      if (key === 'OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE') return 'events';
       return 'true';
     };
 
-    it('should register inventory sync task when enabled', () => {
+    it('should register the core inventory sync task when enabled', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onModuleInit();
+      service.onApplicationBootstrap();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-inventory-sync');
     });
 
-    it('should not register inventory sync task when disabled', () => {
+    it('should not register the core inventory sync task when disabled', () => {
       configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
         if (key === 'OL_INVENTORY_SYNC_ENABLED') return 'false';
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onModuleInit();
+      service.onApplicationBootstrap();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-inventory-sync');
     });
 
-    it('should register product sync task when enabled', () => {
+    it('should register the core product sync task when enabled', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onModuleInit();
+      service.onApplicationBootstrap();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-product-sync');
     });
 
-    it('should not register product sync task when disabled', () => {
+    it('should not register the core product sync task when disabled', () => {
       configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
         if (key === 'OL_PRODUCT_SYNC_ENABLED') return 'false';
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onModuleInit();
+      service.onApplicationBootstrap();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-product-sync');
+    });
+
+    it('should schedule plugin-contributed tasks drained from the registry', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+      schedulerTaskRegistry.register(makeTask('plugin-orders-poll'));
+      schedulerTaskRegistry.register(makeTask('plugin-offers-sync', { cronExpression: '*/30 * * * *' }));
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('plugin-orders-poll');
+      expect(registeredJobs).toContain('plugin-offers-sync');
+    });
+
+    it('should not carry any allegro-specific task knowledge in core', () => {
+      // Regression guard for #584: with an empty registry the scheduler must
+      // register *only* the two capability-based core tasks. The previous
+      // implementation hardcoded `allegro-orders-poll` and `allegro-offers-sync`
+      // here; both must now be contributed by AllegroIntegrationModule.
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs.sort()).toEqual(['master-inventory-sync', 'master-product-sync']);
+    });
+
+    it('should skip a registry-contributed task whose enabledEnvVar resolves to false', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_PLUGIN_TASK_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+      schedulerTaskRegistry.register(
+        makeTask('gated-plugin-task', { enabledEnvVar: 'OL_PLUGIN_TASK_ENABLED' }),
+      );
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('gated-plugin-task');
     });
   });
 
@@ -165,16 +221,14 @@ describe('SchedulerService', () => {
     });
   });
 
-  describe('executeTask with connectionFilter', () => {
-    it('should use connectionFilter when provided instead of platformType filter', () => {
+  describe('executeTask routing (private — accessed via type cast)', () => {
+    it('should fan out via connectionFilter when present and skip the platformType branch', async () => {
       const conn = createConnection('conn-1');
       integrationsService.listCapabilityAdapters.mockResolvedValue([
         { connectionId: 'conn-1', connection: conn, adapter: {} as never, metadata: {} as never },
       ]);
-
-      service.registerTask({
+      const task: SchedulerTaskConfig = {
         taskId: 'test-capability-task',
-        platformType: '*',
         jobType: 'master.inventory.syncAll',
         cronExpression: '*/15 * * * *',
         connectionFilter: async () => {
@@ -186,31 +240,30 @@ describe('SchedulerService', () => {
         generatePayload: () => ({ schemaVersion: 1 }),
         generateIdempotencyKey: (connection, timestamp) =>
           `master:${connection.id}:inventory:syncAll:${timestamp}`,
-      });
+      };
 
-      // Access private method via any cast for testing
-      const tasks = (service as unknown as { tasks: Array<{ taskId: string }> }).tasks;
-      const task = tasks.find((t) => t.taskId === 'test-capability-task');
-      expect(task).toBeDefined();
+      await (
+        service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
+      ).executeTask(task);
 
-      // connectionPort.list should NOT be called when connectionFilter is present
       expect(connectionPort.list).not.toHaveBeenCalled();
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
     });
 
     it('should not throw when connectionFilter resolves to undefined', async () => {
-      const task = {
+      const task: SchedulerTaskConfig = {
         taskId: 'capability-undefined',
-        jobType: 'master.inventory.syncAll' as const,
+        jobType: 'master.inventory.syncAll',
         cronExpression: '*/15 * * * *',
         connectionFilter: (): Promise<Connection[]> =>
           Promise.resolve(undefined as unknown as Connection[]),
-        generatePayload: (): Record<string, unknown> => ({ schemaVersion: 1 }),
-        generateIdempotencyKey: (c: Connection, t: string): string => `${c.id}:${t}`,
+        generatePayload: () => ({ schemaVersion: 1 }),
+        generateIdempotencyKey: (c, t) => `${c.id}:${t}`,
       };
 
       await expect(
         (
-          service as unknown as { executeTask: (t: unknown) => Promise<void> }
+          service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
         ).executeTask(task),
       ).resolves.not.toThrow();
 
@@ -219,19 +272,18 @@ describe('SchedulerService', () => {
 
     it('should not throw when connectionPort.list resolves to undefined', async () => {
       connectionPort.list.mockResolvedValue(undefined as unknown as Connection[]);
-
-      const task = {
+      const task: SchedulerTaskConfig = {
         taskId: 'platform-undefined',
         platformType: 'allegro',
-        jobType: 'marketplace.orders.poll' as const,
+        jobType: 'marketplace.orders.poll',
         cronExpression: '*/5 * * * *',
-        generatePayload: (): Record<string, unknown> => ({ schemaVersion: 1 }),
-        generateIdempotencyKey: (c: Connection, t: string): string => `${c.id}:${t}`,
+        generatePayload: () => ({ schemaVersion: 1 }),
+        generateIdempotencyKey: (c, t) => `${c.id}:${t}`,
       };
 
       await expect(
         (
-          service as unknown as { executeTask: (t: unknown) => Promise<void> }
+          service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
         ).executeTask(task),
       ).resolves.not.toThrow();
 
