@@ -23,6 +23,7 @@ metadata via `jpegtran -copy none`.
 | `OL-SOAP-NATURAL-LAV.jpg` | Lavender soap (fixture #4 combination "Scent: Lavender")     | [File:Marseille soap bars (lemon verbena and lavender).jpg](https://commons.wikimedia.org/wiki/File:Marseille_soap_bars_(lemon_verbena_and_lavender).jpg) | Wikimedia user (per File page) | CC0 1.0 |
 | `OL-SOAP-NATURAL-ROSE.jpg`| Pink/rose soap (fixture #4 combination "Scent: Rose")        | [File:Bi pride soap heart.jpg](https://commons.wikimedia.org/wiki/File:Bi_pride_soap_heart.jpg)                                          | Wikimedia user (per File page) | CC0 1.0 |
 | `OL-RING-RESIN.jpg`       | Handmade ring (fixture #5 cover, shared across sizes)         | [File:Acacia Ring.jpg](https://commons.wikimedia.org/wiki/File:Acacia_Ring.jpg)                                                          | Wikimedia user (per File page) | CC0 1.0 |
+| `OL-CANON-SX740LE.jpg`    | Canon PowerShot SX740 HS, silver (fixture #6 cover)           | Canon manufacturer marketing photo (not Wikimedia) | Canon Inc.                     | **Not CC0** — manufacturer photo, dev-fixture use only |
 
 ## Verifying the licence
 
@@ -53,3 +54,12 @@ The drill, tee, and ring images are generic substitutes for the branded
 fixtures (Bosch GSR12V-15, Adidas IA4845, handmade resin ring). The issue
 (#544) explicitly accepts generic substitutes — these are dev-stack fixtures,
 not customer-facing listings, and brand-accurate CC0 photos are unrealistic.
+
+## Note on `OL-CANON-SX740LE.jpg`
+
+Fixture #6 deviates from the CC0 policy: the cover image is a Canon
+manufacturer marketing photo (not sourced from Wikimedia Commons) carried
+in the repo so the fixture renders brand-accurate in the storefront for
+visual smoke-testing of camera-category listings. Use is limited to the
+local dev stack — do not reuse this asset in customer-facing surfaces or
+marketing material.
