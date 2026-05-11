@@ -11,6 +11,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsModule } from '@openlinker/core/events';
 import { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+import { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 import { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
 import { SyncJobRepository } from './infrastructure/persistence/repositories/sync-job.repository';
 import { ConnectionCursorOrmEntity } from './infrastructure/persistence/entities/connection-cursor.orm-entity';
@@ -27,6 +28,7 @@ import {
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -38,6 +40,7 @@ export {
   SYNC_LOCK_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
 } from './sync.tokens';
 
 @Module({
@@ -92,6 +95,15 @@ export {
       provide: SYNC_LOCK_TOKEN,
       useExisting: RedisSyncLockService,
     },
+
+    // Retry classifier registry — integration modules self-register their
+    // platform-specific classifiers in `onModuleInit`; the runner queries
+    // the registry instead of importing exception classes by name (#581).
+    RetryClassifierRegistryService,
+    {
+      provide: RETRY_CLASSIFIER_REGISTRY_TOKEN,
+      useExisting: RetryClassifierRegistryService,
+    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -108,6 +120,8 @@ export {
     SyncJobRetryService,
     SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
     SyncJobBulkRetryService,
+    RETRY_CLASSIFIER_REGISTRY_TOKEN,
+    RetryClassifierRegistryService,
   ],
 })
 export class SyncModule {}

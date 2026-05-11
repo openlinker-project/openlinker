@@ -11,12 +11,25 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SyncJobRunner } from '../sync-job.runner';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  SYNC_JOB_REPOSITORY_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  RetryClassifierRegistryService,
+} from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
 import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
 import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
 import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
-import { AllegroApiException, AllegroNetworkException } from '@openlinker/integrations-allegro';
+// The runner's *production* code is now platform-neutral (#581) — it
+// asks the retry-classifier registry instead of `instanceof`-ing Allegro
+// classes directly. The runner *spec* still uses the real Allegro
+// classifier wired into a real registry to verify end-to-end behaviour;
+// these imports don't follow the runner's deletions.
+import {
+  AllegroApiException,
+  AllegroNetworkException,
+  AllegroRetryClassifierAdapter,
+} from '@openlinker/integrations-allegro';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { randomUUID } from 'crypto';
 
@@ -49,6 +62,23 @@ describe('SyncJobRunner', () => {
       getRegisteredJobTypes: jest.fn(),
     } as unknown as jest.Mocked<SyncJobHandlerRegistry>;
 
+    // Real registry + real Allegro classifier — the runner's behaviour
+    // under each Allegro exception type is what these tests verify, and
+    // we want the production registration path exercised end-to-end
+    // rather than mocking the registry's `isNonRetryable` aggregation.
+    //
+    // FUTURE: when more platforms ship retry classifiers (Shopify,
+    // WooCommerce, etc.), each one needs to be registered here and
+    // covered by at least one behavioural assertion. Otherwise the
+    // runner-spec invariant "all platforms classify retry the same way
+    // they did before this PR" silently weakens. Track parallel work in
+    // Thread E follow-ups.
+    const retryClassifierRegistry = new RetryClassifierRegistryService();
+    retryClassifierRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroRetryClassifierAdapter(),
+    );
+
     moduleRef = await Test.createTestingModule({
       providers: [
         SyncJobRunner,
@@ -68,6 +98,10 @@ describe('SyncJobRunner', () => {
               return process.env[key] ?? defaultValue ?? 'true';
             }),
           },
+        },
+        {
+          provide: RETRY_CLASSIFIER_REGISTRY_TOKEN,
+          useValue: retryClassifierRegistry,
         },
       ],
     }).compile();

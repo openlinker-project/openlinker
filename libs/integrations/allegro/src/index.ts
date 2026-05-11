@@ -63,6 +63,24 @@ export {
   ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN,
 } from './domain/types/allegro-safety-attachments.types';
 
+// Adapters exposed for end-to-end behavioural test wiring.
+//
+// Production wiring goes through `AllegroIntegrationModule.onModuleInit`
+// registration, not this barrel. We export the retry classifier because
+// the worker's runner spec (`apps/worker/src/sync/__tests__/sync-job.runner.spec.ts`)
+// constructs a real `RetryClassifierRegistryService` and registers the
+// real adapter against it to verify behaviour preservation across the
+// #581 refactor. Going via the barrel keeps the test's import on the
+// alias path (per `engineering-standards.md` §"Import Aliases") rather
+// than reaching into the package's internal structure.
+//
+// `AllegroConnectionTesterAdapter` is intentionally NOT exported because
+// no external spec needs it — its host module is the only consumer.
+// If a future runner-spec-shaped behavioural test ever needs it, this
+// asymmetry should be reconsidered (export both, or move both behind
+// deep paths).
+export { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+
 // Module
 export { AllegroIntegrationModule } from './allegro-integration.module';
 

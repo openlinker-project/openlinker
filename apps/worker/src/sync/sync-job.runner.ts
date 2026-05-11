@@ -14,20 +14,12 @@ import {
   SYNC_JOB_REPOSITORY_TOKEN,
   SyncJobEntity,
   SyncJobExecutionError,
+  RetryClassifierRegistryService,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
-import {
-  AllegroApiException,
-  AllegroAuthenticationException,
-} from '@openlinker/integrations-allegro';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
-
-// Deterministic Allegro 4xx — retrying never helps.
-// Excludes 408/425 (transient by spec), 429 (raised as AllegroRateLimitException
-// and handled with Retry-After inside the HTTP client), and 401 (handled below
-// via AllegroAuthenticationException + token refresh).
-const NON_RETRYABLE_ALLEGRO_STATUS_CODES = new Set([400, 403, 404, 405, 409, 415, 422]);
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
@@ -54,6 +46,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     private readonly jobRepository: SyncJobRepositoryPort,
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly configService: ConfigService,
+    @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService,
   ) {}
 
   onModuleInit(): void {
@@ -326,25 +320,30 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Check if error is non-retryable (requires manual intervention or a code change).
+   * Check if error is non-retryable (requires manual intervention or a
+   * code change).
    *
-   * Non-retryable cases:
-   * - AllegroAuthenticationException (401) — needs token refresh, not retry.
-   * - AllegroApiException with a status in NON_RETRYABLE_ALLEGRO_STATUS_CODES —
-   *   deterministic 4xx (e.g., 415 unsupported content type, 422 validation) where
-   *   retrying burns worker capacity and masks the real issue.
+   * Two paths:
+   *   1. `OfferCreationInvariantException` — kept inline. Core exception
+   *      from `@openlinker/core/listings`, no platform coupling. It's a
+   *      code bug (orchestrator returned with a record still in 'pending'),
+   *      retries cannot fix it. See issue #400 (Plan B for #391).
+   *   2. Everything else — delegated to `RetryClassifierRegistryService`,
+   *      which OR's across registered platform classifiers (#581). The
+   *      Allegro classifier owns Allegro's exception hierarchy
+   *      (`AllegroAuthenticationException`, deterministic 4xx via
+   *      `AllegroApiException`); future Shopify / WooCommerce plugins
+   *      register their own.
    *
-   * Retryable cases intentionally left out:
-   * - MissingOrderItemMappingError — offer→variant mappings are created by a separate
-   *   sync cadence and may simply not exist yet when the order job first fires.
-   * - AllegroApiException with 5xx / 408 / 425 — transient; the HTTP client already
-   *   retries internally, and the runner gives the job more attempts.
-   * - AllegroNetworkException — network-level failure during token refresh / API
-   *   request (DNS / TLS / connection refused / `TypeError: fetch failed`). Always
-   *   transient: the runner MUST retry with backoff. Do NOT add this class here.
-   *   Pre-#499 these failures were swallowed by `refreshOnUnauthorized` and
-   *   re-classified as `AllegroAuthenticationException`, which killed jobs on
-   *   attempt 1/10 the moment `auth.allegro.pl` had a 1-second blip.
+   * The runner unwraps `SyncJobExecutionError.cause` once before either
+   * path, so per-platform classifiers see the original platform exception
+   * directly.
+   *
+   * Retryable cases intentionally left out (registry classifiers must
+   * also leave them out):
+   *   - `MissingOrderItemMappingError` — offer→variant mappings are
+   *     created by a separate sync cadence and may simply not exist yet
+   *     when the order job first fires.
    *
    * @param error - Error to check
    * @returns True if error is non-retryable
@@ -353,29 +352,11 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     const cause =
       error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
 
-    // OfferCreationInvariantException is a code bug (orchestrator returned with a
-    // record still in 'pending'). Retries cannot fix it — the next attempt would
-    // hit the same code path. Mark dead immediately so the operator can see it.
-    // See issue #400 (Plan B for #391).
     if (cause instanceof OfferCreationInvariantException) {
       return true;
     }
 
-    // AllegroAuthenticationException extends Error directly (not AllegroApiException),
-    // so the two branches are disjoint: a 401 never reaches the status-code set below.
-    if (cause instanceof AllegroAuthenticationException) {
-      return true;
-    }
-
-    if (
-      cause instanceof AllegroApiException &&
-      cause.statusCode !== undefined &&
-      NON_RETRYABLE_ALLEGRO_STATUS_CODES.has(cause.statusCode)
-    ) {
-      return true;
-    }
-
-    return false;
+    return this.retryClassifierRegistry.isNonRetryable(cause);
   }
 
   /**
