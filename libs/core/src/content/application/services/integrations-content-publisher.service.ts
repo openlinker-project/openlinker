@@ -31,8 +31,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   isOfferFieldUpdater,
   OFFER_MAPPING_REPOSITORY_TOKEN,

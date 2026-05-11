@@ -22,7 +22,7 @@ import {
   type ProductContentField,
 } from '@openlinker/core/content';
 import { ProductOrmEntity } from '@openlinker/core/products';
-import { ProductContentFieldOrmEntity } from '@openlinker/core/content/infrastructure/persistence/entities/product-content-field.orm-entity';
+import { ProductContentFieldOrmEntity } from '@openlinker/core/content';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 

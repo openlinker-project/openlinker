@@ -8,8 +8,8 @@
  */
 import { MasterProductSyncAllHandler } from '../master-product-sync-all.handler';
 import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { ProductMasterPort } from '@openlinker/core/products';
 import { ConfigService } from '@nestjs/config';

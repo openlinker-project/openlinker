@@ -16,7 +16,7 @@ import { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from '../interfa
 import { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import { OrderCreate } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
-import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';

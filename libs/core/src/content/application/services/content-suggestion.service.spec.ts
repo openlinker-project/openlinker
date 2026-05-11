@@ -11,10 +11,10 @@
  * @module libs/core/src/content/application/services
  */
 import type { AiCompletionPort, IPromptTemplateService } from '@openlinker/core/ai';
-import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
-import type { Product } from '@openlinker/core/products/domain/entities/product.entity';
-import type { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { ProductMasterPort } from '@openlinker/core/products';
+import type { Product } from '@openlinker/core/products';
+import type { ProductVariant } from '@openlinker/core/products';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import { ContentSuggestionService } from './content-suggestion.service';
 

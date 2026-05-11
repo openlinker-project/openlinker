@@ -8,22 +8,22 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { IntegrationsService } from './integrations.service';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
+import { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { AdapterFactoryResolverService } from '@openlinker/core/integrations/infrastructure/adapters/adapter-factory-resolver.service';
+import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
+import { AdapterFactoryResolverService } from '../../infrastructure/adapters/adapter-factory-resolver.service';
 import { CONNECTION_PORT_TOKEN, IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
 import { ADAPTER_REGISTRY_TOKEN, ADAPTER_FACTORY_RESOLVER_TOKEN, CREDENTIALS_RESOLVER_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
-import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-disabled.exception';
-import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
-import { CapabilityNotSupportedException } from '@openlinker/core/integrations/domain/exceptions/capability-not-supported.exception';
+import { Connection } from '@openlinker/core/identifier-mapping';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
+import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping';
+import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
 import {
   AdapterMetadata,
   AdapterInstance,
-} from '@openlinker/core/integrations/domain/types/adapter.types';
+} from '../../domain/types/adapter.types';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;

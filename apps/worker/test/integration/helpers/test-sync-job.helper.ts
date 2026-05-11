@@ -7,7 +7,7 @@
  */
 import { DataSource } from 'typeorm';
 import { SyncJobOrmEntity } from '@openlinker/core/sync';
-import { JobStatus } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { JobStatus } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 /**

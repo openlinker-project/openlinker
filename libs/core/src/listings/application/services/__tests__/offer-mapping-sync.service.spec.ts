@@ -8,7 +8,7 @@ import { OfferLinkingService } from '../offer-linking.service';
 import { OfferManagerPort, OfferLister, OfferEventReader } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
+import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import { ProductVariant } from '@openlinker/core/products';
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {

@@ -38,7 +38,7 @@ import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-r
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
 import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
+import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 

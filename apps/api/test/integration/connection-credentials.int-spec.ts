@@ -9,7 +9,7 @@
  * @module apps/api/test/integration
  */
 import { DataSource } from 'typeorm';
-import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/infrastructure/persistence/entities/integration-credential.orm-entity';
+import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
 import {

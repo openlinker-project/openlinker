@@ -17,10 +17,10 @@ import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exception
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
-import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
-import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
-import type { Product } from '@openlinker/core/products/domain/entities/product.entity';
-import type { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { ProductMasterPort } from '@openlinker/core/products';
+import type { Product } from '@openlinker/core/products';
+import type { ProductVariant } from '@openlinker/core/products';
 import type {
   OfferManagerPort,
   OfferMappingRepositoryPort,

@@ -21,8 +21,12 @@ export * from './domain/exceptions/content-publish-missing-version.exception';
 export * from './application/services/content-draft.service.interface';
 export * from './application/services/content-state-reader.service.interface';
 export * from './application/services/content-suggestion.service.interface';
+export { ContentSuggestionService } from './application/services/content-suggestion.service';
 export * from './application/types/content-draft.types';
 export * from './application/types/content-state.types';
 export * from './application/types/content-suggestion.types';
 export * from './content.tokens';
 export { ContentModule } from './content.module';
+
+// ORM Entities (exported for testing and TypeORM CLI usage)
+export { ProductContentFieldOrmEntity } from './infrastructure/persistence/entities/product-content-field.orm-entity';

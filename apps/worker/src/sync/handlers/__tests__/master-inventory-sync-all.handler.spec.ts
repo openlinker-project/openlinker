@@ -9,8 +9,8 @@
 import { MasterInventorySyncAllHandler } from '../master-inventory-sync-all.handler';
 import { IdentifierMappingQueryPort } from '@openlinker/core/identifier-mapping';
 import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 
 describe('MasterInventorySyncAllHandler', () => {
   let handler: MasterInventorySyncAllHandler;

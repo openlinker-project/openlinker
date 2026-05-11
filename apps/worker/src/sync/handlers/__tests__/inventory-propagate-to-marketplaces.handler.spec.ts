@@ -10,9 +10,9 @@ import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { IInventoryService } from '@openlinker/core/inventory';
 import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 
 describe('InventoryPropagateToMarketplacesHandler', () => {
   let handler: InventoryPropagateToMarketplacesHandler;

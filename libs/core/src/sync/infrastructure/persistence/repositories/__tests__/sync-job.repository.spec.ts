@@ -11,8 +11,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryFailedError, EntityManager } from 'typeorm';
 import { SyncJobRepository } from '../sync-job.repository';
 import { SyncJobOrmEntity } from '../../entities/sync-job.orm-entity';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { JobType } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import { JobType } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('SyncJobRepository', () => {

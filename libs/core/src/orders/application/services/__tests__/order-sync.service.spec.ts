@@ -7,7 +7,7 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 import { OrderSyncService } from '../order-sync.service';
-import { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
 import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
 import { Order } from '../../../domain/types/order.types';

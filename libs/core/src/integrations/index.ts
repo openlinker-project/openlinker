@@ -40,11 +40,19 @@ export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
 export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
 
+// Domain Entities
+export { IntegrationCredential } from './domain/entities/integration-credential.entity';
+
 // Exceptions
 export { AdapterNotFoundException } from './domain/exceptions/adapter-not-found.exception';
 export { CapabilityNotSupportedException } from './domain/exceptions/capability-not-supported.exception';
 export { CapabilityNotEnabledException } from './domain/exceptions/capability-not-enabled.exception';
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
+export { DuplicateAdapterKeyException } from './domain/exceptions/duplicate-adapter-key.exception';
+export { DuplicatePlatformDefaultException } from './domain/exceptions/duplicate-platform-default.exception';
+
+// ORM Entities (exported for testing and TypeORM CLI usage)
+export { IntegrationCredentialOrmEntity } from './infrastructure/persistence/entities/integration-credential.orm-entity';
 
 // Webhook secret
 export { WebhookSecretService } from './application/services/webhook-secret.service';

@@ -17,30 +17,15 @@
       "require": "./dist/integrations/index.js",
       "default": "./dist/integrations/index.js"
     },
-    "./integrations/*": {
-      "types": "./dist/integrations/*.d.ts",
-      "require": "./dist/integrations/*.js",
-      "default": "./dist/integrations/*.js"
-    },
     "./identifier-mapping": {
       "types": "./dist/identifier-mapping/index.d.ts",
       "require": "./dist/identifier-mapping/index.js",
       "default": "./dist/identifier-mapping/index.js"
     },
-    "./identifier-mapping/*": {
-      "types": "./dist/identifier-mapping/*.d.ts",
-      "require": "./dist/identifier-mapping/*.js",
-      "default": "./dist/identifier-mapping/*.js"
-    },
     "./mappings": {
       "types": "./dist/mappings/index.d.ts",
       "require": "./dist/mappings/index.js",
       "default": "./dist/mappings/index.js"
-    },
-    "./mappings/*": {
-      "types": "./dist/mappings/*.d.ts",
-      "require": "./dist/mappings/*.js",
-      "default": "./dist/mappings/*.js"
     },
     "./orders": {
       "types": "./dist/orders/index.d.ts",
@@ -62,20 +47,10 @@
       "require": "./dist/events/index.js",
       "default": "./dist/events/index.js"
     },
-    "./events/*": {
-      "types": "./dist/events/*.d.ts",
-      "require": "./dist/events/*.js",
-      "default": "./dist/events/*.js"
-    },
     "./sync": {
       "types": "./dist/sync/index.d.ts",
       "require": "./dist/sync/index.js",
       "default": "./dist/sync/index.js"
-    },
-    "./sync/*": {
-      "types": "./dist/sync/*.d.ts",
-      "require": "./dist/sync/*.js",
-      "default": "./dist/sync/*.js"
     },
     "./listings": {
       "types": "./dist/listings/index.d.ts",
@@ -87,50 +62,30 @@
       "require": "./dist/listings/services/index.js",
       "default": "./dist/listings/services/index.js"
     },
-    "./listings/*": {
-      "types": "./dist/listings/*.d.ts",
-      "require": "./dist/listings/*.js",
-      "default": "./dist/listings/*.js"
-    },
     "./customers": {
       "types": "./dist/customers/index.d.ts",
       "require": "./dist/customers/index.js",
       "default": "./dist/customers/index.js"
-    },
-    "./customers/*": {
-      "types": "./dist/customers/*.d.ts",
-      "require": "./dist/customers/*.js",
-      "default": "./dist/customers/*.js"
     },
     "./users": {
       "types": "./dist/users/index.d.ts",
       "require": "./dist/users/index.js",
       "default": "./dist/users/index.js"
     },
-    "./users/*": {
-      "types": "./dist/users/*.d.ts",
-      "require": "./dist/users/*.js",
-      "default": "./dist/users/*.js"
-    },
     "./webhooks": {
       "types": "./dist/webhooks/index.d.ts",
       "require": "./dist/webhooks/index.js",
       "default": "./dist/webhooks/index.js"
-    },
-    "./webhooks/*": {
-      "types": "./dist/webhooks/*.d.ts",
-      "require": "./dist/webhooks/*.js",
-      "default": "./dist/webhooks/*.js"
     },
     "./ai": {
       "types": "./dist/ai/index.d.ts",
       "require": "./dist/ai/index.js",
       "default": "./dist/ai/index.js"
     },
-    "./ai/*": {
-      "types": "./dist/ai/*.d.ts",
-      "require": "./dist/ai/*.js",
-      "default": "./dist/ai/*.js"
+    "./content": {
+      "types": "./dist/content/index.d.ts",
+      "require": "./dist/content/index.js",
+      "default": "./dist/content/index.js"
     }
   },
   "files": ["dist"],

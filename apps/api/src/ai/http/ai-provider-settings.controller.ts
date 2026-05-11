@@ -51,7 +51,7 @@ import {
   type AiProvider,
   type IAiProviderKeyService,
 } from '@openlinker/core/ai';
-import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
+import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';

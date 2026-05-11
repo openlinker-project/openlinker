@@ -10,7 +10,7 @@ import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
 import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports/allegro-quantity-command-repository.port';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroProductOfferCreateResponse,

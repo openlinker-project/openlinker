@@ -288,6 +288,58 @@ module.exports = {
         ],
       },
     },
+    {
+      // Plugin contract surface: integration packages must consume only the
+      // top-level `@openlinker/core/<context>` barrels. Deep-path imports
+      // leak unstable internals and break when core refactors its layout
+      // (see #591). The package.json wildcards were dropped — deep aliases
+      // now fail at Node runtime; this rule catches them at lint time.
+      files: ['libs/integrations/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '@openlinker/core/*/domain/**',
+                  '@openlinker/core/*/application/**',
+                  '@openlinker/core/*/infrastructure/**',
+                ],
+                message:
+                  'Integration packages must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. Deep imports leak unstable internals; when core refactors, plugins break. See #591.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      // Host apps: same rule, locked behind us. The package.json wildcards
+      // were dropped in #591; deep aliases fail at Node runtime. This rule
+      // makes the failure mode "PR fails CI" not "production crash". Note
+      // the order: this override runs AFTER the broader **/infrastructure/**
+      // exemption above, so it wins for apps/**/infrastructure/** paths too.
+      files: ['apps/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '@openlinker/core/*/domain/**',
+                  '@openlinker/core/*/application/**',
+                  '@openlinker/core/*/infrastructure/**',
+                ],
+                message:
+                  'Apps must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. The package.json wildcards were dropped in #591; deep aliases now fail at Node runtime.',
+              },
+            ],
+          },
+        ],
+      },
+    },
   ],
 };
 

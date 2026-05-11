@@ -11,10 +11,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JobIntakeConsumer } from '../job-intake.consumer';
 import { RedisClientType } from 'redis';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
+import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('JobIntakeConsumer', () => {

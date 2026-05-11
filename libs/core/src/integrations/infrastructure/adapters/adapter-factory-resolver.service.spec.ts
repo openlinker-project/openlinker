@@ -10,8 +10,8 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdapterFactoryResolverService } from './adapter-factory-resolver.service';
-import { AdapterFactoryPort } from '@openlinker/core/integrations/domain/ports/adapter-factory.port';
-import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
+import { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
+import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 
 const buildFactoryStub = (): jest.Mocked<AdapterFactoryPort> => ({
   createCapabilityAdapter: jest.fn(),

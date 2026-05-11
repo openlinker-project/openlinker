@@ -20,14 +20,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { AdapterRegistryPort } from '@openlinker/core/integrations/domain/ports/adapter-registry.port';
+import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import {
   AdapterMetadata,
   AdapterInstance,
-} from '@openlinker/core/integrations/domain/types/adapter.types';
-import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
-import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
-import { DuplicatePlatformDefaultException } from '@openlinker/core/integrations/domain/exceptions/duplicate-platform-default.exception';
+} from '../../domain/types/adapter.types';
+import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
+import { DuplicatePlatformDefaultException } from '../../domain/exceptions/duplicate-platform-default.exception';
 
 @Injectable()
 export class AdapterRegistryService implements AdapterRegistryPort {
