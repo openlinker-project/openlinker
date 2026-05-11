@@ -39,7 +39,13 @@ import {
 import { settingsRoute } from './settings.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
-const coreChildren: RouteObject[] = [
+/**
+ * Authenticated route children of `rootRoute`. Exported solely so the
+ * route-lazy contract test can walk the full tree; this is NOT a runtime
+ * API for other modules to consume. The runtime composition is the
+ * `rootRoute.children` array at the bottom of this file.
+ */
+export const coreChildren: RouteObject[] = [
   dashboardRoute,
   ordersRoute,
   productsRoute,

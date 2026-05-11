@@ -72,6 +72,25 @@ Each route should have:
 - a page component in `src/pages/<domain>`
 - feature-level data hooks and UI under `src/features/<domain>`
 
+Page-bearing route modules use React Router's `lazy` field so each page becomes its own bundle chunk (#606):
+
+```ts
+export const dashboardRoute: RouteObject = {
+  index: true,
+  lazy: async () => {
+    const { DashboardPage } = await import('../../pages/dashboard/dashboard-page');
+    return { Component: DashboardPage };
+  },
+};
+```
+
+Exceptions kept intentionally eager:
+
+- `loginRoute` — first paint for unauthenticated cold visits; a lazy chunk there adds a blank-screen window for the most-common first impression.
+- `prompt-templates-legacy-redirects.route.tsx` — inline `<Navigate>` element, no page module to defer.
+
+A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the exact lazy-route count; bump `EXPECTED_LAZY_ROUTE_COUNT` when intentionally adding or removing a lazy route.
+
 ## API Client Conventions
 
 The frontend consumes the Nest REST API exposed by `apps/api`.

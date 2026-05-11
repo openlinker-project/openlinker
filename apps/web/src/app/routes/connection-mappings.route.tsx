@@ -1,7 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
-import { ConnectionMappingsPage } from '../../pages/connections/connection-mappings-page';
 
 export const connectionMappingsRoute: RouteObject = {
   path: 'connections/:connectionId/mappings',
-  element: <ConnectionMappingsPage />,
+  lazy: async () => {
+    const { ConnectionMappingsPage } = await import(
+      '../../pages/connections/connection-mappings-page'
+    );
+    return { Component: ConnectionMappingsPage };
+  },
 };
