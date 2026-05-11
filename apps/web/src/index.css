@@ -6488,6 +6488,29 @@ a.kpi-card:focus-visible {
 }
 
 /* ============================================================
+   Create-offer wizard — Suggest button row above the Description
+   field (#637) — mirrors the edit-offer drawer's #485 pattern.
+   ============================================================ */
+
+.create-offer-description {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.create-offer-description__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.create-offer-description__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ============================================================
    AI Provider Settings — multi-provider table (#451 / #452)
    ============================================================ */
 
