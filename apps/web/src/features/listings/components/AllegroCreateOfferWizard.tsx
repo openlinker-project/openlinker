@@ -1,10 +1,14 @@
 /**
- * CreateOfferWizard
+ * AllegroCreateOfferWizard
  *
- * Five-step wizard that publishes an OpenLinker variant as a new offer
- * on a marketplace connection. Steps:
- *   1. Connection & Variant — pick the target connection, search and
- *      select a product variant
+ * Five-step wizard that publishes an OpenLinker variant as a new Allegro
+ * offer on a given marketplace connection. **Content-only**: the
+ * surrounding `<Dialog>` chrome and connection selection live in
+ * `OfferCreationLauncher` (#608); this component receives the resolved
+ * `Connection` as a prop and renders wizard body + nav buttons directly.
+ *
+ * Steps:
+ *   1. Variant — search and select a product variant
  *   2. Offer details — title override, Allegro category id, price, stock,
  *      description, publish-immediately toggle
  *   3. Category parameters (#410) — required-first / optional-collapsed
@@ -14,15 +18,11 @@
  *      warranty (optional), populated from the seller-policies endpoint
  *   5. Review — summary of all chosen values
  *
- * Retry-safe: a stable `x-idempotency-key` is generated on open
+ * Retry-safe: a stable `x-idempotency-key` is generated once per mount
  * (`crypto.randomUUID()`) and reused until success or explicit cancel,
- * so the server returns the same OfferCreationRecord on retry instead
- * of creating a duplicate.
- *
- * Rendered inside the shared `Dialog` primitive (Radix-backed) rather
- * than a bespoke side drawer — the shared `.drawer` classes referenced
- * by other components do not exist in `index.css`, and a centered
- * modal is a better fit for multi-step content anyway.
+ * so the server returns the same OfferCreationRecord on retry instead of
+ * creating a duplicate. The launcher unmounts + remounts the wizard on
+ * close/re-open, which mints a fresh key naturally.
  *
  * @module apps/web/src/features/listings/components
  */
@@ -37,7 +37,6 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../shared/ui/dialog';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
@@ -46,7 +45,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
-import { useConnectionsQuery } from '../../connections/hooks/use-connections-query';
+import type { Connection } from '../../connections/api/connections.types';
 import { useProductQuery } from '../../products/hooks/use-product-query';
 import { useProductsQuery } from '../../products/hooks/use-products-query';
 import type { Product, ProductVariant } from '../../products/api/products.types';
@@ -71,8 +70,8 @@ import {
 } from './create-offer-fields.schema';
 import { createOfferRequestToFormValues } from './create-offer-request-to-form-values';
 
-const STEP_LABELS = [
-  'Connection & Variant',
+const ALLEGRO_STEP_LABELS = [
+  'Variant',
   'Offer details',
   'Category parameters',
   'Policies',
@@ -80,7 +79,9 @@ const STEP_LABELS = [
 ] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<CreateOfferFieldsValues>>> = [
-  ['connectionId', 'internalVariantId'],
+  // Step 0 (Variant) — the connection is fixed by the launcher and pre-filled
+  // into the form state; only the variant needs user input here.
+  ['internalVariantId'],
   ['title', 'categoryId', 'priceAmount', 'priceCurrency', 'stock'],
   // Step 3 (parameters) is validated dynamically via buildParametersZodSchema —
   // its field shape is runtime-driven so we cannot list keys statically.
@@ -92,16 +93,18 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<CreateOfferFieldsValues>>> =
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
 const VARIANT_PICKER_PAGE_SIZE = 10;
 
-interface CreateOfferWizardProps {
-  isOpen: boolean;
-  onClose: () => void;
-  /** Pre-fill hint from the listings list filter; the picker is always
-   *  visible so the operator can change it. */
-  defaultConnectionId?: string;
-  /** Snapshot of a prior request, used by the retry path to reopen the
-   *  wizard pre-populated. Consumed on each open transition; changing it
-   *  while the wizard is already open has no effect. */
+interface AllegroCreateOfferWizardProps {
+  /** The marketplace connection the launcher resolved before mounting
+   *  this wizard. The connection's id is pre-filled into the form
+   *  state — never user-editable from inside the wizard. */
+  connection: Connection;
+  defaultVariantId?: string;
+  /** Snapshot of a prior request, used by the retry path to pre-fill the
+   *  wizard. Read once at mount (re-mount to consume a new snapshot). */
   initialValues?: CreateOfferRequest;
+  /** Fired by the Cancel button on Step 0. The launcher uses this to
+   *  close its surrounding Dialog. */
+  onCancel: () => void;
   onSubmitted: (offerCreationRecordId: string, connectionId: string) => void;
 }
 
@@ -194,33 +197,48 @@ function renderReviewParametersBlock(
   );
 }
 
-export function CreateOfferWizard({
-  isOpen,
-  onClose,
-  defaultConnectionId,
+export function AllegroCreateOfferWizard({
+  connection,
+  defaultVariantId,
   initialValues,
+  onCancel,
   onSubmitted,
-}: CreateOfferWizardProps): ReactElement {
+}: AllegroCreateOfferWizardProps): ReactElement {
   const mutation = useCreateOfferMutation();
   const { showToast } = useToast();
-  const idempotencyKeyRef = useRef<string>('');
+  // Fresh idempotency key per mount. Re-mount = launcher close+reopen =
+  // a new key naturally (#307 acceptance preserved).
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
   const form = useForm<CreateOfferFieldsValues, undefined, CreateOfferFieldsSubmission>({
-    defaultValues: { ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' },
+    // Connection id is fixed by the launcher's pick. Variant defaults to
+    // the launcher's hint (rarely supplied; retained for parity with the
+    // contract) or empty for the picker to fill in.
+    defaultValues: initialValues
+      ? createOfferRequestToFormValues(initialValues, connection.id)
+      : {
+          ...CREATE_OFFER_DEFAULT_VALUES,
+          connectionId: connection.id,
+          internalVariantId: defaultVariantId ?? '',
+        },
     resolver: zodResolver(createOfferFieldsSchema),
     mode: 'onBlur',
   });
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+  // Retry path: land directly on Step 2 with Steps 0/1 marked complete
+  // when initialValues are supplied. Otherwise start at Step 0.
+  const [stepIndex, setStepIndex] = useState(() => (initialValues ? 1 : 0));
+  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(() =>
+    initialValues ? new Set([0, 1]) : new Set(),
+  );
   const [productSearchInput, setProductSearchInput] = useState('');
   const [productOffset, setProductOffset] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   // True when the current session was opened via Retry with a snapshot.
-  // Lets Step 1 render a hint explaining why the picker looks empty
+  // Lets Step 0 render a hint explaining why the picker looks empty
   // despite the form carrying a variant id from the prior attempt.
-  const [wasPrefilled, setWasPrefilled] = useState(false);
-  // EAN of the variant the operator picked in Step 1 — fed to the Step 3
+  const wasPrefilled = initialValues !== undefined;
+  // EAN of the variant the operator picked in Step 0 — fed to the Step 3
   // parameter auto-prefill so EAN/GTIN-class fields populate from the
   // variant's barcode without needing the variant detail re-fetched.
   const [pickedVariantEan, setPickedVariantEan] = useState<string | null>(null);
@@ -237,53 +255,6 @@ export function CreateOfferWizard({
   const [staleSchemaError, setStaleSchemaError] = useState<string | null>(null);
   const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
 
-  // Reset wizard state on open. A fresh idempotency key is minted every
-  // time the wizard opens — including the retry flow — so a failed record
-  // stays on the previous key and a retry creates a new OfferCreationRecord
-  // rather than colliding with the old one (issue #307 acceptance).
-  // #478: depend on the destructured stable `reset` methods, not the
-  // wrapping `form` / `mutation` objects — `useMutation` returns a fresh
-  // wrapper each render (the `prevIsOpenRef` guard masks the loop here).
-  const { reset: resetForm } = form;
-  const { reset: resetMutation } = mutation;
-  const prevIsOpenRef = useRef(false);
-  useEffect(() => {
-    if (isOpen && !prevIsOpenRef.current) {
-      idempotencyKeyRef.current = crypto.randomUUID();
-      if (initialValues) {
-        const prefilled = createOfferRequestToFormValues(
-          initialValues,
-          defaultConnectionId ?? '',
-        );
-        resetForm(prefilled);
-        // Jump to Step 2 with Steps 0 and 1 marked as completed so the
-        // operator lands directly on the offer-details form with the
-        // prior values visible. Step 0 is re-traversable via Back.
-        setStepIndex(1);
-        setCompletedSteps(new Set([0, 1]));
-        // Pre-select the product panel so Step 0 shows the correct
-        // expansion if the operator steps back. The variant id format
-        // is `ol_variant_*`; product id cannot be derived from it, so
-        // the picker simply opens empty on Back until the operator
-        // re-searches.
-        setSelectedProductId(null);
-        setWasPrefilled(true);
-      } else {
-        resetForm({ ...CREATE_OFFER_DEFAULT_VALUES, connectionId: defaultConnectionId ?? '' });
-        setStepIndex(0);
-        setCompletedSteps(new Set());
-        setSelectedProductId(null);
-        setWasPrefilled(false);
-      }
-      setProductSearchInput('');
-      setProductOffset(0);
-      setPickedVariantEan(null);
-      setPrefilledIds(new Set());
-      resetMutation();
-    }
-    prevIsOpenRef.current = isOpen;
-  }, [isOpen, defaultConnectionId, initialValues, resetForm, resetMutation]);
-
   // Abandon-prevention: warn if the operator closes the tab mid-flow.
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -295,34 +266,9 @@ export function CreateOfferWizard({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
-  const connectionsQuery = useConnectionsQuery();
-  const marketplaceConnections = useMemo(
-    () =>
-      (connectionsQuery.data ?? []).filter(
-        (c) => c.platformType === 'allegro' || c.supportedCapabilities.includes('OfferManager'),
-      ),
-    [connectionsQuery.data],
-  );
-
-  // RHF `register` writes initial values via ref on mount, but the native
-  // `<select>` only accepts a value that matches a rendered `<option>`. When
-  // the connections list arrives after mount (the query resolves async) the
-  // DOM value hasn't caught up with the form state, so we re-issue
-  // `setValue` once the intended option is actually present.
-  const currentConnectionId = form.watch('connectionId');
-  const connectionsLoadedRef = useRef(false);
-  useEffect(() => {
-    if (connectionsLoadedRef.current || marketplaceConnections.length === 0) return;
-    connectionsLoadedRef.current = true;
-    if (defaultConnectionId && marketplaceConnections.some((c) => c.id === defaultConnectionId)) {
-      form.setValue('connectionId', defaultConnectionId, { shouldDirty: false });
-    }
-  }, [marketplaceConnections, defaultConnectionId, form]);
-
-  // Reset the "loaded" ref on wizard re-open so a fresh session re-syncs.
-  useEffect(() => {
-    if (!isOpen) connectionsLoadedRef.current = false;
-  }, [isOpen]);
+  // Connection id is fixed for the wizard's lifetime — driven by the
+  // `connection` prop, mirrored into the form state for the API payload.
+  const currentConnectionId = connection.id;
 
   const productsQuery = useProductsQuery(
     { search: debouncedProductSearch || undefined },
@@ -447,7 +393,7 @@ export function CreateOfferWizard({
     }
 
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
-    setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
+    setStepIndex((i) => Math.min(i + 1, ALLEGRO_STEP_LABELS.length - 1));
   }
 
   function goBack(): void {
@@ -537,7 +483,7 @@ export function CreateOfferWizard({
         description: 'Status will appear inline on the listings page.',
       });
       onSubmitted(result.offerCreationRecordId, values.connectionId);
-      onClose();
+      onCancel();
     } catch {
       // Inline Alert renders from mutation.error; retry will reuse the
       // same idempotency key so the server de-duplicates to the same
@@ -549,14 +495,16 @@ export function CreateOfferWizard({
   const selectedVariantId = values.internalVariantId;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent>
-        <DialogTitle>Create offer</DialogTitle>
-        <DialogDescription>
-          Publish an OpenLinker variant as a new offer on a marketplace connection.
-        </DialogDescription>
+    <div className="allegro-create-offer-wizard">
+      <header className="allegro-create-offer-wizard__header">
+        <h2 className="allegro-create-offer-wizard__title">Create Allegro offer</h2>
+        <p className="allegro-create-offer-wizard__subtitle">
+          Publishing to <strong>{connection.name}</strong>{' '}
+          <span className="mono-text muted-text">({connection.platformType})</span>
+        </p>
+      </header>
 
-        <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
+      <SetupStepper steps={ALLEGRO_STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
@@ -608,28 +556,10 @@ export function CreateOfferWizard({
             <>
               {wasPrefilled ? (
                 <Alert tone="info" title="Prior attempt re-loaded">
-                  Connection and variant were copied from the failed attempt. Search to change
-                  the variant if the original selection was wrong.
+                  Variant was copied from the failed attempt. Search to change the variant if
+                  the original selection was wrong.
                 </Alert>
               ) : null}
-              <FormField
-                label="Connection"
-                name="connectionId"
-                error={form.formState.errors.connectionId?.message}
-                description="Marketplace to publish this offer to."
-              >
-                <Select
-                  {...form.register('connectionId')}
-                  invalid={Boolean(form.formState.errors.connectionId)}
-                >
-                  <option value="">Choose a connection…</option>
-                  {marketplaceConnections.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.platformType})
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
 
               <FormField
                 label="Search products"
@@ -969,9 +899,7 @@ export function CreateOfferWizard({
           {stepIndex === 4 ? (
             <dl className="wizard-review-list">
               <dt>Connection</dt>
-              <dd>
-                {marketplaceConnections.find((c) => c.id === values.connectionId)?.name ?? '—'}
-              </dd>
+              <dd>{connection.name}</dd>
               <dt>Variant</dt>
               <dd>{values.variantLabel || values.internalVariantId}</dd>
               <dt>Title</dt>
@@ -1032,31 +960,30 @@ export function CreateOfferWizard({
         </form>
         </FormProvider>
 
-        <div className="wizard-actions">
-          <div className="wizard-actions__group">
-            {stepIndex > 0 ? (
-              <Button tone="secondary" type="button" onClick={goBack}>
-                Back
-              </Button>
-            ) : (
-              <Button tone="ghost" type="button" onClick={onClose}>
-                Cancel
-              </Button>
-            )}
-          </div>
-          <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
-                Next
-              </Button>
-            ) : (
-              <Button type="submit" form="create-offer-form" disabled={mutation.isPending}>
-                {mutation.isPending ? 'Submitting…' : 'Create offer'}
-              </Button>
-            )}
-          </div>
+      <div className="wizard-actions">
+        <div className="wizard-actions__group">
+          {stepIndex > 0 ? (
+            <Button tone="secondary" type="button" onClick={goBack}>
+              Back
+            </Button>
+          ) : (
+            <Button tone="ghost" type="button" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
         </div>
-      </DialogContent>
-    </Dialog>
+        <div className="wizard-actions__group">
+          {stepIndex < ALLEGRO_STEP_LABELS.length - 1 ? (
+            <Button type="button" onClick={() => void goNext()}>
+              Next
+            </Button>
+          ) : (
+            <Button type="submit" form="create-offer-form" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Submitting…' : 'Create offer'}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

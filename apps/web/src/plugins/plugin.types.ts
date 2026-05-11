@@ -13,9 +13,12 @@
  * @module plugins
  * @see apps/api/src/plugins.ts — BE counterpart that this design mirrors
  */
+import type { ComponentType } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
 import type { ApiRequest, PluginApiNamespaces } from '../app/api/api-client';
+import type { Connection } from '../features/connections/api/connections.types';
+import type { CreateOfferRequest } from '../features/listings/api/listings.types';
 
 /**
  * One nav-link contribution from a plugin. `groupLabel` is an open string:
@@ -57,7 +60,42 @@ export type PluginApiNamespacesFactory = (
 ) => Partial<PluginApiNamespaces>;
 
 /**
- * A build-time plugin contributing routes, nav items, and/or API namespaces.
+ * Props every per-platform offer-creation wizard receives. The launcher
+ * (`features/listings/components/OfferCreationLauncher.tsx`) resolves the
+ * connection up front and owns the surrounding Dialog chrome — so each
+ * contributed wizard is **content-only**, knows its platform via
+ * `connection.platformType`, and never renders its own Dialog or
+ * connection picker (#608).
+ *
+ * `defaultVariantId` / `initialValues` carry retry-path hints.
+ */
+export interface OfferCreationWizardProps {
+  connection: Connection;
+  defaultVariantId?: string;
+  initialValues?: CreateOfferRequest;
+  /** Fired by the wizard's Cancel/Close affordance — the launcher uses
+   *  this to close the surrounding Dialog. */
+  onCancel: () => void;
+  onSubmitted: (offerCreationRecordId: string, connectionId: string) => void;
+}
+
+/**
+ * Plugin contribution for capability-shaped offer creation (#608).
+ *
+ * `component` is a pre-bound React component, not a render fn — keeps the
+ * contribution a pure value at module load, plays nicely with test mocks,
+ * and matches how React expects to consume components at JSX time
+ * (`<contribution.component {...props} />`).
+ */
+export interface OfferCreationWizardContribution {
+  /** Connection `platformType` this wizard handles, e.g. 'allegro'. */
+  platformType: string;
+  component: ComponentType<OfferCreationWizardProps>;
+}
+
+/**
+ * A build-time plugin contributing routes, nav items, API namespaces,
+ * and/or an offer-creation wizard.
  * Authored via `definePlugin({...})` for type-checked ergonomics; collected
  * in `apps/web/src/plugins/index.ts`.
  */
@@ -70,4 +108,7 @@ export interface WebPlugin {
   navItems?: NavContribution[];
   /** Factory that produces typed API client namespaces. */
   apiNamespaces?: PluginApiNamespacesFactory;
+  /** Per-platform offer-creation wizard registered against the
+   *  `OfferCreationLauncher` dispatch site (#608). */
+  offerCreationWizard?: OfferCreationWizardContribution;
 }

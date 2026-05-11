@@ -10,6 +10,7 @@
  * @module plugins/allegro
  */
 import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
+import { AllegroCreateOfferWizard } from '../../features/listings/components/AllegroCreateOfferWizard';
 import { definePlugin } from '../define-plugin';
 import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';
@@ -24,4 +25,11 @@ export const allegroPlugin = definePlugin({
   id: 'allegro',
   routes: [allegroCallbackRoute, allegroSetupRoute],
   apiNamespaces: (request) => ({ allegro: createAllegroApi(request) }),
+  // Capability-shaped offer creation (#608): the listings page resolves
+  // this contribution via `useOfferCreationWizard('allegro')` and renders
+  // the wizard inside the launcher's Dialog.
+  offerCreationWizard: {
+    platformType: 'allegro',
+    component: AllegroCreateOfferWizard,
+  },
 });
