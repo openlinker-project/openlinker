@@ -1,12 +1,15 @@
 /**
- * CreateOfferWizard Tests
+ * AllegroCreateOfferWizard Tests
  *
  * @module apps/web/src/features/listings/components
  */
 import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { CreateOfferWizard } from './CreateOfferWizard';
+import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
+// NOTE: tests for the connection-picker UX moved to OfferCreationLauncher.test.tsx
+// as part of #608. The wizard is now content-only; the launcher owns the
+// Dialog chrome and the connection-pick flow.
 import type { Connection } from '../../connections/api/connections.types';
 import type { Product } from '../../products/api/products.types';
 import type {
@@ -115,14 +118,10 @@ async function advanceThroughEmptyParameters(): Promise<void> {
 }
 
 async function advanceToStep2(): Promise<void> {
-  // Wait for the connections query to resolve so the default connection has
-  // been pre-selected into the form.
-  await waitFor(() => {
-    const select = screen.getByLabelText<HTMLSelectElement>(/connection/i);
-    expect(select.value).toBe(allegroConnection.id);
-  });
-  // Wait for the products query to resolve, then expand the product row to
-  // reveal its variants.
+  // Connection is now a prop (the launcher resolves it before mounting),
+  // so we skip the connection-picker wait that the pre-#608 wizard
+  // required. Wait for the products query, expand the product row, pick
+  // the variant, and move to Step 2.
   await waitFor(() => expect(screen.getByText('Test Shirt')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /test shirt/i }));
   await waitFor(() => expect(screen.getByText(/test shirt — m/i)).toBeInTheDocument());
@@ -135,7 +134,7 @@ async function advanceToStep2(): Promise<void> {
   await waitFor(() => expect(screen.getByText('Allegro category')).toBeInTheDocument());
 }
 
-describe('CreateOfferWizard', () => {
+describe('AllegroCreateOfferWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -144,67 +143,50 @@ describe('CreateOfferWizard', () => {
     cleanup();
   });
 
-  it('does not render dialog content when closed', () => {
+  // Removed in #608:
+  //   - "does not render dialog content when closed" — the wizard is now
+  //     content-only, mounted on demand by `OfferCreationLauncher`. The
+  //     "closed" state is the launcher's responsibility; covered in
+  //     `OfferCreationLauncher.test.tsx`.
+  //   - "renders step 1 with connection picker and variant search" — the
+  //     connection picker moved to the launcher; this assertion is
+  //     replaced by the connection-id integrity test below + the
+  //     launcher's picker spec.
+  //   - "pre-selects the connection when defaultConnectionId is provided"
+  //     — auto-skip is now launcher behaviour; covered by
+  //     `OfferCreationLauncher.test.tsx` ("auto-skips picker when
+  //     defaultConnectionId resolves").
+
+  it('renders step 1 with the variant search and the connection name in the header', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={false}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
     );
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('renders step 1 with connection picker and variant search when open', async () => {
-    const mockApi = defaultMocks();
-    renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
-        onSubmitted={vi.fn()}
-      />,
-      { apiClient: mockApi },
-    );
-
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByLabelText(/connection/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/search products/i)).toBeInTheDocument();
-  });
-
-  it('pre-selects the connection when defaultConnectionId is provided', async () => {
-    const mockApi = defaultMocks();
-    renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
-        onSubmitted={vi.fn()}
-      />,
-      { apiClient: mockApi },
-    );
-
-    const connectionSelect = await screen.findByLabelText<HTMLSelectElement>(/connection/i);
-    await waitFor(() => expect(connectionSelect.value).toBe(allegroConnection.id));
+    expect(await screen.findByLabelText(/search products/i)).toBeInTheDocument();
+    expect(screen.getByText(allegroConnection.name)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^connection$/i)).not.toBeInTheDocument();
   });
 
   it('cannot advance from step 1 without picking a variant', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
     );
 
-    await screen.findByRole('dialog');
+    // Wizard renders content-only now; wait for Step 1 to be visible
+    // before driving the Next button.
+    await screen.findByLabelText(/search products/i);
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     // Stays on Step 1 — title field (Step 2) must not be visible
     expect(screen.queryByLabelText(/^title$/i)).not.toBeInTheDocument();
@@ -214,10 +196,9 @@ describe('CreateOfferWizard', () => {
   it('blocks advancement past step 2 until a leaf category is selected', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -241,10 +222,9 @@ describe('CreateOfferWizard', () => {
   it('validates title ≤ 75 chars on step 2', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -262,10 +242,9 @@ describe('CreateOfferWizard', () => {
   it('requires delivery policy on the policies step when policies are present', async () => {
     const mockApi = defaultMocks();
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -304,10 +283,9 @@ describe('CreateOfferWizard', () => {
     });
 
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -330,10 +308,9 @@ describe('CreateOfferWizard', () => {
     const mockApi = defaultMocks({ listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) } });
 
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={onClose}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={onClose}
         onSubmitted={onSubmitted}
       />,
       { apiClient: mockApi },
@@ -384,10 +361,9 @@ describe('CreateOfferWizard', () => {
     const mockApi = defaultMocks({ listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) } });
 
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={vi.fn()}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={vi.fn()}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -424,10 +400,9 @@ describe('CreateOfferWizard', () => {
     const mockApi = defaultMocks({ listings: { createOffer, getSellerPolicies: vi.fn().mockResolvedValue(policies) } });
 
     renderWithProviders(
-      <CreateOfferWizard
-        isOpen={true}
-        onClose={onClose}
-        defaultConnectionId={allegroConnection.id}
+      <AllegroCreateOfferWizard
+        connection={allegroConnection}
+        onCancel={onClose}
         onSubmitted={vi.fn()}
       />,
       { apiClient: mockApi },
@@ -445,7 +420,10 @@ describe('CreateOfferWizard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
 
     expect(await screen.findByText(/offer creation failed/i)).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Wizard body still rendered (the launcher's Dialog wraps it; this
+    // spec mounts the wizard directly, so we assert the wizard markup
+    // instead of `role="dialog"`).
+    expect(screen.getByText('Create Allegro offer')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -469,10 +447,9 @@ describe('CreateOfferWizard', () => {
     it('renders the retry hint on Step 1 after Back when opened with initialValues', async () => {
       const mockApi = defaultMocks();
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           initialValues={initialRequest}
           onSubmitted={vi.fn()}
         />,
@@ -489,10 +466,9 @@ describe('CreateOfferWizard', () => {
     it('does not render the retry hint on a fresh open', async () => {
       const mockApi = defaultMocks();
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -505,10 +481,9 @@ describe('CreateOfferWizard', () => {
     it('opens on step 2 with fields pre-filled from initialValues', async () => {
       const mockApi = defaultMocks();
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           initialValues={initialRequest}
           onSubmitted={vi.fn()}
         />,
@@ -536,11 +511,10 @@ describe('CreateOfferWizard', () => {
       });
 
       // First wizard session: normal flow through all four steps.
-      const { rerender } = renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -560,23 +534,19 @@ describe('CreateOfferWizard', () => {
       await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
       const firstKey = createOffer.mock.calls[0][2].idempotencyKey;
 
-      // Close the wizard, then reopen it with initialValues (the retry path).
-      rerender(
-        <CreateOfferWizard
-          isOpen={false}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
-          onSubmitted={vi.fn()}
-        />,
-      );
-      rerender(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+      // Unmount the first session, then mount a fresh wizard with
+      // `initialValues` (the retry path the launcher exercises). Re-mounting
+      // is what mints a fresh idempotency key — `useRef(crypto.randomUUID())`
+      // re-runs on a new component instance.
+      cleanup();
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           initialValues={initialRequest}
           onSubmitted={vi.fn()}
         />,
+        { apiClient: mockApi },
       );
 
       // We land on Step 2 pre-filled; advance through the empty parameters
@@ -605,10 +575,9 @@ describe('CreateOfferWizard', () => {
       const list = vi.fn().mockResolvedValue({ items: [page1Product], total: 1, limit: 10, offset: 0 });
       const mockApi = defaultMocks({ products: { list, getById: vi.fn().mockResolvedValue(page1Product) } });
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -633,10 +602,9 @@ describe('CreateOfferWizard', () => {
         products: { list, getById: vi.fn().mockResolvedValue(page1Product) },
       });
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -680,10 +648,9 @@ describe('CreateOfferWizard', () => {
         products: { list, getById: vi.fn().mockResolvedValue(page1Product) },
       });
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -759,10 +726,9 @@ describe('CreateOfferWizard', () => {
       });
 
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={onClose}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={onClose}
           onSubmitted={onSubmitted}
         />,
         { apiClient: mockApi },
@@ -849,10 +815,9 @@ describe('CreateOfferWizard', () => {
       });
 
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -925,10 +890,9 @@ describe('CreateOfferWizard', () => {
       });
 
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },
@@ -977,10 +941,9 @@ describe('CreateOfferWizard', () => {
       });
 
       renderWithProviders(
-        <CreateOfferWizard
-          isOpen={true}
-          onClose={vi.fn()}
-          defaultConnectionId={allegroConnection.id}
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
         { apiClient: mockApi },

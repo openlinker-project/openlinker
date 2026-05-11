@@ -10,7 +10,7 @@ import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
-import { CreateOfferWizard } from '../../features/listings/components/CreateOfferWizard';
+import { OfferCreationLauncher } from '../../features/listings/components/OfferCreationLauncher';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
 import type {
   CreateOfferRequest,
@@ -283,7 +283,7 @@ export function ListingsListPage(): ReactElement {
         </>
       )}
 
-      <CreateOfferWizard
+      <OfferCreationLauncher
         isOpen={isWizardOpen}
         onClose={closeWizard}
         defaultConnectionId={retryDefaultConnectionId ?? (debouncedConnectionId || undefined)}
