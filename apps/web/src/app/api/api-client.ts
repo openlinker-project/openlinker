@@ -67,10 +67,11 @@ export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
  * Plugin-augmentable surface. Empty by default; each plugin extends it
  * via `declare module '../../app/api/api-client'` (see the allegro plugin
  * for the canonical pattern). The empty form is the documented TS shape
- * for declaration-merging seams — the lint disable below is intentional
- * and load-bearing.
+ * for declaration-merging seams. `@typescript-eslint/no-empty-interface`
+ * is not enabled in the repo's eslint config (verified 2026-05-11), so no
+ * inline disable is needed; if the rule is added later, this is the line
+ * to exempt.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface -- canonical declaration-merging seam; plugins extend via `declare module`
 export interface PluginApiNamespaces {}
 
 export interface CoreApiClient {
@@ -198,5 +199,13 @@ export function createApiClient({
     }
   }
 
+  // Single boundary cast. The structural shape is guaranteed by the union of
+  // CoreApiClient (built above) and PluginApiNamespaces (augmented at compile
+  // time). Caveat the cast hides: declaration merging makes TS believe every
+  // augmented key is present, but the runtime presence depends on each plugin
+  // returning the right shape from `apiNamespaces`. A plugin that declares
+  // `allegro: AllegroApi` but forgets to return `{ allegro: … }` produces a
+  // type-checking `client.allegro` that is actually `undefined` at runtime —
+  // surfaces only at the call site.
   return { ...core, ...pluginNamespaces } as ApiClient;
 }

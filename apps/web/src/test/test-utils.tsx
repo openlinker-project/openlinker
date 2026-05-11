@@ -43,7 +43,16 @@ export const sampleConnection: Connection = {
  * automatically a valid override slot here.
  *
  * Merge order in `createMockApiClient`: hardcoded vi.fn defaults → caller
- * overrides. Caller overrides always win.
+ * overrides. Caller overrides always win. (See `plugin-registry.test.ts`
+ * "caller overrides win over plugin contributions" — pinned.)
+ *
+ * Note on divergence from runtime composition: `createApiClient` iterates
+ * the real plugin registry and merges `plugin.apiNamespaces(request)`. The
+ * mock factory deliberately does NOT — invoking real plugin factories with
+ * a stubbed `request` would call through to feature-side fetchers in tests
+ * that don't override. Instead, the factory hardcodes plugin-namespace
+ * defaults inline (e.g. the `allegro` block below) with vi.fn defaults.
+ * Keep that block in sync with the runtime contributions of `apps/web/src/plugins/`.
  */
 type DeepPartialApiClient = {
   [K in keyof ApiClient]?: ApiClient[K] extends (...args: never[]) => unknown
