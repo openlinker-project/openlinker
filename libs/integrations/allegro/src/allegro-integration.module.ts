@@ -41,7 +41,7 @@ import {
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
-import { buildAllegroSchedulerTasks } from './scheduler/allegro-scheduler-tasks';
+import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
 import { RedisClientType } from 'redis';
 import { CustomersModule, CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN, CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactoryWrapper } from './infrastructure/adapters/allegro-adapter-factory-wrapper';

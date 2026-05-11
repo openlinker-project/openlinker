@@ -111,7 +111,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     cronJob.start();
 
     this.logger.log(
-      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'none')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
+      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'unknown')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
     );
   }
 

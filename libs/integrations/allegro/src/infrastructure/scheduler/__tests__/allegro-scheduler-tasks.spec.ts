@@ -5,11 +5,11 @@
  * the two tasks, payload shape, idempotency key, and the
  * `masterCatalogConnectionId` lookup on the offers-sync payload.
  *
- * @module libs/integrations/allegro/src/__tests__
+ * @module libs/integrations/allegro/src/infrastructure/scheduler/__tests__
  */
 import { ConfigService } from '@nestjs/config';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import { buildAllegroSchedulerTasks } from '../scheduler/allegro-scheduler-tasks';
+import { buildAllegroSchedulerTasks } from '../allegro-scheduler-tasks';
 
 const makeConfig = (overrides: Record<string, string> = {}): jest.Mocked<ConfigService> => {
   const get = jest.fn((key: string, defaultValue?: unknown) => {

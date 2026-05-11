@@ -17,7 +17,7 @@
  * cron tick, so toggling without restart works for tasks that *did*
  * register at boot.
  *
- * @module libs/integrations/allegro/src/scheduler
+ * @module libs/integrations/allegro/src/infrastructure/scheduler
  * @see {@link SchedulerTaskConfig} in `@openlinker/core/sync`.
  */
 import { ConfigService } from '@nestjs/config';
@@ -87,14 +87,22 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       jobType: 'marketplace.offers.sync',
       cronExpression,
       enabledEnvVar: 'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED',
-      generatePayload: (connection) => ({
-        schemaVersion: 1,
-        limit: pageLimit,
-        cursor: null,
-        cursorKey: offersFeedType === 'events' ? 'allegro.offers.lastEventId' : undefined,
-        feedType: offersFeedType,
-        masterConnectionId: getMasterCatalogConnectionId(connection),
-      }),
+      generatePayload: (connection) => {
+        // Build only meaningful keys so the payload doesn't carry literal
+        // `undefined` values (events-feed → cursorKey present; offers-feed
+        // → cursorKey omitted entirely).
+        const payload: Record<string, unknown> = {
+          schemaVersion: 1,
+          limit: pageLimit,
+          cursor: null,
+          feedType: offersFeedType,
+          masterConnectionId: getMasterCatalogConnectionId(connection),
+        };
+        if (offersFeedType === 'events') {
+          payload.cursorKey = 'allegro.offers.lastEventId';
+        }
+        return payload;
+      },
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offers:sync:${timestamp}`,
     });
