@@ -692,7 +692,7 @@ export class InventorySyncService {
 2. **Implement port in infrastructure layer:**
    ```typescript
    // infrastructure/persistence/repositories/product.repository.ts
-   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   import { ProductRepositoryPort } from '@openlinker/core/products';
    
    @Injectable()
    export class ProductRepository implements ProductRepositoryPort {
@@ -715,7 +715,7 @@ export class InventorySyncService {
 3. **Inject port (not concrete class) in application service:**
    ```typescript
    // application/services/product.service.ts
-   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   import { ProductRepositoryPort } from '@openlinker/core/products';
    
    @Injectable()
    export class ProductService {
@@ -757,7 +757,7 @@ export class InventorySyncService {
 ✅ **Good:**
 ```typescript
 // Service depends on port interface
-import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+import { ProductRepositoryPort } from '@openlinker/core/products';
 
 @Injectable()
 export class ProductService {
@@ -1201,9 +1201,9 @@ import { Logger } from '../../../shared/logging';
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 
-// 2. Cross-boundary imports (aliases)
+// 2. Cross-boundary imports (top-level barrels only — #591)
 import { Logger } from '@openlinker/shared/logging';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 // 3. Local imports (relative)
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';

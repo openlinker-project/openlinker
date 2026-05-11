@@ -315,12 +315,14 @@ module.exports = {
       },
     },
     {
-      // Host apps: same rule, locked behind us. The package.json wildcards
-      // were dropped in #591; deep aliases fail at Node runtime. This rule
-      // makes the failure mode "PR fails CI" not "production crash". Note
-      // the order: this override runs AFTER the broader **/infrastructure/**
-      // exemption above, so it wins for apps/**/infrastructure/** paths too.
-      files: ['apps/**/*.ts'],
+      // Backend host apps (api, worker) — same rule, locked behind us. The
+      // package.json wildcards were dropped in #591; deep aliases fail at
+      // Node runtime. This rule makes the failure mode "PR fails CI" not
+      // "production crash". Scoped to apps/{api,worker} — apps/web is a
+      // browser SPA that does not import `@openlinker/core` and has its
+      // own layer-boundary `no-restricted-imports` overrides (#604) we
+      // must not stomp by matching `apps/**/*.ts` broadly.
+      files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts'],
       rules: {
         'no-restricted-imports': [
           'error',
@@ -333,7 +335,7 @@ module.exports = {
                   '@openlinker/core/*/infrastructure/**',
                 ],
                 message:
-                  'Apps must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. The package.json wildcards were dropped in #591; deep aliases now fail at Node runtime.',
+                  'Backend apps must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. The package.json wildcards were dropped in #591; deep aliases now fail at Node runtime.',
               },
             ],
           },
