@@ -213,8 +213,10 @@ The system is organized into the following core bounded contexts:
 
 ### 11. Logging & Monitoring
 - **Responsibility**: Structured logging, metrics, tracing
-- **Technology**: NestJS Logger, OpenTelemetry (future)
-- **Location**: `libs/shared/src/logging/`
+- **Contract**: `LoggerPort` (`log/debug/warn/error`) shipped from `@openlinker/shared/logging`. The consumer-facing `Logger` factory (`new Logger(ClassName.name)`) delegates to a process-wide active backend.
+- **Backends**: `ConsoleLoggerAdapter` is the zero-dependency default that ships in the same package, so plugins compiled against `@openlinker/shared` get working logs without any host wiring. The NestJS-backed `NestLoggerAdapter` lives on the host-only subpath `@openlinker/shared/logging/nest`; hosts call `installNestLogger()` at the top of `bootstrap()` to swap it in (#589). Plugins never transitively pull `@nestjs/common` through the logger.
+- **Tracing**: OpenTelemetry (future).
+- **Location**: `libs/shared/src/logging/` (port + default + factory); `libs/shared/src/logging/nest/` (Nest-backed adapter, host-only).
 
 ### 12. Content
 - **Responsibility**: Per-product, per-channel (or master) content fields with draft write-through and conflict detection. First field key: `description`.
@@ -1488,7 +1490,7 @@ Future: Worker processes jobs
 - **Events**: `@nestjs/event-emitter` (in-memory), Redis Streams (distributed)
 - **Authentication**: JWT (`@nestjs/jwt`, `@nestjs/passport`)
 - **Validation**: `class-validator`, `class-transformer`
-- **Logging**: NestJS Logger (wrapped in shared library)
+- **Logging**: framework-neutral `LoggerPort` (`@openlinker/shared/logging`) with a console default; host apps install the NestJS-backed adapter at boot via `installNestLogger()` from `@openlinker/shared/logging/nest`
 
 ### Development Tools
 

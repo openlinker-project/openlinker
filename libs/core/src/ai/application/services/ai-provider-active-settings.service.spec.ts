@@ -9,8 +9,8 @@
  *
  * @module libs/core/src/ai/application/services
  */
-import { Logger as NestLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import { AiProviderActiveSetting } from '../../domain/entities/ai-provider-active-setting.entity';
 import { AiProviderActiveSettingRepositoryPort } from '../../domain/ports/ai-provider-active-setting-repository.port';
 import { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
@@ -43,7 +43,7 @@ describe('AiProviderActiveSettingsService', () => {
       describeAll: jest.fn(),
       invalidate: jest.fn(),
     };
-    logSpy = jest.spyOn(NestLogger.prototype, 'log').mockImplementation(() => undefined);
+    logSpy = jest.spyOn(SharedLogger.prototype, 'log').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

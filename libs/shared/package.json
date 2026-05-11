@@ -15,6 +15,10 @@
       "types": "./dist/logging/index.d.ts",
       "require": "./dist/logging/index.js"
     },
+    "./logging/nest": {
+      "types": "./dist/logging/nest/index.d.ts",
+      "require": "./dist/logging/nest/index.js"
+    },
     "./config": {
       "types": "./dist/config/index.d.ts",
       "require": "./dist/config/index.js"

@@ -29,6 +29,7 @@ module.exports = {
   testEnvironment: 'node',
   moduleNameMapper: {
     '^@openlinker/core/(.*)$': '<rootDir>/$1',
+    '^@openlinker/shared$': '<rootDir>/../../../libs/shared/src/index.ts',
     '^@openlinker/shared/(.*)$': '<rootDir>/../../../libs/shared/src/$1',
   },
 };

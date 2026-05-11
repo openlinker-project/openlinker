@@ -39,11 +39,11 @@ describe('BootstrapAdminService', () => {
   beforeEach(() => {
     warnMessages = [];
     logMessages = [];
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation((msg: string) => {
-      warnMessages.push(msg);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((msg: unknown) => {
+      warnMessages.push(String(msg));
     });
-    jest.spyOn(Logger.prototype, 'log').mockImplementation((msg: string) => {
-      logMessages.push(msg);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((msg: unknown) => {
+      logMessages.push(String(msg));
     });
   });
 
