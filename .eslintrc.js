@@ -167,6 +167,20 @@ module.exports = {
       },
     },
     {
+      // Route modules (#606): mechanical one-export files whose only function
+      // is the inline `lazy: async () => { const { X } = await import('...');
+      // return { Component: X }; }` arrow. Annotating each with an explicit
+      // `Promise<{ Component: ComponentType }>` is uniform busywork that adds
+      // noise without catching real bugs — the structural return shape is
+      // already constrained by React Router's `RouteObject.lazy` type. Turn
+      // the rule off for these files specifically; the canonical rule stays
+      // on everywhere else.
+      files: ['apps/web/src/app/routes/*.route.tsx', 'apps/web/src/plugins/**/*.route.tsx'],
+      rules: {
+        '@typescript-eslint/explicit-function-return-type': 'off',
+      },
+    },
+    {
       // Plugin boundary (#604): plugins compose pages/features/shared and may
       // reference the public type seam at `app/api/api-client` only. Importing
       // any other `app/` path would couple plugins to host internals (router,

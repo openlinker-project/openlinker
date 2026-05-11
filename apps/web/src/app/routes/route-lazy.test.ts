@@ -42,14 +42,32 @@ const lazyRoutes = collectLazyRoutes([
   ...plugins.flatMap((plugin) => plugin.routes ?? []),
 ]);
 
+/**
+ * Expected count of lazy-loaded route nodes after walking the entire tree.
+ *
+ * **Bump this when intentionally adding or removing a lazy route.** The exact
+ * equality is deliberate: a `>= N` lower bound would silently miss a single
+ * route reverted to eager `element:` form, which is exactly the regression
+ * the parameterized test below is meant to catch.
+ *
+ * Today's breakdown (34 total):
+ *   - 29 authenticated children (under `coreChildren`, counting per-children-node
+ *     because grouped routes like orders/customers/inventory expose multiple
+ *     lazy nodes)
+ *   - 2 guest routes (forgot-password, reset-password — login stays eager)
+ *   - 3 plugin routes (allegro callback + setup, prestashop setup)
+ *
+ * Routes that are intentionally eager (no page module to defer):
+ *   - login (first-paint optimization — see `login.route.tsx`)
+ *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
+ */
+const EXPECTED_LAZY_ROUTE_COUNT = 34;
+
 describe('route lazy contract', () => {
-  it('the registered route tree contains at least 25 lazy routes', () => {
-    // Sanity check: if this number drops sharply, someone reverted lazy
-    // back to eager `element`. Today's count is ~33 across core + guest +
-    // plugin. The lower bound is loose enough to absorb future additions
-    // and the legacy-redirects file's eager routes (which are deliberately
-    // not lazy — no page module to defer).
-    expect(lazyRoutes.length).toBeGreaterThanOrEqual(25);
+  it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
+    // Exact equality, not a lower bound: any single regression from `lazy`
+    // back to eager `element` shifts the count down by one and fails here.
+    expect(lazyRoutes.length).toBe(EXPECTED_LAZY_ROUTE_COUNT);
   });
 
   it.each(lazyRoutes.map((route, i) => [i, route] as const))(

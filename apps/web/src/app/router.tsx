@@ -6,9 +6,10 @@ import { resetPasswordRoute } from './routes/reset-password.route';
 import { rootRoute } from './routes/root.route';
 
 /**
- * Guest routes — anonymous entry points. Exported so the route-lazy test
- * can iterate them alongside `coreChildren` and plugin routes; the test
- * needs the static reference, not the assembled `appRouter`.
+ * Guest routes — anonymous entry points. Exported solely so the route-lazy
+ * test can iterate them alongside `coreChildren` and plugin routes; this is
+ * NOT a runtime API for other modules to consume. The runtime composition
+ * is the `appRouter` below.
  */
 export const guestRoutes: RouteObject[] = [loginRoute, forgotPasswordRoute, resetPasswordRoute];
 
