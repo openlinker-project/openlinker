@@ -7,6 +7,8 @@ import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { env } from '../../shared/config/env';
 import { ThemeProvider } from '../../shared/theme';
+import { PluginRegistryProvider } from '../../shared/plugins';
+import { IN_TREE_PLUGINS } from '../../plugins';
 
 export function AppProviders({ children }: PropsWithChildren): ReactElement {
   const [queryClient] = useState(
@@ -35,13 +37,15 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
 
   return (
     <ThemeProvider>
-      <SessionProvider adapter={sessionAdapter}>
-        <ToastProvider>
-          <ApiClientProvider client={apiClient}>
-            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </SessionProvider>
+      <PluginRegistryProvider plugins={IN_TREE_PLUGINS}>
+        <SessionProvider adapter={sessionAdapter}>
+          <ToastProvider>
+            <ApiClientProvider client={apiClient}>
+              <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </PluginRegistryProvider>
     </ThemeProvider>
   );
 }

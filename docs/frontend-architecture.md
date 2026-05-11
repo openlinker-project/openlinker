@@ -283,20 +283,29 @@ See [`docs/ui-audit/library-analysis.md`](./ui-audit/library-analysis.md) for th
 
 Dependency direction must remain simple and enforceable:
 
-- `app` may import `pages`, `features`, and `shared`
+- `app` may import `pages`, `features`, `plugins`, and `shared`
 - `pages` may import `features` and `shared`
+- `plugins` may import `features` and `shared` (see [Platform Plugins](#platform-plugins-plugins))
 - `features` may import `shared`
-- `shared` must not import `features` or `pages`
+- `shared` must not import `features`, `pages`, or `plugins` — with one narrow exemption documented below
 
 These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, and `pages/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
+
+> **Exemption — `shared/plugins/` (#578/#579):** The FE plugin contract in `shared/plugins/plugin.types.ts` is a feature-aware surface by design — plugins receive `Connection` and `UseFormReturn<EditConnectionFormValues>` shapes from the connections feature. To keep the contract fully typed without hoisting feature-private types into `shared/`, the ESLint rule allows `shared/plugins/**` to type-import `Connection` and `EditConnectionFormValues` (and nothing else) from `features/connections/`. Hoisting the types into a `shared/types/` boundary is the cleaner long-term move; it's deferred until a second consumer needs them.
 
 Additional rules:
 
 - pages compose features but should not contain raw transport logic
 - feature modules may define feature-specific types, hooks, and view-model mapping
 - shared modules must remain generic enough to be reused across features
+
+## Platform Plugins (`plugins/`)
+
+The in-tree platform plugins (#578 / #579) live in `apps/web/src/plugins/<platformType>/`. Each plugin exposes a `PlatformPlugin` object describing the platform-specific UI affordances — setup card, callback-URL default, structured edit-form sections, extra edit-form sections, connection actions, etc. The plugin registry contract (`shared/plugins/`) is consumed by core feature components via `usePlugin(platformType)` and `usePlugins()`. Adding a new platform plugin is a single edit point: drop a new directory under `plugins/` and add it to `IN_TREE_PLUGINS` in `plugins/index.ts`.
+
+Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlugin()`, `usePlugins()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this.
 
 ## Async UX Conventions
 

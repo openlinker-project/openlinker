@@ -85,6 +85,30 @@ module.exports = {
       },
     },
     {
+      // `shared/plugins/` is the FE plugin-contract surface (#578/#579). It
+      // necessarily references the `Connection` shape that plugins receive
+      // and the form-value shapes plugins compose into. The Connection type
+      // lives in `features/connections/api/` today; making this exemption
+      // narrow keeps `shared/plugins/` cleanly typed without hoisting the
+      // entire connections domain into `shared/` for one type.
+      files: ['apps/web/src/shared/plugins/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/features/**', '**/pages/**', '**/app/**'],
+                importNamePattern: '^(?!Connection$|EditConnectionFormValues$).+',
+                message:
+                  'shared/plugins/ may only type-import `Connection` and `EditConnectionFormValues` from features/. All other feature imports remain banned.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       files: ['apps/web/src/features/**/*.{ts,tsx}'],
       rules: {
         'no-restricted-imports': [
@@ -198,6 +222,43 @@ module.exports = {
       ],
       rules: {
         'no-restricted-imports': 'off',
+      },
+    },
+    {
+      // FE platformType is an opaque string post-#578/#579. Literal-equality
+      // dispatch (`connection.platformType === 'allegro'`, etc.) is forbidden
+      // outside the in-tree plugin packages — use `usePlugin()` / `usePlugins()`
+      // or capability checks (`supportedCapabilities.includes('OfferManager')`)
+      // instead. The single legitimate use is inside `apps/web/src/plugins/<name>/`
+      // where each plugin keys on its own `platformType` constant.
+      //
+      // Selector scope: member-access on one side AND a string Literal on the
+      // other. Standalone-variable comparisons inside platform-specific helper
+      // fns (e.g. `if (platformType !== 'allegro') return null` at the top of
+      // `allegro-seller-panel-url.ts`) are NOT caught, and they should not be:
+      // those helpers advertise their platform in the filename and fail safe
+      // for non-matching inputs.
+      files: ['apps/web/src/{features,pages,app}/**/*.{ts,tsx}'],
+      excludedFiles: [
+        'apps/web/src/**/*.test.{ts,tsx}',
+        'apps/web/src/**/*.spec.{ts,tsx}',
+      ],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector:
+              "BinaryExpression[operator=/^(===|!==)$/][left.property.name='platformType'][right.type='Literal']",
+            message:
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlugin()/usePlugins() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+          },
+          {
+            selector:
+              "BinaryExpression[operator=/^(===|!==)$/][right.property.name='platformType'][left.type='Literal']",
+            message:
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlugin()/usePlugins() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+          },
+        ],
       },
     },
     {

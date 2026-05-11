@@ -41,9 +41,29 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('shows trigger sync button for non-prestashop connections too', () => {
-    const allegroConnection = { ...sampleConnection, platformType: 'allegro' as const };
+    const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
     renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />);
 
+    expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
+  });
+
+  it('renders the PrestaShop plugin\'s "Configure webhooks" action for prestashop connections', () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />);
+    expect(screen.getByRole('button', { name: /configure webhooks/i })).toBeInTheDocument();
+  });
+
+  it('does not render the "Configure webhooks" action for non-prestashop connections', () => {
+    const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
+    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />);
+    expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
+  });
+
+  it('renders no plugin-specific actions for an unregistered platformType', () => {
+    const unknownConnection = { ...sampleConnection, platformType: 'shopify' };
+    renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />);
+    expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
+    // Core actions are still present.
+    expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
   });
 

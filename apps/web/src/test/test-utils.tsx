@@ -12,11 +12,20 @@ import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { Session, SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
+import type { PlatformPlugin } from '../shared/plugins';
+import { PluginRegistryProvider } from '../shared/plugins';
+import { IN_TREE_PLUGINS } from '../plugins';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   apiClient?: ApiClient;
   route?: string;
   sessionAdapter?: SessionAdapter;
+  /**
+   * Override the in-tree plugin manifest visible to `usePlugin()` /
+   * `usePlugins()`. Defaults to the production manifest — set this on tests
+   * that need to assert registry-absent behavior or inject a fixture plugin.
+   */
+  plugins?: readonly PlatformPlugin[];
 }
 
 export const sampleConnection: Connection = {
@@ -375,6 +384,7 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
     apiClient = createMockApiClient(),
     route = '/',
     sessionAdapter = createNoopSessionAdapter(),
+    plugins = IN_TREE_PLUGINS,
     ...renderOptions
   } = options;
   const queryClient = new QueryClient({
@@ -395,13 +405,15 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
   return render(ui, {
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
-        <SessionProvider adapter={sessionAdapter}>
-          <ToastProvider>
-            <ApiClientProvider client={apiClient}>
-              <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            </ApiClientProvider>
-          </ToastProvider>
-        </SessionProvider>
+        <PluginRegistryProvider plugins={plugins}>
+          <SessionProvider adapter={sessionAdapter}>
+            <ToastProvider>
+              <ApiClientProvider client={apiClient}>
+                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+              </ApiClientProvider>
+            </ToastProvider>
+          </SessionProvider>
+        </PluginRegistryProvider>
       </MemoryRouter>
     ),
     ...renderOptions,

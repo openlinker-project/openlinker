@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
-import type { Connection, ConnectionFilters, ConnectionStatus, PlatformType } from '../../features/connections/api/connections.types';
-import { PLATFORM_TYPES } from '../../features/connections/api/connections.types';
+import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
+import { usePlugins } from '../../shared/plugins';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-state';
@@ -12,10 +12,6 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Select } from '../../shared/ui/select';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error'] as const;
-
-function isValidPlatformType(value: string): value is PlatformType {
-  return PLATFORM_TYPES.includes(value as PlatformType);
-}
 
 function isValidStatus(value: string): value is ConnectionStatus {
   return CONNECTION_STATUSES.includes(value as ConnectionStatus);
@@ -69,12 +65,14 @@ const COLUMNS: DataTableColumn<Connection>[] = [
 export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
+  const plugins = usePlugins();
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
+  const isKnownPlatform = platformType !== '' && plugins.some((p) => p.platformType === platformType);
 
   const filters: ConnectionFilters = {
-    platformType: isValidPlatformType(platformType) ? platformType : undefined,
+    platformType: isKnownPlatform ? platformType : undefined,
     status: isValidStatus(status) ? status : undefined,
   };
 
@@ -123,8 +121,8 @@ export function ConnectionsListPage(): ReactElement {
             onChange={(e) => { handleFilterChange('platformType', e.target.value); }}
           >
             <option value="">All platforms</option>
-            {PLATFORM_TYPES.map((p) => (
-              <option key={p} value={p}>{p}</option>
+            {plugins.map((p) => (
+              <option key={p.platformType} value={p.platformType}>{p.displayName}</option>
             ))}
           </Select>
           <Select

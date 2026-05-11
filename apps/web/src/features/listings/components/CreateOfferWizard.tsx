@@ -296,10 +296,14 @@ export function CreateOfferWizard({
   }, [form.formState.isDirty]);
 
   const connectionsQuery = useConnectionsQuery();
+  // Filter by capability only (#578/#579). The previous `platformType === 'allegro'`
+  // arm was a transitional backstop for connections that pre-dated the
+  // adapter-registry capability metadata in #570/#571 — every Allegro connection
+  // now reports `OfferManager` in `supportedCapabilities`.
   const marketplaceConnections = useMemo(
     () =>
-      (connectionsQuery.data ?? []).filter(
-        (c) => c.platformType === 'allegro' || c.supportedCapabilities.includes('OfferManager'),
+      (connectionsQuery.data ?? []).filter((c) =>
+        c.supportedCapabilities.includes('OfferManager'),
       ),
     [connectionsQuery.data],
   );
