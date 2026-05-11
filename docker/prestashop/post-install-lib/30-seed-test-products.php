@@ -64,7 +64,7 @@ Context::getContext()->employee = new Employee(1);
 $existingFixtureCount = (int) Db::getInstance()->getValue(
     "SELECT COUNT(*) FROM " . _DB_PREFIX_ . "product WHERE reference LIKE 'OL-%'"
 );
-if ($existingFixtureCount >= 5) {
+if ($existingFixtureCount >= 6) {
     echo "* {$existingFixtureCount} OL-* fixtures already present; nothing to do\n";
     exit(0);
 }
@@ -163,6 +163,7 @@ function olCreateBaseProduct(array $f, int $idLang, int $idShop, int $idRootCate
     $product = new Product();
     $product->reference = $f['reference'];
     $product->ean13 = $f['ean13'] ?? '';
+    $product->mpn = $f['mpn'] ?? '';
     $product->price = $f['price'];
     $product->id_category_default = $idRootCategory;
     $product->id_tax_rules_group = 0;
@@ -222,7 +223,7 @@ function olCreateCombination(
 /**
  * Attach an image to a Product (cover) or a Combination (per-variant). Uses the
  * same Image + ImageManager code path the admin "upload image" UI uses: writes
- * the source to `_PS_PROD_IMG_DIR_ . Image::getImgPath() . '.jpg'`, lets PS
+ * the source to `_PS_PRODUCT_IMG_DIR_ . Image::getImgPath() . '.jpg'`, lets PS
  * generate derivatives via `ImageType::getImagesTypes('products')`, and (for
  * combinations) wires `product_attribute_image` via `INSERT IGNORE`.
  *
@@ -245,8 +246,8 @@ function olAttachProductImage(
     if (!is_readable($src)) {
         throw new RuntimeException("Source image not readable: {$src}");
     }
-    if (!is_writable(_PS_PROD_IMG_DIR_)) {
-        throw new RuntimeException('PS image dir not writable: ' . _PS_PROD_IMG_DIR_);
+    if (!is_writable(_PS_PRODUCT_IMG_DIR_)) {
+        throw new RuntimeException('PS image dir not writable: ' . _PS_PRODUCT_IMG_DIR_);
     }
 
     $image = new Image();
@@ -257,7 +258,16 @@ function olAttachProductImage(
         throw new RuntimeException("Image::add failed for {$reference}");
     }
 
-    $dst = _PS_PROD_IMG_DIR_ . $image->getImgPath() . '.jpg';
+    // Image::add() only inserts the DB row; the nested per-image folder
+    // (img/p/{digits-split}/) is created lazily by createImgFolder(), which
+    // the admin upload UI calls explicitly after add(). Without it, the
+    // copy() below fails because the destination directory doesn't exist.
+    if (!$image->createImgFolder()) {
+        $image->delete();
+        throw new RuntimeException("Image::createImgFolder failed for {$reference}");
+    }
+
+    $dst = _PS_PRODUCT_IMG_DIR_ . $image->getImgPath() . '.jpg';
     if (!@copy($src, $dst)) {
         $image->delete();
         throw new RuntimeException("Image copy failed: {$src} → {$dst}");
@@ -268,7 +278,7 @@ function olAttachProductImage(
     }
 
     foreach (ImageType::getImagesTypes('products') as $imageType) {
-        $derivative = _PS_PROD_IMG_DIR_ . $image->getImgPath()
+        $derivative = _PS_PRODUCT_IMG_DIR_ . $image->getImgPath()
             . '-' . $imageType['name'] . '.jpg';
         ImageManager::resize(
             $dst,
@@ -434,7 +444,33 @@ try {
     olAttachProductImage((int) $f5->id, null, 'OL-RING-RESIN', true, 'OL-RING-RESIN.jpg');
     echo "* Fixture 5 (variant + no EAN, 3 sizes) created: id={$f5->id}\n";
 
-    echo "* Seed complete — 5 OL-* fixtures inserted\n";
+    // Fixture 6: simple + EAN + MPN (Polish-language listing)
+    // Allegro category: Elektronika / Fotografia / Aparaty cyfrowe / Aparaty kompaktowe
+    // Source: Canon PowerShot SX740 HS Lite Edition, silver — manufacturer
+    // marketing photo + Polish-language scraped listing copy. Exercises the
+    // simple-product path with the MPN field populated (in addition to EAN13),
+    // and provides a non-English description for storefront-language smoke tests.
+    $f6 = olCreateBaseProduct([
+        'reference' => 'OL-CANON-SX740LE',
+        'ean13' => '4549292246117',
+        'mpn' => 'ACFCANSX740HSLE-S',
+        'price' => 1499.00,
+        'name' => 'Aparat cyfrowy Canon PowerShot SX740 HS Lite Edition — srebrny',
+        'description_short' => 'Kompaktowy aparat cyfrowy 20,3 MP z 40-krotnym zoomem optycznym i nagrywaniem 4K.',
+        'description' => 'Kompaktowy aparat Canon PowerShot SX740 HS LITE EDITION ma grubość zaledwie '
+            . '39,9 mm i robi bardzo atrakcyjne zdjęcia. Można nim rejestrować wyjątkowe szczegóły '
+            . 'z rozdzielczością 20,3 MP dzięki 40-krotnemu zoomowi optycznemu – a następnie '
+            . 'udostępniać zdjęcia za pomocą łączności Wi-Fi i Bluetooth. Aparat umożliwia '
+            . 'nagrywanie filmów w imponującej rozdzielczości 4K, a procesor DIGIC 8 umożliwia '
+            . 'tworzenie doskonałych zdjęć. Mały, ale zaawansowany aparat automatyczny z '
+            . 'dynamicznie reagującą migawką i obsługą serii zdjęć z szybkością 10 kl./s – '
+            . 'dzięki temu nie przeoczysz żadnego ujęcia.',
+    ], $idLang, $idShop, $idRootCategory);
+    StockAvailable::setQuantity((int) $f6->id, 0, 15, $idShop);
+    olAttachProductImage((int) $f6->id, null, 'OL-CANON-SX740LE', true, 'OL-CANON-SX740LE.jpg');
+    echo "* Fixture 6 (simple + EAN + MPN, Polish copy) created: id={$f6->id}\n";
+
+    echo "* Seed complete — 6 OL-* fixtures inserted\n";
 } catch (Throwable $e) {
     fwrite(STDERR, "FATAL: seed aborted — " . $e->getMessage() . "\n");
 
