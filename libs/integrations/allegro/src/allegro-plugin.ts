@@ -30,6 +30,7 @@ import type { QuantityPollConfig } from './infrastructure/adapters/allegro-offer
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+import { AllegroConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/allegro-connection-config-shape-validator.adapter';
 import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
 import { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 import type { AllegroQuantityCommandRepositoryPort } from './domain/ports/allegro-quantity-command-repository.port';
@@ -76,6 +77,15 @@ export const allegroAdapterManifest: AdapterMetadata = {
   isDefault: true,
 };
 
+/**
+ * Short brand label used as the `pluginName` argument when this plugin's
+ * adapters raise domain exceptions (`InvalidConnectionConfigException`).
+ * `manifest.displayName` reads as "Allegro Public API v1" which is too
+ * long for an error prefix; this constant keeps the user-facing label
+ * co-located with the manifest so a rebrand touches one line.
+ */
+const ALLEGRO_BRAND = 'Allegro';
+
 export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugin {
   return {
     manifest: allegroAdapterManifest,
@@ -93,6 +103,13 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         'allegro.publicapi.v1',
         new AllegroRetryClassifierAdapter(),
       );
+      host.connectionConfigShapeValidatorRegistry.register(
+        'allegro.publicapi.v1',
+        new AllegroConnectionConfigShapeValidatorAdapter(ALLEGRO_BRAND),
+      );
+      // Allegro does NOT register a credentials shape validator — token
+      // shape is enforced by `AllegroAdapterFactory.resolveCredentials` at
+      // adapter construction time (deeper than this boundary).
       if (deps.configService) {
         for (const task of buildAllegroSchedulerTasks(deps.configService)) {
           host.schedulerTaskRegistry.register(task);
@@ -124,7 +141,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
           OfferManager: () => adapters.offerManager,
           OrderSource: () => adapters.orderSource,
         },
-        'Allegro',
+        ALLEGRO_BRAND,
       );
     },
   };

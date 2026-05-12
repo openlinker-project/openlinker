@@ -145,3 +145,47 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
     );
   });
 });
+
+describe('createPrestashopPlugin → register(host)', () => {
+  // Wire-up coverage for #586 / #587. The plugin must self-register the
+  // config and credentials shape-validators at its adapterKey so the host
+  // can replace the legacy platform-switch in ConnectionService.
+  function makeRegisterHost(): {
+    host: HostServices;
+    configRegistry: { register: jest.Mock };
+    credentialsRegistry: { register: jest.Mock };
+  } {
+    const configRegistry = { register: jest.fn() };
+    const credentialsRegistry = { register: jest.fn() };
+    const host = {
+      identifierMapping: {} as IdentifierMappingPort,
+      credentialsResolver: {} as CredentialsResolverPort,
+      cache: undefined,
+      connectionTesterRegistry: { register: jest.fn() },
+      webhookProvisioningRegistry: { register: jest.fn() },
+      connectionConfigShapeValidatorRegistry: configRegistry,
+      connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
+    } as unknown as HostServices;
+    return { host, configRegistry, credentialsRegistry };
+  }
+
+  it('registers the config-shape validator at adapterKey prestashop.webservice.v1', () => {
+    const { host, configRegistry } = makeRegisterHost();
+    createPrestashopPlugin(makeDeps()).register?.(host);
+
+    expect(configRegistry.register).toHaveBeenCalledWith(
+      'prestashop.webservice.v1',
+      expect.objectContaining({ validate: expect.any(Function) }),
+    );
+  });
+
+  it('registers the credentials-shape validator at adapterKey prestashop.webservice.v1', () => {
+    const { host, credentialsRegistry } = makeRegisterHost();
+    createPrestashopPlugin(makeDeps()).register?.(host);
+
+    expect(credentialsRegistry.register).toHaveBeenCalledWith(
+      'prestashop.webservice.v1',
+      expect.objectContaining({ validate: expect.any(Function) }),
+    );
+  });
+});

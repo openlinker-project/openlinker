@@ -2,14 +2,19 @@
  * Allegro Connection Config DTO
  *
  * Application-layer schema for the Allegro `Connection.config` blob.
- * Lives in the application layer (not `http/dto/`) because the schema is
- * the source of truth for `ConnectionService.update()`'s server-side
- * re-validation pass — see #437. The HTTP controller hooks into the same
- * shape but does not own it. Swagger decorators are kept on the class so
- * the DTO can be referenced from a controller @Body() in the future
- * without splitting the schema in two.
+ * Owned by the Allegro plugin package post-#587 — the shape is
+ * plugin-private and only `AllegroConnectionConfigShapeValidatorAdapter`
+ * (registered with the host at boot via `host.connectionConfigShapeValidatorRegistry`)
+ * reaches into it. The API-layer `ConnectionService` invokes the adapter
+ * via the registry; it never touches this DTO directly.
  *
- * @module apps/api/src/integrations/application/dto
+ * Swagger decorators (`@ApiProperty`) were stripped post-#587 — the DTO
+ * is no longer reachable from any `@Body()` binding (it's a private
+ * shape-validation seam, not a request body). A future
+ * `GET /connections/config-schema/:adapterKey` endpoint can layer Swagger
+ * metadata back via a separate file mapping.
+ *
+ * @module libs/integrations/allegro/src/application/dto
  */
 import {
   ArrayMaxSize,
@@ -29,11 +34,13 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+// Sibling-context types in same package — relative path. The published
+// barrel re-exports them, but reaching for the self-package alias from
+// inside the package itself creates a cycle through the compiled `dist/`.
 import {
   AllegroSafetyInformationTypeValues,
-  PolishVoivodeshipValues,
-} from '@openlinker/integrations-allegro';
+} from '../../domain/types/allegro-seller-defaults.types';
+import { PolishVoivodeshipValues } from '../../domain/types/allegro-location.types';
 
 /**
  * Allegro environment values
@@ -49,24 +56,14 @@ export enum AllegroEnvironment {
  * Allegro's own (16 values) and the postcode regex matches the PL format.
  */
 export class AllegroSellerLocationDto {
-  @ApiProperty({ description: 'ISO country code', enum: ['PL'], example: 'PL' })
   @IsIn(['PL'])
   countryCode!: 'PL';
-
-  @ApiProperty({
-    description: 'Polish voivodeship (Allegro enum)',
-    enum: PolishVoivodeshipValues,
-  })
   @IsIn(PolishVoivodeshipValues as readonly string[])
   province!: (typeof PolishVoivodeshipValues)[number];
-
-  @ApiProperty({ description: 'City name', example: 'Warszawa' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
   city!: string;
-
-  @ApiProperty({ description: 'PL postcode (NN-NNN)', example: '00-001' })
   @IsString()
   @Matches(/^\d{2}-\d{3}$/, {
     message: 'postCode must match the PL format NN-NNN',
@@ -81,9 +78,6 @@ export class AllegroSellerLocationDto {
  * a follow-up).
  */
 export class AllegroSafetyAttachmentDto {
-  @ApiProperty({
-    description: 'Allegro attachment id (UUID returned by attachment upload)',
-  })
   @IsString()
   @IsNotEmpty()
   id!: string;
@@ -102,20 +96,8 @@ export class AllegroSafetyAttachmentDto {
  * for the canonical type and source links.
  */
 export class AllegroSafetyInformationDto {
-  @ApiProperty({
-    description: 'Safety-information discriminator',
-    enum: AllegroSafetyInformationTypeValues,
-  })
   @IsIn(AllegroSafetyInformationTypeValues as readonly string[])
   type!: (typeof AllegroSafetyInformationTypeValues)[number];
-
-  @ApiPropertyOptional({
-    description:
-      'Free-text safety information. Required when `type === TEXT`. ' +
-      'Allegro accepts 1–5000 characters; no HTML, newlines allowed.',
-    minLength: 1,
-    maxLength: 5000,
-  })
   // Conditional require: only enforced when `type === 'TEXT'`. Every
   // subsequent validator is skipped on the other discriminator branches.
   @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'TEXT')
@@ -125,13 +107,6 @@ export class AllegroSafetyInformationDto {
   })
   @MaxLength(5000)
   description?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Attachment references for the `ATTACHMENTS` safety-info variant. ' +
-      'Required when `type === ATTACHMENTS`. Allegro accepts 1–20 attachments per product.',
-    type: () => [AllegroSafetyAttachmentDto],
-  })
   @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'ATTACHMENTS')
   @IsArray()
   @ArrayMinSize(1, {
@@ -146,24 +121,13 @@ export class AllegroSafetyInformationDto {
 }
 
 export class AllegroSellerDefaultsDto {
-  @ApiProperty({ description: 'Ship-from location', type: () => AllegroSellerLocationDto })
   @ValidateNested()
   @Type(() => AllegroSellerLocationDto)
   @IsObject()
   location!: AllegroSellerLocationDto;
-
-  @ApiProperty({
-    description:
-      'Allegro responsible-producer id from `/sale/responsible-producers` registry',
-  })
   @IsString()
   @IsNotEmpty()
   responsibleProducerId!: string;
-
-  @ApiProperty({
-    description: 'EU GPSR safety information',
-    type: () => AllegroSafetyInformationDto,
-  })
   @ValidateNested()
   @Type(() => AllegroSafetyInformationDto)
   @IsObject()
@@ -182,41 +146,15 @@ export class AllegroSellerDefaultsDto {
  * temporal-dead-zone error when the file is loaded by the service layer.
  */
 export class AllegroConnectionConfigDto {
-  @ApiProperty({
-    description: 'Allegro environment (sandbox or production)',
-    enum: AllegroEnvironment,
-    example: AllegroEnvironment.SANDBOX,
-  })
   @IsEnum(AllegroEnvironment)
   environment!: AllegroEnvironment;
-
-  @ApiPropertyOptional({
-    description:
-      'Allegro API base URL (optional, defaults based on environment). ' +
-      'Sandbox: https://api.allegro.pl.allegrosandbox.pl, Production: https://api.allegro.pl. ' +
-      'Note: OAuth authorization endpoints use https://allegro.pl.allegrosandbox.pl/auth/oauth/* (different base URL)',
-    example: 'https://api.allegro.pl.allegrosandbox.pl',
-  })
   @IsUrl({ require_tld: false })
   @IsOptional()
   @IsString()
   apiBaseUrl?: string;
-
-  @ApiPropertyOptional({
-    description: 'Master catalog connection ID for barcode lookups',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
   @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
   @IsOptional()
   masterCatalogConnectionId?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Connection-level seller defaults required by `POST /sale/product-offers` ' +
-      '— `location` (every offer), plus `responsibleProducerId` and ' +
-      '`safetyInformation` for the inline-product path. See #430.',
-    type: () => AllegroSellerDefaultsDto,
-  })
   @IsOptional()
   @ValidateNested()
   @Type(() => AllegroSellerDefaultsDto)

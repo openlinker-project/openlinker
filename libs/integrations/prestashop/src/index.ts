@@ -45,6 +45,16 @@ export { PrestashopParseException } from './domain/exceptions/prestashop-parse.e
 export { PrestashopCountryNotFoundException } from './domain/exceptions/prestashop-country-not-found.exception';
 export { PrestashopProvisioningException } from './domain/exceptions/prestashop-provisioning.exception';
 
+// Shape validators (#586 / #587) — exported so the host-side
+// `connection.service.spec.ts` can register the real validators in its
+// shape-validator registries instead of duplicating the DTO logic in
+// mocks. Plugin host modules register via
+// `host.connectionConfigShapeValidatorRegistry` /
+// `host.connectionCredentialsShapeValidatorRegistry` in `plugin.register(host)`
+// and don't need these exports at runtime.
+export { PrestashopConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-config-shape-validator.adapter';
+export { PrestashopConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-credentials-shape-validator.adapter';
+
 // Module
 export { PrestashopIntegrationModule } from './prestashop-integration.module';
 

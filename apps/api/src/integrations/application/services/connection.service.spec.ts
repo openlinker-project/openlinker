@@ -17,7 +17,31 @@ import {
   ConnectionUpdate,
   ConnectionFilters,
 } from '@openlinker/core/identifier-mapping';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTesterPort, WebhookProvisioningRegistryService, WEBHOOK_PROVISIONING_REGISTRY_TOKEN, WebhookProvisioningPort } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  IntegrationCredentialRepositoryPort,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ConnectionTesterRegistryService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  CREDENTIALS_RESOLVER_TOKEN,
+  CredentialsResolverPort,
+  ConnectionTesterPort,
+  WebhookProvisioningRegistryService,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+  WebhookProvisioningPort,
+  ConnectionConfigShapeValidatorRegistryService,
+  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionCredentialsShapeValidatorRegistryService,
+  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+} from '@openlinker/core/integrations';
+import {
+  AllegroConnectionConfigShapeValidatorAdapter,
+} from '@openlinker/integrations-allegro';
+import {
+  PrestashopConnectionConfigShapeValidatorAdapter,
+  PrestashopConnectionCredentialsShapeValidatorAdapter,
+} from '@openlinker/integrations-prestashop';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
@@ -31,6 +55,8 @@ describe('ConnectionService', () => {
   let mockTester: jest.Mocked<ConnectionTesterPort>;
   let webhookProvisioningRegistry: WebhookProvisioningRegistryService;
   let mockWebhookProvisioner: jest.Mocked<WebhookProvisioningPort>;
+  let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
+  let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -99,6 +125,30 @@ describe('ConnectionService', () => {
     mockWebhookProvisioner = { install: jest.fn() } as jest.Mocked<WebhookProvisioningPort>;
     webhookProvisioningRegistry.register('prestashop.webservice.v1', mockWebhookProvisioner);
 
+    // Shape-validator registries (#586 / #587). Register the REAL plugin
+    // adapters so the spec keeps testing the actual DTO shape rules
+    // (pre-#587 the same coverage lived inside ConnectionService against the
+    // hard-coded `CONNECTION_CONFIG_VALIDATORS` Record). The unit-level
+    // boundaries are intact: the registry seam is mocked-friendly (a per-test
+    // `validatorOverride = { validate: jest.fn() }` can replace the real
+    // validator), but the default config keeps the same end-to-end
+    // create/update validation contract these tests pin.
+    configValidatorRegistry = new ConnectionConfigShapeValidatorRegistryService();
+    configValidatorRegistry.register(
+      'prestashop.webservice.v1',
+      new PrestashopConnectionConfigShapeValidatorAdapter(),
+    );
+    configValidatorRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroConnectionConfigShapeValidatorAdapter(),
+    );
+
+    credentialsValidatorRegistry = new ConnectionCredentialsShapeValidatorRegistryService();
+    credentialsValidatorRegistry.register(
+      'prestashop.webservice.v1',
+      new PrestashopConnectionCredentialsShapeValidatorAdapter(),
+    );
+
     const mockCredentialsResolver: CredentialsResolverPort = {
       get: jest.fn(),
     } as unknown as CredentialsResolverPort;
@@ -112,6 +162,11 @@ describe('ConnectionService', () => {
         { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: mockCredentialRepository },
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
         { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: webhookProvisioningRegistry },
+        { provide: CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN, useValue: configValidatorRegistry },
+        {
+          provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+          useValue: credentialsValidatorRegistry,
+        },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
       ],
     }).compile();
@@ -443,6 +498,13 @@ describe('ConnectionService', () => {
       beforeEach(() => {
         connectionPort.get.mockResolvedValue(allegroConnection);
         connectionPort.update.mockResolvedValue(allegroConnection);
+        // resolveAdapterMetadata picks the adapterKey used to look up the
+        // shape-validator registry — pin it to Allegro for this describe.
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'allegro.publicapi.v1',
+          platformType: 'allegro',
+          supportedCapabilities: ['OrderSource', 'OfferManager'],
+        });
       });
 
       it('should accept a fully-formed Allegro config', async () => {
@@ -575,6 +637,14 @@ describe('ConnectionService', () => {
         );
         connectionPort.get.mockResolvedValue(shopifyConnection);
         connectionPort.update.mockResolvedValue(shopifyConnection);
+        // Override the Allegro adapterKey set by the surrounding beforeEach
+        // to a key that isn't registered in the validator registry; the
+        // shape-validation pass should short-circuit and persist the blob.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'shopify.unknown.v1',
+          platformType: 'shopify',
+          supportedCapabilities: [],
+        });
 
         await expect(
           service.update('shopify-conn-1', {

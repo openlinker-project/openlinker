@@ -14,6 +14,8 @@ export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
 export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
+export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
+export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
@@ -22,6 +24,8 @@ export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.port';
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
+export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
+export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
 export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
 export {
   IntegrationCredentialRepositoryPort,
@@ -49,6 +53,13 @@ export { CapabilityNotEnabledException } from './domain/exceptions/capability-no
 export { CredentialNotFoundException } from './domain/exceptions/credential-not-found.exception';
 export { DuplicateAdapterKeyException } from './domain/exceptions/duplicate-adapter-key.exception';
 export { DuplicatePlatformDefaultException } from './domain/exceptions/duplicate-platform-default.exception';
+export { InvalidConnectionConfigException } from './domain/exceptions/invalid-connection-config.exception';
+export { InvalidCredentialsShapeException } from './domain/exceptions/invalid-credentials-shape.exception';
+export {
+  flattenValidationErrors,
+  ValidationErrorLike,
+  FlatValidationIssue,
+} from './application/util/flatten-validation-errors';
 
 // ORM entities are exposed on the host-only `@openlinker/core/integrations/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
@@ -70,6 +81,8 @@ export {
   CONNECTION_TESTER_REGISTRY_TOKEN,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
+  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,

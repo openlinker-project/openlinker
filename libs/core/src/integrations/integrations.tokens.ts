@@ -20,4 +20,10 @@ export const CONNECTION_TESTER_REGISTRY_TOKEN = Symbol('ConnectionTesterRegistry
 export const WEBHOOK_PROVISIONING_REGISTRY_TOKEN = Symbol('WebhookProvisioningRegistryService');
 export const PLUGIN_REGISTRY_OPTIONS_TOKEN = Symbol('PluginRegistryOptions');
 export const EMAIL_NORMALIZER_REGISTRY_TOKEN = Symbol('EmailNormalizerRegistryService');
+export const CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN = Symbol(
+  'ConnectionConfigShapeValidatorRegistryService',
+);
+export const CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN = Symbol(
+  'ConnectionCredentialsShapeValidatorRegistryService',
+);
 

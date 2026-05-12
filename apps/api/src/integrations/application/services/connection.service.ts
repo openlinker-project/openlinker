@@ -14,8 +14,6 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { randomUUID } from 'node:crypto';
 import { IConnectionService } from '../interfaces/connection.service.interface';
 import { ConnectionCreateInput } from '../interfaces/connection.service.types';
-import { validateCredentialsShape } from '../credentials/credential-shape.validator';
-import { CONNECTION_CONFIG_VALIDATORS } from './util/connection-config-validators';
 import {
   ConnectionPort,
   Connection,
@@ -24,7 +22,26 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, ConnectionTesterRegistryService, CONNECTION_TESTER_REGISTRY_TOKEN, CREDENTIALS_RESOLVER_TOKEN, CredentialsResolverPort, ConnectionTestResult, WebhookProvisioningRegistryService, WEBHOOK_PROVISIONING_REGISTRY_TOKEN, WebhookProvisioningResult } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  IntegrationCredentialRepositoryPort,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ConnectionTesterRegistryService,
+  CONNECTION_TESTER_REGISTRY_TOKEN,
+  CREDENTIALS_RESOLVER_TOKEN,
+  CredentialsResolverPort,
+  ConnectionTestResult,
+  WebhookProvisioningRegistryService,
+  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+  WebhookProvisioningResult,
+  ConnectionConfigShapeValidatorRegistryService,
+  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionCredentialsShapeValidatorRegistryService,
+  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  InvalidConnectionConfigException,
+  InvalidCredentialsShapeException,
+} from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -50,9 +67,52 @@ export class ConnectionService implements IConnectionService {
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
     @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
     private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
+    @Inject(CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN)
+    private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
+    @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
+    private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
   ) {}
+
+  /**
+   * Run the plugin's config / credentials shape validators if registered.
+   * The registries are keyed by adapterKey; the domain exception payload
+   * is re-thrown as `BadRequestException` so the HTTP layer surfaces a
+   * 400 with the flattened error list. Plugin packages don't depend on
+   * `@nestjs/common` for the failure path (#586 / #587).
+   */
+  private async validateConfigShape(adapterKey: string, config: Record<string, unknown>): Promise<void> {
+    const validator = this.connectionConfigShapeValidatorRegistry.get(adapterKey);
+    if (!validator) return;
+    try {
+      await validator.validate(config);
+    } catch (error) {
+      if (error instanceof InvalidConnectionConfigException) {
+        throw new BadRequestException({
+          message: error.message,
+          errors: error.errors,
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async validateCredentialsShape(
+    adapterKey: string,
+    credentials: Record<string, unknown>,
+  ): Promise<void> {
+    const validator = this.connectionCredentialsShapeValidatorRegistry.get(adapterKey);
+    if (!validator) return;
+    try {
+      await validator.validate(credentials);
+    } catch (error) {
+      if (error instanceof InvalidCredentialsShapeException) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
 
   async installWebhooks(
     connectionId: string,
@@ -139,16 +199,14 @@ export class ConnectionService implements IConnectionService {
         );
       }
 
-      // #509 — validate the platform-specific config shape on create as well
-      // as on update (#437 only wired update). Closes the same DTO bypass on
-      // `CreateConnectionDto.config: Record<string, unknown>`. Runs *before*
+      // #509 / #587 — validate the platform-specific config shape on create
+      // (was platformType-keyed static record; now adapterKey-keyed registry
+      // populated by each plugin's `register(host)`). Runs *before*
       // credentials are persisted so a 400 from validation doesn't leave an
-      // orphan credential row. Per-platform validators are registered in
-      // `CONNECTION_CONFIG_VALIDATORS`; absence is a deliberate skip (no
-      // platform-specific shape to enforce yet).
-      const configValidator = CONNECTION_CONFIG_VALIDATORS[rest.platformType];
-      if (rest.config !== undefined && configValidator) {
-        await configValidator(rest.config);
+      // orphan credential row. Absence of a registered validator is a
+      // deliberate skip — plugins with no fixed shape don't register one.
+      if (rest.config !== undefined) {
+        await this.validateConfigShape(metadata.adapterKey, rest.config);
       }
 
       // Persist credentials if the caller supplied raw values. We write the
@@ -158,7 +216,7 @@ export class ConnectionService implements IConnectionService {
       let resolvedCredentialsRef = credentialsRef;
       let createdCredentialRef: string | null = null;
       if (credentials) {
-        validateCredentialsShape(rest.platformType, credentials);
+        await this.validateCredentialsShape(metadata.adapterKey, credentials);
         const ref = randomUUID();
         await this.credentialRepository.create({
           ref,
@@ -285,11 +343,23 @@ export class ConnectionService implements IConnectionService {
         );
       }
 
-      if (patch.enabledCapabilities !== undefined) {
-        const metadata = await this.integrationsService.resolveAdapterMetadata({
-          platformType: existing.platformType,
-          adapterKey: existing.adapterKey,
-        });
+      // Resolve adapter metadata once for both validation branches below.
+      // The capability-check and the #437 / #587 config-shape-validation
+      // branch both need the connection's adapterKey; resolving once keeps
+      // them in lockstep and avoids a duplicate registry lookup when a patch
+      // carries both fields. We only resolve when at least one branch will
+      // consume the result, so a name-only patch (`patch = { name }`) stays
+      // free of an extra call.
+      const needsAdapterMetadata =
+        patch.enabledCapabilities !== undefined || patch.config !== undefined;
+      const metadata = needsAdapterMetadata
+        ? await this.integrationsService.resolveAdapterMetadata({
+            platformType: existing.platformType,
+            adapterKey: existing.adapterKey,
+          })
+        : null;
+
+      if (patch.enabledCapabilities !== undefined && metadata) {
         const invalid = patch.enabledCapabilities.filter(
           (c) => !metadata.supportedCapabilities.includes(c),
         );
@@ -300,18 +370,16 @@ export class ConnectionService implements IConnectionService {
         }
       }
 
-      // #437 — close the DTO bypass on `Connection.config`. The HTTP-layer
-      // `UpdateConnectionDto.config: Record<string, unknown>` erases the typed
-      // shape at the controller boundary, so the nested platform-specific
-      // decorators never run. Re-validate the platform-specific shape here,
-      // before persistence, so partial blobs (the cause of the 2026-04-29
-      // sandbox repro) are rejected at save time instead of surfacing as
-      // adapter 422s downstream. Per-platform validators are registered in
-      // `CONNECTION_CONFIG_VALIDATORS`; absence is a deliberate skip (no
-      // platform-specific shape to enforce yet).
-      const configValidator = CONNECTION_CONFIG_VALIDATORS[existing.platformType];
-      if (patch.config !== undefined && configValidator) {
-        await configValidator(patch.config);
+      // #437 / #587 — close the DTO bypass on `Connection.config`. The
+      // HTTP-layer `UpdateConnectionDto.config: Record<string, unknown>`
+      // erases the typed shape at the controller boundary, so the nested
+      // platform-specific decorators never run. Re-validate via the
+      // adapterKey-keyed registry before persistence. `existing.adapterKey`
+      // may be undefined when the connection was created without an explicit
+      // override, so the resolved adapterKey above falls back to the
+      // platform default via `resolveAdapterMetadata`.
+      if (patch.config !== undefined && metadata) {
+        await this.validateConfigShape(metadata.adapterKey, patch.config);
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);
@@ -338,7 +406,11 @@ export class ConnectionService implements IConnectionService {
           `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`,
       );
     }
-    validateCredentialsShape(connection.platformType, credentials);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    await this.validateCredentialsShape(metadata.adapterKey, credentials);
     const ref = connection.credentialsRef.slice('db:'.length);
     await this.credentialRepository.update(ref, { credentialsJson: credentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);

@@ -29,6 +29,8 @@ import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customer
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopAdapterFactory } from './application/prestashop-adapter.factory';
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
+import { PrestashopConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-config-shape-validator.adapter';
+import { PrestashopConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-credentials-shape-validator.adapter';
 import type { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
 import type { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
 import type { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
@@ -64,6 +66,16 @@ export const prestashopAdapterManifest: AdapterMetadata = {
   isDefault: true,
 };
 
+/**
+ * Short brand label used as the `pluginName` argument when this plugin's
+ * adapters raise domain exceptions (`InvalidConnectionConfigException`,
+ * `InvalidCredentialsShapeException`). `manifest.displayName` reads as
+ * "PrestaShop WebService v1" which is too long for an error prefix; this
+ * constant keeps the user-facing label co-located with the manifest so a
+ * rebrand touches one line, not every adapter.
+ */
+const PRESTASHOP_BRAND = 'PrestaShop';
+
 export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): AdapterPlugin {
   return {
     manifest: prestashopAdapterManifest,
@@ -79,6 +91,14 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
       host.webhookProvisioningRegistry.register(
         'prestashop.webservice.v1',
         deps.webhookProvisioningAdapter,
+      );
+      host.connectionConfigShapeValidatorRegistry.register(
+        'prestashop.webservice.v1',
+        new PrestashopConnectionConfigShapeValidatorAdapter(PRESTASHOP_BRAND),
+      );
+      host.connectionCredentialsShapeValidatorRegistry.register(
+        'prestashop.webservice.v1',
+        new PrestashopConnectionCredentialsShapeValidatorAdapter(PRESTASHOP_BRAND),
       );
     },
 
@@ -121,7 +141,7 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
             return adapters.orderProcessorManager;
           },
         },
-        'PrestaShop',
+        PRESTASHOP_BRAND,
       );
     },
   };

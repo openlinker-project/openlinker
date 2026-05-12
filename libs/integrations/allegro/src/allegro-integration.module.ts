@@ -26,6 +26,10 @@ import {
   EmailNormalizerRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   WebhookProvisioningRegistryService,
+  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionConfigShapeValidatorRegistryService,
+  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionCredentialsShapeValidatorRegistryService,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   IntegrationCredentialRepositoryPort,
   CREDENTIALS_RESOLVER_TOKEN,
@@ -109,6 +113,10 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
     @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
     private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
+    @Inject(CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN)
+    private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
+    @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
+    private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
     private readonly retryClassifierRegistry: RetryClassifierRegistryService,
     @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
@@ -163,6 +171,9 @@ export class AllegroIntegrationModule implements OnModuleInit {
       retryClassifierRegistry: this.retryClassifierRegistry,
       schedulerTaskRegistry: this.schedulerTaskRegistry,
       webhookProvisioningRegistry: this.webhookProvisioningRegistry,
+      connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
+      connectionCredentialsShapeValidatorRegistry:
+        this.connectionCredentialsShapeValidatorRegistry,
     };
 
     // The three registration lines.

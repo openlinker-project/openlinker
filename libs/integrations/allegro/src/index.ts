@@ -91,6 +91,12 @@ export {
 // asymmetry should be reconsidered (export both, or move both behind
 // deep paths).
 export { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+// Config shape validator (#587) — exported so the host-side
+// `connection.service.spec.ts` can register the real validator in its
+// shape-validator registry instead of duplicating the DTO logic in a
+// mock. Plugin host modules register via `host.connectionConfigShapeValidatorRegistry`
+// in `plugin.register(host)` and don't need this export.
+export { AllegroConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/allegro-connection-config-shape-validator.adapter';
 
 // Module
 export { AllegroIntegrationModule } from './allegro-integration.module';
