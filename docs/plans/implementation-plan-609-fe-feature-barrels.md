@@ -221,5 +221,11 @@ Closes #609.
 ## Out-of-scope follow-ups (not this PR)
 
 - `pages/ → features/` migration (128 imports). Same shape, lower priority since pages are host code, not plugins.
+- `app/api/api-client.ts` → feature barrels. The host composes per-feature `createXApi` factories via 19 deep imports; bringing `app/**` under the rule is the natural twin of the pages migration and would normalise the full host surface.
 - Hoisting cross-feature types into `shared/types/` where reuse warrants it (would shrink barrels). Deferred.
 - Path aliases for `apps/web/src/features/<name>`. Out of scope.
+- Move `AllegroCreateOfferWizard` from `features/listings/components/` into `plugins/allegro/`. The wizard is platform-specific by name; surfacing it from the listings barrel is a transitional shape. When the next platform's create-offer wizard lands, inline the platform wizards into their respective `plugins/<platform>/` packages so the listings barrel stays platform-agnostic.
+
+## Implementation note (post-plan)
+
+The plan inventoried 26 cross-imports across 8 features (adapters, allegro, connections, content, customers, mappings, products, sync-jobs). During Step 3 (ESLint enforcement) two further plugin → feature imports surfaced — `plugins/plugin.types.ts` imports `CreateOfferRequest` and `plugins/allegro/index.ts` imports `AllegroCreateOfferWizard` from `features/listings/`. The pattern matcher only fires on slugs present in its enumerated list, so adding a 9th barrel (`features/listings/index.ts`) and a 9th slug was necessary to bring those imports under the rule. Final shipped scope: 9 barrels, 28 imports migrated.

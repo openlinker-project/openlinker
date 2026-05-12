@@ -78,15 +78,17 @@ import type { Connection } from '../../connections/api/connections.types';
 - `apps/web/src/features/**/*.{ts,tsx}` — bans deep cross-feature imports (a feature reaching into another feature's internals).
 - `apps/web/src/plugins/**/*.{ts,tsx}` — bans plugin → feature deep imports for the same reason.
 
-The matcher does not support brace expansion, so each `<slug>/<part>` combination is enumerated explicitly. Same-feature relative imports (`../api/foo`, `../hooks/use-bar`) are unaffected because the import string has no `<slug>` segment.
+The matcher does not support brace expansion, so each `<slug>/<part>` combination is enumerated explicitly, where `<part>` is one of the **canonical feature subdirectories**: `api`, `hooks`, `components`, `lib`, `types`. Same-feature relative imports (`../api/foo`, `../hooks/use-bar`) are unaffected because the import string has no `<slug>` segment.
+
+A feature must keep its public-facing modules inside the canonical subdirectory set. If a new subdirectory (e.g. `schemas/`, `utils/`) is genuinely needed, extend the canonical set in the convention here and in the ESLint patterns at the same time — otherwise the rule will silently fail open for the new subdirectory.
 
 **Adding a new public feature surface.**
 1. Create `features/<name>/index.ts` and re-export the minimal set of symbols cross-feature/cross-plugin callers need (start narrow — adding an export later is one line).
-2. Add the slug to both `no-restricted-imports` pattern groups in `.eslintrc.js` (the `features/**` rule and the `plugins/**` rule).
+2. Add the slug to both `no-restricted-imports` pattern groups in `.eslintrc.js` (the `features/**` rule and the `plugins/**` rule) for every canonical subdirectory.
 3. Migrate existing consumers from deep imports to barrel imports.
-4. Pages remain free to deep-import from features for now — pages → features migration is a follow-up.
+4. `pages/` and `app/` remain free to deep-import from features for now — migrating those layers is a follow-up.
 
-**Out of scope today.** Pages still deep-import from features (≈128 imports); migrating them is a follow-up that doesn't change the architectural model, just expands enforcement scope.
+**Out of scope today.** Pages still deep-import from features (≈128 imports), and `app/api/api-client.ts` deep-imports each feature's `createXApi` factory to compose the host API client. Both are documented gaps — extending the rule to `pages/**` and `app/**` is a follow-up that doesn't change the architectural model, just expands enforcement scope.
 
 ## Routing Conventions
 
