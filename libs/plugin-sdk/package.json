@@ -1,7 +1,7 @@
 {
-  "name": "@openlinker/integrations-prestashop",
+  "name": "@openlinker/plugin-sdk",
   "version": "0.1.0",
-  "description": "PrestaShop WebService v1 adapter for OpenLinker",
+  "description": "Plugin SDK for OpenLinker — AdapterPlugin contract + NestJS adapter for per-connection integration plugins (#593, #597).",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -12,7 +12,9 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "test": "jest --config ./jest.config.mjs",
@@ -23,14 +25,14 @@
   },
   "dependencies": {
     "@openlinker/core": "workspace:*",
-    "@openlinker/plugin-sdk": "workspace:*",
-    "@openlinker/shared": "workspace:*",
-    "fast-xml-parser": "^4.3.5"
+    "@openlinker/shared": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0"
   },
   "devDependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/testing": "^10.0.0",
     "@types/jest": "29.5.12",
     "@types/node": "20.11.30",
     "@typescript-eslint/eslint-plugin": "7.3.1",
@@ -41,4 +43,3 @@
     "typescript": "5.4.3"
   }
 }
-

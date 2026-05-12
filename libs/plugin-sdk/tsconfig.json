@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.base.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
@@ -9,11 +9,9 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"],
   "references": [
-    { "path": "../../core" },
-    { "path": "../../shared" },
-    { "path": "../../plugin-sdk" }
+    { "path": "../core" },
+    { "path": "../shared" }
   ]
 }
-

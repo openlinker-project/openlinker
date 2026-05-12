@@ -12,7 +12,8 @@
   "exclude": ["node_modules", "dist"],
   "references": [
     { "path": "../../core" },
-    { "path": "../../shared" }
+    { "path": "../../shared" },
+    { "path": "../../plugin-sdk" }
   ]
 }
 
