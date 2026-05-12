@@ -10,7 +10,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { PromptTemplate } from '@openlinker/core/ai';
 import {
-  PromptTemplateChannelValues,
   PromptTemplateStateValues,
   PromptTemplateVariableTypeValues,
   type PromptTemplateChannel,
@@ -29,7 +28,7 @@ export class PromptTemplateResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() key!: string;
 
-  @ApiProperty({ enum: PromptTemplateChannelValues, nullable: true })
+  @ApiProperty({ type: String, nullable: true, example: 'allegro' })
   channel!: PromptTemplateChannel | null;
 
   @ApiProperty() version!: number;

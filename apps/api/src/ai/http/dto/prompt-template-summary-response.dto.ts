@@ -8,7 +8,6 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  PromptTemplateChannelValues,
   PromptTemplateStateValues,
   type PromptTemplateChannel,
   type PromptTemplateState,
@@ -18,7 +17,7 @@ import {
 export class PromptTemplateSummaryResponseDto {
   @ApiProperty() key!: string;
 
-  @ApiProperty({ enum: PromptTemplateChannelValues, nullable: true })
+  @ApiProperty({ type: String, nullable: true, example: 'allegro' })
   channel!: PromptTemplateChannel | null;
 
   @ApiProperty() latestVersion!: number;

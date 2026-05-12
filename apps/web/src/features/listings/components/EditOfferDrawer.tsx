@@ -22,7 +22,6 @@ import type { UpdateOfferFieldsPayload } from '../api/listings.types';
 import { editOfferFieldsSchema, type EditOfferFieldsValues } from './edit-offer-fields.schema';
 import { OfferDescriptionEditor } from './OfferDescriptionEditor';
 import { SuggestionDialog } from '../../content';
-import { resolveSuggestChannel } from '../../content';
 
 interface EditOfferDrawerProps {
   isOpen: boolean;
@@ -70,19 +69,15 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const isDirty = Object.keys(dirtyFields).length > 0;
 
   const linkedProductId = mapping.linkedProductId ?? null;
-  const suggestChannel = resolveSuggestChannel(mapping.platformType);
-  const canSuggest = linkedProductId !== null && suggestChannel !== null;
-  // Pick the first applicable disabled-hint so the operator knows *why* the
-  // button is unavailable. linkedProductId missing wins because no other
-  // gate is recoverable without re-linking the variant; the channel-not-
-  // supported hint is informational (will resolve when the channel's prompt
-  // template is seeded).
+  // Channel is the mapping's platformType verbatim (open-world per #580).
+  // The BE falls back to the master template when no channel-specific row
+  // is published, so suggestion always works for any registered platform.
+  const suggestChannel = mapping.platformType;
+  const canSuggest = linkedProductId !== null;
   const disabledHint =
     linkedProductId === null
       ? 'AI suggestions require a linked variant — link this offer to a product variant first.'
-      : suggestChannel === null
-        ? `AI suggestions are not available for ${mapping.platformType} yet.`
-        : null;
+      : null;
 
   const { setValue: setFormValue } = form;
   const handleApplySuggestion = useCallback(

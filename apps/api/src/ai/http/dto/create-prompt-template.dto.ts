@@ -6,22 +6,19 @@
  *
  * @module apps/api/src/ai/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
-  IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import {
-  PromptTemplateChannelValues,
-  type PromptTemplateChannel,
-} from '@openlinker/core/ai';
+import type { PromptTemplateChannel } from '@openlinker/core/ai';
 import { PromptTemplateVariableDto } from './prompt-template-variable.dto';
 
 const MAX_PROMPT_LENGTH = 65536;
@@ -34,13 +31,18 @@ export class CreatePromptTemplateDto {
   @MaxLength(128)
   key!: string;
 
-  @ApiProperty({
-    enum: PromptTemplateChannelValues,
+  @ApiPropertyOptional({
+    type: String,
     nullable: true,
-    description: 'null = master (generic) template',
+    description:
+      'null = master (generic) template; otherwise a channel-specific one. ' +
+      'Channel is an open-world string axis (#580) matching `connection.platformType`.',
+    example: 'allegro',
   })
   @IsOptional()
-  @IsIn(PromptTemplateChannelValues as unknown as string[])
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
   channel!: PromptTemplateChannel | null;
 
   @ApiProperty({ maxLength: MAX_PROMPT_LENGTH })

@@ -19,11 +19,20 @@ export type PromptTemplateState = (typeof PromptTemplateStateValues)[number];
 
 /**
  * Channel scoping. `null` channel rows are "master" / generic templates that
- * apply when no channel-specific override is published. Values here match the
- * platform types used elsewhere in the system (`prestashop`, `allegro`).
+ * apply when no channel-specific override is published. Values are opaque
+ * platform identifiers — they match `connection.platformType` semantics
+ * (open-world per #578/#579).
+ *
+ * Historically a closed `as const` union of `['prestashop', 'allegro']` (#580).
+ * Plugin authors can now author templates against their own channel without
+ * editing core: channel is validated by type at the DTO boundary, not by
+ * membership in a core enum.
+ *
+ * Kept as a named type alias rather than inlining `string` everywhere so
+ * call sites stay self-documenting and so a future tightening (e.g. running
+ * channel through a brand type) has a single seam.
  */
-export const PromptTemplateChannelValues = ['prestashop', 'allegro'] as const;
-export type PromptTemplateChannel = (typeof PromptTemplateChannelValues)[number];
+export type PromptTemplateChannel = string;
 
 /**
  * Declared-variable type hint. Drives both serialisation in the render

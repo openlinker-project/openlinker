@@ -273,15 +273,21 @@ describe('Prompt Templates CRUD Integration', () => {
       .expect(404);
   });
 
-  it('should return 400 on malformed channel query parameter', async () => {
+  it('should accept any non-empty channel query parameter and return rows for that channel (#580)', async () => {
     const http = harness.getHttp();
     const token = await loginAsAdmin(http, harness.getDataSource());
 
-    await http
+    // Post-#580 channel is open-world (`string`): an unrecognised non-empty
+    // value reaches the service verbatim and matches against the DB. No
+    // rows are seeded for `'not-a-channel'`, so the response is 200 + [].
+    const res = await http
       .get('/prompt-templates')
       .query({ channel: 'not-a-channel' })
       .set('Authorization', `Bearer ${token}`)
-      .expect(400);
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toEqual([]);
   });
 
   it('should keep at most one published row per (key, channel) even across platforms', async () => {

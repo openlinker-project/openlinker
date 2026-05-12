@@ -86,8 +86,54 @@ describe('PromptTemplatesListPage', () => {
       apiClient: client,
       sessionAdapter: adminAdapter,
     });
-    expect(await screen.findByText('offer.description.suggest')).toBeInTheDocument();
-    expect(screen.getByText('allegro')).toBeInTheDocument();
+    const rowLabel = await screen.findByText('offer.description.suggest');
+    // Channel cell uses the registered plugin's `displayName` (#580). The
+    // toolbar `<Select>` also lists "Allegro" as a filter option, so scope
+    // the assertion to the data row.
+    const rowEl = rowLabel.closest('tr') ?? rowLabel.closest('li');
+    if (rowEl === null) throw new Error('row container not found');
+    expect(within(rowEl as HTMLElement).getByText('Allegro')).toBeInTheDocument();
+  });
+
+  it('humanises an unknown channel string when no plugin is registered (#580)', async () => {
+    const futureRow: PromptTemplateSummary = {
+      ...sample,
+      // 'shopify' is open-world per #580 — backend-registered but no FE
+      // plugin manifest yet. The cell should fall back to a humanised label
+      // ("Shopify") instead of leaving the badge blank or crashing.
+      channel: 'shopify',
+    };
+    const client = createMockApiClient({
+      promptTemplates: { list: vi.fn().mockResolvedValue([futureRow]) },
+    });
+    renderWithProviders(<PromptTemplatesListPage />, {
+      apiClient: client,
+      sessionAdapter: adminAdapter,
+    });
+    const rowLabel = await screen.findByText('offer.description.suggest');
+    const rowEl = rowLabel.closest('tr') ?? rowLabel.closest('li');
+    if (rowEl === null) throw new Error('row container not found');
+    expect(within(rowEl as HTMLElement).getByText('Shopify')).toBeInTheDocument();
+  });
+
+  it('renders the master sentinel as the "master" label (#580)', async () => {
+    const masterRow: PromptTemplateSummary = {
+      ...sample,
+      key: 'offer.shared.suggest',
+      channel: null,
+    };
+    const client = createMockApiClient({
+      promptTemplates: { list: vi.fn().mockResolvedValue([masterRow]) },
+    });
+    renderWithProviders(<PromptTemplatesListPage />, {
+      apiClient: client,
+      sessionAdapter: adminAdapter,
+    });
+    const rowLabel = await screen.findByText('offer.shared.suggest');
+    const rowEl = rowLabel.closest('tr') ?? rowLabel.closest('li');
+    if (rowEl === null) throw new Error('row container not found');
+    // Toolbar select also has a "Master (generic)" option label; scope to row.
+    expect(within(rowEl as HTMLElement).getByText('master')).toBeInTheDocument();
   });
 
   it('blocks non-admin sessions with an inline message', async () => {

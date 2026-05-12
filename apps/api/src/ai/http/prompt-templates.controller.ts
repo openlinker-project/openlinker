@@ -35,7 +35,6 @@ import {
   PROMPT_TEMPLATE_SERVICE_TOKEN,
   PromptTemplate,
   PromptTemplateChannel,
-  PromptTemplateChannelValues,
   PromptTemplateNotFoundException,
   PromptTemplateRenderException,
   PromptTemplateStateException,
@@ -261,31 +260,25 @@ export class PromptTemplatesController {
    * Query parameter for `channel` accepts:
    *   - omitted          → no filter (returns master + channel rows)
    *   - `master`         → channel IS NULL
-   *   - `prestashop` / `allegro` → exact channel match
+   *   - any non-empty string → exact channel match
+   *
+   * Channel is open-world per #580 — values match `connection.platformType`
+   * (e.g. `'allegro'`, `'shopify'`). The controller no longer cross-checks
+   * against a closed enum; format-validation (non-empty) is sufficient.
    */
   private parseChannelFilter(value: string | undefined): PromptTemplateChannel | null | undefined {
     if (value === undefined || value === '') return undefined;
     if (value === 'master') return null;
-    if ((PromptTemplateChannelValues as readonly string[]).includes(value)) {
-      return value as PromptTemplateChannel;
-    }
-    throw new BadRequestException(
-      `Invalid channel "${value}". Allowed: master, ${PromptTemplateChannelValues.join(', ')}`,
-    );
+    return value;
   }
 
   /**
    * Strict parser used on endpoints where `channel` is required semantically
-   * (fetch-latest, fetch-versions). `undefined`/`master` → NULL channel.
+   * (fetch-latest, fetch-versions). `undefined` / empty / `'master'` → NULL channel.
    */
   private parseChannelStrict(value: string | undefined): PromptTemplateChannel | null {
     if (value === undefined || value === '' || value === 'master') return null;
-    if ((PromptTemplateChannelValues as readonly string[]).includes(value)) {
-      return value as PromptTemplateChannel;
-    }
-    throw new BadRequestException(
-      `Invalid channel "${value}". Allowed: master, ${PromptTemplateChannelValues.join(', ')}`,
-    );
+    return value;
   }
 
   private async withDomainExceptionMapping<T>(fn: () => Promise<T>): Promise<T> {

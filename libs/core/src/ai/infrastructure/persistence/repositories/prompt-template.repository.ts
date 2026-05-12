@@ -24,7 +24,6 @@ import type {
   PromptTemplateSummary,
 } from '../../../domain/ports/prompt-template-repository.port';
 import {
-  PromptTemplateChannelValues,
   PromptTemplateStateValues,
   type PromptTemplateChannel,
   type PromptTemplateState,
@@ -361,7 +360,7 @@ export class PromptTemplateRepository implements PromptTemplateRepositoryPort {
     return new PromptTemplate(
       entity.id,
       entity.key,
-      this.asChannel(entity.channel),
+      entity.channel,
       entity.version,
       entity.systemPrompt,
       entity.userPromptTemplate,
@@ -377,7 +376,7 @@ export class PromptTemplateRepository implements PromptTemplateRepositoryPort {
   private toSummary(row: RawListRow): PromptTemplateSummary {
     return {
       key: row.key,
-      channel: this.asChannel(row.channel),
+      channel: row.channel,
       latestVersion:
         typeof row.latest_version === 'number'
           ? row.latest_version
@@ -394,13 +393,6 @@ export class PromptTemplateRepository implements PromptTemplateRepositoryPort {
       hasDraft: row.has_draft,
       updatedAt: row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at),
     };
-  }
-
-  private asChannel(value: string | null): PromptTemplateChannel | null {
-    if (value === null) return null;
-    return PromptTemplateChannelValues.includes(value as PromptTemplateChannel)
-      ? (value as PromptTemplateChannel)
-      : null;
   }
 
   private asState(value: string): PromptTemplateState {

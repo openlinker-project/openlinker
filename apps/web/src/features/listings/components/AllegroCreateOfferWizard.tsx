@@ -47,7 +47,6 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
 import { SuggestionDialog } from '../../content';
-import { resolveSuggestChannel } from '../../content';
 import { useProductQuery } from '../../products';
 import { useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
@@ -339,20 +338,19 @@ export function AllegroCreateOfferWizard({
         policies.impliedWarranties.length),
   );
 
-  // Step 2 AI-suggest (#637). The button can fire only when both inputs the
-  // suggest endpoint needs are stable: the picked variant's product id (see
-  // `pickedProductId`) and a channel resolvable from the connection's
-  // platformType. Hint precedence mirrors EditOfferDrawer.tsx:80-85. The
-  // connection is the launcher-resolved prop, stable for the wizard's
-  // lifetime — no lookup needed.
-  const suggestChannel = resolveSuggestChannel(connection.platformType);
-  const canSuggest = pickedProductId !== null && suggestChannel !== null;
+  // Step 2 AI-suggest (#637). The button can fire as soon as the picked
+  // variant's product id is stable. Channel is the connection's platformType
+  // verbatim (open-world per #580); when no channel-specific template is
+  // published, the BE falls back to the master template transparently —
+  // suggestion always works for any registered platform. The connection is
+  // the launcher-resolved prop, stable for the wizard's lifetime — no
+  // lookup needed.
+  const suggestChannel = connection.platformType;
+  const canSuggest = pickedProductId !== null;
   const suggestDisabledHint =
     pickedProductId === null
       ? 'AI suggestions require a picked variant — go back to Step 1 and choose one.'
-      : suggestChannel === null
-        ? `AI suggestions are not available for ${connection.platformType} yet.`
-        : null;
+      : null;
 
   // Destructured `setValue` is stable across renders — depending on the
   // wrapping `form` object would churn this callback identity each render

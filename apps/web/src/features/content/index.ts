@@ -6,4 +6,3 @@
  * from here; deep imports are banned by ESLint.
  */
 export { SuggestionDialog } from './components/suggestion-dialog';
-export { resolveSuggestChannel } from './api/content.utils';

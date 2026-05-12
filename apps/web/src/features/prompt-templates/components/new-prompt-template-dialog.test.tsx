@@ -143,6 +143,54 @@ describe('NewPromptTemplateDialog', () => {
     expect(await screen.findByText(/key already exists/i)).toBeInTheDocument();
   });
 
+  it('lists every registered plugin in the channel select (#580)', () => {
+    const client = createMockApiClient();
+    renderWithProviders(
+      <NewPromptTemplateDialog open={true} onOpenChange={vi.fn()} />,
+      { apiClient: client },
+    );
+
+    // The dialog derives its channel options from the live plugin registry.
+    // Assert the registry-driven shape without freezing the plugin set —
+    // a new plugin landing should not break this test.
+    const channelSelect = screen.getByLabelText(/^channel/i);
+    if (!(channelSelect instanceof HTMLSelectElement)) {
+      throw new Error('channel control is not a <select>');
+    }
+    const optionValues = Array.from(channelSelect.options).map((option) => option.value);
+    expect(optionValues[0]).toBe('master');
+    expect(optionValues).toEqual(expect.arrayContaining(['master', 'prestashop', 'allegro']));
+    expect(optionValues.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('sends an arbitrary plugin channel verbatim to the API (#580)', async () => {
+    navigateMock.mockClear();
+    const create = vi
+      .fn()
+      .mockResolvedValue(makeTemplate({ id: 'tmpl-new', channel: 'prestashop' }));
+    const client = createMockApiClient({ promptTemplates: { create } });
+    renderWithProviders(
+      <NewPromptTemplateDialog open={true} onOpenChange={vi.fn()} />,
+      { apiClient: client },
+    );
+
+    fireEvent.change(screen.getByLabelText(/^key/i), {
+      target: { value: 'offer.description.suggest' },
+    });
+    fireEvent.change(screen.getByLabelText(/^channel/i), {
+      target: { value: 'prestashop' },
+    });
+    fireEvent.change(screen.getByLabelText(/system prompt/i), { target: { value: 'sys' } });
+    fireEvent.change(screen.getByLabelText(/user prompt template/i), { target: { value: 'user' } });
+    fireEvent.click(screen.getByRole('button', { name: /create draft/i }));
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'prestashop' }),
+      );
+    });
+  });
+
   it('rejects invalid JSON in the variables field with an inline error', async () => {
     const create = vi.fn();
     const client = createMockApiClient({ promptTemplates: { create } });
