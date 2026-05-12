@@ -22,3 +22,4 @@ export {
   createNestAdapterModule,
   type CreateNestAdapterModuleOptions,
 } from './create-nest-adapter-module';
+export { dispatchCapability } from './dispatch-capability';

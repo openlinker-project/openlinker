@@ -20,8 +20,9 @@
  *
  * @module libs/integrations/allegro/src
  */
-import type { AdapterPlugin, HostServices } from '@openlinker/plugin-sdk';
+import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { ConfigService } from '@nestjs/config';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { AllegroAdapterFactory } from './application/allegro-adapter.factory';
@@ -54,16 +55,30 @@ export interface CreateAllegroPluginDeps {
   readonly configService?: ConfigService;
 }
 
+/**
+ * Static plugin manifest (#575).
+ *
+ * Exported as a top-level `const` so consumers — manifest-diff CLIs,
+ * capability-matrix dashboards, compatibility checks at boot — can read
+ * `adapterKey` / `platformType` / `supportedCapabilities` / `version` /
+ * `isDefault` **without** instantiating the full plugin (which requires
+ * resolving the cross-package deps in `CreateAllegroPluginDeps`).
+ *
+ * The runtime path (`createAllegroPlugin(deps).manifest`) returns this same
+ * reference, so there's no drift between static and runtime views.
+ */
+export const allegroAdapterManifest: AdapterMetadata = {
+  adapterKey: 'allegro.publicapi.v1',
+  platformType: 'allegro',
+  supportedCapabilities: ['OrderSource', 'OfferManager'],
+  displayName: 'Allegro Public API v1',
+  version: '1.0.0',
+  isDefault: true,
+};
+
 export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugin {
   return {
-    manifest: {
-      adapterKey: 'allegro.publicapi.v1',
-      platformType: 'allegro',
-      supportedCapabilities: ['OrderSource', 'OfferManager'],
-      displayName: 'Allegro Public API v1',
-      version: '1.0.0',
-      isDefault: true,
-    },
+    manifest: allegroAdapterManifest,
 
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
@@ -103,17 +118,14 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         host.identifierMapping,
         host.credentialsResolver,
       );
-      switch (capability) {
-        case 'OfferManager':
-          return adapters.offerManager as unknown as T;
-        case 'OrderSource':
-          return adapters.orderSource as unknown as T;
-        default:
-          throw new Error(
-            `Allegro adapter does not support capability: ${capability}. ` +
-              `Supported capabilities: OfferManager, OrderSource`,
-          );
-      }
+      return dispatchCapability<T>(
+        capability,
+        {
+          OfferManager: () => adapters.offerManager,
+          OrderSource: () => adapters.orderSource,
+        },
+        'Allegro',
+      );
     },
   };
 }
