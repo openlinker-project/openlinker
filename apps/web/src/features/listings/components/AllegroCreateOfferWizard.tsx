@@ -26,7 +26,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   Controller,
   FormProvider,
@@ -46,6 +46,8 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections/api/connections.types';
+import { SuggestionDialog } from '../../content/components/suggestion-dialog';
+import { resolveSuggestChannel } from '../../content/api/content.utils';
 import { useProductQuery } from '../../products/hooks/use-product-query';
 import { useProductsQuery } from '../../products/hooks/use-products-query';
 import type { Product, ProductVariant } from '../../products/api/products.types';
@@ -242,6 +244,12 @@ export function AllegroCreateOfferWizard({
   // parameter auto-prefill so EAN/GTIN-class fields populate from the
   // variant's barcode without needing the variant detail re-fetched.
   const [pickedVariantEan, setPickedVariantEan] = useState<string | null>(null);
+  // Product id of the variant the operator picked in Step 1. Captured here
+  // (not derived from `selectedProductId`, which tracks the *expanded* card
+  // and goes null on collapse-after-pick and on retry-with-initialValues)
+  // so the Step-2 AI-suggest button has a stable productId to pass into
+  // `SuggestionDialog`. Mirrors the `pickedVariantEan` pattern (#637).
+  const [pickedProductId, setPickedProductId] = useState<string | null>(null);
   // Set of parameter ids that were auto-prefilled by `autoPrefillParameters`
   // for the current (connectionId, categoryId) pair. Surfaced to the step as
   // a `prefilledIds` hint; the step itself narrows the set per-render to
@@ -284,6 +292,32 @@ export function AllegroCreateOfferWizard({
         policies.returnPolicies.length ||
         policies.warranties.length ||
         policies.impliedWarranties.length),
+  );
+
+  // Step 2 AI-suggest (#637). The button can fire only when both inputs the
+  // suggest endpoint needs are stable: the picked variant's product id (see
+  // `pickedProductId`) and a channel resolvable from the connection's
+  // platformType. Hint precedence mirrors EditOfferDrawer.tsx:80-85. The
+  // connection is the launcher-resolved prop, stable for the wizard's
+  // lifetime — no lookup needed.
+  const suggestChannel = resolveSuggestChannel(connection.platformType);
+  const canSuggest = pickedProductId !== null && suggestChannel !== null;
+  const suggestDisabledHint =
+    pickedProductId === null
+      ? 'AI suggestions require a picked variant — go back to Step 1 and choose one.'
+      : suggestChannel === null
+        ? `AI suggestions are not available for ${connection.platformType} yet.`
+        : null;
+
+  // Destructured `setValue` is stable across renders — depending on the
+  // wrapping `form` object would churn this callback identity each render
+  // (same pattern as the drawer's `handleApplySuggestion`).
+  const { setValue: setFormValue } = form;
+  const handleApplySuggestion = useCallback(
+    (suggestion: string) => {
+      setFormValue('description', suggestion, { shouldDirty: true, shouldValidate: true });
+    },
+    [setFormValue],
   );
 
   // Step 3 (#410) — fetch the per-category parameter schema.
@@ -414,6 +448,8 @@ export function AllegroCreateOfferWizard({
     // Capture the variant's EAN for Step 3 auto-prefill (EAN/GTIN parameters
     // populate from the variant's barcode).
     setPickedVariantEan(variant.ean ?? null);
+    // Capture the product id for the Step-2 AI suggest button (#637).
+    setPickedProductId(product.id);
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -776,13 +812,35 @@ export function AllegroCreateOfferWizard({
                 />
               </FormField>
 
-              <FormField
-                label="Description (optional)"
-                name="description"
-                error={form.formState.errors.description?.message}
-              >
-                <Textarea {...form.register('description')} rows={4} />
-              </FormField>
+              <div className="create-offer-description">
+                {canSuggest || suggestDisabledHint ? (
+                  <div className="create-offer-description__actions">
+                    {canSuggest && pickedProductId !== null ? (
+                      <SuggestionDialog
+                        productId={pickedProductId}
+                        channel={suggestChannel}
+                        disabled={mutation.isPending}
+                        onApply={handleApplySuggestion}
+                      />
+                    ) : (
+                      <span
+                        className="create-offer-description__hint"
+                        aria-live="polite"
+                      >
+                        {suggestDisabledHint}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
+
+                <FormField
+                  label="Description (optional)"
+                  name="description"
+                  error={form.formState.errors.description?.message}
+                >
+                  <Textarea {...form.register('description')} rows={4} />
+                </FormField>
+              </div>
 
               <label className="create-offer-checkbox">
                 <input type="checkbox" {...form.register('publishImmediately')} />

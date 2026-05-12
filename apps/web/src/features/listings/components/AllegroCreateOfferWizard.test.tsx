@@ -972,4 +972,101 @@ describe('AllegroCreateOfferWizard', () => {
     // here — driving the CategoryPicker through the picker's "Selected"
     // → re-pick UI is brittle and the marginal coverage is low.
   });
+
+  describe('AI suggest (#637)', () => {
+    const suggestResult = {
+      suggestion: 'AI copy',
+      requestId: 'req-1',
+      templateKey: 'offer.description.suggest',
+      templateVersion: 1,
+      templateChannel: 'allegro' as const,
+      modelUsed: 'fake',
+      latencyMs: 0,
+      usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+    };
+
+    it('renders the Suggest button on Step 2 once a variant has been picked on Step 1', async () => {
+      const mockApi = defaultMocks();
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeInTheDocument();
+    });
+
+    // Note: this test does not assert the `shouldDirty: true` flag that the
+    // implementation passes to `setValue('description', …)`. The wizard's
+    // only dirty-state consumer is the `beforeunload` handler, which isn't
+    // user-fireable in JSDOM, and Next-button validation on Step 2 ignores
+    // the description field — so `shouldDirty`/`shouldValidate` have no
+    // user-visible side effect at the point of apply. Verifying the value
+    // gets written + the suggest call shape is what's reachable.
+    it('writes the suggestion into the description field when applied', async () => {
+      const suggest = vi.fn().mockResolvedValue(suggestResult);
+      const mockApi = defaultMocks({ content: { suggest } });
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+
+      fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /apply to editor/i }));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/description/i)).toHaveValue('AI copy');
+      });
+      // suggest endpoint was called with the picked product id + resolved channel.
+      expect(suggest).toHaveBeenCalledWith(
+        product.id,
+        expect.objectContaining({ channel: 'allegro' }),
+      );
+    });
+
+    it('shows a missing-variant hint on Step 2 when mounted via retry initialValues', async () => {
+      const initialRequest: CreateOfferRequest = {
+        internalVariantId: 'ol_variant_aaaaaaaa',
+        stock: 5,
+        publishImmediately: false,
+        price: { amount: 99.99, currency: 'PLN' },
+        overrides: {
+          title: 'Original Title',
+          categoryId: '12345',
+          description: null,
+          platformParams: { deliveryPolicyId: 'del-1' },
+        },
+      };
+      const mockApi = defaultMocks();
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          initialValues={initialRequest}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      // Wizard lands on Step 2 (Offer details) — wait for the title input,
+      // same way the existing retry-flow tests do.
+      await screen.findByLabelText(/^title$/i);
+
+      expect(
+        screen.queryByRole('button', { name: /suggest with ai/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/picked variant/i)).toBeInTheDocument();
+    });
+  });
 });
