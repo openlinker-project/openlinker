@@ -54,10 +54,14 @@ import type { Product, ProductVariant } from '../../products';
 import { useCreateOfferMutation } from '../hooks/use-create-offer-mutation';
 import { useSellerPoliciesQuery } from '../hooks/use-seller-policies-query';
 import { useCategoryParametersQuery } from '../hooks/use-category-parameters-query';
+import { useCatalogProductMatchQuery } from '../hooks/use-catalog-product-match-query';
+import { useCatalogProductQuery } from '../hooks/use-catalog-product-query';
 import { useResolveCategoryQuery } from '../hooks/use-resolve-category-query';
 import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
-import { autoPrefillParameters } from './auto-prefill-parameters';
+import { autoPrefillParameters, prefillFromCatalogProduct } from './auto-prefill-parameters';
+import { CatalogProductMatchPanel } from './catalog-product-match-panel';
+import type { CatalogProduct } from '../api/listings.types';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
 import {
   MissingCategoryParameterSectionError,
@@ -454,9 +458,146 @@ export function AllegroCreateOfferWizard({
       form.clearErrors('parameters');
       setPrefilledIds(new Set());
       prefilledKeyRef.current = '';
+      // Catalog-match state is tied to (variant, category) — reset on
+      // category change so the lookup re-runs against the new category.
+      setUnlinkedFromCatalog(false);
+      setPickedAmbiguousProductId(null);
+      setCatalogPrefilledIds(new Set());
+      catalogPrefilledKeyRef.current = '';
+      preCatalogSnapshotRef.current = null;
     }
     lastCategoryIdRef.current = currentCategoryId;
   }, [currentCategoryId, form]);
+
+  // -----------------------------------------------------------------
+  // Catalog product match (#635) — layered on top of the EAN/Stan prefill.
+  // -----------------------------------------------------------------
+
+  // Operator-controlled escape hatch: when true, the match query is disabled
+  // and the panel renders the "Relink" affordance.
+  const [unlinkedFromCatalog, setUnlinkedFromCatalog] = useState(false);
+  // When the match is ambiguous, the operator picks one — its detail is
+  // then fetched and applied as if the match had been unique.
+  const [pickedAmbiguousProductId, setPickedAmbiguousProductId] = useState<string | null>(null);
+  // Catalog-prefilled parameter ids — shown in the panel as "{N} fields
+  // auto-filled" and used to bound the Unlink revert.
+  const [catalogPrefilledIds, setCatalogPrefilledIds] = useState<ReadonlySet<string>>(new Set());
+  // Snapshot of the form's parameters slice taken *before* catalog prefill
+  // ran. Unlink restores this; clears when (variant, category) changes.
+  const preCatalogSnapshotRef = useRef<CategoryParameterFormValues | null>(null);
+  // Ensures the catalog prefill effect runs at most once per
+  // (connection, category, picked-product) tuple.
+  const catalogPrefilledKeyRef = useRef<string>('');
+
+  // Reset catalog-match state when the variant (and therefore the EAN) changes
+  // — a fresh variant means a different lookup. The match query's key already
+  // depends on `pickedVariantEan`, so it will re-issue automatically; this
+  // effect only resets the operator-controlled flags.
+  const lastEanRef = useRef<string | null>(pickedVariantEan);
+  useEffect(() => {
+    if (lastEanRef.current !== pickedVariantEan) {
+      setUnlinkedFromCatalog(false);
+      setPickedAmbiguousProductId(null);
+      setCatalogPrefilledIds(new Set());
+      catalogPrefilledKeyRef.current = '';
+      preCatalogSnapshotRef.current = null;
+    }
+    lastEanRef.current = pickedVariantEan;
+  }, [pickedVariantEan]);
+
+  // The query stays keyed on (connection, ean, category) regardless of the
+  // unlink flag — the panel needs the catalog match result to render the
+  // "Relink" affordance after Unlink, and TanStack Query keys the cache by
+  // its inputs (zeroing them out would clear the cached match and the panel
+  // would silently disappear). The unlink flag only gates the prefill
+  // effect below.
+  const catalogMatchQuery = useCatalogProductMatchQuery(
+    currentConnectionId || undefined,
+    pickedVariantEan || undefined,
+    currentCategoryId || undefined,
+  );
+
+  const catalogProductQuery = useCatalogProductQuery(
+    pickedAmbiguousProductId ? currentConnectionId || undefined : undefined,
+    pickedAmbiguousProductId || undefined,
+  );
+
+  // Apply catalog prefill on top of the existing form values whenever the
+  // match resolves to `unique` or the operator picks an ambiguous option.
+  useEffect(() => {
+    if (unlinkedFromCatalog) return;
+    if (categoryParametersQuery.data === undefined) return;
+
+    let product: CatalogProduct | undefined;
+    if (catalogMatchQuery.data?.kind === 'unique') {
+      product = catalogMatchQuery.data.product;
+    } else if (pickedAmbiguousProductId && catalogProductQuery.data) {
+      product = catalogProductQuery.data;
+    }
+    if (!product) return;
+
+    const key = `${currentConnectionId}::${currentCategoryId}::${product.id}`;
+    if (catalogPrefilledKeyRef.current === key) return;
+    catalogPrefilledKeyRef.current = key;
+
+    const currentForm =
+      (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
+    // Snapshot the EAN/Stan-baseline form state — Unlink restores this.
+    preCatalogSnapshotRef.current = { ...currentForm };
+
+    const dirtyParams =
+      ((form.formState.dirtyFields as { parameters?: Record<string, boolean> }).parameters ?? {});
+    const { values: catalogValues, prefilledIds: catalogIds } = prefillFromCatalogProduct(
+      categoryParametersQuery.data,
+      product,
+      dirtyParams,
+    );
+
+    if (catalogIds.size === 0) {
+      setCatalogPrefilledIds(new Set());
+      return;
+    }
+    const merged: CategoryParameterFormValues = { ...currentForm, ...catalogValues };
+    form.setValue('parameters', merged, { shouldDirty: false, shouldValidate: false });
+    setCatalogPrefilledIds(catalogIds);
+  }, [
+    catalogMatchQuery.data,
+    catalogProductQuery.data,
+    categoryParametersQuery.data,
+    pickedAmbiguousProductId,
+    unlinkedFromCatalog,
+    currentConnectionId,
+    currentCategoryId,
+    form,
+  ]);
+
+  const handleUnlinkCatalog = useCallback(() => {
+    if (preCatalogSnapshotRef.current) {
+      form.setValue('parameters', preCatalogSnapshotRef.current, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }
+    setCatalogPrefilledIds(new Set());
+    setUnlinkedFromCatalog(true);
+    setPickedAmbiguousProductId(null);
+    catalogPrefilledKeyRef.current = '';
+  }, [form]);
+
+  const handleRelinkCatalog = useCallback(() => {
+    setUnlinkedFromCatalog(false);
+    catalogPrefilledKeyRef.current = '';
+  }, []);
+
+  const handlePickAmbiguousCatalog = useCallback((productId: string) => {
+    setPickedAmbiguousProductId(productId);
+    catalogPrefilledKeyRef.current = '';
+  }, []);
+
+  const handleSkipAmbiguousCatalog = useCallback(() => {
+    setPickedAmbiguousProductId(null);
+    setUnlinkedFromCatalog(true);
+  }, []);
 
   const validationMessages = Object.values(form.formState.errors).flatMap((e) =>
     e?.message ? [String(e.message)] : [],
@@ -948,11 +1089,26 @@ export function AllegroCreateOfferWizard({
                   No additional parameters required for this category.
                 </p>
               ) : (
-                <CategoryParametersStep
-                  parameters={categoryParameters}
-                  formNamespace="parameters"
-                  prefilledIds={prefilledIds}
-                />
+                <>
+                  {pickedVariantEan ? (
+                    <CatalogProductMatchPanel
+                      result={catalogMatchQuery.data}
+                      unlinked={unlinkedFromCatalog}
+                      prefilledCount={catalogPrefilledIds.size}
+                      isLoading={catalogMatchQuery.isLoading}
+                      barcode={pickedVariantEan}
+                      onUnlink={handleUnlinkCatalog}
+                      onRelink={handleRelinkCatalog}
+                      onPickAmbiguous={handlePickAmbiguousCatalog}
+                      onSkipAmbiguous={handleSkipAmbiguousCatalog}
+                    />
+                  ) : null}
+                  <CategoryParametersStep
+                    parameters={categoryParameters}
+                    formNamespace="parameters"
+                    prefilledIds={prefilledIds}
+                  />
+                </>
               )}
             </>
           ) : null}

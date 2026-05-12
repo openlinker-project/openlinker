@@ -4500,6 +4500,115 @@ a.kpi-card:focus-visible {
   max-width: 100%;
 }
 
+/* Catalog Product Match Panel (#635) — rendered above Step 2's parameter list. */
+.catalog-match-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  background: var(--bg-surface-elevated);
+}
+
+.catalog-match-panel--ambiguous {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.catalog-match-panel--unlinked {
+  background: var(--bg-surface);
+}
+
+.catalog-match-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-match-panel__title {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.catalog-match-panel__product-name {
+  font-weight: 600;
+}
+
+.catalog-match-panel__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.catalog-match-panel__skeleton {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--bg-surface-muted);
+}
+
+.catalog-match-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.catalog-match-panel__item {
+  margin: 0;
+}
+
+.catalog-match-panel__pick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.catalog-match-panel__pick:hover {
+  background: var(--bg-surface-hover);
+}
+
+.catalog-match-panel__pick:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.catalog-match-panel__pick-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.catalog-match-panel__pick-name {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.catalog-match-panel__pick-ean {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.catalog-match-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .wizard-actions {
   display: flex;
   justify-content: space-between;

@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import type { CategoryParameter } from '../api/listings.types';
+import type { CatalogProduct, CategoryParameter } from '../api/listings.types';
 import type { CategoryParameterFormValues, FormParameterValue } from './category-parameter-form.types';
 
 /**
@@ -85,4 +85,71 @@ function prefillOne(
   }
 
   return undefined;
+}
+
+/**
+ * Higher-precedence prefill source: Allegro's catalog product match (#635).
+ *
+ * Merge key is `parameterId` — Allegro guarantees these are stable per
+ * category, so we don't need the fuzzy name-pattern matching `prefillOne`
+ * does for variant-attribute fallback. Catalog values overlay the
+ * `autoPrefillParameters` baseline; the wizard applies them in order so
+ * catalog wins on overlap.
+ *
+ * Skips any parameterId in `dirtyFields` — operator edits are sacred.
+ * Returns the partial values map and a set of parameterIds that were
+ * touched, so the panel can render "{N} fields auto-filled" and `Unlink`
+ * can revert precisely those.
+ *
+ * Value-shape rules:
+ *
+ *   - dictionary, not multipleChoices → first `valueIds[0]` (string).
+ *   - dictionary, multipleChoices    → `valueIds` (string[]).
+ *   - string / numeric (non-range)   → first `valueStrings[0]` (string).
+ *   - range                          → not handled (catalog doesn't carry
+ *     ranged values today; skipped).
+ *
+ * Catalog parameters whose `parameterId` is not in `parameters` are
+ * silently dropped — Allegro's category-scoped catalog usually but not
+ * always aligns 1:1 with `/categories/:id/parameters`, and overshooting
+ * would write into a parameter the wizard doesn't render.
+ */
+export function prefillFromCatalogProduct(
+  parameters: CategoryParameter[],
+  catalogProduct: CatalogProduct,
+  dirtyFields: Record<string, boolean>,
+): { values: CategoryParameterFormValues; prefilledIds: Set<string> } {
+  const paramById = new Map(parameters.map((p) => [p.id, p]));
+  const values: CategoryParameterFormValues = {};
+  const prefilledIds = new Set<string>();
+
+  for (const cp of catalogProduct.parameters) {
+    if (dirtyFields[cp.parameterId]) continue;
+    const target = paramById.get(cp.parameterId);
+    if (!target) continue;
+
+    const v = mapCatalogValueToFormValue(target, cp);
+    if (v !== undefined) {
+      values[cp.parameterId] = v;
+      prefilledIds.add(cp.parameterId);
+    }
+  }
+
+  return { values, prefilledIds };
+}
+
+function mapCatalogValueToFormValue(
+  target: CategoryParameter,
+  catalogParam: { valueIds?: string[]; valueStrings?: string[] },
+): FormParameterValue {
+  if (target.type === 'dictionary') {
+    const ids = catalogParam.valueIds ?? [];
+    if (ids.length === 0) return undefined;
+    return target.restrictions.multipleChoices ? ids : ids[0];
+  }
+  // string / integer / float (non-range). Range types aren't surfaced by
+  // the catalog endpoint today; skip rather than guess.
+  if (target.restrictions.range) return undefined;
+  const str = catalogParam.valueStrings?.[0];
+  return str && str.length > 0 ? str : undefined;
 }

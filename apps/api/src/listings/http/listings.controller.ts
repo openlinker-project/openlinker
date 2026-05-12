@@ -29,8 +29,10 @@ import { randomUUID } from 'crypto';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  CatalogProductNotFoundException,
   CategoryNotFoundException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  isCatalogProductReader,
   isCategoryParametersReader,
   isOfferReader,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -74,6 +76,12 @@ import {
   ResolveCategoryRequestDto,
   ResolveCategoryResponseDto,
 } from './dto/resolve-category.dto';
+import {
+  CatalogProductResponseDto,
+  FindProductsByBarcodeRequestDto,
+  FindProductsByBarcodeResponseDto,
+  findProductsByBarcodeResponseSchema,
+} from './dto/catalog-product.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -454,6 +462,127 @@ export class ListingsController {
     return {
       allegroCategoryId: result.allegroCategoryId,
       method: result.method,
+    };
+  }
+
+  // -----------------------------------------------------------------
+  // Catalog product reader (#633).
+  //
+  // Two thin pass-through routes; no application service. The resolution
+  // logic is "capability guard → delegate → return", which doesn't justify
+  // a wrapper service of its own. Precedent: #631 has CategoryResolutionService
+  // because that service runs a multi-source fallback algorithm; this PR's
+  // routes have no such algorithm. If a second consumer of findProductsByBarcode
+  // appears (e.g. a future bulk-prefill worker), promote to a service.
+  // -----------------------------------------------------------------
+
+  @Post('connections/:connectionId/products/find-by-barcode')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Look up marketplace catalog products by barcode (#633)',
+    description:
+      'Returns a 3-state result: unique (full product eager-fetched), ambiguous ' +
+      '(summaries only — call GET /products/:productId after the operator picks), or ' +
+      'no_match (200, not 404 — normal outcome). Adapter caches upstream lookups for 24h.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Match result (discriminated by `kind`).',
+    schema: findProductsByBarcodeResponseSchema,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Connection does not support OfferManager or CatalogProductReader.',
+  })
+  async findProductsByBarcode(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: FindProductsByBarcodeRequestDto,
+  ): Promise<FindProductsByBarcodeResponseDto> {
+    // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
+    // CapabilityNotSupportedException (422).
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+
+    if (!isCatalogProductReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${connectionId} does not support catalog-product reading`,
+      );
+    }
+
+    const result = await adapter.findProductsByBarcode({
+      barcode: dto.barcode,
+      categoryId: dto.categoryId,
+    });
+
+    if (result.kind === 'unique') {
+      return { kind: 'unique', product: this.toCatalogProductResponseDto(result.product) };
+    }
+    if (result.kind === 'ambiguous') {
+      return { kind: 'ambiguous', products: result.products };
+    }
+    return { kind: 'no_match' };
+  }
+
+  @Get('connections/:connectionId/products/:productId')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiParam({ name: 'productId', description: 'Marketplace catalog product ID' })
+  @ApiOperation({
+    summary: 'Fetch a single marketplace catalog product by id (#633)',
+    description:
+      'Returns the full catalog product including parameters and images. ' +
+      'Used by the wizard after an operator picks one of an ambiguous match.',
+  })
+  @ApiResponse({ status: 200, description: 'Catalog product.', type: CatalogProductResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection or product not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Connection does not support OfferManager or CatalogProductReader.',
+  })
+  async getCatalogProduct(
+    @Param('connectionId') connectionId: string,
+    @Param('productId') productId: string,
+  ): Promise<CatalogProductResponseDto> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+
+    if (!isCatalogProductReader(adapter)) {
+      throw new UnprocessableEntityException(
+        `Adapter for connection ${connectionId} does not support catalog-product reading`,
+      );
+    }
+
+    try {
+      const product = await adapter.getProduct({ productId });
+      return this.toCatalogProductResponseDto(product);
+    } catch (err) {
+      if (err instanceof CatalogProductNotFoundException) {
+        throw new NotFoundException(`Catalog product ${productId} not found on connection ${connectionId}`);
+      }
+      throw err;
+    }
+  }
+
+  private toCatalogProductResponseDto(p: CatalogProductResponseDto): CatalogProductResponseDto {
+    // The neutral CatalogProduct is structurally identical to the response
+    // DTO; this pass-through exists so any future field projection (e.g.
+    // dropping `description` if it ever lands) has a single edit site.
+    return {
+      id: p.id,
+      name: p.name,
+      ean: p.ean,
+      imageUrl: p.imageUrl,
+      images: p.images,
+      description: p.description,
+      parameters: p.parameters,
     };
   }
 

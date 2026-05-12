@@ -17,9 +17,11 @@ import {
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import {
+  CatalogProductNotFoundException,
   CategoryNotFoundException,
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
+  isCatalogProductReader,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
   type CreateOfferCommand,
@@ -2459,6 +2461,170 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('isSafetyAttachmentUploader narrow returns true for the adapter', () => {
       expect(isSafetyAttachmentUploader(adapter)).toBe(true);
+    });
+  });
+
+  describe('CatalogProductReader (#633)', () => {
+    let cache: jest.Mocked<CachePort>;
+    let adapterWithCache: AllegroOfferManagerAdapter;
+
+    beforeEach(() => {
+      cache = {
+        get: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+      } as unknown as jest.Mocked<CachePort>;
+
+      adapterWithCache = new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        undefined,
+        cache,
+        undefined,
+        DEFAULT_SELLER_DEFAULTS,
+      );
+    });
+
+    it('isCatalogProductReader narrow returns true for the adapter', () => {
+      expect(isCatalogProductReader(adapter)).toBe(true);
+    });
+
+    describe('findProductsByBarcode', () => {
+      it('returns no_match without hitting Allegro when categoryId is omitted', async () => {
+        const result = await adapterWithCache.findProductsByBarcode({ barcode: '5901234123457' });
+
+        expect(result).toEqual({ kind: 'no_match' });
+        expect(httpClient.get).not.toHaveBeenCalled();
+      });
+
+      it('unique → eager-fetches detail and returns the full product', async () => {
+        cache.get.mockResolvedValue(null); // both caches miss
+        httpClient.get
+          .mockResolvedValueOnce({
+            // resolveAllegroProductCardByEan: /sale/products?phrase=…
+            data: {
+              products: [
+                { id: 'p1', name: 'Canon SX740', ean: '5901234123457' },
+              ],
+            },
+            status: 200,
+            headers: {},
+          })
+          .mockResolvedValueOnce({
+            // fetchAllegroProduct: /sale/products/p1
+            data: {
+              id: 'p1',
+              name: 'Canon SX740 HS',
+              images: [{ url: 'https://img/a.jpg' }],
+              parameters: [
+                { id: '224017', name: 'Brand', values: ['Canon'] },
+              ],
+            },
+            status: 200,
+            headers: {},
+          });
+
+        const result = await adapterWithCache.findProductsByBarcode({
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(result).toEqual({
+          kind: 'unique',
+          product: {
+            id: 'p1',
+            name: 'Canon SX740 HS',
+            ean: undefined,
+            imageUrl: 'https://img/a.jpg',
+            images: ['https://img/a.jpg'],
+            parameters: [
+              {
+                parameterId: '224017',
+                name: 'Brand',
+                valueIds: undefined,
+                valueStrings: ['Canon'],
+              },
+            ],
+          },
+        });
+        expect(httpClient.get).toHaveBeenCalledTimes(2);
+      });
+
+      it('ambiguous → returns summaries without detail fetches; imageUrl omitted', async () => {
+        cache.get.mockResolvedValue(null);
+        httpClient.get.mockResolvedValueOnce({
+          data: {
+            products: [
+              { id: 'p1', name: 'Variant A', ean: '5901234123457' },
+              { id: 'p2', name: 'Variant B', ean: '5901234123457' },
+            ],
+          },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapterWithCache.findProductsByBarcode({
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(result).toEqual({
+          kind: 'ambiguous',
+          products: [
+            { id: 'p1', name: 'Variant A', ean: '5901234123457' },
+            { id: 'p2', name: 'Variant B', ean: '5901234123457' },
+          ],
+        });
+        expect(httpClient.get).toHaveBeenCalledTimes(1);
+      });
+
+      it('no_match → identity-maps the resolver outcome', async () => {
+        cache.get.mockResolvedValue(null);
+        httpClient.get.mockResolvedValueOnce({
+          data: { products: [] },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapterWithCache.findProductsByBarcode({
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(result).toEqual({ kind: 'no_match' });
+      });
+    });
+
+    describe('getProduct', () => {
+      it('delegates to fetchAllegroProduct and returns the neutral product', async () => {
+        cache.get.mockResolvedValue(null);
+        httpClient.get.mockResolvedValueOnce({
+          data: { id: 'p1', name: 'iPhone', parameters: [] },
+          status: 200,
+          headers: {},
+        });
+
+        const result = await adapterWithCache.getProduct({ productId: 'p1' });
+
+        expect(result.id).toBe('p1');
+        expect(result.name).toBe('iPhone');
+        expect(httpClient.get).toHaveBeenCalledWith('/sale/products/p1');
+      });
+
+      it('translates Allegro 404 into CatalogProductNotFoundException', async () => {
+        cache.get.mockResolvedValue(null);
+        httpClient.get.mockRejectedValueOnce(
+          new AllegroApiException('Not found', 404, '{}', '/sale/products/missing'),
+        );
+
+        await expect(adapterWithCache.getProduct({ productId: 'missing' })).rejects.toBeInstanceOf(
+          CatalogProductNotFoundException,
+        );
+      });
     });
   });
 });
