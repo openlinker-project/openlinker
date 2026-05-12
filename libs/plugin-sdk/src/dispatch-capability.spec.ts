@@ -62,6 +62,20 @@ describe('dispatchCapability', () => {
     );
   });
 
+  it('throws for inherited prototype keys (prototype-pollution regression)', () => {
+    // Pre-fix, `table[capability]` walked the prototype chain — calling
+    // `dispatchCapability('hasOwnProperty', {}, 'plug')` would resolve
+    // `factory` to `Object.prototype.hasOwnProperty` and return `false as T`
+    // instead of the supported-capabilities error. `Object.hasOwn` blocks
+    // every inherited key in one check.
+    const inheritedKeys = ['hasOwnProperty', 'toString', 'valueOf', 'constructor', '__proto__'];
+    for (const key of inheritedKeys) {
+      expect(() => dispatchCapability<unknown>(key, {}, 'Plug')).toThrow(
+        `Plug adapter does not support capability: ${key}. Supported capabilities: `,
+      );
+    }
+  });
+
   it('preserves the factory return value even for falsy / undefined results', () => {
     // Defensive: if a plugin author returns `undefined` from a factory (perhaps
     // because the adapter is conditionally wired), the helper should pass that

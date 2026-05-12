@@ -23,6 +23,20 @@
  * boilerplate is gone and the error message format is consistent across
  * plugins.
  *
+ * **Plugin-authored compile-time enforcement** is still possible — a plugin
+ * package can wrap `dispatchCapability` with a typed `CapabilityMap` keyed on
+ * its own (closed) literal capability set:
+ *
+ *   type AllegroCapabilityMap = {
+ *     OfferManager: OfferManagerPort;
+ *     OrderSource: OrderSourcePort;
+ *   };
+ *   function dispatchAllegro<K extends keyof AllegroCapabilityMap>(
+ *     capability: K, table: AllegroCapabilityMap, …
+ *   ): AllegroCapabilityMap[K] { … }
+ *
+ * Only the SDK seam itself has to stay capability-open (#576).
+ *
  * @module libs/plugin-sdk/src
  */
 
@@ -51,7 +65,15 @@ export function dispatchCapability<T>(
   table: Record<string, () => unknown>,
   pluginName: string,
 ): T {
-  const factory = table[capability];
+  // `Object.hasOwn` instead of `table[capability]` truthiness — keeps the
+  // helper safe against inherited prototype keys (`'hasOwnProperty'`,
+  // `'toString'`, `'__proto__'`, …). Without this, `table['hasOwnProperty']`
+  // would resolve to `Object.prototype.hasOwnProperty` and call it, returning
+  // a bogus `false as T` instead of the supported-capabilities error. The
+  // upstream `metadata.supportedCapabilities.includes(...)` gate makes the
+  // exploit path narrow today, but the helper is the plugin-author seam —
+  // defensive lookup belongs here, not at the gate.
+  const factory = Object.hasOwn(table, capability) ? table[capability] : undefined;
   if (!factory) {
     throw new Error(
       `${pluginName} adapter does not support capability: ${capability}. ` +
