@@ -6,14 +6,19 @@
  * (#486). Returns `null` for any other error / shape so callers can do
  * `errors ?? null` and fall through to the bare-string `<Alert>` cleanly.
  *
+ * The error rows use `StructuredError` from `shared/ui/structured-error-list`
+ * (the same shape Allegro returns) — content-publish today happens to be an
+ * Allegro-only flow, but the shape stays platform-neutral so the panel can
+ * render PrestaShop / Shopify / … errors with the same primitive.
+ *
  * @module apps/web/src/features/content/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import type { AllegroLikeError } from '../../../shared/lib/allegro-error-mapping';
+import type { StructuredError } from '../../../shared/ui/structured-error-list';
 
 interface ChannelPublishFailedBody {
   code: 'CHANNEL_PUBLISH_FAILED';
-  errors: AllegroLikeError[];
+  errors: StructuredError[];
 }
 
 function isChannelPublishFailedBody(value: unknown): value is ChannelPublishFailedBody {
@@ -28,7 +33,7 @@ function isChannelPublishFailedBody(value: unknown): value is ChannelPublishFail
   });
 }
 
-export function extractAllegroErrors(err: unknown): AllegroLikeError[] | null {
+export function extractAllegroErrors(err: unknown): StructuredError[] | null {
   if (!(err instanceof ApiError)) return null;
   if (!isChannelPublishFailedBody(err.details)) return null;
   return err.details.errors;

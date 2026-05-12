@@ -72,6 +72,32 @@ module.exports = {
                 group: ['**/features/**', '**/pages/**', '**/app/**', '**/plugins/**'],
                 message: 'Shared modules must not import feature, page, app, or plugin modules.',
               },
+              {
+                // #607: shared/ must stay domain-agnostic — no marketplace-named
+                // imports. Pairs with the `**/features/**` rule above:
+                //   - `features/**` catches the cross-layer case
+                //     (shared/ importing from features/{platform}/).
+                //   - this rule catches the intra-shared case (someone
+                //     reintroducing a `shared/lib/allegro-error-mapping.ts`
+                //     and importing it from another shared/ file).
+                //
+                // The globs DO also match npm packages with these tokens in
+                // their names (e.g. a hypothetical `@shopify/polaris` import).
+                // That's deliberate: any marketplace-shaped behaviour belongs
+                // in `features/{platform}/`, not in `shared/`. If a legitimate
+                // npm-package import ever needs to land here, the rule should
+                // be revisited rather than disabled per-line — domain
+                // agnosticism is the whole point of `shared/`.
+                group: [
+                  '**/*allegro*',
+                  '**/*prestashop*',
+                  '**/*shopify*',
+                  '**/*ebay*',
+                  '**/*amazon*',
+                ],
+                message:
+                  'shared/ must stay domain-agnostic — no marketplace-named imports. Move the marketplace bit into features/{platform}/ and pass it into the shared primitive as a prop or callback (#607).',
+              },
             ],
           },
         ],

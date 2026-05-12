@@ -13,14 +13,17 @@
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
-import { AllegroErrorList } from '../../../shared/ui/allegro-error-list';
+import {
+  StructuredErrorList,
+  type StructuredError,
+} from '../../../shared/ui/structured-error-list';
 import { Button } from '../../../shared/ui/button';
 import { DesktopOnlyBanner } from '../../../shared/ui/desktop-only-banner';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
 import { formatDateTime } from '../../../shared/format/format-date';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
-import type { AllegroLikeError } from '../../../shared/lib/allegro-error-mapping';
+import { translateAllegroError } from '../../allegro/lib/translate-allegro-error';
 
 const MAX_VALUE_LENGTH = 65_536;
 
@@ -43,7 +46,7 @@ export interface ContentPanelProps {
    * `error` Alert — the operator gets per-field, per-code rows instead of
    * a useless "Allegro API error (422):" headline.
    */
-  errors?: AllegroLikeError[] | null;
+  errors?: StructuredError[] | null;
   suggestSlot?: ReactNode;
   onSave: (value: string) => void;
   onDiscard: () => void;
@@ -122,7 +125,7 @@ export function ContentPanel({
 
       {hasStructuredErrors ? (
         <Alert tone="error" title="Channel publish rejected by Allegro">
-          <AllegroErrorList errors={errors} />
+          <StructuredErrorList errors={errors} translate={translateAllegroError} />
         </Alert>
       ) : error ? (
         <Alert tone="error">{error}</Alert>

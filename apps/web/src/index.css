@@ -5010,15 +5010,15 @@ a.kpi-card:focus-visible {
 }
 
 /*
- * Structured Allegro error rows (#448 / #486). Forensic-log aesthetic:
+ * Structured error rows (#448 / #486 / #607). Forensic-log aesthetic:
  * the panel context already implies error, so we don't drench every row
  * in `--status-error-soft`. A single 6 px severity dot + subtle border
  * carries the tone; the dotted field path renders as a breadcrumb chain
  * with the terminal segment (the actual offending field) at foreground
  * weight. The whole trail is one button — click to copy the full path,
- * which operators paste into Allegro docs.
+ * which operators paste into platform docs.
  */
-.allegro-error-list {
+.structured-error-list {
   list-style: none;
   margin: 0.5rem 0 0;
   padding: 0;
@@ -5026,7 +5026,7 @@ a.kpi-card:focus-visible {
   gap: 0.375rem;
 }
 
-.allegro-error-list__item {
+.structured-error-list__item {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 0.625rem;
@@ -5042,7 +5042,7 @@ a.kpi-card:focus-visible {
 
 /* 6 px filled dot — subtle severity affordance that doesn't compete with
  * the message text for attention. */
-.allegro-error-list__dot {
+.structured-error-list__dot {
   width: 0.375rem;
   height: 0.375rem;
   margin-top: 0.5rem;
@@ -5051,7 +5051,7 @@ a.kpi-card:focus-visible {
   flex-shrink: 0;
 }
 
-.allegro-error-list__body {
+.structured-error-list__body {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
@@ -5062,7 +5062,7 @@ a.kpi-card:focus-visible {
  * the full dotted path on click. Looks like a path label, not a button,
  * until hovered.
  */
-.allegro-error-list__field {
+.structured-error-list__field {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
@@ -5079,24 +5079,24 @@ a.kpi-card:focus-visible {
   margin-left: -0.25rem; /* optical align with message text below */
 }
 
-.allegro-error-list__field:hover,
-.allegro-error-list__field:focus-visible {
+.structured-error-list__field:hover,
+.structured-error-list__field:focus-visible {
   background: var(--bg-surface-muted);
   color: var(--text-secondary);
 }
 
-.allegro-error-list__field:focus-visible {
+.structured-error-list__field:focus-visible {
   outline: 2px solid var(--accent-focus);
   outline-offset: 1px;
 }
 
-.allegro-error-list__field-trail {
+.structured-error-list__field-trail {
   display: inline-flex;
   align-items: center;
 }
 
 /* Chevron separator — `›` rendered as a tiny disabled-text glyph. */
-.allegro-error-list__field-sep {
+.structured-error-list__field-sep {
   margin: 0 0.25rem;
   color: var(--text-disabled);
   font-size: 0.6875rem;
@@ -5104,7 +5104,7 @@ a.kpi-card:focus-visible {
 
 /* Leaf segment — the actual offending field name. Foreground weight so the
  * eye lands here first. */
-.allegro-error-list__field-leaf {
+.structured-error-list__field-leaf {
   color: var(--text-primary);
   font-weight: 600;
 }
@@ -5112,12 +5112,12 @@ a.kpi-card:focus-visible {
 /* Single-segment paths (no breadcrumb). The JSX renders the segment as a
  * bare text node, so the rule applies via the parent selector and the
  * visual hierarchy matches multi-segment rows. */
-.allegro-error-list__field--single {
+.structured-error-list__field--single {
   color: var(--text-primary);
   font-weight: 600;
 }
 
-.allegro-error-list__copied {
+.structured-error-list__copied {
   margin-left: 0.375rem;
   padding: 0 0.25rem;
   color: var(--status-success-strong);
@@ -5127,7 +5127,7 @@ a.kpi-card:focus-visible {
   letter-spacing: 0.04em;
 }
 
-.allegro-error-list__message {
+.structured-error-list__message {
   color: var(--text-primary);
 }
 
@@ -5136,7 +5136,7 @@ a.kpi-card:focus-visible {
  * grep the page for codes without the chip fighting the message for
  * attention.
  */
-.allegro-error-list__code {
+.structured-error-list__code {
   align-self: start;
   margin-top: 0.0625rem;
   padding: 0.0625rem 0.375rem;
@@ -5153,15 +5153,16 @@ a.kpi-card:focus-visible {
 }
 
 /*
- * Collapsible "Allegro's original message" disclosure. Kept visually quiet
- * — muted summary, no chevron icon; the friendly translated message above
- * is the primary affordance.
+ * Collapsible "Original message" disclosure shown when a translator
+ * rewrites the platform's raw message. Kept visually quiet — muted summary,
+ * no chevron icon; the friendly translated message above is the primary
+ * affordance.
  */
-.allegro-error-list__raw {
+.structured-error-list__raw {
   margin-top: 0.125rem;
 }
 
-.allegro-error-list__raw > summary {
+.structured-error-list__raw > summary {
   cursor: pointer;
   color: var(--text-muted);
   font-size: 0.6875rem;
@@ -5169,11 +5170,11 @@ a.kpi-card:focus-visible {
   list-style: none;
 }
 
-.allegro-error-list__raw > summary::-webkit-details-marker {
+.structured-error-list__raw > summary::-webkit-details-marker {
   display: none;
 }
 
-.allegro-error-list__raw-body {
+.structured-error-list__raw-body {
   display: block;
   margin-top: 0.25rem;
   padding: 0.375rem 0.5rem;
@@ -5183,10 +5184,10 @@ a.kpi-card:focus-visible {
 }
 
 @media (max-width: 767.98px) {
-  .allegro-error-list__item {
+  .structured-error-list__item {
     grid-template-columns: auto 1fr;
   }
-  .allegro-error-list__code {
+  .structured-error-list__code {
     grid-column: 2;
     justify-self: start;
   }

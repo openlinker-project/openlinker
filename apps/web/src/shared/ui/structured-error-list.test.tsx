@@ -1,14 +1,27 @@
 /**
- * AllegroErrorList Tests (#486)
+ * StructuredErrorList Tests (#486, generalised in #607)
  *
  * @module apps/web/src/shared/ui
  */
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AllegroErrorList } from './allegro-error-list';
-import type { AllegroLikeError } from '../lib/allegro-error-mapping';
+import {
+  StructuredErrorList,
+  type StructuredError,
+  type StructuredErrorTranslation,
+} from './structured-error-list';
 
-describe('AllegroErrorList', () => {
+// In-test translator that mimics the marketplace-translator contract. Lets the
+// primitive's tests cover the translation pipeline without coupling to any
+// real feature-layer translator (Allegro / PrestaShop / …).
+function fakeTranslate(error: StructuredError): StructuredErrorTranslation | null {
+  if (error.code === 'MAPPED_CODE') {
+    return { message: 'Friendly translated message' };
+  }
+  return null;
+}
+
+describe('StructuredErrorList', () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
@@ -25,25 +38,32 @@ describe('AllegroErrorList', () => {
   });
 
   it('returns null when errors are null', () => {
-    const { container } = render(<AllegroErrorList errors={null} />);
+    const { container } = render(<StructuredErrorList errors={null} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('returns null when errors are an empty array', () => {
-    const { container } = render(<AllegroErrorList errors={[]} />);
+    const { container } = render(<StructuredErrorList errors={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('exposes the list with a generic "Errors" aria-label (no platform name)', () => {
+    render(
+      <StructuredErrorList errors={[{ code: 'X', message: 'msg' }]} />,
+    );
+    expect(screen.getByRole('list', { name: /^errors$/i })).toBeInTheDocument();
   });
 
   describe('field-path breadcrumb', () => {
     it('splits dotted paths into trail + leaf, leaf is the visual anchor', () => {
-      const errors: AllegroLikeError[] = [
+      const errors: StructuredError[] = [
         {
           field: 'offer.modules.productSafety.data.productsData[0].responsibleProducer',
           code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED',
           message: 'Responsible producer is required for every product in the offer',
         },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} />);
 
       // The leaf segment uses the special "leaf" class; the trail uses
       // separate spans. We verify the leaf segment is present as text and
@@ -54,10 +74,10 @@ describe('AllegroErrorList', () => {
     });
 
     it('copies the full dotted path on click and surfaces a confirmation', async () => {
-      const errors: AllegroLikeError[] = [
+      const errors: StructuredError[] = [
         { field: 'parameters.EAN', code: 'MISSING_EAN', message: 'EAN is required.' },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} />);
 
       const button = screen.getByRole('button', { name: /Copy field path parameters\.EAN/i });
       fireEvent.click(button);
@@ -68,69 +88,74 @@ describe('AllegroErrorList', () => {
       });
     });
 
-    it('treats Allegro\'s "null" sentinel field as no field', () => {
-      const errors: AllegroLikeError[] = [
+    it('treats a literal "null" sentinel field as no field', () => {
+      const errors: StructuredError[] = [
         {
           field: 'null',
-          code: 'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
-          message: 'Offer Terms (for returns and complaints) are required for Business Accounts.',
+          code: 'MAPPED_CODE',
+          message: 'Raw message',
         },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} translate={fakeTranslate} />);
 
       // No copy button — the sentinel is filtered out.
       expect(screen.queryByRole('button', { name: /Copy field path/i })).not.toBeInTheDocument();
       // Translated message still renders.
-      expect(screen.getByText(/Set after-sales policies/i)).toBeInTheDocument();
+      expect(screen.getByText('Friendly translated message')).toBeInTheDocument();
     });
 
     it('renders single-segment paths without breadcrumb separators', () => {
-      const errors: AllegroLikeError[] = [
+      const errors: StructuredError[] = [
         { field: 'name', code: 'TOO_LONG', message: 'Name is too long.' },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} />);
 
       const button = screen.getByRole('button', { name: /Copy field path name/i });
       expect(button).toHaveTextContent('name');
-      expect(button.querySelectorAll('.allegro-error-list__field-sep')).toHaveLength(0);
+      expect(button.querySelectorAll('.structured-error-list__field-sep')).toHaveLength(0);
     });
   });
 
   describe('translation pipeline', () => {
     it('renders the friendly translation for mapped codes and keeps the raw message in <details>', () => {
-      const errors: AllegroLikeError[] = [
-        {
-          code: 'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
-          message: 'Offer Terms (for returns and complaints) are required for Business Accounts.',
-        },
+      const errors: StructuredError[] = [
+        { code: 'MAPPED_CODE', message: 'Raw platform message.' },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} translate={fakeTranslate} />);
 
-      expect(screen.getByText(/Set after-sales policies/i)).toBeInTheDocument();
-      const details = screen.getByText(/Allegro's original message/i).closest('details');
+      expect(screen.getByText('Friendly translated message')).toBeInTheDocument();
+      const details = screen.getByText(/^original message$/i).closest('details');
       expect(details).not.toBeNull();
       expect(details).not.toHaveAttribute('open');
-      expect(
-        screen.getByText('Offer Terms (for returns and complaints) are required for Business Accounts.'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Raw platform message.')).toBeInTheDocument();
     });
 
-    it('renders raw message verbatim with no <details> for unmapped codes', () => {
-      const errors: AllegroLikeError[] = [
-        { code: 'UNMAPPED_BRAND_NEW_CODE', message: 'Allegro raw message.' },
+    it('renders raw message verbatim with no <details> when translator returns null', () => {
+      const errors: StructuredError[] = [
+        { code: 'UNMAPPED_CODE', message: 'Raw platform message.' },
       ];
-      render(<AllegroErrorList errors={errors} />);
+      render(<StructuredErrorList errors={errors} translate={fakeTranslate} />);
 
-      expect(screen.getByText('Allegro raw message.')).toBeInTheDocument();
-      expect(screen.queryByText(/Allegro's original message/i)).toBeNull();
+      expect(screen.getByText('Raw platform message.')).toBeInTheDocument();
+      expect(screen.queryByText(/^original message$/i)).toBeNull();
+    });
+
+    it('renders raw message verbatim with no <details> when translate prop is omitted', () => {
+      const errors: StructuredError[] = [
+        { code: 'ANYTHING', message: 'Raw platform message.' },
+      ];
+      render(<StructuredErrorList errors={errors} />);
+
+      expect(screen.getByText('Raw platform message.')).toBeInTheDocument();
+      expect(screen.queryByText(/^original message$/i)).toBeNull();
     });
   });
 
   it('renders the error code as a <code> chip with a full-text title', () => {
-    const errors: AllegroLikeError[] = [
+    const errors: StructuredError[] = [
       { code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED', message: 'msg' },
     ];
-    render(<AllegroErrorList errors={errors} />);
+    render(<StructuredErrorList errors={errors} />);
 
     // <code> not <kbd>: this is program-output, not keyboard input.
     const codeChip = screen.getByText('RESPONSIBLE_PRODUCER_NOT_SPECIFIED');
