@@ -11,8 +11,17 @@
 export const FieldKeyValues = ['description'] as const;
 export type FieldKey = (typeof FieldKeyValues)[number];
 
-export const PromptTemplateChannelValues = ['prestashop', 'allegro'] as const;
-export type PromptTemplateChannel = (typeof PromptTemplateChannelValues)[number];
+/**
+ * Channel scoping for a prompt template. Opaque platform identifier that
+ * matches `connection.platformType`. Open-world per #580 — channel is just
+ * a `string`; the closed `['prestashop', 'allegro']` enum used to live here
+ * and has been removed so plugin authors can author templates against new
+ * channels without an FE edit.
+ *
+ * Kept as a named type alias rather than inlining `string` everywhere so
+ * call sites stay self-documenting.
+ */
+export type PromptTemplateChannel = string;
 
 export interface ContentMasterState {
   baseValue: string | null;

@@ -7,12 +7,9 @@
  *
  * @module apps/api/src/ai/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
-import {
-  PromptTemplateChannelValues,
-  type PromptTemplateChannel,
-} from '@openlinker/core/ai';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import type { PromptTemplateChannel } from '@openlinker/core/ai';
 
 export class RevertPromptTemplateDto {
   @ApiProperty({ example: 'offer.description.suggest', maxLength: 128 })
@@ -21,13 +18,18 @@ export class RevertPromptTemplateDto {
   @MaxLength(128)
   key!: string;
 
-  @ApiProperty({
-    enum: PromptTemplateChannelValues,
+  @ApiPropertyOptional({
+    type: String,
     nullable: true,
-    description: 'null = master (generic) template',
+    description:
+      'null = master (generic) template; otherwise a channel-specific one. ' +
+      'Channel is an open-world string axis (#580) matching `connection.platformType`.',
+    example: 'allegro',
   })
   @IsOptional()
-  @IsIn(PromptTemplateChannelValues as unknown as string[])
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
   channel!: PromptTemplateChannel | null;
 
   @ApiProperty({ minimum: 1 })

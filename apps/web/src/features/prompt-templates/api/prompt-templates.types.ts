@@ -11,8 +11,14 @@
 export const PromptTemplateStateValues = ['draft', 'published', 'archived'] as const;
 export type PromptTemplateState = (typeof PromptTemplateStateValues)[number];
 
-export const PromptTemplateChannelValues = ['prestashop', 'allegro'] as const;
-export type PromptTemplateChannel = (typeof PromptTemplateChannelValues)[number];
+/**
+ * Channel scoping for a prompt template. Opaque platform identifier that
+ * matches `connection.platformType`. Open-world per #580 — see the matching
+ * note in `libs/core/src/ai/domain/types/prompt-template.types.ts`. The
+ * closed `as const` array used to live here; plugin authors can now author
+ * templates against new channels without editing core or the FE.
+ */
+export type PromptTemplateChannel = string;
 
 export const PromptTemplateVariableTypeValues = ['string', 'number', 'object', 'array'] as const;
 export type PromptTemplateVariableType = (typeof PromptTemplateVariableTypeValues)[number];

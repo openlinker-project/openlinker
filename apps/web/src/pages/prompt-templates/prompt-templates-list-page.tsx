@@ -26,6 +26,8 @@ import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
+import { usePlugin, usePlugins } from '../../shared/plugins';
+import type { PlatformPlugin } from '../../shared/plugins';
 import { usePromptTemplatesQuery } from '../../features/prompt-templates/hooks/use-prompt-templates-query';
 import { ArchivePromptTemplateDialog } from '../../features/prompt-templates/components/archive-prompt-template-dialog';
 import { NewPromptTemplateDialog } from '../../features/prompt-templates/components/new-prompt-template-dialog';
@@ -35,23 +37,46 @@ import type {
   PromptTemplateSummary,
 } from '../../features/prompt-templates/api/prompt-templates.types';
 
-const CHANNEL_TONE: Record<string, StatusBadgeTone> = {
-  prestashop: 'info',
-  allegro: 'info',
-  master: 'neutral',
-};
-
 const STATUS_FILTER_VALUES = ['active', 'archived', 'all'] as const;
 type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number];
 
-function channelLabel(channel: PromptTemplateChannel | null): string {
-  return channel === null ? 'master' : channel;
+/**
+ * Channel-tone gate. Channel is open-world per #580; we can't keep a per-
+ * platform tone map without re-introducing the closed enum the issue
+ * removes. The semantic split is "master template (neutral) vs platform
+ * template (info)" — that's all the badge tone needs to communicate.
+ */
+function channelTone(channel: PromptTemplateChannel | null): StatusBadgeTone {
+  return channel === null ? 'neutral' : 'info';
 }
 
+/**
+ * Humanise an open-world channel string for display when no plugin
+ * `displayName` is available (channel registered backend-side but the FE
+ * plugin manifest hasn't caught up). Capitalises the first letter; no
+ * other transformation. The matching column never reaches this branch
+ * for known channels because `usePlugin(channel)?.displayName` wins.
+ */
+function humaniseChannel(channel: string): string {
+  if (channel.length === 0) return channel;
+  return channel.charAt(0).toUpperCase() + channel.slice(1);
+}
+
+function resolveChannelLabel(
+  channel: PromptTemplateChannel | null,
+  plugin: PlatformPlugin | undefined,
+): string {
+  if (channel === null) return 'master';
+  return plugin?.displayName ?? humaniseChannel(channel);
+}
+
+/**
+ * Channel-filter query-param: accepts the `'master'` sentinel and any
+ * string (open-world per #580). Empty / null → undefined (no filter).
+ */
 function parseChannelParam(value: string | null): PromptTemplateListFilters['channel'] | undefined {
   if (value === null || value === '') return undefined;
-  if (value === 'master' || value === 'prestashop' || value === 'allegro') return value;
-  return undefined;
+  return value;
 }
 
 function parseStatusParam(value: string | null): StatusFilterValue {
@@ -71,24 +96,27 @@ function matchesStatusFilter(row: PromptTemplateSummary, status: StatusFilterVal
   return status === 'archived' ? isFullyArchived : !isFullyArchived;
 }
 
-const CARD_VIEW: DataTableCardView<PromptTemplateSummary> = {
-  title: (row) => <span className="mono-text">{row.key}</span>,
-  subtitle: (row) => (
-    <div className="prompt-templates-card__meta">
-      <StatusBadge tone={CHANNEL_TONE[channelLabel(row.channel)]} compact>
-        {channelLabel(row.channel)}
-      </StatusBadge>
-      <span className="mono-text">
-        {row.publishedVersion !== null ? `published v${row.publishedVersion}` : 'never published'}
-      </span>
-      {row.hasDraft ? (
-        <StatusBadge tone="review" compact>
-          draft v{row.latestVersion}
-        </StatusBadge>
-      ) : null}
-    </div>
-  ),
-};
+/**
+ * Channel badge — resolves the plugin display name at render time so an
+ * unknown channel (e.g. seeded backend-side before the FE plugin manifest
+ * catches up) shows a humanised fallback instead of nothing. Used by both
+ * the column cell and the mobile card-view subtitle.
+ */
+function ChannelBadge({
+  channel,
+}: {
+  channel: PromptTemplateChannel | null;
+}): ReactElement {
+  // `usePlugin(null)` is fine — the hook returns `undefined` for any
+  // non-matching key, and the resolveChannelLabel branch handles `null`
+  // explicitly to render the `'master'` label.
+  const plugin = usePlugin(channel ?? '');
+  return (
+    <StatusBadge tone={channelTone(channel)} compact>
+      {resolveChannelLabel(channel, plugin)}
+    </StatusBadge>
+  );
+}
 
 export function PromptTemplatesListPage(): ReactElement {
   const { session } = useSession();
@@ -103,6 +131,44 @@ export function PromptTemplatesListPage(): ReactElement {
   );
 
   const query = usePromptTemplatesQuery(filters);
+
+  // Channel filter dropdown is registry-driven post-#580 — the master
+  // sentinel + every registered plugin. Memoised so the option list
+  // identity is stable across renders.
+  const platformPlugins = usePlugins();
+  const channelFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All' },
+      { value: 'master', label: 'Master (generic)' },
+      ...platformPlugins.map((plugin) => ({
+        value: plugin.platformType,
+        label: plugin.displayName,
+      })),
+    ],
+    [platformPlugins],
+  );
+
+  const cardView = useMemo<DataTableCardView<PromptTemplateSummary>>(
+    () => ({
+      title: (row) => <span className="mono-text">{row.key}</span>,
+      subtitle: (row) => (
+        <div className="prompt-templates-card__meta">
+          <ChannelBadge channel={row.channel} />
+          <span className="mono-text">
+            {row.publishedVersion !== null
+              ? `published v${row.publishedVersion}`
+              : 'never published'}
+          </span>
+          {row.hasDraft ? (
+            <StatusBadge tone="review" compact>
+              draft v{row.latestVersion}
+            </StatusBadge>
+          ) : null}
+        </div>
+      ),
+    }),
+    [],
+  );
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<PromptTemplateSummary | null>(null);
@@ -162,12 +228,11 @@ export function PromptTemplatesListPage(): ReactElement {
     {
       id: 'channel',
       header: 'Channel',
-      cell: (row) => (
-        <StatusBadge tone={CHANNEL_TONE[channelLabel(row.channel)]} compact>
-          {channelLabel(row.channel)}
-        </StatusBadge>
-      ),
-      accessor: (row) => channelLabel(row.channel),
+      cell: (row) => <ChannelBadge channel={row.channel} />,
+      // Accessor is used only for client-side sort: render the raw channel
+      // (or `'master'` sentinel) so sort order stays deterministic without
+      // depending on a plugin lookup that might not be registered.
+      accessor: (row) => row.channel ?? 'master',
       sortable: true,
     },
     {
@@ -243,10 +308,11 @@ export function PromptTemplatesListPage(): ReactElement {
       <div className="prompt-templates-toolbar">
         <FormField label="Channel" name="prompt-templates-channel-filter" description="Filter by target channel">
           <Select value={channelFilter ?? ''} onChange={handleChannelChange}>
-            <option value="">All</option>
-            <option value="master">Master (generic)</option>
-            <option value="prestashop">PrestaShop</option>
-            <option value="allegro">Allegro</option>
+            {channelFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </FormField>
         <FormField label="Status" name="prompt-templates-status-filter" description="Hide fully-archived rows by default">
@@ -281,7 +347,7 @@ export function PromptTemplatesListPage(): ReactElement {
           columns={columns}
           rowKey={(row) => row.latestId}
           rowHref={(row) => `/ai/prompt-templates/${row.latestId}`}
-          cardView={CARD_VIEW}
+          cardView={cardView}
         />
       )}
 

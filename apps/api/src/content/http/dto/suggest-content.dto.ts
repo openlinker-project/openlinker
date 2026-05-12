@@ -7,19 +7,25 @@
  *
  * @module apps/api/src/content/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { PromptTemplateChannelValues, type PromptTemplateChannel } from '@openlinker/core/ai';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import type { PromptTemplateChannel } from '@openlinker/core/ai';
 
 export class SuggestContentDto {
-  @ApiProperty({
-    enum: PromptTemplateChannelValues,
+  @ApiPropertyOptional({
+    type: String,
     nullable: true,
-    required: false,
-    description: 'null = master (generic) template; otherwise a channel-specific one.',
+    description:
+      'Optional channel scoping. Matches `connection.platformType` for ' +
+      'channel-specific templates (e.g. "allegro"). Null/omitted resolves ' +
+      'to the master template. Open-world per #580 — channel is opaque at ' +
+      'the AI layer; the same string axis as `platformType`.',
+    example: 'allegro',
   })
   @IsOptional()
-  @IsIn(PromptTemplateChannelValues as unknown as string[])
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
   channel?: PromptTemplateChannel | null;
 
   @ApiProperty({ required: false, maxLength: 64 })

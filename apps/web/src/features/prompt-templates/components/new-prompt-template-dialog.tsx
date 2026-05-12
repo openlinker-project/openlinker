@@ -30,8 +30,10 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useCreatePromptTemplateMutation } from '../hooks/use-prompt-template-mutations';
 import {
-  newPromptTemplateSchema,
+  MASTER_CHANNEL_SENTINEL,
   toApiInput,
+  useChannelSelectOptions,
+  useNewPromptTemplateSchema,
   type NewPromptTemplateFormValues,
 } from './new-prompt-template.schema';
 
@@ -42,7 +44,7 @@ interface NewPromptTemplateDialogProps {
 
 const DEFAULT_VALUES: NewPromptTemplateFormValues = {
   key: '',
-  channel: 'master',
+  channel: MASTER_CHANNEL_SENTINEL,
   systemPrompt: '',
   userPromptTemplate: '',
   variablesJson: '[]',
@@ -57,9 +59,16 @@ export function NewPromptTemplateDialog({
   const mutation = useCreatePromptTemplateMutation();
   const { mutateAsync: createTemplate, reset: resetMutation } = mutation;
 
+  // Channel options + schema are derived from the live plugin registry
+  // (#580). Both hooks are useMemo-stable across renders while the plugin
+  // set is — the resolver passed to react-hook-form is therefore safe to
+  // create inline.
+  const schema = useNewPromptTemplateSchema();
+  const channelOptions = useChannelSelectOptions();
+
   const form = useForm<NewPromptTemplateFormValues>({
     defaultValues: DEFAULT_VALUES,
-    resolver: zodResolver(newPromptTemplateSchema),
+    resolver: zodResolver(schema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -155,9 +164,11 @@ export function NewPromptTemplateDialog({
             error={form.formState.errors.channel?.message}
           >
             <Select {...form.register('channel')}>
-              <option value="master">Master (generic)</option>
-              <option value="prestashop">PrestaShop</option>
-              <option value="allegro">Allegro</option>
+              {channelOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </Select>
           </FormField>
 

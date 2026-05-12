@@ -144,4 +144,43 @@ describe('PromptTemplatesController', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
+
+  describe('open-world channel (#580)', () => {
+    it('should forward an unknown channel string to the service on list()', async () => {
+      service.listLatestByKey.mockResolvedValue([]);
+
+      await controller.list(undefined, 'shopify');
+
+      // The channel is open-world (#580): a non-empty string the controller
+      // doesn't recognise still reaches the service verbatim, with no closed-
+      // set rejection. The service falls back to the master template if no
+      // 'shopify' row is published.
+      expect(service.listLatestByKey).toHaveBeenCalledWith({
+        key: undefined,
+        channel: 'shopify',
+      });
+    });
+
+    it('should map the `master` sentinel to a null channel filter', async () => {
+      service.listLatestByKey.mockResolvedValue([]);
+
+      await controller.list(undefined, 'master');
+
+      expect(service.listLatestByKey).toHaveBeenCalledWith({
+        key: undefined,
+        channel: null,
+      });
+    });
+
+    it('should drop an empty channel query into "no filter"', async () => {
+      service.listLatestByKey.mockResolvedValue([]);
+
+      await controller.list(undefined, '');
+
+      expect(service.listLatestByKey).toHaveBeenCalledWith({
+        key: undefined,
+        channel: undefined,
+      });
+    });
+  });
 });

@@ -30,7 +30,6 @@ import type {
   ContentChannelState,
   ContentMasterState,
 } from '../api/content.types';
-import { resolveSuggestChannel } from '../api/content.utils';
 import { ContentPanel } from './content-panel';
 import { SuggestionDialog } from './suggestion-dialog';
 
@@ -249,7 +248,10 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
         {channels.map((channel) => {
           const target: ActiveTarget = { kind: 'channel', connectionId: channel.connectionId };
-          const promptChannel = resolveSuggestChannel(channel.platformType);
+          // Channel is the connection's platformType verbatim (#580). The
+          // backend transparently falls back to the master template when no
+          // channel-specific template is published.
+          const promptChannel = channel.platformType;
           const disabledReason =
             channel.connectionStatus !== 'active'
               ? `Connection is ${channel.connectionStatus}. Re-activate to enable editing.`
