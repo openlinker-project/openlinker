@@ -25,6 +25,8 @@
     "@openlinker/core": "workspace:*",
     "@openlinker/plugin-sdk": "workspace:*",
     "@openlinker/shared": "workspace:*",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.1",
     "fast-xml-parser": "^4.3.5"
   },
   "peerDependencies": {

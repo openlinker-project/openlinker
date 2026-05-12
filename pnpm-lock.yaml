@@ -491,6 +491,12 @@ importers:
       '@openlinker/shared':
         specifier: workspace:*
         version: link:../../shared
+      class-transformer:
+        specifier: 0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: 0.14.1
+        version: 0.14.1
       image-size:
         specifier: ^1.0.0
         version: 1.2.1
@@ -534,6 +540,12 @@ importers:
       '@openlinker/shared':
         specifier: workspace:*
         version: link:../../shared
+      class-transformer:
+        specifier: 0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: 0.14.1
+        version: 0.14.1
       fast-xml-parser:
         specifier: ^4.3.5
         version: 4.5.3

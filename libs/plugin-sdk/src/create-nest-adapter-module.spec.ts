@@ -22,6 +22,8 @@ import {
   CONNECTION_TESTER_REGISTRY_TOKEN,
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
+  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
 } from '@openlinker/core/integrations';
 import {
@@ -53,6 +55,8 @@ describe('createNestAdapterModule', () => {
     connectionTesterRegistry: object;
     emailNormalizerRegistry: object;
     webhookProvisioningRegistry: object;
+    connectionConfigShapeValidatorRegistry: object;
+    connectionCredentialsShapeValidatorRegistry: object;
     retryClassifierRegistry: object;
     schedulerTaskRegistry: object;
   } {
@@ -64,6 +68,8 @@ describe('createNestAdapterModule', () => {
       connectionTesterRegistry: {},
       emailNormalizerRegistry: {},
       webhookProvisioningRegistry: {},
+      connectionConfigShapeValidatorRegistry: {},
+      connectionCredentialsShapeValidatorRegistry: {},
       retryClassifierRegistry: {},
       schedulerTaskRegistry: {},
     };
@@ -88,6 +94,14 @@ describe('createNestAdapterModule', () => {
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: registries.connectionTesterRegistry },
         { provide: EMAIL_NORMALIZER_REGISTRY_TOKEN, useValue: registries.emailNormalizerRegistry },
         { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: registries.webhookProvisioningRegistry },
+        {
+          provide: CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+          useValue: registries.connectionConfigShapeValidatorRegistry,
+        },
+        {
+          provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+          useValue: registries.connectionCredentialsShapeValidatorRegistry,
+        },
         { provide: RETRY_CLASSIFIER_REGISTRY_TOKEN, useValue: registries.retryClassifierRegistry },
         { provide: SCHEDULER_TASK_REGISTRY_TOKEN, useValue: registries.schedulerTaskRegistry },
         { provide: IDENTIFIER_MAPPING_PORT_TOKEN, useValue: stubIdentifierMapping },

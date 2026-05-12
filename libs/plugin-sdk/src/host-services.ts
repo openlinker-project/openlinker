@@ -38,6 +38,8 @@ import type {
   ConnectionTesterRegistryService,
   EmailNormalizerRegistryService,
   WebhookProvisioningRegistryService,
+  ConnectionConfigShapeValidatorRegistryService,
+  ConnectionCredentialsShapeValidatorRegistryService,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type {
@@ -98,4 +100,22 @@ export interface HostServices {
 
   /** Webhook-provisioning registry — adapter-installable webhook flows (#583). */
   readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService;
+
+  /**
+   * Per-plugin `Connection.config` shape-validator registry (#587). A plugin
+   * registers a `ConnectionConfigShapeValidatorPort` here at boot to enforce
+   * the typed shape of its `Connection.config` JSONB blob on create/update.
+   * Absence is a deliberate skip — plugins with no fixed config shape need
+   * not register one.
+   */
+  readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
+
+  /**
+   * Per-plugin credentials shape-validator registry (#586). A plugin
+   * registers a `ConnectionCredentialsShapeValidatorPort` here to validate
+   * the raw credentials payload's shape on create / rotation. Shape only —
+   * the "do these credentials actually authenticate" check is
+   * `ConnectionTesterPort` against the live API.
+   */
+  readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
 }
