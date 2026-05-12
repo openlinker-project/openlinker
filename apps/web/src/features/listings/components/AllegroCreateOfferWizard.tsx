@@ -406,9 +406,12 @@ export function AllegroCreateOfferWizard({
 
   // #632 — once the BE resolves a category for the picked variant's EAN,
   // pre-set the picker, but only when the operator has not already chosen
-  // one. The dirty-field guard preserves operator intent; the ref pins the
-  // auto-set to once per (connectionId, ean) so re-renders don't stomp a
-  // value the operator cleared back to the resolved one. Mirrors the
+  // one. The `currentCategoryId` check makes this safe even for paths that
+  // provide an initial value via RHF defaultValues (e.g., retry-with-snapshot)
+  // — RHF doesn't mark default-supplied values as dirty, so dirtyFields alone
+  // would let auto-fill stomp a snapshot. The ref pins the auto-set to once
+  // per (connectionId, ean) so re-renders don't re-fire after the operator
+  // cleared their override back to the resolved value. Mirrors the
   // `prefilledKeyRef` pattern used for parameter prefill above.
   useEffect(() => {
     const data = resolveCategoryQuery.data;
@@ -416,10 +419,17 @@ export function AllegroCreateOfferWizard({
     if (!currentConnectionId || !pickedVariantEan) return;
     const key = `${currentConnectionId}::${pickedVariantEan}`;
     if (resolvedCategoryKeyRef.current === key) return;
+    if (currentCategoryId) return;
     if (form.formState.dirtyFields.categoryId) return;
     resolvedCategoryKeyRef.current = key;
     form.setValue('categoryId', data.allegroCategoryId, { shouldDirty: false });
-  }, [resolveCategoryQuery.data, currentConnectionId, pickedVariantEan, form]);
+  }, [
+    resolveCategoryQuery.data,
+    currentConnectionId,
+    pickedVariantEan,
+    currentCategoryId,
+    form,
+  ]);
 
   // Hint render gating (#632): only attribute the resolved category when
   // (1) we got a resolution back, (2) it currently matches the picker, and
