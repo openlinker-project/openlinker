@@ -30,4 +30,19 @@ export const listingsQueryKeys = {
     ['listings', 'catalogProductMatch', connectionId, barcode, categoryId] as const,
   catalogProduct: (connectionId: string, productId: string) =>
     ['listings', 'catalogProduct', connectionId, productId] as const,
+  // #631 / #632 — EAN → Allegro category resolution. `sourceCategoryIds` is
+  // included in the key so a future caller plumbing source-category info
+  // doesn't share a cache entry with the wizard's barcode-only call.
+  resolveCategory: (
+    connectionId: string,
+    barcode: string | null,
+    sourceCategoryIds?: string[],
+  ) =>
+    [
+      'listings',
+      'resolveCategory',
+      connectionId,
+      barcode ?? '',
+      sourceCategoryIds ?? [],
+    ] as const,
 };

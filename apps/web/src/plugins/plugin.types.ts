@@ -17,8 +17,8 @@ import type { ComponentType } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
 import type { ApiRequest, PluginApiNamespaces } from '../app/api/api-client';
-import type { Connection } from '../features/connections/api/connections.types';
-import type { CreateOfferRequest } from '../features/listings/api/listings.types';
+import type { Connection } from '../features/connections';
+import type { CreateOfferRequest } from '../features/listings';
 
 /**
  * One nav-link contribution from a plugin. `groupLabel` is an open string:

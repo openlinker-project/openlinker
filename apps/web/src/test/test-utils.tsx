@@ -269,6 +269,13 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       getCatalogProduct: vi.fn().mockRejectedValue(
         new ApiError('Adapter does not support catalog product reading', 422, null),
       ),
+      // #632 — default to a no-match outcome so existing wizard tests that
+      // don't opt in behave as if the BE returned "manual / null". Tests that
+      // exercise the auto-prefill override this with the desired shape.
+      resolveCategory: vi.fn().mockResolvedValue({
+        allegroCategoryId: null,
+        method: 'manual',
+      }),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {

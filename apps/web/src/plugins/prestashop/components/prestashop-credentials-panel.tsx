@@ -13,8 +13,8 @@
  * @module plugins/prestashop/components
  */
 import { useState, type FormEvent, type ReactElement } from 'react';
-import type { Connection } from '../../../features/connections/api/connections.types';
-import { useUpdateConnectionCredentialsMutation } from '../../../features/connections/hooks/use-update-connection-credentials-mutation';
+import type { Connection } from '../../../features/connections';
+import { useUpdateConnectionCredentialsMutation } from '../../../features/connections';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';

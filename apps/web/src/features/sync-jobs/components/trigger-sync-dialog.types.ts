@@ -6,7 +6,7 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import type { CoreCapability, Connection } from '../../connections/api/connections.types';
+import type { CoreCapability, Connection } from '../../connections';
 
 export interface PayloadField {
   name: string;

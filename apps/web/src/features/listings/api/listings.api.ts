@@ -19,6 +19,8 @@ import type {
   OfferCreationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
+  ResolveCategoryRequest,
+  ResolveCategoryResponse,
   SellerPoliciesResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
@@ -62,6 +64,16 @@ export interface ListingsApi {
     request: FindProductsByBarcodeRequest,
   ) => Promise<CatalogProductMatchResult>;
   getCatalogProduct: (connectionId: string, productId: string) => Promise<CatalogProduct>;
+  /**
+   * Resolves an Allegro category from an EAN / source-category-id chain (#631).
+   * Runs the BE's 3-step fallback (auto-detect by barcode → configured
+   * mapping → manual) and returns the first hit. `method=manual` with
+   * `allegroCategoryId=null` is a normal outcome, not an error.
+   */
+  resolveCategory: (
+    connectionId: string,
+    body: ResolveCategoryRequest,
+  ) => Promise<ResolveCategoryResponse>;
 }
 
 interface ApiRequest {
@@ -138,6 +150,16 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getCatalogProduct(connectionId, productId): Promise<CatalogProduct> {
       return request<CatalogProduct>(
         `/listings/connections/${connectionId}/products/${encodeURIComponent(productId)}`,
+      );
+    },
+    resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
+      return request<ResolveCategoryResponse>(
+        `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
       );
     },
   };
