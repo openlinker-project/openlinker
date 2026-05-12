@@ -135,7 +135,7 @@ describe('ContentEditor', () => {
   });
 
   describe('publish failure surfaces (#486)', () => {
-    it('renders the structured AllegroErrorList when publish rejects with CHANNEL_PUBLISH_FAILED', async () => {
+    it('renders the structured error list when publish rejects with CHANNEL_PUBLISH_FAILED', async () => {
       const { ApiError } = await import('../../../shared/api/api-error');
       const stateWithPublishableMaster = makeState({
         master: {

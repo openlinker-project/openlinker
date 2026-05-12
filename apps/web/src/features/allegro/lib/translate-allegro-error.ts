@@ -1,5 +1,5 @@
 /**
- * Allegro Error Mapping
+ * Allegro Error Translator
  *
  * Translates a curated allowlist of Allegro REST API error codes into
  * operator-actionable, English-language messages (#448, extended for #486).
@@ -15,25 +15,19 @@
  * field for deep-linking to the connection-edit page without churning every
  * call site — see #448's deferred bullets and #486 §6 R1.
  *
- * Lives in `shared/lib/` so both the listings feature (`OfferCreationErrorList`)
- * and the new shared `AllegroErrorList` primitive can consume it without
- * violating the dependency direction (shared → features is forbidden).
+ * Marketplace-specific by definition; lives under `features/allegro/lib/`
+ * since #607 to keep `shared/` free of platform-named code. Consumed by
+ * passing it to `<StructuredErrorList translate={translateAllegroError} />`
+ * from any feature that surfaces Allegro errors.
  *
- * @module apps/web/src/shared/lib
+ * @module apps/web/src/features/allegro/lib
  */
+import type {
+  StructuredError,
+  StructuredErrorTranslation,
+} from '../../../shared/ui/structured-error-list';
 
-export interface AllegroLikeError {
-  field?: string;
-  code: string;
-  message: string;
-}
-
-export interface AllegroErrorTranslation {
-  /** Operator-facing replacement for `error.message`. */
-  message: string;
-}
-
-type Translator = (error: AllegroLikeError) => AllegroErrorTranslation;
+type Translator = (error: StructuredError) => StructuredErrorTranslation;
 
 /**
  * Allowlist of Allegro error codes we translate. Each entry is a function so
@@ -76,8 +70,8 @@ const TRANSLATIONS: Record<string, Translator> = {
 };
 
 export function translateAllegroError(
-  error: AllegroLikeError,
-): AllegroErrorTranslation | null {
+  error: StructuredError,
+): StructuredErrorTranslation | null {
   // `Object.hasOwn` rather than a bare lookup so we can't accidentally
   // resolve to an inherited prototype method (e.g. `error.code === 'toString'`)
   // and call it with `(error)` — extremely unlikely from Allegro in practice,

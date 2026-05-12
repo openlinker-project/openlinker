@@ -55,7 +55,7 @@ describe('OfferCreationErrorList', () => {
     ];
     render(<OfferCreationErrorList errors={errors} />);
 
-    const list = screen.getByRole('list', { name: /allegro errors/i });
+    const list = screen.getByRole('list', { name: /^errors$/i });
     expect(list.querySelectorAll('li')).toHaveLength(2);
   });
 
@@ -76,7 +76,7 @@ describe('OfferCreationErrorList', () => {
       // Code badge remains visible for grep / debugging.
       expect(screen.getByText('SAFETY_INFO_NOT_DEFINED')).toBeInTheDocument();
       // Raw message is rendered inside a <details>, collapsed by default.
-      const details = screen.getByText(/Allegro's original message/i).closest('details');
+      const details = screen.getByText(/^original message$/i).closest('details');
       expect(details).not.toBeNull();
       expect(details).not.toHaveAttribute('open');
       expect(
@@ -92,8 +92,8 @@ describe('OfferCreationErrorList', () => {
 
       // Allegro's raw message is the only message rendered.
       expect(screen.getByText('EAN is required.')).toBeInTheDocument();
-      // No <details> block means no "Allegro's original message" summary.
-      expect(screen.queryByText(/Allegro's original message/i)).toBeNull();
+      // No <details> block means no "Original message" summary.
+      expect(screen.queryByText(/^original message$/i)).toBeNull();
     });
   });
 });

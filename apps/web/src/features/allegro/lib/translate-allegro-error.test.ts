@@ -1,5 +1,5 @@
 /**
- * Allegro Error Mapping Tests
+ * Allegro Error Translator Tests
  *
  * Coverage per #448 acceptance: one assertion per mapped code, two for
  * `UnknownJSONProperty` (with and without `error.field`), one for the
@@ -7,10 +7,11 @@
  * `ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany`
  * code that surfaced on content publish.
  *
- * @module apps/web/src/shared/lib
+ * @module apps/web/src/features/allegro/lib
  */
 import { describe, expect, it } from 'vitest';
-import { translateAllegroError, type AllegroLikeError } from './allegro-error-mapping';
+import { translateAllegroError } from './translate-allegro-error';
+import type { StructuredError } from '../../../shared/ui/structured-error-list';
 
 describe('translateAllegroError', () => {
   it.each([
@@ -51,7 +52,7 @@ describe('translateAllegroError', () => {
   });
 
   it('returns null for codes that are not in the allowlist', () => {
-    const error: AllegroLikeError = {
+    const error: StructuredError = {
       code: 'SOME_NEW_ALLEGRO_CODE_WE_HAVE_NOT_SEEN_YET',
       message: 'Whatever Allegro said.',
     };
