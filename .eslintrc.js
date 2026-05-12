@@ -72,6 +72,32 @@ module.exports = {
                 group: ['**/features/**', '**/pages/**', '**/app/**', '**/plugins/**'],
                 message: 'Shared modules must not import feature, page, app, or plugin modules.',
               },
+              {
+                // #607: shared/ must stay domain-agnostic — no marketplace-named
+                // imports. Pairs with the `**/features/**` rule above:
+                //   - `features/**` catches the cross-layer case
+                //     (shared/ importing from features/{platform}/).
+                //   - this rule catches the intra-shared case (someone
+                //     reintroducing a `shared/lib/allegro-error-mapping.ts`
+                //     and importing it from another shared/ file).
+                //
+                // The globs DO also match npm packages with these tokens in
+                // their names (e.g. a hypothetical `@shopify/polaris` import).
+                // That's deliberate: any marketplace-shaped behaviour belongs
+                // in `features/{platform}/`, not in `shared/`. If a legitimate
+                // npm-package import ever needs to land here, the rule should
+                // be revisited rather than disabled per-line — domain
+                // agnosticism is the whole point of `shared/`.
+                group: [
+                  '**/*allegro*',
+                  '**/*prestashop*',
+                  '**/*shopify*',
+                  '**/*ebay*',
+                  '**/*amazon*',
+                ],
+                message:
+                  'shared/ must stay domain-agnostic — no marketplace-named imports. Move the marketplace bit into features/{platform}/ and pass it into the shared primitive as a prop or callback (#607).',
+              },
             ],
           },
         ],
@@ -373,7 +399,9 @@ module.exports = {
       // types via the top-level package barrel — never deep sub-paths — so
       // plugin authors can model their imports on the contract without
       // copying brittle internal paths. Importing from an integration
-      // package at all would invert the dependency direction (#592).
+      // package at all would invert the dependency direction (#592). ORM
+      // entities are infrastructure detail and must never leak into a port
+      // file (#594).
       files: ['libs/core/src/**/domain/ports/**/*.{port,capability,types}.ts'],
       rules: {
         'no-restricted-imports': [
@@ -385,10 +413,11 @@ module.exports = {
                   '@openlinker/core/*/domain/**',
                   '@openlinker/core/*/application/**',
                   '@openlinker/core/*/infrastructure/**',
+                  '@openlinker/core/*/orm-entities',
                   '@openlinker/integrations-*/**',
                 ],
                 message:
-                  "Port and capability files must import cross-context types via the top-level package barrel — e.g. `import { Connection } from '@openlinker/core/identifier-mapping'` — never via deep sub-paths. Ports are the contract surface plugin authors implement; deep-path imports leak unstable internals, and integration-package imports invert the dependency direction.",
+                  "Port and capability files must import cross-context types via the top-level package barrel — e.g. `import { Connection } from '@openlinker/core/identifier-mapping'` — never via deep sub-paths. ORM-entity sub-barrels (`@openlinker/core/*/orm-entities`) are host-only — they must not appear on a port's import list so the contract surface stays framework-neutral (#594). Integration-package imports invert the dependency direction.",
               },
             ],
           },
@@ -399,8 +428,11 @@ module.exports = {
       // Plugin contract surface: integration packages must consume only the
       // top-level `@openlinker/core/<context>` barrels. Deep-path imports
       // leak unstable internals and break when core refactors its layout
-      // (see #591). The package.json wildcards were dropped — deep aliases
-      // now fail at Node runtime; this rule catches them at lint time.
+      // (see #591). ORM-entity sub-barrels (`@openlinker/core/*/orm-entities`)
+      // are host-only — plugins must never consume them or they'd be
+      // coupled to TypeORM (#594). The package.json wildcards were dropped
+      // — deep aliases now fail at Node runtime; this rule catches them at
+      // lint time.
       files: ['libs/integrations/**/*.ts'],
       rules: {
         'no-restricted-imports': [
@@ -412,9 +444,10 @@ module.exports = {
                   '@openlinker/core/*/domain/**',
                   '@openlinker/core/*/application/**',
                   '@openlinker/core/*/infrastructure/**',
+                  '@openlinker/core/*/orm-entities',
                 ],
                 message:
-                  'Integration packages must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. Deep imports leak unstable internals; when core refactors, plugins break. See #591.',
+                  'Integration packages must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths or ORM-entity sub-barrels. Deep imports leak unstable internals; ORM-entity imports couple the plugin to TypeORM. See #591 and #594.',
               },
             ],
           },

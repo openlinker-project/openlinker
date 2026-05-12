@@ -11,7 +11,7 @@ import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestH
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
 describe('Order Destination Retry Integration', () => {
   let harness: IntegrationTestHarness;

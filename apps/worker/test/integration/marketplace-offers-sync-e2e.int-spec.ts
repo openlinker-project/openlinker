@@ -14,8 +14,8 @@ import { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN, SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products';
-import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';
+import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 

@@ -23,7 +23,6 @@ export * from './application/services/identifier-mapping.service';
 export * from './identifier-mapping.tokens';
 export * from './identifier-mapping.module';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { IdentifierMappingOrmEntity } from './infrastructure/persistence/entities/identifier-mapping.orm-entity';
-export { ConnectionOrmEntity } from './infrastructure/persistence/entities/connection.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/identifier-mapping/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
 

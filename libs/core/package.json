@@ -17,10 +17,20 @@
       "require": "./dist/integrations/index.js",
       "default": "./dist/integrations/index.js"
     },
+    "./integrations/orm-entities": {
+      "types": "./dist/integrations/orm-entities.d.ts",
+      "require": "./dist/integrations/orm-entities.js",
+      "default": "./dist/integrations/orm-entities.js"
+    },
     "./identifier-mapping": {
       "types": "./dist/identifier-mapping/index.d.ts",
       "require": "./dist/identifier-mapping/index.js",
       "default": "./dist/identifier-mapping/index.js"
+    },
+    "./identifier-mapping/orm-entities": {
+      "types": "./dist/identifier-mapping/orm-entities.d.ts",
+      "require": "./dist/identifier-mapping/orm-entities.js",
+      "default": "./dist/identifier-mapping/orm-entities.js"
     },
     "./mappings": {
       "types": "./dist/mappings/index.d.ts",
@@ -32,15 +42,30 @@
       "require": "./dist/orders/index.js",
       "default": "./dist/orders/index.js"
     },
+    "./orders/orm-entities": {
+      "types": "./dist/orders/orm-entities.d.ts",
+      "require": "./dist/orders/orm-entities.js",
+      "default": "./dist/orders/orm-entities.js"
+    },
     "./products": {
       "types": "./dist/products/index.d.ts",
       "require": "./dist/products/index.js",
       "default": "./dist/products/index.js"
     },
+    "./products/orm-entities": {
+      "types": "./dist/products/orm-entities.d.ts",
+      "require": "./dist/products/orm-entities.js",
+      "default": "./dist/products/orm-entities.js"
+    },
     "./inventory": {
       "types": "./dist/inventory/index.d.ts",
       "require": "./dist/inventory/index.js",
       "default": "./dist/inventory/index.js"
+    },
+    "./inventory/orm-entities": {
+      "types": "./dist/inventory/orm-entities.d.ts",
+      "require": "./dist/inventory/orm-entities.js",
+      "default": "./dist/inventory/orm-entities.js"
     },
     "./events": {
       "types": "./dist/events/index.d.ts",
@@ -51,6 +76,11 @@
       "types": "./dist/sync/index.d.ts",
       "require": "./dist/sync/index.js",
       "default": "./dist/sync/index.js"
+    },
+    "./sync/orm-entities": {
+      "types": "./dist/sync/orm-entities.d.ts",
+      "require": "./dist/sync/orm-entities.js",
+      "default": "./dist/sync/orm-entities.js"
     },
     "./listings": {
       "types": "./dist/listings/index.d.ts",
@@ -86,6 +116,11 @@
       "types": "./dist/content/index.d.ts",
       "require": "./dist/content/index.js",
       "default": "./dist/content/index.js"
+    },
+    "./content/orm-entities": {
+      "types": "./dist/content/orm-entities.d.ts",
+      "require": "./dist/content/orm-entities.js",
+      "default": "./dist/content/orm-entities.js"
     }
   },
   "files": ["dist"],

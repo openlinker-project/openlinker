@@ -51,8 +51,8 @@ export { CredentialNotFoundException } from './domain/exceptions/credential-not-
 export { DuplicateAdapterKeyException } from './domain/exceptions/duplicate-adapter-key.exception';
 export { DuplicatePlatformDefaultException } from './domain/exceptions/duplicate-platform-default.exception';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { IntegrationCredentialOrmEntity } from './infrastructure/persistence/entities/integration-credential.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/integrations/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
 
 // Webhook secret
 export { WebhookSecretService } from './application/services/webhook-secret.service';

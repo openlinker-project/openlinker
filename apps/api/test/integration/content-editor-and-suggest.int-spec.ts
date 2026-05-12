@@ -21,7 +21,7 @@
  * @module apps/api/test/integration
  */
 import { DataSource } from 'typeorm';
-import { ProductOrmEntity } from '@openlinker/core/products';
+import { ProductOrmEntity } from '@openlinker/core/products/orm-entities';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';

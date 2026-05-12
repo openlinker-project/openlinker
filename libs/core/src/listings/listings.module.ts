@@ -8,7 +8,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
-import { IdentifierMappingModule, IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';

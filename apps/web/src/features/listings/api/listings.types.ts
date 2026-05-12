@@ -315,3 +315,47 @@ export interface CategoryParameter {
 export interface CategoryParametersListResponse {
   parameters: CategoryParameter[];
 }
+
+/**
+ * Request body for `POST /listings/connections/:connectionId/categories/resolve`
+ * (#631). Mirrors the BE `ResolveCategoryRequestDto`. Fields stay camelCase to
+ * preserve the BE contract (per `frontend-architecture.md`).
+ */
+export interface ResolveCategoryRequest {
+  /** EAN/GTIN barcode for auto-detect (step 1). Omit to skip auto-detect. */
+  barcode?: string | null;
+  /**
+   * Source-platform category IDs (deepest-first) for the mapping fallback.
+   * Not used by the wizard today — kept on the type so the FE can grow into
+   * it without a second migration when source-category info becomes available.
+   */
+  sourceCategoryIds?: string[];
+}
+
+/**
+ * Mirrors the BE `CategoryResolutionMethodValues` shipped from
+ * `@openlinker/core/listings/application/types/category-resolution.types.ts`.
+ * Duplicated FE-side per #591 — apps/web is a browser bundle and the
+ * established FE convention is local types under each feature's `api/`
+ * folder (see `CategoryParameter` above). If the BE grows a 4th method, TS
+ * narrowing on the response fails-fast at the wizard's
+ * `resolvedCategoryHint(...)` and both sides need a one-line edit in lockstep.
+ */
+export const CategoryResolutionMethodValues = [
+  'auto_detect',
+  'category_mapping',
+  'manual',
+] as const;
+
+export type CategoryResolutionMethod = (typeof CategoryResolutionMethodValues)[number];
+
+/**
+ * Response from `POST /listings/connections/:connectionId/categories/resolve`
+ * (#631). Mirrors the BE `ResolveCategoryResponseDto`.
+ */
+export interface ResolveCategoryResponse {
+  /** Resolved marketplace category ID, or null if manual pick is needed. */
+  allegroCategoryId: string | null;
+  /** Which step of the 3-step fallback produced the result. */
+  method: CategoryResolutionMethod;
+}

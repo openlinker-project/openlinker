@@ -104,9 +104,10 @@ export {
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from './sync.tokens';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
-export { ConnectionCursorOrmEntity } from './infrastructure/persistence/entities/connection-cursor.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/sync/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
+// `ConnectionCursorOrmEntity` has no external consumer and is intentionally not
+// promoted to the sub-barrel — add it if/when a test fixture needs it.
 
 
 

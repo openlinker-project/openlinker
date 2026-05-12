@@ -3,7 +3,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
@@ -1067,6 +1067,186 @@ describe('AllegroCreateOfferWizard', () => {
         screen.queryByRole('button', { name: /suggest with ai/i }),
       ).not.toBeInTheDocument();
       expect(screen.getByText(/picked variant/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Step 2 category auto-prefill (#632)', () => {
+    // Two-leaf tree used by the user-override test below; reused for the
+    // single-leaf scenarios to keep the auto-fill target stable across cases.
+    const resolvedLeaf = {
+      id: 'cat-42',
+      name: 'Resolved leaf',
+      parentId: null,
+      leaf: true,
+    } as const;
+    const otherLeaf = {
+      id: 'cat-99',
+      name: 'Other leaf',
+      parentId: null,
+      leaf: true,
+    } as const;
+
+    it('auto_detect resolution pre-selects the picker and renders an EAN hint', async () => {
+      const mockApi = defaultMocks({
+        mappings: {
+          getAllegroCategories: vi.fn().mockResolvedValue([resolvedLeaf]),
+        },
+        listings: {
+          resolveCategory: vi.fn().mockResolvedValue({
+            allegroCategoryId: 'cat-42',
+            method: 'auto_detect',
+          }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+
+      // Picker exposes the auto-selected leaf via the "Selected" button —
+      // same affordance the existing `pickFirstLeafCategory()` helper waits
+      // on after a manual click.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+      );
+      // Hint copy includes the picked variant's EAN; the regex match keeps
+      // the assertion resilient to trailing punctuation changes.
+      expect(
+        screen.getByText(/Matched from EAN 5901234567890/i),
+      ).toBeInTheDocument();
+      // Sanity check: the BE was called with the variant's EAN and no
+      // sourceCategoryIds (the wizard doesn't plumb them today).
+      expect(mockApi.listings.resolveCategory).toHaveBeenCalledWith(
+        allegroConnection.id,
+        { barcode: '5901234567890', sourceCategoryIds: undefined },
+      );
+    });
+
+    it('category_mapping resolution renders the mapping-attribution hint copy', async () => {
+      const mockApi = defaultMocks({
+        mappings: {
+          getAllegroCategories: vi
+            .fn()
+            .mockResolvedValue([{ ...resolvedLeaf, id: 'cat-7', name: 'Mapped leaf' }]),
+        },
+        listings: {
+          resolveCategory: vi.fn().mockResolvedValue({
+            allegroCategoryId: 'cat-7',
+            method: 'category_mapping',
+          }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+      );
+      // category_mapping copy must NOT mention the EAN — the attribution is
+      // the configured mapping, not the barcode.
+      expect(
+        screen.getByText(/Matched from configured category mapping/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Matched from EAN/i)).not.toBeInTheDocument();
+    });
+
+    it('manual outcome leaves the picker empty and renders no hint', async () => {
+      // Uses the test-utils default (resolveCategory → null/manual). The
+      // picker stays at its empty value; no "Matched from" copy renders.
+      const mockApi = defaultMocks();
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+
+      // Browser is up and the single leaf row's button still reads "Select"
+      // (i.e., nothing was auto-selected).
+      await screen.findByRole('button', { name: /^select$/i });
+      expect(
+        screen.queryByRole('button', { name: /^selected$/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Matched from/i)).not.toBeInTheDocument();
+    });
+
+    it('respects an operator override — no re-prefill, hint hidden', async () => {
+      const mockApi = defaultMocks({
+        mappings: {
+          getAllegroCategories: vi.fn().mockResolvedValue([resolvedLeaf, otherLeaf]),
+        },
+        listings: {
+          resolveCategory: vi.fn().mockResolvedValue({
+            allegroCategoryId: 'cat-42',
+            method: 'auto_detect',
+          }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+
+      // Wait for the auto-prefill to land (cat-42 becomes "Selected").
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+      );
+      expect(screen.getByText(/Matched from EAN/i)).toBeInTheDocument();
+
+      // Now the operator picks the OTHER leaf. `<li>` rows have no accessible
+      // name attribute — locate each row by its visible name text, then walk
+      // up to the `<li>` ancestor so within() can scope the button query.
+      const otherRow = (await screen.findByText('Other leaf')).closest('li');
+      if (!otherRow) throw new Error('Other leaf <li> not found');
+      const otherSelect = within(otherRow as HTMLElement).getByRole('button', {
+        name: /^select$/i,
+      });
+      fireEvent.click(otherSelect);
+
+      // After the override: cat-99 is selected, cat-42 reverts to "Select",
+      // and the hint disappears because data.allegroCategoryId no longer
+      // matches the form value.
+      await waitFor(() => {
+        const otherRowAfter = screen.getByText('Other leaf').closest('li');
+        if (!otherRowAfter) throw new Error('Other leaf <li> not found');
+        expect(
+          within(otherRowAfter as HTMLElement).getByRole('button', { name: /^selected$/i }),
+        ).toBeInTheDocument();
+      });
+      const resolvedRow = screen.getByText('Resolved leaf').closest('li');
+      if (!resolvedRow) throw new Error('Resolved leaf <li> not found');
+      expect(
+        within(resolvedRow as HTMLElement).getByRole('button', { name: /^select$/i }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Matched from/i)).not.toBeInTheDocument();
     });
   });
 });

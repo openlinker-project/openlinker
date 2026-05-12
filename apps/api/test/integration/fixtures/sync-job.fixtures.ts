@@ -6,7 +6,7 @@
  * @module apps/api/test/integration/fixtures
  */
 import { DataSource } from 'typeorm';
-import { SyncJobOrmEntity } from '@openlinker/core/sync';
+import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 
 /**
  * Seed a sync job row directly in the database.

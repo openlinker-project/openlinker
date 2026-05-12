@@ -28,5 +28,5 @@ export * from './application/types/content-suggestion.types';
 export * from './content.tokens';
 export { ContentModule } from './content.module';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { ProductContentFieldOrmEntity } from './infrastructure/persistence/entities/product-content-field.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/content/orm-entities`
+// sub-path (#594). Plugins must not import them from here.

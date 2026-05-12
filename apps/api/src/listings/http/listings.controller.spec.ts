@@ -8,9 +8,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import type { CategoryParameter, OfferManagerPort, SellerPolicies } from '@openlinker/core/listings';
 import { CategoryNotFoundException } from '@openlinker/core/listings';
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
-import { OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, OfferCreationRecord, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
-import type { IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import { ConnectionNotFoundException, IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import { CATEGORY_RESOLUTION_SERVICE_TOKEN, OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, OfferCreationRecord, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
+import type { ICategoryResolutionService, IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
@@ -29,6 +29,7 @@ describe('ListingsController', () => {
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
+  let categoryResolution: jest.Mocked<ICategoryResolutionService>;
 
   const mockMapping = new IdentifierMapping(
     'uuid-1',
@@ -89,6 +90,9 @@ describe('ListingsController', () => {
       upsertMany: jest.fn(),
       findMany: jest.fn(),
     };
+    categoryResolution = {
+      resolveCategory: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -100,6 +104,7 @@ describe('ListingsController', () => {
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
+        { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
       ],
     }).compile();
 
@@ -619,6 +624,84 @@ describe('ListingsController', () => {
       await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toThrow(
         'upstream-503',
       );
+    });
+  });
+
+  describe('resolveCategory (#631)', () => {
+    // Opaque adapter — the integration-service mock returns it just to satisfy
+    // the pre-flight connection-validity check; the resolveCategory service
+    // is fully mocked, so the adapter's actual surface doesn't matter here.
+    const opaqueAdapter = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+
+    it('returns method=auto_detect when the barcode resolves', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
+      categoryResolution.resolveCategory.mockResolvedValue({
+        allegroCategoryId: '257933',
+        method: 'auto_detect',
+      });
+
+      const result = await controller.resolveCategory('conn-1', {
+        barcode: '5901234567890',
+      });
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        barcode: '5901234567890',
+        sourceCategoryIds: undefined,
+      });
+      expect(result).toEqual({ allegroCategoryId: '257933', method: 'auto_detect' });
+    });
+
+    it('returns method=category_mapping when sourceCategoryIds resolve', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
+      categoryResolution.resolveCategory.mockResolvedValue({
+        allegroCategoryId: '12345',
+        method: 'category_mapping',
+      });
+
+      const result = await controller.resolveCategory('conn-1', {
+        sourceCategoryIds: ['ps-cat-99', 'ps-cat-7'],
+      });
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        barcode: null,
+        sourceCategoryIds: ['ps-cat-99', 'ps-cat-7'],
+      });
+      expect(result).toEqual({ allegroCategoryId: '12345', method: 'category_mapping' });
+    });
+
+    it('returns method=manual with null allegroCategoryId when nothing resolves', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
+      categoryResolution.resolveCategory.mockResolvedValue({
+        allegroCategoryId: null,
+        method: 'manual',
+      });
+
+      const result = await controller.resolveCategory('conn-1', {});
+
+      // `manual` is a normal outcome — the controller surfaces it as a 200
+      // response (decorator-level @HttpCode is implicit) with the null id.
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(result).toEqual({ allegroCategoryId: null, method: 'manual' });
+    });
+
+    it('propagates ConnectionNotFoundException from the pre-flight without calling resolveCategory', async () => {
+      // The domain exception the integrations service actually throws; the
+      // global filter maps it to a 404. The pre-flight is the value-add of
+      // this controller — without it, an unknown connection would silently
+      // fall through to method=manual inside the service.
+      integrationsService.getCapabilityAdapter.mockRejectedValue(
+        new ConnectionNotFoundException('conn-missing'),
+      );
+
+      await expect(
+        controller.resolveCategory('conn-missing', { barcode: '5901234567890' }),
+      ).rejects.toBeInstanceOf(ConnectionNotFoundException);
+
+      expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
     });
   });
 });

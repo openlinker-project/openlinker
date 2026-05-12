@@ -54,6 +54,7 @@ import type { Product, ProductVariant } from '../../products';
 import { useCreateOfferMutation } from '../hooks/use-create-offer-mutation';
 import { useSellerPoliciesQuery } from '../hooks/use-seller-policies-query';
 import { useCategoryParametersQuery } from '../hooks/use-category-parameters-query';
+import { useResolveCategoryQuery } from '../hooks/use-resolve-category-query';
 import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
 import { autoPrefillParameters } from './auto-prefill-parameters';
@@ -63,7 +64,11 @@ import {
   serializeAllegroParameters,
 } from './serialize-allegro-parameters';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
-import type { CategoryParameter, CreateOfferRequest } from '../api/listings.types';
+import type {
+  CategoryParameter,
+  CategoryResolutionMethod,
+  CreateOfferRequest,
+} from '../api/listings.types';
 import {
   CREATE_OFFER_DEFAULT_VALUES,
   createOfferFieldsSchema,
@@ -91,6 +96,19 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<CreateOfferFieldsValues>>> =
   ['deliveryPolicyId'],
   [],
 ];
+
+// #632 — attribution copy for the Step 2 category auto-prefill hint.
+// `manual` is intentionally unhandled — when the BE returns method=manual
+// (no auto-detect hit and no mapping configured) there's nothing to
+// attribute, so the hint doesn't render.
+function resolvedCategoryHint(
+  method: CategoryResolutionMethod,
+  ean: string | null,
+): string | null {
+  if (method === 'auto_detect' && ean) return `Matched from EAN ${ean}.`;
+  if (method === 'category_mapping') return `Matched from configured category mapping.`;
+  return null;
+}
 
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
 const VARIANT_PICKER_PAGE_SIZE = 10;
@@ -326,6 +344,17 @@ export function AllegroCreateOfferWizard({
     currentConnectionId || undefined,
     currentCategoryId || undefined,
   );
+
+  // Step 2 (#632) — resolve an Allegro category from the picked variant's
+  // EAN via the BE's 3-step fallback (auto-detect → mapping → manual). The
+  // useEffect below auto-fills the picker the first time the resolver returns
+  // a hit for a (connectionId, ean) pair, but only if the operator hasn't
+  // already picked a category.
+  const resolveCategoryQuery = useResolveCategoryQuery(
+    currentConnectionId || undefined,
+    pickedVariantEan,
+  );
+  const resolvedCategoryKeyRef = useRef<string>('');
   const categoryParameters = useMemo(
     () => categoryParametersQuery.data ?? [],
     [categoryParametersQuery.data],
@@ -374,6 +403,46 @@ export function AllegroCreateOfferWizard({
     pickedVariantEan,
     form,
   ]);
+
+  // #632 — once the BE resolves a category for the picked variant's EAN,
+  // pre-set the picker, but only when the operator has not already chosen
+  // one. The `currentCategoryId` check makes this safe even for paths that
+  // provide an initial value via RHF defaultValues (e.g., retry-with-snapshot)
+  // — RHF doesn't mark default-supplied values as dirty, so dirtyFields alone
+  // would let auto-fill stomp a snapshot. The ref pins the auto-set to once
+  // per (connectionId, ean) so re-renders don't re-fire after the operator
+  // cleared their override back to the resolved value. Mirrors the
+  // `prefilledKeyRef` pattern used for parameter prefill above.
+  useEffect(() => {
+    const data = resolveCategoryQuery.data;
+    if (!data || data.allegroCategoryId === null) return;
+    if (!currentConnectionId || !pickedVariantEan) return;
+    const key = `${currentConnectionId}::${pickedVariantEan}`;
+    if (resolvedCategoryKeyRef.current === key) return;
+    if (currentCategoryId) return;
+    if (form.formState.dirtyFields.categoryId) return;
+    resolvedCategoryKeyRef.current = key;
+    form.setValue('categoryId', data.allegroCategoryId, { shouldDirty: false });
+  }, [
+    resolveCategoryQuery.data,
+    currentConnectionId,
+    pickedVariantEan,
+    currentCategoryId,
+    form,
+  ]);
+
+  // Hint render gating (#632): only attribute the resolved category when
+  // (1) we got a resolution back, (2) it currently matches the picker, and
+  // (3) the method has a copy to attribute (`manual` doesn't). Computed
+  // up-front instead of as an IIFE inside JSX so the picker block reads
+  // cleanly.
+  const resolveData = resolveCategoryQuery.data;
+  const resolvedCategoryHintCopy =
+    resolveData &&
+    resolveData.allegroCategoryId !== null &&
+    resolveData.allegroCategoryId === currentCategoryId
+      ? resolvedCategoryHint(resolveData.method, pickedVariantEan)
+      : null;
 
   // Clear the parameters slice whenever the chosen category changes — the
   // shape is category-specific so prior values would never be valid under a
@@ -771,6 +840,14 @@ export function AllegroCreateOfferWizard({
                 <p id="categoryId-description" className="form-field__description">
                   Browse the Allegro tree and pick a leaf category.
                 </p>
+                {resolvedCategoryHintCopy ? (
+                  <p
+                    className="form-field__description form-field__description--match"
+                    aria-live="polite"
+                  >
+                    {resolvedCategoryHintCopy}
+                  </p>
+                ) : null}
                 {form.formState.errors.categoryId?.message ? (
                   <p id="categoryId-error" className="form-field__error" role="alert">
                     {form.formState.errors.categoryId.message}

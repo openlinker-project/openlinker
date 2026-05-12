@@ -259,6 +259,13 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       // #410 — default to "no parameters" so the wizard's category step
       // renders the friendly empty state in tests that don't override.
       getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
+      // #632 — default to a no-match outcome so existing wizard tests that
+      // don't opt in behave as if the BE returned "manual / null". Tests that
+      // exercise the auto-prefill override this with the desired shape.
+      resolveCategory: vi.fn().mockResolvedValue({
+        allegroCategoryId: null,
+        method: 'manual',
+      }),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {
