@@ -30,6 +30,7 @@ import { randomUUID } from 'crypto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   CategoryNotFoundException,
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
   isCategoryParametersReader,
   isOfferReader,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -39,6 +40,7 @@ import {
 } from '@openlinker/core/listings';
 import type {
   CategoryParameter,
+  ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
   OfferCreationRecord,
@@ -68,6 +70,10 @@ import {
   CategoryParametersListResponseDto,
   CategoryParameterResponseDto,
 } from './dto/category-parameter-response.dto';
+import {
+  ResolveCategoryRequestDto,
+  ResolveCategoryResponseDto,
+} from './dto/resolve-category.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -89,6 +95,8 @@ export class ListingsController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
+    @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
+    private readonly categoryResolution: ICategoryResolutionService,
   ) {}
 
   @Get()
@@ -399,6 +407,54 @@ export class ListingsController {
     }
 
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
+  }
+
+  @Post('connections/:connectionId/categories/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Resolve marketplace category (EAN auto-match + mapping fallback) (#631)',
+    description:
+      'Runs the 3-step category-resolution chain — auto-detect by barcode → configured ' +
+      'source→marketplace mapping → manual — and returns the first hit. Mirrors the in-process ' +
+      'flow already used by OfferCreationExecutionService. Returns method=manual with ' +
+      'allegroCategoryId=null when nothing resolves (200, not 404 — manual is a normal outcome).',
+  })
+  @ApiResponse({ status: 200, description: 'Resolution result.', type: ResolveCategoryResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Connection does not support OfferManager.',
+  })
+  async resolveCategory(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: ResolveCategoryRequestDto,
+  ): Promise<ResolveCategoryResponseDto> {
+    // Validate the connection is a real, active marketplace before delegating.
+    // The `OfferManager` capability is the "is this a marketplace connection"
+    // gate — not a hard runtime requirement of the resolution algorithm. Step-2
+    // (category mapping) doesn't actually need an adapter (`mappingConfig` is a
+    // pure DB lookup); the pre-flight is here so unknown/disabled connections
+    // surface as 404/409 instead of silently falling through to `method=manual`
+    // inside the service. Matches the `categories/:categoryId/parameters` route.
+    // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
+    // CapabilityNotSupportedException (422).
+    await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager',
+    );
+
+    const result = await this.categoryResolution.resolveCategory({
+      connectionId,
+      barcode: dto.barcode ?? null,
+      sourceCategoryIds: dto.sourceCategoryIds,
+    });
+
+    return {
+      allegroCategoryId: result.allegroCategoryId,
+      method: result.method,
+    };
   }
 
   private toCategoryParameterResponseDto(p: CategoryParameter): CategoryParameterResponseDto {
