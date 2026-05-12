@@ -59,7 +59,11 @@ import { useCatalogProductQuery } from '../hooks/use-catalog-product-query';
 import { useResolveCategoryQuery } from '../hooks/use-resolve-category-query';
 import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
-import { autoPrefillParameters, prefillFromCatalogProduct } from './auto-prefill-parameters';
+import {
+  autoPrefillParameters,
+  collectUnmatchedBrandHints,
+  prefillFromCatalogProduct,
+} from './auto-prefill-parameters';
 import { CatalogProductMatchPanel } from './catalog-product-match-panel';
 import type { CatalogProduct } from '../api/listings.types';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
@@ -266,6 +270,19 @@ export function AllegroCreateOfferWizard({
   // parameter auto-prefill so EAN/GTIN-class fields populate from the
   // variant's barcode without needing the variant detail re-fetched.
   const [pickedVariantEan, setPickedVariantEan] = useState<string | null>(null);
+  // Brand value from the picked variant's free-form attributes bag
+  // (`variant.attributes?.['brand']`). Fed to the Step 3 parameter
+  // auto-prefill — exact case-insensitive match against the Marka
+  // dictionary, hint emitted when no match. Today's PrestaShop adapter
+  // does NOT populate `attributes.brand`; this is a no-op until a BE
+  // follow-up writes the key (#412 — FE-only).
+  const [pickedVariantBrand, setPickedVariantBrand] = useState<string | null>(null);
+  // Manufacturer code / MPN from the picked variant's attributes bag
+  // (`variant.attributes?.['manufacturerCode']`). Deliberately a separate
+  // attribute from SKU: SKU is the shop's internal stock keyring, MPN is
+  // the manufacturer's part number; conflating them silently breaks offers
+  // where the two diverge (#412).
+  const [pickedVariantManufacturerCode, setPickedVariantManufacturerCode] = useState<string | null>(null);
   // Product id of the variant the operator picked in Step 1. Captured here
   // (not derived from `selectedProductId`, which tracks the *expanded* card
   // and goes null on collapse-after-pick and on retry-with-initialValues)
@@ -278,6 +295,12 @@ export function AllegroCreateOfferWizard({
   // exclude any field the operator has dirtied (so the hint disappears once
   // they edit the value).
   const [prefilledIds, setPrefilledIds] = useState<ReadonlySet<string>>(new Set());
+  // Map of parameter id → soft hint message produced by
+  // `collectUnmatchedBrandHints` (#412). Today the only producer is the
+  // brand-mismatch path — generic-shaped for future fill-attempt
+  // diagnostics. Dirty-stripped per-field by the step component, same
+  // lifecycle as `prefilledIds`.
+  const [extraHints, setExtraHints] = useState<Record<string, string>>({});
   // #423 — surfaces MissingCategoryParameterSectionError thrown by the
   // serializer when a stale TanStack Query cache returns a CategoryParameter
   // without `section`. Stores the offending parameter's name for the alert
@@ -364,34 +387,55 @@ export function AllegroCreateOfferWizard({
     [categoryParametersQuery.data],
   );
 
-  // Auto-prefill EAN/Stan when the parameter schema first arrives for the
-  // current (connectionId, categoryId) pair. Re-runs only when the pair
-  // changes — values the operator has already typed are preserved.
+  // Auto-prefill EAN/Stan/brand/MPN when the parameter schema first arrives
+  // for the current (connectionId, categoryId, internalVariantId) triple.
+  // Re-runs when the triple changes — variant swap on the same category
+  // refills with the new variant's data (#412). RHF dirty state is the
+  // source of truth for "operator-edited": prefills write with
+  // `shouldDirty: false`, so a dirty entry means an operator-authored value
+  // that must not be overwritten.
   const prefilledKeyRef = useRef<string>('');
   useEffect(() => {
     if (categoryParametersQuery.data === undefined) return;
-    const key = `${currentConnectionId}::${currentCategoryId}`;
+    const internalVariantId = form.getValues('internalVariantId');
+    const key = `${currentConnectionId}::${currentCategoryId}::${internalVariantId}`;
     if (prefilledKeyRef.current === key) return;
     prefilledKeyRef.current = key;
     if (categoryParametersQuery.data.length === 0) {
       setPrefilledIds(new Set());
+      setExtraHints({});
       return;
     }
-    const filled = autoPrefillParameters(categoryParametersQuery.data, {
+    const variantFields = {
       ean: pickedVariantEan,
-    });
+      brand: pickedVariantBrand,
+      manufacturerCode: pickedVariantManufacturerCode,
+    };
+    const filled = autoPrefillParameters(categoryParametersQuery.data, variantFields);
+    // Brand-mismatch hints (#412) — emitted whenever the variant has a brand
+    // value but no exact dictionary match was found. Computed against the
+    // same `filled` map so successfully-matched brands never produce a
+    // duplicate "no match" hint. The helper returns a `Record<paramId,
+    // message>` shaped directly for the `extraHints` prop.
+    setExtraHints(
+      collectUnmatchedBrandHints(categoryParametersQuery.data, variantFields, filled),
+    );
+
     if (Object.keys(filled).length === 0) {
       setPrefilledIds(new Set());
       return;
     }
+    const dirtyParameters =
+      (form.formState.dirtyFields.parameters as Record<string, unknown> | undefined) ?? {};
     const current =
       (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
-    // Operator-set values win over auto-fill — only fill keys the form
-    // does not have a value for yet.
     const merged: CategoryParameterFormValues = { ...current };
     const filledIds = new Set<string>();
     for (const [paramId, value] of Object.entries(filled)) {
-      if (current[paramId] === undefined || current[paramId] === '') {
+      // Operator-edited (dirty) fields win over auto-fill. Non-dirty fields —
+      // empty *or* containing a prior prefill from a different variant — get
+      // refilled with the latest variant's data.
+      if (!dirtyParameters[paramId]) {
         merged[paramId] = value;
         filledIds.add(paramId);
       }
@@ -405,6 +449,8 @@ export function AllegroCreateOfferWizard({
     currentConnectionId,
     currentCategoryId,
     pickedVariantEan,
+    pickedVariantBrand,
+    pickedVariantManufacturerCode,
     form,
   ]);
 
@@ -457,6 +503,7 @@ export function AllegroCreateOfferWizard({
       form.setValue('parameters', {}, { shouldDirty: false, shouldValidate: false });
       form.clearErrors('parameters');
       setPrefilledIds(new Set());
+      setExtraHints({});
       prefilledKeyRef.current = '';
       // Catalog-match state is tied to (variant, category) — reset on
       // category change so the lookup re-runs against the new category.
@@ -658,6 +705,12 @@ export function AllegroCreateOfferWizard({
     // Capture the variant's EAN for Step 3 auto-prefill (EAN/GTIN parameters
     // populate from the variant's barcode).
     setPickedVariantEan(variant.ean ?? null);
+    // Capture brand + manufacturer code from the free-form attributes bag
+    // for Step 3 auto-prefill (#412). Today's PrestaShop adapter does not
+    // write these keys, so this is a no-op until a BE follow-up populates
+    // them — at which point the FE prefill activates without further wiring.
+    setPickedVariantBrand(variant.attributes?.brand ?? null);
+    setPickedVariantManufacturerCode(variant.attributes?.manufacturerCode ?? null);
     // Capture the product id for the Step-2 AI suggest button (#637).
     setPickedProductId(product.id);
   }
@@ -1107,8 +1160,10 @@ export function AllegroCreateOfferWizard({
                     parameters={categoryParameters}
                     formNamespace="parameters"
                     prefilledIds={prefilledIds}
+                    extraHints={extraHints}
                   />
                 </>
+
               )}
             </>
           ) : null}
