@@ -293,6 +293,28 @@ This has two implications:
 
 Until a deployment model is finalized, keep runtime configuration minimal and explicit. Do not assume same-origin API hosting or hidden runtime mutation of the frontend bundle.
 
+## Internationalization (i18n)
+
+The frontend ships a **no-op i18n seam** at `apps/web/src/shared/i18n/` (#612). The seam is the contract plugin authors bind against and the migration target for future per-feature string-migration PRs.
+
+**Public surface**:
+
+- `LocaleProvider` — mounted at the app root between `ThemeProvider` and `PluginRegistryProvider`. Defaults to `locale='en'` with an empty catalog.
+- `useTranslation()` — returns `{ t, locale }`. `t(key, fallback)` returns the catalog hit or the fallback. With the host's empty catalog, every call returns its `fallback` argument today.
+- `useNumberFormat(options?)` — memoised `Intl.NumberFormat` for the current locale. Replaces module-scope `new Intl.NumberFormat('en-US')` instantiations so number formatting follows locale, not en-US-pinned.
+- `LocaleCode`, `TranslationCatalog`, `LocaleContextValue` — types.
+
+**v1 scope** — explicitly **does NOT** migrate any existing English strings to `t()`. Every label, breadcrumb, button, and toast remains an inline string. The only host-side consumer is `useNumberFormat()` in `app-shell.tsx`. String migration is a per-feature follow-up issue per feature; each migration PR moves a single feature's strings to `t(key, fallback)` and ships an `en` catalog entry per key.
+
+**Plugin authors**: ship message catalogs by wrapping (or, in the future, contributing to) the host `LocaleProvider`. Until the loader contract for plugin catalogs is finalised, plugin-local strings continue to use inline literals with `t(key, fallback)` so the fallback path keeps the UI usable.
+
+**Out of scope (deferred)**:
+
+- `setLocale` / `useLocale` / locale switcher UI — added together with the first localisation PR.
+- Persistence of locale choice (localStorage / session / API).
+- A pluggable catalog loader for plugin-shipped translations.
+- Pluralization helpers (`tn(key, count, fallback)`), interpolation, date / currency formatting helpers beyond `useNumberFormat`.
+
 ## Components And Pages
 
 Component conventions:

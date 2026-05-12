@@ -20,6 +20,7 @@ import { ToastProvider } from '../shared/ui/toast-provider';
 import { ApiClientProvider } from './api/api-client-provider';
 import type { ApiClient } from './api/api-client';
 import { ThemeProvider } from '../shared/theme/theme-provider';
+import { LocaleProvider } from '../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -41,19 +42,21 @@ function renderShell({
 
   return render(
     <ThemeProvider>
-      <SessionProvider adapter={adapter}>
-        <ToastProvider>
-          <ApiClientProvider client={apiClient}>
-            <QueryClientProvider client={queryClient}>
-              <MemoryRouter initialEntries={[pathname]}>
-                <AppShell>
-                  <div data-testid="page-content">Page content</div>
-                </AppShell>
-              </MemoryRouter>
-            </QueryClientProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </SessionProvider>
+      <LocaleProvider>
+        <SessionProvider adapter={adapter}>
+          <ToastProvider>
+            <ApiClientProvider client={apiClient}>
+              <QueryClientProvider client={queryClient}>
+                <MemoryRouter initialEntries={[pathname]}>
+                  <AppShell>
+                    <div data-testid="page-content">Page content</div>
+                  </AppShell>
+                </MemoryRouter>
+              </QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </LocaleProvider>
     </ThemeProvider>,
   );
 }
@@ -243,26 +246,28 @@ describe('AppShell', () => {
 
     render(
       <ThemeProvider>
-        <SessionProvider adapter={adapter}>
-          <ToastProvider>
-            <ApiClientProvider client={apiClient}>
-              <QueryClientProvider client={queryClient}>
-                <MemoryRouter initialEntries={['/']}>
-                  <Routes>
-                    <Route
-                      path="*"
-                      element={
-                        <AppShell>
-                          <Redirector to="/orders" />
-                        </AppShell>
-                      }
-                    />
-                  </Routes>
-                </MemoryRouter>
-              </QueryClientProvider>
-            </ApiClientProvider>
-          </ToastProvider>
-        </SessionProvider>
+        <LocaleProvider>
+          <SessionProvider adapter={adapter}>
+            <ToastProvider>
+              <ApiClientProvider client={apiClient}>
+                <QueryClientProvider client={queryClient}>
+                  <MemoryRouter initialEntries={['/']}>
+                    <Routes>
+                      <Route
+                        path="*"
+                        element={
+                          <AppShell>
+                            <Redirector to="/orders" />
+                          </AppShell>
+                        }
+                      />
+                    </Routes>
+                  </MemoryRouter>
+                </QueryClientProvider>
+              </ApiClientProvider>
+            </ToastProvider>
+          </SessionProvider>
+        </LocaleProvider>
       </ThemeProvider>,
     );
 

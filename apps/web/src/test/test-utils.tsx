@@ -12,6 +12,7 @@ import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { Session, SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
+import { LocaleProvider } from '../shared/i18n';
 import type { PlatformPlugin } from '../shared/plugins';
 import { PluginRegistryProvider } from '../shared/plugins';
 import { IN_TREE_PLUGINS } from '../plugins';
@@ -426,15 +427,17 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
   return render(ui, {
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
-        <PluginRegistryProvider plugins={plugins}>
-          <SessionProvider adapter={sessionAdapter}>
-            <ToastProvider>
-              <ApiClientProvider client={apiClient}>
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-              </ApiClientProvider>
-            </ToastProvider>
-          </SessionProvider>
-        </PluginRegistryProvider>
+        <LocaleProvider>
+          <PluginRegistryProvider plugins={plugins}>
+            <SessionProvider adapter={sessionAdapter}>
+              <ToastProvider>
+                <ApiClientProvider client={apiClient}>
+                  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+                </ApiClientProvider>
+              </ToastProvider>
+            </SessionProvider>
+          </PluginRegistryProvider>
+        </LocaleProvider>
       </MemoryRouter>
     ),
     ...renderOptions,
