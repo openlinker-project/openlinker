@@ -211,18 +211,25 @@ showToast({ tone: 'error', description: 'Something went wrong.' });
 
 ```
 features/{domain}/
+├── index.ts                       # Public barrel — only the symbols cross-feature/cross-plugin callers need (#609)
 ├── api/
-│   ├── {domain}.api.ts           # API functions
-│   ├── {domain}.types.ts         # Request/response types
-│   └── {domain}.query-keys.ts    # Query key factory
+│   ├── {domain}.api.ts            # API functions
+│   ├── {domain}.types.ts          # Request/response types
+│   └── {domain}.query-keys.ts     # Query key factory
 ├── hooks/
-│   ├── use-{domain}-query.ts     # Query hooks
-│   └── use-{action}-mutation.ts  # Mutation hooks
-└── components/
-    ├── {Component}.tsx           # Feature components
-    ├── {Component}.test.tsx      # Component tests
-    └── {component}.schema.ts     # Zod form schemas
+│   ├── use-{domain}-query.ts      # Query hooks
+│   └── use-{action}-mutation.ts   # Mutation hooks
+├── components/
+│   ├── {Component}.tsx            # Feature components
+│   ├── {Component}.test.tsx       # Component tests
+│   └── {component}.schema.ts      # Zod form schemas
+├── lib/                           # Optional: pure helpers / view-model mappers
+└── types/                         # Optional: feature-local types not bound to api/
 ```
+
+**Canonical subdirectories** are `api`, `hooks`, `components`, `lib`, `types`. The cross-feature deep-import ban in `.eslintrc.js` enumerates exactly this set. If a new subdirectory is genuinely needed (e.g. `schemas/`, `utils/`), extend the canonical set in `docs/frontend-architecture.md` § Feature Public Surface AND in both ESLint pattern groups at the same time — otherwise the rule silently fails open for the new subdirectory.
+
+Cross-feature and plugin → feature consumers import only from the barrel; same-feature relative imports between subdirectories are unaffected.
 
 ## Testing Feature Components
 

@@ -34,8 +34,8 @@ import {
 } from '../../../shared/ui/dialog';
 import { FormField } from '../../../shared/ui/form-field';
 import { Select } from '../../../shared/ui/select';
-import { useConnectionsQuery } from '../../connections/hooks/use-connections-query';
-import type { Connection } from '../../connections/api/connections.types';
+import { useConnectionsQuery } from '../../connections';
+import type { Connection } from '../../connections';
 import type { CreateOfferRequest } from '../api/listings.types';
 
 interface OfferCreationLauncherProps {

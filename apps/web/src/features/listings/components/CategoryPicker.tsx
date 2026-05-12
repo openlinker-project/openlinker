@@ -23,7 +23,7 @@
 import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { CategoryTreeBrowser } from '../../../shared/ui/category-tree-browser';
-import { useAllegroCategoriesQuery } from '../../mappings/hooks/use-allegro-categories';
+import { useAllegroCategoriesQuery } from '../../mappings';
 
 interface CategoryPickerProps {
   connectionId: string;

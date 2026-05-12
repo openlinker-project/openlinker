@@ -29,7 +29,7 @@ import {
 } from './prestashop-setup.schema';
 import { PrestashopSetupSummary } from './prestashop-setup-summary';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
-import { useAdaptersQuery } from '../../adapters/hooks/use-adapters-query';
+import { useAdaptersQuery } from '../../adapters';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';

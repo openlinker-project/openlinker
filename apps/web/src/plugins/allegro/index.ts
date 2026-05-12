@@ -9,8 +9,8 @@
  *
  * @module plugins/allegro
  */
-import { createAllegroApi, type AllegroApi } from '../../features/allegro/api/allegro.api';
-import { AllegroCreateOfferWizard } from '../../features/listings/components/AllegroCreateOfferWizard';
+import { createAllegroApi, type AllegroApi } from '../../features/allegro';
+import { AllegroCreateOfferWizard } from '../../features/listings';
 import { definePlugin } from '../define-plugin';
 import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';

@@ -10,8 +10,8 @@ import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
 // NOTE: tests for the connection-picker UX moved to OfferCreationLauncher.test.tsx
 // as part of #608. The wizard is now content-only; the launcher owns the
 // Dialog chrome and the connection-pick flow.
-import type { Connection } from '../../connections/api/connections.types';
-import type { Product } from '../../products/api/products.types';
+import type { Connection } from '../../connections';
+import type { Product } from '../../products';
 import type {
   CategoryParameter,
   CreateOfferRequest,

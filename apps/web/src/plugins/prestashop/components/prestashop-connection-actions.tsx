@@ -11,8 +11,8 @@
 import { type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useConfigureWebhooksMutation } from '../../../features/connections/hooks/use-configure-webhooks-mutation';
-import type { Connection } from '../../../features/connections/api/connections.types';
+import { useConfigureWebhooksMutation } from '../../../features/connections';
+import type { Connection } from '../../../features/connections';
 
 interface PrestashopConnectionActionsProps {
   connection: Connection;
