@@ -1161,6 +1161,30 @@ the registry is empty on construct and populated by integration modules
 at boot. The `isDefault: true` flag marks the platform-default adapterKey
 for connections without an explicit `adapterKey` field.
 
+**Plugin contract** (#593, `@openlinker/plugin-sdk`):
+
+The framework-neutral `AdapterPlugin` contract decouples plugin authoring
+from NestJS module composition. A plugin descriptor is a plain object with
+a static `manifest`, an optional `register(host: HostServices)` for side
+registrations (connection tester, retry classifier, scheduler tasks, email
+normalizer, webhook provisioner), and a `createCapabilityAdapter(connection,
+capability, host)` factory. The `HostServices` bag carries the curated set
+of services every plugin can rely on: `logger`, `identifierMapping`,
+`credentialsResolver`, optional `cache`, plus typed handles to the 7
+well-known registries. Plugin-specific cross-package ports (e.g.
+`CustomerIdentityResolverPort`, `IMappingConfigService`) are passed into
+the descriptor's constructor closure — they're intentionally not in the
+host bag, to keep the contract surface lean.
+
+In-tree plugins (Allegro, PrestaShop) keep their `@Module` decorator and
+their own NestJS providers (TypeORM repositories, provisioners, …); their
+`onModuleInit` body builds the descriptor + a `HostServices` bag from
+injected fields and routes registration through the descriptor. The
+`createNestAdapterModule(plugin)` helper at `@openlinker/plugin-sdk` is
+the easy path for plugins that don't need any plugin-specific Nest
+providers — it produces a `DynamicModule` that wires `HostServices` from
+DI and delegates registration to the descriptor.
+
 Each app composes the integration modules it ships with via a top-level
 plugin list, then hands the list to `PluginRegistryModule.forRoot({ plugins })`
 (#572). Apps no longer hard-code per-plugin names in their NestJS module
@@ -1186,25 +1210,24 @@ export const apiPlugins: PluginEntry[] = [
 })
 export class IntegrationsModule {}
 
-// In AllegroIntegrationModule.onModuleInit():
-this.adapterRegistry.register({
+// AllegroIntegrationModule.onModuleInit() — descriptor-driven (#593):
+const plugin = createAllegroPlugin({ /* plugin-specific deps */ });
+const host: HostServices = { /* built from @Inject'd host fields */ };
+host.adapterRegistry.register(plugin.manifest);
+host.factoryResolver.registerFactory(plugin.manifest.adapterKey, factoryAdapter);
+plugin.register?.(host);
+
+// createAllegroPlugin's manifest:
+{
   adapterKey: 'allegro.publicapi.v1',
   platformType: 'allegro',
   supportedCapabilities: ['OrderSource', 'OfferManager'],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,
-});
+}
 
-// In PrestashopIntegrationModule.onModuleInit():
-this.adapterRegistry.register({
-  adapterKey: 'prestashop.webservice.v1',
-  platformType: 'prestashop',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
-  displayName: 'PrestaShop WebService v1',
-  version: '1.0.0',
-  isDefault: true,
-});
+// PrestaShop follows the same Shape A pattern via createPrestashopPlugin().
 ```
 
 **Service Usage** (Per-Connection):

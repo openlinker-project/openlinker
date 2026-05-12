@@ -12,6 +12,10 @@
 export { AllegroAdapterFactory } from './application/allegro-adapter.factory';
 export { IAllegroAdapterFactory } from './application/interfaces/allegro-adapter.factory.interface';
 
+// Plugin descriptor (#593) — replaces the previous `AllegroAdapterFactoryWrapper`
+// shim. The descriptor lives on top of the `@openlinker/plugin-sdk` contract.
+export { createAllegroPlugin, type CreateAllegroPluginDeps } from './allegro-plugin';
+
 // Types
 export { AllegroConnectionConfig, AllegroEnvironment, AllegroEnvironmentValues } from './domain/types/allegro-config.types';
 export { AllegroCredentials } from './domain/types/allegro-credentials.types';

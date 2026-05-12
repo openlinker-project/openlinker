@@ -1,0 +1,101 @@
+/**
+ * HostServices — typed bag of services the host provides to a plugin
+ *
+ * Defines the curated, framework-neutral surface every adapter plugin can
+ * rely on. Two categories live in this bag (separated by comment block):
+ *
+ *   1. Read inputs — services the plugin USES at runtime when fulfilling
+ *      its `createCapabilityAdapter(connection, capability, host)` calls.
+ *      Examples: `logger`, `identifierMapping`, `credentialsResolver`,
+ *      `cache`.
+ *
+ *   2. Side registries — services the plugin REGISTERS into once at boot
+ *      via its `register(host)` method. Examples: `adapterRegistry`,
+ *      `factoryResolver`, `connectionTesterRegistry`,
+ *      `webhookProvisioningRegistry`, …
+ *
+ * Plugin-specific cross-package ports (`CustomerIdentityResolverPort`,
+ * `CustomerProjectionRepositoryPort`, `IMappingConfigService`,
+ * `WebhookSecretProviderPort`, `IntegrationCredentialRepositoryPort`) are
+ * NOT in this bag — the conservative cut (#593). Plugins that need them
+ * import via the existing cross-package mechanism and pass them into the
+ * descriptor's closure via their factory constructor (e.g.
+ * `createAllegroPlugin({ customerIdentityResolver, … })`).
+ *
+ * Field additions: when a new plugin author asks for a service in this
+ * bag, weigh "every plausible future plugin needs this" against keeping
+ * the surface lean. Open a follow-up issue rather than silently expand
+ * the contract.
+ *
+ * @module libs/plugin-sdk/src
+ */
+import type { LoggerPort } from '@openlinker/shared/logging';
+import type { CachePort } from '@openlinker/shared';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type {
+  AdapterRegistryPort,
+  AdapterFactoryResolverService,
+  ConnectionTesterRegistryService,
+  EmailNormalizerRegistryService,
+  WebhookProvisioningRegistryService,
+  CredentialsResolverPort,
+} from '@openlinker/core/integrations';
+import type {
+  RetryClassifierRegistryService,
+  SchedulerTaskRegistryService,
+} from '@openlinker/core/sync';
+
+export interface HostServices {
+  // --- Read inputs (plugin USES) ---
+
+  /**
+   * Per-context logger factory. Mirrors the project-wide convention of
+   * `new Logger(ClassName.name)` from `@openlinker/shared/logging`; a
+   * factory so plugins can scope per-class without each plugin needing
+   * its own Nest-aware glue.
+   */
+  readonly logger: (context: string) => LoggerPort;
+
+  /** Process-wide identifier mapping service. */
+  readonly identifierMapping: IdentifierMappingPort;
+
+  /** Process-wide credentials resolver. */
+  readonly credentialsResolver: CredentialsResolverPort;
+
+  /**
+   * Optional distributed cache. Plugins that use it must tolerate `undefined`
+   * — host bootstraps that skip `CacheModule` (unit-test scenarios) leave
+   * this field unset.
+   */
+  readonly cache?: CachePort;
+
+  // --- Side registries (plugin REGISTERS into at boot) ---
+
+  /**
+   * Adapter manifest registry. Plugin's `register()` (or the host's
+   * wrapping module) calls `adapterRegistry.register(plugin.manifest)`
+   * exactly once at boot.
+   */
+  readonly adapterRegistry: AdapterRegistryPort;
+
+  /**
+   * Per-connection adapter-factory registry. Wrapping module binds the
+   * plugin's `createCapabilityAdapter` here under its `manifest.adapterKey`.
+   */
+  readonly factoryResolver: AdapterFactoryResolverService;
+
+  /** Connection-test adapter registry (used by `ConnectionService.testConnection`). */
+  readonly connectionTesterRegistry: ConnectionTesterRegistryService;
+
+  /** Email-normalizer registry — for marketplaces with masked-email schemes (Allegro). */
+  readonly emailNormalizerRegistry: EmailNormalizerRegistryService;
+
+  /** Retry-classifier registry — adapter-owned exception-to-retry-policy mapping (#581). */
+  readonly retryClassifierRegistry: RetryClassifierRegistryService;
+
+  /** Scheduler-task registry — adapter-contributed cron tasks (#584). */
+  readonly schedulerTaskRegistry: SchedulerTaskRegistryService;
+
+  /** Webhook-provisioning registry — adapter-installable webhook flows (#583). */
+  readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService;
+}
