@@ -7,6 +7,7 @@ import { ApiClientProvider } from '../api/api-client-provider';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ThemeProvider } from '../../shared/theme/theme-provider';
+import { LocaleProvider } from '../../shared/i18n';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
 import {
@@ -44,15 +45,17 @@ function renderLayout(sessionAdapter?: SessionAdapter): void {
 
   render(
     <ThemeProvider>
-      <SessionProvider adapter={adapter}>
-        <ToastProvider>
-          <ApiClientProvider client={createMockApiClient()}>
-            <QueryClientProvider client={queryClient}>
-              <RouterProvider router={router} />
-            </QueryClientProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </SessionProvider>
+      <LocaleProvider>
+        <SessionProvider adapter={adapter}>
+          <ToastProvider>
+            <ApiClientProvider client={createMockApiClient()}>
+              <QueryClientProvider client={queryClient}>
+                <RouterProvider router={router} />
+              </QueryClientProvider>
+            </ApiClientProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </LocaleProvider>
     </ThemeProvider>,
   );
 }

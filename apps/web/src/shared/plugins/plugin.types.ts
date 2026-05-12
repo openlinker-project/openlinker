@@ -16,6 +16,7 @@ import type { ComponentType, ReactNode } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
+import type { StructuredError } from '../types/structured-error.types';
 
 /**
  * Setup-card metadata rendered on the connection-type picker
@@ -100,6 +101,18 @@ export interface PlatformPlugin {
 
   /** Listing-detail: gate the "Edit offer" button on `ListingDetailPage`. */
   supportsListingEdit?: boolean;
+
+  /**
+   * Content feature: optional platform-specific structured-error extractor
+   * for content-publish failures (#613). Given an unknown error thrown by
+   * the publish mutation, return a `StructuredError[]` for inline rendering
+   * by `StructuredErrorList`, or `null` if the error shape isn't one this
+   * plugin recognises. Caller (`extractPlatformErrors`) iterates plugins
+   * and returns the first non-null result, so the dispatch is
+   * shape-based — the content-editor doesn't need to know which channel
+   * produced the error.
+   */
+  extractContentPublishErrors?: (err: unknown) => StructuredError[] | null;
 }
 
 export type { ReactNode };

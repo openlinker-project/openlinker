@@ -22,6 +22,7 @@ import {
 } from 'react';
 import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
+import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
 import { buildNavGroups } from './nav-registry';
 import type { NavGroup } from './nav-registry.types';
@@ -39,13 +40,6 @@ import {
 import { ThemeToggle } from '../shared/ui/theme-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 
-const COUNT_FORMATTER = new Intl.NumberFormat('en-US');
-
-function formatCount(value: number | null): string | null {
-  if (value === null) return null;
-  return COUNT_FORMATTER.format(value);
-}
-
 interface SidebarNavProps {
   ariaLabel: string;
   counts: NavCounts;
@@ -54,6 +48,13 @@ interface SidebarNavProps {
 }
 
 function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
+  // i18n seam (#612): nav-item counts follow the active locale instead of
+  // being pinned to en-US. v1 maps `'en'` → BCP 47 `'en-US'`, so today this
+  // is a behavioural no-op; future locales pick up the right grouping
+  // separators automatically.
+  const numberFormatter = useNumberFormat();
+  const formatCount = (value: number | null): string | null =>
+    value === null ? null : numberFormatter.format(value);
   return (
     <nav className="shell-nav" aria-label={ariaLabel}>
       {groups.map((group) => (

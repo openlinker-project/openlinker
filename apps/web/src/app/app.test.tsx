@@ -7,6 +7,7 @@ import { ApiClientProvider } from './api/api-client-provider';
 import { rootRoute } from './routes/root.route';
 import { SessionProvider } from '../shared/auth/session-provider';
 import { ToastProvider } from '../shared/ui/toast-provider';
+import { LocaleProvider } from '../shared/i18n';
 
 interface RenderAppResult {
   router: ReturnType<typeof createMemoryRouter>;
@@ -24,15 +25,17 @@ function renderApp(
   const apiClient = createMockApiClient();
 
   const view = render(
-    <SessionProvider adapter={sessionAdapter}>
-      <ToastProvider>
-        <ApiClientProvider client={apiClient}>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-          </QueryClientProvider>
-        </ApiClientProvider>
-      </ToastProvider>
-    </SessionProvider>,
+    <LocaleProvider>
+      <SessionProvider adapter={sessionAdapter}>
+        <ToastProvider>
+          <ApiClientProvider client={apiClient}>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider router={router} />
+            </QueryClientProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </SessionProvider>
+    </LocaleProvider>,
   );
 
   return { router, view };

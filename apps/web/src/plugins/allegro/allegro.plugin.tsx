@@ -12,6 +12,7 @@
  */
 import type { PlatformPlugin } from '../../shared/plugins';
 import { AllegroExtraSection } from './components/allegro-extra-section';
+import { extractAllegroContentPublishErrors } from './extract-content-publish-errors';
 
 export const allegroPlatformPlugin: PlatformPlugin = {
   platformType: 'allegro',
@@ -26,4 +27,5 @@ export const allegroPlatformPlugin: PlatformPlugin = {
   requiresExternalAuthRedirect: true,
   ExtraConfigSection: AllegroExtraSection,
   supportsListingEdit: true,
+  extractContentPublishErrors: extractAllegroContentPublishErrors,
 };

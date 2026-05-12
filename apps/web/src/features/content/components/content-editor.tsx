@@ -19,7 +19,8 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
-import { extractAllegroErrors } from '../lib/extract-allegro-errors';
+import { extractPlatformErrors } from '../lib/extract-platform-errors';
+import { usePlugins } from '../../../shared/plugins';
 import { useContentQuery } from '../hooks/use-content-query';
 import {
   useDiscardContentDraftMutation,
@@ -64,6 +65,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const saveMutation = useSaveContentDraftMutation();
   const discardMutation = useDiscardContentDraftMutation();
   const publishMutation = usePublishContentMutation();
+  const platformPlugins = usePlugins();
 
   // #478: depend on the destructured stable `mutateAsync` methods, not the
   // wrapping mutation objects — `useMutation` returns a fresh wrapper each
@@ -173,10 +175,13 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
     formatMutationError(saveMutation.error) ||
     formatMutationError(discardMutation.error) ||
     formatMutationError(publishMutation.error);
-  // #486: when the publish failure is a CHANNEL_PUBLISH_FAILED 422, surface
-  // the structured per-field errors instead of the bare "Allegro API error
-  // (422):" string. Save / discard never produce this shape.
-  const publishStructuredErrors = extractAllegroErrors(publishMutation.error);
+  // #486 / #613: when the publish failure is a structured platform error
+  // (today: Allegro's `CHANNEL_PUBLISH_FAILED` 422), surface the per-field
+  // errors instead of the bare "API error (422):" string. The dispatcher
+  // iterates registered plugins and returns the first non-null match —
+  // shape-based dispatch, no channel context needed. Save / discard never
+  // produce this shape.
+  const publishStructuredErrors = extractPlatformErrors(publishMutation.error, platformPlugins);
 
   return (
     <div className="content-editor">
