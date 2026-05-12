@@ -91,10 +91,3 @@ export interface AdapterMetadata {
   isDefault?: boolean;
 }
 
-/**
- * Adapter instance
- *
- * Placeholder type for adapter instances. In MVP, these are mock/placeholder
- * instances. Full adapter implementations are separate epics.
- */
-export type AdapterInstance = unknown;

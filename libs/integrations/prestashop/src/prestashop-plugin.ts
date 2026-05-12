@@ -21,7 +21,8 @@
  *
  * @module libs/integrations/prestashop/src
  */
-import type { AdapterPlugin, HostServices } from '@openlinker/plugin-sdk';
+import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
@@ -41,21 +42,31 @@ export interface CreatePrestashopPluginDeps {
   readonly webhookProvisioningAdapter: PrestashopWebhookProvisioningAdapter;
 }
 
+/**
+ * Static plugin manifest (#575).
+ *
+ * Exported as a top-level `const` so consumers can read manifest fields
+ * without instantiating the full plugin. The runtime path
+ * (`createPrestashopPlugin(deps).manifest`) returns this same reference, so
+ * there's no drift between static and runtime views.
+ */
+export const prestashopAdapterManifest: AdapterMetadata = {
+  adapterKey: 'prestashop.webservice.v1',
+  platformType: 'prestashop',
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderSource',
+    'OrderProcessorManager',
+  ],
+  displayName: 'PrestaShop WebService v1',
+  version: '1.0.0',
+  isDefault: true,
+};
+
 export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): AdapterPlugin {
   return {
-    manifest: {
-      adapterKey: 'prestashop.webservice.v1',
-      platformType: 'prestashop',
-      supportedCapabilities: [
-        'ProductMaster',
-        'InventoryMaster',
-        'OrderSource',
-        'OrderProcessorManager',
-      ],
-      displayName: 'PrestaShop WebService v1',
-      version: '1.0.0',
-      isDefault: true,
-    },
+    manifest: prestashopAdapterManifest,
 
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
@@ -89,27 +100,29 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
         host.credentialsResolver,
       );
 
-      switch (capability) {
-        case 'ProductMaster':
-          return adapters.productMaster as unknown as T;
-        case 'InventoryMaster':
-          return adapters.inventoryMaster as unknown as T;
-        case 'OrderSource':
-          return adapters.orderSource as unknown as T;
-        case 'OrderProcessorManager':
-          if (!adapters.orderProcessorManager) {
-            throw new Error(
-              'OrderProcessorManager adapter is not available. ' +
-                'Customer provisioner and customer projection repository are required for order processing.',
-            );
-          }
-          return adapters.orderProcessorManager as unknown as T;
-        default:
-          throw new Error(
-            `PrestaShop adapter does not support capability: ${capability}. ` +
-              `Supported capabilities: ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager`,
-          );
-      }
+      return dispatchCapability<T>(
+        capability,
+        {
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+          OrderSource: () => adapters.orderSource,
+          // Null guard preserved — OrderProcessorManager is conditionally
+          // wired up by the factory (depends on customer provisioner +
+          // customer projection repository). A configured-but-missing
+          // OPM is a deeper error than "capability not supported" — keep
+          // the bespoke message.
+          OrderProcessorManager: () => {
+            if (!adapters.orderProcessorManager) {
+              throw new Error(
+                'OrderProcessorManager adapter is not available. ' +
+                  'Customer provisioner and customer projection repository are required for order processing.',
+              );
+            }
+            return adapters.orderProcessorManager;
+          },
+        },
+        'PrestaShop',
+      );
     },
   };
 }

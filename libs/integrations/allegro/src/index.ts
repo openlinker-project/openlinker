@@ -14,7 +14,14 @@ export { IAllegroAdapterFactory } from './application/interfaces/allegro-adapter
 
 // Plugin descriptor (#593) — replaces the previous `AllegroAdapterFactoryWrapper`
 // shim. The descriptor lives on top of the `@openlinker/plugin-sdk` contract.
-export { createAllegroPlugin, type CreateAllegroPluginDeps } from './allegro-plugin';
+// `allegroAdapterManifest` is the static manifest export (#575) — readable
+// without booting Nest or resolving the cross-package deps in
+// `CreateAllegroPluginDeps`.
+export {
+  createAllegroPlugin,
+  allegroAdapterManifest,
+  type CreateAllegroPluginDeps,
+} from './allegro-plugin';
 
 // Types
 export { AllegroConnectionConfig, AllegroEnvironment, AllegroEnvironmentValues } from './domain/types/allegro-config.types';

@@ -147,7 +147,6 @@ describe('OfferMappingSyncService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      adapter: marketplace,
       metadata: {
         adapterKey: 'allegro',
         supportedCapabilities: ['OfferManager'],

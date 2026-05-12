@@ -21,10 +21,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
-import {
-  AdapterMetadata,
-  AdapterInstance,
-} from '../../domain/types/adapter.types';
+import { AdapterMetadata } from '../../domain/types/adapter.types';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 import { DuplicatePlatformDefaultException } from '../../domain/exceptions/duplicate-platform-default.exception';
@@ -55,13 +52,6 @@ export class AdapterRegistryService implements AdapterRegistryPort {
       `Registered adapter: ${metadata.adapterKey}` +
         (metadata.isDefault === true ? ` (default for ${metadata.platformType})` : ''),
     );
-  }
-
-  async getAdapter(adapterKey: string): Promise<AdapterInstance> {
-    const metadata = await this.getAdapterMetadata(adapterKey);
-    // Return placeholder/mock instance for MVP — full instances come from
-    // AdapterFactoryResolverService. (#574 tracks deleting this fallback.)
-    return { adapterKey: metadata.adapterKey } as AdapterInstance;
   }
 
   getAdapterMetadata(adapterKey: string): Promise<AdapterMetadata> {

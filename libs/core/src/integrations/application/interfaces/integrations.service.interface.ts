@@ -9,27 +9,25 @@
  * @see {@link IntegrationsService} for the implementation
  */
 import { Connection } from '@openlinker/core/identifier-mapping';
-import {
-  AdapterMetadata,
-  AdapterInstance,
-} from '../../domain/types/adapter.types';
+import { AdapterMetadata } from '../../domain/types/adapter.types';
 
 export interface IIntegrationsService {
   /**
-   * Get adapter for a connection
+   * Get the connection + its adapter metadata.
    *
-   * Resolves connection, determines adapterKey (explicit or derived from platformType),
-   * loads adapter from registry, and returns connection, adapter, and metadata.
+   * Resolves the connection, determines adapterKey (explicit or derived from
+   * platformType), and returns the connection paired with the registered
+   * `AdapterMetadata`. Adapter *instances* are constructed per-capability via
+   * `getCapabilityAdapter` — `getAdapter` is a metadata-only lookup.
    *
    * @param connectionId - The connection identifier (UUID)
-   * @returns Object containing connection, adapter instance, and metadata
+   * @returns Object containing connection and adapter metadata
    * @throws ConnectionNotFoundException if connection not found
    * @throws ConnectionDisabledException if connection is disabled
    * @throws AdapterNotFoundException if adapter key not found in registry
    */
   getAdapter(connectionId: string): Promise<{
     connection: Connection;
-    adapter: AdapterInstance;
     metadata: AdapterMetadata;
   }>;
 
