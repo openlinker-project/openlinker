@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@openlinker/core": "workspace:*",
+    "@openlinker/plugin-sdk": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "fast-xml-parser": "^4.3.5"
   },

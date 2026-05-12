@@ -148,6 +148,18 @@ export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/categor
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
+export type { CatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';
+export { isCatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';
+export type {
+  CatalogProduct,
+  CatalogProductSummary,
+  CatalogProductParameter,
+  CatalogProductMatchResult,
+  CatalogProductMatchKind,
+  FindProductsByBarcodeInput,
+} from './domain/types/catalog-product.types';
+export { CatalogProductMatchKindValues } from './domain/types/catalog-product.types';
+export { CatalogProductNotFoundException } from './domain/exceptions/catalog-product-not-found.exception';
 export type {
   CategoryParameter,
   CategoryParameterDictionaryEntry,

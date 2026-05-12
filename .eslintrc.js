@@ -150,6 +150,33 @@ module.exports = {
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable) instead of the library directly.',
               },
+              {
+                // Cross-feature imports must target the feature's public barrel
+                // (`features/<name>`), not its internals (#609).
+                //
+                // The `ignore` matcher used by `no-restricted-imports` does
+                // NOT support brace expansion — each slug/part combination
+                // is listed explicitly. `**/<slug>/<part>/**` matches across
+                // any relative depth (`allowRelativePaths: true`); same-
+                // feature `../<part>/<file>` does NOT match because there is
+                // no `<slug>` segment.
+                //
+                // Adding a new cross-imported feature: extend the slug list
+                // below and update docs/frontend-architecture.md.
+                group: [
+                  '**/adapters/api/**', '**/adapters/hooks/**', '**/adapters/components/**', '**/adapters/lib/**', '**/adapters/types/**',
+                  '**/allegro/api/**', '**/allegro/hooks/**', '**/allegro/components/**', '**/allegro/lib/**', '**/allegro/types/**',
+                  '**/connections/api/**', '**/connections/hooks/**', '**/connections/components/**', '**/connections/lib/**', '**/connections/types/**',
+                  '**/content/api/**', '**/content/hooks/**', '**/content/components/**', '**/content/lib/**', '**/content/types/**',
+                  '**/customers/api/**', '**/customers/hooks/**', '**/customers/components/**', '**/customers/lib/**', '**/customers/types/**',
+                  '**/listings/api/**', '**/listings/hooks/**', '**/listings/components/**', '**/listings/lib/**', '**/listings/types/**',
+                  '**/mappings/api/**', '**/mappings/hooks/**', '**/mappings/components/**', '**/mappings/lib/**', '**/mappings/types/**',
+                  '**/products/api/**', '**/products/hooks/**', '**/products/components/**', '**/products/lib/**', '**/products/types/**',
+                  '**/sync-jobs/api/**', '**/sync-jobs/hooks/**', '**/sync-jobs/components/**', '**/sync-jobs/lib/**', '**/sync-jobs/types/**',
+                ],
+                message:
+                  "Cross-feature imports must target the feature's public barrel (`features/<name>`), not its internals. See docs/frontend-architecture.md § Feature public surface.",
+              },
             ],
           },
         ],
@@ -263,6 +290,25 @@ module.exports = {
                 group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
+              },
+              {
+                // Plugins consume feature publics through the per-feature
+                // barrel only — same shape as the cross-feature ban inside
+                // features/ (#609). Brace-expansion is unsupported by the
+                // matcher; each slug/part is enumerated below.
+                group: [
+                  '**/adapters/api/**', '**/adapters/hooks/**', '**/adapters/components/**', '**/adapters/lib/**', '**/adapters/types/**',
+                  '**/allegro/api/**', '**/allegro/hooks/**', '**/allegro/components/**', '**/allegro/lib/**', '**/allegro/types/**',
+                  '**/connections/api/**', '**/connections/hooks/**', '**/connections/components/**', '**/connections/lib/**', '**/connections/types/**',
+                  '**/content/api/**', '**/content/hooks/**', '**/content/components/**', '**/content/lib/**', '**/content/types/**',
+                  '**/customers/api/**', '**/customers/hooks/**', '**/customers/components/**', '**/customers/lib/**', '**/customers/types/**',
+                  '**/listings/api/**', '**/listings/hooks/**', '**/listings/components/**', '**/listings/lib/**', '**/listings/types/**',
+                  '**/mappings/api/**', '**/mappings/hooks/**', '**/mappings/components/**', '**/mappings/lib/**', '**/mappings/types/**',
+                  '**/products/api/**', '**/products/hooks/**', '**/products/components/**', '**/products/lib/**', '**/products/types/**',
+                  '**/sync-jobs/api/**', '**/sync-jobs/hooks/**', '**/sync-jobs/components/**', '**/sync-jobs/lib/**', '**/sync-jobs/types/**',
+                ],
+                message:
+                  "Plugins must import features through the public barrel (`features/<name>`), not its internals. See docs/frontend-architecture.md § Feature public surface.",
               },
             ],
           },

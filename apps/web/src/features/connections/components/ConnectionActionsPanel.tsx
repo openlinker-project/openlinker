@@ -4,7 +4,7 @@ import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import { usePlugin } from '../../../shared/plugins';
-import { TriggerSyncDialog } from '../../sync-jobs/components/TriggerSyncDialog';
+import { TriggerSyncDialog } from '../../sync-jobs';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Alert } from '../../../shared/ui/alert';

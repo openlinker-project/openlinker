@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@openlinker/core": "workspace:*",
+    "@openlinker/plugin-sdk": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "image-size": "^1.0.0"
   },

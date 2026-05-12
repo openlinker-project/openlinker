@@ -1,13 +1,25 @@
 /**
  * PrestaShop Integration Module
  *
- * NestJS module for PrestaShop integration. Registers the PrestaShop adapter factory
- * with AdapterFactoryResolverService on module initialization.
+ * NestJS host wrapper for the PrestaShop plugin descriptor
+ * (`createPrestashopPlugin`). Holds the Nest-specific surface — providers
+ * (`PrestashopCustomerProvisioner`, `PrestashopAddressProvisioner`,
+ * `PrestashopCountryResolver`, `PrestashopWebhookProvisioningAdapter`),
+ * imports (`IntegrationsModule`, `CustomersModule`, `MappingsModule`,
+ * `IdentifierMappingModule`, `RedisConfigModule`) — that the framework-
+ * neutral descriptor can't own. The `onModuleInit` body builds the
+ * descriptor + a `HostServices` bag from injected fields, then routes
+ * registration through the descriptor (#593 / Shape A).
  *
  * @module libs/integrations/prestashop/src
  */
 import { Module, OnModuleInit, Inject } from '@nestjs/common';
-import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import {
+  IdentifierMappingModule,
+  IDENTIFIER_MAPPING_PORT_TOKEN,
+  IdentifierMappingPort,
+  type Connection,
+} from '@openlinker/core/identifier-mapping';
 import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
@@ -16,22 +28,28 @@ import {
   AdapterRegistryPort,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   ConnectionTesterRegistryService,
+  EMAIL_NORMALIZER_REGISTRY_TOKEN,
+  EmailNormalizerRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   WebhookProvisioningRegistryService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WebhookSecretProviderPort,
+  CREDENTIALS_RESOLVER_TOKEN,
+  CredentialsResolverPort,
+  AdapterFactoryPort,
 } from '@openlinker/core/integrations';
+import {
+  SyncModule,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  RetryClassifierRegistryService,
+  SCHEDULER_TASK_REGISTRY_TOKEN,
+  SchedulerTaskRegistryService,
+} from '@openlinker/core/sync';
 import {
   MappingsModule,
   MAPPING_CONFIG_SERVICE_TOKEN,
   IMappingConfigService,
 } from '@openlinker/core/mappings';
-import { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
-import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
-import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
-import { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
-import { PrestashopCountryResolver } from './infrastructure/provisioners/prestashop-country-resolver';
-import { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
 import {
   CustomersModule,
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
@@ -39,9 +57,23 @@ import {
 } from '@openlinker/core/customers';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { Logger } from '@openlinker/shared/logging';
+import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
+import type { HostServices } from '@openlinker/plugin-sdk';
+import { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
+import { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
+import { PrestashopCountryResolver } from './infrastructure/provisioners/prestashop-country-resolver';
+import { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
+import { createPrestashopPlugin } from './prestashop-plugin';
 
 @Module({
-  imports: [IntegrationsModule, IdentifierMappingModule, CustomersModule, RedisConfigModule, MappingsModule],
+  imports: [
+    IntegrationsModule,
+    SyncModule,
+    IdentifierMappingModule,
+    CustomersModule,
+    RedisConfigModule,
+    MappingsModule,
+  ],
   providers: [
     PrestashopCustomerProvisioner,
     PrestashopAddressProvisioner,
@@ -59,8 +91,18 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly factoryResolver: AdapterFactoryResolverService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
+    @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
+    private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
     @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
     private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
+    @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService,
+    @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
+    @Inject(IDENTIFIER_MAPPING_PORT_TOKEN)
+    private readonly identifierMapping: IdentifierMappingPort,
+    @Inject(CREDENTIALS_RESOLVER_TOKEN)
+    private readonly credentialsResolver: CredentialsResolverPort,
     private readonly webhookProvisioningAdapter: PrestashopWebhookProvisioningAdapter,
     private readonly customerProvisioner: PrestashopCustomerProvisioner,
     private readonly addressProvisioner: PrestashopAddressProvisioner,
@@ -70,51 +112,55 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly mappingConfigService: IMappingConfigService,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly webhookSecretProvider: WebhookSecretProviderPort,
+    @Inject(CACHE_PORT_TOKEN)
+    private readonly cache?: CachePort,
   ) {}
 
   onModuleInit(): void {
-    this.logger.log('Registering PrestaShop adapter (metadata + factory + tester + webhook provisioner)...');
-    // Register metadata first — what this adapter is and what it can do.
-    // Mirrors the inline literal previously hardcoded in core's
-    // AdapterRegistryService (#570). isDefault: true means
-    // `IntegrationsService` resolves connections without an explicit
-    // adapterKey to this adapter for the 'prestashop' platformType (#571).
-    this.adapterRegistry.register({
-      adapterKey: 'prestashop.webservice.v1',
-      platformType: 'prestashop',
-      supportedCapabilities: [
-        'ProductMaster',
-        'InventoryMaster',
-        'OrderSource',
-        'OrderProcessorManager',
-      ],
-      displayName: 'PrestaShop WebService v1',
-      version: '1.0.0',
-      isDefault: true,
+    this.logger.log('Registering PrestaShop plugin (manifest + factory + side registries)...');
+
+    // Build the descriptor from plugin-specific deps.
+    const plugin = createPrestashopPlugin({
+      customerProvisioner: this.customerProvisioner,
+      addressProvisioner: this.addressProvisioner,
+      customerProjectionRepository: this.customerProjectionRepository,
+      mappingConfigService: this.mappingConfigService,
+      webhookSecretProvider: this.webhookSecretProvider,
+      webhookProvisioningAdapter: this.webhookProvisioningAdapter,
     });
-    // Then the factory + connection tester — runtime instantiation surface.
-    const factory = new PrestashopAdapterFactoryWrapper(
-      this.customerProvisioner,
-      this.addressProvisioner,
-      this.customerProjectionRepository,
-      this.mappingConfigService,
-      this.webhookSecretProvider,
-    );
-    this.factoryResolver.registerFactory('prestashop.webservice.v1', factory);
-    this.connectionTesterRegistry.register(
-      'prestashop.webservice.v1',
-      new PrestashopConnectionTesterAdapter(),
-    );
-    // Webhook provisioner — replaces direct injection of the PS-specific
-    // service in `apps/api`'s ConnectionController (#583). The controller
-    // now resolves provisioners by adapterKey via the registry.
-    this.webhookProvisioningRegistry.register(
-      'prestashop.webservice.v1',
-      this.webhookProvisioningAdapter,
-    );
-    this.logger.log('PrestaShop adapter registered successfully');
+
+    // Build the HostServices bag from injected host fields.
+    const host: HostServices = {
+      logger: (context: string) => new Logger(context),
+      identifierMapping: this.identifierMapping,
+      credentialsResolver: this.credentialsResolver,
+      cache: this.cache,
+      adapterRegistry: this.adapterRegistry,
+      factoryResolver: this.factoryResolver,
+      connectionTesterRegistry: this.connectionTesterRegistry,
+      emailNormalizerRegistry: this.emailNormalizerRegistry,
+      retryClassifierRegistry: this.retryClassifierRegistry,
+      schedulerTaskRegistry: this.schedulerTaskRegistry,
+      webhookProvisioningRegistry: this.webhookProvisioningRegistry,
+    };
+
+    host.adapterRegistry.register(plugin.manifest);
+    const factoryAdapter: AdapterFactoryPort = {
+      createCapabilityAdapter: <T>(
+        conn: Connection,
+        cap: string,
+        idMap: IdentifierMappingPort,
+        credRes: CredentialsResolverPort,
+      ): Promise<T> =>
+        plugin.createCapabilityAdapter<T>(conn, cap, {
+          ...host,
+          identifierMapping: idMap,
+          credentialsResolver: credRes,
+        }),
+    };
+    host.factoryResolver.registerFactory(plugin.manifest.adapterKey, factoryAdapter);
+    plugin.register?.(host);
+
+    this.logger.log('PrestaShop plugin registered successfully');
   }
 }
-
-
-

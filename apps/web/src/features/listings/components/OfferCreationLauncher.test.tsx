@@ -21,7 +21,7 @@ import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { OfferCreationLauncher } from './OfferCreationLauncher';
-import type { Connection } from '../../connections/api/connections.types';
+import type { Connection } from '../../connections';
 
 const allegroConnection: Connection = {
   id: 'conn_allegro_1',

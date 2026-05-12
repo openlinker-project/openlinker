@@ -17,8 +17,8 @@ import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { useMappingOptions } from '../../../features/mappings/hooks/use-mapping-options';
-import type { MappingOption } from '../../../features/mappings/api/mappings.types';
+import { useMappingOptions } from '../../../features/mappings';
+import type { MappingOption } from '../../../features/mappings';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 
 function carrierOptionLabel(option: MappingOption): string {

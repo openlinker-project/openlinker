@@ -45,19 +45,27 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
-import type { Connection } from '../../connections/api/connections.types';
-import { SuggestionDialog } from '../../content/components/suggestion-dialog';
-import { resolveSuggestChannel } from '../../content/api/content.utils';
-import { useProductQuery } from '../../products/hooks/use-product-query';
-import { useProductsQuery } from '../../products/hooks/use-products-query';
-import type { Product, ProductVariant } from '../../products/api/products.types';
+import type { Connection } from '../../connections';
+import { SuggestionDialog } from '../../content';
+import { resolveSuggestChannel } from '../../content';
+import { useProductQuery } from '../../products';
+import { useProductsQuery } from '../../products';
+import type { Product, ProductVariant } from '../../products';
 import { useCreateOfferMutation } from '../hooks/use-create-offer-mutation';
 import { useSellerPoliciesQuery } from '../hooks/use-seller-policies-query';
 import { useCategoryParametersQuery } from '../hooks/use-category-parameters-query';
+import { useCatalogProductMatchQuery } from '../hooks/use-catalog-product-match-query';
+import { useCatalogProductQuery } from '../hooks/use-catalog-product-query';
 import { useResolveCategoryQuery } from '../hooks/use-resolve-category-query';
 import { CategoryPicker } from './CategoryPicker';
 import { CategoryParametersStep } from './category-parameters-step';
-import { autoPrefillParameters, collectUnmatchedBrandHints } from './auto-prefill-parameters';
+import {
+  autoPrefillParameters,
+  collectUnmatchedBrandHints,
+  prefillFromCatalogProduct,
+} from './auto-prefill-parameters';
+import { CatalogProductMatchPanel } from './catalog-product-match-panel';
+import type { CatalogProduct } from '../api/listings.types';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
 import {
   MissingCategoryParameterSectionError,
@@ -379,13 +387,18 @@ export function AllegroCreateOfferWizard({
     [categoryParametersQuery.data],
   );
 
-  // Auto-prefill EAN/Stan when the parameter schema first arrives for the
-  // current (connectionId, categoryId) pair. Re-runs only when the pair
-  // changes — values the operator has already typed are preserved.
+  // Auto-prefill EAN/Stan/brand/MPN when the parameter schema first arrives
+  // for the current (connectionId, categoryId, internalVariantId) triple.
+  // Re-runs when the triple changes — variant swap on the same category
+  // refills with the new variant's data (#412). RHF dirty state is the
+  // source of truth for "operator-edited": prefills write with
+  // `shouldDirty: false`, so a dirty entry means an operator-authored value
+  // that must not be overwritten.
   const prefilledKeyRef = useRef<string>('');
   useEffect(() => {
     if (categoryParametersQuery.data === undefined) return;
-    const key = `${currentConnectionId}::${currentCategoryId}`;
+    const internalVariantId = form.getValues('internalVariantId');
+    const key = `${currentConnectionId}::${currentCategoryId}::${internalVariantId}`;
     if (prefilledKeyRef.current === key) return;
     prefilledKeyRef.current = key;
     if (categoryParametersQuery.data.length === 0) {
@@ -412,14 +425,17 @@ export function AllegroCreateOfferWizard({
       setPrefilledIds(new Set());
       return;
     }
+    const dirtyParameters =
+      (form.formState.dirtyFields.parameters as Record<string, unknown> | undefined) ?? {};
     const current =
       (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
-    // Operator-set values win over auto-fill — only fill keys the form
-    // does not have a value for yet.
     const merged: CategoryParameterFormValues = { ...current };
     const filledIds = new Set<string>();
     for (const [paramId, value] of Object.entries(filled)) {
-      if (current[paramId] === undefined || current[paramId] === '') {
+      // Operator-edited (dirty) fields win over auto-fill. Non-dirty fields —
+      // empty *or* containing a prior prefill from a different variant — get
+      // refilled with the latest variant's data.
+      if (!dirtyParameters[paramId]) {
         merged[paramId] = value;
         filledIds.add(paramId);
       }
@@ -489,9 +505,146 @@ export function AllegroCreateOfferWizard({
       setPrefilledIds(new Set());
       setExtraHints({});
       prefilledKeyRef.current = '';
+      // Catalog-match state is tied to (variant, category) — reset on
+      // category change so the lookup re-runs against the new category.
+      setUnlinkedFromCatalog(false);
+      setPickedAmbiguousProductId(null);
+      setCatalogPrefilledIds(new Set());
+      catalogPrefilledKeyRef.current = '';
+      preCatalogSnapshotRef.current = null;
     }
     lastCategoryIdRef.current = currentCategoryId;
   }, [currentCategoryId, form]);
+
+  // -----------------------------------------------------------------
+  // Catalog product match (#635) — layered on top of the EAN/Stan prefill.
+  // -----------------------------------------------------------------
+
+  // Operator-controlled escape hatch: when true, the match query is disabled
+  // and the panel renders the "Relink" affordance.
+  const [unlinkedFromCatalog, setUnlinkedFromCatalog] = useState(false);
+  // When the match is ambiguous, the operator picks one — its detail is
+  // then fetched and applied as if the match had been unique.
+  const [pickedAmbiguousProductId, setPickedAmbiguousProductId] = useState<string | null>(null);
+  // Catalog-prefilled parameter ids — shown in the panel as "{N} fields
+  // auto-filled" and used to bound the Unlink revert.
+  const [catalogPrefilledIds, setCatalogPrefilledIds] = useState<ReadonlySet<string>>(new Set());
+  // Snapshot of the form's parameters slice taken *before* catalog prefill
+  // ran. Unlink restores this; clears when (variant, category) changes.
+  const preCatalogSnapshotRef = useRef<CategoryParameterFormValues | null>(null);
+  // Ensures the catalog prefill effect runs at most once per
+  // (connection, category, picked-product) tuple.
+  const catalogPrefilledKeyRef = useRef<string>('');
+
+  // Reset catalog-match state when the variant (and therefore the EAN) changes
+  // — a fresh variant means a different lookup. The match query's key already
+  // depends on `pickedVariantEan`, so it will re-issue automatically; this
+  // effect only resets the operator-controlled flags.
+  const lastEanRef = useRef<string | null>(pickedVariantEan);
+  useEffect(() => {
+    if (lastEanRef.current !== pickedVariantEan) {
+      setUnlinkedFromCatalog(false);
+      setPickedAmbiguousProductId(null);
+      setCatalogPrefilledIds(new Set());
+      catalogPrefilledKeyRef.current = '';
+      preCatalogSnapshotRef.current = null;
+    }
+    lastEanRef.current = pickedVariantEan;
+  }, [pickedVariantEan]);
+
+  // The query stays keyed on (connection, ean, category) regardless of the
+  // unlink flag — the panel needs the catalog match result to render the
+  // "Relink" affordance after Unlink, and TanStack Query keys the cache by
+  // its inputs (zeroing them out would clear the cached match and the panel
+  // would silently disappear). The unlink flag only gates the prefill
+  // effect below.
+  const catalogMatchQuery = useCatalogProductMatchQuery(
+    currentConnectionId || undefined,
+    pickedVariantEan || undefined,
+    currentCategoryId || undefined,
+  );
+
+  const catalogProductQuery = useCatalogProductQuery(
+    pickedAmbiguousProductId ? currentConnectionId || undefined : undefined,
+    pickedAmbiguousProductId || undefined,
+  );
+
+  // Apply catalog prefill on top of the existing form values whenever the
+  // match resolves to `unique` or the operator picks an ambiguous option.
+  useEffect(() => {
+    if (unlinkedFromCatalog) return;
+    if (categoryParametersQuery.data === undefined) return;
+
+    let product: CatalogProduct | undefined;
+    if (catalogMatchQuery.data?.kind === 'unique') {
+      product = catalogMatchQuery.data.product;
+    } else if (pickedAmbiguousProductId && catalogProductQuery.data) {
+      product = catalogProductQuery.data;
+    }
+    if (!product) return;
+
+    const key = `${currentConnectionId}::${currentCategoryId}::${product.id}`;
+    if (catalogPrefilledKeyRef.current === key) return;
+    catalogPrefilledKeyRef.current = key;
+
+    const currentForm =
+      (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
+    // Snapshot the EAN/Stan-baseline form state — Unlink restores this.
+    preCatalogSnapshotRef.current = { ...currentForm };
+
+    const dirtyParams =
+      ((form.formState.dirtyFields as { parameters?: Record<string, boolean> }).parameters ?? {});
+    const { values: catalogValues, prefilledIds: catalogIds } = prefillFromCatalogProduct(
+      categoryParametersQuery.data,
+      product,
+      dirtyParams,
+    );
+
+    if (catalogIds.size === 0) {
+      setCatalogPrefilledIds(new Set());
+      return;
+    }
+    const merged: CategoryParameterFormValues = { ...currentForm, ...catalogValues };
+    form.setValue('parameters', merged, { shouldDirty: false, shouldValidate: false });
+    setCatalogPrefilledIds(catalogIds);
+  }, [
+    catalogMatchQuery.data,
+    catalogProductQuery.data,
+    categoryParametersQuery.data,
+    pickedAmbiguousProductId,
+    unlinkedFromCatalog,
+    currentConnectionId,
+    currentCategoryId,
+    form,
+  ]);
+
+  const handleUnlinkCatalog = useCallback(() => {
+    if (preCatalogSnapshotRef.current) {
+      form.setValue('parameters', preCatalogSnapshotRef.current, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }
+    setCatalogPrefilledIds(new Set());
+    setUnlinkedFromCatalog(true);
+    setPickedAmbiguousProductId(null);
+    catalogPrefilledKeyRef.current = '';
+  }, [form]);
+
+  const handleRelinkCatalog = useCallback(() => {
+    setUnlinkedFromCatalog(false);
+    catalogPrefilledKeyRef.current = '';
+  }, []);
+
+  const handlePickAmbiguousCatalog = useCallback((productId: string) => {
+    setPickedAmbiguousProductId(productId);
+    catalogPrefilledKeyRef.current = '';
+  }, []);
+
+  const handleSkipAmbiguousCatalog = useCallback(() => {
+    setPickedAmbiguousProductId(null);
+    setUnlinkedFromCatalog(true);
+  }, []);
 
   const validationMessages = Object.values(form.formState.errors).flatMap((e) =>
     e?.message ? [String(e.message)] : [],
@@ -989,12 +1142,28 @@ export function AllegroCreateOfferWizard({
                   No additional parameters required for this category.
                 </p>
               ) : (
-                <CategoryParametersStep
-                  parameters={categoryParameters}
-                  formNamespace="parameters"
-                  prefilledIds={prefilledIds}
-                  extraHints={extraHints}
-                />
+                <>
+                  {pickedVariantEan ? (
+                    <CatalogProductMatchPanel
+                      result={catalogMatchQuery.data}
+                      unlinked={unlinkedFromCatalog}
+                      prefilledCount={catalogPrefilledIds.size}
+                      isLoading={catalogMatchQuery.isLoading}
+                      barcode={pickedVariantEan}
+                      onUnlink={handleUnlinkCatalog}
+                      onRelink={handleRelinkCatalog}
+                      onPickAmbiguous={handlePickAmbiguousCatalog}
+                      onSkipAmbiguous={handleSkipAmbiguousCatalog}
+                    />
+                  ) : null}
+                  <CategoryParametersStep
+                    parameters={categoryParameters}
+                    formNamespace="parameters"
+                    prefilledIds={prefilledIds}
+                    extraHints={extraHints}
+                  />
+                </>
+
               )}
             </>
           ) : null}

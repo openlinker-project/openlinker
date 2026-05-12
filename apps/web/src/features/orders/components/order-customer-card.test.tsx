@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrderCustomerCard } from './order-customer-card';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import type { CustomerProjectionDetail } from '../../customers/api/customers.types';
+import type { CustomerProjectionDetail } from '../../customers';
 
 const customerWithPii: CustomerProjectionDetail = {
   internalCustomerId: 'ol_customer_abc',

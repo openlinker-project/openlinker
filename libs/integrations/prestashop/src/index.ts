@@ -11,7 +11,10 @@
 // Factory
 export { PrestashopAdapterFactory } from './application/prestashop-adapter.factory';
 export { IPrestashopAdapterFactory } from './application/interfaces/prestashop-adapter.factory.interface';
-export { PrestashopAdapterFactoryWrapper } from './infrastructure/adapters/prestashop-adapter-factory-wrapper';
+
+// Plugin descriptor (#593) — replaces the previous `PrestashopAdapterFactoryWrapper`
+// shim. The descriptor lives on top of the `@openlinker/plugin-sdk` contract.
+export { createPrestashopPlugin, type CreatePrestashopPluginDeps } from './prestashop-plugin';
 
 // Webhook provisioning (#168 / #583) — implements core's WebhookProvisioningPort
 export { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';

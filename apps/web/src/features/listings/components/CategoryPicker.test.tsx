@@ -2,7 +2,7 @@ import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CategoryPicker } from './CategoryPicker';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import type { AllegroCategory } from '../../mappings/api/mappings.types';
+import type { AllegroCategory } from '../../mappings';
 
 function mockCategoriesEndpoint(
   byParent: Record<string, AllegroCategory[]>,

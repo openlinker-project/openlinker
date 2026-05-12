@@ -10,8 +10,8 @@ import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
 // NOTE: tests for the connection-picker UX moved to OfferCreationLauncher.test.tsx
 // as part of #608. The wizard is now content-only; the launcher owns the
 // Dialog chrome and the connection-pick flow.
-import type { Connection } from '../../connections/api/connections.types';
-import type { Product } from '../../products/api/products.types';
+import type { Connection } from '../../connections';
+import type { Product } from '../../products';
 import type {
   CategoryParameter,
   CreateOfferRequest,
@@ -971,6 +971,261 @@ describe('AllegroCreateOfferWizard', () => {
     // unit tests. We deliberately don't add a wizard-level test for it
     // here — driving the CategoryPicker through the picker's "Selected"
     // → re-pick UI is brittle and the marginal coverage is low.
+  });
+
+  describe('catalog product match (#635)', () => {
+    /**
+     * Same shape as the parameters fixture in the #410 block, but the EAN
+     * field is unrestricted so the catalog value passes through unchanged
+     * and we can assert it was lifted from the catalog response (not the
+     * variant fallback). Adding a `Marka` row gives us a parameter that
+     * isn't already covered by `autoPrefillParameters`, so the
+     * "{N} fields auto-filled" count is unambiguous.
+     */
+    const catalogParametersFixture: CategoryParameter[] = [
+      {
+        id: 'p_marka',
+        name: 'Marka',
+        type: 'dictionary',
+        required: true,
+        dictionary: [
+          { id: 'p_marka_canon', value: 'Canon' },
+          { id: 'p_marka_nikon', value: 'Nikon' },
+        ],
+        restrictions: {},
+        section: 'product',
+      },
+    ];
+
+    it('shows the linked panel and prefills product-section parameters on a unique catalog match', async () => {
+      const findProductsByBarcode = vi.fn().mockResolvedValue({
+        kind: 'unique',
+        product: {
+          id: 'cat-1',
+          name: 'Canon EOS R5',
+          ean: '5901234567890',
+          parameters: [
+            { parameterId: 'p_marka', name: 'Marka', valueIds: ['p_marka_canon'] },
+          ],
+        },
+      });
+      const mockApi = defaultMocks({
+        listings: {
+          findProductsByBarcode,
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: catalogParametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Catalog lookup fires once category + EAN are both known.
+      await waitFor(() =>
+        expect(findProductsByBarcode).toHaveBeenCalledWith(
+          allegroConnection.id,
+          expect.objectContaining({ barcode: '5901234567890', categoryId: '12345' }),
+        ),
+      );
+
+      // Linked panel renders + 1 field auto-filled.
+      expect(await screen.findByText('Canon EOS R5')).toBeInTheDocument();
+      expect(await screen.findByText(/1 field auto-filled/)).toBeInTheDocument();
+
+      // The Marka dictionary is now set to the catalog value.
+      const markaSelect = screen.getByLabelText<HTMLSelectElement>(/^marka$/i);
+      await waitFor(() => expect(markaSelect.value).toBe('p_marka_canon'));
+    });
+
+    it('transitions to the unlinked branch on Unlink and exposes Relink', async () => {
+      const findProductsByBarcode = vi.fn().mockResolvedValue({
+        kind: 'unique',
+        product: {
+          id: 'cat-1',
+          name: 'Canon EOS R5',
+          parameters: [
+            { parameterId: 'p_marka', name: 'Marka', valueIds: ['p_marka_canon'] },
+          ],
+        },
+      });
+      const mockApi = defaultMocks({
+        listings: {
+          findProductsByBarcode,
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: catalogParametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      const markaSelect = await screen.findByLabelText<HTMLSelectElement>(/^marka$/i);
+      await waitFor(() => expect(markaSelect.value).toBe('p_marka_canon'));
+
+      fireEvent.click(await screen.findByRole('button', { name: /unlink/i }));
+
+      // Panel transitions to the unlinked branch and offers Relink. The
+      // parameter-revert path itself is covered by the
+      // `prefillFromCatalogProduct` unit tests; here we only assert the UX
+      // contract — the panel state changes — because RHF's `Controller`
+      // does not reliably re-render off a parent-object `setValue` in
+      // JSDOM without a Tab/blur event, which is not a real user gesture
+      // we want to depend on in this test.
+      expect(await screen.findByRole('button', { name: /relink/i })).toBeInTheDocument();
+      expect(screen.getByText(/unlinked/i)).toBeInTheDocument();
+    });
+
+    it('renders the ambiguous branch and prefills after the operator picks a product', async () => {
+      const findProductsByBarcode = vi.fn().mockResolvedValue({
+        kind: 'ambiguous',
+        products: [
+          { id: 'cat-1', name: 'Canon EOS R5' },
+          { id: 'cat-2', name: 'Canon EOS R6' },
+        ],
+      });
+      const getCatalogProduct = vi.fn().mockResolvedValue({
+        id: 'cat-2',
+        name: 'Canon EOS R6',
+        parameters: [
+          { parameterId: 'p_marka', name: 'Marka', valueIds: ['p_marka_canon'] },
+        ],
+      });
+      const mockApi = defaultMocks({
+        listings: {
+          findProductsByBarcode,
+          getCatalogProduct,
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: catalogParametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Ambiguous header renders, the picked product isn't fetched yet.
+      expect(
+        await screen.findByText(/multiple allegro catalog products match/i),
+      ).toBeInTheDocument();
+      expect(getCatalogProduct).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText('Canon EOS R6'));
+
+      await waitFor(() =>
+        expect(getCatalogProduct).toHaveBeenCalledWith(allegroConnection.id, 'cat-2'),
+      );
+
+      // Marka is filled from the picked catalog product.
+      const markaSelect = screen.getByLabelText<HTMLSelectElement>(/^marka$/i);
+      await waitFor(() => expect(markaSelect.value).toBe('p_marka_canon'));
+    });
+
+    it('dismisses the ambiguous picker on Skip', async () => {
+      const findProductsByBarcode = vi.fn().mockResolvedValue({
+        kind: 'ambiguous',
+        products: [
+          { id: 'cat-1', name: 'Canon EOS R5' },
+          { id: 'cat-2', name: 'Canon EOS R6' },
+        ],
+      });
+      const mockApi = defaultMocks({
+        listings: {
+          findProductsByBarcode,
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: catalogParametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Ambiguous picker visible.
+      const ambiguousHeader = await screen.findByText(
+        /multiple allegro catalog products match/i,
+      );
+      expect(ambiguousHeader).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      // Picker is gone; parameters step still works.
+      await waitFor(() =>
+        expect(screen.queryByText(/multiple allegro catalog products match/i)).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/^marka$/i)).toBeInTheDocument();
+    });
+
+    it('does not render the panel when the catalog returns no_match', async () => {
+      // defaultMocks already sets findProductsByBarcode → { kind: 'no_match' }.
+      const mockApi = defaultMocks({
+        listings: {
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: catalogParametersFixture }),
+        },
+      });
+
+      renderWithProviders(
+        <AllegroCreateOfferWizard
+          connection={allegroConnection}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await advanceToStep2();
+      await pickFirstLeafCategory();
+      fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '99.99' } });
+      fireEvent.change(screen.getByLabelText(/^stock$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Marka is rendered (parameters step is live), but the catalog panel is not.
+      await screen.findByLabelText(/^marka$/i);
+      expect(screen.queryByText(/multiple allegro catalog products/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/matched to allegro catalog product/i)).not.toBeInTheDocument();
+    });
   });
 
   describe('AI suggest (#637)', () => {

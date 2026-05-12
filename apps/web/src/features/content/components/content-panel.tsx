@@ -23,7 +23,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
 import { formatDateTime } from '../../../shared/format/format-date';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
-import { translateAllegroError } from '../../allegro/lib/translate-allegro-error';
+import { translateAllegroError } from '../../allegro';
 
 const MAX_VALUE_LENGTH = 65_536;
 

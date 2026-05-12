@@ -13,7 +13,7 @@ import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { ConnectionEntityLabel } from '../../connections/components/ConnectionEntityLabel';
+import { ConnectionEntityLabel } from '../../connections';
 import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   type OrderSyncStatusValue,

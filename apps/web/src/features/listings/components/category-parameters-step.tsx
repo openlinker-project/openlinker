@@ -170,7 +170,7 @@ export function CategoryParametersStep({
                 formNamespace={formNamespace}
                 parentValues={formValues}
                 prefilled={liveprefilledIds.has(param.id)}
-              extraHint={liveExtraHints[param.id]}
+                extraHint={liveExtraHints[param.id]}
               />
             ))}
           </fieldset>
