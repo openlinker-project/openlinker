@@ -10,3 +10,4 @@ export type { AllegroApi } from './api/allegro.api';
 export { createAllegroApi } from './api/allegro.api';
 export { useResponsibleProducersQuery } from './hooks/use-responsible-producers-query';
 export { useUploadSafetyAttachmentMutation } from './hooks/use-upload-safety-attachment-mutation';
+export { translateAllegroError } from './lib/translate-allegro-error';

@@ -12,7 +12,7 @@
  */
 import type { ReactElement } from 'react';
 import { StructuredErrorList } from '../../../shared/ui/structured-error-list';
-import { translateAllegroError } from '../../allegro/lib/translate-allegro-error';
+import { translateAllegroError } from '../../allegro';
 import type { OfferCreationError } from '../api/listings.types';
 
 interface OfferCreationErrorListProps {
