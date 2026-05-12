@@ -14,7 +14,14 @@ export { IPrestashopAdapterFactory } from './application/interfaces/prestashop-a
 
 // Plugin descriptor (#593) — replaces the previous `PrestashopAdapterFactoryWrapper`
 // shim. The descriptor lives on top of the `@openlinker/plugin-sdk` contract.
-export { createPrestashopPlugin, type CreatePrestashopPluginDeps } from './prestashop-plugin';
+// `prestashopAdapterManifest` is the static manifest export (#575) — readable
+// without booting Nest or resolving the cross-package deps in
+// `CreatePrestashopPluginDeps`.
+export {
+  createPrestashopPlugin,
+  prestashopAdapterManifest,
+  type CreatePrestashopPluginDeps,
+} from './prestashop-plugin';
 
 // Webhook provisioning (#168 / #583) — implements core's WebhookProvisioningPort
 export { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';

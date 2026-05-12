@@ -34,7 +34,6 @@ export {
   CoreCapability,
   CoreCapabilityValues,
   AdapterMetadata,
-  AdapterInstance,
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';

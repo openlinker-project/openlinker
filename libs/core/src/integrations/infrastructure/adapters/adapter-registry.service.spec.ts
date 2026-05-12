@@ -113,22 +113,9 @@ describe('AdapterRegistryService', () => {
     });
   });
 
-  describe('getAdapter', () => {
-    it('returns adapter placeholder for a registered adapterKey', async () => {
-      service.register(prestashopMetadata);
-
-      const adapter = await service.getAdapter('prestashop.webservice.v1');
-
-      expect(adapter).toBeDefined();
-      expect((adapter as { adapterKey: string }).adapterKey).toBe('prestashop.webservice.v1');
-    });
-
-    it('throws AdapterNotFoundException for an unknown adapterKey', async () => {
-      await expect(service.getAdapter('unknown.adapter.v1')).rejects.toThrow(
-        AdapterNotFoundException,
-      );
-    });
-  });
+  // `getAdapter` was removed in #574 — the registry is metadata-only.
+  // Per-capability adapter instances are constructed via
+  // `AdapterFactoryResolverService.createCapabilityAdapter`, not the registry.
 
   describe('listAdapters', () => {
     it('returns an empty array when no adapters are registered', async () => {

@@ -1,0 +1,6 @@
+{
+  "_comment": "Plugin migration directories — lint-time mirror of apps/api/src/plugin-migrations.ts (#599). Used by scripts/check-migration-timestamps.mjs to scan plugin migrations for the same uniqueness/format invariants as core migrations. Paths are RELATIVE to repo root. KEEP THIS FILE IN SYNC with apps/api/src/plugin-migrations.ts — drift fails `pnpm lint`.",
+  "directories": [
+    "libs/integrations/allegro/src/migrations"
+  ]
+}

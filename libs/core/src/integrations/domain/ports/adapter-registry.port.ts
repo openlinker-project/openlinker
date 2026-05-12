@@ -8,19 +8,12 @@
  * @module libs/core/src/integrations/domain/ports
  * @see {@link AdapterRegistryService} for the implementation
  */
-import { AdapterMetadata, AdapterInstance } from '../types/adapter.types';
+import { AdapterMetadata } from '../types/adapter.types';
 
 export interface AdapterRegistryPort {
   /**
-   * Get adapter instance by adapter key
-   * @param adapterKey - The versioned adapter key (e.g., 'prestashop.webservice.v1')
-   * @returns Adapter instance (placeholder/mock for MVP)
-   */
-  getAdapter(adapterKey: string): Promise<AdapterInstance>;
-
-  /**
    * Get adapter metadata by adapter key
-   * @param adapterKey - The versioned adapter key
+   * @param adapterKey - The versioned adapter key (e.g., 'prestashop.webservice.v1')
    * @returns Adapter metadata or throws if not found
    */
   getAdapterMetadata(adapterKey: string): Promise<AdapterMetadata>;

@@ -20,10 +20,7 @@ import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping
 import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
-import {
-  AdapterMetadata,
-  AdapterInstance,
-} from '../../domain/types/adapter.types';
+import { AdapterMetadata } from '../../domain/types/adapter.types';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
@@ -53,9 +50,9 @@ describe('IntegrationsService', () => {
     version: '1.0.0',
   };
 
-  const mockAdapter: AdapterInstance = {
-    adapterKey: 'prestashop.webservice.v1',
-  } as AdapterInstance;
+  // Stand-in adapter instance for tests that exercise `getCapabilityAdapter`
+  // / `listCapabilityAdapters` — the factory resolver returns this shape.
+  const mockCapabilityAdapter = { capabilityAdapter: true };
 
   beforeEach(async () => {
     const mockConnectionPort = {
@@ -64,7 +61,6 @@ describe('IntegrationsService', () => {
     } as unknown as jest.Mocked<ConnectionPort>;
 
     const mockAdapterRegistry = {
-      getAdapter: jest.fn(),
       getAdapterMetadata: jest.fn(),
       listAdapters: jest.fn(),
       register: jest.fn(),
@@ -79,7 +75,7 @@ describe('IntegrationsService', () => {
       createCapabilityAdapter: jest.fn(),
       registerFactory: jest.fn(),
       getFactory: jest.fn(),
-      hasFactory: jest.fn().mockReturnValue(false), // Default: no factory, use registry placeholder
+      hasFactory: jest.fn().mockReturnValue(true),
     } as unknown as jest.Mocked<AdapterFactoryResolverService>;
 
     const mockIdentifierMapping = {
@@ -142,13 +138,11 @@ describe('IntegrationsService', () => {
       );
 
       connectionPort.get.mockResolvedValue(connectionWithKey);
-      adapterRegistry.getAdapter.mockResolvedValue(mockAdapter);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
 
       const result = await service.getAdapter('connection-123');
 
       expect(result.connection).toEqual(connectionWithKey);
-      expect(result.adapter).toEqual(mockAdapter);
       expect(result.metadata).toEqual(mockAdapterMetadata);
       expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith(
         'prestashop.webservice.v1',
@@ -157,7 +151,6 @@ describe('IntegrationsService', () => {
 
     it('should derive adapterKey from platformType when not provided', async () => {
       connectionPort.get.mockResolvedValue(mockConnection);
-      adapterRegistry.getAdapter.mockResolvedValue(mockAdapter);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
 
       const result = await service.getAdapter('connection-123');
@@ -217,17 +210,39 @@ describe('IntegrationsService', () => {
   });
 
   describe('getCapabilityAdapter', () => {
-    it('should return typed adapter when capability is supported', async () => {
+    it('should return the factory-constructed adapter when capability is supported', async () => {
       connectionPort.get.mockResolvedValue(mockConnection);
-      adapterRegistry.getAdapter.mockResolvedValue(mockAdapter);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
+      factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
 
       const result = await service.getCapabilityAdapter<unknown>(
         'connection-123',
         'ProductMaster',
       );
 
-      expect(result).toEqual(mockAdapter);
+      expect(result).toEqual(mockCapabilityAdapter);
+      expect(factoryResolver.createCapabilityAdapter).toHaveBeenCalledWith(
+        'prestashop.webservice.v1',
+        mockConnection,
+        'ProductMaster',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('should propagate AdapterNotFoundException from the factory resolver (#574)', async () => {
+      // Pre-#574 this path fell back to a `{ adapterKey } as T` placeholder.
+      // After #574 a missing factory throws — fail loud at the dispatch
+      // boundary, not at the first method call on an unusable adapter.
+      connectionPort.get.mockResolvedValue(mockConnection);
+      adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
+      factoryResolver.createCapabilityAdapter.mockRejectedValue(
+        new AdapterNotFoundException('No factory registered for adapterKey: prestashop.webservice.v1'),
+      );
+
+      await expect(
+        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster'),
+      ).rejects.toThrow(AdapterNotFoundException);
     });
 
     it('should throw CapabilityNotSupportedException when capability not supported', async () => {
@@ -237,7 +252,6 @@ describe('IntegrationsService', () => {
       };
 
       connectionPort.get.mockResolvedValue(mockConnection);
-      adapterRegistry.getAdapter.mockResolvedValue(mockAdapter);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(
         metadataWithoutCapability,
       );
@@ -302,11 +316,9 @@ describe('IntegrationsService', () => {
         .mockResolvedValueOnce(prestashopMetadata)
         .mockResolvedValueOnce(allegroMetadata);
 
-      adapterRegistry.getAdapter
-        .mockResolvedValueOnce({ adapterKey: 'prestashop.webservice.v1' } as AdapterInstance)
-        .mockResolvedValueOnce({ adapterKey: 'allegro.publicapi.v1' } as AdapterInstance);
-
-      factoryResolver.hasFactory.mockReturnValue(false); // Use registry placeholders
+      factoryResolver.createCapabilityAdapter
+        .mockResolvedValueOnce({ adapterKey: 'prestashop.webservice.v1' })
+        .mockResolvedValueOnce({ adapterKey: 'allegro.publicapi.v1' });
 
       // Use ProductMaster which both adapters support in this test
       const result = await service.listCapabilityAdapters<unknown>({
@@ -341,10 +353,7 @@ describe('IntegrationsService', () => {
 
       connectionPort.list.mockResolvedValue([prestashopConnection]);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(prestashopMetadata);
-      adapterRegistry.getAdapter.mockResolvedValue({
-        adapterKey: 'prestashop.webservice.v1',
-      } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
+      factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
 
       const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderSource',
@@ -384,10 +393,7 @@ describe('IntegrationsService', () => {
       };
 
       adapterRegistry.getAdapterMetadata.mockResolvedValue(metadata);
-      adapterRegistry.getAdapter.mockResolvedValue({
-        adapterKey: 'prestashop.webservice.v1',
-      } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
+      factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
 
       const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderSource',
@@ -442,10 +448,7 @@ describe('IntegrationsService', () => {
           new AdapterNotFoundException('No default adapterKey found for platformType: unknown'),
         );
 
-      adapterRegistry.getAdapter.mockResolvedValue({
-        adapterKey: 'prestashop.webservice.v1',
-      } as AdapterInstance);
-      factoryResolver.hasFactory.mockReturnValue(false);
+      factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
 
       const result = await service.listCapabilityAdapters<unknown>({
         capability: 'OrderSource',
