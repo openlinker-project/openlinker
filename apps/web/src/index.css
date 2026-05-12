@@ -1879,6 +1879,13 @@ textarea {
   font-size: 0.875rem;
 }
 
+/* #632 — success-tinted variant for "matched from EAN / mapping" hints under
+   form fields. Inherits the description's spacing and size; only the colour
+   token changes. */
+.form-field__description--match {
+  color: var(--status-success-strong);
+}
+
 .form-field__error {
   margin: 0;
   color: var(--status-error);
