@@ -59,12 +59,25 @@ interface CategoryParametersStepProps {
    * the form root.
    */
   prefilledIds?: ReadonlySet<string>;
+  /**
+   * Map of parameter id → soft hint message rendered next to the field.
+   * Generic by design — appended to the field's description channel,
+   * dirty-stripped per-field with the same lifecycle as `prefilledIds`.
+   *
+   * Today the sole producer is `collectUnmatchedBrandHints` (#412),
+   * surfacing the variant's brand value when no exact dictionary match
+   * was found. Extension point for future fill-attempt diagnostics — the
+   * intent-agnostic shape lets new hint producers plug in without a
+   * prop-rename PR.
+   */
+  extraHints?: Record<string, string>;
 }
 
 export function CategoryParametersStep({
   parameters,
   formNamespace,
   prefilledIds,
+  extraHints,
 }: CategoryParametersStepProps): ReactElement {
   const { control, setValue, getValues, formState } = useFormContext();
   // Watching the entire `parameters` slice keeps visibility / option-narrowing
@@ -89,6 +102,18 @@ export function CategoryParametersStep({
     }
     return next;
   }, [prefilledIds, dirtyParameters]);
+
+  // Mirror the prefilled-id dirty-strip for `extraHints` (#412). Hints
+  // disappear the moment the operator edits the field, same lifecycle as
+  // the "Auto-filled from variant data" subtitle.
+  const liveExtraHints = useMemo(() => {
+    if (!extraHints || Object.keys(extraHints).length === 0) return extraHints ?? {};
+    const next: Record<string, string> = {};
+    for (const [paramId, message] of Object.entries(extraHints)) {
+      if (!dirtyParameters[paramId]) next[paramId] = message;
+    }
+    return next;
+  }, [extraHints, dirtyParameters]);
 
   // Visibility filter: when a parent parameter's value changes such that a
   // dependent parameter becomes hidden, clear the dependent's form value so
@@ -125,6 +150,7 @@ export function CategoryParametersStep({
               formNamespace={formNamespace}
               parentValues={formValues}
               prefilled={liveprefilledIds.has(param.id)}
+              extraHint={liveExtraHints[param.id]}
             />
           ))}
         </fieldset>
@@ -144,6 +170,7 @@ export function CategoryParametersStep({
                 formNamespace={formNamespace}
                 parentValues={formValues}
                 prefilled={liveprefilledIds.has(param.id)}
+              extraHint={liveExtraHints[param.id]}
               />
             ))}
           </fieldset>
@@ -158,6 +185,8 @@ interface ParameterFieldProps {
   formNamespace: string;
   parentValues: CategoryParameterFormValues;
   prefilled: boolean;
+  /** Soft hint message appended to the field description (#412). */
+  extraHint?: string;
 }
 
 function ParameterField({
@@ -165,6 +194,7 @@ function ParameterField({
   formNamespace,
   parentValues,
   prefilled,
+  extraHint,
 }: ParameterFieldProps): ReactElement {
   const { control, formState } = useFormContext();
   const fieldName = `${formNamespace}.${parameter.id}`;
@@ -192,7 +222,7 @@ function ParameterField({
     <FormField
       label={label}
       name={fieldName}
-      description={[description, autoFillHint].filter(Boolean).join(' · ') || undefined}
+      description={[description, autoFillHint, extraHint].filter(Boolean).join(' · ') || undefined}
       error={error}
     >
       <Controller
