@@ -293,6 +293,39 @@ This has two implications:
 
 Until a deployment model is finalized, keep runtime configuration minimal and explicit. Do not assume same-origin API hosting or hidden runtime mutation of the frontend bundle.
 
+## Design tokens (`shared/theme/tokens.ts`)
+
+The frontend ships a typed catalog of every public design token at `apps/web/src/shared/theme/tokens.ts` (#611). The catalog is the contract plugin authors and host code bind against for TS-side discovery and typed inline styles.
+
+```ts
+// apps/web/src/shared/theme/tokens.ts
+export const tokens = {
+  'bg-canvas': 'var(--bg-canvas)',
+  'bg-shell': 'var(--bg-shell)',
+  // ... ~85 entries
+} as const satisfies Record<string, `var(--${string})`>;
+
+export type TokenName = keyof typeof tokens;
+```
+
+**Consumption model**: component CSS keeps writing `var(--name)` directly against `apps/web/src/index.css`. `tokens.ts` does NOT replace that path and isn't loaded by the runtime CSS engine — it's for:
+
+- Plugin authors who need a typed list of supported token names.
+- Inline styles in TS (`style={{ background: tokens['bg-canvas'] }}` — rare but valid).
+- Discoverability via autocomplete + go-to-definition.
+
+**Drift guarantee**: `scripts/check-design-tokens.mjs` runs under `pnpm lint` (chained into `check:invariants`). It asserts every token in `tokens.ts` is declared in `index.css` — adding a catalog entry without a corresponding CSS declaration fails the build. The check is one-directional in v1 (catalog → CSS); orphaned `--*` declarations in CSS that aren't in the catalog are tolerated as potentially internal-only.
+
+**Adding a token**: declare it in `index.css` first, then add an entry to `tokens.ts` matching the name verbatim, then re-run `pnpm lint` to confirm the drift check passes. **Removing a token**: drop both sides in the same PR.
+
+## Shared UI catalog (`shared/ui/index.ts`)
+
+The frontend's public component catalog lives at `apps/web/src/shared/ui/index.ts` (#611). Anything re-exported there is part of the contract plugin authors and host code can compose against. Anything not in the catalog is internal — renaming, moving, or deleting it shouldn't break consumers.
+
+**v1 scope** is narrow (~25 primitives covering the cockpit vocabulary documented in `docs/frontend-ui-style-guide.md` § Core Component Patterns). Adding a primitive is a one-line edit — keep the list scannable and add only what real consumers need.
+
+Components that wrap headless libraries (Radix, TanStack) sit on the same footing as native-HTML wrappers — the wrapper is the public surface, the underlying library is an implementation detail.
+
 ## Internationalization (i18n)
 
 The frontend ships a **no-op i18n seam** at `apps/web/src/shared/i18n/` (#612). The seam is the contract plugin authors bind against and the migration target for future per-feature string-migration PRs.
