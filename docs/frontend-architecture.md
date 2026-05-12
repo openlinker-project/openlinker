@@ -53,6 +53,41 @@ Conventions:
 - Shared UI must stay domain-agnostic.
 - Types that mirror backend contracts should preserve backend `camelCase` naming.
 
+## Feature Public Surface
+
+Every feature that is consumed by another feature or by a plugin exposes a single public barrel at `features/<name>/index.ts`. Cross-boundary callers import only from the barrel — never from `api/`, `hooks/`, `components/`, `lib/`, or `types/` subpaths inside the feature. Same-feature internals continue to use ordinary relative imports.
+
+The barrel is the seam: anything not re-exported there is private. Adding a new public export is a deliberate edit (one line in the barrel) and shows up in the diff. Removing or renaming an internal file no longer breaks unrelated features.
+
+```ts
+// apps/web/src/features/connections/index.ts
+export type { Connection, ConnectionStatus, /* … */ } from './api/connections.types';
+export { useConnectionsQuery } from './hooks/use-connections-query';
+export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
+```
+
+```ts
+// ✅ Consumer (another feature or a plugin)
+import { useConnectionsQuery, type Connection } from '../../connections';
+
+// ❌ Banned — fails `pnpm lint`
+import type { Connection } from '../../connections/api/connections.types';
+```
+
+**Enforcement.** Two `no-restricted-imports` patterns in `.eslintrc.js`:
+- `apps/web/src/features/**/*.{ts,tsx}` — bans deep cross-feature imports (a feature reaching into another feature's internals).
+- `apps/web/src/plugins/**/*.{ts,tsx}` — bans plugin → feature deep imports for the same reason.
+
+The matcher does not support brace expansion, so each `<slug>/<part>` combination is enumerated explicitly. Same-feature relative imports (`../api/foo`, `../hooks/use-bar`) are unaffected because the import string has no `<slug>` segment.
+
+**Adding a new public feature surface.**
+1. Create `features/<name>/index.ts` and re-export the minimal set of symbols cross-feature/cross-plugin callers need (start narrow — adding an export later is one line).
+2. Add the slug to both `no-restricted-imports` pattern groups in `.eslintrc.js` (the `features/**` rule and the `plugins/**` rule).
+3. Migrate existing consumers from deep imports to barrel imports.
+4. Pages remain free to deep-import from features for now — pages → features migration is a follow-up.
+
+**Out of scope today.** Pages still deep-import from features (≈128 imports); migrating them is a follow-up that doesn't change the architectural model, just expands enforcement scope.
+
 ## Routing Conventions
 
 Routing uses explicit React Router definitions under `src/app/routes`. Avoid file-system routing for FE-001 so the first app stays predictable and easy to refactor inside the monorepo.
@@ -309,7 +344,7 @@ Dependency direction must remain simple and enforceable:
 - `features` may import `shared`
 - `shared` must not import `features`, `pages`, or `plugins` — with one narrow exemption documented below
 
-These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Raw `fetch()` calls are also blocked in `shared/`, `features/`, `pages/`, and `plugins/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
+These boundaries are enforced by ESLint `no-restricted-imports` rules in `.eslintrc.js` — violations fail `pnpm lint`. Cross-feature and plugin → feature imports must additionally target the feature's public barrel — see [Feature Public Surface](#feature-public-surface) (#609). Raw `fetch()` calls are also blocked in `shared/`, `features/`, `pages/`, and `plugins/` via `no-restricted-globals` to ensure all HTTP calls go through shared API client modules.
 
 > **Note:** Features may import `useApiClient` from `app/api/` — this is the designed dependency-injection boundary for API access. A future refactor may move the hook to `shared/`, but the current crossing is intentional and not restricted by lint.
 >

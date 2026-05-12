@@ -15,7 +15,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
-import { useProductMasterConnections } from '../../connections/hooks/use-product-master-connections';
+import { useProductMasterConnections } from '../../connections';
 import {
   allegroSetupSchema,
   ALLEGRO_SETUP_DEFAULT_VALUES,

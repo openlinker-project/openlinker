@@ -9,7 +9,7 @@
  * @module plugins/allegro/components
  */
 import { type ReactElement } from 'react';
-import { AllegroSellerDefaultsSection } from '../../../features/connections/components/allegro-seller-defaults-section';
+import { AllegroSellerDefaultsSection } from '../../../features/connections';
 import type { ExtraConfigSectionProps } from '../../../shared/plugins';
 
 export function AllegroExtraSection({

@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { useCustomerQuery } from '../../customers/hooks/use-customer-query';
+import { useCustomerQuery } from '../../customers';
 import { useOrdersQuery } from '../hooks/use-orders-query';
 
 interface OrderCustomerCardProps {
