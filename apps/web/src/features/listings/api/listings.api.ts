@@ -7,9 +7,12 @@
  * @module apps/web/src/features/listings/api
  */
 import type {
+  CatalogProduct,
+  CatalogProductMatchResult,
   CategoryParametersListResponse,
   CreateOfferRequest,
   CreateOfferResponse,
+  FindProductsByBarcodeRequest,
   ListingsFilters,
   ListingsPagination,
   MarketplaceOfferResponse,
@@ -54,6 +57,11 @@ export interface ListingsApi {
     connectionId: string,
     categoryId: string,
   ) => Promise<CategoryParametersListResponse>;
+  findProductsByBarcode: (
+    connectionId: string,
+    request: FindProductsByBarcodeRequest,
+  ) => Promise<CatalogProductMatchResult>;
+  getCatalogProduct: (connectionId: string, productId: string) => Promise<CatalogProduct>;
 }
 
 interface ApiRequest {
@@ -115,6 +123,21 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
       return request<CategoryParametersListResponse>(
         `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      );
+    },
+    findProductsByBarcode(connectionId, body): Promise<CatalogProductMatchResult> {
+      return request<CatalogProductMatchResult>(
+        `/listings/connections/${connectionId}/products/find-by-barcode`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    getCatalogProduct(connectionId, productId): Promise<CatalogProduct> {
+      return request<CatalogProduct>(
+        `/listings/connections/${connectionId}/products/${encodeURIComponent(productId)}`,
       );
     },
   };

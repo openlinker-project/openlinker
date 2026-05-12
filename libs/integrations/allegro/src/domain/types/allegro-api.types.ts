@@ -588,7 +588,9 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
  * One entry in `GET /sale/products?phrase=…&category.id=…` (#431). Allegro's
  * matcher is fuzzy on `phrase`, so the smart-link resolver post-filters by
  * exact `ean` match. `name` is informational (used in logs and the
- * `ambiguous` diagnostic payload).
+ * `ambiguous` diagnostic payload). The summary response intentionally does
+ * NOT carry image URLs — only the detail endpoint
+ * (`GET /sale/products/{productId}`) does.
  */
 export interface AllegroProductCardSummary {
   id: string;
@@ -598,6 +600,40 @@ export interface AllegroProductCardSummary {
 
 export interface AllegroProductsSearchResponse {
   products: AllegroProductCardSummary[];
+}
+
+/**
+ * Subset of `SaleProductDto` returned by `GET /sale/products/{productId}` that
+ * the catalog-product reader (#633) maps onto the neutral `CatalogProduct`.
+ * Other fields (offerRequirements, compatibilityList, tecdocSpecification,
+ * trustedContent, productSafety, etc.) are intentionally omitted — they are
+ * not surfaced through the neutral DTO.
+ *
+ * Reference: developer.allegro.pl/swagger.yaml SaleProductDto.
+ */
+export interface AllegroProductDto {
+  id: string;
+  name: string;
+  images?: { url: string }[];
+  parameters?: AllegroProductDtoParameter[];
+}
+
+/**
+ * `ProductParameterDto` entry as returned by the catalog endpoints. Mirrors
+ * the offer-parameter shape but is read-only (no `rangeValue` write path).
+ * `options.isGTIN === true` marks the EAN-bearing parameter; we use that to
+ * surface a top-level `ean` on the neutral summary.
+ */
+export interface AllegroProductDtoParameter {
+  id: string;
+  name?: string;
+  values?: string[];
+  valuesIds?: string[];
+  unit?: string;
+  options?: {
+    identifiesProduct?: boolean;
+    isGTIN?: boolean;
+  };
 }
 
 /**

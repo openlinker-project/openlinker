@@ -18,6 +18,7 @@ import { isOfferFieldUpdater } from '../offer-field-updater.capability';
 import { isCategoryBrowser } from '../category-browser.capability';
 import { isCategoryBarcodeMatcher } from '../category-barcode-matcher.capability';
 import { isCategoryParametersReader } from '../category-parameters-reader.capability';
+import { isCatalogProductReader } from '../catalog-product-reader.capability';
 import { isOfferCreator } from '../offer-creator.capability';
 import { isOfferReader } from '../offer-reader.capability';
 import { isSellerPoliciesReader } from '../seller-policies-reader.capability';
@@ -53,6 +54,39 @@ describe('Offer Manager capability type guards', () => {
 
     it(`returns false when \`${methodName}\` is present but non-function`, () => {
       expect(guard(makeAdapter({ [methodName]: 'not a function' }))).toBe(false);
+    });
+  });
+
+  // CatalogProductReader requires BOTH methods, so the table-driven shape
+  // above (which checks one method per row) doesn't fit; a dedicated block
+  // covers the combinatorics.
+  describe('CatalogProductReader', () => {
+    it('returns true when both methods are functions', () => {
+      expect(
+        isCatalogProductReader(
+          makeAdapter({ findProductsByBarcode: jest.fn(), getProduct: jest.fn() }),
+        ),
+      ).toBe(true);
+    });
+
+    it('returns false when only findProductsByBarcode is a function', () => {
+      expect(isCatalogProductReader(makeAdapter({ findProductsByBarcode: jest.fn() }))).toBe(false);
+    });
+
+    it('returns false when only getProduct is a function', () => {
+      expect(isCatalogProductReader(makeAdapter({ getProduct: jest.fn() }))).toBe(false);
+    });
+
+    it('returns false when neither method is present', () => {
+      expect(isCatalogProductReader(makeAdapter())).toBe(false);
+    });
+
+    it('returns false when methods are present but non-function', () => {
+      expect(
+        isCatalogProductReader(
+          makeAdapter({ findProductsByBarcode: 'no', getProduct: 'no' }),
+        ),
+      ).toBe(false);
     });
   });
 });

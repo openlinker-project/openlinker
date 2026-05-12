@@ -259,6 +259,16 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       // #410 — default to "no parameters" so the wizard's category step
       // renders the friendly empty state in tests that don't override.
       getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
+      // #635 — default the Allegro catalog match to "no_match" so tests
+      // that don't exercise the catalog-prefill flow render the wizard
+      // without a panel and without a real network call. `getCatalogProduct`
+      // is non-nullable on the contract, so the default mock rejects with
+      // a 422 (matches the `getMarketplaceOffer` convention from #464) and
+      // forces tests that exercise the ambiguous-pick branch to override.
+      findProductsByBarcode: vi.fn().mockResolvedValue({ kind: 'no_match' }),
+      getCatalogProduct: vi.fn().mockRejectedValue(
+        new ApiError('Adapter does not support catalog product reading', 422, null),
+      ),
       ...overrides.listings,
     } as ApiClient['listings'],
     products: {

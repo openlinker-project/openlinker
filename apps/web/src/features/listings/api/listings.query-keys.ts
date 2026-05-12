@@ -26,4 +26,8 @@ export const listingsQueryKeys = {
       connectionId,
       categoryId,
     ] as const,
+  catalogProductMatch: (connectionId: string, barcode: string, categoryId: string) =>
+    ['listings', 'catalogProductMatch', connectionId, barcode, categoryId] as const,
+  catalogProduct: (connectionId: string, productId: string) =>
+    ['listings', 'catalogProduct', connectionId, productId] as const,
 };

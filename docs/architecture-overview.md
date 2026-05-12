@@ -471,6 +471,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `OfferCreator` | `createOffer(cmd)` |
 | `OfferStatusReader` | `getOfferStatus(externalOfferId)` |
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
+| `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
 **Current Implementation**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`).
 

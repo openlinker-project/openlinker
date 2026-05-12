@@ -315,3 +315,41 @@ export interface CategoryParameter {
 export interface CategoryParametersListResponse {
   parameters: CategoryParameter[];
 }
+
+/**
+ * Catalog product types — mirror the neutral BE shapes from
+ * `@openlinker/core/listings` (#633). Preserve backend `camelCase`.
+ */
+export const CATALOG_PRODUCT_MATCH_KIND_VALUES = ['unique', 'ambiguous', 'no_match'] as const;
+export type CatalogProductMatchKind = (typeof CATALOG_PRODUCT_MATCH_KIND_VALUES)[number];
+
+export interface CatalogProductParameter {
+  /** Stable id; matches `CategoryParameter.id`. Use as merge key on prefill. */
+  parameterId: string;
+  name: string;
+  valueIds?: string[];
+  valueStrings?: string[];
+}
+
+export interface CatalogProductSummary {
+  id: string;
+  name: string;
+  ean?: string;
+  imageUrl?: string;
+}
+
+export interface CatalogProduct extends CatalogProductSummary {
+  description?: string;
+  images?: string[];
+  parameters: CatalogProductParameter[];
+}
+
+export type CatalogProductMatchResult =
+  | { kind: 'unique'; product: CatalogProduct }
+  | { kind: 'ambiguous'; products: CatalogProductSummary[] }
+  | { kind: 'no_match' };
+
+export interface FindProductsByBarcodeRequest {
+  barcode: string;
+  categoryId?: string;
+}

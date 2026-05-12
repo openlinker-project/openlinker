@@ -6,8 +6,14 @@
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import type { CategoryParameter, OfferManagerPort, SellerPolicies } from '@openlinker/core/listings';
-import { CategoryNotFoundException } from '@openlinker/core/listings';
+import type {
+  CatalogProduct,
+  CatalogProductMatchResult,
+  CategoryParameter,
+  OfferManagerPort,
+  SellerPolicies,
+} from '@openlinker/core/listings';
+import { CatalogProductNotFoundException, CategoryNotFoundException } from '@openlinker/core/listings';
 import { ConnectionNotFoundException, IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { CATEGORY_RESOLUTION_SERVICE_TOKEN, OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, OfferCreationRecord, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
 import type { ICategoryResolutionService, IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
@@ -702,6 +708,156 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(ConnectionNotFoundException);
 
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CatalogProductReader (#633)', () => {
+    function makeAdapter(
+      catalogReader: boolean,
+      methods: Partial<{
+        findProductsByBarcode: jest.Mock;
+        getProduct: jest.Mock;
+      }> = {},
+    ): OfferManagerPort {
+      const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+      if (catalogReader) {
+        return Object.assign(base, {
+          findProductsByBarcode: methods.findProductsByBarcode ?? jest.fn(),
+          getProduct: methods.getProduct ?? jest.fn(),
+        });
+      }
+      return base;
+    }
+
+    const sampleProduct: CatalogProduct = {
+      id: 'p1',
+      name: 'Canon SX740 HS',
+      ean: '5901234123457',
+      imageUrl: 'https://img/a.jpg',
+      images: ['https://img/a.jpg'],
+      parameters: [
+        { parameterId: '224017', name: 'Brand', valueStrings: ['Canon'] },
+      ],
+    };
+
+    describe('findProductsByBarcode', () => {
+      it('returns the unique branch with the eager-fetched product', async () => {
+        const find = jest.fn().mockResolvedValue({
+          kind: 'unique',
+          product: sampleProduct,
+        } satisfies CatalogProductMatchResult);
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { findProductsByBarcode: find }),
+        );
+
+        const result = await controller.findProductsByBarcode('conn-1', {
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(find).toHaveBeenCalledWith({ barcode: '5901234123457', categoryId: 'cat-1' });
+        expect(result).toEqual({ kind: 'unique', product: sampleProduct });
+      });
+
+      it('returns ambiguous summaries verbatim', async () => {
+        const find = jest.fn().mockResolvedValue({
+          kind: 'ambiguous',
+          products: [
+            { id: 'p1', name: 'A', ean: '5901234123457' },
+            { id: 'p2', name: 'B', ean: '5901234123457' },
+          ],
+        } satisfies CatalogProductMatchResult);
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { findProductsByBarcode: find }),
+        );
+
+        const result = await controller.findProductsByBarcode('conn-1', {
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(result).toEqual({
+          kind: 'ambiguous',
+          products: [
+            { id: 'p1', name: 'A', ean: '5901234123457' },
+            { id: 'p2', name: 'B', ean: '5901234123457' },
+          ],
+        });
+      });
+
+      it('returns no_match as a 200 (not a 404)', async () => {
+        const find = jest.fn().mockResolvedValue({ kind: 'no_match' } satisfies CatalogProductMatchResult);
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { findProductsByBarcode: find }),
+        );
+
+        const result = await controller.findProductsByBarcode('conn-1', {
+          barcode: '5901234123457',
+          categoryId: 'cat-1',
+        });
+
+        expect(result).toEqual({ kind: 'no_match' });
+      });
+
+      it('throws 422 when the adapter does not implement CatalogProductReader', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+        await expect(
+          controller.findProductsByBarcode('conn-1', { barcode: '5901234123457' }),
+        ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      });
+
+      it('propagates ConnectionNotFoundException from the capability pre-flight', async () => {
+        integrationsService.getCapabilityAdapter.mockRejectedValue(
+          new ConnectionNotFoundException('conn-missing'),
+        );
+
+        await expect(
+          controller.findProductsByBarcode('conn-missing', { barcode: '5901234123457' }),
+        ).rejects.toBeInstanceOf(ConnectionNotFoundException);
+      });
+    });
+
+    describe('getCatalogProduct', () => {
+      it('returns the catalog product', async () => {
+        const get = jest.fn().mockResolvedValue(sampleProduct);
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { getProduct: get }),
+        );
+
+        const result = await controller.getCatalogProduct('conn-1', 'p1');
+
+        expect(get).toHaveBeenCalledWith({ productId: 'p1' });
+        expect(result).toEqual(sampleProduct);
+      });
+
+      it('throws 422 when the adapter does not implement CatalogProductReader', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
+
+        await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toBeInstanceOf(
+          UnprocessableEntityException,
+        );
+      });
+
+      it('translates CatalogProductNotFoundException to a 404 NotFoundException', async () => {
+        const get = jest.fn().mockRejectedValue(new CatalogProductNotFoundException('missing'));
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { getProduct: get }),
+        );
+
+        await expect(controller.getCatalogProduct('conn-1', 'missing')).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
+
+      it('propagates non-CatalogProductNotFoundException errors unchanged', async () => {
+        const get = jest.fn().mockRejectedValue(new Error('upstream-503'));
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          makeAdapter(true, { getProduct: get }),
+        );
+
+        await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toThrow('upstream-503');
+      });
     });
   });
 });

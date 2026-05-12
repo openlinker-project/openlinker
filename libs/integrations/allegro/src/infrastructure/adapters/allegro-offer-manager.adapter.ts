@@ -17,6 +17,11 @@ import type {
   CategoryBrowser,
   CategoryBarcodeMatcher,
   CategoryParametersReader,
+  CatalogProductReader,
+  CatalogProduct,
+  CatalogProductMatchResult,
+  CatalogProductSummary,
+  FindProductsByBarcodeInput,
   OfferCreator,
   OfferStatusReader,
   OfferStatusReadResult,
@@ -51,6 +56,7 @@ import {
   resolveAllegroProductCardByEan,
   type ResolveProductCardResult,
 } from '../util/resolve-allegro-product-card-by-ean';
+import { fetchAllegroProduct } from '../util/fetch-allegro-product';
 import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CachePort } from '@openlinker/shared';
 import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
@@ -196,6 +202,7 @@ export class AllegroOfferManagerAdapter
     CategoryBrowser,
     CategoryBarcodeMatcher,
     CategoryParametersReader,
+    CatalogProductReader,
     OfferCreator,
     OfferStatusReader,
     OfferReader,
@@ -785,6 +792,70 @@ export class AllegroOfferManagerAdapter
       );
       return null;
     }
+  }
+
+  /**
+   * CatalogProductReader.findProductsByBarcode (#633).
+   *
+   * Reuses `resolveAllegroProductCardByEan` — the same util the offer-create
+   * smart-link path uses — so a single Allegro `/sale/products?phrase` lookup
+   * is cached and shared between submit-time linking and wizard-time prefill.
+   *
+   * Contract: `categoryId` is optional on the port input, but Allegro's
+   * matcher requires it (the underlying resolver scopes by category). When
+   * omitted we return `no_match` rather than performing a category-less
+   * search — same contract as documented on `FindProductsByBarcodeInput`.
+   *
+   * Outcome mapping:
+   * - `unique` → eager-fetch the full detail via `fetchAllegroProduct` so
+   *   the FE can prefill product-section parameters in one round-trip.
+   * - `ambiguous` → return summaries (id/name/ean only; image URLs are not
+   *   available in Allegro's `/sale/products?phrase` summary response).
+   * - `no_match` → identity mapping.
+   */
+  async findProductsByBarcode(input: FindProductsByBarcodeInput): Promise<CatalogProductMatchResult> {
+    if (!input.categoryId) {
+      this.logger.debug(
+        `findProductsByBarcode: categoryId omitted, returning no_match (connection: ${this.connectionId}, barcode: ${input.barcode})`,
+      );
+      return { kind: 'no_match' };
+    }
+
+    const result: ResolveProductCardResult = await resolveAllegroProductCardByEan(
+      this.httpClient,
+      this.cache,
+      { ean: input.barcode, categoryId: input.categoryId },
+    );
+
+    if (result.kind === 'unique') {
+      const product = await fetchAllegroProduct(this.httpClient, this.cache, result.productId);
+      return { kind: 'unique', product };
+    }
+    if (result.kind === 'ambiguous') {
+      const products: CatalogProductSummary[] = result.matches.map((m) => ({
+        id: m.id,
+        name: m.name ?? m.id,
+        ean: m.ean,
+        // imageUrl intentionally omitted — Allegro's /sale/products?phrase
+        // summary response does not carry image URLs. The FE picker renders
+        // text-only options until the operator picks one (which triggers
+        // getProduct and surfaces the thumbnail in the linked-state panel).
+      }));
+      return { kind: 'ambiguous', products };
+    }
+    return { kind: 'no_match' };
+  }
+
+  /**
+   * CatalogProductReader.getProduct (#633).
+   *
+   * Thin wrapper over `fetchAllegroProduct` so the controller doesn't import
+   * the util directly. Throws `CatalogProductNotFoundException` on Allegro
+   * 404 (controller maps to 404); other HTTP failures bubble as
+   * `AllegroApiException`.
+   */
+  async getProduct(input: { productId: string }): Promise<CatalogProduct> {
+    return fetchAllegroProduct(this.httpClient, this.cache, input.productId);
   }
 
   private findIdentifierParameterIds(
