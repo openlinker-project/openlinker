@@ -89,10 +89,12 @@ export interface AdapterPlugin {
    * Optional. TypeORM migration glob paths the plugin ships (#599).
    *
    * Declares the SQL/DDL the plugin needs to add to the host's schema.
-   * Each entry is a glob the TypeORM CLI can expand — typically
-   * `path.resolve(__dirname, 'migrations/**\/*{.ts,.js}')` from the
-   * plugin's own bootstrap, pointing at `src/migrations/` in dev and
-   * `dist/migrations/` in built output via the `{.ts,.js}` alternation.
+   * Conventionally resolved via `path.join(__dirname, 'migrations', '**',
+   * '*{.ts,.js}')` from the plugin's top-level module — pointing at
+   * `src/migrations/` in dev and `dist/migrations/` in built output via
+   * the `{.ts,.js}` extension alternation. See
+   * `libs/integrations/allegro/src/allegro-plugin.ts` for the canonical
+   * example.
    *
    * **This field is informational only.** TypeORM CLI does not read plugin
    * descriptors — it reads `apps/api/src/database/data-source.ts`, which

@@ -104,6 +104,51 @@ function loadMigrationsFromDisk(dir) {
 }
 
 /**
+ * Pure validator for the JSON-vs-TS drift check. Takes the manifest
+ * directories (parsed JSON) and the TS source text, returns
+ * `{ ok, error, dirs }`. Kept side-effect-free so the self-check at the
+ * bottom of this file can drive it with inline fixtures.
+ *
+ * The TS extraction is intentionally strict: any re-shaping of the
+ * `PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT` constant that would break the
+ * regex MUST also update this validator. The failure message says
+ * exactly what to change.
+ */
+export function validatePluginMigrationDirsDrift({ manifestDirs, tsSource }) {
+  const arrayMatch = /PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT\s*=\s*\[([\s\S]*?)\]/.exec(tsSource);
+  if (!arrayMatch) {
+    return {
+      ok: false,
+      error:
+        'plugin-migrations: could not extract PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT from ' +
+        'apps/api/src/plugin-migrations.ts. If the constant was renamed or its shape changed, ' +
+        'update scripts/check-migration-timestamps.mjs to match.',
+    };
+  }
+
+  // Strip TS line + block comments before parsing — protects against future
+  // additions like `// shopify plugin` interleaved with the entries.
+  const stripped = arrayMatch[1].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const tsDirs = [...stripped.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+  const a = [...manifestDirs].sort();
+  const b = [...tsDirs].sort();
+  if (a.length !== b.length || a.some((d, i) => d !== b[i])) {
+    return {
+      ok: false,
+      error:
+        `plugin-migrations: drift between scripts/plugin-migration-dirs.json and ` +
+        `apps/api/src/plugin-migrations.ts.\n` +
+        `  manifest: ${JSON.stringify(a)}\n` +
+        `  ts seam: ${JSON.stringify(b)}\n` +
+        `Keep both lists in sync — see file headers.`,
+    };
+  }
+
+  return { ok: true, dirs: manifestDirs };
+}
+
+/**
  * Load the plugin migration directory list from
  * `scripts/plugin-migration-dirs.json` (the lint-side manifest) and
  * cross-check it against the same list inlined inside
@@ -115,38 +160,15 @@ function loadMigrationsFromDisk(dir) {
  */
 function loadPluginMigrationDirsWithDriftCheck() {
   const manifest = JSON.parse(readFileSync(PLUGIN_MIGRATION_DIRS_MANIFEST, 'utf8'));
-  const manifestDirs = manifest.directories;
-
-  // Cross-check: the TS seam at apps/api/src/plugin-migrations.ts must
-  // carry the same directory list. We don't execute the TS — we just
-  // pattern-match the inlined `PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT`
-  // string-array literal. The check is intentionally strict: any
-  // re-shaping that would break this regex MUST also update the
-  // invariant script.
   const tsSource = readFileSync(PLUGIN_MIGRATIONS_TS, 'utf8');
-  const arrayMatch = /PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT\s*=\s*\[([^\]]*)\]/.exec(tsSource);
-  if (!arrayMatch) {
-    throw new Error(
-      'plugin-migrations: could not extract PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT from ' +
-        `${PLUGIN_MIGRATIONS_TS}. If the constant was renamed or its shape changed, update ` +
-        `scripts/check-migration-timestamps.mjs to match.`,
-    );
+  const result = validatePluginMigrationDirsDrift({
+    manifestDirs: manifest.directories,
+    tsSource,
+  });
+  if (!result.ok) {
+    throw new Error(result.error);
   }
-  const tsDirs = [...arrayMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-
-  const a = [...manifestDirs].sort();
-  const b = [...tsDirs].sort();
-  if (a.length !== b.length || a.some((d, i) => d !== b[i])) {
-    throw new Error(
-      `plugin-migrations: drift between ${PLUGIN_MIGRATION_DIRS_MANIFEST} and ` +
-        `${PLUGIN_MIGRATIONS_TS}.\n` +
-        `  manifest: ${JSON.stringify(a)}\n` +
-        `  ts seam: ${JSON.stringify(b)}\n` +
-        `Keep both lists in sync — see file headers.`,
-    );
-  }
-
-  return manifestDirs;
+  return result.dirs;
 }
 
 function runAgainstTree() {
@@ -243,6 +265,97 @@ function runSelfCheck() {
       },
     ],
     'digits, expected 13',
+  );
+
+  // --- Plugin-migration drift check (#599) ---
+
+  const passDrift = (label, manifestDirs, tsSource) => {
+    const result = validatePluginMigrationDirsDrift({ manifestDirs, tsSource });
+    if (!result.ok) {
+      console.error(`self-check FAIL: "${label}" expected ok, got error:\n  ${result.error}`);
+      process.exit(1);
+    }
+  };
+  const failDrift = (label, manifestDirs, tsSource, expectedSubstring) => {
+    const result = validatePluginMigrationDirsDrift({ manifestDirs, tsSource });
+    if (result.ok) {
+      console.error(`self-check FAIL: "${label}" expected error, got ok`);
+      process.exit(1);
+    }
+    if (!result.error.includes(expectedSubstring)) {
+      console.error(
+        `self-check FAIL: "${label}" expected error containing "${expectedSubstring}", got:\n  ${result.error}`,
+      );
+      process.exit(1);
+    }
+  };
+
+  const canonicalTs = `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [\n  'libs/integrations/allegro/src/migrations',\n];`;
+
+  passDrift(
+    'drift: aligned manifest + ts (single entry)',
+    ['libs/integrations/allegro/src/migrations'],
+    canonicalTs,
+  );
+
+  passDrift(
+    'drift: aligned manifest + ts (multiple entries, order-insensitive)',
+    [
+      'libs/integrations/shopify/src/migrations',
+      'libs/integrations/allegro/src/migrations',
+    ],
+    `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [
+  'libs/integrations/allegro/src/migrations',
+  'libs/integrations/shopify/src/migrations',
+];`,
+  );
+
+  passDrift(
+    'drift: tolerates inline line comments between entries',
+    [
+      'libs/integrations/allegro/src/migrations',
+      'libs/integrations/shopify/src/migrations',
+    ],
+    `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [
+  // Allegro plugin (#599)
+  'libs/integrations/allegro/src/migrations',
+  // Shopify plugin (hypothetical)
+  'libs/integrations/shopify/src/migrations',
+];`,
+  );
+
+  failDrift(
+    'drift: manifest has extra entry',
+    [
+      'libs/integrations/allegro/src/migrations',
+      'libs/integrations/shopify/src/migrations',
+    ],
+    canonicalTs,
+    'drift between',
+  );
+
+  failDrift(
+    'drift: ts has extra entry',
+    ['libs/integrations/allegro/src/migrations'],
+    `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [
+  'libs/integrations/allegro/src/migrations',
+  'libs/integrations/shopify/src/migrations',
+];`,
+    'drift between',
+  );
+
+  failDrift(
+    'drift: constant renamed → extraction fails loudly',
+    ['libs/integrations/allegro/src/migrations'],
+    `const RENAMED_CONST = ['libs/integrations/allegro/src/migrations'];`,
+    'could not extract PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT',
+  );
+
+  failDrift(
+    'drift: empty ts array vs populated manifest',
+    ['libs/integrations/allegro/src/migrations'],
+    `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [];`,
+    'drift between',
   );
 
   console.log('migration-timestamps: self-check OK');

@@ -22,7 +22,7 @@
  *
  * @module apps/api/src
  */
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 /**
  * Repo-root-relative directories, matched against
@@ -52,7 +52,7 @@ const REPO_ROOT = resolve(__dirname, '../../..');
  * Plugin migration globs the TypeORM CLI expands.
  */
 export const apiPluginMigrations: string[] = PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT.map(
-  (relDir) => `${resolve(REPO_ROOT, relDir)}/**/*{.ts,.js}`,
+  (relDir) => join(resolve(REPO_ROOT, relDir), '**', '*{.ts,.js}'),
 );
 
 /**
