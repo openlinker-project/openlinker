@@ -6,7 +6,7 @@
  * @module apps/api/test/integration/fixtures
  */
 import { DataSource } from 'typeorm';
-import { OrderRecordOrmEntity } from '@openlinker/core/orders';
+import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 
 /**
  * Seed an order_records row directly in the database.

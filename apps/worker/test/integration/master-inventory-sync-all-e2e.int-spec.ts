@@ -15,7 +15,7 @@ import { createTestConnection } from './helpers/test-connection.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN, SyncJobRequest } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync';
-import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 

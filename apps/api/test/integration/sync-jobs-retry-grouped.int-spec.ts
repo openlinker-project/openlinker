@@ -16,7 +16,7 @@ import {
 } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestSyncJob } from './fixtures/sync-job.fixtures';
-import { SyncJobOrmEntity } from '@openlinker/core/sync';
+import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 
 const CONNECTION_A = '11111111-1111-4111-8111-111111111111';
 

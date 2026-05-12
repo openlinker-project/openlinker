@@ -98,8 +98,8 @@ export { MissingSourceExternalIdException } from './domain/exceptions/missing-so
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
 
-// ORM Entities (for integration test seeding)
-export { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/orders/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
 
 // Module
 export { OrdersModule } from './orders.module';

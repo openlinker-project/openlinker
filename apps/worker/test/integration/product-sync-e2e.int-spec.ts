@@ -22,7 +22,7 @@ import { SyncJobRequest } from '@openlinker/core/sync';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { DataSource } from 'typeorm';
-import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products';
+import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { randomUUID } from 'crypto';
 
 describe('Product Sync End-to-End Integration', () => {

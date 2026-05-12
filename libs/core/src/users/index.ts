@@ -27,6 +27,7 @@ export {
 } from './domain/types/role.types';
 export type { UserRole, Permission } from './domain/types/role.types';
 
-// ORM entities exported for testing and TypeORM CLI usage
-export { UserOrmEntity } from './infrastructure/persistence/entities/user.orm-entity';
-export { PasswordResetTokenOrmEntity } from './infrastructure/persistence/entities/password-reset-token.orm-entity';
+// Users-context ORM entities have no external consumer today; the TypeORM CLI
+// discovers them via the `**/*.orm-entity.{ts,js}` glob in
+// `apps/api/src/database/data-source.ts`. If a future host or integration test
+// fixture needs them, add a `users/orm-entities.ts` sub-barrel (#594).

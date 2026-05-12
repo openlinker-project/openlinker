@@ -21,8 +21,8 @@ import {
   type IContentDraftService,
   type ProductContentField,
 } from '@openlinker/core/content';
-import { ProductOrmEntity } from '@openlinker/core/products';
-import { ProductContentFieldOrmEntity } from '@openlinker/core/content';
+import { ProductOrmEntity } from '@openlinker/core/products/orm-entities';
+import { ProductContentFieldOrmEntity } from '@openlinker/core/content/orm-entities';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 

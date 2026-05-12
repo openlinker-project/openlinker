@@ -1138,7 +1138,7 @@ function processData(data: unknown): void {
 - `@openlinker/shared/*` - Shared utilities
 - `@openlinker/api/*` - API application modules
 
-**The runtime constraint** (#591): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) and the explicit `@openlinker/core/listings/services` sub-barrel. Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/**`.
+**The runtime constraint** (#591, #594): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) plus two explicit sub-barrels — `@openlinker/core/listings/services` (Nest wiring, #337/#359) and `@openlinker/core/<ctx>/orm-entities` (host-only ORM-entity access, #594). Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/{api,worker}/**`; the `orm-entities` sub-barrels carry an additional ban in `libs/integrations/**` and core port files so plugins never see TypeORM types.
 
 **Rules**:
 
@@ -1190,6 +1190,13 @@ import { Logger } from '../../../shared/logging';
 - **Top-level-barrel-only for cross-context**: deep paths leak internals; when a context refactors its layout (or a domain entity moves to a new bounded context), plugins/consumers don't break.
 - **Short relative for same-context cross-layer**: avoids the `ERR_PACKAGE_PATH_NOT_EXPORTED` runtime trap and keeps intra-context refactors local.
 - **Enforceable**: ESLint guards at `.eslintrc.js` (port files, integration packages, host apps) reject deep aliases at lint time; package.json `exports` reject them at Node runtime.
+
+**Sub-barrels** are the narrow exception to "top-level-barrel-only". They exist to expose a host-only seam that would otherwise pollute the contract surface plugins consume. Two exist today:
+
+- `@openlinker/core/listings/services` — the `ListingsModule` + the 7 `@Injectable` service classes. Kept off the main `@openlinker/core/listings` barrel to prevent runtime circular requires when sibling packages value-import the contract from the main barrel (#337/#359).
+- `@openlinker/core/<ctx>/orm-entities` — TypeORM-decorated ORM entities for each context that has cross-context consumers (today: `products`, `inventory`, `orders`, `sync`, `identifier-mapping`, `integrations`, `content`). Kept off the main barrel because TypeORM entities are infrastructure detail; exposing them would couple plugins to TypeORM (#594). Consumed only by integration-test fixtures/helpers in `apps/{api,worker}/test/` and by core orchestration modules that need to register a sibling context's entity (today: `listings.module.ts`). The TypeORM CLI itself discovers entities via a filesystem glob in `apps/api/src/database/data-source.ts`, not through these sub-barrels.
+
+Add a new `<ctx>/orm-entities` sub-barrel only when an external consumer needs a context's ORM entity — same-module registrations should keep using relative paths into `infrastructure/persistence/entities/`. Plugin packages (`libs/integrations/**`) and core port files are ESLint-blocked from importing any `orm-entities` sub-barrel.
 
 **Import Order**:
 1. External packages (NestJS, TypeORM, etc.)
