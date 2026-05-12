@@ -10,11 +10,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  IdentifierMappingOrmEntity,
-  IdentifierMapping,
-  CoreEntityType,
-} from '@openlinker/core/identifier-mapping';
+import { IdentifierMapping, CoreEntityType } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
   OfferMappingFilters,

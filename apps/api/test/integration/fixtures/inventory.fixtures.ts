@@ -7,8 +7,8 @@
  * @module apps/api/test/integration/fixtures
  */
 import { DataSource } from 'typeorm';
-import { ProductOrmEntity } from '@openlinker/core/products';
-import { InventoryItemOrmEntity } from '@openlinker/core/inventory';
+import { ProductOrmEntity } from '@openlinker/core/products/orm-entities';
+import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 
 /**
  * Seed a product + inventory item row.

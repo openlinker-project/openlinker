@@ -23,7 +23,7 @@ export * from './application/services/order-customer-projection-updater.service'
 export * from './customers.tokens';
 export * from './customers.module';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { CustomerProjectionOrmEntity } from './infrastructure/persistence/entities/customer-projection.orm-entity';
-export { CustomerAddressProjectionOrmEntity } from './infrastructure/persistence/entities/customer-address-projection.orm-entity';
-export { DestinationAddressMappingOrmEntity } from './infrastructure/persistence/entities/destination-address-mapping.orm-entity';
+// Customers-context ORM entities have no external consumer today; the TypeORM
+// CLI discovers them via the `**/*.orm-entity.{ts,js}` glob in
+// `apps/api/src/database/data-source.ts`. If a future host or integration test
+// fixture needs them, add a `customers/orm-entities.ts` sub-barrel (#594).

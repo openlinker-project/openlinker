@@ -51,8 +51,8 @@ export {
   PaginatedInventoryItems,
 } from './domain/types/inventory.types';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/inventory/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
 
 
 

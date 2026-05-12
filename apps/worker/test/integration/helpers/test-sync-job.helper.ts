@@ -6,7 +6,7 @@
  * @module apps/worker/test/integration/helpers
  */
 import { DataSource } from 'typeorm';
-import { SyncJobOrmEntity } from '@openlinker/core/sync';
+import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 import { JobStatus } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 

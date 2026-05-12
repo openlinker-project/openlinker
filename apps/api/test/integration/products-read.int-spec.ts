@@ -12,10 +12,10 @@
 import { DataSource } from 'typeorm';
 import {
   Product,
-  ProductOrmEntity,
   ProductRepositoryPort,
   PRODUCT_REPOSITORY_TOKEN,
 } from '@openlinker/core/products';
+import { ProductOrmEntity } from '@openlinker/core/products/orm-entities';
 import {
   getTestHarness,
   IntegrationTestHarness,

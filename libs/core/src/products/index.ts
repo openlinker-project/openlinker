@@ -59,9 +59,8 @@ export {
   PaginatedProductVariants,
 } from './domain/types/product.types';
 
-// ORM Entities (exported for testing and TypeORM CLI usage)
-export { ProductOrmEntity } from './infrastructure/persistence/entities/product.orm-entity';
-export { ProductVariantOrmEntity } from './infrastructure/persistence/entities/product-variant.orm-entity';
+// ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`
+// sub-path (#594). Plugins must not import them from here.
 
 
 
