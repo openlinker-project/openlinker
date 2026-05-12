@@ -16,6 +16,7 @@
  */
 
 import { DataSource } from 'typeorm';
+import { apiPluginMigrations } from '../plugin-migrations';
 
 // Load environment variables
 // Try to load dotenv if available (optional dependency)
@@ -59,10 +60,14 @@ export default new DataSource({
     __dirname + '/../../../../libs/core/src/**/*.orm-entity{.ts,.js}',
   ],
   
-  // Migration discovery: migrations from apps/api/src/migrations
-  // Note: In compiled JS, this resolves to dist/apps/api/src/migrations/**/*.js
+  // Migration discovery: core migrations from apps/api/src/migrations,
+  // plus plugin-owned migrations from `apiPluginMigrations` (#599).
+  // Note: In compiled JS, the core glob resolves to dist/apps/api/src/migrations/**/*.js;
+  // plugin globs resolve to their respective `dist/migrations/**/*.js` via the
+  // `{.ts,.js}` alternation.
   migrations: [
     __dirname + '/../migrations/**/*{.ts,.js}',
+    ...apiPluginMigrations,
   ],
   
   // Migration table name (TypeORM tracks executed migrations here)

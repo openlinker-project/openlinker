@@ -84,4 +84,25 @@ export interface AdapterPlugin {
     capability: string,
     host: HostServices,
   ): Promise<T>;
+
+  /**
+   * Optional. TypeORM migration glob paths the plugin ships (#599).
+   *
+   * Declares the SQL/DDL the plugin needs to add to the host's schema.
+   * Each entry is a glob the TypeORM CLI can expand — typically
+   * `path.resolve(__dirname, 'migrations/**\/*{.ts,.js}')` from the
+   * plugin's own bootstrap, pointing at `src/migrations/` in dev and
+   * `dist/migrations/` in built output via the `{.ts,.js}` alternation.
+   *
+   * **This field is informational only.** TypeORM CLI does not read plugin
+   * descriptors — it reads `apps/api/src/database/data-source.ts`, which
+   * aggregates the host's `apps/api/src/plugin-migrations.ts` list (the
+   * canonical source). A plugin in `plugins.ts` whose migration globs are
+   * NOT also in `plugin-migrations.ts` will boot, register its adapter,
+   * and then crash on the first attempt to use its tables with
+   * `relation "..." does not exist`. Keep the descriptor field aligned
+   * with the host list — the descriptor advertises what the plugin owns,
+   * the host list enables it.
+   */
+  readonly migrations?: readonly string[];
 }
