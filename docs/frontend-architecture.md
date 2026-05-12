@@ -128,6 +128,40 @@ Exceptions kept intentionally eager:
 
 A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the exact lazy-route count; bump `EXPECTED_LAZY_ROUTE_COUNT` when intentionally adding or removing a lazy route.
 
+### Breadcrumb metadata on routes (#610)
+
+Each authenticated route module declares its breadcrumb metadata inline via `route.handle` using the `RouteCrumbHandle` shape from `apps/web/src/app/nav-registry.types.ts`:
+
+```ts
+import type { RouteCrumbHandle } from '../nav-registry.types';
+
+export const ordersRoute: RouteObject = {
+  path: 'orders',
+  children: [
+    {
+      index: true,
+      handle: { crumb: { group: 'Operations', title: 'Orders' } } satisfies RouteCrumbHandle,
+      lazy: async () => {
+        const { OrdersListPage } = await import('../../pages/orders/orders-list-page');
+        return { Component: OrdersListPage };
+      },
+    },
+    // … sibling children with their own handles
+  ],
+};
+```
+
+The shell resolves the active crumb by calling `useMatches()` and walking the match chain deepest-first via `resolveCrumbFromMatches` (in `apps/web/src/app/breadcrumbs.ts`). The first match carrying a crumb-shaped handle wins; if no match in the chain carries one, the shell falls back to `{ group: 'OpenLinker', title: '' }`.
+
+**Rules**:
+
+- Leaf routes (including index children like `dashboardRoute`) own their crumb metadata. Parent shells with no semantic title carry no handle — `useMatches()`'s deepest-first walk picks the right one.
+- Guest routes (`loginRoute`, `forgotPasswordRoute`, `resetPasswordRoute`) render outside `AppShell` and have no `handle.crumb`. They are excluded from the route-handle contract test.
+- Marketplace-specific breadcrumbs (e.g. `Connect Allegro`, `Connect PrestaShop`) ship with the plugin route module — never with the host shell.
+- A parameterized contract test at `apps/web/src/app/routes/route-handle.test.ts` asserts every authenticated leaf route declares a crumb. Same enforcement shape as `route-lazy.test.ts`.
+
+Plugins contribute breadcrumbs the same way: a plugin route module's `RouteObject` carries its own `handle.crumb`. See [Platform Plugins](#platform-plugins-plugins) for the build-time `WebPlugin` route contribution shape and the optional `requiresRole` gate available on `NavContribution`.
+
 ## API Client Conventions
 
 The frontend consumes the Nest REST API exposed by `apps/api`.
@@ -368,6 +402,8 @@ The in-tree plugins live in `apps/web/src/plugins/<name>/`. Two parallel concern
 2. **Runtime `PlatformPlugin`** (#578/#579) — per-platform UI affordances: setup card, callback-URL default, structured edit-form sections, extra sections, credentials panel, connection actions. Collected as the exported `IN_TREE_PLUGINS: readonly PlatformPlugin[]` array. Resolved at render time via `usePlugin(platformType)` / `usePlugins()` from `shared/plugins/`.
 
 The two contracts live side-by-side because they answer different questions ("what does this plugin contribute to the app shell?" vs "what platform-specific UI does this connection's platformType expose?"). A single per-platform directory typically contributes both: `plugins/allegro/index.ts` exports an `allegroPlugin: WebPlugin`; `plugins/allegro/allegro.plugin.tsx` exports an `allegroPlatformPlugin: PlatformPlugin`.
+
+`WebPlugin.navItems` accepts an optional `requiresRole?: Role` (today: `'admin'`) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
 
 Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append entries to both arrays in `plugins/index.ts`.
 

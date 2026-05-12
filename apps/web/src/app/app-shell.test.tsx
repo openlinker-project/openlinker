@@ -7,13 +7,20 @@
  *
  * @module shared/ui
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import {
+  Outlet,
+  RouterProvider,
+  createMemoryRouter,
+  useNavigate,
+  type RouteObject,
+} from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
+import type { RouteCrumbHandle } from './nav-registry.types';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { ToastProvider } from '../shared/ui/toast-provider';
@@ -31,6 +38,47 @@ interface RenderShellOptions {
   sessionAdapter?: SessionAdapter;
 }
 
+const PAGE_CONTENT = <div data-testid="page-content">Page content</div>;
+
+const dashboardCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Dashboard' },
+};
+const connectionsCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Platform', title: 'Connections' },
+};
+
+function ShellLayout({ children }: { children: ReactNode }): ReactElement {
+  return <AppShell>{children}</AppShell>;
+}
+
+/**
+ * Build a minimal data-router tree wrapping `AppShell`. We can't use the
+ * real `rootRoute` here — it imports lazy page modules that pull the full
+ * feature graph — but we mirror the route shape the shell expects:
+ * an outer layout route whose children carry the crumb `handle`s the test
+ * pathnames need. The wildcard `*` child has no handle so the
+ * unknown-routes fallback test exercises the `DEFAULT_CRUMB` branch.
+ */
+function buildShellRouter(pathname: string): ReturnType<typeof createMemoryRouter> {
+  const routes: RouteObject[] = [
+    {
+      path: '/',
+      element: (
+        <ShellLayout>
+          <Outlet />
+        </ShellLayout>
+      ),
+      children: [
+        { index: true, handle: dashboardCrumb, element: PAGE_CONTENT },
+        { path: 'connections', handle: connectionsCrumb, element: PAGE_CONTENT },
+        { path: 'orders', element: PAGE_CONTENT },
+        { path: '*', element: PAGE_CONTENT },
+      ],
+    },
+  ];
+  return createMemoryRouter(routes, { initialEntries: [pathname] });
+}
+
 function renderShell({
   apiClient = createMockApiClient(),
   pathname = '/',
@@ -38,6 +86,7 @@ function renderShell({
 }: RenderShellOptions = {}): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const adapter = sessionAdapter ?? createAuthenticatedSessionAdapter();
+  const router = buildShellRouter(pathname);
 
   return render(
     <ThemeProvider>
@@ -45,11 +94,7 @@ function renderShell({
         <ToastProvider>
           <ApiClientProvider client={apiClient}>
             <QueryClientProvider client={queryClient}>
-              <MemoryRouter initialEntries={[pathname]}>
-                <AppShell>
-                  <div data-testid="page-content">Page content</div>
-                </AppShell>
-              </MemoryRouter>
+              <RouterProvider router={router} />
             </QueryClientProvider>
           </ApiClientProvider>
         </ToastProvider>
@@ -241,24 +286,31 @@ describe('AppShell', () => {
     const adapter = createAuthenticatedSessionAdapter();
     const apiClient = createMockApiClient();
 
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: (
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          ),
+          children: [
+            { index: true, handle: dashboardCrumb, element: <Redirector to="/orders" /> },
+            { path: 'orders', element: PAGE_CONTENT },
+          ],
+        },
+      ],
+      { initialEntries: ['/'] },
+    );
+
     render(
       <ThemeProvider>
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={apiClient}>
               <QueryClientProvider client={queryClient}>
-                <MemoryRouter initialEntries={['/']}>
-                  <Routes>
-                    <Route
-                      path="*"
-                      element={
-                        <AppShell>
-                          <Redirector to="/orders" />
-                        </AppShell>
-                      }
-                    />
-                  </Routes>
-                </MemoryRouter>
+                <RouterProvider router={router} />
               </QueryClientProvider>
             </ApiClientProvider>
           </ToastProvider>

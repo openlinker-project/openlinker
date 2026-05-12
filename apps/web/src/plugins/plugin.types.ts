@@ -17,6 +17,7 @@ import type { ComponentType } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
 import type { ApiRequest, PluginApiNamespaces } from '../app/api/api-client';
+import type { Role } from '../app/nav-registry.types';
 import type { Connection } from '../features/connections';
 import type { CreateOfferRequest } from '../features/listings';
 
@@ -38,6 +39,13 @@ export interface NavContribution {
   to: string;
   label: string;
   end?: boolean;
+  /**
+   * Declarative role gate (#610). When set, the contribution is dropped for
+   * sessions whose role doesn't match — same UI-hide semantics as the AI
+   * group's `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is
+   * still enforced backend-side; this only hides the nav affordance.
+   */
+  requiresRole?: Role;
 }
 
 /**

@@ -20,10 +20,11 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
-import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
-import { plugins } from '../plugins';
+import { resolveCrumbFromMatches } from './breadcrumbs';
+import { buildNavGroups } from './nav-registry';
+import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
@@ -37,139 +38,6 @@ import {
 } from '../shared/ui/dropdown-menu';
 import { ThemeToggle } from '../shared/ui/theme-toggle';
 import { useToast } from '../shared/ui/toast-provider';
-
-type NavCountKey = Exclude<keyof NavCounts, never>;
-
-export interface LiveNavItem {
-  countKey?: NavCountKey;
-  end?: boolean;
-  label: string;
-  to: string;
-}
-
-interface PlannedNavItem {
-  label: string;
-  reason?: string;
-}
-
-export interface LiveNavGroup {
-  items: LiveNavItem[];
-  kind: 'live';
-  label: string;
-}
-
-interface PlannedNavGroup {
-  items: PlannedNavItem[];
-  kind: 'planned';
-  label: string;
-}
-
-export type NavGroup = LiveNavGroup | PlannedNavGroup;
-
-interface NavGroupOptions {
-  isAdmin: boolean;
-}
-
-/**
- * Build the sidebar nav composition for the current session. Admin-only
- * groups (AI) are spliced in at build time so non-admin sessions never see
- * them in the DOM — no client-side permission filtering at render.
- */
-function buildNavGroups({ isAdmin }: NavGroupOptions): NavGroup[] {
-  const groups: NavGroup[] = [
-    {
-      kind: 'live',
-      label: 'Operations',
-      items: [
-        { to: '/', label: 'Dashboard', end: true },
-        { to: '/orders', label: 'Orders', countKey: 'orders' },
-        { to: '/products', label: 'Products' },
-        { to: '/inventory', label: 'Inventory', countKey: 'inventory' },
-        { to: '/customers', label: 'Customers', countKey: 'customers' },
-        { to: '/listings', label: 'Listings', countKey: 'listings' },
-      ],
-    },
-    {
-      kind: 'live',
-      label: 'Diagnostics',
-      items: [
-        { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
-        { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
-        { to: '/cursors', label: 'Cursors' },
-      ],
-    },
-    {
-      kind: 'live',
-      label: 'Platform',
-      items: [
-        { to: '/connections', label: 'Connections', countKey: 'connections' },
-        { to: '/adapters', label: 'Adapters' },
-        { to: '/settings', label: 'Settings' },
-      ],
-    },
-  ];
-
-  if (isAdmin) {
-    groups.push({
-      kind: 'live',
-      label: 'AI',
-      items: [
-        { to: '/ai/prompt-templates', label: 'Prompt templates' },
-        { to: '/ai/provider-settings', label: 'Provider settings' },
-      ],
-    });
-  }
-
-  groups.push({
-    kind: 'planned',
-    label: 'Planned',
-    items: [
-      { label: 'Automations', reason: 'Coming in a future release' },
-      { label: 'Shipping', reason: 'Coming in a future release' },
-      { label: 'Invoices', reason: 'Coming in a future release' },
-    ],
-  });
-
-  return groups;
-}
-
-const staticCrumbs: Record<string, { group: string; title: string }> = {
-  '/': { group: 'Operations', title: 'Dashboard' },
-  '/orders': { group: 'Operations', title: 'Orders' },
-  '/orders/failed': { group: 'Operations', title: 'Failed orders' },
-  '/products': { group: 'Operations', title: 'Products' },
-  '/inventory': { group: 'Operations', title: 'Inventory' },
-  '/customers': { group: 'Operations', title: 'Customers' },
-  '/listings': { group: 'Operations', title: 'Listings' },
-  '/jobs-logs': { group: 'Diagnostics', title: 'Jobs & Logs' },
-  '/webhook-deliveries': { group: 'Diagnostics', title: 'Webhooks' },
-  '/cursors': { group: 'Diagnostics', title: 'Cursors' },
-  '/connections': { group: 'Platform', title: 'Connections' },
-  '/connections/new': { group: 'Platform', title: 'New connection' },
-  '/connections/new/allegro': { group: 'Platform', title: 'Connect Allegro' },
-  '/connections/new/prestashop': { group: 'Platform', title: 'Connect PrestaShop' },
-  '/connections/new/advanced': { group: 'Platform', title: 'Advanced setup' },
-  '/adapters': { group: 'Platform', title: 'Adapters' },
-  '/settings': { group: 'Platform', title: 'Settings' },
-  '/ai/prompt-templates': { group: 'AI', title: 'Prompt templates' },
-  '/ai/provider-settings': { group: 'AI', title: 'Provider settings' },
-};
-
-function resolveCrumbs(pathname: string): { group: string; title: string } {
-  const exact = staticCrumbs[pathname];
-  if (exact) return exact;
-
-  if (pathname.startsWith('/orders/')) return { group: 'Operations', title: 'Order' };
-  if (pathname.startsWith('/products/')) return { group: 'Operations', title: 'Product' };
-  if (pathname.startsWith('/inventory/')) return { group: 'Operations', title: 'Inventory item' };
-  if (pathname.startsWith('/customers/')) return { group: 'Operations', title: 'Customer' };
-  if (pathname.startsWith('/listings/')) return { group: 'Operations', title: 'Listing' };
-  if (pathname.startsWith('/jobs-logs/')) return { group: 'Diagnostics', title: 'Job' };
-  if (pathname.startsWith('/connections/')) return { group: 'Platform', title: 'Connection' };
-  if (pathname.startsWith('/ai/prompt-templates/')) return { group: 'AI', title: 'Prompt template' };
-
-  return { group: 'OpenLinker', title: '' };
-}
 
 const COUNT_FORMATTER = new Intl.NumberFormat('en-US');
 
@@ -344,11 +212,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const counts = useNavCounts();
   const isAdmin =
     isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  const groups = useMemo(() => {
-    const baseGroups = buildNavGroups({ isAdmin });
-    const contributions = plugins.flatMap((plugin) => plugin.navItems ?? []);
-    return mergePluginNavContributions(baseGroups, contributions);
-  }, [isAdmin]);
+  const groups = useMemo(() => buildNavGroups({ isAdmin }), [isAdmin]);
+  const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -369,7 +234,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     })();
   }, [clearSession, showToast]);
 
-  const crumbs = resolveCrumbs(location.pathname);
+  const crumbs = resolveCrumbFromMatches(matches);
 
   return (
     <div className="shell">
