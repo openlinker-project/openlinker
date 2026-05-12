@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { NavGroup } from '../app/app-shell';
+import type { NavGroup } from '../app/nav-registry.types';
 import { mergePluginNavContributions } from './merge-nav-contributions';
 import type { NavContribution } from './plugin.types';
 
@@ -97,5 +97,42 @@ describe('mergePluginNavContributions', () => {
       'A',
       'B',
     ]);
+  });
+
+  it('drops admin-only contributions for non-admin sessions', () => {
+    const contributions: NavContribution[] = [
+      { groupLabel: 'Platform', to: '/secret', label: 'Secret', requiresRole: 'admin' },
+    ];
+
+    const result = mergePluginNavContributions(baseGroups(), contributions, { isAdmin: false });
+
+    const platform = result.find((g) => g.label === 'Platform');
+    expect(platform?.kind === 'live' && platform.items.map((i) => i.label)).toEqual(['Connections']);
+  });
+
+  it('keeps admin-only contributions for admin sessions', () => {
+    const contributions: NavContribution[] = [
+      { groupLabel: 'Platform', to: '/secret', label: 'Secret', requiresRole: 'admin' },
+    ];
+
+    const result = mergePluginNavContributions(baseGroups(), contributions, { isAdmin: true });
+
+    const platform = result.find((g) => g.label === 'Platform');
+    expect(platform?.kind === 'live' && platform.items.map((i) => i.label)).toEqual([
+      'Connections',
+      'Secret',
+    ]);
+  });
+
+  it('defaults to non-admin when isAdmin is omitted', () => {
+    const contributions: NavContribution[] = [
+      { groupLabel: 'Platform', to: '/secret', label: 'Secret', requiresRole: 'admin' },
+    ];
+
+    // No third arg — admin contributions must be hidden by default.
+    const result = mergePluginNavContributions(baseGroups(), contributions);
+
+    const platform = result.find((g) => g.label === 'Platform');
+    expect(platform?.kind === 'live' && platform.items.map((i) => i.label)).toEqual(['Connections']);
   });
 });
