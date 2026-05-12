@@ -1,33 +1,40 @@
 /**
- * extractAllegroErrors tests (#486)
+ * extractAllegroContentPublishErrors — unit tests
  *
- * @module apps/web/src/features/content/lib
+ * Ports the legacy `extract-allegro-errors.test.ts` test cases verbatim
+ * (#613). Behaviour unchanged — only the import path moved.
+ *
+ * @module plugins/allegro
  */
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../../../shared/api/api-error';
-import { extractAllegroErrors } from './extract-allegro-errors';
+import { ApiError } from '../../shared/api/api-error';
+import { extractAllegroContentPublishErrors } from './extract-content-publish-errors';
 
-describe('extractAllegroErrors', () => {
+describe('extractAllegroContentPublishErrors', () => {
   it('returns null for non-ApiError inputs', () => {
-    expect(extractAllegroErrors(null)).toBeNull();
-    expect(extractAllegroErrors(undefined)).toBeNull();
-    expect(extractAllegroErrors(new Error('plain'))).toBeNull();
-    expect(extractAllegroErrors('string error')).toBeNull();
+    expect(extractAllegroContentPublishErrors(null)).toBeNull();
+    expect(extractAllegroContentPublishErrors(undefined)).toBeNull();
+    expect(extractAllegroContentPublishErrors(new Error('plain'))).toBeNull();
+    expect(extractAllegroContentPublishErrors('string error')).toBeNull();
   });
 
   it('returns null when ApiError.details is a string (e.g. text/plain bodies)', () => {
-    expect(extractAllegroErrors(new ApiError('boom', 422, 'plain text body'))).toBeNull();
+    expect(
+      extractAllegroContentPublishErrors(new ApiError('boom', 422, 'plain text body')),
+    ).toBeNull();
   });
 
   it('returns null when ApiError.details lacks the CHANNEL_PUBLISH_FAILED code', () => {
     expect(
-      extractAllegroErrors(new ApiError('boom', 422, { code: 'OTHER', errors: [] })),
+      extractAllegroContentPublishErrors(
+        new ApiError('boom', 422, { code: 'OTHER', errors: [] }),
+      ),
     ).toBeNull();
   });
 
   it('returns null when errors is not an array', () => {
     expect(
-      extractAllegroErrors(
+      extractAllegroContentPublishErrors(
         new ApiError('boom', 422, { code: 'CHANNEL_PUBLISH_FAILED', errors: 'not-array' }),
       ),
     ).toBeNull();
@@ -35,7 +42,7 @@ describe('extractAllegroErrors', () => {
 
   it('returns null when an error entry is missing code or message', () => {
     expect(
-      extractAllegroErrors(
+      extractAllegroContentPublishErrors(
         new ApiError('boom', 422, {
           code: 'CHANNEL_PUBLISH_FAILED',
           errors: [{ code: 'OK', message: 'ok' }, { code: 'NO_MESSAGE' }],
@@ -45,7 +52,7 @@ describe('extractAllegroErrors', () => {
   });
 
   it('returns the typed errors array when the body is a well-formed CHANNEL_PUBLISH_FAILED', () => {
-    const result = extractAllegroErrors(
+    const result = extractAllegroContentPublishErrors(
       new ApiError('Channel publish rejected by Allegro', 422, {
         code: 'CHANNEL_PUBLISH_FAILED',
         errors: [

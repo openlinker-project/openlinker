@@ -25,16 +25,12 @@
  * @module apps/web/src/shared/ui
  */
 import { useCallback, useState, type ReactElement } from 'react';
+import type { StructuredError, StructuredErrorTranslation } from '../types/structured-error.types';
 
-export interface StructuredError {
-  field?: string;
-  code: string;
-  message: string;
-}
-
-export interface StructuredErrorTranslation {
-  message: string;
-}
+// Re-exported so existing consumers (`import type { StructuredError } from
+// '.../shared/ui/structured-error-list'`) keep working. Canonical source
+// is `shared/types/structured-error.types.ts` (#613).
+export type { StructuredError, StructuredErrorTranslation };
 
 export interface StructuredErrorListProps {
   errors: StructuredError[] | null | undefined;
