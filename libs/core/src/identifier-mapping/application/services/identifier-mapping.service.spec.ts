@@ -9,12 +9,12 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { IdentifierMappingService } from './identifier-mapping.service';
-import { IdentifierMappingRepositoryPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping-repository.port';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping/domain/ports/connection.port';
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping/domain/entities/identifier-mapping.entity';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
-import { MappingAlreadyExistsError } from '@openlinker/core/identifier-mapping/domain/exceptions/mapping-already-exists.error';
+import { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
+import { ConnectionPort } from '../../domain/ports/connection.port';
+import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
+import { Connection } from '../../domain/entities/connection.entity';
+import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplicate-identifier-mapping.error';
+import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-already-exists.error';
 import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
 
 describe('IdentifierMappingService', () => {

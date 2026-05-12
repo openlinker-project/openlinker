@@ -10,16 +10,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SyncJobRunner } from '../sync-job.runner';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
+import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import {
   SYNC_JOB_REPOSITORY_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
-import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
-import { SyncJobExecutionError } from '@openlinker/core/sync/domain/exceptions/sync-job-execution.error';
+import { SyncJobHandler } from '@openlinker/core/sync';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 // The runner's *production* code is now platform-neutral (#581) — it
 // asks the retry-classifier registry instead of `instanceof`-ing Allegro
 // classes directly. The runner *spec* still uses the real Allegro

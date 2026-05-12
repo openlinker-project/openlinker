@@ -21,7 +21,7 @@ import {
   CONTENT_SUGGESTION_SERVICE_TOKEN,
   ContentModule as CoreContentModule,
 } from '@openlinker/core/content';
-import { ContentSuggestionService } from '@openlinker/core/content/application/services/content-suggestion.service';
+import { ContentSuggestionService } from '@openlinker/core/content';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { IntegrationsModule } from '../integrations/integrations.module';

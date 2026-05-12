@@ -7,7 +7,7 @@
  */
 import { MarketplaceOffersSyncHandler } from '../marketplace-offers-sync.handler';
 import { SyncJobExecutionError, ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 
 describe('MarketplaceOffersSyncHandler', () => {

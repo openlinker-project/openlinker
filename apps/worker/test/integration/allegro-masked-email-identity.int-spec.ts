@@ -15,7 +15,7 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '@openlinker/core/customers/customers.tokens';
-import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers/domain/ports/customer-projection-repository.port';
+import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN } from '@openlinker/core/customers/customers.tokens';

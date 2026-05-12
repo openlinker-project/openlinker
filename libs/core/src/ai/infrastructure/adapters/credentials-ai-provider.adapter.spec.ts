@@ -17,7 +17,7 @@ import {
   IntegrationCredentialRepositoryPort,
   CredentialNotFoundException,
 } from '@openlinker/core/integrations';
-import { IntegrationCredential } from '@openlinker/core/integrations/domain/entities/integration-credential.entity';
+import { IntegrationCredential } from '@openlinker/core/integrations';
 import { AiProviderKeyMissingError } from '../../domain/exceptions/ai-provider-key-missing.exception';
 import { AiProviderSettingsNotApplicableError } from '../../domain/exceptions/ai-provider-settings-not-applicable.exception';
 import { CredentialsAiProviderAdapter } from './credentials-ai-provider.adapter';

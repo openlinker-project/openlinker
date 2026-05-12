@@ -9,7 +9,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RedisStreamsJobEnqueueService } from '../redis-streams-job-enqueue.service';
 import { RedisClientType } from 'redis';
-import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRequest } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('RedisStreamsJobEnqueueService', () => {

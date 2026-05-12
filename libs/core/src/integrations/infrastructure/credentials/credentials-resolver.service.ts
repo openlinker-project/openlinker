@@ -15,7 +15,7 @@
  * @implements {CredentialsResolverPort}
  */
 import { Injectable, Inject, Optional } from '@nestjs/common';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
+import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '../../integrations.tokens';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';

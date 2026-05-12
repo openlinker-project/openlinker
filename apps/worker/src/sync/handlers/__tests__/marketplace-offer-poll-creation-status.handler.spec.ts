@@ -7,7 +7,7 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { IOfferStatusPollService } from '@openlinker/core/listings';
 
 import { MarketplaceOfferPollCreationStatusHandler } from '../marketplace-offer-poll-creation-status.handler';

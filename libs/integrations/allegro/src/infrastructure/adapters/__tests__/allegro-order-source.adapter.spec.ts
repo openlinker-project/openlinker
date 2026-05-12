@@ -10,7 +10,7 @@
  */
 import { AllegroOrderSourceAdapter } from '../allegro-order-source.adapter';
 import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,

@@ -10,13 +10,13 @@
 import { ContentStateReaderService } from './content-state-reader.service';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
-import type { IIntegrationsService } from '@openlinker/core/integrations/application/interfaces/integrations.service.interface';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type {
   OfferManagerPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
-import type { ProductMasterPort } from '@openlinker/core/products/domain/ports/product-master.port';
-import type { ProductVariant } from '@openlinker/core/products/domain/entities/product-variant.entity';
+import type { ProductMasterPort } from '@openlinker/core/products';
+import type { ProductVariant } from '@openlinker/core/products';
 
 function makeRow(overrides: Partial<ProductContentField> = {}): ProductContentField {
   return {

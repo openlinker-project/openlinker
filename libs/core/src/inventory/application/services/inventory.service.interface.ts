@@ -7,7 +7,7 @@
  * @module libs/core/src/inventory/application/services
  * @see {@link InventoryService} for the implementation
  */
-import { InventoryItem } from '@openlinker/core/inventory/domain/entities/inventory-item.entity';
+import { InventoryItem } from '../../domain/entities/inventory-item.entity';
 
 /**
  * Inventory Service Interface

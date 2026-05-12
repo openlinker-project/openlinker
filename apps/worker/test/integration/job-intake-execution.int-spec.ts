@@ -12,8 +12,8 @@ import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { createTestSyncJob, getSyncJobById } from './helpers/test-sync-job.helper';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SyncJobRequest } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import { SyncJobRequest } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('Job Intake → Execution Integration', () => {

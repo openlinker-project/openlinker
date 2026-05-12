@@ -21,7 +21,7 @@ import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-e
 import { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
 import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
-import { MappingContext } from '@openlinker/core/identifier-mapping/domain/types/identifier-mapping.types';
+import { MappingContext } from '@openlinker/core/identifier-mapping';
 
 @Injectable()
 export class IdentifierMappingRepository implements IdentifierMappingRepositoryPort {

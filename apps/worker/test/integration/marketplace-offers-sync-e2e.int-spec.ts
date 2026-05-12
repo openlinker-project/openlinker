@@ -12,7 +12,7 @@ import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integr
 import { OfferManagerPort, OfferLister } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN, SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { JobEnqueuePort } from '@openlinker/core/sync/domain/ports/job-enqueue.port';
+import { JobEnqueuePort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping';

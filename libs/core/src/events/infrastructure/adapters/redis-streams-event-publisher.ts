@@ -11,8 +11,8 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { EventPublisherPort } from '@openlinker/core/events/domain/ports/event-publisher.port';
-import { EventEnvelope } from '@openlinker/core/events/domain/types/event.types';
+import { EventPublisherPort } from '../../domain/ports/event-publisher.port';
+import { EventEnvelope } from '../../domain/types/event.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()

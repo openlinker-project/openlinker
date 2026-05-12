@@ -17,6 +17,12 @@ export { SyncJobQueuePort, EnqueueJobRequest, EnqueueJobOptions } from './applic
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 
 // Domain Entities
+// NOTE: the entity CLASS is aliased to `SyncJobEntity` because the `SyncJob`
+// name is already taken by the persisted-shape TYPE below (`sync-job.types`).
+// Consumers wanting the class typically write
+// `import { SyncJobEntity as SyncJob } from '@openlinker/core/sync'`
+// to keep their local references short. Tracking a follow-up to rename the
+// type (`SyncJobRecord` / `SyncJobData`) and drop this alias entirely.
 export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 
 // Connection Cursor Types

@@ -8,8 +8,8 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
-import { SyncJobHandler } from '@openlinker/core/sync/domain/ports/sync-job-handler.port';
-import { JobType, JobTypeValues } from '@openlinker/core/sync/domain/types/sync-job.types';
+import { SyncJobHandler } from '@openlinker/core/sync';
+import { JobType, JobTypeValues } from '@openlinker/core/sync';
 
 describe('SyncJobHandlerRegistry', () => {
   let registry: SyncJobHandlerRegistry;

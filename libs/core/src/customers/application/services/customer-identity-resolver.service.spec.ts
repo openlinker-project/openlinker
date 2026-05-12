@@ -25,7 +25,7 @@ import { CustomerIdentityResolutionRequest } from '../../domain/types/customer-i
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN, CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../../customers.tokens';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping/domain/exceptions/duplicate-identifier-mapping.error';
+import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
 import { hashEmail } from '@openlinker/shared/config';
 

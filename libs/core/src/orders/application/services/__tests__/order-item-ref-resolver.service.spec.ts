@@ -2,7 +2,7 @@ import { OrderItemRefResolverService } from '../order-item-ref-resolver.service'
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import { ProductVariant } from '@openlinker/core/products';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products/domain/ports/product-variant-repository.port';
+import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 
 function makeVariant(id: string, productId: string): ProductVariant {
   return {

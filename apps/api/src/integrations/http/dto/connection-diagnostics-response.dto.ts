@@ -8,8 +8,8 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import type { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import type { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 
 export class RecentJobSummaryDto {
   @ApiProperty({ description: 'Job UUID' })

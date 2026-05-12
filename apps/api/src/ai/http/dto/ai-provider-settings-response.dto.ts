@@ -15,7 +15,7 @@ import {
   AiProviderValues,
   type AiProviderSettingsView,
 } from '@openlinker/core/ai';
-import type { MultiProviderSettingsView } from '@openlinker/core/ai/application/services/ai-provider-active-settings.service.interface';
+import type { MultiProviderSettingsView } from '@openlinker/core/ai';
 
 export class AiProviderRowDto {
   @ApiProperty({ enum: AiProviderValues })

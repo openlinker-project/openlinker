@@ -10,10 +10,10 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdapterRegistryService } from './adapter-registry.service';
-import { AdapterMetadata } from '@openlinker/core/integrations/domain/types/adapter.types';
-import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
-import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
-import { DuplicatePlatformDefaultException } from '@openlinker/core/integrations/domain/exceptions/duplicate-platform-default.exception';
+import { AdapterMetadata } from '../../domain/types/adapter.types';
+import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
+import { DuplicatePlatformDefaultException } from '../../domain/exceptions/duplicate-platform-default.exception';
 
 const prestashopMetadata: AdapterMetadata = {
   adapterKey: 'prestashop.webservice.v1',

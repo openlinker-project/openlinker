@@ -7,12 +7,12 @@
  * @module libs/core/src/integrations/infrastructure/adapters
  */
 import { Injectable } from '@nestjs/common';
-import { AdapterFactoryPort } from '@openlinker/core/integrations/domain/ports/adapter-factory.port';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations/domain/ports/credentials-resolver.port';
-import { AdapterNotFoundException } from '@openlinker/core/integrations/domain/exceptions/adapter-not-found.exception';
-import { DuplicateAdapterKeyException } from '@openlinker/core/integrations/domain/exceptions/duplicate-adapter-key.exception';
+import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
+import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
+import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 /**

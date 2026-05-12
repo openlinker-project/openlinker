@@ -13,7 +13,7 @@ import { IWebhookService } from '../interfaces/webhook.service.interface';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
 import { WebhookEventPublisher } from './webhook-event-publisher.service';
-import { InboundWebhookEvent } from '@openlinker/core/events/domain/types/inbound-webhook-event.types';
+import { InboundWebhookEvent } from '@openlinker/core/events';
 import { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
 import { Logger } from '@openlinker/shared/logging';
 import {

@@ -8,11 +8,11 @@
  * @module libs/core/src/integrations/application/interfaces
  * @see {@link IntegrationsService} for the implementation
  */
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import {
   AdapterMetadata,
   AdapterInstance,
-} from '@openlinker/core/integrations/domain/types/adapter.types';
+} from '../../domain/types/adapter.types';
 
 export interface IIntegrationsService {
   /**

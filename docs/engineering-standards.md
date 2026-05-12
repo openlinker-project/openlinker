@@ -692,7 +692,7 @@ export class InventorySyncService {
 2. **Implement port in infrastructure layer:**
    ```typescript
    // infrastructure/persistence/repositories/product.repository.ts
-   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   import { ProductRepositoryPort } from '@openlinker/core/products';
    
    @Injectable()
    export class ProductRepository implements ProductRepositoryPort {
@@ -715,7 +715,7 @@ export class InventorySyncService {
 3. **Inject port (not concrete class) in application service:**
    ```typescript
    // application/services/product.service.ts
-   import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+   import { ProductRepositoryPort } from '@openlinker/core/products';
    
    @Injectable()
    export class ProductService {
@@ -757,7 +757,7 @@ export class InventorySyncService {
 ✅ **Good:**
 ```typescript
 // Service depends on port interface
-import { ProductRepositoryPort } from '@openlinker/core/products/domain/ports/product-repository.port';
+import { ProductRepositoryPort } from '@openlinker/core/products';
 
 @Injectable()
 export class ProductService {
@@ -1131,56 +1131,55 @@ function processData(data: unknown): void {
 
 ### Import Aliases
 
-**Use aliases for cross-boundary imports, relative imports for local/neighbor files.**
+**Always import core symbols through the top-level barrel; use short relative paths for same-context cross-layer files.**
 
 **Available aliases** (configured in `tsconfig.base.json`):
-- `@openlinker/core/*` - Core library modules
+- `@openlinker/core/*` - Core library modules (top-level barrels only — see below)
 - `@openlinker/shared/*` - Shared utilities
 - `@openlinker/api/*` - API application modules
 
+**The runtime constraint** (#591): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) and the explicit `@openlinker/core/listings/services` sub-barrel. Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/**`.
+
 **Rules**:
 
-1. **Local/neighbor files**: Use relative imports (`./`, `../`)
-   - Same folder / same feature slice
-   - Helper modules right next to the file
-   - Short paths (up to `../..`)
+1. **Same-context cross-layer files** (importer and target both inside `libs/core/src/<ctx>/`): use a relative import IF the path fits ≤ `../..`. Most application/services or infrastructure/adapters reaching back to domain/ fall here (`../../domain/...`). The general ESLint override at `.eslintrc.js:192-202` permits this for `infrastructure/`, `persistence/`, and `application/` folders.
 
-2. **Cross-boundary imports**: Use aliases (`@openlinker/core/*`, `@openlinker/shared/*`)
-   - Across packages (monorepo): `apps/api` → `libs/core`, `libs/shared` → `libs/core`
-   - Across layers within a package: `application` → `domain`, `infrastructure` → `domain`
-   - Any time you'd write `../../../` or deeper
+2. **Same-context but deeper than `../..`** (importer is in `<ctx>/<layer>/<deeper>/<dirs>/`): use the **top-level barrel alias** `@openlinker/core/<ctx>` instead. The deep-relative-imports ban (rule 5 below) wins over the cross-layer-relative rule.
 
-3. **External packages**: Use package names directly (`@nestjs/common`, `typeorm`)
+3. **Cross-context imports** (different contexts inside `libs/core`, or across packages): use the top-level barrel alias `@openlinker/core/<ctx>`. Never reach into `/domain/`, `/application/`, or `/infrastructure/` sub-paths.
 
-4. **Ban deep relative imports**: Avoid `../../../` or deeper (usually indicates boundary crossing)
+4. **Local/neighbor files** (same folder or one up): relative imports (`./`, `../`).
+
+5. **External packages**: package names directly (`@nestjs/common`, `typeorm`).
+
+6. **Ban deep relative imports**: Avoid `../../../` or deeper. If you'd need that, the import is cross-context — route it through the barrel.
 
 ✅ **Good**:
 ```typescript
-// Local files - use relative imports
+// Local / neighbor — relative
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';
 import { IdentifierMappingDto } from '../dto/identifier-mapping.dto';
-import { mapIdentifier } from './mappers/identifier.mapper';
 
-// Cross-boundary - use aliases
-// application → domain (cross-layer)
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+// Same-context cross-layer (e.g., application/services → domain/ports), fits ≤ ../..
+import { IdentifierMappingPort } from '../../domain/ports/identifier-mapping.port';
 
-// Cross-package - use aliases
+// Cross-context — barrel only
+import { Connection } from '@openlinker/core/identifier-mapping';
+import { Product, ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
-import { Product } from '@openlinker/core/products/domain/entities/product.entity';
 
-// External packages - use package names
+// External packages
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 ```
 
 ❌ **Bad**:
 ```typescript
-// Don't use aliases for local files
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping/application/services/identifier-mapping.service.interface';
+// Don't reach into core internals — fails at Node runtime, banned by ESLint
+import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
 
-// Don't use deep relative imports (indicates boundary crossing)
+// Don't use deep relative imports — same target is reachable via the barrel
 import { IdentifierMappingPort } from '../../../domain/ports/identifier-mapping.port';
 
 // Don't use relative imports for cross-package
@@ -1188,9 +1187,9 @@ import { Logger } from '../../../shared/logging';
 ```
 
 **Why this approach**:
-- **Local imports**: Keeps code readable and scannable, refactors safely within feature boundaries
-- **Cross-boundary aliases**: Provides stability and architectural clarity, prevents breakage during refactors
-- **Enforceable**: Clear rules that prevent "import style drift"
+- **Top-level-barrel-only for cross-context**: deep paths leak internals; when a context refactors its layout (or a domain entity moves to a new bounded context), plugins/consumers don't break.
+- **Short relative for same-context cross-layer**: avoids the `ERR_PACKAGE_PATH_NOT_EXPORTED` runtime trap and keeps intra-context refactors local.
+- **Enforceable**: ESLint guards at `.eslintrc.js` (port files, integration packages, host apps) reject deep aliases at lint time; package.json `exports` reject them at Node runtime.
 
 **Import Order**:
 1. External packages (NestJS, TypeORM, etc.)
@@ -1202,9 +1201,9 @@ import { Logger } from '../../../shared/logging';
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 
-// 2. Cross-boundary imports (aliases)
+// 2. Cross-boundary imports (top-level barrels only — #591)
 import { Logger } from '@openlinker/shared/logging';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping/domain/ports/identifier-mapping.port';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 // 3. Local imports (relative)
 import { IIdentifierMappingService } from './identifier-mapping.service.interface';

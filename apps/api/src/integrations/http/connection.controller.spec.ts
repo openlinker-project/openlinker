@@ -10,13 +10,13 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { INTEGRATIONS_SERVICE_TOKEN, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { SyncJobRepositoryPort } from '@openlinker/core/sync/domain/ports/sync-job-repository.port';
-import { SyncJob } from '@openlinker/core/sync/domain/entities/sync-job.entity';
+import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;

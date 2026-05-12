@@ -11,13 +11,13 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { ConnectionRepository } from './connection.repository';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
-import { Connection } from '@openlinker/core/identifier-mapping/domain/entities/connection.entity';
-import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping/domain/exceptions/connection-not-found.exception';
+import { Connection } from '@openlinker/core/identifier-mapping';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
-} from '@openlinker/core/identifier-mapping/domain/types/connection.types';
+} from '@openlinker/core/identifier-mapping';
 
 describe('ConnectionRepository', () => {
   let repository: ConnectionRepository;
