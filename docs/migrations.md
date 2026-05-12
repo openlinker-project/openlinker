@@ -17,9 +17,11 @@ This document describes the database migration workflow for OpenLinker, includin
 
 ### Architecture
 
-- **Migrations Location**: `apps/api/src/migrations/`
-- **DataSource File**: `apps/api/src/database/data-source.ts`
-- **Database Ownership**: `apps/api` owns the database schema, even though ORM entities live in `libs/core`
+- **Migrations Location**:
+  - Core: `apps/api/src/migrations/`
+  - Plugin-owned (#599): `libs/integrations/<platform>/src/migrations/` — each plugin ships its own DDL alongside its ORM entities. Aggregated by `apps/api/src/plugin-migrations.ts` (the TypeORM CLI seam) + mirrored at `scripts/plugin-migration-dirs.json` (the lint manifest). Today the only plugin shipping migrations is Allegro (`allegro_quantity_commands`).
+- **DataSource File**: `apps/api/src/database/data-source.ts` — unions core + plugin migration globs at boot.
+- **Database Ownership**: `apps/api` owns the *core* schema; **plugins own theirs** (#599). ORM entities can live in `libs/core/` (canonical entities — products, orders, …) or in `libs/integrations/<platform>/` (plugin-private — e.g. `AllegroQuantityCommandOrmEntity`). A plugin's migrations live alongside its entities in the plugin package, NOT in `apps/api/src/migrations/`.
 - **Migration Execution**: 
   - **Dev/CI**: Run via TypeScript (ts-node) for fast iteration
   - **Production**: Run via compiled JavaScript for robustness
@@ -55,12 +57,66 @@ Migrations are automatically named with timestamp prefix:
 
 Every migration filename begins with exactly **13 digits** (the `Date.now()` millisecond shape TypeORM generates). Two rules are non-negotiable:
 
-1. **Unique**: no two files in `apps/api/src/migrations/` share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/SilkSoftwareHouse/openlinker/issues/374)).
+1. **Unique**: no two files across `apps/api/src/migrations/` AND every plugin migration directory listed in `scripts/plugin-migration-dirs.json` (#599) share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/SilkSoftwareHouse/openlinker/issues/374)). Uniqueness is enforced across the *union*, so Allegro + a hypothetical Shopify plugin can't both pick the same prefix.
 2. **Consistent**: the class declared in the file repeats the same timestamp suffix as the filename prefix. This catches half-renames where one side is updated but not the other.
 
 Both rules are enforced by `scripts/check-migration-timestamps.mjs`, chained into the root `check:invariants` command and therefore into every `pnpm lint` run (including pre-commit). A collision fails `pnpm lint` immediately.
 
 If `migration:generate` produces a timestamp that happens to be already taken (rare, but possible in branch-merge windows), bump the new file's prefix to the next free millisecond and update the class suffix to match before committing.
+
+---
+
+## Plugin-Owned Migrations (#599)
+
+A plugin shipping its own ORM entities (e.g. Allegro's `AllegroQuantityCommandOrmEntity`) owns its migrations too. The migration files live alongside the plugin's source — not in `apps/api/src/migrations/`.
+
+**Recipe — adding migrations to a new plugin:**
+
+1. **Create the migration file** under `libs/integrations/<platform>/src/migrations/`:
+   ```
+   libs/integrations/foo/src/migrations/1800000000000-add-foo-table.ts
+   ```
+   Use the same `MigrationInterface` shape as core migrations. Class name + filename timestamp must match the standard 13-digit-prefix invariant (see [Timestamp uniqueness invariant](#timestamp-uniqueness-invariant)).
+
+2. **Declare it on the plugin descriptor** (informational — see `@openlinker/plugin-sdk` `AdapterPlugin.migrations`):
+   ```typescript
+   // libs/integrations/foo/src/foo-plugin.ts
+   import { resolve } from 'node:path';
+   export function createFooPlugin(deps): AdapterPlugin {
+     return {
+       manifest: { /* ... */ },
+       migrations: [resolve(__dirname, 'migrations/**/*{.ts,.js}')],
+       // ...
+     };
+   }
+   ```
+
+3. **Enable it in the host** — two parallel edits (both required):
+   - Add the plugin directory to `apps/api/src/plugin-migrations.ts` (`PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT`):
+     ```typescript
+     const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [
+       'libs/integrations/allegro/src/migrations',
+       'libs/integrations/foo/src/migrations',
+     ];
+     ```
+   - Add the same directory to `scripts/plugin-migration-dirs.json`:
+     ```json
+     { "directories": [
+       "libs/integrations/allegro/src/migrations",
+       "libs/integrations/foo/src/migrations"
+     ] }
+     ```
+
+   The two lists are checked for equality by `scripts/check-migration-timestamps.mjs` — drift fails `pnpm lint`.
+
+4. **Generate a fresh timestamp** (manual — `migration:generate` against the aggregated data-source emits into `apps/api/src/migrations/` by default; either run it from there and move the file, or hand-author the migration). Verify with `pnpm --filter @openlinker/api migration:show` that TypeORM lists your new migration alongside core.
+
+**Why two files at the host layer:**
+- `apps/api/src/plugin-migrations.ts` is consumed by the TypeORM CLI data-source at boot. TypeScript file; resolves paths against `__dirname`.
+- `scripts/plugin-migration-dirs.json` is the lint-time mirror — the invariant script reads JSON because it's a plain `.mjs` script with no ts-node loader.
+- Both lists must agree. The invariant script cross-checks them and fails `pnpm lint` if they drift. Mirrors the `apps/api/src/plugins.ts` pattern (single edit point for enabling a plugin's runtime registration; this is the analogous edit point for enabling its schema).
+
+**Pre-existing migration moves:** when relocating an existing plugin-specific migration out of `apps/api/src/migrations/` into a plugin package (as the Allegro `1767900000000-add-allegro-quantity-commands-table.ts` was during #599), **keep the class name + 13-digit timestamp identical**. TypeORM tracks executed migrations by class name; moving the file is a no-op for the `migrations` table. Existing prod DBs see no change.
 
 ---
 
