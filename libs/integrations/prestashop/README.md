@@ -57,6 +57,3 @@ operator-facing docs:
   — testing the OpenLinker PHP module against a live PrestaShop.
 - [`docs/connections-and-adapter-resolution.md`](../../../docs/connections-and-adapter-resolution.md)
   — how a connection resolves to this adapter at request time.
-
-(A dedicated `docs/integrations/prestashop/` subdir comparable to
-Allegro's is not yet authored — contributions welcome.)

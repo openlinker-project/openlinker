@@ -16,22 +16,30 @@ the API host.
 > **What this guide is not.** A from-zero copy-paste tutorial. Expect
 > to read the reference adapter alongside this doc and assemble pieces.
 
-## The seven-step path
+## The path
 
 1. **Pick a capability port** in `libs/core/src/<context>/domain/ports/`.
-2. **Create the package** under `libs/integrations/<platform>/` (start
-   by copying the PrestaShop layout).
-3. **Implement the port** as an adapter class.
-4. **Write a factory** that builds per-connection adapter instances and
-   resolves credentials.
-5. **Wire up the plugin descriptor + NestJS module** with the
-   `AdapterPlugin` contract.
-6. **Add tests** — unit specs colocated with the adapter, optional
-   integration spec under `apps/api/test/integration/`.
-7. **Enable the plugin** in the API host (`apps/api/src/plugins.ts` —
-   a single-line edit).
+2. **Use PrestaShop as your starting point** — copy
+   `libs/integrations/prestashop/` as your reference adapter.
+3. **Package layout** — set up `libs/integrations/<platform>/` with the
+   standard tree.
+4. **Implement a capability port** as an adapter class.
+5. **Write the adapter factory** that builds per-connection instances
+   and resolves credentials.
+6. **Wire up the `AdapterPlugin` descriptor + NestJS module** with the
+   plugin SDK contract.
+7. **Register connection-config and credentials shape validators** at
+   boot.
+8. **Handle credentials and OAuth** — static API key (PrestaShop) or
+   token refresh-and-retry (Allegro).
+9. **Add plugin-owned migrations** if your plugin owns any tables
+   (optional, #599).
+10. **Add tests** — unit specs colocated with the adapter, optional
+    integration spec under `apps/api/test/integration/`.
+11. **Enable the plugin** in the API host (`apps/api/src/plugins.ts` —
+    a single-line edit).
 
-Each step is one section below.
+Each numbered item is one section below.
 
 ---
 
@@ -84,10 +92,12 @@ export const CoreCapabilityValues = [
 the type-system level (`CoreCapability` union). At the registry
 boundary it's open: a plugin's
 [`AdapterMetadata.supportedCapabilities`](../libs/core/src/integrations/domain/types/adapter.types.ts)
-field accepts `string[]`. You can declare a new capability name if
-your platform doesn't fit one of the existing ports — coordinate with
-the maintainers first, since a new capability isn't useful until
-something in CORE consumes it.
+field accepts the well-known `CoreCapability` members *and* any other
+string, so the registry can carry capability names that core doesn't
+declare yet. If your platform doesn't fit one of the existing ports
+you can declare a new capability name — coordinate with the maintainers
+first, since a new capability isn't useful until something in CORE
+consumes it.
 
 **Recommendation: start with one capability and add more
 incrementally.** PrestaShop ships four; you don't need to match that
@@ -442,6 +452,13 @@ closure — see `CreatePrestashopPluginDeps` at
 
 ### Two authoring patterns
 
+**Default to the inline-from-module pattern (below).** Most real-world
+plugins land there because they have at least one plugin-specific
+`@Injectable` — a repository, provisioner, HTTP client, or refresh
+service. Allegro and PrestaShop both use it. The
+`createNestAdapterModule` helper covered first is the easy path for
+truly thin plugins; don't fight it if your plugin grows beyond that.
+
 **Simple case (no plugin-specific Nest providers).** Use the
 [`createNestAdapterModule(plugin)`](../libs/plugin-sdk/src/create-nest-adapter-module.ts)
 helper. The whole module file becomes:
@@ -493,11 +510,6 @@ export class XIntegrationModule implements OnModuleInit {
 
 Concrete worked example:
 [`libs/integrations/prestashop/src/prestashop-integration.module.ts`](../libs/integrations/prestashop/src/prestashop-integration.module.ts).
-
-Note: most real-world plugins land on the inline-from-module pattern
-because they have at least one plugin-specific `@Injectable`. The
-`createNestAdapterModule` helper is the easy path for thin plugins;
-don't fight it if your plugin grows beyond that.
 
 ### `dispatchCapability` helper
 
@@ -829,5 +841,7 @@ boot and self-registers against the host registries.
 <sub>**Last verified at commit `f2cf874`** (`bbca59d` series merged
 2026-05-13). If you spot drift between this guide and the live code —
 or hit a step that's wrong or unclear — please open an issue or PR.
+A lint-time invariant that checks the verbatim quotes against the
+source is tracked in [#680](https://github.com/SilkSoftwareHouse/openlinker/issues/680).
 The code is the spec; this guide is the map. Maps go stale; the
 code can't.</sub>
