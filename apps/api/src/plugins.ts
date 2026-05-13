@@ -5,6 +5,11 @@
  * `PluginRegistryModule.forRoot({ plugins: apiPlugins })` inside
  * `apps/api/src/integrations/integrations.module.ts`.
  *
+ * Adding a new integration? See `docs/plugin-author-guide.md` for the
+ * full walkthrough (package layout, capability ports, factory wiring,
+ * credentials/OAuth, tests). This file is the host-side enablement
+ * step.
+ *
  * To enable a third-party plugin:
  *
  *   1. `pnpm add @third-party/openlinker-plugin-<name>` in `apps/api`.
