@@ -116,7 +116,18 @@ strict boundaries that contributions must respect.
 4. Ensure `pnpm lint`, `pnpm type-check`, and `pnpm test` all pass.
 5. Update documentation if needed.
 6. Submit a pull request with a clear description and `Closes #N` in the
-   body — issues should be closed by the merged PR, not manually.
+   body — issues should be closed by the merged PR, not manually. The
+   repo has a [pull-request template](./.github/PULL_REQUEST_TEMPLATE.md)
+   that prompts for the essentials.
+
+## Governance
+
+Maintainers, review SLA, who can merge, and the rule that integrations
+may be co-maintained by non-core authors are documented in
+[GOVERNANCE.md](./GOVERNANCE.md). Major changes to the architectural-
+direction docs (`docs/architecture-overview.md`,
+`docs/engineering-standards.md`, `docs/frontend-architecture.md`)
+require a proposal issue first per that policy.
 
 ## Commits
 
