@@ -2,6 +2,7 @@
   "name": "openlinker",
   "version": "0.1.0",
   "description": "Open-source, modular, API-first e-commerce orchestration platform",
+  "license": "Apache-2.0",
   "private": true,
   "scripts": {
     "clean": "find libs apps -type f -path '*/src/*' \\( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -name 'jest.config.js' ! -name '.eslintrc.js' -delete",

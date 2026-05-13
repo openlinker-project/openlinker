@@ -2,6 +2,7 @@
   "name": "@openlinker/worker",
   "version": "0.1.0",
   "description": "OpenLinker Worker Application",
+  "license": "Apache-2.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
@@ -48,4 +49,3 @@
     "typescript": "5.4.3"
   }
 }
-

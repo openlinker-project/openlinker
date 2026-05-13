@@ -17,9 +17,11 @@ OpenLinker is designed to synchronize and orchestrate e-commerce operations acro
 ## Prerequisites
 
 - Node.js 18+ (LTS recommended)
-- pnpm 8+
-- PostgreSQL 14+
-- Redis 7+
+- pnpm 10+
+- Docker (for the dev stack and integration tests)
+
+The dev stack (`pnpm dev:stack:up`) starts PostgreSQL, Redis, MySQL, and
+PrestaShop in containers — you do not need any of those installed locally.
 
 ## Installation
 
@@ -47,23 +49,27 @@ OpenLinker is designed to synchronize and orchestrate e-commerce operations acro
    
    This starts PostgreSQL, Redis, MySQL, and PrestaShop. For detailed setup instructions, see [Development Environment Guide](./docs/dev-environment.md).
 
-5. **Start the development server**
-   ```bash
-   pnpm start:dev
-   ```
+5. **Start the application**
 
-The API will be available at `http://localhost:3000`
+   Run whichever process(es) you need; each binds its own port:
+   ```bash
+   pnpm start:dev:api      # NestJS API on :3000
+   pnpm start:dev:worker   # Background job worker
+   pnpm start:dev:web      # React frontend on :5173
+   ```
 
 ## Development
 
 ### Running the Application
 
 ```bash
-# Development mode (with hot reload)
-pnpm start:dev
+# Development mode (with hot reload) — pick the process(es) you need
+pnpm start:dev:api      # NestJS API on :3000
+pnpm start:dev:worker   # Background job worker
+pnpm start:dev:web      # React frontend on :5173
 
-# Production mode
-pnpm start:prod
+# Production mode (API)
+pnpm start:prod:api
 ```
 
 ### Testing
@@ -177,11 +183,15 @@ See `.github/workflows/` for details.
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on the development workflow, coding standards, and pull-request process.
+
+## Security
+
+Found a vulnerability? Please follow the responsible-disclosure process in [SECURITY.md](./SECURITY.md) — do not open a public issue.
 
 ## License
 
-[Add your license here]
+OpenLinker is released under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
 
 ## Related Documentation
 
