@@ -33,13 +33,10 @@ export interface IdentifierMappingRepositoryPort {
   findByInternalId(entityType: string, internalId: string): Promise<IdentifierMapping[]>;
 
   /**
-   * Create mapping (standard save operation)
-   */
-  create(mapping: IdentifierMapping): Promise<IdentifierMapping>;
-
-  /**
-   * Insert mapping with unique violation detection
-   * Used for concurrency-safe get-or-create operations
+   * Insert mapping with unique violation detection.
+   * Used for concurrency-safe get-or-create operations — the only write path
+   * the service uses, since plain `save()` does not translate PG `23505` to a
+   * domain error.
    * @throws DuplicateIdentifierMappingError if unique constraint violation occurs
    */
   insertMapping(mapping: IdentifierMapping): Promise<IdentifierMapping>;
