@@ -22,6 +22,12 @@ reflect the supported release lines.
 vulnerabilities.** Public disclosure before a fix is available puts every
 OpenLinker operator at risk.
 
+> **Dual-purpose channel:** GitHub Security Advisories is also the interim
+> reporting channel for community-conduct violations — see
+> [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). For conduct reports, prefix the
+> advisory title with `[Conduct]` so the maintainers route it to the right
+> reviewer. The dual-use ends once `conduct@openlinker.io` lands (#642).
+
 **Preferred channel — GitHub Security Advisories:**
 
 1. Navigate to the [Security tab](https://github.com/SilkSoftwareHouse/openlinker/security)
