@@ -75,7 +75,7 @@ describe('IdentifierMappingService', () => {
       connectionPort.get.mockResolvedValue(connection);
     });
 
-    it('should return existing internal ID if mapping exists', async () => {
+    it('should return existing internalId when mapping already exists (recovered via duplicate-insert path)', async () => {
       const existingMapping = new IdentifierMapping(
         'id-1',
         'Product',
@@ -88,6 +88,14 @@ describe('IdentifierMappingService', () => {
         new Date(),
       );
 
+      // Pure insert-then-recover: insert attempt fails on duplicate, SELECT returns the existing row.
+      const duplicateError = new DuplicateIdentifierMappingError(
+        'Product',
+        'external-123',
+        platformType,
+        connectionId,
+      );
+      repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(existingMapping);
 
       const result = await service.getOrCreateInternalId(
@@ -98,17 +106,17 @@ describe('IdentifierMappingService', () => {
 
       expect(result).toBe('ol_product_abc123');
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
+      expect(repository.insertMapping).toHaveBeenCalledTimes(1);
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(1);
       expect(repository.findByExternalKey).toHaveBeenCalledWith(
         'Product',
         platformType,
         connectionId,
         'external-123',
       );
-      expect(repository.insertMapping).not.toHaveBeenCalled();
     });
 
     it('should create new mapping if it does not exist', async () => {
-      repository.findByExternalKey.mockResolvedValue(null);
       const newMapping = new IdentifierMapping(
         'id-1',
         'Product',
@@ -131,6 +139,8 @@ describe('IdentifierMappingService', () => {
       expect(result).toMatch(/^ol_product_/);
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
       expect(repository.insertMapping).toHaveBeenCalled();
+      // No upfront read — insert is attempted unconditionally.
+      expect(repository.findByExternalKey).not.toHaveBeenCalled();
     });
 
     it('should return existing internalId when concurrent insert is detected', async () => {
@@ -146,11 +156,6 @@ describe('IdentifierMappingService', () => {
         new Date(),
       );
 
-      // First call: no mapping yet (triggers insert); second call: winner row after race
-      repository.findByExternalKey
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(winnerMapping);
-
       const duplicateError = new DuplicateIdentifierMappingError(
         'Product',
         'external-123',
@@ -158,16 +163,17 @@ describe('IdentifierMappingService', () => {
         connectionId,
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
+      repository.findByExternalKey.mockResolvedValue(winnerMapping);
 
       const result = await service.getOrCreateInternalId('Product', 'external-123', connectionId);
 
       expect(result).toBe('ol_product_winner');
       expect(repository.insertMapping).toHaveBeenCalledTimes(1);
-      expect(repository.findByExternalKey).toHaveBeenCalledTimes(2);
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(1);
     });
 
     it('should re-throw DuplicateIdentifierMappingError when winner cannot be found after concurrent insert', async () => {
-      // Both findByExternalKey calls return null (insert failed AND winner disappeared)
+      // Insert fails with duplicate AND the winner row has vanished (delete-during-race window)
       repository.findByExternalKey.mockResolvedValue(null);
 
       const duplicateError = new DuplicateIdentifierMappingError(
@@ -182,11 +188,10 @@ describe('IdentifierMappingService', () => {
         service.getOrCreateInternalId('Product', 'external-123', connectionId),
       ).rejects.toThrow(DuplicateIdentifierMappingError);
 
-      expect(repository.findByExternalKey).toHaveBeenCalledTimes(2);
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(1);
     });
 
     it('should resolve platformType from Connection', async () => {
-      repository.findByExternalKey.mockResolvedValue(null);
       repository.insertMapping.mockResolvedValue(
         new IdentifierMapping(
           'id-1',
@@ -204,17 +209,55 @@ describe('IdentifierMappingService', () => {
       await service.getOrCreateInternalId('Product', 'external-123', connectionId);
 
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
-      expect(repository.findByExternalKey).toHaveBeenCalledWith(
-        'Product',
-        platformType,
-        connectionId,
-        'external-123',
+      // platformType propagates into the mapping passed to insertMapping
+      expect(repository.insertMapping).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'Product',
+          externalId: 'external-123',
+          platformType,
+          connectionId,
+        }),
       );
+    });
+
+    it('should converge on a single internalId when N concurrent callers race', async () => {
+      // Drives N parallel getOrCreateInternalId calls against a simulated DB.
+      // Only the first insertMapping succeeds; the rest throw DuplicateIdentifierMappingError.
+      // findByExternalKey always returns the saved row (the "winner") after that.
+      const N = 10;
+      let savedMapping: IdentifierMapping | null = null;
+
+      repository.insertMapping.mockImplementation((mapping) => {
+        if (!savedMapping) {
+          savedMapping = mapping;
+          return Promise.resolve(mapping);
+        }
+        return Promise.reject(
+          new DuplicateIdentifierMappingError(
+            mapping.entityType,
+            mapping.externalId,
+            mapping.platformType,
+            mapping.connectionId,
+          ),
+        );
+      });
+      repository.findByExternalKey.mockImplementation(() => Promise.resolve(savedMapping));
+
+      const results = await Promise.all(
+        Array.from({ length: N }, () =>
+          service.getOrCreateInternalId('Product', 'external-race', connectionId),
+        ),
+      );
+
+      expect(new Set(results).size).toBe(1);
+      expect(results[0]).toMatch(/^ol_product_[a-f0-9]{32}$/);
+      expect(repository.insertMapping).toHaveBeenCalledTimes(N);
+      // N - 1 duplicate-recoveries each do one SELECT; the winner does zero.
+      expect(repository.findByExternalKey).toHaveBeenCalledTimes(N - 1);
     });
 
     describe('internal ID prefix', () => {
       beforeEach(() => {
-        repository.findByExternalKey.mockResolvedValue(null);
         repository.insertMapping.mockImplementation((mapping) => Promise.resolve(mapping));
       });
 
@@ -354,7 +397,6 @@ describe('IdentifierMappingService', () => {
     });
 
     it('should create mapping when it does not exist', async () => {
-      repository.findByExternalKey.mockResolvedValue(null);
       const newMapping = new IdentifierMapping(
         'id-1',
         'Product',
@@ -366,7 +408,7 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
       );
-      repository.create.mockResolvedValue(newMapping);
+      repository.insertMapping.mockResolvedValue(newMapping);
 
       await service.createMapping(
         'Product',
@@ -376,10 +418,12 @@ describe('IdentifierMappingService', () => {
       );
 
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
-      expect(repository.create).toHaveBeenCalled();
+      expect(repository.insertMapping).toHaveBeenCalled();
+      // No upfront read — insert is attempted unconditionally.
+      expect(repository.findByExternalKey).not.toHaveBeenCalled();
     });
 
-    it('should throw error if mapping already exists', async () => {
+    it('should throw MappingAlreadyExistsError if mapping already exists (recovered via duplicate-insert path)', async () => {
       const existingMapping = new IdentifierMapping(
         'id-1',
         'Product',
@@ -391,11 +435,40 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
       );
+      const duplicateError = new DuplicateIdentifierMappingError(
+        'Product',
+        'external-123',
+        platformType,
+        connectionId,
+      );
+      repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(existingMapping);
 
       await expect(
         service.createMapping('Product', 'external-123', connectionId, 'ol_product_new'),
       ).rejects.toThrow(MappingAlreadyExistsError);
+
+      expect(repository.findByExternalKey).toHaveBeenCalledWith(
+        'Product',
+        platformType,
+        connectionId,
+        'external-123',
+      );
+    });
+
+    it('should re-throw DuplicateIdentifierMappingError when winner cannot be found after concurrent insert', async () => {
+      const duplicateError = new DuplicateIdentifierMappingError(
+        'Product',
+        'external-123',
+        platformType,
+        connectionId,
+      );
+      repository.insertMapping.mockRejectedValue(duplicateError);
+      repository.findByExternalKey.mockResolvedValue(null);
+
+      await expect(
+        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new'),
+      ).rejects.toThrow(DuplicateIdentifierMappingError);
     });
   });
 

@@ -92,6 +92,18 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     }));
   }
 
+  /**
+   * Create an explicit mapping. Concurrency-safe via insert-then-recover.
+   *
+   * @throws MappingAlreadyExistsError when a mapping already exists for the
+   *   `(entityType, externalId, connectionId)` triple — whether pre-existing
+   *   or inserted concurrently.
+   * @throws DuplicateIdentifierMappingError in the rare insert-fails-then-
+   *   winner-deleted window: `insertMapping` raises a unique-violation but
+   *   the follow-up `findByExternalKey` returns null because the winner row
+   *   was deleted between the two calls. Callers that only catch
+   *   `MappingAlreadyExistsError` should let this propagate.
+   */
   async createMapping(
     entityType: string,
     externalId: string,
@@ -99,19 +111,8 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     internalId: string,
     context?: MappingContext,
   ): Promise<void> {
-    // Resolve Connection and derive platformType
     const connection = await this.connectionPort.get(connectionId);
     const platformType = connection.platformType;
-
-    const existing = await this.repository.findByExternalKey(
-      entityType,
-      platformType,
-      connectionId,
-      externalId,
-    );
-    if (existing) {
-      throw new MappingAlreadyExistsError(entityType, externalId, connectionId, existing.internalId);
-    }
 
     const mapping = new IdentifierMapping(
       randomUUID(),
@@ -125,7 +126,27 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       new Date(),
     );
 
-    await this.repository.create(mapping);
+    try {
+      await this.repository.insertMapping(mapping);
+    } catch (error) {
+      if (error instanceof DuplicateIdentifierMappingError) {
+        const winner = await this.repository.findByExternalKey(
+          entityType,
+          platformType,
+          connectionId,
+          externalId,
+        );
+        if (winner) {
+          throw new MappingAlreadyExistsError(
+            entityType,
+            externalId,
+            connectionId,
+            winner.internalId,
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async deleteMapping(
@@ -202,9 +223,17 @@ export class IdentifierMappingService implements IIdentifierMappingService {
    * Internal helper for get-or-create with resolved platformType.
    * Used by batch operations to avoid redundant connection lookups.
    *
-   * Note: this helper handles DuplicateIdentifierMappingError (concurrent insert) but
-   * does NOT retry on InternalIdCollisionError. Internal ID collisions are astronomically
-   * rare with UUID generation; if one occurs here the error propagates to the caller.
+   * Pure insert-then-recover: always attempts insert (no upfront read), and
+   * handles duplicate mappings — pre-existing or from concurrent insert — by
+   * SELECTing the winner. Pattern matches docs/engineering-standards.md §
+   * "Error handling in concurrent operations". Eliminating the upfront read
+   * is a deliberate trade-off — repeat lookups now pay one insert attempt
+   * against a unique index in exchange for closing the race-window contract
+   * literally. Callers that need raw-read performance should use
+   * `getInternalId` directly.
+   *
+   * Does NOT retry on internal-id collisions. UUID collisions are
+   * astronomically rare; if one occurs the error propagates to the caller.
    * @private
    */
   private async getOrCreateInternalIdWithPlatform(
@@ -214,24 +243,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     platformType: string,
     context?: MappingContext,
   ): Promise<string> {
-    // Check if mapping already exists
-    const existing = await this.repository.findByExternalKey(
-      entityType,
-      platformType,
-      connectionId,
-      externalId,
-    );
-    if (existing) {
-      this.logger.debug(
-        `Found existing mapping for ${entityType}:${externalId}@${connectionId} -> ${existing.internalId}`,
-      );
-      return existing.internalId;
-    }
-
-    // Generate new internal ID
     const internalId = this.generateInternalId(entityType);
-
-    // Create mapping with concurrency-safe insert
     const mapping = new IdentifierMapping(
       randomUUID(),
       entityType,
@@ -251,9 +263,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       );
       return internalId;
     } catch (error) {
-      // Handle unique violation (concurrency case)
       if (error instanceof DuplicateIdentifierMappingError) {
-        // Retry: select and return winner
         const winner = await this.repository.findByExternalKey(
           entityType,
           platformType,
@@ -262,19 +272,24 @@ export class IdentifierMappingService implements IIdentifierMappingService {
         );
         if (winner) {
           this.logger.debug(
-            `Concurrent insert detected, returning existing mapping for ${entityType}:${externalId}@${connectionId} -> ${winner.internalId}`,
+            `Mapping already exists for ${entityType}:${externalId}@${connectionId} -> ${winner.internalId}`,
           );
           return winner.internalId;
         }
       }
-      // Re-throw if not a duplicate error or if winner not found
       throw error;
     }
   }
 
   /**
-   * Get or create exact mapping between external and internal identifiers
-   * Returns the external ID if mapping exists or was created successfully
+   * Get or create an exact mapping between an external identifier and a
+   * caller-supplied internal identifier. Concurrency-safe via insert-then-
+   * recover.
+   *
+   * @returns the external ID when the mapping was created or already exists
+   *   with the requested internal ID.
+   * @throws IdentifierMappingConflictException when the external ID is
+   *   already mapped to a *different* internal ID.
    */
   async getOrCreateExactMapping(
     entityType: string,
@@ -283,46 +298,53 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     connectionId: string,
     context?: MappingContext,
   ): Promise<string> {
-    // Resolve Connection and derive platformType
     const connection = await this.connectionPort.get(connectionId);
     const platformType = connection.platformType;
 
-    // Check if mapping already exists
-    const existing = await this.repository.findByExternalKey(
+    const mapping = new IdentifierMapping(
+      randomUUID(),
       entityType,
+      internalId,
+      externalId,
       platformType,
       connectionId,
-      externalId,
+      context ?? null,
+      new Date(),
+      new Date(),
     );
-    if (existing) {
-      if (existing.internalId === internalId) {
-        // Perfect match - mapping already exists
-        this.logger.debug(
-          `Mapping already exists: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
-        );
-        return externalId;
-      }
-      // Conflict: external ID mapped to different internal ID
-      throw new IdentifierMappingConflictException(
-        entityType,
-        externalId,
-        connectionId,
-        existing.internalId,
-        internalId,
+
+    try {
+      await this.repository.insertMapping(mapping);
+      this.logger.debug(
+        `Created mapping: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
       );
+      return externalId;
+    } catch (error) {
+      if (error instanceof DuplicateIdentifierMappingError) {
+        const winner = await this.repository.findByExternalKey(
+          entityType,
+          platformType,
+          connectionId,
+          externalId,
+        );
+        if (winner) {
+          if (winner.internalId === internalId) {
+            this.logger.debug(
+              `Mapping already exists: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
+            );
+            return externalId;
+          }
+          throw new IdentifierMappingConflictException(
+            entityType,
+            externalId,
+            connectionId,
+            winner.internalId,
+            internalId,
+          );
+        }
+      }
+      throw error;
     }
-
-    // Create mapping (createMapping already checks for duplicates and throws if exists).
-    // TODO: this path is not concurrency-safe — concurrent calls can race between the
-    // findByExternalKey check above and repository.create() below, producing a raw
-    // QueryFailedError instead of a domain error. Fix if concurrent createMapping calls
-    // become a realistic scenario.
-    await this.createMapping(entityType, externalId, connectionId, internalId, context);
-    this.logger.debug(
-      `Created mapping: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
-    );
-    return externalId;
-
   }
 
   private generateInternalId(entityType: string): string {
