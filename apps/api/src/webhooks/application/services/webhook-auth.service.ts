@@ -13,7 +13,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import { WEBHOOK_SECRET_PROVIDER_TOKEN } from '@openlinker/core/integrations';
 import { ConnectionPort } from '@openlinker/core/identifier-mapping';
-import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { IWebhookAuthService } from '../interfaces/webhook-auth.service.interface';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../errors/webhook-replay.exception';

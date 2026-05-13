@@ -92,17 +92,7 @@ export type { ISyncJobBulkRetryService } from './application/services/sync-job-b
 
 // Module and tokens
 export { SyncModule } from './sync.module';
-export {
-  JOB_ENQUEUE_TOKEN,
-  SYNC_JOB_REPOSITORY_TOKEN,
-  CONNECTION_CURSOR_REPOSITORY_TOKEN,
-  SYNC_JOB_QUEUE_TOKEN,
-  SYNC_LOCK_TOKEN,
-  SYNC_JOB_RETRY_SERVICE_TOKEN,
-  SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
-  RETRY_CLASSIFIER_REGISTRY_TOKEN,
-  SCHEDULER_TASK_REGISTRY_TOKEN,
-} from './sync.tokens';
+export * from './sync.tokens';
 
 // ORM entities are exposed on the host-only `@openlinker/core/sync/orm-entities`
 // sub-path (#594). Plugins must not import them from here.

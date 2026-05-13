@@ -73,20 +73,7 @@ export {
 export { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
 
 // Tokens
-export {
-  ADAPTER_REGISTRY_TOKEN,
-  INTEGRATIONS_SERVICE_TOKEN,
-  CREDENTIALS_RESOLVER_TOKEN,
-  ADAPTER_FACTORY_RESOLVER_TOKEN,
-  CONNECTION_TESTER_REGISTRY_TOKEN,
-  WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
-  EMAIL_NORMALIZER_REGISTRY_TOKEN,
-  CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
-  CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
-  WEBHOOK_SECRET_PROVIDER_TOKEN,
-  WEBHOOK_SECRET_SERVICE_TOKEN,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-} from './integrations.tokens';
+export * from './integrations.tokens';
 
 // Module
 export { IntegrationsModule } from './integrations.module';

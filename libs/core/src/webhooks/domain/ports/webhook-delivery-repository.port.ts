@@ -43,7 +43,3 @@ export interface WebhookDeliveryRepositoryPort {
     pagination: WebhookDeliveryPagination,
   ): Promise<PaginatedWebhookDeliveries>;
 }
-
-export const WEBHOOK_DELIVERY_REPOSITORY_TOKEN = Symbol(
-  'WebhookDeliveryRepositoryPort',
-);

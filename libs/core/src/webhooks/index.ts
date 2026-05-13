@@ -2,6 +2,7 @@ export * from './domain/entities/webhook-delivery.entity';
 export * from './domain/exceptions/webhook-delivery-upsert-failed.error';
 export * from './domain/types/webhook-delivery.types';
 export * from './domain/ports/webhook-delivery-repository.port';
+export * from './webhooks.tokens';
 // `WebhookDeliveryOrmEntity` is intentionally not re-exported (#594). No
 // external code consumes it today; the TypeORM CLI discovers it via the
 // `**/*.orm-entity.{ts,js}` glob in `apps/api/src/database/data-source.ts`.

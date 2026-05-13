@@ -19,19 +19,6 @@
  * @module libs/core/src/listings
  */
 
-export {
-  OFFER_LINKING_SERVICE_TOKEN,
-  OFFER_MAPPING_SYNC_SERVICE_TOKEN,
-  OFFER_MAPPING_REPOSITORY_TOKEN,
-  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-  CATEGORY_RESOLUTION_SERVICE_TOKEN,
-  OFFER_BUILDER_SERVICE_TOKEN,
-  OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
-  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
-  OFFER_STATUS_POLL_SERVICE_TOKEN,
-  SELLER_POLICIES_SERVICE_TOKEN,
-  SELLER_POLICIES_CACHE_TOKEN,
-} from './listings.tokens';
 export type { IOfferStatusPollService } from './application/interfaces/offer-status-poll.service.interface';
 export type {
   ScheduleFirstPollInput,
@@ -213,3 +200,6 @@ export type {
   ResponsibleProducerKind,
 } from './domain/types/responsible-producer.types';
 export { ResponsibleProducerKindValues } from './domain/types/responsible-producer.types';
+
+// Tokens
+export * from './listings.tokens';

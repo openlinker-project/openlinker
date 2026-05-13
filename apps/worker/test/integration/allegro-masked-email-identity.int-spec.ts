@@ -14,11 +14,11 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '@openlinker/core/customers/customers.tokens';
+import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '@openlinker/core/customers';
 import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
-import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping/identifier-mapping.tokens';
+import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN } from '@openlinker/core/customers/customers.tokens';
+import { CUSTOMER_IDENTITY_RESOLVER_PORT_TOKEN } from '@openlinker/core/customers';
 import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
 import { DataSource } from 'typeorm';
 import { hashEmail } from '@openlinker/shared/config';
