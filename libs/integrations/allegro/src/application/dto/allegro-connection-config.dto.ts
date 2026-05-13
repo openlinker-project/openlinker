@@ -40,10 +40,7 @@ import {
   AllegroSafetyInformationTypeValues,
 } from '../../domain/types/allegro-seller-defaults.types';
 import { PolishVoivodeshipValues } from '../../domain/types/allegro-location.types';
-import {
-  AllegroEnvironment,
-  AllegroEnvironmentValues,
-} from '../../domain/types/allegro-config.types';
+import { AllegroEnvironmentValues } from '../../domain/types/allegro-config.types';
 
 /**
  * Allegro ship-from address. `countryCode` is pinned to `'PL'` for now —
@@ -142,7 +139,7 @@ export class AllegroSellerDefaultsDto {
  */
 export class AllegroConnectionConfigDto {
   @IsIn(AllegroEnvironmentValues as readonly string[])
-  environment!: AllegroEnvironment;
+  environment!: (typeof AllegroEnvironmentValues)[number];
   @IsUrl({ require_tld: false })
   @IsOptional()
   @IsString()
