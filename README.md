@@ -181,13 +181,15 @@ The project includes GitHub Actions workflows for:
 
 See `.github/workflows/` for details.
 
+## Community
+
+- [Code of Conduct](./CODE_OF_CONDUCT.md) — the standards we hold ourselves and contributors to.
+- [Support](./SUPPORT.md) — where to ask questions, file bugs, or propose features.
+- [Security](./SECURITY.md) — responsible-disclosure process for vulnerabilities (do not open a public issue).
+
 ## Contributing
 
 Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on the development workflow, coding standards, and pull-request process.
-
-## Security
-
-Found a vulnerability? Please follow the responsible-disclosure process in [SECURITY.md](./SECURITY.md) — do not open a public issue.
 
 ## License
 
