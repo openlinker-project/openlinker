@@ -1,8 +1,6 @@
 # Getting Started
 
-End-to-end walkthrough: from a clean machine to a first Allegro order synced into PrestaShop via OpenLinker.
-
-> **Status:** work in progress. Built incrementally as part of [#152](https://github.com/SilkSoftwareHouse/openlinker/issues/152). Sections marked _TBD_ are not yet documented.
+End-to-end walkthrough: from a clean machine to a fully-configured OpenLinker instance with PrestaShop and Allegro connected, catalog synced, and categories mapped — ready to start creating offers and ingesting orders.
 
 ## Prerequisites
 
@@ -234,10 +232,11 @@ Category mapping connects your PrestaShop categories to Allegro's category tree 
 
 Repeat for each category you intend to list products in on Allegro.
 
-## 8. First offer
+## What's next
 
-_TBD_
+With both connections active, products discovered, and at least one category mapped, you're ready to:
 
-## 9. First order end-to-end
+- **Create your first Allegro offer from a PrestaShop product.** Walkthrough in progress — tracked in [#429](https://github.com/SilkSoftwareHouse/openlinker/issues/429) (Allegro offer-creation epic). The flow is functional today; the screenshot-level guide is the next doc to land.
+- **Watch an Allegro order land in PrestaShop.** End-to-end sandbox walkthrough tracked in [#152](https://github.com/SilkSoftwareHouse/openlinker/issues/152) (clean-state E2E epic). The ingestion path is exercised by the carrier-mapping vertical-slice int-spec ([#535](https://github.com/SilkSoftwareHouse/openlinker/pull/671)) — the user-facing walkthrough is the missing piece.
 
-_TBD_
+Until those walkthroughs land, the **Jobs & Logs** page in the OpenLinker web app (`http://localhost:4173/jobs`) is the best place to watch sync activity, and the **Orders** page surfaces orders as they ingest.
