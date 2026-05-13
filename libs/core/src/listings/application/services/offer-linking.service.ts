@@ -4,29 +4,16 @@
  * Deterministically links marketplace offers to internal sellable items (variants).
  *
  * @module libs/core/src/listings/application/services
+ * @implements {IOfferLinkingService}
  */
 import { Injectable } from '@nestjs/common';
 import { OfferFeedItem } from '@openlinker/core/listings';
 import { normalizeBarcode as normalizeBarcodeValue, normalizeToEan13 } from '@openlinker/core/products';
-
-export type OfferLinkMethod = 'externalRef' | 'sku' | 'ean' | 'gtin';
-
-export interface OfferLinkingLookups {
-  externalRefToVariantId: Map<string, string | null>;
-  skuToVariantId: Map<string, string | null>;
-  eanToVariantId: Map<string, string | null>;
-  gtinToVariantId: Map<string, string | null>;
-}
-
-export interface OfferLinkingResult {
-  status: 'linked' | 'skipped';
-  internalVariantId?: string;
-  linkMethod?: OfferLinkMethod;
-  reason?: string;
-}
+import { IOfferLinkingService } from '../interfaces/offer-linking.service.interface';
+import { OfferLinkingLookups, OfferLinkingResult } from '../types/offer-linking.types';
 
 @Injectable()
-export class OfferLinkingService {
+export class OfferLinkingService implements IOfferLinkingService {
   linkOffer(item: OfferFeedItem, lookups: OfferLinkingLookups): OfferLinkingResult {
     const externalRef = this.normalize(item.externalRef);
     if (externalRef) {

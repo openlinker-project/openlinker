@@ -3,7 +3,8 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
-import { OfferLinkingService, OfferLinkingLookups } from '../offer-linking.service';
+import { OfferLinkingService } from '../offer-linking.service';
+import { OfferLinkingLookups } from '../../types/offer-linking.types';
 
 describe('OfferLinkingService', () => {
   let service: OfferLinkingService;

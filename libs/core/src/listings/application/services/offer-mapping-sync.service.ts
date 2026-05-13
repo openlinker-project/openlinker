@@ -25,10 +25,8 @@ import {
   OfferMappingSyncOptions,
   OfferMappingSyncResult,
 } from './offer-mapping-sync.service.interface';
-import {
-  OfferLinkingService,
-  OfferLinkingLookups,
-} from './offer-linking.service';
+import { OfferLinkingService } from './offer-linking.service';
+import { OfferLinkingLookups } from '../types/offer-linking.types';
 
 @Injectable()
 export class OfferMappingSyncService implements IOfferMappingSyncService {
