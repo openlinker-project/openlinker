@@ -294,7 +294,12 @@ completion signal (HTTP probes race the install). Default deadline is 12 min.
    real install is `apps/prestashop-module/openlinker/openlinker.php`'s
    `installCarrier()` method.
 3. The **PLN currency** (PS install with `PS_COUNTRY=us|en` defaults to
-   USD/EUR; the spec mirrors an Allegro-PL order).
+   USD/EUR; the spec mirrors an Allegro-PL order). Seeded with
+   `conversion_rate = 1.0` to keep `total_shipping == 12.50` literal in the
+   order currency — a realistic 4.5 PLN/EUR rate would scale shop-currency
+   delivery prices through to PLN and break the spec's value assertions.
+   Specs that need realistic FX behaviour should override this in their
+   own setup.
 
 ### Pinned versions
 
@@ -311,6 +316,21 @@ The carrier-mapping smoke spec at `apps/api/test/integration/orders/` predates
 this convention and stays where it is for now (it's an orders-flow assertion
 that happens to use the harness); new specs whose primary subject is the PS
 adapter belong under `prestashop/`.
+
+### Vertical-slice example: carrier mapping (#535)
+
+`apps/api/test/integration/orders/allegro-prestashop-carrier-mapping.int-spec.ts`
+is the reference example of layering a vertical slice on top of this harness.
+It exercises `OrderIngestionService.syncOrderFromSource` end-to-end with a
+stubbed Allegro source (registered via the public
+`AdapterRegistryService` + `AdapterFactoryResolverService` seams) and a real
+PrestaShop destination. The S-1 / S-2 split covers the two practical branches
+of the #516 carrier-resolution chain (mapped vs `defaultCarrierId` fallback).
+When adding a new vertical-slice spec, copy the structure: one suite-scoped
+PS container in `beforeAll`, fixtures + helpers under
+`apps/api/test/integration/{fixtures,helpers}/`, and assertions via the same
+PS WS endpoints the production adapter uses (no direct MySQL reads from the
+test body).
 
 ---
 
