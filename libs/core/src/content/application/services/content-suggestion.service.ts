@@ -23,7 +23,7 @@ import {
   type AiCompletionPort,
   type IPromptTemplateService,
 } from '@openlinker/core/ai';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';

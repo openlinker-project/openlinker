@@ -15,7 +15,7 @@ import { SYNC_JOB_REPOSITORY_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobRequest } from '@openlinker/core/sync';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { createMockAllegroMarketplaceAdapter } from './helpers/mock-allegro-adapters.helper';
 import { DataSource } from 'typeorm';

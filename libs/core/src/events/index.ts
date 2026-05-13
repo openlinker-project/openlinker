@@ -17,5 +17,5 @@ export { RedisStreamsEventPublisher } from './infrastructure/adapters/redis-stre
 
 // Module and tokens
 export { EventsModule } from './events.module';
-export { EVENT_PUBLISHER_TOKEN } from './events.tokens';
+export * from './events.tokens';
 

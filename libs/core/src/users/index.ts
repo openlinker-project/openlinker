@@ -14,12 +14,8 @@ export type { PasswordResetNotifierPort } from './domain/ports/password-reset-no
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
 export { WeakPasswordException } from './domain/exceptions/weak-password.exception';
-export {
-  UsersModule,
-  USER_REPOSITORY_TOKEN,
-  PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
-  PASSWORD_RESET_NOTIFIER_TOKEN,
-} from './users.module';
+export { UsersModule } from './users.module';
+export * from './users.tokens';
 export {
   UserRoleValues,
   PermissionValues,

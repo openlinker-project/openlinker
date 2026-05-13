@@ -11,13 +11,7 @@
 export { ProductsModule } from './products.module';
 
 // Tokens
-export {
-  PRODUCT_REPOSITORY_TOKEN,
-  PRODUCT_VARIANT_REPOSITORY_TOKEN,
-  PRODUCTS_SERVICE_TOKEN,
-  MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
-  AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
-} from './products.tokens';
+export * from './products.tokens';
 
 // Ports
 export {

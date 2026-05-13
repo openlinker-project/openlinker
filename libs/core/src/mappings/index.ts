@@ -8,13 +8,7 @@
  */
 
 export { MappingsModule } from './mappings.module';
-export {
-  MAPPING_CONFIG_SERVICE_TOKEN,
-  STATUS_MAPPING_REPOSITORY_TOKEN,
-  CARRIER_MAPPING_REPOSITORY_TOKEN,
-  PAYMENT_MAPPING_REPOSITORY_TOKEN,
-  CATEGORY_MAPPING_REPOSITORY_TOKEN,
-} from './mappings.tokens';
+export * from './mappings.tokens';
 export type { IMappingConfigService } from './application/interfaces/mapping-config.service.interface';
 export { MappingConfigService } from './application/services/mapping-config.service';
 export { StatusMapping } from './domain/entities/status-mapping.entity';

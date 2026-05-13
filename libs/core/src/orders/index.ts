@@ -72,13 +72,7 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
-export {
-  ORDER_SYNC_SERVICE_TOKEN,
-  ORDER_INGESTION_SERVICE_TOKEN,
-  ORDER_RECORD_REPOSITORY_TOKEN,
-  ORDER_RECORD_SERVICE_TOKEN,
-  ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
-} from './orders.tokens';
+export * from './orders.tokens';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';

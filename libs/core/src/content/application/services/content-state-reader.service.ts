@@ -16,7 +16,7 @@
  * @implements {IContentStateReaderService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import {
   isOfferFieldUpdater,

@@ -754,6 +754,8 @@ export class InventorySyncService {
    @Inject('ProductRepositoryPort')
    ```
 
+   See [Symbol DI Token Re-export Convention](#symbol-di-token-re-export-convention) for the file-layout + barrel-export rules every context follows.
+
 ✅ **Good:**
 ```typescript
 // Service depends on port interface
@@ -780,6 +782,47 @@ export class ProductService {
   ) {}
 }
 ```
+
+### Symbol DI Token Re-export Convention
+
+**Symbol tokens are used for every kind of DI binding** — repository ports, service interfaces, port interfaces, message-bus producers. The token-layout rule applies uniformly across all of them, not just repository ports.
+
+**Rules (#595):**
+
+1. **Every context owns a `<ctx>/<ctx>.tokens.ts` file.** All Symbol tokens for the context live there — `libs/core/src/inventory/inventory.tokens.ts`, `libs/core/src/listings/listings.tokens.ts`, etc.
+2. **The context sub-barrel does `export * from './<ctx>.tokens';`** — never cherry-pick a subset. A new token added to `<ctx>.tokens.ts` is automatically available on `@openlinker/core/<ctx>`; the sub-barrel needs no second edit.
+3. **External consumers import tokens only from the top-level barrel** `@openlinker/core/<ctx>`. Deep paths like `@openlinker/core/<ctx>/<ctx>.tokens` are ESLint-blocked in `libs/integrations/**`, `libs/core/**/domain/ports/**`, and `apps/{api,worker}/**`.
+4. **Same-context relative imports stay relative.** Inside `libs/core/src/<ctx>/**`, importing `../../<ctx>.tokens` (depth ≤ `../..`) is permitted; the deep-path ESLint rule above matches against the `@openlinker/core/*` prefix and doesn't fire on relative paths.
+5. **Token-naming convention**: `{CONTEXT}_{INTERFACE}_TOKEN` — e.g. `INVENTORY_REPOSITORY_TOKEN`, `OFFER_LINKING_SERVICE_TOKEN`, `IDENTIFIER_MAPPING_PORT_TOKEN`. Symbol description matches the underlying interface name (`Symbol('InventoryRepositoryPort')`).
+6. **`<ctx>.tokens.ts` files must contain only `export const <NAME>_TOKEN = Symbol(...);` declarations.** Non-Symbol exports (types, helpers, constants) belong in `<ctx>.types.ts` or another dedicated file — `export *` from the tokens file in the sub-barrel would otherwise widen the public surface unintentionally.
+
+✅ **Good:**
+```typescript
+// libs/core/src/inventory/inventory.tokens.ts — token-only
+export const INVENTORY_REPOSITORY_TOKEN = Symbol('InventoryRepositoryPort');
+export const INVENTORY_SYNC_SERVICE_TOKEN = Symbol('IInventorySyncService');
+
+// libs/core/src/inventory/index.ts — sub-barrel
+export * from './inventory.tokens';
+
+// External consumer
+import { INVENTORY_REPOSITORY_TOKEN } from '@openlinker/core/inventory';
+```
+
+❌ **Bad:**
+```typescript
+// Cherry-pick in the sub-barrel — fragile (new tokens silently drop off)
+export { INVENTORY_REPOSITORY_TOKEN } from './inventory.tokens';
+
+// Deep import from outside the context — ESLint error, fails at runtime under #591
+import { INVENTORY_REPOSITORY_TOKEN } from '@openlinker/core/inventory/inventory.tokens';
+
+// Non-Symbol export sneaks through the star — widens public surface
+// (inside <ctx>.tokens.ts)
+export type TokenKey = '…';   // ❌ move to <ctx>.types.ts
+```
+
+---
 
 ### ORM ↔ Domain Mapping
 

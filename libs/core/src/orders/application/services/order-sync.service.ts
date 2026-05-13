@@ -17,7 +17,7 @@ import { OrderProcessorManagerPort } from '../../domain/ports/order-processor-ma
 import { OrderCreate } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';

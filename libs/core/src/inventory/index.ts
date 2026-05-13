@@ -11,13 +11,7 @@
 export { InventoryModule } from './inventory.module';
 
 // Tokens
-export {
-  INVENTORY_REPOSITORY_TOKEN,
-  INVENTORY_SERVICE_TOKEN,
-  INVENTORY_SYNC_SERVICE_TOKEN,
-  MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
-  INVENTORY_QUERY_SERVICE_TOKEN,
-} from './inventory.tokens';
+export * from './inventory.tokens';
 
 // Ports
 export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';

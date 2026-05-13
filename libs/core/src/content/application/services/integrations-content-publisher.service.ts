@@ -30,7 +30,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {

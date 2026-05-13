@@ -13,10 +13,10 @@ import { UserOrmEntity } from './infrastructure/persistence/entities/user.orm-en
 import { UserRepository } from './infrastructure/persistence/repositories/user.repository';
 import { PasswordResetTokenOrmEntity } from './infrastructure/persistence/entities/password-reset-token.orm-entity';
 import { PasswordResetTokenRepository } from './infrastructure/persistence/repositories/password-reset-token.repository';
-
-export const USER_REPOSITORY_TOKEN = Symbol('UserRepositoryPort');
-export const PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN = Symbol('PasswordResetTokenRepositoryPort');
-export const PASSWORD_RESET_NOTIFIER_TOKEN = Symbol('PasswordResetNotifierPort');
+import {
+  USER_REPOSITORY_TOKEN,
+  PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
+} from './users.tokens';
 
 @Module({
   imports: [TypeOrmModule.forFeature([UserOrmEntity, PasswordResetTokenOrmEntity])],

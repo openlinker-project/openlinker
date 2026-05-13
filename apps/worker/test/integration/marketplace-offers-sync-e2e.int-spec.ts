@@ -8,7 +8,7 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations/integrations.tokens';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { OfferManagerPort, OfferLister } from '@openlinker/core/listings';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { JOB_ENQUEUE_TOKEN, SyncJobRepositoryPort } from '@openlinker/core/sync';

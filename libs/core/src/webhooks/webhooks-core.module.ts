@@ -11,7 +11,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WebhookDeliveryOrmEntity } from './infrastructure/persistence/entities/webhook-delivery.orm-entity';
 import { WebhookDeliveryRepository } from './infrastructure/persistence/repositories/webhook-delivery.repository';
-import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from './domain/ports/webhook-delivery-repository.port';
+import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from './webhooks.tokens';
 
 @Module({
   imports: [TypeOrmModule.forFeature([WebhookDeliveryOrmEntity])],
