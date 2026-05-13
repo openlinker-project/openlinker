@@ -20,7 +20,6 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsEnum,
   IsIn,
   IsNotEmpty,
   IsObject,
@@ -41,14 +40,10 @@ import {
   AllegroSafetyInformationTypeValues,
 } from '../../domain/types/allegro-seller-defaults.types';
 import { PolishVoivodeshipValues } from '../../domain/types/allegro-location.types';
-
-/**
- * Allegro environment values
- */
-export enum AllegroEnvironment {
-  SANDBOX = 'sandbox',
-  PRODUCTION = 'production',
-}
+import {
+  AllegroEnvironment,
+  AllegroEnvironmentValues,
+} from '../../domain/types/allegro-config.types';
 
 /**
  * Allegro ship-from address. `countryCode` is pinned to `'PL'` for now —
@@ -146,7 +141,7 @@ export class AllegroSellerDefaultsDto {
  * temporal-dead-zone error when the file is loaded by the service layer.
  */
 export class AllegroConnectionConfigDto {
-  @IsEnum(AllegroEnvironment)
+  @IsIn(AllegroEnvironmentValues as readonly string[])
   environment!: AllegroEnvironment;
   @IsUrl({ require_tld: false })
   @IsOptional()
