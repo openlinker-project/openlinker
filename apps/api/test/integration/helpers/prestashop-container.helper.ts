@@ -41,11 +41,30 @@ export interface PrestashopTestContainer {
   olDynamicCarrierId: number;
   /** id_currency of PLN. */
   plnCurrencyId: number;
+  /**
+   * MySQL companion connection details — exposed so vertical-slice specs
+   * (e.g. carrier-mapping #535) can seed additional rows the WS doesn't
+   * cover ergonomically (products, identifier-mapping bootstrap, default
+   * carrier lookup by name). Direct DB access for tests is consistent with
+   * how the WS API key + OL Dynamic carrier are seeded by this helper.
+   */
+  mysqlAddress: {
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+    password: string;
+  };
   /** Stop both containers and tear down the network. */
   cleanup: () => Promise<void>;
 }
 
-const PRESTASHOP_IMAGE = 'prestashop/prestashop:9.0.2-2.0-classic-8.4';
+/**
+ * Pinned PS image tag — exported so diagnostic helpers in spec files can match
+ * on the same tag via `docker ps --filter ancestor=...` without duplicating the
+ * literal. Kept aligned with the dev-stack docker-compose pin (see `docs/testing-guide.md`).
+ */
+export const PRESTASHOP_IMAGE = 'prestashop/prestashop:9.0.2-2.0-classic-8.4';
 const MYSQL_IMAGE = 'mysql:8.4';
 const MYSQL_NETWORK_ALIAS = 'mysql';
 const MYSQL_DATABASE = 'prestashop';
@@ -161,6 +180,7 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
       webserviceApiKey: seed.webserviceApiKey,
       olDynamicCarrierId: seed.olDynamicCarrierId,
       plnCurrencyId: seed.plnCurrencyId,
+      mysqlAddress: mysqlOptions,
       cleanup,
     };
   } catch (err) {
