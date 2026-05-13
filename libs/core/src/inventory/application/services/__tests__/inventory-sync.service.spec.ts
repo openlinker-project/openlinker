@@ -126,7 +126,8 @@ describe('InventorySyncService', () => {
 
   it('should auto-generate a deterministic idempotency key when an item omits one', async () => {
     // Single-item path (length === 1) forces per-item loop, which lets us inspect the
-    // normalized item passed to updateOfferQuantity.
+    // normalized item passed to updateOfferQuantity. The key is a SHA-256 truncation
+    // of (connectionId, offerId, quantity) — same tuple → same key, distinct tuple → distinct key.
     marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
     await service.updateOfferQuantities(connectionId, {

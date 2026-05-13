@@ -17,11 +17,11 @@ import { MasterInventorySyncService } from '../master-inventory-sync.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IInventoryService } from '../inventory.service.interface';
-import type {
+import {
   InventoryMasterPort,
   Inventory as InventoryPortInterface,
-} from '../../../domain/ports/inventory-master.port';
-import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+  InventoryItemEntity as InventoryItem,
+} from '@openlinker/core/inventory';
 
 describe('MasterInventorySyncService', () => {
   let service: MasterInventorySyncService;
@@ -187,7 +187,7 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.getInventory).toHaveBeenCalledWith(internalProductId, null, null);
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+          id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
           productVariantId: null,
           locationId: null,
         }),
