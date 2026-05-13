@@ -166,22 +166,10 @@ export interface AdapterRegistryPort {
 
 ### Adding New Adapters
 
-To add a new adapter, update `AdapterRegistryService`:
-
-```typescript
-private readonly registry: Map<string, AdapterMetadata> = new Map([
-  // ... existing adapters
-  {
-    adapterKey: 'shopify.restapi.v1',
-    platformType: 'shopify',
-    supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
-    displayName: 'Shopify REST API v1',
-    version: '1.0.0',
-  },
-].map((meta) => [meta.adapterKey, meta]));
-```
-
-**Future Enhancement**: Dynamic registration or database-backed registry.
+See [`docs/plugin-author-guide.md`](./plugin-author-guide.md) for the
+full walkthrough of adding a new integration adapter — package layout,
+port selection, factory wiring, credentials/OAuth, plugin-owned
+migrations, tests, and host enablement.
 
 ---
 

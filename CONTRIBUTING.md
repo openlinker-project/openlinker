@@ -107,6 +107,18 @@ before making significant changes. OpenLinker follows Hexagonal
 Architecture (Ports and Adapters); CORE and Integration packages have
 strict boundaries that contributions must respect.
 
+## Building a New Integration
+
+Adding a platform integration (e.g., Shopify, WooCommerce,
+BigCommerce) is a separate workflow with its own port-selection,
+package-layout, factory-wiring, credentials/OAuth, and host-enablement
+steps. The walkthrough lives in the
+[Plugin Author Guide](./docs/plugin-author-guide.md). It uses
+`libs/integrations/prestashop/` as the reference adapter and points
+at `libs/integrations/allegro/` for the OAuth pattern. Read the guide
+alongside the reference adapter's code — the code is the spec, the
+guide is the map.
+
 ## Pull Request Process
 
 1. Create a feature branch from `main` named after the issue

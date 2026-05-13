@@ -191,6 +191,8 @@ See `.github/workflows/` for details.
 
 Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on the development workflow, coding standards, and pull-request process.
 
+**Building a new integration?** See the [Plugin Author Guide](./docs/plugin-author-guide.md) — a walkthrough of port selection, package layout, registry wiring, OAuth, testing, and host enablement.
+
 ## License
 
 OpenLinker is released under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
