@@ -28,6 +28,8 @@ troubleshooting in more detail.
 
 The dev stack (`pnpm dev:stack:up`) starts PostgreSQL, Redis, MySQL, and
 PrestaShop in containers — you do not need any of those installed locally.
+Running against a locally-installed Postgres / Redis instead is possible
+but undocumented; the supported path is Docker.
 
 ## Development Setup
 

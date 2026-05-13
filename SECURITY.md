@@ -38,6 +38,13 @@ maintainers and an automatic CVE issuance path once a fix lands.
 > email alias will be added as a secondary channel. GitHub Security
 > Advisories will remain the primary channel.
 
+> **TODO (depends on [#641](https://github.com/SilkSoftwareHouse/openlinker/issues/641)):**
+> the Security-tab URL above resolves to the canonical repo URL today. Once
+> the org transfer completes, update the link (and any other references in
+> this doc) to the post-transfer URL. Tracked alongside the broader URL
+> convergence work in
+> [#664](https://github.com/SilkSoftwareHouse/openlinker/issues/664).
+
 When reporting, please include:
 
 - A description of the vulnerability and its impact.
