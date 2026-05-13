@@ -121,7 +121,9 @@ A maintainer may be removed by mutual agreement, by a maintainer's own
 request, or by consensus of the remaining maintainers in cases of:
 
 - Sustained inactivity (no review or commit activity for 6 months).
-- Violation of `CODE_OF_CONDUCT.md` (tracked in #659).
+- Violation of `CODE_OF_CONDUCT.md` (the CoC ships separately — tracked
+  in [#659](https://github.com/SilkSoftwareHouse/openlinker/issues/659);
+  until it lands, GitHub's default community standards apply).
 
 Removal is recorded in the Maintainers table above, in
 `.github/CODEOWNERS`, and in any other places where the handle is

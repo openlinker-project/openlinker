@@ -26,24 +26,24 @@
 *                                  @piotrswierzy
 
 # Core domain — hexagonal architecture, ports, application services
-libs/core/                         @piotrswierzy
+/libs/core/                        @piotrswierzy
 
 # Shared utilities — logger, types, errors used across packages
-libs/shared/                       @piotrswierzy
+/libs/shared/                      @piotrswierzy
 
 # Plugin SDK — the public contract surface plugins bind against
-libs/plugin-sdk/                   @piotrswierzy
+/libs/plugin-sdk/                  @piotrswierzy
 
 # Host applications
-apps/api/                          @piotrswierzy
-apps/worker/                       @piotrswierzy
-apps/web/                          @piotrswierzy
+/apps/api/                         @piotrswierzy
+/apps/worker/                      @piotrswierzy
+/apps/web/                         @piotrswierzy
 
 # In-tree adapters — see GOVERNANCE.md for the policy on plugin
 # authors co-maintaining their own integration package
-libs/integrations/allegro/         @piotrswierzy
-libs/integrations/prestashop/      @piotrswierzy
-libs/integrations/ai/              @piotrswierzy
+/libs/integrations/allegro/        @piotrswierzy
+/libs/integrations/prestashop/     @piotrswierzy
+/libs/integrations/ai/             @piotrswierzy
 
 # Workflows, CI, governance metadata — guarded
 /.github/                          @piotrswierzy

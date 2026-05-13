@@ -37,19 +37,21 @@ Closes #
 
 ## Migrations
 
-- [ ] No ORM-entity schema changes — **OR** —
-- [ ] Migration added under `apps/api/src/migrations/` (or plugin
-      package), `pnpm --filter @openlinker/api migration:show` confirms
-      it's listed, and `up()` / `down()` were tested locally. See
-      [`docs/migrations.md`](../docs/migrations.md).
+- [ ] If this PR changes an ORM entity, a migration is included under
+      `apps/api/src/migrations/` (or the plugin package), `pnpm --filter
+      @openlinker/api migration:show` confirms it's listed, and both
+      `up()` and `down()` were tested locally. See
+      [`docs/migrations.md`](../docs/migrations.md). Tick this box for
+      PRs that don't touch schemas too — it's trivially satisfied.
 
 ## DCO sign-off
 
-- [ ] All commits in this PR are signed off (`git commit -s`). DCO is
-      OpenLinker's contributor attestation per
-      [CONTRIBUTING.md → Commits](../CONTRIBUTING.md#commits). Automated
-      enforcement is deferred until after the org transfer; please sign
-      off anyway so the history is consistent when enforcement starts.
+> Sign off every commit with `git commit -s`. OpenLinker uses the
+> [Developer Certificate of Origin](https://developercertificate.org/)
+> as its contributor attestation (see
+> [CONTRIBUTING.md → Commits](../CONTRIBUTING.md#commits)). Automated
+> enforcement is deferred until after the org transfer; sign off anyway
+> so the history is consistent when enforcement starts.
 
 <details>
 <summary><strong>Adding a new integration adapter?</strong> (expand)</summary>
