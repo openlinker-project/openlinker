@@ -26,7 +26,6 @@ describe('IdentifierMappingService', () => {
     const mockRepository = {
       findByExternalKey: jest.fn(),
       findByInternalId: jest.fn(),
-      create: jest.fn(),
       insertMapping: jest.fn(),
       deleteByExternalKey: jest.fn(),
       findByEntityTypeAndConnection: jest.fn(),
@@ -75,7 +74,7 @@ describe('IdentifierMappingService', () => {
       connectionPort.get.mockResolvedValue(connection);
     });
 
-    it('should return existing internalId when mapping already exists (recovered via duplicate-insert path)', async () => {
+    it('should return existing internalId when mapping already exists', async () => {
       const existingMapping = new IdentifierMapping(
         'id-1',
         'Product',
@@ -423,7 +422,7 @@ describe('IdentifierMappingService', () => {
       expect(repository.findByExternalKey).not.toHaveBeenCalled();
     });
 
-    it('should throw MappingAlreadyExistsError if mapping already exists (recovered via duplicate-insert path)', async () => {
+    it('should throw MappingAlreadyExistsError if mapping already exists', async () => {
       const existingMapping = new IdentifierMapping(
         'id-1',
         'Product',

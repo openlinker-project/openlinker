@@ -73,15 +73,6 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
   }
 
   /**
-   * Create mapping (standard save operation)
-   */
-  async create(mapping: IdentifierMapping): Promise<IdentifierMapping> {
-    const entity = this.toOrmEntity(mapping);
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
-  }
-
-  /**
    * Insert mapping with unique violation detection.
    * Used for concurrency-safe get-or-create operations.
    * The only unique constraint on this table is the external key index

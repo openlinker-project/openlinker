@@ -90,7 +90,7 @@ All TypeScript projects must use strict mode:
 #### Test Files
 
 - **Unit Tests**: `*.spec.ts` (e.g., `product.service.spec.ts`)
-- **Integration Tests**: `*.integration.spec.ts` (e.g., `product.integration.spec.ts`)
+- **Integration Tests**: `*.int-spec.ts` (e.g., `product.int-spec.ts`) — see [Testing Guide](./testing-guide.md) for the harness pattern
 - **E2E Tests**: `*.e2e-spec.ts` (e.g., `product.e2e-spec.ts`)
 
 ### Class Names
