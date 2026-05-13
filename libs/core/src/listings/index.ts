@@ -46,6 +46,13 @@ export type {
   CategoryResolutionMethod,
 } from './application/types/category-resolution.types';
 export { CategoryResolutionMethodValues } from './application/types/category-resolution.types';
+export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
+export type {
+  OfferLinkMethod,
+  OfferLinkingLookups,
+  OfferLinkingResult,
+} from './application/types/offer-linking.types';
+export { OfferLinkMethodValues } from './application/types/offer-linking.types';
 export type {
   IOfferMappingSyncService,
   OfferMappingSyncOptions,
