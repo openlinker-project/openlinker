@@ -2,6 +2,7 @@
   "name": "@openlinker/integrations-prestashop",
   "version": "0.1.0",
   "description": "PrestaShop WebService v1 adapter for OpenLinker",
+  "license": "Apache-2.0",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -12,7 +13,9 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "test": "jest --config ./jest.config.mjs",
@@ -43,4 +46,3 @@
     "typescript": "5.4.3"
   }
 }
-

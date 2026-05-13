@@ -2,6 +2,7 @@
   "name": "@openlinker/core",
   "version": "0.1.0",
   "description": "OpenLinker Core Bounded Contexts",
+  "license": "Apache-2.0",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -123,7 +124,9 @@
       "default": "./dist/content/orm-entities.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "test": "jest",
@@ -151,4 +154,3 @@
     "typescript": "5.4.3"
   }
 }
-

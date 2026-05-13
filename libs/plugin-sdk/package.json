@@ -2,6 +2,7 @@
   "name": "@openlinker/plugin-sdk",
   "version": "0.1.0",
   "description": "Plugin SDK for OpenLinker — AdapterPlugin contract + NestJS adapter for per-connection integration plugins (#593, #597).",
+  "license": "Apache-2.0",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",

@@ -2,6 +2,7 @@
   "name": "@openlinker/shared",
   "version": "0.1.0",
   "description": "OpenLinker Shared Utilities",
+  "license": "Apache-2.0",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -44,7 +45,9 @@
       "require": "./dist/cache/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "test": "jest --passWithNoTests",
@@ -75,4 +78,3 @@
     "typescript": "5.4.3"
   }
 }
-
