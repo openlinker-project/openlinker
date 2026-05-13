@@ -6,6 +6,11 @@ pnpm-lock.yaml
 package-lock.json
 yarn.lock
 
+# Scaffolder templates contain unresolved placeholder tokens (__name__,
+# __Name__, __BRAND__) that aren't valid TS — prettier would fail to
+# parse them. They're substituted at scaffold time, not at format time.
+scripts/create-adapter-templates/
+
 
 
 

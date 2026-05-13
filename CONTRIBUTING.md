@@ -119,6 +119,12 @@ at `libs/integrations/allegro/` for the OAuth pattern. Read the guide
 alongside the reference adapter's code — the code is the spec, the
 guide is the map.
 
+**Tip**: skip the manual file-shuffle. Run
+`pnpm create-adapter <name>` to scaffold a compilable, lint-clean
+plugin skeleton at `libs/integrations/<name>/` with the contract
+surface (plugin descriptor, integration module, adapter factory,
+barrel) already in place. Then follow the guide to add capabilities.
+
 ## Pull Request Process
 
 1. Create a feature branch from `main` named after the issue
