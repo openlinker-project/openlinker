@@ -132,6 +132,14 @@ For everything else, PrestaShop is the canonical template.
 
 ## Step 3 — Package layout
 
+> **Fast path**: `pnpm create-adapter <name>` scaffolds a compilable,
+> lint-clean version of the tree below — workspace config, barrel,
+> plugin descriptor, integration module (helper form), adapter factory,
+> empty config/credentials types, and `.gitkeep` markers for the
+> exception/adapter dirs. ~15 files; you fill in capabilities on top.
+> The manual walk-through below is still the canonical reference for
+> what each file is for.
+
 Copy this tree as your starting point (`libs/integrations/<platform>/`):
 
 ```text
