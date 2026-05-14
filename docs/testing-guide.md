@@ -281,10 +281,12 @@ completion signal (HTTP probes race the install). Default deadline is 12 min.
 
 ### What gets seeded
 
-`startPrestashopContainer` runs two seed phases against a fresh PS install:
+`startPrestashopContainer` runs an opt-in install phase plus an always-on
+fixture phase against a fresh PS install:
 
-**Phase 1 — `installOpenLinkerModuleIntoContainer` (#692, closes #513):**
-The real OpenLinker PrestaShop module is copied into the container at
+**Phase 1 (opt-in) — `installOpenLinkerModuleIntoContainer` (#692, closes #513):**
+Triggered only when the caller passes `{ installOlModule: true }`. The real
+OpenLinker PrestaShop module is copied into the container at
 `/var/www/html/modules/openlinker` (via testcontainers' post-start
 `copyDirectoriesToContainer`) and installed via `php bin/console prestashop:module install openlinker`,
 followed by an `uninstall + install` cycle to dodge the PS 9.0.2 Symfony-installer
@@ -295,7 +297,15 @@ empty string), then verifies the carrier row + sidecar table + secret all
 landed. This is what makes the `writeCartShipping` → `cartshipping.php` HMAC
 round-trip exercise-able from S-3.
 
-**Phase 2 — `applyPrestashopFixture` inserts:**
+**When NOT to opt in**: specs that don't exercise the OL Dynamic carrier
+round-trip should leave `installOlModule` at its `false` default — keeps boot
+fast AND avoids the install path's known CI failure mode (works on macOS
+Docker-Desktop, currently flakes on the self-hosted Linux runner — root cause
+TBD). Today only `allegro-prestashop-carrier-mapping.int-spec.ts` opts in;
+`prestashop-harness-smoke.int-spec.ts` and `prestashop-webhook-provisioning.int-spec.ts`
+do not.
+
+**Phase 2 (always) — `applyPrestashopFixture` inserts:**
 
 1. A **WS API key** (random per run) granted CRUD on the resources our
    adapters touch (carriers, carts, orders, customers, addresses, products,

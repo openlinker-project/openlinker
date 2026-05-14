@@ -41,23 +41,35 @@ export interface PrestashopTestContainer {
   /** WS API key seeded into ps_api_access. Use as the basic-auth username with empty password. */
   webserviceApiKey: string;
   /**
-   * id_carrier of the OpenLinker Dynamic carrier — installed by the real OL
-   * PrestaShop module (see `installOpenLinkerModuleIntoContainer` below).
-   * This is the live module-installed carrier row, NOT a SQL-seeded stub: its
-   * `cartshipping.php` front-controller endpoint is wired and HMAC-verified,
-   * so adapter-side `writeCartShipping` calls produce real sidecar rows that
-   * `Carrier::getOrderShippingCostExternal` reads at order-create time.
-   * Coincides with `ps_configuration.OPENLINKER_DYNAMIC_CARRIER_ID`.
+   * id_carrier of the OpenLinker Dynamic carrier.
+   *
+   * When the harness was started with `installOlModule: true` this is the
+   * live module-installed carrier row: its `cartshipping.php` front-controller
+   * endpoint is wired and HMAC-verified, so adapter-side `writeCartShipping`
+   * calls produce real sidecar rows that `Carrier::getOrderShippingCostExternal`
+   * reads at order-create time. Coincides with
+   * `ps_configuration.OPENLINKER_DYNAMIC_CARRIER_ID`.
+   *
+   * When `installOlModule` is false (default) this is the SQL-stub row seeded
+   * by `seedOlDynamicCarrier` — sufficient for `discoverDynamicCarrierId()`
+   * to find a row, but the runtime `cartshipping.php` controller is not
+   * installed, so the HMAC round-trip is not exercised. Specs that need the
+   * round-trip MUST opt in via `installOlModule: true`.
    */
   olDynamicCarrierId: number;
   /** id_currency of PLN. */
   plnCurrencyId: number;
   /**
-   * HMAC shared secret (random per run, 64 hex chars). Same bytes seeded into
+   * HMAC shared secret (random per run, 64 hex chars).
+   *
+   * Only meaningful when the harness was started with `installOlModule: true`,
+   * in which case the same bytes are seeded into
    * `ps_configuration.OPENLINKER_WEBHOOK_SECRET` (module-receiver side) AND
    * returned here so the int-spec can wire the adapter side via the
-   * WebhookSecretProviderPort env-var fallback. See § HMAC contract wiring in
-   * `docs/plans/implementation-plan-692-ol-dynamic-carrier-int-spec.md`.
+   * `WebhookSecretProviderPort` env-var fallback.
+   *
+   * When `installOlModule` is false the secret is generated but unused; it's
+   * always populated to keep the harness shape stable across configurations.
    */
   webhookSharedSecret: string;
   /**
@@ -113,6 +125,26 @@ const MODULE_SOURCE_PATH = resolve(__dirname, '../../../../prestashop-module/ope
 const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
 
 /**
+ * Options for {@link startPrestashopContainer}. Today only carries the
+ * OL-module opt-in flag; new knobs land here without a signature break.
+ */
+export interface StartPrestashopContainerOptions {
+  /**
+   * When true, install the real OpenLinker PrestaShop module into the
+   * container between `waitForPrestashopInstall` and `applyPrestashopFixture`.
+   * Required for specs that exercise the OL Dynamic carrier round-trip (#692).
+   *
+   * Default `false` — keeps boot fast for specs that don't need it AND avoids
+   * a known CI-environment failure mode where the install transition leaves
+   * the PS WS returning HTTP 500 on the subsequent `verifyApacheUp` probe
+   * (works locally on macOS Docker-Desktop, fails on the self-hosted Linux
+   * runner — root cause TBD). Specs that opt in should expect this risk and
+   * handle CI flakes accordingly.
+   */
+  installOlModule?: boolean;
+}
+
+/**
  * Start a PrestaShop test container with MySQL companion.
  *
  * Steps:
@@ -120,10 +152,15 @@ const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
  *   2. Start MySQL 8.4 with a known root password.
  *   3. Start PrestaShop with `PS_INSTALL_AUTO=1` pointing at the MySQL companion.
  *   4. Wait for `ps_configuration.PS_VERSION_DB` to appear → install complete.
- *   5. Apply the fixture (WS API key, OL Dynamic carrier stub, PLN currency).
- *   6. Return container details + cleanup.
+ *   5. (Optional, when `options.installOlModule` is true) Install the real OL
+ *      PrestaShop module — see {@link installOpenLinkerModuleIntoContainer}.
+ *   6. Apply the fixture (WS API key, OL Dynamic carrier stub OR module-installed
+ *      row, PLN currency).
+ *   7. Return container details + cleanup.
  */
-export async function startPrestashopContainer(): Promise<PrestashopTestContainer> {
+export async function startPrestashopContainer(
+  options: StartPrestashopContainerOptions = {},
+): Promise<PrestashopTestContainer> {
   // Track started resources so we can tear them down on a partial-start
   // failure. `beforeAll` swallows post-throw teardown (Jest skips `afterAll`
   // when setup throws), so without this guard a failed PS boot would leak
@@ -164,20 +201,26 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
 
     await waitForPrestashopInstall(mysqlOptions, INSTALL_DEADLINE_MS);
 
-    // Install the OL PS module BEFORE applyPrestashopFixture. The fixture's
-    // `seedOlDynamicCarrier` early-returns when it finds a carrier row with
-    // `external_module_name='openlinker'` — which the module install creates
-    // first — so this ordering avoids the stub-vs-real conflict that would
-    // arise from running the fixture first. Inside the same try/catch so a
-    // module-install failure still triggers the container teardown path
-    // below (logs dump + `Promise.allSettled(stop)` + network removal).
+    // Always generate the per-run secret so the returned harness has a stable
+    // shape. When `options.installOlModule` is false the bytes are unused —
+    // a small waste of entropy in exchange for not making `webhookSharedSecret`
+    // nullable downstream.
     const webhookSharedSecret = randomBytes(32).toString('hex');
-    await installOpenLinkerModuleIntoContainer({
-      prestashop,
-      mysqlAddress: mysqlOptions,
-      sharedSecret: webhookSharedSecret,
-      modulePath: MODULE_SOURCE_PATH,
-    });
+    if (options.installOlModule) {
+      // Install the OL PS module BEFORE applyPrestashopFixture. The fixture's
+      // `seedOlDynamicCarrier` early-returns when it finds a carrier row with
+      // `external_module_name='openlinker'` — which the module install creates
+      // first — so this ordering avoids the stub-vs-real conflict that would
+      // arise from running the fixture first. Inside the same try/catch so a
+      // module-install failure still triggers the container teardown path
+      // below (logs dump + `Promise.allSettled(stop)` + network removal).
+      await installOpenLinkerModuleIntoContainer({
+        prestashop,
+        mysqlAddress: mysqlOptions,
+        sharedSecret: webhookSharedSecret,
+        modulePath: MODULE_SOURCE_PATH,
+      });
+    }
 
     const seed: PrestashopFixtureSeed = await applyPrestashopFixture(mysqlOptions);
 

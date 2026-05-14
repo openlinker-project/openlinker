@@ -204,7 +204,13 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    ps = await startPrestashopContainer();
+    // installOlModule: true is required for S-3 (exercises the real
+    // `cartshipping.php` HMAC round-trip). Other PS-Testcontainer specs
+    // (e.g. prestashop-harness-smoke, prestashop-webhook-provisioning) leave
+    // it at the default `false` so they don't pay the install cost AND don't
+    // hit the install-related CI flake currently tracked for the OL module
+    // install path.
+    ps = await startPrestashopContainer({ installOlModule: true });
 
     // S-3 — wire the adapter side of the HMAC contract. The module side is
     // seeded into ps_configuration.OPENLINKER_WEBHOOK_SECRET by
