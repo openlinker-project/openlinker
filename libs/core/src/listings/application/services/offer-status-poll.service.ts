@@ -25,6 +25,7 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import {
   isOfferStatusReader,
+  OFFER_CREATION_STATUS,
   OfferNotFoundOnMarketplaceException,
   OfferPollNotSupportedException,
   type OfferStatusReadResult,
@@ -179,7 +180,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       } {
     switch (result.publicationStatus) {
       case 'active':
-        return { terminal: true, recordStatus: 'active', errors: null, outcome: 'ok' };
+        return { terminal: true, recordStatus: OFFER_CREATION_STATUS.Active, errors: null, outcome: 'ok' };
       case 'activating':
       case 'inactivating':
         return { terminal: false };
@@ -187,7 +188,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         if (result.validationErrors.length > 0) {
           return {
             terminal: true,
-            recordStatus: 'failed',
+            recordStatus: OFFER_CREATION_STATUS.Failed,
             errors: result.validationErrors.map((v) => ({
               code: v.code,
               message: v.message,
@@ -196,9 +197,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
             outcome: 'business_failure',
           };
         }
-        return { terminal: true, recordStatus: 'draft', errors: null, outcome: 'ok' };
+        return { terminal: true, recordStatus: OFFER_CREATION_STATUS.Draft, errors: null, outcome: 'ok' };
       case 'ended':
-        return { terminal: true, recordStatus: 'draft', errors: null, outcome: 'ok' };
+        return { terminal: true, recordStatus: OFFER_CREATION_STATUS.Draft, errors: null, outcome: 'ok' };
     }
   }
 
@@ -281,6 +282,6 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     code: string
   ): Promise<void> {
     const error: OfferCreationError = { code, message };
-    await this.offerCreationRecords.updateStatus(recordId, 'failed', [error]);
+    await this.offerCreationRecords.updateStatus(recordId, OFFER_CREATION_STATUS.Failed, [error]);
   }
 }

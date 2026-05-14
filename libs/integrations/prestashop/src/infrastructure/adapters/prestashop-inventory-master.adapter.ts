@@ -13,6 +13,7 @@ import type {
   InventoryAdjustment,
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   IPrestashopInventoryMapper,
@@ -45,7 +46,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     );
 
     // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
+    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
     const prestashopProductId = externalIds.find(
       (e: { connectionId: string }) => e.connectionId === this.connection.id
     );
@@ -54,7 +55,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        'Product',
+        CORE_ENTITY_TYPE.Product,
         productId,
         this.connection.id
       );
@@ -98,7 +99,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Inventory not found for product: ${productId}`,
-        'Inventory',
+        CORE_ENTITY_TYPE.Inventory,
         productId,
         this.connection.id
       );
@@ -113,11 +114,11 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
 
     // Get or create internal ID for inventory
     const internalId = await this.identifierMapping.getOrCreateInternalId(
-      'Inventory',
+      CORE_ENTITY_TYPE.Inventory,
       String(stockRecord.id),
       this.connection.id,
       {
-        parentEntityType: 'Product',
+        parentEntityType: CORE_ENTITY_TYPE.Product,
         parentInternalId: productId,
       }
     );

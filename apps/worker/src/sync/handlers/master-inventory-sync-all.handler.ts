@@ -23,10 +23,7 @@ import type {
   SyncJobRequest,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import {
-  IdentifierMappingQueryPort,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingQueryPort, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -49,7 +46,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
     try {
       const externalIds = await this.identifierMapping.listExternalIdsByConnection(
-        'Product',
+        CORE_ENTITY_TYPE.Product,
         job.connectionId
       );
 
@@ -78,7 +75,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
           payload: {
             schemaVersion: 1,
             externalId,
-            objectType: 'Product',
+            objectType: CORE_ENTITY_TYPE.Product,
           },
           // Derive from outer job id so retries of this outer job produce the same
           // sub-job keys and dedupe against the queue.

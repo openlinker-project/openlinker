@@ -19,10 +19,10 @@ import type {
   CustomerIdentityMode,
 } from '../../domain/types/customer-identity.types';
 import {
-  IdentifierMappingPort,
-  ConnectionPort,
-  CONNECTION_PORT_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+  CustomerIdentityModeValues,
+  DEFAULT_CUSTOMER_IDENTITY_MODE,
+} from '../../domain/types/customer-identity.types';
+import { IdentifierMappingPort, ConnectionPort, CONNECTION_PORT_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { EmailNormalizerPort } from '@openlinker/core/integrations';
 import {
   EmailNormalizerRegistryService,
@@ -59,25 +59,23 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
     private readonly emailNormalizerRegistry: EmailNormalizerRegistryService
   ) {
-    // Read identity mode from environment (default: email_fallback)
-    const modeValue = getEnv('OL_CUSTOMER_IDENTITY_MODE', 'email_fallback');
-    if (
-      modeValue !== 'external_only' &&
-      modeValue !== 'email_fallback' &&
-      modeValue !== 'true' &&
-      modeValue !== 'false'
-    ) {
+    // Read identity mode from environment (default: email_fallback).
+    // Legacy: 'true' is accepted as an alias for 'email_fallback', 'false' for
+    // 'external_only'. Anything else falls back to the default with a warning.
+    const modeValue = getEnv('OL_CUSTOMER_IDENTITY_MODE', DEFAULT_CUSTOMER_IDENTITY_MODE);
+    const isValid =
+      CustomerIdentityModeValues.includes(modeValue as CustomerIdentityMode) ||
+      modeValue === 'true' ||
+      modeValue === 'false';
+    if (!isValid) {
       this.logger.warn(
-        `Invalid OL_CUSTOMER_IDENTITY_MODE value: ${modeValue}. Using default: email_fallback`
+        `Invalid OL_CUSTOMER_IDENTITY_MODE value: ${modeValue}. Using default: ${DEFAULT_CUSTOMER_IDENTITY_MODE}`
       );
+      this.identityMode = DEFAULT_CUSTOMER_IDENTITY_MODE;
+    } else if (modeValue === 'true' || modeValue === 'email_fallback') {
       this.identityMode = 'email_fallback';
     } else {
-      // Support legacy boolean values for backward compatibility
-      if (modeValue === 'true' || modeValue === 'email_fallback') {
-        this.identityMode = 'email_fallback';
-      } else {
-        this.identityMode = 'external_only';
-      }
+      this.identityMode = 'external_only';
     }
 
     if (this.identityMode === 'email_fallback') {
@@ -105,7 +103,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
     // Primary: Try external buyer ID mapping
     const existingMapping = await this.identifierMapping.getInternalId(
-      'Customer',
+      CORE_ENTITY_TYPE.Customer,
       externalBuyerId,
       sourceConnectionId
     );
@@ -141,7 +139,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
     // External-only mode: Create new internal customer
     const newInternalId = await this.identifierMapping.getOrCreateInternalId(
-      'Customer',
+      CORE_ENTITY_TYPE.Customer,
       externalBuyerId,
       sourceConnectionId
     );
@@ -181,7 +179,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     if (matchingProjections.length === 0) {
       // No match: Create new internal customer
       const newInternalId = await this.identifierMapping.getOrCreateInternalId(
-        'Customer',
+        CORE_ENTITY_TYPE.Customer,
         externalBuyerId,
         sourceConnectionId
       );
@@ -206,7 +204,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
       try {
         await this.identifierMapping.createMapping(
-          'Customer',
+          CORE_ENTITY_TYPE.Customer,
           externalBuyerId,
           sourceConnectionId,
           existingInternalId
@@ -232,7 +230,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       } catch (error) {
         // Mapping may already exist (concurrent request), fetch it
         const mapping = await this.identifierMapping.getInternalId(
-          'Customer',
+          CORE_ENTITY_TYPE.Customer,
           externalBuyerId,
           sourceConnectionId
         );
@@ -261,7 +259,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     );
 
     const newInternalId = await this.identifierMapping.getOrCreateInternalId(
-      'Customer',
+      CORE_ENTITY_TYPE.Customer,
       externalBuyerId,
       sourceConnectionId
     );

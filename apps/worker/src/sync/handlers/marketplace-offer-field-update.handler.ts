@@ -15,10 +15,7 @@ import type {
   MarketplaceOfferFieldUpdatePayloadV1,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isOfferFieldUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -45,7 +42,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
     );
 
     // Resolve internal offer ID → external (marketplace-native) offer ID
-    const externalMappings = await this.identifierMapping.getExternalIds('Offer', payload.offerId);
+    const externalMappings = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, payload.offerId);
     const mapping = externalMappings.find((m) => m.connectionId === job.connectionId);
 
     if (!mapping) {

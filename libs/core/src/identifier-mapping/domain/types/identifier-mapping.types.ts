@@ -38,6 +38,28 @@ export const CoreEntityTypeValues = [
 export type CoreEntityType = (typeof CoreEntityTypeValues)[number];
 
 /**
+ * Named-constant map for the well-known core entity types (#668).
+ *
+ * Lets call sites reference entity types by name (`CORE_ENTITY_TYPE.Product`)
+ * rather than repeating bare `'Product'` / `'Customer'` literals. The port
+ * signature deliberately stays open (`string`) so plugin adapters can register
+ * additional names; this map is only the well-known closed set.
+ *
+ * `as const satisfies Record<CoreEntityType, CoreEntityType>` ensures the keys
+ * remain in lockstep with the union (drops an entry → TS errors; types a value
+ * to a non-member literal → TS errors).
+ */
+export const CORE_ENTITY_TYPE = {
+  Product: 'Product',
+  ProductVariant: 'ProductVariant',
+  Sku: 'Sku',
+  Order: 'Order',
+  Offer: 'Offer',
+  Inventory: 'Inventory',
+  Customer: 'Customer',
+} as const satisfies Record<CoreEntityType, CoreEntityType>;
+
+/**
  * Internal-ID prefix overrides for entity types whose default lowercased
  * prefix is undesirable.
  *

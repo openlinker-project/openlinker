@@ -11,6 +11,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
@@ -20,7 +21,7 @@ import type {
   PaginatedOfferMappings,
 } from '../../../domain/types/offer-mapping.types';
 
-const OFFER_ENTITY_TYPE: CoreEntityType = 'Offer';
+const OFFER_ENTITY_TYPE: CoreEntityType = CORE_ENTITY_TYPE.Offer;
 
 @Injectable()
 export class OfferMappingRepository implements OfferMappingRepositoryPort {

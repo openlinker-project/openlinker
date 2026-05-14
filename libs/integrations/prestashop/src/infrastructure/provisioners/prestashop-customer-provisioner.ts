@@ -10,6 +10,7 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import type { RedisClientType } from 'redis';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopProvisioningException } from '../../domain/exceptions/prestashop-provisioning.exception';
@@ -157,7 +158,7 @@ export class PrestashopCustomerProvisioner {
     this.logger.debug(
       `Internal customer ID: ${internalCustomerId}, destinationConnectionId: ${destinationConnectionId}`
     );
-    const externalIds = await identifierMapping.getExternalIds('Customer', internalCustomerId);
+    const externalIds = await identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Customer, internalCustomerId);
     const prestashopMapping = externalIds.find((e) => e.connectionId === destinationConnectionId);
 
     if (prestashopMapping) {
@@ -177,7 +178,7 @@ export class PrestashopCustomerProvisioner {
       await new Promise((resolve) => setTimeout(resolve, 500)); // Wait 500ms
 
       // Re-check mapping after waiting
-      const retryMapping = await identifierMapping.getExternalIds('Customer', internalCustomerId);
+      const retryMapping = await identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Customer, internalCustomerId);
       const retryPrestashopMapping = retryMapping.find(
         (e) => e.connectionId === destinationConnectionId
       );
@@ -203,7 +204,7 @@ export class PrestashopCustomerProvisioner {
     try {
       // Step 3: Re-check mapping after lock acquisition
       const postLockMapping = await identifierMapping.getExternalIds(
-        'Customer',
+        CORE_ENTITY_TYPE.Customer,
         internalCustomerId
       );
       const postLockPrestashopMapping = postLockMapping.find(
@@ -310,7 +311,7 @@ export class PrestashopCustomerProvisioner {
       // Step 6: Create mapping with post-create re-check
       try {
         const externalId = await identifierMapping.getOrCreateExactMapping(
-          'Customer',
+          CORE_ENTITY_TYPE.Customer,
           prestashopCustomerId,
           internalCustomerId,
           destinationConnectionId
@@ -319,7 +320,7 @@ export class PrestashopCustomerProvisioner {
       } catch (error) {
         // Mapping may already exist (concurrent request), fetch it
         const duplicateMapping = await identifierMapping.getExternalIds(
-          'Customer',
+          CORE_ENTITY_TYPE.Customer,
           internalCustomerId
         );
         const duplicatePrestashopMapping = duplicateMapping.find(

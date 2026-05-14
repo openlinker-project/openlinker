@@ -23,10 +23,7 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   ICustomerIdentityResolverService,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
@@ -186,7 +183,7 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     // Step 1: resolve order + customer IDs (no item mapping yet)
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-      'Order',
+      CORE_ENTITY_TYPE.Order,
       incoming.externalOrderId,
       connectionId
     );
@@ -326,10 +323,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       return resolution.internalCustomerId;
     }
     return this.identifierMapping.getOrCreateInternalId(
-      'Customer',
+      CORE_ENTITY_TYPE.Customer,
       incoming.customerExternalId,
       connectionId,
-      { parentEntityType: 'Order', parentInternalId: internalOrderId }
+      { parentEntityType: CORE_ENTITY_TYPE.Order, parentInternalId: internalOrderId }
     );
   }
 

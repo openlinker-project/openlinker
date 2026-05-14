@@ -52,6 +52,7 @@ import {
   OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
 import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   resolveAllegroProductCardByEan,
   type ResolveProductCardResult,
@@ -478,7 +479,7 @@ export class AllegroOfferManagerAdapter
   private async isOfferMapped(offerId: string): Promise<boolean> {
     try {
       const internalId = await this.identifierMapping.getInternalId(
-        'Offer',
+        CORE_ENTITY_TYPE.Offer,
         offerId,
         this.connectionId
       );

@@ -6,10 +6,7 @@
  * @module libs/core/src/orders/application/services
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
 import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
@@ -52,7 +49,7 @@ export class OrderItemRefResolverService {
     switch (productRef.type) {
       case 'offer': {
         const internalVariantId = await this.identifierMapping.getInternalId(
-          'Offer',
+          CORE_ENTITY_TYPE.Offer,
           productRef.externalId,
           connectionId
         );
@@ -75,7 +72,7 @@ export class OrderItemRefResolverService {
       }
       case 'product': {
         const internalProductId = await this.identifierMapping.getInternalId(
-          'Product',
+          CORE_ENTITY_TYPE.Product,
           productRef.externalId,
           connectionId
         );
@@ -90,7 +87,7 @@ export class OrderItemRefResolverService {
       }
       case 'variant': {
         const internalVariantId = await this.identifierMapping.getInternalId(
-          'ProductVariant',
+          CORE_ENTITY_TYPE.ProductVariant,
           productRef.externalId,
           connectionId
         );
@@ -113,7 +110,7 @@ export class OrderItemRefResolverService {
       }
       case 'sku': {
         const internalId = await this.identifierMapping.getInternalId(
-          'Sku',
+          CORE_ENTITY_TYPE.Sku,
           productRef.externalId,
           connectionId
         );

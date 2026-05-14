@@ -9,10 +9,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
@@ -44,7 +41,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   ): Promise<MasterProductSyncResult> {
     // Resolve internal product ID
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
-      'Product',
+      CORE_ENTITY_TYPE.Product,
       externalId,
       connectionId
     );

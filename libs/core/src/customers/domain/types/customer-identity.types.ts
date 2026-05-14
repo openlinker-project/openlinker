@@ -24,6 +24,13 @@ export const CustomerIdentityModeValues = ['external_only', 'email_fallback'] as
 export type CustomerIdentityMode = (typeof CustomerIdentityModeValues)[number];
 
 /**
+ * Default identity mode used when the `OL_CUSTOMER_IDENTITY_MODE` env var is
+ * absent, blank, or invalid. Exported so call sites can reference the default
+ * by name rather than repeating the bare `'email_fallback'` literal (#668).
+ */
+export const DEFAULT_CUSTOMER_IDENTITY_MODE: CustomerIdentityMode = 'email_fallback';
+
+/**
  * Customer identity resolution request
  *
  * Contains information needed to resolve customer identity from external buyer data.

@@ -25,13 +25,9 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import {
-  DuplicateIdentifierMappingError,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-  IIdentifierMappingService,
-} from '@openlinker/core/identifier-mapping';
+import { DuplicateIdentifierMappingError, IDENTIFIER_MAPPING_SERVICE_TOKEN, IIdentifierMappingService, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { OfferManagerPort } from '@openlinker/core/listings';
-import { isOfferCreator } from '@openlinker/core/listings';
+import { isOfferCreator, OFFER_CREATION_STATUS } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   CreateOfferCommand,
@@ -97,7 +93,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     } catch (error) {
       const terminal = this.mapBuilderException(error);
       if (terminal) {
-        const updated = await this.offerCreationRecords.updateStatus(record.id, 'failed', terminal);
+        const updated = await this.offerCreationRecords.updateStatus(record.id, OFFER_CREATION_STATUS.Failed, terminal);
         return this.buildResult(updated, input.connectionId);
       }
       throw error;
@@ -120,7 +116,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       if (error instanceof OfferCreateRejectedException) {
         const updated = await this.offerCreationRecords.updateStatus(
           record.id,
-          'failed',
+          OFFER_CREATION_STATUS.Failed,
           this.mapRejectionErrors(error)
         );
         return this.buildResult(updated, input.connectionId);
@@ -130,7 +126,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
 
     try {
       await this.identifierMapping.createMapping(
-        'Offer',
+        CORE_ENTITY_TYPE.Offer,
         result.externalOfferId,
         input.connectionId,
         input.internalVariantId
@@ -186,14 +182,20 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
    */
   private recordToOutcome(record: OfferCreationRecord): JobOutcome {
     switch (record.status) {
-      case 'failed':
+      case OFFER_CREATION_STATUS.Failed:
         return 'business_failure';
-      case 'active':
-      case 'draft':
-      case 'validating':
+      case OFFER_CREATION_STATUS.Active:
+      case OFFER_CREATION_STATUS.Draft:
+      case OFFER_CREATION_STATUS.Validating:
         return 'ok';
-      case 'pending':
+      case OFFER_CREATION_STATUS.Pending:
         throw new OfferCreationInvariantException(record.id, record.status);
+      default: {
+        // Exhaustiveness guard: a new OfferCreationStatus member fails here at
+        // compile time, surfacing the missing case in PR review (#668).
+        const _exhaustive: never = record.status;
+        return _exhaustive;
+      }
     }
   }
 
@@ -221,7 +223,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     return this.offerCreationRecords.create({
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
-      status: 'pending',
+      status: OFFER_CREATION_STATUS.Pending,
       publishImmediately: input.publishImmediately,
       externalOfferId: null,
       errors: null,
