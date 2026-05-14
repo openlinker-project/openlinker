@@ -14,7 +14,7 @@
 
 export {
   create__Name__Plugin,
-  __name__AdapterManifest,
+  __camelName__AdapterManifest,
   type Create__Name__PluginDeps,
 } from './__name__-plugin';
 
