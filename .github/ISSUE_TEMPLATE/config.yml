@@ -1,17 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📚 Documentation
-    url: https://github.com/piotrswierzy/openlinker/tree/main/docs
+    url: https://github.com/SilkSoftwareHouse/openlinker/tree/main/docs
     about: Check our documentation for architecture, standards, and guides
-  - name: 💬 Discussions
-    url: https://github.com/piotrswierzy/openlinker/discussions
-    about: Ask questions and discuss ideas with the community
-
-
-
-
-
-
-
-
-

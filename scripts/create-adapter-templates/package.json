@@ -4,6 +4,15 @@
   "description": "__Name__ adapter for OpenLinker",
   "license": "Apache-2.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SilkSoftwareHouse/openlinker.git",
+    "directory": "libs/integrations/__name__"
+  },
+  "homepage": "https://github.com/SilkSoftwareHouse/openlinker/tree/main/libs/integrations/__name__#readme",
+  "bugs": {
+    "url": "https://github.com/SilkSoftwareHouse/openlinker/issues"
+  },
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
