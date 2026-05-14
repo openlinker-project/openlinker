@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { usePlugin, usePlugins } from '../../../shared/plugins';
+import { usePlatform, usePlatforms } from '../../../shared/plugins';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   createConnectionSchema,
@@ -42,7 +42,7 @@ export function CreateConnectionForm(): ReactElement {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
   const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
@@ -53,7 +53,7 @@ export function CreateConnectionForm(): ReactElement {
   // Platforms that drive the operator through an OAuth redirect (today:
   // Allegro) suppress the inline create-submit affordances — the registered
   // platform wizard owns the rest of the flow.
-  const selectedPlugin = usePlugin(watchedPlatformType);
+  const selectedPlugin = usePlatform(watchedPlatformType);
   const requiresExternalAuthRedirect = selectedPlugin?.requiresExternalAuthRedirect === true;
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>

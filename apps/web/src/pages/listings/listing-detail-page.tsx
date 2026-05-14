@@ -6,7 +6,7 @@ import { Button } from '../../shared/ui/button';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { usePlugin } from '../../shared/plugins';
+import { usePlatform } from '../../shared/plugins';
 import { useListingQuery } from '../../features/listings/hooks/use-listing-query';
 import { EditOfferDrawer } from '../../features/listings/components/EditOfferDrawer';
 import { ListingMarketplaceOfferSection } from '../../features/listings/components/listing-marketplace-offer-section';
@@ -113,7 +113,7 @@ export function ListingDetailPage(): ReactElement {
   // Mapping `platformType` is the BE-denormalized copy of the connection's
   // `platformType` (architecture-overview §IdentifierMappingService) — always
   // canonical-cased, so direct lookup is safe.
-  const mappingPlugin = usePlugin(mapping.platformType);
+  const mappingPlugin = usePlatform(mapping.platformType);
 
   return (
     <PageLayout

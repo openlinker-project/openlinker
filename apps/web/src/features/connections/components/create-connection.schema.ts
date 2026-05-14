@@ -5,7 +5,7 @@ import type { CreateConnectionInput } from '../api/connections.types';
  * `platformType` is an opaque string post-#578 — membership is enforced at
  * the registry boundary, not the schema. The schema only ensures the field
  * is non-empty; an unknown platform falls through to a clear runtime error
- * from `usePlugin()` consumers or the BE registry.
+ * from `usePlatform()` consumers or the BE registry.
  */
 export const platformTypeFormSchema = z
   .string()

@@ -23,7 +23,7 @@ import { useMemo } from 'react';
 
 import { plugins } from '../../plugins';
 import { resolveOfferCreationWizard } from '../../plugins/resolve-offer-creation-wizard';
-import type { OfferCreationWizardContribution } from '../../plugins/plugin.types';
+import type { OfferCreationWizardContribution } from '../../shared/plugins';
 
 export function useOfferCreationWizard(
   platformType: string | undefined,

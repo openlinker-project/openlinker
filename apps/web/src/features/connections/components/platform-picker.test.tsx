@@ -2,7 +2,7 @@ import { within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PlatformPicker } from './platform-picker';
 import { renderWithProviders } from '../../../test/test-utils';
-import type { PlatformPlugin } from '../../../shared/plugins';
+import type { OpenLinkerPlugin } from '../../../shared/plugins';
 
 describe('PlatformPicker', () => {
   it('renders a card per platform linking to its guided setup route', () => {
@@ -22,19 +22,26 @@ describe('PlatformPicker', () => {
   });
 
   it('omits plugins without a setupCard', () => {
-    const plugins: PlatformPlugin[] = [
+    const plugins: OpenLinkerPlugin[] = [
       {
+        id: 'with-card',
         platformType: 'with-card',
-        displayName: 'With Card',
-        setupCard: {
-          title: 'With Card',
-          description: 'Has guided setup.',
-          to: '/connections/new/with-card',
-          badge: 'Test',
+        platform: {
+          displayName: 'With Card',
+          setupCard: {
+            title: 'With Card',
+            description: 'Has guided setup.',
+            to: '/connections/new/with-card',
+            badge: 'Test',
+          },
         },
       },
       // No setupCard — must not render.
-      { platformType: 'headless', displayName: 'Headless' },
+      {
+        id: 'headless',
+        platformType: 'headless',
+        platform: { displayName: 'Headless' },
+      },
     ];
     const view = renderWithProviders(<PlatformPicker />, { plugins });
 

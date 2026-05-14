@@ -71,7 +71,7 @@ export const coreChildren: RouteObject[] = [
   aiProviderSettingsRoute,
 ];
 
-const pluginChildren: RouteObject[] = plugins.flatMap((plugin) => plugin.routes ?? []);
+const pluginChildren: RouteObject[] = plugins.flatMap((plugin) => plugin.build?.routes ?? []);
 
 export const rootRoute: RouteObject = {
   path: '/',

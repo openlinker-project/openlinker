@@ -8,10 +8,10 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { usePlugins } from '../../../shared/plugins';
+import { usePlatforms } from '../../../shared/plugins';
 
 export function PlatformPicker(): ReactElement {
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
   const cards = plugins
     .filter((p) => p.setupCard !== undefined)
     .map((p) => ({ platformType: p.platformType, ...p.setupCard! }));

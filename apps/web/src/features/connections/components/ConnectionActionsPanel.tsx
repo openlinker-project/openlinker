@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
-import { usePlugin } from '../../../shared/plugins';
+import { usePlatform } from '../../../shared/plugins';
 import { TriggerSyncDialog } from '../../sync-jobs';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -20,7 +20,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
-  const plugin = usePlugin(connection.platformType);
+  const plugin = usePlatform(connection.platformType);
   const PluginActions = plugin?.ConnectionActions;
 
   const isDisabled = connection.status === 'disabled';

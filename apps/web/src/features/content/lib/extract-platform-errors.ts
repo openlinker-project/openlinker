@@ -16,12 +16,12 @@
  *
  * @module features/content/lib
  */
-import type { PlatformPlugin } from '../../../shared/plugins';
+import type { Platform } from '../../../shared/plugins';
 import type { StructuredError } from '../../../shared/types/structured-error.types';
 
 export function extractPlatformErrors(
   err: unknown,
-  plugins: readonly PlatformPlugin[],
+  plugins: readonly Platform[],
 ): StructuredError[] | null {
   for (const plugin of plugins) {
     const extracted = plugin.extractContentPublishErrors?.(err);
