@@ -26,8 +26,8 @@ import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
 import { formatRelativeTime } from '../../shared/format/format-relative-time';
 import { formatDateTime } from '../../shared/format/format-date';
-import { usePlugin, usePlugins } from '../../shared/plugins';
-import type { PlatformPlugin } from '../../shared/plugins';
+import { usePlatform, usePlatforms } from '../../shared/plugins';
+import type { Platform } from '../../shared/plugins';
 import { usePromptTemplatesQuery } from '../../features/prompt-templates/hooks/use-prompt-templates-query';
 import { ArchivePromptTemplateDialog } from '../../features/prompt-templates/components/archive-prompt-template-dialog';
 import { NewPromptTemplateDialog } from '../../features/prompt-templates/components/new-prompt-template-dialog';
@@ -55,7 +55,7 @@ function channelTone(channel: PromptTemplateChannel | null): StatusBadgeTone {
  * `displayName` is available (channel registered backend-side but the FE
  * plugin manifest hasn't caught up). Capitalises the first letter; no
  * other transformation. The matching column never reaches this branch
- * for known channels because `usePlugin(channel)?.displayName` wins.
+ * for known channels because `usePlatform(channel)?.displayName` wins.
  */
 function humaniseChannel(channel: string): string {
   if (channel.length === 0) return channel;
@@ -64,7 +64,7 @@ function humaniseChannel(channel: string): string {
 
 function resolveChannelLabel(
   channel: PromptTemplateChannel | null,
-  plugin: PlatformPlugin | undefined,
+  plugin: Platform | undefined,
 ): string {
   if (channel === null) return 'master';
   return plugin?.displayName ?? humaniseChannel(channel);
@@ -107,10 +107,10 @@ function ChannelBadge({
 }: {
   channel: PromptTemplateChannel | null;
 }): ReactElement {
-  // `usePlugin(null)` is fine — the hook returns `undefined` for any
+  // `usePlatform(null)` is fine — the hook returns `undefined` for any
   // non-matching key, and the resolveChannelLabel branch handles `null`
   // explicitly to render the `'master'` label.
-  const plugin = usePlugin(channel ?? '');
+  const plugin = usePlatform(channel ?? '');
   return (
     <StatusBadge tone={channelTone(channel)} compact>
       {resolveChannelLabel(channel, plugin)}
@@ -135,7 +135,7 @@ export function PromptTemplatesListPage(): ReactElement {
   // Channel filter dropdown is registry-driven post-#580 — the master
   // sentinel + every registered plugin. Memoised so the option list
   // identity is stable across renders.
-  const platformPlugins = usePlugins();
+  const platformPlugins = usePlatforms();
   const channelFilterOptions = useMemo(
     () => [
       { value: '', label: 'All' },

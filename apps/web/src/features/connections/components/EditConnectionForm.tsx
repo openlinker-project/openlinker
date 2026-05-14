@@ -20,7 +20,7 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { usePlugin } from '../../../shared/plugins';
+import { usePlatform } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 
 interface EditConnectionFormProps {
@@ -127,7 +127,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [showRawJson, setShowRawJson] = useState(false);
-  const plugin = usePlugin(connection.platformType);
+  const plugin = usePlatform(connection.platformType);
 
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {

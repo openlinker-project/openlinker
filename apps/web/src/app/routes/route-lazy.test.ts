@@ -39,7 +39,7 @@ function collectLazyRoutes(routes: RouteObject[]): RouteObject[] {
 const lazyRoutes = collectLazyRoutes([
   ...coreChildren,
   ...guestRoutes,
-  ...plugins.flatMap((plugin) => plugin.routes ?? []),
+  ...plugins.flatMap((plugin) => plugin.build?.routes ?? []),
 ]);
 
 /**

@@ -2,12 +2,12 @@
  * Plugin registry composition tests
  *
  * Pins the contract a plugin author depends on:
- *   - `createApiClient` merges every plugin's `apiNamespaces` into the
- *     returned client (with the bound `request` function).
+ *   - `createApiClient` merges every plugin's `build.apiNamespaces` into
+ *     the returned client (with the bound `request` function).
  *   - Caller overrides in `createMockApiClient` win over plugin contributions
  *     so existing tests that stub a plugin namespace keep working.
- *   - Duplicate plugin ids throw at module load (failure path verified
- *     directly against the `assertUniquePluginIds` helper).
+ *   - Duplicate plugin ids and platformTypes throw at module load (failure
+ *     paths verified directly against `assertUniquePluginInvariants`).
  *
  * @module plugins
  */
@@ -17,7 +17,7 @@ import { createApiClient, type ApiRequest, type PluginApiNamespaces } from '../a
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import { createMockApiClient } from '../test/test-utils';
 
-import { assertUniquePluginIds } from './assert-unique-plugin-ids';
+import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { definePlugin } from './define-plugin';
 import { plugins } from './index';
 
@@ -51,8 +51,8 @@ describe('plugin registry', () => {
     });
   });
 
-  describe('WebPlugin contract', () => {
-    it("definePlugin's apiNamespaces factory receives the request it is invoked with", () => {
+  describe('OpenLinkerPlugin contract', () => {
+    it("definePlugin's build.apiNamespaces factory receives the request it is invoked with", () => {
       // Narrow contract test: a `definePlugin` author can rely on the
       // `request` argument being the one the host passes in. We don't go
       // through `createApiClient` here — the registry barrel is static, so
@@ -62,13 +62,15 @@ describe('plugin registry', () => {
       const stubRequest: ApiRequest = vi.fn();
       const shopifyPlugin = definePlugin({
         id: 'shopify-test-fixture',
-        apiNamespaces: (request): Partial<PluginApiNamespaces> => {
-          expect(request).toBe(stubRequest);
-          return { shopify: { ping: () => 'pong' } };
+        build: {
+          apiNamespaces: (request): Partial<PluginApiNamespaces> => {
+            expect(request).toBe(stubRequest);
+            return { shopify: { ping: () => 'pong' } };
+          },
         },
       });
 
-      const result = shopifyPlugin.apiNamespaces?.(stubRequest);
+      const result = shopifyPlugin.build?.apiNamespaces?.(stubRequest);
       expect(result?.shopify?.ping()).toBe('pong');
     });
   });
@@ -143,21 +145,62 @@ describe('plugin registry', () => {
       expect(new Set(ids).size).toBe(ids.length);
     });
 
-    it('assertUniquePluginIds throws when two plugins share an id', () => {
+    it('assertUniquePluginInvariants throws when two plugins share an id', () => {
       const duplicates = [
         definePlugin({ id: 'duplicate-fixture' }),
         definePlugin({ id: 'duplicate-fixture' }),
       ];
 
       expect(() => {
-        assertUniquePluginIds(duplicates);
+        assertUniquePluginInvariants(duplicates);
       }).toThrow(/Duplicate plugin id: "duplicate-fixture"/);
     });
 
-    it('assertUniquePluginIds accepts an empty array', () => {
+    it('assertUniquePluginInvariants accepts an empty array', () => {
       expect(() => {
-        assertUniquePluginIds([]);
+        assertUniquePluginInvariants([]);
       }).not.toThrow();
+    });
+
+    it('assertUniquePluginInvariants throws when two plugins share a platformType', () => {
+      // The unified shape (#702) collapses build-time + platform-side concerns
+      // onto one object — but the `platformType` key still has to be unique
+      // across plugins that contribute platform-side affordances, because
+      // `usePlatform(target)` resolves by `Array.find` and a duplicate would
+      // silently shadow its sibling.
+      const duplicates = [
+        definePlugin({
+          id: 'plugin-a',
+          platformType: 'shared',
+          platform: { displayName: 'A' },
+        }),
+        definePlugin({
+          id: 'plugin-b',
+          platformType: 'shared',
+          platform: { displayName: 'B' },
+        }),
+      ];
+
+      expect(() => {
+        assertUniquePluginInvariants(duplicates);
+      }).toThrow(/Duplicate plugin platformType: "shared"/);
+    });
+
+    it('assertUniquePluginInvariants throws when platform is set without platformType', () => {
+      // The TS type allows `{ platform: {...} }` without `platformType` (both
+      // are optional at the top-level), but a `platform` bag without a
+      // runtime-lookup key is unreachable from `usePlatform()`. The runtime
+      // guard catches the malformed combo at module load.
+      const orphan = [
+        definePlugin({
+          id: 'orphan',
+          platform: { displayName: 'Orphan' },
+        }),
+      ];
+
+      expect(() => {
+        assertUniquePluginInvariants(orphan);
+      }).toThrow(/missing the required top-level `platformType`/);
     });
   });
 });

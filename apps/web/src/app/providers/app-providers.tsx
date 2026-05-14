@@ -9,7 +9,7 @@ import { env } from '../../shared/config/env';
 import { ThemeProvider } from '../../shared/theme';
 import { LocaleProvider } from '../../shared/i18n';
 import { PluginRegistryProvider } from '../../shared/plugins';
-import { IN_TREE_PLUGINS } from '../../plugins';
+import { plugins } from '../../plugins';
 
 export function AppProviders({ children }: PropsWithChildren): ReactElement {
   const [queryClient] = useState(
@@ -39,7 +39,7 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
   return (
     <ThemeProvider>
       <LocaleProvider>
-        <PluginRegistryProvider plugins={IN_TREE_PLUGINS}>
+        <PluginRegistryProvider plugins={plugins}>
           <SessionProvider adapter={sessionAdapter}>
             <ToastProvider>
               <ApiClientProvider client={apiClient}>

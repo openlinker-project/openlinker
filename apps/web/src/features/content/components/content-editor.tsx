@@ -20,7 +20,7 @@ import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import { extractPlatformErrors } from '../lib/extract-platform-errors';
-import { usePlugins } from '../../../shared/plugins';
+import { usePlatforms } from '../../../shared/plugins';
 import { useContentQuery } from '../hooks/use-content-query';
 import {
   useDiscardContentDraftMutation,
@@ -64,7 +64,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const saveMutation = useSaveContentDraftMutation();
   const discardMutation = useDiscardContentDraftMutation();
   const publishMutation = usePublishContentMutation();
-  const platformPlugins = usePlugins();
+  const platformPlugins = usePlatforms();
 
   // #478: depend on the destructured stable `mutateAsync` methods, not the
   // wrapping mutation objects — `useMutation` returns a fresh wrapper each

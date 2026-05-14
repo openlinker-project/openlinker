@@ -16,7 +16,7 @@
  * overrides (test-utils only) merge last; see `apps/web/src/test/test-utils.tsx`.
  *
  * @module app/api
- * @see apps/web/src/plugins/plugin.types.ts — the WebPlugin contract
+ * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
@@ -203,8 +203,8 @@ export function createApiClient({
 
   const pluginNamespaces: Partial<PluginApiNamespaces> = {};
   for (const plugin of plugins) {
-    if (plugin.apiNamespaces) {
-      Object.assign(pluginNamespaces, plugin.apiNamespaces(request));
+    if (plugin.build?.apiNamespaces) {
+      Object.assign(pluginNamespaces, plugin.build.apiNamespaces(request));
     }
   }
 

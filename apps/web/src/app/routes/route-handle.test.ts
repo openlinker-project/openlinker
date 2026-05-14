@@ -57,7 +57,7 @@ function collectLazyAuthenticatedLeafRoutes(routes: RouteObject[]): RouteObject[
 
 const leafRoutes = collectLazyAuthenticatedLeafRoutes([
   ...coreChildren,
-  ...plugins.flatMap((plugin) => plugin.routes ?? []),
+  ...plugins.flatMap((plugin) => plugin.build?.routes ?? []),
 ]);
 
 describe('route handle contract', () => {
