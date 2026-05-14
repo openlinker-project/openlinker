@@ -131,7 +131,7 @@ function applyExpectedSubstitution(relPath, tokens) {
 }
 
 /**
- * Identifier-syntax check for the hyphenated-slug run (#698).
+ * Identifier-syntax check (#698).
  *
  * Catches the bug class where `__name__` is mistakenly used in a TypeScript
  * identifier slot — for a hyphenated slug the substitution produces e.g.
@@ -145,18 +145,28 @@ function applyExpectedSubstitution(relPath, tokens) {
  * package names (`@openlinker/integrations-smoke-test`), and file paths
  * inside import strings (`from './smoke-test-plugin'`).
  *
+ * **Anchor convention**: every pattern must use a trailing-context anchor
+ * (`,`, `}`, `)`, or end of statement) and/or a leading-context anchor
+ * (`export const`, `{`, `:`) to bind the hyphenated capture to an actual
+ * identifier slot. Without anchors, the patterns would over-match
+ * (e.g. fire on hyphens inside string literals or URL paths). Future
+ * pattern additions must follow this convention; verify by extending the
+ * `SELF_TESTS` block below and re-running the check.
+ *
  * The CI `scaffold-smoke.yml` workflow runs `tsc -b` on the same output as
  * the authoritative compile check; this heuristic catches the bug class
  * at lint-time without spending the 15s+ a real build would cost.
  */
 const IDENTIFIER_HYPHEN_PATTERNS = [
-  // `export const <id-with-hyphen>:` or `= ...`
+  // `export const <id-with-hyphen>:` or `= ...` (leading: `export const`)
   /\bexport\s+const\s+([a-z][a-zA-Z0-9]*-[a-zA-Z][a-zA-Z0-9-]*)\b/,
   // Re-export list: `{ <id-with-hyphen>, ... }` — match a name inside
   // brace-delimited list followed by `,` or `}`. Excludes `from '...'`
   // string positions because those aren't followed by `,` or `}`.
+  // (leading: `{` or `,`; trailing: `,` or `}`)
   /[{,]\s*([a-z][a-zA-Z0-9]*-[a-zA-Z][a-zA-Z0-9-]*)\s*[,}]/,
-  // Object literal value: `<key>: <id-with-hyphen>` followed by `,` or `}`
+  // Object literal value: `<key>: <id-with-hyphen>` followed by `,`,
+  // `)`, or `}`. (leading: `<id>:`; trailing: `,`/`)`/`}`)
   /[a-zA-Z_$][a-zA-Z0-9_$]*\s*:\s*([a-z][a-zA-Z0-9]*-[a-zA-Z][a-zA-Z0-9-]*)\s*[,)}]/,
 ];
 
@@ -254,12 +264,11 @@ async function runScaffoldCheck(slug) {
         }
       }
 
-      // 7. Identifier-syntax check — only on the hyphenated slug, where
-      //    a stray `__name__` in an identifier slot surfaces as a `-`
-      //    inside what TS expects to be a single identifier.
-      if (slug.includes('-')) {
-        checkHyphenatedIdentifierSyntax(absFile, contents, rel);
-      }
+      // 7. Identifier-syntax check — runs on every slug. A hardcoded
+      //    hyphen identifier in a template would surface here too,
+      //    regardless of whether the hyphen came from substitution or
+      //    from the template itself.
+      checkHyphenatedIdentifierSyntax(absFile, contents, rel);
     }
   } finally {
     // Best-effort cleanup. force:true tolerates partial-write states.
@@ -267,7 +276,48 @@ async function runScaffoldCheck(slug) {
   }
 }
 
+/**
+ * Self-test for `IDENTIFIER_HYPHEN_PATTERNS`. Runs before the real
+ * scaffold-check so a regex regression surfaces immediately, even on a
+ * clean tree where no scaffolded output would yet trip the patterns.
+ *
+ * Each entry is `[label, input, shouldMatch]`. `shouldMatch=true` asserts
+ * the patterns DO fire; `false` asserts they DO NOT (false-positive guard).
+ * Extend whenever adding or modifying a pattern in
+ * `IDENTIFIER_HYPHEN_PATTERNS`.
+ */
+const SELF_TESTS = [
+  // Positives — the #698 bug class.
+  ['export const w/ hyphen', 'export const smoke-testAdapterManifest = {};', true],
+  ['re-export list w/ hyphen', '{ createPlugin, smoke-testAdapterManifest } from "./x"', true],
+  ['object value w/ hyphen', '{ manifest: smoke-testAdapterManifest, }', true],
+  // Negatives — legitimate hyphens that must NOT fire.
+  ['hyphen in string literal', "adapterKey: 'smoke-test.publicapi.v1',", false],
+  ['hyphen in package name string', "import x from '@openlinker/integrations-smoke-test';", false],
+  ['hyphen in import path', "} from './smoke-test-plugin';", false],
+  ['hyphen in module-path comment', ' * @module libs/integrations/smoke-test/src', false],
+  ['valid camelCase identifier', 'export const smokeTestAdapterManifest = {};', false],
+];
+
+function runSelfTests() {
+  for (const [label, input, shouldMatch] of SELF_TESTS) {
+    // Strip comments the same way the real check does.
+    const stripped = input
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+    const matched = IDENTIFIER_HYPHEN_PATTERNS.some((p) => p.test(stripped));
+    if (matched !== shouldMatch) {
+      fail(
+        `check-create-adapter[self-test]: pattern self-test "${label}" failed — ` +
+          `expected match=${shouldMatch}, got match=${matched}. Input: ${input}`,
+      );
+    }
+  }
+}
+
 async function main() {
+  runSelfTests();
+
   for (const slug of SCAFFOLD_SLUGS) {
     await runScaffoldCheck(slug);
   }
