@@ -197,9 +197,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
             outcome: 'business_failure',
           };
         }
-        return { terminal: true, recordStatus: 'draft', errors: null, outcome: 'ok' };
+        return { terminal: true, recordStatus: OFFER_CREATION_STATUS.Draft, errors: null, outcome: 'ok' };
       case 'ended':
-        return { terminal: true, recordStatus: 'draft', errors: null, outcome: 'ok' };
+        return { terminal: true, recordStatus: OFFER_CREATION_STATUS.Draft, errors: null, outcome: 'ok' };
     }
   }
 
