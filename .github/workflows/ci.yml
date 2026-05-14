@@ -23,14 +23,8 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build type definitions
-        run: |
-          # Build packages that provide types needed for type-aware linting
-          # This ensures TypeScript can resolve types across workspace packages
-          # and prevents 'any' type inference that triggers unsafe-* lint errors
-          pnpm --filter @openlinker/shared build
-          pnpm --filter @openlinker/core build
-          pnpm --filter @openlinker/integrations-prestashop build
+      - name: Build libs (workspace glob — auto-discovers new packages)
+        run: pnpm -r --filter "./libs/**" build
       - name: Run lint
         run: pnpm lint
 
@@ -67,15 +61,8 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build dependencies
-        run: |
-          # Build shared, core, and integration packages first
-          # Tests import workspace packages directly, so required package artifacts
-          # must exist before recursive test execution.
-          pnpm --filter @openlinker/shared build
-          pnpm --filter @openlinker/core build
-          pnpm --filter @openlinker/integrations-prestashop build
-          pnpm --filter @openlinker/integrations-allegro build
+      - name: Build libs (workspace glob — auto-discovers new packages)
+        run: pnpm -r --filter "./libs/**" build
       - name: Run tests
         run: pnpm test:ci
 
@@ -100,22 +87,15 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build dependencies
+      - name: Build libs (workspace glob — auto-discovers new packages)
+        run: pnpm -r --filter "./libs/**" build
+      - name: Verify core dist exists
+        # Past-bug guard: a build-output regression in libs/core left
+        # identifier-mapping unbuilt, breaking integration tests with cryptic
+        # errors. Fail fast with a clear message instead.
         run: |
-          # Build shared, core, and PrestaShop integration (required for integration tests)
-          # Integration tests boot the full NestJS app which imports PrestashopIntegrationModule
-          pnpm --filter @openlinker/shared build
-          pnpm --filter @openlinker/core build
-          pnpm --filter @openlinker/integrations-prestashop build
-          # Debug: Show where files are actually being emitted
-          echo "Core dist tree (top 50 files):"
-          find libs/core/dist -maxdepth 4 -type f | sort | head -50 || true
-          echo ""
-          echo "Looking for identifier-mapping index.js anywhere:"
-          find libs/core/dist -type f -path "*identifier-mapping*index.js" -print || echo "No identifier-mapping index.js found"
-          echo ""
-          # Verify core build output exists (catches missing dist files early)
-          test -f libs/core/dist/identifier-mapping/index.js || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
+          test -f libs/core/dist/identifier-mapping/index.js \
+            || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
         timeout-minutes: 15 # Integration tests can take longer due to container startup
