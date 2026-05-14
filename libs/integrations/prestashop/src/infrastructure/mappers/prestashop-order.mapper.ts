@@ -319,10 +319,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    *
    * #503: `externalCarrierId` MUST be set on the cart, not just the order
    * body. PS resolves the order's `id_carrier` from the cart at `POST /orders`
-   * time and ignores the order body's `id_carrier` field. Without this every
-   * synced order lands at `id_carrier=0`, no `order_carriers` row is created,
-   * and `reconcileShippingCost` cannot write the buyer-paid shipping cost
-   * back into PS.
+   * time and ignores the order body's `id_carrier` field.
    */
   mapCartCreate(
     orderCreate: OrderCreate,
