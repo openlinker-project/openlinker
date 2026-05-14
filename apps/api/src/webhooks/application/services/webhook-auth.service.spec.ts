@@ -186,5 +186,19 @@ describe('WebhookAuthService', () => {
       const result = service.validateTimestamp(timestamp, 5 * 60 * 1000); // 5 minute window
       expect(result).toBe(true);
     });
+
+    // #711 — proves the default window tightened from 5 min → 120 s.
+    // A 4-minute-old timestamp would have been accepted under the old default
+    // and is rejected under the new one.
+    it('should reject a 4-minute-old timestamp under the new 120s default window (#711)', () => {
+      const oldTimestamp = (Date.now() - 4 * 60 * 1000).toString();
+      expect(() => service.validateTimestamp(oldTimestamp)).toThrow(WebhookReplayException);
+    });
+
+    it('should accept a 60-second-old timestamp within the new default window (#711)', () => {
+      const recentTimestamp = (Date.now() - 60 * 1000).toString();
+      const result = service.validateTimestamp(recentTimestamp);
+      expect(result).toBe(true);
+    });
   });
 });

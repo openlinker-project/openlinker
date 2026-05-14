@@ -57,31 +57,19 @@ export class WebhookService implements IWebhookService {
       `Processing webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, eventType=${request.eventType}`
     );
 
-    const receivedAt = new Date();
-    const baseDelivery: WebhookDeliveryUpsertInput = {
-      eventId: request.eventId,
-      provider,
-      connectionId,
-      eventType: request.eventType ?? null,
-      objectType: request.object?.type ?? null,
-      externalId: request.object?.externalId ?? null,
-      receivedAt,
-      payload: request.payload as Record<string, unknown>,
-    };
-    await this.recordDelivery({ ...baseDelivery, status: 'received' });
-
     const timestamp = headers['x-openlinker-timestamp'] || headers['X-OpenLinker-Timestamp'];
     const signature = headers['x-openlinker-signature'] || headers['X-OpenLinker-Signature'];
+
+    // Validation steps below short-circuit BEFORE any row is inserted. Failed
+    // validation lives in logs (Logger.warn) — see plan §4.4 for why we don't
+    // record `status='rejected'` rows: under the new Postgres-authoritative
+    // dedup model (#711), such rows would block legitimate source-side retries
+    // of the same eventId via the unique constraint.
 
     if (!timestamp) {
       this.logger.warn(
         `Missing X-OpenLinker-Timestamp header: provider=${provider}, connectionId=${connectionId}`
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        status: 'rejected',
-        rejectionReason: 'missing_timestamp_header',
-      });
       throw new Error('Missing X-OpenLinker-Timestamp header');
     }
 
@@ -89,31 +77,14 @@ export class WebhookService implements IWebhookService {
       this.logger.warn(
         `Missing X-OpenLinker-Signature header: provider=${provider}, connectionId=${connectionId}`
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        status: 'rejected',
-        rejectionReason: 'missing_signature_header',
-      });
       throw new Error('Missing X-OpenLinker-Signature header');
     }
 
-    // Step 1: Validate timestamp (replay protection) - fail fast before HMAC
-    try {
-      this.authService.validateTimestamp(timestamp);
-    } catch (error) {
-      this.logger.warn(
-        `Timestamp validation failed: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-        error instanceof Error ? error.message : String(error)
-      );
-      await this.recordDelivery({
-        ...baseDelivery,
-        status: 'rejected',
-        rejectionReason: 'stale_timestamp',
-      });
-      throw error;
-    }
+    // Step 1: Validate timestamp (replay protection) - fail fast before HMAC.
+    // Throws WebhookReplayException which the controller maps to 401.
+    this.authService.validateTimestamp(timestamp);
 
-    // Step 2: Verify signature
+    // Step 2: Verify signature.
     const isValid = await this.authService.verifySignature(
       provider,
       connectionId,
@@ -126,12 +97,6 @@ export class WebhookService implements IWebhookService {
       this.logger.error(
         `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        signatureValid: false,
-        status: 'rejected',
-        rejectionReason: 'invalid_signature',
-      });
       throw new Error('Invalid webhook signature');
     }
 
@@ -139,24 +104,53 @@ export class WebhookService implements IWebhookService {
       `Signature verified: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
     );
 
-    // Step 3: Check deduplication (mark as processing)
-    const isNew = await this.dedupService.markProcessing(provider, connectionId, request.eventId);
+    // Step 3: Authoritative dedup gate (#711). INSERT ... ON CONFLICT DO
+    // NOTHING against `webhook_deliveries`'s unique constraint on
+    // `(provider, connectionId, eventId)`. A replay finds the existing row
+    // and short-circuits to a 202 idempotent ack — durable, survives Redis
+    // outages, the durable counterpart to Redis-only dedup.
+    const baseDelivery: WebhookDeliveryUpsertInput = {
+      eventId: request.eventId,
+      provider,
+      connectionId,
+      eventType: request.eventType ?? null,
+      objectType: request.object?.type ?? null,
+      externalId: request.object?.externalId ?? null,
+      receivedAt: new Date(),
+      payload: request.payload as Record<string, unknown>,
+      signatureValid: true,
+      status: 'received',
+    };
+    const insertResult = await this.deliveryRepository.insertIfNew(baseDelivery);
 
-    if (!isNew) {
-      // Duplicate event - already processing or done
+    if (!insertResult.isNew) {
       this.logger.warn(
-        `Duplicate webhook event detected: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
+        `Duplicate webhook event (Postgres gate): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        signatureValid: true,
-        dedupResult: 'duplicate',
-      });
-      return; // Return 202 (already accepted)
+      return; // 202 idempotent ack — no further processing.
+    }
+
+    // Step 4: Inner dedup gate via Redis (existing two-phase markProcessing →
+    // markDone semantics, kept as a fast-path safety net while the Postgres
+    // gate beds in — see plan §4.2 and §7 for the deferred cleanup).
+    const isNewInRedis = await this.dedupService.markProcessing(
+      provider,
+      connectionId,
+      request.eventId
+    );
+
+    if (!isNewInRedis) {
+      // Postgres said new, Redis said duplicate — possible if a prior attempt
+      // succeeded in Redis but our Postgres row was just DELETEd via the
+      // failure-recovery path. Trust Postgres (the authoritative gate) and
+      // proceed; downstream is idempotent on `eventId`.
+      this.logger.warn(
+        `Postgres/Redis dedup disagreement (proceeding via Postgres): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
+      );
     }
 
     try {
-      // Step 4: Build inbound webhook event
+      // Step 5: Build and publish the inbound webhook event.
       const event: InboundWebhookEvent = {
         eventId: request.eventId,
         provider,
@@ -169,7 +163,6 @@ export class WebhookService implements IWebhookService {
         payload: request.payload,
       };
 
-      // Step 5: Publish event to event bus
       const messageId = await this.eventPublisher.publishInboundWebhook(event);
       this.logger.log(
         `Published webhook event: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, messageId=${messageId}`
@@ -182,23 +175,34 @@ export class WebhookService implements IWebhookService {
         publishedMessageId: messageId,
       });
 
-      // Step 6: Mark as done (non-fatal if it fails)
+      // Step 6: Mark Redis-side dedup as done (non-fatal if it fails — the
+      // Postgres row's status='published' is the durable signal).
       try {
         await this.dedupService.markDone(provider, connectionId, request.eventId);
       } catch (markDoneError) {
-        // Non-fatal: log but don't fail the request
         this.logger.warn(
           `Failed to mark webhook as done (non-fatal): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
           markDoneError instanceof Error ? markDoneError.message : String(markDoneError)
         );
       }
     } catch (error) {
-      // Publish failed - clear processing marker to allow retries
+      // Publish failed — undo BOTH gates so the source-side retry can re-enter
+      // (#711). This is the load-bearing failure-recovery semantic that earlier
+      // drafts of this PR got wrong: leaving the row in place would block all
+      // future retries via the unique constraint.
+      try {
+        await this.deliveryRepository.deleteByEventKey(provider, connectionId, request.eventId);
+      } catch (deleteError) {
+        this.logger.error(
+          `Failed to delete webhook_deliveries row after publish failure: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
+          deleteError instanceof Error ? deleteError.stack : String(deleteError)
+        );
+      }
       try {
         await this.dedupService.clearProcessing(provider, connectionId, request.eventId);
       } catch (clearError) {
         this.logger.error(
-          `Failed to clear processing marker: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
+          `Failed to clear Redis processing marker: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
           clearError instanceof Error ? clearError.stack : String(clearError)
         );
       }
@@ -207,14 +211,6 @@ export class WebhookService implements IWebhookService {
         `Failed to process webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
         error instanceof Error ? error.stack : String(error)
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        signatureValid: true,
-        dedupResult: 'new',
-        status: 'failed',
-        rejectionReason:
-          error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
-      });
 
       throw error;
     }

@@ -17,6 +17,7 @@ import { WebhookDeliveryOrmEntity } from '../entities/webhook-delivery.orm-entit
 import { WebhookDelivery } from '../../../domain/entities/webhook-delivery.entity';
 import { WebhookDeliveryUpsertFailedError } from '../../../domain/exceptions/webhook-delivery-upsert-failed.error';
 import type {
+  WebhookDeliveryInsertResult,
   WebhookDeliveryRepositoryPort,
   WebhookDeliveryUpsertInput,
 } from '../../../domain/ports/webhook-delivery-repository.port';
@@ -90,6 +91,73 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       throw new WebhookDeliveryUpsertFailedError(input.provider, input.connectionId, input.eventId);
     }
     return this.toDomain(saved);
+  }
+
+  async insertIfNew(input: WebhookDeliveryUpsertInput): Promise<WebhookDeliveryInsertResult> {
+    const now = new Date();
+    const row: Partial<WebhookDeliveryOrmEntity> = {
+      eventId: input.eventId,
+      provider: input.provider,
+      connectionId: input.connectionId,
+      eventType: input.eventType ?? null,
+      objectType: input.objectType ?? null,
+      externalId: input.externalId ?? null,
+      receivedAt: input.receivedAt ?? now,
+      signatureValid: input.signatureValid ?? null,
+      dedupResult: input.dedupResult ?? null,
+      status: input.status ?? 'received',
+      rejectionReason: input.rejectionReason ?? null,
+      publishedMessageId: input.publishedMessageId ?? null,
+      downstreamJobId: input.downstreamJobId ?? null,
+      downstreamJobType: input.downstreamJobType ?? null,
+      dlqReason: input.dlqReason ?? null,
+      payload: input.payload ?? null,
+    };
+
+    // INSERT ... ON CONFLICT DO NOTHING RETURNING *. Conflict → empty rows
+    // array; success → one row returned. We then re-fetch on conflict to
+    // hand back the existing row for the audit-trail logging in the service.
+    const insertResult = await this.repository
+      .createQueryBuilder()
+      .insert()
+      .into(WebhookDeliveryOrmEntity)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- typeorm QueryBuilder `.values()` typing rejects the dynamic partial shape we build above
+      .values(row as any)
+      .orIgnore()
+      .returning('*')
+      .execute();
+
+    const inserted = (insertResult.raw as WebhookDeliveryOrmEntity[] | undefined)?.[0];
+    if (inserted) {
+      return { isNew: true, delivery: this.toDomain(inserted) };
+    }
+
+    const existing = await this.repository.findOne({
+      where: {
+        provider: input.provider,
+        connectionId: input.connectionId,
+        eventId: input.eventId,
+      },
+    });
+    if (!existing) {
+      // The INSERT reported a conflict but the row vanished before the SELECT
+      // — race with `deleteByEventKey`. Treat as new from the caller's POV
+      // and retry the insert path. Pragmatic for #711: rare, recovers cleanly.
+      throw new WebhookDeliveryUpsertFailedError(
+        input.provider,
+        input.connectionId,
+        input.eventId
+      );
+    }
+    return { isNew: false, existing: this.toDomain(existing) };
+  }
+
+  async deleteByEventKey(
+    provider: string,
+    connectionId: string,
+    eventId: string
+  ): Promise<void> {
+    await this.repository.delete({ provider, connectionId, eventId });
   }
 
   async findById(id: string): Promise<WebhookDelivery | null> {

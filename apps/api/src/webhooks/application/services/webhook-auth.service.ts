@@ -19,17 +19,59 @@ import { WebhookAuthenticationException } from '../errors/webhook-authentication
 import { WebhookReplayException } from '../errors/webhook-replay.exception';
 import { Logger } from '@openlinker/shared/logging';
 
+/**
+ * Replay-window bounds (#711). The window is the maximum clock-skew tolerated
+ * between sender and receiver before a webhook is rejected. Tighter is more
+ * secure; too tight breaks legitimate webhooks under NTP drift or load-balancer
+ * delays. The 120s default is the conservative midpoint for unknown OSS-launch
+ * topologies; operators with stable clock-sync can tighten via the env var.
+ */
+const DEFAULT_SKEW_WINDOW_MS = 120 * 1000; // 120 seconds
+const MIN_SKEW_WINDOW_MS = 1 * 1000; // 1 second — below would reject legitimate traffic
+const MAX_SKEW_WINDOW_MS = 5 * 60 * 1000; // 5 minutes — pre-#711 default; the safety ceiling
+
+function resolveSkewWindowMs(envValue: string | undefined, logger: Logger): number {
+  if (envValue === undefined) {
+    return DEFAULT_SKEW_WINDOW_MS;
+  }
+  const parsed = Number.parseInt(envValue, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    logger.warn(
+      `OL_WEBHOOK_SKEW_WINDOW_MS="${envValue}" is not a positive integer; falling back to default ${DEFAULT_SKEW_WINDOW_MS}ms.`
+    );
+    return DEFAULT_SKEW_WINDOW_MS;
+  }
+  if (parsed < MIN_SKEW_WINDOW_MS) {
+    logger.warn(
+      `OL_WEBHOOK_SKEW_WINDOW_MS=${parsed} below floor; clamping to ${MIN_SKEW_WINDOW_MS}ms.`
+    );
+    return MIN_SKEW_WINDOW_MS;
+  }
+  if (parsed > MAX_SKEW_WINDOW_MS) {
+    logger.warn(
+      `OL_WEBHOOK_SKEW_WINDOW_MS=${parsed} above ceiling; clamping to ${MAX_SKEW_WINDOW_MS}ms.`
+    );
+    return MAX_SKEW_WINDOW_MS;
+  }
+  return parsed;
+}
+
 @Injectable()
 export class WebhookAuthService implements IWebhookAuthService {
   private readonly logger = new Logger(WebhookAuthService.name);
-  private readonly DEFAULT_SKEW_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly DEFAULT_SKEW_WINDOW_MS: number;
 
   constructor(
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly secretProvider: WebhookSecretProviderPort,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort
-  ) {}
+  ) {
+    this.DEFAULT_SKEW_WINDOW_MS = resolveSkewWindowMs(
+      process.env.OL_WEBHOOK_SKEW_WINDOW_MS,
+      this.logger
+    );
+  }
 
   async verifySignature(
     provider: string,

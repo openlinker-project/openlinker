@@ -11,6 +11,8 @@ describe('WebhookDeliveryQueryService', () => {
   beforeEach(async () => {
     repo = {
       upsert: jest.fn(),
+      insertIfNew: jest.fn(),
+      deleteByEventKey: jest.fn(),
       findById: jest.fn(),
       findMany: jest.fn(),
     };
