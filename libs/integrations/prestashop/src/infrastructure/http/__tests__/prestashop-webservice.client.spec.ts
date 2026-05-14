@@ -55,7 +55,7 @@ describe('PrestashopWebserviceClient', () => {
         credentials,
         config
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithSlash as any).baseUrl).toBe('https://shop.example.com');
     });
 
@@ -68,9 +68,9 @@ describe('PrestashopWebserviceClient', () => {
         credentials,
         minimalConfig
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithDefaults as any).config.timeoutMs).toBe(30000);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithDefaults as any).config.pageSize).toBe(100);
     });
 
@@ -82,11 +82,11 @@ describe('PrestashopWebserviceClient', () => {
         langId: 2,
       };
       const clientWithCustom = new PrestashopWebserviceClient(baseUrl, credentials, customConfig);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithCustom as any).config.timeoutMs).toBe(60000);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithCustom as any).config.pageSize).toBe(50);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithCustom as any).config.langId).toBe(2);
     });
   });
@@ -113,12 +113,12 @@ describe('PrestashopWebserviceClient', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         'https://shop.example.com/api/products/1',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
         expect.objectContaining({
           method: 'GET',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           headers: expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
             get: expect.any(Function),
           }),
         })
@@ -141,9 +141,9 @@ describe('PrestashopWebserviceClient', () => {
 
       await client.getResource('products', '1');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const headers = fetchCall[1].headers as Headers;
 
       expect(headers.get('Authorization')).toBe('Basic dGVzdC1hcGkta2V5LTEyMzQ1Og==');
@@ -158,7 +158,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Not Found'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(client.getResource('products', '999')).rejects.toThrow(
         PrestashopResourceNotFoundException
       );
@@ -172,7 +172,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Unauthorized'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(client.getResource('products', '1')).rejects.toThrow(
         PrestashopAuthenticationException
       );
@@ -191,7 +191,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Internal Server Error'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(clientNoRetry.getResource('products', '1')).rejects.toThrow(
         PrestashopApiException
       );
@@ -242,9 +242,9 @@ describe('PrestashopWebserviceClient', () => {
 
       await client.listResources('products', undefined, 50, 100);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const url = fetchCall[0] as string;
 
       expect(url).toContain('limit=50');
@@ -265,9 +265,9 @@ describe('PrestashopWebserviceClient', () => {
 
       await client.listResources('products');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const url = fetchCall[0] as string;
 
       expect(url).toContain('limit=100'); // Default page size
@@ -352,11 +352,11 @@ describe('PrestashopWebserviceClient', () => {
         shipping_cost_tax_incl: '10.95',
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const url = fetchCall[0] as string;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const init = fetchCall[1] as RequestInit;
       const headers = init.headers as Headers;
 
@@ -388,7 +388,7 @@ describe('PrestashopWebserviceClient', () => {
       });
 
       await expect(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
         clientNoRetry.updateResource('order_carriers', '5001', { id: '5001' })
       ).rejects.toThrow(PrestashopApiException);
     });
@@ -450,7 +450,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Bad Request'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(client.listResources('products')).rejects.toThrow(PrestashopApiException);
 
       expect(global.fetch).toHaveBeenCalledTimes(1); // No retry
@@ -503,7 +503,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Unauthorized'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(client.listResources('products')).rejects.toThrow(
         PrestashopAuthenticationException
       );
@@ -519,7 +519,7 @@ describe('PrestashopWebserviceClient', () => {
         text: () => Promise.resolve('Not Found'),
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(client.getResource('products', '999')).rejects.toThrow(
         PrestashopResourceNotFoundException
       );
@@ -592,7 +592,7 @@ describe('PrestashopWebserviceClient', () => {
         return Promise.reject(abortError);
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(clientWithShortTimeout.listResources('products')).rejects.toThrow(
         PrestashopApiException
       );
@@ -608,7 +608,7 @@ describe('PrestashopWebserviceClient', () => {
 
       (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(clientNoRetry.listResources('products')).rejects.toThrow(PrestashopApiException);
     });
 
@@ -631,9 +631,9 @@ describe('PrestashopWebserviceClient', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(PrestashopApiException);
         if (error instanceof PrestashopApiException) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           const apiError = error;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
           expect(apiError.statusCode).toBe(503);
         }
       }
@@ -665,9 +665,9 @@ describe('PrestashopWebserviceClient', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(PrestashopApiException);
         if (error instanceof PrestashopApiException) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           const apiError = error;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
           expect(apiError.responseBody).toBe(longErrorBody);
         }
       }
@@ -689,9 +689,9 @@ describe('PrestashopWebserviceClient', () => {
 
       await client.getResource('products', '1');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const headers = fetchCall[1].headers as Headers;
 
       expect(headers.get('Output-Format')).toBe('JSON');

@@ -210,7 +210,7 @@ describe('PrestashopOrderMapper', () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
         reference: 'ORDER-001',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         current_state: 2 as any, // Numeric instead of string
         total_paid: '99.99',
         date_add: '2024-01-01 10:00:00',

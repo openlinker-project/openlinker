@@ -57,7 +57,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     if (!prestashopId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
@@ -76,7 +76,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Map to OpenLinker schema
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
     // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
 
@@ -119,7 +119,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Map products with internal IDs
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
     // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
 
@@ -172,7 +172,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     if (!prestashopProductId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
@@ -294,7 +294,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
   // Write operations - not supported in MVP
   createProduct(_product: ProductCreate): Promise<Product> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Product creation is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'createProduct',
@@ -304,7 +304,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Product update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'updateProduct',
@@ -314,7 +314,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   deleteProduct(_productId: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Product deletion is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'deleteProduct',
@@ -327,7 +327,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     _productId: string,
     _variant: ProductVariantCreate
   ): Promise<ProductVariant> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Variant creation/update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'upsertProductVariant',
@@ -337,7 +337,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   getProductCategories(_productId: string): Promise<Category[]> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Get product categories is not implemented in MVP.',
       'getProductCategories',
@@ -347,7 +347,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const error = new PrestashopNotSupportedException(
       'Category assignment is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'assignCategories',

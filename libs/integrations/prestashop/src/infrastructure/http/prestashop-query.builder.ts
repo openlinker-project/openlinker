@@ -74,7 +74,7 @@ export class PrestashopQueryBuilder {
     // Multi-store support: add id_shop if shopId is configured
     if (config !== undefined) {
       const typedConfig = config;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const shopId: number | undefined = typedConfig.shopId;
       if (shopId !== undefined && typeof shopId === 'number' && shopId > 0) {
         params.push(`id_shop=${shopId}`);

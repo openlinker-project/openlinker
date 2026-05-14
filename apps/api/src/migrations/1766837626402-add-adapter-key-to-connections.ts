@@ -13,14 +13,14 @@ export class AddAdapterKeyToConnections1766837626402 implements MigrationInterfa
     }
 
     // Check if index already exists
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- migration QueryRunner returns untyped rows
     const indexExists = await queryRunner.query(`
             SELECT 1 FROM pg_indexes 
             WHERE tablename = 'connections' 
             AND indexname = 'IDX_bdaa7f89c1e87b9e707868988e'
         `);
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- migration QueryRunner returns untyped rows
     if (indexExists.length === 0) {
       await queryRunner.query(
         `CREATE INDEX "IDX_bdaa7f89c1e87b9e707868988e" ON "connections" ("adapterKey") `

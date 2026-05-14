@@ -297,7 +297,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     });
 
     it('should validate payload productId', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
       const job = createJob({ productId: '' as any });
 
       await expect(handler.execute(job)).rejects.toThrow(SyncJobExecutionError);

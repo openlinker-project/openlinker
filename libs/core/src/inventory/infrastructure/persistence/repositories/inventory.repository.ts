@@ -121,7 +121,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       if (!this.isValidUUID(item.id)) {
         // Clear ID - create new entity without ID property
         // TypeORM will require an ID, so we'll use a new UUID
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip caller-provided id via destructure so TypeORM regenerates a fresh UUID below
         const { id: _unused, ...entityWithoutId } = entity;
         const newEntity = this.repository.create({
           ...entityWithoutId,

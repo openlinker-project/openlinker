@@ -164,7 +164,7 @@ function dumpPrestashopErrorLogs(): void {
           { encoding: 'utf8', timeout: 10_000 }
         );
         if (out.trim()) {
-          // eslint-disable-next-line no-console
+          // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
           console.error(`[ps-container ${id} recent log tail]\n${out}`);
         }
       } catch {

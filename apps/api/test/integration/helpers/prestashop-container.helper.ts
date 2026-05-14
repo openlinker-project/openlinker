@@ -331,21 +331,21 @@ function makeLogConsumer(buf: LogBuffer): (stream: Readable) => void {
 function dumpLogBuffer(label: string, buf: LogBuffer): void {
   const tag = `[${label}-container]`;
   if (!buf.attached) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(
       `${tag} log buffer never attached${buf.attachError ? ` (${formatError(buf.attachError)})` : ''}`,
     );
     return;
   }
   if (buf.chunks.length === 0) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} log buffer attached but received zero output before failure`);
     return;
   }
   const combined = buf.chunks.join('');
   const lines = combined.split('\n');
   const tail = lines.slice(-120).join('\n');
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
   console.error(`${tag} log tail (last 120 lines, ${buf.bytes} bytes buffered):\n${tail}`);
 }
 
@@ -364,7 +364,7 @@ function dockerLogsFallback(
   try {
     id = container.getId();
   } catch (err) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} could not resolve container id: ${formatError(err)}`);
     return;
   }
@@ -374,11 +374,11 @@ function dockerLogsFallback(
       timeout: 10_000,
       maxBuffer: 4 * 1024 * 1024,
     });
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker logs --tail 200 ${id}:\n${out.toString('utf8')}`);
   } catch (err) {
     const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker logs failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
   }
 }
@@ -396,7 +396,7 @@ function dockerInspectFallback(
   try {
     id = container.getId();
   } catch (err) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} could not resolve container id: ${formatError(err)}`);
     return;
   }
@@ -414,11 +414,11 @@ function dockerInspectFallback(
         timeout: 5_000,
       },
     );
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker inspect ${id}: ${out.toString('utf8').trim()}`);
   } catch (err) {
     const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker inspect failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
   }
 }

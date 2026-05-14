@@ -70,7 +70,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       .createQueryBuilder()
       .insert()
       .into(WebhookDeliveryOrmEntity)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- typeorm QueryBuilder `.values()` typing rejects the dynamic overlay-merge shape we build above
       .values({ ...values, ...overlay } as any)
       .orUpdate(updateKeys.length > 0 ? (updateKeys as string[]) : ['updatedAt'], [
         'provider',

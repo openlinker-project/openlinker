@@ -5,7 +5,7 @@ module.exports = {
     tsconfigRootDir: __dirname,
     sourceType: 'module',
   },
-  plugins: ['@typescript-eslint/eslint-plugin'],
+  plugins: ['@typescript-eslint/eslint-plugin', 'eslint-comments'],
   extends: [
     'plugin:@typescript-eslint/recommended',
     'plugin:@typescript-eslint/recommended-requiring-type-checking',
@@ -38,6 +38,15 @@ module.exports = {
       },
     ],
     '@typescript-eslint/no-import-type-side-effects': 'error',
+    // #669: every `eslint-disable*` directive must carry an inline reason
+    // describing why the disable is justified. CLAUDE.md § Code Quality Rules:
+    // "No `// eslint-disable` without a specific reason in the same comment".
+    // Syntax expected by the rule: `// eslint-disable-next-line rule -- reason`.
+    // Pairs with `no-aggregating-enable` so blanket re-enables can't sneak
+    // around the per-directive justification. `no-unused-disable` is
+    // intentionally NOT enabled here — that cleanup is a separate sweep.
+    'eslint-comments/require-description': ['error', { ignore: [] }],
+    'eslint-comments/no-aggregating-enable': 'error',
     // Discourage deep relative imports - prefer path aliases for cross-layer/cross-package imports
     // Note: Infrastructure/persistence layers use relative imports to avoid runtime ERR_PACKAGE_PATH_NOT_EXPORTED errors
     // These warnings are acceptable for now - consider path aliases when refactoring

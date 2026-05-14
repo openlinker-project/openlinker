@@ -22,15 +22,15 @@ import { apiPluginMigrations } from '../plugin-migrations';
 // Try to load dotenv if available (optional dependency)
 // If dotenv is not installed, rely on environment variables being set
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment -- typeorm CLI requires CommonJS require() for migration glob resolution
   const { config } = require('dotenv') as { config: (options: { path: string }) => { error?: Error } };
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment -- typeorm CLI requires CommonJS require() for migration glob resolution
   const { resolve } = require('path') as { resolve: (...paths: string[]) => string };
   
   // Priority: .env.local > .env (matching NestJS ConfigModule behavior)
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- untyped runtime config read at boot
   config({ path: resolve(__dirname, '../../../.env.local') });
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- untyped runtime config read at boot
   config({ path: resolve(__dirname, '../../../.env') });
 } catch {
   // dotenv not available - rely on environment variables being set

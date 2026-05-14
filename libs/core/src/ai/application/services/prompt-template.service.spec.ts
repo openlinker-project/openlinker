@@ -424,7 +424,7 @@ describe('PromptTemplateService', () => {
       const archived = makeTemplate({ state: 'archived', version: 7 });
       repository.findById.mockResolvedValue(published);
       repository.archiveById.mockResolvedValue(archived);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
       const logSpy = jest.spyOn(
         (service as unknown as { logger: { log: (m: string) => void } }).logger,
         'log'

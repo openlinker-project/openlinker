@@ -45,7 +45,7 @@ const CONTEXT_BARRELS = [
 describe('@openlinker/core/<context> barrel purity (#598)', () => {
   it.each(CONTEXT_BARRELS)('imports @openlinker/core/%s without throwing', (context) => {
     expect(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- dynamic require() needed: path computed at runtime
       const mod = require(`../${context}`) as Record<string, unknown>;
       expect(mod).toBeTruthy();
       expect(Object.keys(mod).length).toBeGreaterThan(0);

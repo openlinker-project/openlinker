@@ -281,7 +281,7 @@ describe('Job Intake → Execution Integration', () => {
 
 // Helper function to get all sync jobs (for assertions)
 async function getAllSyncJobs(dataSource: any): Promise<any[]> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- dynamic require() needed: path computed at runtime
   const { SyncJobOrmEntity } = require('@openlinker/core/sync');
   return dataSource.getRepository(SyncJobOrmEntity).find({
     order: { createdAt: 'DESC' },
