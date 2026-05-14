@@ -138,7 +138,7 @@ OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern. Fo
 
 - [Architecture Overview](./docs/architecture-overview.md)
 - [Engineering Standards](./docs/engineering-standards.md)
-- [AI Assistant Guide](./docs/ai-assistant-guide.md)
+- [AI Coding Assistant Guide](./docs/ai-coding-assistant.md)
 - [Development Environment](./docs/dev-environment.md)
 
 ## Docker
@@ -201,5 +201,5 @@ OpenLinker is released under the Apache License 2.0. See the [LICENSE](./LICENSE
 
 - [Architecture Overview](./docs/architecture-overview.md)
 - [Engineering Standards](./docs/engineering-standards.md)
-- [AI Assistant Guide](./docs/ai-assistant-guide.md)
+- [AI Coding Assistant Guide](./docs/ai-coding-assistant.md)
 - [Development Environment](./docs/dev-environment.md)

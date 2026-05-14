@@ -1544,6 +1544,6 @@ After setting up the development environment:
 ## Related Documentation
 - [Testing Guide](./testing-guide.md) - **Comprehensive testing documentation** (unit tests, integration tests, Testcontainers)
 - [Architecture Overview](./architecture-overview.md) - System architecture
-- [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants
+- [AI Coding Assistant Guide](./ai-coding-assistant.md) - Behaviour, reasoning expectations and guardrails for AI coding assistants
 - [Database Migrations](./migrations.md) - Database migration workflow and best practices
 

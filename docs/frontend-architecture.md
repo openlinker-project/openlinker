@@ -423,8 +423,6 @@ Rules:
 - The wrapper is responsible for all CSS. No library-shipped CSS gets imported.
 - When a native HTML element covers the use case (`<dialog>`, `<select>`, `<details>`), prefer it over a Radix wrapper.
 
-See [`docs/ui-audit/library-analysis.md`](./ui-audit/library-analysis.md) for the decision record.
-
 ## Dependency Rules
 
 Dependency direction must remain simple and enforceable:
