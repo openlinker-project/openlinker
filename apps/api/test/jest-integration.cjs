@@ -43,5 +43,7 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/ai/src/$1',
     ),
+    '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
+    '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },
 };

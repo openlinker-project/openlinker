@@ -71,5 +71,10 @@
   "dependencies": {
     "@nestjs/swagger": "^11.2.3",
     "fast-xml-parser": "^5.3.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "typeorm": "0.3.17"
+    }
   }
 }

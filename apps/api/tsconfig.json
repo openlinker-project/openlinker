@@ -19,7 +19,9 @@
       "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
       "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"],
       "@openlinker/integrations-ai": ["../../libs/integrations/ai/src/index.ts"],
-      "@openlinker/integrations-ai/*": ["../../libs/integrations/ai/src/*"]
+      "@openlinker/integrations-ai/*": ["../../libs/integrations/ai/src/*"],
+      "@openlinker/test-kit": ["../../libs/test-kit/src/index.ts"],
+      "@openlinker/test-kit/*": ["../../libs/test-kit/src/*"]
     }
   },
   "include": ["src/**/*"],

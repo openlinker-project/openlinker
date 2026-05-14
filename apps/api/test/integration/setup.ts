@@ -1,271 +1,100 @@
 /**
- * Integration Test Harness
+ * Integration Test Harness — apps/api configuration
  *
- * Provides a reusable foundation for all integration tests. Manages Testcontainers
- * (Postgres + Redis), boots Nest application, runs migrations, and provides
- * utilities for test execution.
+ * Thin wrapper around `@openlinker/test-kit`'s `createIntegrationTestHarness`
+ * factory. Holds the API-specific bits: `AppModule`, the canonical truncate
+ * table list, the `/webhooks` raw-body middleware (needed for signature
+ * verification), and the `OL_*` feature flags / env-var fixtures we set
+ * before container startup.
+ *
+ * The three singleton accessors (`getTestHarness`, `resetTestHarness`,
+ * `teardownTestHarness`) are re-exported so existing int-specs keep their
+ * `import ... from './setup'` lines unchanged (#600).
  *
  * @module apps/api/test/integration
  */
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request from 'supertest';
-import * as express from 'express';
+import express from 'express';
+import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
-import { RedisClientType } from 'redis';
-import { startHarness } from './harness';
 
-/**
- * Integration Test Harness
- *
- * Manages test infrastructure: containers, Nest app, database, Redis.
- */
-export class IntegrationTestHarness {
-  private app?: INestApplication;
-  private dataSource?: DataSource;
-  private redisClient?: RedisClientType;
-  private moduleRef?: TestingModule;
-
-  /**
-   * Set up test infrastructure
-   *
-   * Starts containers, boots Nest app, runs migrations.
-   */
-  async setup(): Promise<void> {
-    // 1. Start containers (harness-only, no app imports)
-    await startHarness();
-
-    // Note: Environment variables are set by startHarness()
-
-    // 4. Create Nest testing module
-    this.moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    // 5. Create Nest application
-    // Disable Nest's default body parser to match production setup
-    // This ensures webhook routes capture raw body before JSON parsing
-    this.app = this.moduleRef.createNestApplication({
-      bodyParser: false,
-    });
-
-    // 1) Webhooks: JSON parser with verify hook to capture raw bytes for signature verification
-    // This MUST run before any other body parser to ensure verify hook fires
-    this.app.use(
+const harness = createIntegrationTestHarness({
+  imports: [AppModule],
+  configureBodyParser: (app) => {
+    // 1) /webhooks: JSON parser with a `verify` hook that captures the raw
+    //    request bytes for HMAC signature verification. Must run before any
+    //    other body parser so the verify hook fires.
+    app.use(
       '/webhooks',
       express.json({
         limit: '256kb',
         verify: (req: express.Request & { rawBody?: Buffer }, _res, buf: Buffer) => {
-          // Capture raw body bytes before JSON parsing
           req.rawBody = buf;
         },
       }),
     );
 
-    // 2) Everything else: normal JSON parser (no raw capture needed)
-    this.app.use(express.json({ limit: '1mb' }));
-    this.app.use(express.urlencoded({ extended: true }));
-
-    // Apply global validation pipe (matching main.ts)
-    this.app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    await this.app.init();
-
-    // 6. Get DataSource for migrations and cleanup
-    this.dataSource = this.moduleRef.get<DataSource>(DataSource);
-
-    // 7. Run migrations (if any exist)
-    // Note: If synchronize is enabled (which it is in test env), migrations may fail
-    // because tables already exist. That's okay - we'll skip migrations in that case.
-    try {
-      // Check if synchronize is enabled - if so, skip migrations
-      const synchronize = this.dataSource.options.synchronize;
-      if (!synchronize) {
-        await this.dataSource.runMigrations();
-      }
-    } catch (error: any) {
-      // If migrations fail because tables already exist (synchronize=true), that's expected
-      // Otherwise, log the error but don't fail the test setup
-      if (error?.code !== '42P07' && error?.code !== '42P16') {
-        // 42P07 = relation already exists, 42P16 = invalid schema
-        console.warn('Migration error (non-critical):', error.message);
-      }
-    }
-
-    // 8. Get Redis client for cleanup
-    try {
-      this.redisClient = this.moduleRef.get<RedisClientType>('REDIS_CLIENT');
-    } catch (error) {
-      // Redis client might not be available, that's okay for now
-      console.warn('Redis client not available:', error);
-    }
-  }
-
-  /**
-   * Reset database and cache between tests
-   *
-   * Truncates all tables and clears Redis cache.
-   */
-  async reset(): Promise<void> {
-    if (!this.dataSource) {
-      throw new Error('Harness not initialized. Call setup() first.');
-    }
-
-    // Truncate all tables (in correct order due to foreign keys)
-    // Child tables first, then parents
-    await this.dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE sync_jobs CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE inventory_items CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE order_records CASCADE');
-    // product_content_field FKs to both products + connections, so it goes before them.
-    await this.dataSource.query('TRUNCATE TABLE product_content_field CASCADE');
-    // prompt_templates has no FKs but is part of the AI context — reset per test.
-    await this.dataSource.query('TRUNCATE TABLE prompt_templates CASCADE');
+    // 2) Everything else: plain JSON parser, no raw capture needed.
+    app.use(express.json({ limit: '1mb' }));
+    app.use(express.urlencoded({ extended: true }));
+  },
+  tablesToTruncate: [
+    // Order matters — child tables first, then parents (FK CASCADE handles
+    // the rest but listing in dependency order keeps intent clear).
+    'identifier_mappings',
+    'sync_jobs',
+    'inventory_items',
+    'order_records',
+    // product_content_field FKs to both products + connections, so it goes
+    // before them.
+    'product_content_field',
+    // prompt_templates has no FKs but is part of the AI context.
+    'prompt_templates',
     // AI provider singleton + per-provider keys (#451 / #452). Reset between
     // tests so the multi-provider spec sees a clean view per case; the
     // credentials table is shared (webhook secrets etc.) so it is best to
     // truncate it broadly rather than scope to a particular ref prefix.
-    await this.dataSource.query('TRUNCATE TABLE ai_provider_active_setting CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE integration_credentials CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE products CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE connections CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE users CASCADE');
+    'ai_provider_active_setting',
+    'integration_credentials',
+    'product_variants',
+    'products',
+    'connections',
+    'users',
+  ],
+  env: {
+    JWT_SECRET: 'test-secret-for-integration-tests',
+    JWT_EXPIRES_IN: '1d',
 
-    // Clear Redis cache
-    if (this.redisClient) {
-      try {
-        await this.redisClient.flushDb();
-      } catch (error) {
-        // Redis might not be connected, that's okay
-        console.warn('Failed to flush Redis:', error);
-      }
-    }
-  }
+    // Disable all background schedulers in integration tests. Cron jobs fire
+    // against an empty database and keep the Node.js event loop alive,
+    // causing Jest to hang after tests complete. If a future int-spec needs
+    // to exercise scheduler behaviour, write a `SchedulerTaskConfig` into
+    // `SchedulerTaskRegistryService` (or mirror a real Allegro task via
+    // `buildAllegroSchedulerTasks`) and re-invoke
+    // `SchedulerService.onApplicationBootstrap()` — these env vars were
+    // evaluated at boot and cannot be flipped back on mid-test, but the
+    // registry is the seam for adding ad-hoc tasks (#584).
+    OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
+    OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_INVENTORY_SYNC_ENABLED: 'false',
+    OL_PRODUCT_SYNC_ENABLED: 'false',
 
-  /**
-   * Get Supertest HTTP client
-   */
-  getHttp(): ReturnType<typeof request> {
-    if (!this.app) {
-      throw new Error('Harness not initialized. Call setup() first.');
-    }
-    return request(this.app.getHttpServer());
-  }
+    // Integration tests seed users explicitly via loginAsAdmin / seedUser
+    // helpers. Letting BootstrapAdminService also insert a default `admin`
+    // user on app.init() causes the first `loginAsAdmin('admin')` call in
+    // every suite to collide on the users.username unique constraint
+    // (#278). Regression guard: bootstrap-admin-disabled.int-spec.ts.
+    OL_BOOTSTRAP_ADMIN_ENABLED: 'false',
 
-  /**
-   * Get Nest application instance
-   */
-  getApp(): INestApplication {
-    if (!this.app) {
-      throw new Error('Harness not initialized. Call setup() first.');
-    }
-    return this.app;
-  }
+    // Force AiIntegrationModule into fake mode for every integration test.
+    // The fake adapter (wired by OL_AI_PROVIDER=fake) avoids real outbound
+    // LLM calls. ai-provider-settings.int-spec.ts also asserts the
+    // "fake mode" branch of /ai-provider-settings (PUT/DELETE return 400,
+    // GET returns provider: 'fake') — see #402.
+    OL_AI_PROVIDER: 'fake',
 
-  /**
-   * Get TypeORM DataSource
-   */
-  getDataSource(): DataSource {
-    if (!this.dataSource) {
-      throw new Error('Harness not initialized. Call setup() first.');
-    }
-    return this.dataSource;
-  }
+    NODE_ENV: 'test',
+  },
+});
 
-  /**
-   * Get Redis client
-   */
-  getRedisClient(): RedisClientType | undefined {
-    return this.redisClient;
-  }
-
-  /**
-   * Tear down test infrastructure
-   *
-   * Closes app, destroys DataSource, stops containers.
-   */
-  async teardown(): Promise<void> {
-    // Close app first
-    if (this.app) {
-      try {
-        await this.app.close();
-      } catch (error) {
-        // Ignore errors during teardown
-      }
-    }
-
-    // Destroy DataSource if it's initialized
-    if (this.dataSource && this.dataSource.isInitialized) {
-      try {
-        await this.dataSource.destroy();
-      } catch (error) {
-        // Ignore errors during teardown
-      }
-    }
-
-    // Close Redis client
-    if (this.redisClient) {
-      try {
-        await this.redisClient.quit();
-      } catch (error) {
-        // Ignore errors during teardown
-      }
-    }
-
-    // Note: Containers are stopped by global teardown (harness.ts)
-    // We don't stop them here to avoid importing AppModule in teardown
-  }
-}
-
-// Global harness instance (shared across tests in same file)
-let globalHarness: IntegrationTestHarness | null = null;
-
-/**
- * Get or create global test harness
- *
- * Creates harness on first call, reuses on subsequent calls.
- */
-export async function getTestHarness(): Promise<IntegrationTestHarness> {
-  if (!globalHarness) {
-    globalHarness = new IntegrationTestHarness();
-    try {
-      await globalHarness.setup();
-    } catch (error) {
-      globalHarness = null;
-      throw error;
-    }
-  }
-  return globalHarness;
-}
-
-/**
- * Reset global test harness
- *
- * Clears database and cache between tests.
- */
-export async function resetTestHarness(): Promise<void> {
-  if (globalHarness) {
-    await globalHarness.reset();
-  }
-}
-
-/**
- * Teardown global test harness
- *
- * Cleans up all resources.
- */
-export async function teardownTestHarness(): Promise<void> {
-  if (globalHarness) {
-    await globalHarness.teardown();
-    globalHarness = null;
-  }
-}
-
+export const { getTestHarness, resetTestHarness, teardownTestHarness } = harness;
+export type { IntegrationTestHarness } from '@openlinker/test-kit';
