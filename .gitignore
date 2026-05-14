@@ -25,6 +25,8 @@ apps/**/*.d.ts
 apps/**/*.d.ts.map
 !apps/**/jest.config.js
 !apps/**/.eslintrc.js
+!libs/**/jest.config.js
+!libs/**/.eslintrc.js
 
 # Environment variables
 .env
