@@ -75,8 +75,8 @@ describe('plugin registry', () => {
 
   describe('createMockApiClient merge order', () => {
     it('caller overrides win over plugin contributions', () => {
-      // Documents the merge order spelled out in test-utils.tsx:
-      //   hardcoded defaults → caller overrides.
+      // Documents the merge order spelled out in test-utils.tsx (#603):
+      //   core defaults → plugin mock defaults → caller overrides.
       // Existing tests that pass `{ allegro: { startOAuth: vi.fn(...) } }`
       // rely on this — if the order ever flips, every Allegro-flow test
       // silently starts hitting the default mock instead of the caller's.
@@ -92,6 +92,48 @@ describe('plugin registry', () => {
       });
 
       expect(client.allegro.startOAuth).toBe(callerOverride);
+    });
+
+    it('folds plugin mock defaults from the in-tree registry by default', () => {
+      // Default invocation: no caller overrides, no custom mock registry.
+      // The Allegro mock factory in `plugins/allegro/allegro.mocks.ts` must
+      // produce a callable `client.allegro.startOAuth` — otherwise hundreds
+      // of Allegro-flow tests that depend on the default behaviour fail.
+      const client = createMockApiClient();
+
+      expect(client.allegro).toBeDefined();
+      expect(typeof client.allegro.startOAuth).toBe('function');
+    });
+
+    it('accepts a custom mockApiNamespaces registry that replaces in-tree mocks', () => {
+      // Plugin-author seam (#603): a third-party plugin's tests can pass their
+      // own factory list to register mock defaults without editing host code.
+      const customPing = vi.fn().mockReturnValue('custom-pong');
+      const client = createMockApiClient({}, [
+        (): Partial<PluginApiNamespaces> => ({ shopify: { ping: customPing } }),
+      ]);
+
+      expect(client.shopify?.ping()).toBe('custom-pong');
+      // The in-tree Allegro mock factory is replaced by the custom list, so
+      // `client.allegro` is not contributed unless the caller overrides it.
+      // Runtime-only assertion: TS types `allegro` as required via declaration
+      // merging, but the spread skips the key entirely so it's `undefined` at
+      // runtime. The type system can't express "declaration-merged namespace
+      // absent at runtime" — the JS assertion holds, the TS type is a lie.
+      expect(client.allegro).toBeUndefined();
+    });
+
+    it('applies caller overrides for plugin namespaces with no mock-factory contribution', () => {
+      // A third-party plugin tested in isolation: no in-tree factory supplies
+      // its namespace, but the caller passes an override. The factory must
+      // forward it untouched, not silently drop it.
+      const stubPing = vi.fn().mockReturnValue('inline-pong');
+      const client = createMockApiClient(
+        { shopify: { ping: stubPing } },
+        [], // empty mock registry — no plugin contributes defaults
+      );
+
+      expect(client.shopify?.ping()).toBe('inline-pong');
     });
   });
 
