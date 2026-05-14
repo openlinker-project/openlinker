@@ -12,11 +12,18 @@
  * capabilities by following `docs/plugin-author-guide.md`.
  *
  * Templates live under `scripts/create-adapter-templates/`, mirroring the
- * target tree 1:1. Filenames and contents carry three substitution tokens:
+ * target tree 1:1. Filenames and contents carry four substitution tokens:
  *
- *   __name__   — lowercase platform slug      (e.g. `shopify`)
- *   __Name__   — PascalCase class identifier  (e.g. `Shopify`)
- *   __BRAND__  — short user-facing label      (defaults to PascalCase)
+ *   __name__        — lowercase platform slug      (e.g. `smoke-test`)
+ *   __Name__        — PascalCase class identifier  (e.g. `SmokeTest`)
+ *   __camelName__   — lowerCamelCase identifier    (e.g. `smokeTest`)
+ *   __BRAND__       — short user-facing label      (defaults to PascalCase)
+ *
+ * Use `__camelName__` for TypeScript identifier positions where the existing
+ * convention is lowercase (e.g. `<camelName>AdapterManifest` matching the
+ * shipped `allegroAdapterManifest` / `prestashopAdapterManifest`). The
+ * raw `__name__` token would substitute hyphenated slugs (`smoke-test`)
+ * into identifier slots and produce uncompilable output (#698).
  *
  * The `--target-dir <dir>` flag (default: `libs/integrations`) lets the
  * scaffolder write into a tmp dir for verification runs without polluting
@@ -122,14 +129,26 @@ function toPascalCase(slug) {
     .join('');
 }
 
+// First segment stays lowercase, subsequent segments PascalCase.
+// `smoke-test` → `smokeTest`; non-hyphenated slugs are unchanged.
+function toCamelCase(slug) {
+  const parts = slug.split('-');
+  return parts
+    .map((part, i) => (i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join('');
+}
+
 function applyTokens(text, tokens) {
   // Single-pass replace — order doesn't matter, the tokens are
-  // non-overlapping by construction.
+  // non-overlapping by construction (`__camelName__` doesn't contain
+  // `__name__` / `__Name__` / `__BRAND__` as a substring and vice versa).
   return text
     .split('__name__')
     .join(tokens.name)
     .split('__Name__')
     .join(tokens.Name)
+    .split('__camelName__')
+    .join(tokens.camelName)
     .split('__BRAND__')
     .join(tokens.BRAND);
 }
@@ -189,6 +208,7 @@ export async function scaffoldAdapter({
   const tokens = {
     name,
     Name: toPascalCase(name),
+    camelName: toCamelCase(name),
     BRAND: toPascalCase(name),
   };
 

@@ -47,7 +47,7 @@ export type Create__Name__PluginDeps = Record<string, never>;
  * adapters, add their names here AND extend the dispatch table in
  * `createCapabilityAdapter` below.
  */
-export const __name__AdapterManifest: AdapterMetadata = {
+export const __camelName__AdapterManifest: AdapterMetadata = {
   adapterKey: '__name__.publicapi.v1',
   platformType: '__name__',
   supportedCapabilities: [],
@@ -68,7 +68,7 @@ export function create__Name__Plugin(
   _deps: Create__Name__PluginDeps,
 ): AdapterPlugin {
   return {
-    manifest: __name__AdapterManifest,
+    manifest: __camelName__AdapterManifest,
 
     // No side-registrations yet. As you add a connection tester, shape
     // validators, webhook provisioner, etc., uncomment and register them
@@ -76,11 +76,11 @@ export function create__Name__Plugin(
     // § Step 8 (credentials / OAuth).
     register(_host: HostServices): void {
       // host.connectionTesterRegistry.register(
-      //   __name__AdapterManifest.adapterKey,
+      //   __camelName__AdapterManifest.adapterKey,
       //   new __Name__ConnectionTesterAdapter(),
       // );
       // host.connectionConfigShapeValidatorRegistry.register(
-      //   __name__AdapterManifest.adapterKey,
+      //   __camelName__AdapterManifest.adapterKey,
       //   new __Name__ConnectionConfigShapeValidatorAdapter(__NAME___BRAND),
       // );
     },
