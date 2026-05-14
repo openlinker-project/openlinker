@@ -86,15 +86,17 @@ When in doubt, ask the question: **"will an existing well-typed consumer compile
 
 ## Versioning policy
 
-OpenLinker is pre-1.0 and will use the `0.x.y` shape to telegraph "SDK published but pre-stable":
+OpenLinker is pre-1.0 and follows the [SemVer §4 convention for `0.x.y`](https://semver.org/#spec-item-4): "Major version zero (0.y.z) is for initial development. Anything MAY change at any time. The public API SHOULD NOT be considered stable."
 
-- `0.x` — public-API-breaking change. Treat as a major bump in `0.x` terms.
-- `0.x.y` — feature add or bug fix.
-- `0.x.y-rc.z` — release candidate, used when staging a `0.x` cut and inviting plugin-author smoke testing.
+In practice we treat the version components as pseudo-major/minor/patch:
 
-The first publishable cut will be `0.1.0-rc.1`. Promotion to `0.1.0` (drop the `-rc`) signals "the public surface is the shape 1.0 will take"; promotion to `1.0.0` is when plugins can rely on full SemVer compatibility — same major = no breaking changes — and the SDK boundary is committed.
+- **`0.x`** (the minor segment) acts as the pseudo-major. Breaking changes to the public API land at minor-number boundaries: `0.3.0 → 0.4.0` means consumer code may need adaptation.
+- **`0.x.y`** (the patch segment) acts as the pseudo-minor. Patch bumps are strictly additive: `0.3.0 → 0.3.1` means a feature add or bug fix that an existing consumer can ignore.
+- **`0.x.y-rc.z`** — release candidate, used when staging a `0.x` cut and inviting plugin-author smoke testing.
 
-**Until 1.0, expect periodic breaking changes at minor-number boundaries.** Plugin authors should pin `@openlinker/core` (and other SDK packages) at the exact patch version during pre-1.0 and bump explicitly after reading the CHANGELOG.
+The first publishable cut will be `0.1.0-rc.1`. Promotion to `0.1.0` (drop the `-rc`) signals "the public surface is the shape 1.0 will take"; promotion to `1.0.0` is when plugins can rely on **full SemVer compatibility** — `^1.x` means no breaking changes within the major — and the SDK boundary is committed.
+
+**Pinning during 0.x**: because breaks can land at any minor boundary, plugin authors should pin SDK packages with `~0.3.0` (allow patch but not minor) — not `^0.3.0` (which under SemVer's strict rules also allows patches in 0.x, but reads ambiguously). The clearest signal is to pin the exact version (`0.3.0`) and bump explicitly after reading the CHANGELOG.
 
 ---
 
@@ -141,7 +143,6 @@ That sequencing keeps the tool adoption aligned with the moment the tool starts 
 
 ## Related documentation
 
-- [`docs/engineering-standards.md` § Import Aliases](./docs/engineering-standards.md#import-aliases) — the in-repo enforcement story (ESLint rules + the runtime `exports` gate that surfaces deep-import attempts as `ERR_PACKAGE_PATH_NOT_EXPORTED`).
-- [`docs/engineering-standards.md` § Sub-barrels](./docs/engineering-standards.md#import-aliases) — the three categories of sub-barrels and the rules for adding new ones.
+- [`docs/engineering-standards.md` § Import Aliases](./docs/engineering-standards.md#import-aliases) — the in-repo enforcement story (ESLint rules + the runtime `exports` gate that surfaces deep-import attempts as `ERR_PACKAGE_PATH_NOT_EXPORTED`). The Sub-barrels subsection within Import Aliases documents the three categories of sub-barrels and the rules for adding new ones.
 - [`docs/architecture-overview.md`](./docs/architecture-overview.md) — the layered hexagonal architecture that the public-surface rule is grounded in.
 - [`docs/plugin-author-guide.md`](./docs/plugin-author-guide.md) — the plugin-author-facing how-to, which assumes the public-API contract this document defines.

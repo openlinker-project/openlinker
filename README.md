@@ -199,6 +199,7 @@ OpenLinker is released under the Apache License 2.0. See the [LICENSE](./LICENSE
 
 ## Related Documentation
 
+- [Public API Contract](./PUBLIC_API.md) — what's stable for plugin authors and downstream consumers; versioning policy.
 - [Architecture Overview](./docs/architecture-overview.md)
 - [Engineering Standards](./docs/engineering-standards.md)
 - [AI Assistant Guide](./docs/ai-assistant-guide.md)
