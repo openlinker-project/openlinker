@@ -4,7 +4,8 @@
  * Test-time-only adapter implementing `IdentifierMappingPort` for plugin
  * authors and unit specs that need to exercise identifier-mapping flows
  * without spinning Postgres. Replicates the production service's semantics:
- * `ol_{prefix}_{uuid}` internal-ID format (via `ENTITY_TYPE_ID_PREFIX`),
+ * `ol_{prefix}_{uuid}` internal-ID format (via the shared `formatInternalId`
+ * helper — single source of truth shared with `IdentifierMappingService`),
  * idempotent `getOrCreateInternalId`, and the domain exception types
  * (`DuplicateIdentifierMappingError`, `IdentifierMappingConflictException`).
  *
@@ -19,7 +20,6 @@
  * @see {@link IdentifierMappingPort} for the port contract
  * @see {@link IdentifierMappingService} for the production implementation
  */
-import { randomUUID } from 'node:crypto';
 import type {
   IdentifierMappingPort,
 } from '../domain/ports/identifier-mapping.port';
@@ -28,7 +28,7 @@ import type {
   IdentifierMappingRequest,
   MappingContext,
 } from '../domain/types/identifier-mapping.types';
-import { ENTITY_TYPE_ID_PREFIX } from '../domain/types/identifier-mapping.types';
+import { formatInternalId } from '../domain/types/identifier-mapping.types';
 import { DuplicateIdentifierMappingError } from '../domain/exceptions/duplicate-identifier-mapping.error';
 import { IdentifierMappingConflictException } from '../domain/exceptions/identifier-mapping-conflict.exception';
 
@@ -61,9 +61,19 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
   private readonly rows = new Map<string, Row>();
 
   /**
-   * @param connectionPlatformMap optional map of `connectionId` →
-   *   `platformType`. Used to populate the `platformType` field on returned
-   *   `ExternalIdMapping`s. Absent connection IDs default to `''`.
+   * @param connectionPlatformMap optional map of `connectionId` → `platformType`.
+   *
+   * **Strictness mode** — chosen by whether the map is empty:
+   * - **Empty (default)**: `platformType` denormalises to `''` on every row.
+   *   Use this when the spec does not assert on `ExternalIdMapping.platformType`.
+   * - **Non-empty**: every `connectionId` passed to a write method MUST be a
+   *   key of the map. An unknown `connectionId` throws an `Error` — matching
+   *   the production FK-violation that the real repository would surface
+   *   when the `connections` row does not exist.
+   *
+   * This split avoids two failure modes: (a) specs that don't care about
+   * `platformType` getting noise from a strict check, and (b) specs that do
+   * care getting silent `''` values that diverge from the production adapter.
    */
   constructor(private readonly connectionPlatformMap: Readonly<Record<string, string>> = {}) {}
 
@@ -107,6 +117,8 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
     connectionId: string,
     context?: MappingContext,
   ): Promise<string> {
+    const guard = this.checkConnectionKnown(connectionId);
+    if (guard) return Promise.reject(guard);
     const key = keyOf(entityType, externalId, connectionId);
     const existing = this.rows.get(key);
     if (existing) {
@@ -124,6 +136,8 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
     internalId: string,
     context?: MappingContext,
   ): Promise<void> {
+    const guard = this.checkConnectionKnown(connectionId);
+    if (guard) return Promise.reject(guard);
     const key = keyOf(entityType, externalId, connectionId);
     if (this.rows.has(key)) {
       return Promise.reject(
@@ -162,6 +176,8 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
     connectionId: string,
     context?: MappingContext,
   ): Promise<string> {
+    const guard = this.checkConnectionKnown(connectionId);
+    if (guard) return Promise.reject(guard);
     const key = keyOf(entityType, externalId, connectionId);
     const existing = this.rows.get(key);
     if (existing) {
@@ -199,8 +215,14 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
   /**
    * Pre-populate a mapping without going through `getOrCreateInternalId`.
    * Overwrites any existing row at the same `(entityType, externalId, connectionId)` key.
+   *
+   * Honours strict mode: throws synchronously when `connectionPlatformMap`
+   * is non-empty and `connectionId` is missing — `seed` is a test helper
+   * (not part of the port contract), so a sync throw is the right shape.
    */
   seed(input: InMemoryIdentifierMappingSeed): void {
+    const guard = this.checkConnectionKnown(input.connectionId);
+    if (guard) throw guard;
     this.rows.set(
       keyOf(input.entityType, input.externalId, input.connectionId),
       this.buildRow(
@@ -232,17 +254,38 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
     };
   }
 
+  /**
+   * Always-safe `platformType` lookup. Returns `''` for unknown ids in both
+   * modes. Callers wanting strict-mode behaviour MUST call
+   * {@link checkConnectionKnown} first and short-circuit on a non-null result.
+   */
   private platformTypeFor(connectionId: string): string {
     return this.connectionPlatformMap[connectionId] ?? '';
   }
 
+  /**
+   * Strict-mode guard. Returns an `Error` describing the unknown id when the
+   * `connectionPlatformMap` is non-empty AND the id is missing; returns `null`
+   * otherwise. Returned (not thrown) so public methods can `return Promise.reject(err)`
+   * and the port's `Promise<T>` contract isn't violated by a synchronous throw.
+   */
+  private checkConnectionKnown(connectionId: string): Error | null {
+    if (this.connectionPlatformMap[connectionId] !== undefined) {
+      return null;
+    }
+    if (Object.keys(this.connectionPlatformMap).length === 0) {
+      return null;
+    }
+    return new Error(
+      `InMemoryIdentifierMappingAdapter: unknown connectionId '${connectionId}'. ` +
+        `Seed it in the constructor's connectionPlatformMap or omit the map to opt into lax mode.`,
+    );
+  }
+
   private generateInternalId(entityType: string): string {
-    // Mirrors `IdentifierMappingService.generateInternalId` — keep both shapes
-    // in sync if the production format changes.
-    const overrides: Record<string, string | undefined> = ENTITY_TYPE_ID_PREFIX;
-    const uuid = randomUUID().replace(/-/g, '');
-    const prefix = overrides[entityType] ?? entityType.toLowerCase();
-    return `ol_${prefix}_${uuid}`;
+    // Delegates to the shared `formatInternalId` helper so the test fake and
+    // the production `IdentifierMappingService` can never drift on ID shape.
+    return formatInternalId(entityType);
   }
 }
 

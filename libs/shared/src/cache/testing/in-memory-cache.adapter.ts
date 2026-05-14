@@ -12,8 +12,13 @@
  * `infrastructure/` split there) and this adapter is never wired into a
  * production module graph anyway — only consumed by `*.spec.ts` files.
  *
- * **TTL testing**: works against the real clock; specs that need to assert
- * TTL expiry can use `jest.useFakeTimers()` themselves.
+ * **TTL testing**: the adapter reads `Date.now()` directly. Jest 29's modern
+ * fake timers (the default since Jest 27) mock `Date.now()`, so a spec can
+ * call `jest.useFakeTimers()` + `jest.advanceTimersByTime(ms)` to step past
+ * an entry's expiry without sleeping. To pin to an absolute wall-clock time
+ * instead (e.g. to test boundary semantics around midnight), use
+ * `jest.setSystemTime(new Date(...))` or `useFakeTimers({ now: <ms> })`.
+ * See `in-memory-cache.adapter.spec.ts` for a worked example.
  *
  * @module libs/shared/src/cache/testing
  * @see {@link CachePort} for the port contract

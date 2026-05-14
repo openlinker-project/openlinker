@@ -95,6 +95,14 @@ describe('InMemoryIdentifierMappingAdapter', () => {
 
       expect(external.platformType).toBe('');
     });
+
+    it('should throw on unknown connectionId in strict mode (non-empty connectionPlatformMap)', async () => {
+      const adapter = new InMemoryIdentifierMappingAdapter({ 'conn-known': 'allegro' });
+
+      await expect(
+        adapter.getOrCreateInternalId('Product', 'ext-1', 'conn-unknown'),
+      ).rejects.toThrow(/unknown connectionId 'conn-unknown'/);
+    });
   });
 
   describe('getOrCreateExactMapping', () => {

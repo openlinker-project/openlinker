@@ -2,11 +2,12 @@
  * Identifier Mapping Types
  *
  * Type definitions for identifier mapping operations. Defines the well-known
- * core entity types, mapping context, request structures, and external ID
- * mapping structures.
+ * core entity types, mapping context, request structures, external ID
+ * mapping structures, and the shared `formatInternalId` helper.
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */
+import { randomUUID } from 'node:crypto';
 
 /**
  * Well-known core entity types — the documented set OpenLinker ships with.
@@ -61,6 +62,29 @@ export type CoreEntityType = (typeof CoreEntityTypeValues)[number];
 export const ENTITY_TYPE_ID_PREFIX: Partial<Record<CoreEntityType, string>> = {
   ProductVariant: 'variant',
 };
+
+/**
+ * Format an internal identifier for an entity.
+ *
+ * Format: `ol_{prefix}_{uuid_no_dashes}` where `prefix` defaults to
+ * `entityType.toLowerCase()` unless overridden in {@link ENTITY_TYPE_ID_PREFIX}
+ * (e.g. `ProductVariant` → `'variant'` → `ol_variant_<uuid>`).
+ *
+ * **Single source of truth.** Used by both the production
+ * `IdentifierMappingService` and the in-memory test fake
+ * (`InMemoryIdentifierMappingAdapter`). Any change to the on-disk ID shape
+ * must land here so production and tests stay in lockstep.
+ *
+ * @param entityType - well-known {@link CoreEntityType} or a plugin-registered
+ *   entity-type string (#577). The override-map lookup is widened to a
+ *   string index so plugin types fall through to the lowercased default.
+ */
+export function formatInternalId(entityType: string): string {
+  const overrides: Record<string, string | undefined> = ENTITY_TYPE_ID_PREFIX;
+  const uuid = randomUUID().replace(/-/g, '');
+  const prefix = overrides[entityType] ?? entityType.toLowerCase();
+  return `ol_${prefix}_${uuid}`;
+}
 
 export interface MappingContext {
   parentEntityType?: string;
