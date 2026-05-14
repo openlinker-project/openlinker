@@ -448,5 +448,5 @@ Monitor for:
 - [Manual Testing Guide](./manual-testing-guide.md) - Step-by-step manual testing procedures
 - [Allegro API Documentation](https://developer.allegro.pl/documentation/)
 - [OpenLinker Architecture Overview](../../architecture-overview.md)
-- [Integration Test Strategy](../../integration-test-strategy.md)
+- [Testing Guide](../../testing-guide.md)
 

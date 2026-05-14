@@ -10,7 +10,7 @@ export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro'] as const;
 /**
  * Connection platform type — an opaque string. Plugins are resolved by
  * platform key via the FE plugin registry (`apps/web/src/plugins/`).
- * Do not literal-equality-dispatch on this value — use `usePlugin()` or
+ * Do not literal-equality-dispatch on this value — use `usePlatform()` or
  * `supportedCapabilities` checks instead (enforced by ESLint).
  */
 export type PlatformType = string;

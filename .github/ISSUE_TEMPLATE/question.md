@@ -19,7 +19,7 @@ Provide any relevant context about your question:
 Have you checked the following documentation?
 - [ ] [Architecture Overview](../docs/architecture-overview.md)
 - [ ] [Engineering Standards](../docs/engineering-standards.md)
-- [ ] [AI Assistant Guide](../docs/ai-assistant-guide.md)
+- [ ] [AI Coding Assistant Guide](../docs/ai-coding-assistant.md)
 - [ ] README.md
 
 ## Additional Context

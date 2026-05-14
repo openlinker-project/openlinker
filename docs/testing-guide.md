@@ -475,8 +475,6 @@ apps/api/
 - ✅ **Resource isolation**: Requires Docker, slower execution
 - ✅ **Clear separation**: Different purposes, different execution models
 
-See [Integration Test Organization](./integration-test-organization.md) for detailed rationale.
-
 ---
 
 ## Best Practices
@@ -751,8 +749,6 @@ sudo systemctl start docker
 ## Related Documentation
 
 - **[Development Environment Setup](./dev-environment.md)** - Local development stack (PostgreSQL, Redis, PrestaShop) - **Note**: Integration tests use Testcontainers (ephemeral containers), separate from the dev stack
-- **[Integration Test Strategy](./integration-test-strategy.md)** - Detailed integration test approach
-- **[Integration Test Organization](./integration-test-organization.md)** - Why tests are separated
 - **[Engineering Standards](./engineering-standards.md)** - Coding and testing standards
 - **[Architecture Overview](./architecture-overview.md)** - System architecture
 

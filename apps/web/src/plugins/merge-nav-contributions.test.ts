@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { NavGroup } from '../app/nav-registry.types';
 import { mergePluginNavContributions } from './merge-nav-contributions';
-import type { NavContribution } from './plugin.types';
+import type { NavContribution } from '../shared/plugins';
 
 function baseGroups(): NavGroup[] {
   return [
