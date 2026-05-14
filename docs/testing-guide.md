@@ -305,6 +305,15 @@ TBD). Today only `allegro-prestashop-carrier-mapping.int-spec.ts` opts in;
 `prestashop-harness-smoke.int-spec.ts` and `prestashop-webhook-provisioning.int-spec.ts`
 do not.
 
+**CI gate**: specs that need the OL module today gate on `process.env.CI !== 'true'`
+(see `INSTALL_OL_MODULE` in `allegro-prestashop-carrier-mapping.int-spec.ts`).
+In CI mode the test that exercises the module path (S-3 today) is reported
+as `it.skip` instead of failing. Other scenarios in the same spec (S-1, S-2)
+still run because they don't need the module. Override available via
+`OL_SKIP_PS_MODULE_INSTALL=true` for developers reproducing the CI behavior
+locally. When the install-in-CI root cause is fixed, drop the gate and
+re-enable S-3 in CI.
+
 **Phase 2 (always) — `applyPrestashopFixture` inserts:**
 
 1. A **WS API key** (random per run) granted CRUD on the resources our
