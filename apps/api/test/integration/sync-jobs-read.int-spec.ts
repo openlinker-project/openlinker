@@ -9,7 +9,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestSyncJob } from './fixtures/sync-job.fixtures';
 
@@ -252,7 +257,9 @@ describe('Sync Jobs Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      const job = await createTestSyncJob(dataSource, { jobType: 'master.inventory.syncByExternalId' });
+      const job = await createTestSyncJob(dataSource, {
+        jobType: 'master.inventory.syncByExternalId',
+      });
 
       const response = await http
         .get(`/sync/jobs/${job.id}`)

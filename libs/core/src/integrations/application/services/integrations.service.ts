@@ -12,10 +12,17 @@
  * @see {@link AdapterRegistryPort} for adapter registry
  */
 import { Injectable } from '@nestjs/common';
-import { IIntegrationsService } from '../interfaces/integrations.service.interface';
-import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection, ConnectionDisabledException, IdentifierMappingPort, IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type { IIntegrationsService } from '../interfaces/integrations.service.interface';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  ConnectionDisabledException,
+  IdentifierMappingPort,
+  IDENTIFIER_MAPPING_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
 import { Inject } from '@nestjs/common';
-import { AdapterMetadata } from '../../domain/types/adapter.types';
+import type { AdapterMetadata } from '../../domain/types/adapter.types';
 import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import {
   ADAPTER_REGISTRY_TOKEN,
@@ -43,7 +50,7 @@ export class IntegrationsService implements IIntegrationsService {
     @Inject(IDENTIFIER_MAPPING_PORT_TOKEN)
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort,
+    private readonly credentialsResolver: CredentialsResolverPort
   ) {}
 
   async getAdapter(connectionId: string): Promise<{
@@ -63,9 +70,10 @@ export class IntegrationsService implements IIntegrationsService {
 
     // Determine adapterKey
     const adapterKey =
-      connection.adapterKey ?? (await this.adapterRegistry.getDefaultAdapterKey(connection.platformType));
+      connection.adapterKey ??
+      (await this.adapterRegistry.getDefaultAdapterKey(connection.platformType));
     this.logger.debug(
-      `Resolved adapterKey: ${adapterKey}${connection.adapterKey ? ' (explicit)' : ` (derived from platformType: ${connection.platformType})`}`,
+      `Resolved adapterKey: ${adapterKey}${connection.adapterKey ? ' (explicit)' : ` (derived from platformType: ${connection.platformType})`}`
     );
 
     // Load adapter metadata from registry. Per-capability adapter instances
@@ -74,7 +82,7 @@ export class IntegrationsService implements IIntegrationsService {
     const metadata = await this.adapterRegistry.getAdapterMetadata(adapterKey);
 
     this.logger.log(
-      `Adapter resolved: ${adapterKey} for connection ${connectionId} (capabilities: ${metadata.supportedCapabilities.join(', ')})`,
+      `Adapter resolved: ${adapterKey} for connection ${connectionId} (capabilities: ${metadata.supportedCapabilities.join(', ')})`
     );
 
     return {
@@ -83,10 +91,7 @@ export class IntegrationsService implements IIntegrationsService {
     };
   }
 
-  async getCapabilityAdapter<T>(
-    connectionId: string,
-    capability: string,
-  ): Promise<T> {
+  async getCapabilityAdapter<T>(connectionId: string, capability: string): Promise<T> {
     this.logger.debug(`Resolving ${capability} adapter for connection: ${connectionId}`);
 
     const { connection, metadata } = await this.getAdapter(connectionId);
@@ -94,7 +99,7 @@ export class IntegrationsService implements IIntegrationsService {
     // Validate capability support (adapter level)
     if (!metadata.supportedCapabilities.includes(capability)) {
       this.logger.warn(
-        `Capability ${capability} not supported by adapter ${metadata.adapterKey} (supported: ${metadata.supportedCapabilities.join(', ')})`,
+        `Capability ${capability} not supported by adapter ${metadata.adapterKey} (supported: ${metadata.supportedCapabilities.join(', ')})`
       );
       throw new CapabilityNotSupportedException(metadata.adapterKey, capability);
     }
@@ -102,7 +107,7 @@ export class IntegrationsService implements IIntegrationsService {
     // Validate capability is enabled on this specific connection
     if (!connection.enabledCapabilities.includes(capability)) {
       this.logger.warn(
-        `Capability ${capability} disabled on connection ${connectionId} (enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`,
+        `Capability ${capability} disabled on connection ${connectionId} (enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`
       );
       throw new CapabilityNotEnabledException(connectionId, metadata.adapterKey, capability);
     }
@@ -122,7 +127,7 @@ export class IntegrationsService implements IIntegrationsService {
       connection,
       capability,
       this.identifierMapping,
-      this.credentialsResolver,
+      this.credentialsResolver
     );
   }
 
@@ -135,10 +140,7 @@ export class IntegrationsService implements IIntegrationsService {
     return this.adapterRegistry.getAdapterMetadata(adapterKey);
   }
 
-  async listCapabilityAdapters<T>(filters: {
-    capability: string;
-    platformType?: string;
-  }): Promise<
+  async listCapabilityAdapters<T>(filters: { capability: string; platformType?: string }): Promise<
     Array<{
       connectionId: string;
       connection: Connection;
@@ -147,7 +149,7 @@ export class IntegrationsService implements IIntegrationsService {
     }>
   > {
     this.logger.debug(
-      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}`,
+      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}`
     );
 
     // List all active connections (filter by platformType if provided)
@@ -188,14 +190,14 @@ export class IntegrationsService implements IIntegrationsService {
           // is caught by the outer try/catch (skip this connection); any
           // other configuration error continues to throw and abort the call.
           this.logger.debug(
-            `Creating ${filters.capability} adapter for ${adapterKey} (connection: ${connection.id})`,
+            `Creating ${filters.capability} adapter for ${adapterKey} (connection: ${connection.id})`
           );
           const adapter = await this.factoryResolver.createCapabilityAdapter<T>(
             adapterKey,
             connection,
             filters.capability,
             this.identifierMapping,
-            this.credentialsResolver,
+            this.credentialsResolver
           );
           results.push({
             connectionId: connection.id,
@@ -204,23 +206,21 @@ export class IntegrationsService implements IIntegrationsService {
             metadata,
           });
           this.logger.debug(
-            `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`,
+            `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`
           );
         } else if (!adapterSupports) {
           this.logger.debug(
-            `Connection ${connection.id} does not support ${filters.capability} (adapter: ${adapterKey}, supported: ${metadata.supportedCapabilities.join(', ')})`,
+            `Connection ${connection.id} does not support ${filters.capability} (adapter: ${adapterKey}, supported: ${metadata.supportedCapabilities.join(', ')})`
           );
         } else {
           this.logger.debug(
-            `Connection ${connection.id} has ${filters.capability} disabled (adapter supports it; enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`,
+            `Connection ${connection.id} has ${filters.capability} disabled (adapter supports it; enabled: ${connection.enabledCapabilities.join(', ') || '<none>'})`
           );
         }
       } catch (error) {
         // Log and skip connections with invalid adapter keys
         if (error instanceof AdapterNotFoundException) {
-          this.logger.warn(
-            `Skipping connection ${connection.id}: ${error.message}`,
-          );
+          this.logger.warn(`Skipping connection ${connection.id}: ${error.message}`);
           continue;
         }
         // Re-throw unexpected errors
@@ -229,11 +229,9 @@ export class IntegrationsService implements IIntegrationsService {
     }
 
     this.logger.log(
-      `Found ${results.length} adapter(s) supporting ${filters.capability}${filters.platformType ? ` for platform ${filters.platformType}` : ''}`,
+      `Found ${results.length} adapter(s) supporting ${filters.capability}${filters.platformType ? ` for platform ${filters.platformType}` : ''}`
     );
 
     return results;
   }
-
 }
-

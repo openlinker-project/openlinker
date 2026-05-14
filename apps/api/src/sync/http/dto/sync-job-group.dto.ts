@@ -8,7 +8,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { JobTypeValues } from '@openlinker/core/sync';
-import type { JobType } from '@openlinker/core/sync';
+import { JobType } from '@openlinker/core/sync';
 
 export class SyncJobGroupDto {
   @ApiProperty({ description: 'Connection ID shared by all jobs in the group' })
@@ -29,7 +29,8 @@ export class SyncJobGroupDto {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Last error from the representative row; may be null if the job never failed with a message',
+    description:
+      'Last error from the representative row; may be null if the job never failed with a message',
   })
   lastError!: string | null;
 }

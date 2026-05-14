@@ -6,11 +6,7 @@
  *
  * @module apps/web/src/features/cursors/api
  */
-import type {
-  CursorFilters,
-  CursorPagination,
-  PaginatedCursors,
-} from './cursors.types';
+import type { CursorFilters, CursorPagination, PaginatedCursors } from './cursors.types';
 
 export interface CursorsApi {
   list: (filters?: CursorFilters, pagination?: CursorPagination) => Promise<PaginatedCursors>;

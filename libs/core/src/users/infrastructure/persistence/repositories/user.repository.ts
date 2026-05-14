@@ -12,15 +12,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
-import { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
-import { UserRole, UserRoleValues } from '../../../domain/types/role.types';
+import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
+import type { UserRole } from '../../../domain/types/role.types';
+import { UserRoleValues } from '../../../domain/types/role.types';
 import { UserOrmEntity } from '../entities/user.orm-entity';
 
 @Injectable()
 export class UserRepository implements UserRepositoryPort {
   constructor(
     @InjectRepository(UserOrmEntity)
-    private readonly ormRepository: Repository<UserOrmEntity>,
+    private readonly ormRepository: Repository<UserOrmEntity>
   ) {}
 
   async findByUsername(username: string): Promise<User | null> {
@@ -65,7 +66,7 @@ export class UserRepository implements UserRepositoryPort {
       entity.passwordHash,
       role,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 }

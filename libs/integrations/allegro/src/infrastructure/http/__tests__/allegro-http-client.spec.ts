@@ -12,8 +12,8 @@
  */
 import { AllegroHttpClient } from '../allegro-http-client';
 import { AllegroConnectionTokenState } from '../allegro-connection-token-state';
+import type { AllegroCredentials } from '@openlinker/integrations-allegro';
 import {
-  AllegroCredentials,
   AllegroApiException,
   AllegroAuthenticationException,
   AllegroNetworkException,
@@ -42,13 +42,13 @@ describe('AllegroHttpClient', () => {
     client = new AllegroHttpClient(
       connectionId,
       baseUrl,
-      new AllegroConnectionTokenState(connectionId, credentials),
+      new AllegroConnectionTokenState(connectionId, credentials)
     );
     noRetryClient = new AllegroHttpClient(
       connectionId,
       baseUrl,
       new AllegroConnectionTokenState(connectionId, credentials),
-      { maxRetries: 0 },
+      { maxRetries: 0 }
     );
     jest.useFakeTimers();
   });
@@ -63,7 +63,7 @@ describe('AllegroHttpClient', () => {
       const clientWithSlash = new AllegroHttpClient(
         connectionId,
         'https://api.allegro.pl/',
-        new AllegroConnectionTokenState(connectionId, credentials),
+        new AllegroConnectionTokenState(connectionId, credentials)
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       expect((clientWithSlash as any).baseUrl).toBe('https://api.allegro.pl');
@@ -94,7 +94,7 @@ describe('AllegroHttpClient', () => {
         connectionId,
         baseUrl,
         new AllegroConnectionTokenState(connectionId, credentials),
-        customRetryConfig,
+        customRetryConfig
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       const retryConfig = (clientWithCustom as any).retryConfig as {
@@ -134,7 +134,7 @@ describe('AllegroHttpClient', () => {
             accept: 'application/vnd.allegro.public.v1+json',
             'accept-language': 'pl-PL',
           }),
-        }),
+        })
       );
     });
 
@@ -168,11 +168,11 @@ describe('AllegroHttpClient', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('limit=10'),
-        expect.any(Object),
+        expect.any(Object)
       );
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('offset=0'),
-        expect.any(Object),
+        expect.any(Object)
       );
     });
   });
@@ -196,7 +196,7 @@ describe('AllegroHttpClient', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify(requestBody),
-        }),
+        })
       );
     });
   });
@@ -283,7 +283,7 @@ describe('AllegroHttpClient', () => {
       const tokenState = new AllegroConnectionTokenState(
         connectionId,
         { accessToken: 'stale-token' },
-        refreshCallback,
+        refreshCallback
       );
       const refreshClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
 
@@ -304,7 +304,7 @@ describe('AllegroHttpClient', () => {
       const response = await refreshClient.postBinary(
         '/sale/images',
         'image/jpeg',
-        new Uint8Array([0xff]),
+        new Uint8Array([0xff])
       );
 
       expect(response.status).toBe(201);
@@ -364,7 +364,7 @@ describe('AllegroHttpClient', () => {
             contentType: 'application/pdf',
             bytes: new Uint8Array([0xff]),
           },
-        ],
+        ]
       );
 
       expect(response.data).toEqual({ id: 'attach-42' });
@@ -375,8 +375,7 @@ describe('AllegroHttpClient', () => {
         ok: false,
         status: 400,
         headers: new Headers(),
-        text: () =>
-          Promise.resolve(JSON.stringify({ errors: [{ message: 'invalid file' }] })),
+        text: () => Promise.resolve(JSON.stringify({ errors: [{ message: 'invalid file' }] })),
       });
 
       await expect(
@@ -387,7 +386,7 @@ describe('AllegroHttpClient', () => {
             contentType: 'application/pdf',
             bytes: new Uint8Array([0xff]),
           },
-        ]),
+        ])
       ).rejects.toThrow(AllegroApiException);
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
@@ -474,7 +473,7 @@ describe('AllegroHttpClient', () => {
       await client.post(
         '/test',
         { foo: 'bar' },
-        { headers: { 'Content-Type': 'application/vnd.allegro.beta.v1+json' } },
+        { headers: { 'Content-Type': 'application/vnd.allegro.beta.v1+json' } }
       );
 
       const fetchCall = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
@@ -525,11 +524,13 @@ describe('AllegroHttpClient', () => {
       // dead on attempt 1/10 instead of letting the runner retry.
       const refreshCallback = jest
         .fn()
-        .mockRejectedValue(new AllegroNetworkException('fetch failed', 'https://allegro.pl/auth/oauth/token'));
+        .mockRejectedValue(
+          new AllegroNetworkException('fetch failed', 'https://allegro.pl/auth/oauth/token')
+        );
       const tokenState = new AllegroConnectionTokenState(
         connectionId,
         { accessToken: 'stale-token' },
-        refreshCallback,
+        refreshCallback
       );
       // maxRetries: 0 keeps the assertion focused on the single-attempt
       // throw shape; the request-loop's retry-on-network-error behavior is
@@ -545,16 +546,14 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('{"error":"expired_token"}'),
       });
 
-      const captured = await networkClient
-        .get('/test')
-        .catch((err: Error) => err);
+      const captured = await networkClient.get('/test').catch((err: Error) => err);
 
       expect(captured).toBeInstanceOf(AllegroNetworkException);
       expect(captured).not.toBeInstanceOf(AllegroAuthenticationException);
       // Original cause (the AllegroNetworkException from the refresh callback)
       // is chained via Error.cause for forensic logging.
       expect((captured as Error & { cause?: unknown }).cause).toBeInstanceOf(
-        AllegroNetworkException,
+        AllegroNetworkException
       );
     });
 
@@ -568,7 +567,7 @@ describe('AllegroHttpClient', () => {
       const tokenState = new AllegroConnectionTokenState(
         connectionId,
         { accessToken: 'stale-token' },
-        refreshCallback,
+        refreshCallback
       );
       const credentialClient = new AllegroHttpClient(connectionId, baseUrl, tokenState);
 
@@ -580,7 +579,7 @@ describe('AllegroHttpClient', () => {
       });
 
       await expect(credentialClient.get('/test')).rejects.toBeInstanceOf(
-        AllegroAuthenticationException,
+        AllegroAuthenticationException
       );
     });
 
@@ -594,7 +593,7 @@ describe('AllegroHttpClient', () => {
           status: 429,
           headers: mockHeaders,
           text: () => Promise.resolve('{"error": "rate_limit_exceeded"}'),
-        }),
+        })
       );
 
       await expect(noRetryClient.get('/test')).rejects.toThrow(AllegroRateLimitException);
@@ -713,9 +712,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('<html><body>upstream proxy error</body></html>'),
       });
 
-      const captured = await noRetryClient
-        .get('/test')
-        .catch((err: AllegroApiException) => err);
+      const captured = await noRetryClient.get('/test').catch((err: AllegroApiException) => err);
 
       expect(captured).toBeInstanceOf(AllegroApiException);
       expect((captured as AllegroApiException).allegroErrors).toBeUndefined();
@@ -731,9 +728,7 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve(JSON.stringify({ message: 'Bad request' })),
       });
 
-      const captured = await noRetryClient
-        .get('/test')
-        .catch((err: AllegroApiException) => err);
+      const captured = await noRetryClient.get('/test').catch((err: AllegroApiException) => err);
 
       expect(captured).toBeInstanceOf(AllegroApiException);
       expect((captured as AllegroApiException).allegroErrors).toBeUndefined();
@@ -759,11 +754,11 @@ describe('AllegroHttpClient', () => {
                   abortError.name = 'AbortError';
                   reject(abortError);
                 },
-                { once: true },
+                { once: true }
               );
             }
           });
-        },
+        }
       );
 
       // Attach declarative rejection assertions first, then drive the 30s abort under fake
@@ -877,15 +872,19 @@ describe('AllegroHttpClient', () => {
     // Build a no-retry client with controllable credentials. Skipping retries
     // keeps the bulk of the suite single-attempt — the reactive-fallback test
     // below opts into the default retry config explicitly.
-    const buildClient = (opts: {
-      expiresAt?: Date | string;
-      callback?: (connectionId: string) => Promise<{ accessToken: string; expiresAt?: Date | string }>;
-      accessToken?: string;
-    } = {}): AllegroHttpClient => {
+    const buildClient = (
+      opts: {
+        expiresAt?: Date | string;
+        callback?: (
+          connectionId: string
+        ) => Promise<{ accessToken: string; expiresAt?: Date | string }>;
+        accessToken?: string;
+      } = {}
+    ): AllegroHttpClient => {
       const tokenState = new AllegroConnectionTokenState(
         connectionId,
         { accessToken: opts.accessToken ?? 'initial-token', expiresAt: opts.expiresAt },
-        opts.callback,
+        opts.callback
       );
       return new AllegroHttpClient(connectionId, baseUrl, tokenState, {
         maxRetries: 0,
@@ -1004,7 +1003,7 @@ describe('AllegroHttpClient', () => {
       refreshCallback.mockReturnValue(
         new Promise((resolve) => {
           resolveRefresh = resolve;
-        }),
+        })
       );
       const client = buildClient({
         expiresAt: new Date(NOW + 30_000),
@@ -1062,8 +1061,8 @@ describe('AllegroHttpClient', () => {
         new AllegroConnectionTokenState(
           connectionId,
           { accessToken: 'initial-token', expiresAt: new Date(NOW + 30_000) },
-          refreshCallback,
-        ),
+          refreshCallback
+        )
       );
 
       const response = await client.get('/test');

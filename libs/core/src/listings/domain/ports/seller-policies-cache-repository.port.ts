@@ -13,7 +13,7 @@
  * @module libs/core/src/listings/domain/ports
  */
 
-import { SellerPolicies } from '@openlinker/core/listings';
+import type { SellerPolicies } from '@openlinker/core/listings';
 
 /**
  * Cached seller-policies entry. `fetchedAt` is the canonical TTL reference —

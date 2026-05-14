@@ -20,11 +20,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import {
-  IInventoryQueryService,
-  INVENTORY_QUERY_SERVICE_TOKEN,
-  InventoryItemView,
-} from '@openlinker/core/inventory';
+import type { InventoryItemView } from '@openlinker/core/inventory';
+import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';
@@ -36,7 +33,7 @@ import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-respons
 export class InventoryController {
   constructor(
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly queryService: IInventoryQueryService,
+    private readonly queryService: IInventoryQueryService
   ) {}
 
   @Get()
@@ -46,14 +43,20 @@ export class InventoryController {
     description:
       'Returns a paginated list of inventory items. Supports filtering by productId, productVariantId, and locationId.',
   })
-  @ApiResponse({ status: 200, description: 'Paginated inventory list', type: PaginatedInventoryResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated inventory list',
+    type: PaginatedInventoryResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async listInventory(@Query() query: ListInventoryQueryDto): Promise<PaginatedInventoryResponseDto> {
+  async listInventory(
+    @Query() query: ListInventoryQueryDto
+  ): Promise<PaginatedInventoryResponseDto> {
     const { productId, productVariantId, locationId, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.queryService.listInventoryItems(
       { productId, productVariantId, locationId },
-      { limit, offset },
+      { limit, offset }
     );
 
     return {
@@ -67,7 +70,11 @@ export class InventoryController {
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get inventory item by ID' })
-  @ApiResponse({ status: 200, description: 'Inventory item detail', type: InventoryItemResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Inventory item detail',
+    type: InventoryItemResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Inventory item not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getInventoryItem(@Param('id') id: string): Promise<InventoryItemResponseDto> {

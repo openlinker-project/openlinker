@@ -7,31 +7,27 @@
  * @module libs/integrations/allegro/src/application
  * @implements {IAllegroAdapterFactory}
  */
-import {
+import type {
   IAllegroAdapterFactory,
   AllegroAdapters,
 } from './interfaces/allegro-adapter.factory.interface';
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
-import { CustomerIdentityResolverPort } from '@openlinker/core/customers';
-import {
-  AllegroConnectionConfig,
-  AllegroEnvironmentValues,
-} from '../domain/types/allegro-config.types';
-import { AllegroCredentials } from '../domain/types/allegro-credentials.types';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { CustomerIdentityResolverPort } from '@openlinker/core/customers';
+import type { AllegroConnectionConfig } from '../domain/types/allegro-config.types';
+import { AllegroEnvironmentValues } from '../domain/types/allegro-config.types';
+import type { AllegroCredentials } from '../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
 import { AllegroConnectionTokenState } from '../infrastructure/http/allegro-connection-token-state';
-import {
-  AllegroOfferManagerAdapter,
-  QuantityPollConfig,
-} from '../infrastructure/adapters/allegro-offer-manager.adapter';
+import type { QuantityPollConfig } from '../infrastructure/adapters/allegro-offer-manager.adapter';
+import { AllegroOfferManagerAdapter } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-order-source.adapter';
-import { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
-import { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
+import type { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
+import type { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
 import type { CachePort } from '@openlinker/shared';
-import { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
+import type { AllegroQuantityCommandRepositoryPort } from '../domain/ports/allegro-quantity-command-repository.port';
 
 /**
  * Allegro Adapter Factory
@@ -52,7 +48,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     /** Distributed cache for category parameters (#410). Optional; missing → no caching. */
     private readonly cache?: CachePort,
     /** TTL override for the category parameters cache in seconds. Defaults to 24h. */
-    private readonly catParamsTtlSec?: number,
+    private readonly catParamsTtlSec?: number
   ) {
     void _customerIdentityResolver;
   }
@@ -100,7 +96,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     const tokenState = new AllegroConnectionTokenState(
       connection.id,
       credentials,
-      tokenRefreshCallback,
+      tokenRefreshCallback
     );
 
     // Two HTTP clients per connection — one for api.allegro.pl, one for
@@ -128,7 +124,7 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       // operator hasn't configured them yet — adapter throws
       // `OfferCreateRejectedException` on the first offer attempt.
       config.sellerDefaults,
-      storefrontBaseUrl,
+      storefrontBaseUrl
     );
     const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 

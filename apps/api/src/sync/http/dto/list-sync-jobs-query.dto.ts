@@ -9,7 +9,7 @@ import { IsEnum, IsOptional, IsUUID, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { JobOutcomeValues, JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
-import type { JobOutcome, JobStatus, JobType } from '@openlinker/core/sync';
+import { JobOutcome, JobStatus, JobType } from '@openlinker/core/sync';
 
 export class ListSyncJobsQueryDto {
   @ApiPropertyOptional({ enum: JobStatusValues, description: 'Filter by job status' })

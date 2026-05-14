@@ -6,11 +6,13 @@
  *
  * @module apps/api/src/integrations/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { AllegroOAuthService } from './allegro-oauth.service';
 import { ConnectionService } from './connection.service';
-import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '@openlinker/core/integrations';
 
 describe('AllegroOAuthService', () => {
   let service: AllegroOAuthService;
@@ -66,7 +68,7 @@ describe('AllegroOAuthService', () => {
   function spyOnLoggerError(): jest.SpiedFunction<(...args: unknown[]) => void> {
     return jest.spyOn(
       (service as unknown as { logger: { error: (...args: unknown[]) => void } }).logger,
-      'error',
+      'error'
     );
   }
 
@@ -77,7 +79,7 @@ describe('AllegroOAuthService', () => {
       expect(redisClient.setEx).toHaveBeenCalledWith(
         'allegro:oauth:completed:state-abc',
         300,
-        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' }),
+        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' })
       );
     });
 
@@ -85,7 +87,7 @@ describe('AllegroOAuthService', () => {
       redisClient.setEx.mockRejectedValue(new Error('Redis unavailable'));
 
       await expect(service.markStateCompleted('state-abc', 'conn-1', 'My Allegro')).rejects.toThrow(
-        'Redis unavailable',
+        'Redis unavailable'
       );
     });
   });
@@ -93,7 +95,7 @@ describe('AllegroOAuthService', () => {
   describe('checkCompletedState', () => {
     it('should return parsed CompletedStateData when key exists', async () => {
       redisClient.get.mockResolvedValue(
-        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' }),
+        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' })
       );
 
       const result = await service.checkCompletedState('state-abc');
@@ -121,7 +123,7 @@ describe('AllegroOAuthService', () => {
 
     it('should not delete the marker on successful read (read-only, idempotent)', async () => {
       redisClient.get.mockResolvedValue(
-        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' }),
+        JSON.stringify({ connectionId: 'conn-1', connectionName: 'My Allegro' })
       );
 
       await service.checkCompletedState('state-abc');
@@ -176,20 +178,20 @@ describe('AllegroOAuthService', () => {
         'sandbox',
         undefined,
         'My Store',
-        masterCatalogConnectionId,
+        masterCatalogConnectionId
       );
 
       expect(redisClient.setEx).toHaveBeenCalledWith(
         expect.stringMatching(/^allegro:oauth:state:/),
         600,
-        expect.stringContaining(masterCatalogConnectionId),
+        expect.stringContaining(masterCatalogConnectionId)
       );
     });
 
     it('should not include masterCatalogConnectionId in state when not provided', async () => {
       await service.generateAuthorizationUrl('cid', 'csec', 'https://example.com/cb');
 
-      const rawCall = (redisClient.setEx).mock.calls[0] as unknown[];
+      const rawCall = redisClient.setEx.mock.calls[0] as unknown[];
       const storedJson = JSON.parse(rawCall[2] as string) as Record<string, unknown>;
 
       expect(storedJson.masterCatalogConnectionId).toBeUndefined();
@@ -210,13 +212,13 @@ describe('AllegroOAuthService', () => {
           redirectUri: 'https://example.com/cb',
           environment: 'sandbox',
           masterCatalogConnectionId,
-        },
+        }
       );
 
       expect(connectionService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({ masterCatalogConnectionId }),
-        }),
+        })
       );
     });
 
@@ -231,7 +233,7 @@ describe('AllegroOAuthService', () => {
           clientSecret: 'csec',
           redirectUri: 'https://example.com/cb',
           environment: 'sandbox',
-        },
+        }
       );
 
       const createCall = (connectionService.create as jest.Mock).mock.calls[0] as unknown[];
@@ -250,7 +252,7 @@ describe('AllegroOAuthService', () => {
       } as unknown as Response);
 
       await expect(
-        service.exchangeCodeForToken('bad-code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+        service.exchangeCodeForToken('bad-code', 'cid', 'csec', 'https://example.com/cb', 'sandbox')
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -268,8 +270,8 @@ describe('AllegroOAuthService', () => {
           'cid',
           'super-secret-client-secret',
           'https://example.com/cb',
-          'sandbox',
-        ),
+          'sandbox'
+        )
       ).rejects.toThrow(InternalServerErrorException);
 
       expect(loggerError).toHaveBeenCalled();
@@ -281,7 +283,9 @@ describe('AllegroOAuthService', () => {
       // Secret safety — nothing sensitive must appear in the log line
       expect(firstArg).not.toContain('super-secret-auth-code');
       expect(firstArg).not.toContain('super-secret-client-secret');
-      expect(firstArg).not.toContain(Buffer.from('cid:super-secret-client-secret').toString('base64'));
+      expect(firstArg).not.toContain(
+        Buffer.from('cid:super-secret-client-secret').toString('base64')
+      );
     });
 
     it('should fall back to cause: unknown when cause has no code', async () => {
@@ -293,7 +297,7 @@ describe('AllegroOAuthService', () => {
       global.fetch = jest.fn().mockRejectedValue(networkError);
 
       await expect(
-        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox')
       ).rejects.toThrow(InternalServerErrorException);
 
       const firstArg = loggerError.mock.calls[0]?.[0] as string;
@@ -314,7 +318,7 @@ describe('AllegroOAuthService', () => {
       global.fetch = jest.fn().mockRejectedValue(networkError);
 
       await expect(
-        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox')
       ).rejects.toThrow(InternalServerErrorException);
 
       const firstArg = loggerError.mock.calls[0]?.[0] as string;
@@ -330,7 +334,7 @@ describe('AllegroOAuthService', () => {
       global.fetch = jest.fn().mockRejectedValue(abortError);
 
       await expect(
-        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox'),
+        service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox')
       ).rejects.toThrow(InternalServerErrorException);
 
       const firstArg = loggerError.mock.calls[0]?.[0] as string;
@@ -345,7 +349,13 @@ describe('AllegroOAuthService', () => {
       } as unknown as Response);
       global.fetch = fetchMock;
 
-      await service.exchangeCodeForToken('code', 'cid', 'csec', 'https://example.com/cb', 'sandbox');
+      await service.exchangeCodeForToken(
+        'code',
+        'cid',
+        'csec',
+        'https://example.com/cb',
+        'sandbox'
+      );
 
       const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
       expect(call?.[1].signal).toBeInstanceOf(AbortSignal);
@@ -362,7 +372,12 @@ describe('AllegroOAuthService', () => {
       global.fetch = jest.fn().mockRejectedValue(networkError);
 
       await expect(
-        service.refreshToken('super-secret-refresh-token', 'cid', 'super-secret-client-secret', 'sandbox'),
+        service.refreshToken(
+          'super-secret-refresh-token',
+          'cid',
+          'super-secret-client-secret',
+          'sandbox'
+        )
       ).rejects.toThrow(InternalServerErrorException);
 
       const firstArg = loggerError.mock.calls[0]?.[0] as string;
@@ -383,9 +398,9 @@ describe('AllegroOAuthService', () => {
       });
       global.fetch = jest.fn().mockRejectedValue(abortError);
 
-      await expect(
-        service.refreshToken('rt', 'cid', 'csec', 'production'),
-      ).rejects.toThrow(InternalServerErrorException);
+      await expect(service.refreshToken('rt', 'cid', 'csec', 'production')).rejects.toThrow(
+        InternalServerErrorException
+      );
 
       const firstArg = loggerError.mock.calls[0]?.[0] as string;
       expect(firstArg).toContain('Error refreshing token');
@@ -415,7 +430,7 @@ describe('AllegroOAuthService', () => {
       } as unknown as Response);
 
       await expect(
-        service.refreshToken('bad-refresh-token', 'cid', 'csec', 'sandbox'),
+        service.refreshToken('bad-refresh-token', 'cid', 'csec', 'sandbox')
       ).rejects.toThrow(BadRequestException);
     });
   });

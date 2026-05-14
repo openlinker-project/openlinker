@@ -7,8 +7,9 @@
  * @module libs/core/src/sync/infrastructure/persistence/repositories
  */
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Repository } from 'typeorm';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import type { Repository } from 'typeorm';
 import { SyncJobRepository } from './sync-job.repository';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
@@ -105,7 +106,7 @@ describe('SyncJobRepository', () => {
       await repo.findMany({ status: 'running' }, { limit: 10, offset: 0 });
 
       expect(ormRepo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { status: 'running' } }),
+        expect.objectContaining({ where: { status: 'running' } })
       );
     });
 
@@ -115,7 +116,7 @@ describe('SyncJobRepository', () => {
       await repo.findMany({ connectionId: 'conn-abc' }, { limit: 20, offset: 0 });
 
       expect(ormRepo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { connectionId: 'conn-abc' } }),
+        expect.objectContaining({ where: { connectionId: 'conn-abc' } })
       );
     });
 
@@ -125,7 +126,7 @@ describe('SyncJobRepository', () => {
       await repo.findMany({ jobType: 'marketplace.offers.sync' }, { limit: 20, offset: 0 });
 
       expect(ormRepo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { jobType: 'marketplace.offers.sync' } }),
+        expect.objectContaining({ where: { jobType: 'marketplace.offers.sync' } })
       );
     });
 
@@ -144,7 +145,7 @@ describe('SyncJobRepository', () => {
       await repo.findMany({}, { limit: 2, offset: 4 });
 
       expect(ormRepo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 2, skip: 4 }),
+        expect.objectContaining({ take: 2, skip: 4 })
       );
     });
   });
@@ -162,7 +163,12 @@ describe('SyncJobRepository', () => {
 
     it('should requeue a dead job to queued status atomically', async () => {
       mockQueryBuilder(1);
-      const requeuedEntity = makeOrmEntity({ id: 'dead-1', status: 'queued', attempts: 0, lastError: 'some error' });
+      const requeuedEntity = makeOrmEntity({
+        id: 'dead-1',
+        status: 'queued',
+        attempts: 0,
+        lastError: 'some error',
+      });
       ormRepo.findOne.mockResolvedValue(requeuedEntity);
 
       const result = await repo.requeueDeadJob('dead-1');

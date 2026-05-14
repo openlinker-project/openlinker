@@ -8,7 +8,7 @@
  *
  * @module libs/core/src/sync/application/services
  */
-import { BulkRetryResult, JobType } from '../../domain/types/sync-job.types';
+import type { BulkRetryResult, JobType } from '../../domain/types/sync-job.types';
 
 export interface ISyncJobBulkRetryService {
   /**

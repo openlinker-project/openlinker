@@ -10,19 +10,14 @@
  * @module libs/core/src/orders/domain/types
  */
 
-import { MarketplaceCursor } from '@openlinker/core/integrations';
+import type { MarketplaceCursor } from '@openlinker/core/integrations';
 
 /**
  * Order-feed event type values.
  *
  * NOTE: Keep this small for MVP and extend as we add more sources.
  */
-export const OrderFeedEventTypeValues = [
-  'created',
-  'updated',
-  'cancelled',
-  'paid',
-] as const;
+export const OrderFeedEventTypeValues = ['created', 'updated', 'cancelled', 'paid'] as const;
 
 export type OrderFeedEventType = (typeof OrderFeedEventTypeValues)[number];
 

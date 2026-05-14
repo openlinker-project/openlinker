@@ -7,12 +7,12 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { MasterProductSyncAllHandler } from '../master-product-sync-all.handler';
-import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { IIntegrationsService } from '@openlinker/core/integrations';
-import { ProductMasterPort } from '@openlinker/core/products';
-import { ConfigService } from '@nestjs/config';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { ProductMasterPort } from '@openlinker/core/products';
+import type { ConfigService } from '@nestjs/config';
 
 describe('MasterProductSyncAllHandler', () => {
   let handler: MasterProductSyncAllHandler;
@@ -65,7 +65,10 @@ describe('MasterProductSyncAllHandler', () => {
 
     await handler.execute(createJob('conn-1'));
 
-    expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'ProductMaster');
+    expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+      'conn-1',
+      'ProductMaster'
+    );
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
     const first = jobEnqueue.enqueueJob.mock.calls[0][0];
     expect(first.jobType).toBe('master.product.syncByExternalId');

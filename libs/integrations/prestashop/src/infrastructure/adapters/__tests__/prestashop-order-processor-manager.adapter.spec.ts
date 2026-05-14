@@ -12,20 +12,21 @@ import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.
 import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-identifier-mapping.factory';
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
-import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import { IPrestashopOpenLinkerModuleClient } from '../../http/prestashop-openlinker-module.client.interface';
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type { IPrestashopOpenLinkerModuleClient } from '../../http/prestashop-openlinker-module.client.interface';
 import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
-import { IPrestashopOrderMapper, PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
-import {
-  IdentifierMappingPort,
-  DuplicateIdentifierMappingError,
-} from '@openlinker/core/identifier-mapping';
-import { OrderCreate } from '@openlinker/core/orders';
-import { IMappingConfigService } from '@openlinker/core/mappings';
-import { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
-import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
-import { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
-import { PrestashopAddressProvisioner } from '../../provisioners/prestashop-address-provisioner';
+import type {
+  IPrestashopOrderMapper,
+  PrestashopOrder,
+} from '../../mappers/prestashop.mapper.interface';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
+import type { OrderCreate } from '@openlinker/core/orders';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
+import type { PrestashopAddressProvisioner } from '../../provisioners/prestashop-address-provisioner';
 
 /**
  * The numeric `id_carrier` returned by the OL module's discovery row in
@@ -133,19 +134,12 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     // createOrder, so they're unaffected).
     mockHttpClient.listResources = jest
       .fn()
-      .mockImplementation(
-        (resource: string, params?: { custom?: Record<string, unknown> }) => {
-          if (
-            resource === 'carriers' &&
-            params?.custom?.external_module_name === 'openlinker'
-          ) {
-            return Promise.resolve([
-              { id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' },
-            ]);
-          }
-          return Promise.resolve([]);
-        },
-      );
+      .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+        if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+          return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+        }
+        return Promise.resolve([]);
+      });
 
     adapter = new PrestashopOrderProcessorManagerAdapter(
       mockHttpClient,
@@ -156,7 +150,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       mockAddressProvisioner,
       mockCurrencyResolver,
       mockCustomerProjectionRepository,
-      mockOpenLinkerModuleClient,
+      mockOpenLinkerModuleClient
     );
   });
 
@@ -169,45 +163,47 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalVariantId = '300';
 
       // Mock customer ID resolution
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId1,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId2,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalVariantId,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
 
       // Mock order mapping
       const prestashopOrderData = {
@@ -238,10 +234,22 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       const result = await adapter.createOrder(order);
 
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Customer', 'internal-customer-123');
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-456');
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'internal-product-789');
-      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'internal-variant-789');
+      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith(
+        'Customer',
+        'internal-customer-123'
+      );
+      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith(
+        'Product',
+        'internal-product-456'
+      );
+      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith(
+        'Product',
+        'internal-product-789'
+      );
+      expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith(
+        'ProductVariant',
+        'internal-variant-789'
+      );
       // #503: cart MUST be called with the same externalCarrierId as the
       // order body. PS resolves id_carrier from the cart, ignoring the order
       // body's field — so omitting it here lands every order at id_carrier=0.
@@ -254,7 +262,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1, // currencyId
         1, // langId
-        OL_DYNAMIC_CARRIER_ID, // #516: no mapping/default → OL Dynamic carrier fallback
+        OL_DYNAMIC_CARRIER_ID // #516: no mapping/default → OL Dynamic carrier fallback
       );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         order,
@@ -265,7 +273,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1, // currencyId
         1, // langId
-        OL_DYNAMIC_CARRIER_ID, // #516: no mapping/default → OL Dynamic carrier fallback
+        OL_DYNAMIC_CARRIER_ID // #516: no mapping/default → OL Dynamic carrier fallback
       );
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
@@ -278,7 +286,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           metadata: expect.objectContaining({
             orderNumber: order.orderNumber,
           }),
-        }),
+        })
       );
       expect(result).toEqual({
         orderId: METADATA_INTERNAL_ORDER_ID,
@@ -301,7 +309,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow(
-        'Cannot provision customer: customer projection not found or email missing',
+        'Cannot provision customer: customer projection not found or email missing'
       );
     });
 
@@ -319,27 +327,29 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow(
-        'Cannot provision customer: customer projection not found or email missing',
+        'Cannot provision customer: customer projection not found or email missing'
       );
     });
 
     it('should throw error when product ID not found in PrestaShop', async () => {
       const order = createTestOrder();
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: '42',
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([]); // Product not found
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: '42',
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([]); // Product not found
+          }
+          return Promise.resolve([]);
+        });
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow('Product not found in PrestaShop');
@@ -351,39 +361,41 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalProductId1 = '100';
       const externalProductId2 = '200';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId1,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId2,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([]); // Variant not found - should use 0
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([]); // Variant not found - should use 0
+          }
+          return Promise.resolve([]);
+        });
 
       const prestashopOrderData = {
         id_customer: externalCustomerId,
@@ -417,45 +429,47 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalProductId2 = '200';
       const externalVariantId = '300';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId1,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId2,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalVariantId,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
 
       const prestashopOrderData = {
         id_customer: externalCustomerId,
@@ -471,7 +485,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       // Mock cart creation to succeed
       const createdCart = { id: '123' };
       // Mock order creation to fail
-      const apiError = new PrestashopApiException('Order creation failed', 400, 'Invalid order data');
+      const apiError = new PrestashopApiException(
+        'Order creation failed',
+        400,
+        'Invalid order data'
+      );
       mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
         if (resource === 'carts') {
           return Promise.resolve(createdCart);
@@ -493,45 +511,47 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalProductId2 = '200';
       const externalVariantId = '300';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId1,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId2,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalVariantId,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
 
       const prestashopOrderData = {
         id_customer: externalCustomerId,
@@ -564,7 +584,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             orderNumber: order.orderNumber,
             createdAt: expect.any(String),
           }),
-        }),
+        })
       );
     });
 
@@ -575,45 +595,47 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalProductId2 = '200';
       const externalVariantId = '300';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId1,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalProductId2,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalVariantId,
-              entityType: 'Product',
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
 
       const prestashopOrderData = {
         id_customer: externalCustomerId,
@@ -645,7 +667,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           metadata: expect.objectContaining({
             orderNumber: 'PS-ORDER-999',
           }),
-        }),
+        })
       );
     });
 
@@ -680,7 +702,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         }
         if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
           return Promise.resolve([
-            { connectionId: connection.id, externalId: externalVariantId, entityType: 'ProductVariant' },
+            {
+              connectionId: connection.id,
+              externalId: externalVariantId,
+              entityType: 'ProductVariant',
+            },
           ]);
         }
         return Promise.resolve([]);
@@ -694,7 +720,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           return resolveExternalIds(entityType, internalId);
         });
 
-      const prestashopOrderData = { id_customer: externalCustomerId, current_state: 1, associations: { order_rows: { order_row: [] } } };
+      const prestashopOrderData = {
+        id_customer: externalCustomerId,
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      };
       mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
       const createdCart = { id: '123' };
@@ -728,20 +758,50 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const externalProductId2 = '200';
       const externalVariantId = '300';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType: string, internalId: string) => {
-        if (entityType === 'Order') return Promise.resolve([]);
-        if (entityType === 'Customer' && internalId === 'internal-customer-123')
-          return Promise.resolve([{ connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' }]);
-        if (entityType === 'Product' && internalId === 'internal-product-456')
-          return Promise.resolve([{ connectionId: connection.id, externalId: externalProductId1, entityType: 'Product' }]);
-        if (entityType === 'Product' && internalId === 'internal-product-789')
-          return Promise.resolve([{ connectionId: connection.id, externalId: externalProductId2, entityType: 'Product' }]);
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789')
-          return Promise.resolve([{ connectionId: connection.id, externalId: externalVariantId, entityType: 'ProductVariant' }]);
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string, internalId: string) => {
+          if (entityType === 'Order') return Promise.resolve([]);
+          if (entityType === 'Customer' && internalId === 'internal-customer-123')
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          if (entityType === 'Product' && internalId === 'internal-product-456')
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          if (entityType === 'Product' && internalId === 'internal-product-789')
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789')
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'ProductVariant',
+              },
+            ]);
+          return Promise.resolve([]);
+        });
 
-      const prestashopOrderData = { id_customer: externalCustomerId, current_state: 1, associations: { order_rows: { order_row: [] } } };
+      const prestashopOrderData = {
+        id_customer: externalCustomerId,
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      };
       mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
       const createdCart = { id: '123' };
@@ -752,9 +812,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         .mockResolvedValueOnce(createdOrder);
 
       // Simulate concurrent-insert race: createMapping throws DuplicateIdentifierMappingError
-      mockIdentifierMapping.createMapping = jest.fn().mockRejectedValue(
-        new DuplicateIdentifierMappingError('Order', '999', 'prestashop', connection.id),
-      );
+      mockIdentifierMapping.createMapping = jest
+        .fn()
+        .mockRejectedValue(
+          new DuplicateIdentifierMappingError('Order', '999', 'prestashop', connection.id)
+        );
 
       const result = await adapter.createOrder(order);
 
@@ -769,19 +831,21 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const order = createTestOrder();
       const externalCustomerId = '42';
 
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalCustomerId,
-              entityType: 'Customer',
-            },
-          ]);
-        }
-        // Simulate error during product ID resolution
-        throw new Error('Database connection failed');
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          // Simulate error during product ID resolution
+          throw new Error('Database connection failed');
+        });
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
@@ -799,29 +863,35 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     });
 
     const wireSuccessfulMappings = (externalCustomerId: string): void => {
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType, internalId) => {
-        if (entityType === 'Customer') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: '100', entityType: 'Product' },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: '200', entityType: 'Product' },
-          ]);
-        }
-        if (entityType === 'ProductVariant') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
-          ]);
-        }
-        return Promise.resolve([]);
-      });
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '200', entityType: 'Product' },
+            ]);
+          }
+          if (entityType === 'ProductVariant') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
 
       mockOrderMapper.mapOrderCreate.mockReturnValue({
         id_customer: externalCustomerId,
@@ -851,7 +921,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
@@ -868,7 +938,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        4,
+        4
       );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         expect.anything(),
@@ -879,7 +949,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        4,
+        4
       );
       expect(resolveCarrierMapping).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, ALLEGRO_METHOD_ID);
     });
@@ -903,7 +973,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
@@ -917,7 +987,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        7,
+        7
       );
     });
 
@@ -944,7 +1014,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
@@ -958,7 +1028,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        OL_DYNAMIC_CARRIER_ID,
+        OL_DYNAMIC_CARRIER_ID
       );
       expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
         expect.anything(),
@@ -969,7 +1039,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        OL_DYNAMIC_CARRIER_ID,
+        OL_DYNAMIC_CARRIER_ID
       );
     });
 
@@ -988,7 +1058,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
@@ -1002,7 +1072,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        OL_DYNAMIC_CARRIER_ID,
+        OL_DYNAMIC_CARRIER_ID
       );
     });
   });
@@ -1026,26 +1096,24 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     });
 
     const wireSuccessfulCreatePath = (): void => {
-      mockIdentifierMapping.getExternalIds = jest
-        .fn()
-        .mockImplementation((entityType: string) => {
-          if (entityType === 'Customer') {
-            return Promise.resolve([
-              { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
-            ]);
-          }
-          if (entityType === 'Product') {
-            return Promise.resolve([
-              { connectionId: connection.id, externalId: '100', entityType: 'Product' },
-            ]);
-          }
-          if (entityType === 'ProductVariant') {
-            return Promise.resolve([
-              { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
-            ]);
-          }
-          return Promise.resolve([]);
-        });
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType: string) => {
+        if (entityType === 'Customer') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
+          ]);
+        }
+        if (entityType === 'Product') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'ProductVariant') {
+          return Promise.resolve([
+            { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
 
       mockOrderMapper.mapOrderCreate.mockReturnValue({
         id_customer: '42',
@@ -1077,7 +1145,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterUnderTest.createOrder(buildOrderForSidecar(12.5));
@@ -1089,7 +1157,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           amountTaxExcl: 12.5,
           amountTaxIncl: 12.5,
           source: expect.stringContaining(`connection:${ALLEGRO_CONNECTION_ID}`),
-        }),
+        })
       );
     });
 
@@ -1108,7 +1176,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterUnderTest.createOrder(buildOrderForSidecar());
@@ -1119,7 +1187,8 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     it('does NOT write the sidecar when defaultCarrierId resolves to a static carrier', async () => {
       wireSuccessfulCreatePath();
       const connWithStaticDefault = createTestConnection();
-      (connWithStaticDefault.config as Record<string, unknown>).defaultCarrierId = STATIC_CARRIER_ID;
+      (connWithStaticDefault.config as Record<string, unknown>).defaultCarrierId =
+        STATIC_CARRIER_ID;
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
@@ -1133,7 +1202,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
-        mockMappingConfig,
+        mockMappingConfig
       );
 
       await adapterUnderTest.createOrder(buildOrderForSidecar());
@@ -1154,7 +1223,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           idCart: 123,
           amountTaxExcl: 8.0,
           amountTaxIncl: 8.0,
-        }),
+        })
       );
     });
 
@@ -1164,7 +1233,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         connection.id,
         123,
         500,
-        'persist-failed',
+        'persist-failed'
       );
       mockOpenLinkerModuleClient.writeCartShipping.mockRejectedValueOnce(sidecarError);
 
@@ -1172,7 +1241,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       // create PrestaShop order: …"); the underlying reason is preserved in
       // the message.
       await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
-        PrestashopApiException,
+        PrestashopApiException
       );
 
       // createResource was called once (cart), never twice (cart + order).
@@ -1189,20 +1258,17 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         .spyOn((adapter as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
         .mockImplementation(() => undefined);
 
-      mockHttpClient.listResources = jest.fn().mockImplementation(
-        (resource: string, params?: { custom?: Record<string, unknown> }) => {
-          if (
-            resource === 'carriers' &&
-            params?.custom?.external_module_name === 'openlinker'
-          ) {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
             return Promise.resolve([
               { id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' },
               { id: OL_DYNAMIC_CARRIER_ID + 1, active: '1', deleted: '0' },
             ]);
           }
           return Promise.resolve([]);
-        },
-      );
+        });
 
       await adapter.createOrder(buildOrderForSidecar(8.0));
 
@@ -1216,12 +1282,12 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         undefined,
         1,
         1,
-        OL_DYNAMIC_CARRIER_ID,
+        OL_DYNAMIC_CARRIER_ID
       );
       expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
       // Operator-visible warn naming the duplicate set.
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Multiple live OL Dynamic carrier rows'),
+        expect.stringContaining('Multiple live OL Dynamic carrier rows')
       );
       warnSpy.mockRestore();
     });
@@ -1231,20 +1297,17 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       // (operator BO edit, schema drift). Adapter must NOT propagate
       // id_carrier=NaN into the cart mapper — treat as missing instead.
       wireSuccessfulCreatePath();
-      mockHttpClient.listResources = jest.fn().mockImplementation(
-        (resource: string, params?: { custom?: Record<string, unknown> }) => {
-          if (
-            resource === 'carriers' &&
-            params?.custom?.external_module_name === 'openlinker'
-          ) {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
             return Promise.resolve([{ id: 'not-a-number', active: '1', deleted: '0' }]);
           }
           return Promise.resolve([]);
-        },
-      );
+        });
 
       await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
-        PrestashopApiException,
+        PrestashopApiException
       );
       expect(mockHttpClient.createResource).not.toHaveBeenCalled();
       expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
@@ -1254,20 +1317,17 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       wireSuccessfulCreatePath();
       // Override the discovery default with an empty result — operator
       // hasn't installed/activated the OL module.
-      mockHttpClient.listResources = jest.fn().mockImplementation(
-        (resource: string, params?: { custom?: Record<string, unknown> }) => {
-          if (
-            resource === 'carriers' &&
-            params?.custom?.external_module_name === 'openlinker'
-          ) {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
             return Promise.resolve([]);
           }
           return Promise.resolve([]);
-        },
-      );
+        });
 
       await expect(adapter.createOrder(buildOrderForSidecar())).rejects.toThrow(
-        PrestashopApiException,
+        PrestashopApiException
       );
 
       // No cart, no order, no sidecar — discovery threw before any write.
@@ -1334,7 +1394,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockHttpClient,
         expect.any(Object), // connectionConfig
         mockCustomerProjectionRepository,
-        order.pickupPoint,
+        order.pickupPoint
       );
     });
   });
@@ -1355,7 +1415,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           'carriers',
           { custom: { active: '1', deleted: '0' } },
           1000,
-          0,
+          0
         );
         expect(result).toEqual([
           { value: '1', label: 'Click and collect' },
@@ -1451,7 +1511,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           'order_states',
           { custom: { deleted: '0' } },
           1000,
-          0,
+          0
         );
         expect(result).toEqual([
           { value: '1', label: 'Awaiting check payment' },
@@ -1462,7 +1522,9 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     });
 
     describe('listPaymentMethods (#483)', () => {
-      function adapterWithOverrides(overrides: string[] | undefined): PrestashopOrderProcessorManagerAdapter {
+      function adapterWithOverrides(
+        overrides: string[] | undefined
+      ): PrestashopOrderProcessorManagerAdapter {
         const baseConfig = connection.config as Record<string, unknown>;
         const cfg: Record<string, unknown> =
           overrides === undefined
@@ -1480,7 +1542,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           mockAddressProvisioner,
           mockCurrencyResolver,
           mockCustomerProjectionRepository,
-          mockOpenLinkerModuleClient,
+          mockOpenLinkerModuleClient
         );
       }
 
@@ -1497,7 +1559,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
             { value: 'ps_wirepayment', label: 'Bank wire transfer (ps_wirepayment)' },
             { value: 'payu', label: 'PayU' },
             { value: 'paypal', label: 'PayPal' },
-          ]),
+          ])
         );
         // All values are unique.
         const values = result.map((m) => m.value);
@@ -1544,4 +1606,3 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     });
   });
 });
-

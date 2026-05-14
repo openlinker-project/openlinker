@@ -13,15 +13,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CategoryMappingOrmEntity } from '../entities/category-mapping.orm-entity';
-import { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
+import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
 import { CategoryMapping } from '../../../domain/entities/category-mapping.entity';
-import { CategoryMappingInput } from '../../../domain/types/mapping.types';
+import type { CategoryMappingInput } from '../../../domain/types/mapping.types';
 
 @Injectable()
 export class CategoryMappingRepository implements CategoryMappingRepositoryPort {
   constructor(
     @InjectRepository(CategoryMappingOrmEntity)
-    private readonly repo: Repository<CategoryMappingOrmEntity>,
+    private readonly repo: Repository<CategoryMappingOrmEntity>
   ) {}
 
   async findByConnectionId(connectionId: string): Promise<CategoryMapping[]> {
@@ -31,7 +31,7 @@ export class CategoryMappingRepository implements CategoryMappingRepositoryPort 
 
   async findByPrestashopCategoryId(
     connectionId: string,
-    prestashopCategoryId: string,
+    prestashopCategoryId: string
   ): Promise<CategoryMapping | null> {
     const entity = await this.repo.findOne({
       where: { connectionId, prestashopCategoryId },
@@ -49,7 +49,7 @@ export class CategoryMappingRepository implements CategoryMappingRepositoryPort 
         allegroCategoryName: input.allegroCategoryName,
         allegroCategoryPath: input.allegroCategoryPath ?? null,
       },
-      ['connectionId', 'prestashopCategoryId'],
+      ['connectionId', 'prestashopCategoryId']
     );
 
     // Fetch the upserted entity to return with generated/updated fields
@@ -70,7 +70,7 @@ export class CategoryMappingRepository implements CategoryMappingRepositoryPort 
       entity.prestashopCategoryId,
       entity.allegroCategoryId,
       entity.allegroCategoryName,
-      entity.allegroCategoryPath,
+      entity.allegroCategoryPath
     );
   }
 }

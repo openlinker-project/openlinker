@@ -7,7 +7,7 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { IOfferStatusPollService } from '@openlinker/core/listings';
 
 import { MarketplaceOfferPollCreationStatusHandler } from '../marketplace-offer-poll-creation-status.handler';
@@ -89,7 +89,7 @@ describe('MarketplaceOfferPollCreationStatusHandler', () => {
     [{ ...validPayload, pollAttempt: 1.5 }, 'pollAttempt'],
   ])('rejects malformed payload (%p)', async (badPayload, msgFragment) => {
     await expect(handler.execute(createJob(badPayload as Record<string, unknown>))).rejects.toThrow(
-      msgFragment,
+      msgFragment
     );
     expect(offerStatusPoll.pollOnce).not.toHaveBeenCalled();
   });

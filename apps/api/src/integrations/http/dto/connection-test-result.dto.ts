@@ -7,7 +7,7 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConnectionTestResult } from '@openlinker/core/integrations';
+import type { ConnectionTestResult } from '@openlinker/core/integrations';
 
 export class ConnectionTestResultDto {
   @ApiProperty({ example: true })

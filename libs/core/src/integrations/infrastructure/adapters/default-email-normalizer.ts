@@ -11,7 +11,7 @@
  * @see {@link EmailNormalizerPort} for the port interface
  */
 import { normalizeEmail } from '@openlinker/shared/config';
-import { EmailNormalizerPort } from '../../domain/ports/email-normalizer.port';
+import type { EmailNormalizerPort } from '../../domain/ports/email-normalizer.port';
 
 export const DEFAULT_EMAIL_NORMALIZER: EmailNormalizerPort = {
   normalize(email: string): string {

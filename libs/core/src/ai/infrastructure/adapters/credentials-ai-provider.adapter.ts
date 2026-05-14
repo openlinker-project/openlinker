@@ -27,10 +27,8 @@ import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   CredentialNotFoundException,
 } from '@openlinker/core/integrations';
-import {
-  AiProviderCredentialsPort,
-  aiProviderCredentialsRef,
-} from '../../domain/ports/ai-provider-credentials.port';
+import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
+import { aiProviderCredentialsRef } from '../../domain/ports/ai-provider-credentials.port';
 import { AiProviderValues, type AiProvider } from '../../domain/types/ai-completion.types';
 import {
   ENV_VAR_BY_PROVIDER,
@@ -57,7 +55,7 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
     private readonly crypto: CryptoService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async getApiKey(provider: AiProvider): Promise<string> {
@@ -89,7 +87,7 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
     throw new AiProviderKeyMissingError(
       `No API key configured for AI provider '${provider}'. ` +
         `Set one via PUT /ai-provider-settings/keys/${provider} or the ${ENV_VAR_BY_PROVIDER[provider] ?? 'provider env var'} ` +
-        `environment variable.`,
+        `environment variable.`
     );
   }
 
@@ -129,14 +127,12 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
       const credential = await this.credentialRepository.getByRef(ref);
       const ciphertext = credential.credentialsJson?.ciphertext;
       if (typeof ciphertext !== 'string') {
-        this.logger.error(
-          `AI provider credential ${ref} is missing a ciphertext field`,
-        );
+        this.logger.error(`AI provider credential ${ref} is missing a ciphertext field`);
         return null;
       }
       if (!credential.encrypted) {
         this.logger.warn(
-          `AI provider credential ${ref} is not marked encrypted — returning raw value`,
+          `AI provider credential ${ref} is not marked encrypted — returning raw value`
         );
         return ciphertext;
       }
@@ -163,7 +159,7 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
       const envName = ENV_VAR_BY_PROVIDER[provider];
       this.logger.warn(
         `AI provider key for '${provider}' resolved from ${envName} env var. ` +
-          `This fallback is deprecated — store the key encrypted via PUT /ai-provider-settings/keys/${provider} to silence this warning.`,
+          `This fallback is deprecated — store the key encrypted via PUT /ai-provider-settings/keys/${provider} to silence this warning.`
       );
     }
     return value;

@@ -10,7 +10,8 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { User, UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
+import type { User } from '@openlinker/core/users';
+import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
 
 @Injectable()
@@ -18,7 +19,7 @@ export class AuthService {
   constructor(
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepository: UserRepositoryPort,
-    private readonly jwtService: JwtService,
+    private readonly jwtService: JwtService
   ) {}
 
   // Dummy hash used when user is not found to keep response time constant and

@@ -9,8 +9,8 @@
  * @module libs/core/src/sync/domain/ports
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
-import { SyncJob } from '../entities/sync-job.entity';
-import {
+import type { SyncJob } from '../entities/sync-job.entity';
+import type {
   JobOutcome,
   SyncJobFilters,
   SyncJobPagination,
@@ -43,8 +43,19 @@ export interface SyncJobRepositoryPort {
    * @returns Created or existing sync job domain entity
    */
   createIfNotExistsByIdempotencyKey(
-    job: Omit<SyncJob, 'id' | 'status' | 'attempts' | 'nextRunAt' | 'lockedAt' | 'lockedBy' | 'lastError' | 'createdAt' | 'updatedAt'>,
-    options?: { runAfter?: Date },
+    job: Omit<
+      SyncJob,
+      | 'id'
+      | 'status'
+      | 'attempts'
+      | 'nextRunAt'
+      | 'lockedAt'
+      | 'lockedBy'
+      | 'lastError'
+      | 'createdAt'
+      | 'updatedAt'
+    >,
+    options?: { runAfter?: Date }
   ): Promise<SyncJob>;
 
   /**
@@ -151,7 +162,7 @@ export interface SyncJobRepositoryPort {
    */
   findGroupedByStatus(
     filters: SyncJobGroupFilters,
-    maxGroups: number,
+    maxGroups: number
   ): Promise<SyncJobGroupsResult>;
 
   /**
@@ -170,7 +181,6 @@ export interface SyncJobRepositoryPort {
   requeueDeadJobsInGroup(
     connectionId: string,
     jobType: string,
-    maxBatchSize: number,
+    maxBatchSize: number
   ): Promise<BulkRetryResult>;
 }
-

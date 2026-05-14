@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/application/interfaces
  */
-import { ConnectionCreate } from '@openlinker/core/identifier-mapping';
+import type { ConnectionCreate } from '@openlinker/core/identifier-mapping';
 
 /**
  * Connection create input accepted by the API service.

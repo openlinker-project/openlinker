@@ -29,12 +29,11 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { PromptTemplate, PromptTemplateChannel } from '@openlinker/core/ai';
 import {
   CannotArchivePublishedTemplateException,
   IPromptTemplateService,
   PROMPT_TEMPLATE_SERVICE_TOKEN,
-  PromptTemplate,
-  PromptTemplateChannel,
   PromptTemplateNotFoundException,
   PromptTemplateRenderException,
   PromptTemplateStateException,
@@ -57,7 +56,7 @@ import { UpdatePromptTemplateDto } from './dto/update-prompt-template.dto';
 export class PromptTemplatesController {
   constructor(
     @Inject(PROMPT_TEMPLATE_SERVICE_TOKEN)
-    private readonly service: IPromptTemplateService,
+    private readonly service: IPromptTemplateService
   ) {}
 
   @Roles('admin')
@@ -66,7 +65,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: [PromptTemplateSummaryResponseDto] })
   async list(
     @Query('key') key?: string,
-    @Query('channel') channel?: string,
+    @Query('channel') channel?: string
   ): Promise<PromptTemplateSummaryResponseDto[]> {
     const summaries = await this.service.listLatestByKey({
       key: key ?? undefined,
@@ -81,7 +80,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: PromptTemplateResponseDto })
   async getLatestPublished(
     @Query('key') key: string,
-    @Query('channel') channel?: string,
+    @Query('channel') channel?: string
   ): Promise<PromptTemplateResponseDto> {
     if (!key || key.trim() === '') {
       throw new BadRequestException('`key` query parameter is required');
@@ -89,12 +88,11 @@ export class PromptTemplatesController {
     // Does not use `withDomainExceptionMapping` because the service returns
     // `null` (legitimate "no published version yet" state) rather than
     // throwing. Translating null → 404 happens inline on this single endpoint.
-    const template = await this.service.getLatestPublished(
-      key,
-      this.parseChannelStrict(channel),
-    );
+    const template = await this.service.getLatestPublished(key, this.parseChannelStrict(channel));
     if (template === null) {
-      throw new NotFoundException(`No published template for key=${key}, channel=${channel ?? 'master'}`);
+      throw new NotFoundException(
+        `No published template for key=${key}, channel=${channel ?? 'master'}`
+      );
     }
     return PromptTemplateResponseDto.fromDomain(template);
   }
@@ -105,7 +103,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: [PromptTemplateResponseDto] })
   async getVersions(
     @Query('key') key: string,
-    @Query('channel') channel?: string,
+    @Query('channel') channel?: string
   ): Promise<PromptTemplateResponseDto[]> {
     if (!key || key.trim() === '') {
       throw new BadRequestException('`key` query parameter is required');
@@ -118,9 +116,7 @@ export class PromptTemplatesController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a prompt template by id' })
   @ApiResponse({ status: 200, type: PromptTemplateResponseDto })
-  async getById(
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ): Promise<PromptTemplateResponseDto> {
+  async getById(@Param('id', new ParseUUIDPipe()) id: string): Promise<PromptTemplateResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const template = await this.service.getById(id);
       return PromptTemplateResponseDto.fromDomain(template);
@@ -134,7 +130,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 201, type: PromptTemplateResponseDto })
   async create(
     @Body() dto: CreatePromptTemplateDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<PromptTemplateResponseDto> {
     const created = await this.service.createDraft({
       key: dto.key,
@@ -153,7 +149,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: PromptTemplateResponseDto })
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() dto: UpdatePromptTemplateDto,
+    @Body() dto: UpdatePromptTemplateDto
   ): Promise<PromptTemplateResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const updated = await this.service.updateDraft(id, {
@@ -172,7 +168,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: PromptTemplateResponseDto })
   async publish(
     @Param('id', new ParseUUIDPipe()) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<PromptTemplateResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const published = await this.service.publish(id, user.username);
@@ -199,7 +195,7 @@ export class PromptTemplatesController {
   async archive(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: ArchivePromptTemplateDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<PromptTemplateResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const archived = await this.service.archive(id, {
@@ -217,7 +213,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 201, type: PromptTemplateResponseDto })
   async revert(
     @Body() dto: RevertPromptTemplateDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<PromptTemplateResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const draft = await this.service.revertTo({
@@ -237,7 +233,7 @@ export class PromptTemplatesController {
   @ApiResponse({ status: 200, type: RenderedPromptResponseDto })
   async render(
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() dto: RenderPromptTemplateDto,
+    @Body() dto: RenderPromptTemplateDto
   ): Promise<RenderedPromptResponseDto> {
     return this.withDomainExceptionMapping(async () => {
       const rendered = await this.service.renderById(id, dto.values);

@@ -14,7 +14,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { OrderSourcePort } from '@openlinker/core/orders';
+import type { OrderSourcePort } from '@openlinker/core/orders';
 import {
   ConnectionCursorRepositoryPort,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
@@ -34,7 +34,7 @@ import {
   ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
 import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
-import {
+import type {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
@@ -42,7 +42,7 @@ import {
 import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
-import { Order } from '../../domain/types/order.types';
+import type { Order } from '../../domain/types/order.types';
 import { Logger } from '@openlinker/shared/logging';
 import { OrderItemRefResolverService } from './order-item-ref-resolver.service';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
@@ -73,12 +73,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
-    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
+    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService
   ) {}
 
   async ingestOrders(
     connectionId: string,
-    options: OrderIngestionOptions,
+    options: OrderIngestionOptions
   ): Promise<OrderIngestionResult> {
     const lockKey = `marketplace:orders:poll:${connectionId}`;
     const token = await this.lock.acquire(lockKey, this.LOCK_TTL_MS);
@@ -97,8 +97,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       const { cursorKey, limit, eventTypes } = options;
       const fromCursor = await this.cursorRepository.get(connectionId, cursorKey);
 
-      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(connectionId,
-        'OrderSource',
+      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource'
       );
 
       const feed = await orderSource.listOrderFeed({
@@ -134,7 +135,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (nextCursor && nextCursor.trim() !== '') {
         if (fromCursor && this.isCursorRegression(fromCursor, nextCursor)) {
           this.logger.warn(
-            `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`,
+            `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
           return {
             fetched: feed.items.length,
@@ -174,10 +175,11 @@ export class OrderIngestionService implements IOrderIngestionService {
   async syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
-    sourceEventId?: string,
+    sourceEventId?: string
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
-    const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(connectionId,
-      'OrderSource',
+    const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+      connectionId,
+      'OrderSource'
     );
 
     const incoming = await orderSource.getOrder({ externalOrderId });
@@ -186,10 +188,14 @@ export class OrderIngestionService implements IOrderIngestionService {
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
       'Order',
       incoming.externalOrderId,
-      connectionId,
+      connectionId
     );
 
-    const internalCustomerId = await this.resolveCustomerId(incoming, connectionId, internalOrderId);
+    const internalCustomerId = await this.resolveCustomerId(
+      incoming,
+      connectionId,
+      internalOrderId
+    );
 
     // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
     await this.orderRecordService.persistIncomingSnapshot(
@@ -197,7 +203,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       internalOrderId,
       internalCustomerId ?? null,
       connectionId,
-      sourceEventId ?? null,
+      sourceEventId ?? null
     );
 
     // Step 3: attempt item resolution (non-throwing)
@@ -229,12 +235,17 @@ export class OrderIngestionService implements IOrderIngestionService {
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },
-        first.reason,
+        first.reason
       );
     }
 
     // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
-    const order = this.buildUnifiedOrder(incoming, internalOrderId, internalCustomerId, resolvedItems);
+    const order = this.buildUnifiedOrder(
+      incoming,
+      internalOrderId,
+      internalCustomerId,
+      resolvedItems
+    );
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
@@ -245,12 +256,12 @@ export class OrderIngestionService implements IOrderIngestionService {
         await this.customerProjectionUpdater.updateProjectionsForOrder(
           order,
           internalCustomerId,
-          connectionId,
+          connectionId
         );
       } catch (error) {
         this.logger.warn(
           `Failed to update customer projections for order ${order.id} (customer: ${internalCustomerId}, connection: ${connectionId}): ${(error as Error).message}`,
-          error,
+          error
         );
       }
     }
@@ -265,21 +276,29 @@ export class OrderIngestionService implements IOrderIngestionService {
     const settlements = await Promise.allSettled(
       results.map((result) => {
         if (result.status === 'success') {
-          return this.orderRecordService.updateSyncStatus(order.id, result.destinationConnectionId, {
-            destinationConnectionId: result.destinationConnectionId,
-            status: 'synced',
-            syncedAt: new Date(),
-            externalOrderId: result.orderRef.orderId,
-            externalOrderNumber: result.orderRef.orderNumber,
-          });
+          return this.orderRecordService.updateSyncStatus(
+            order.id,
+            result.destinationConnectionId,
+            {
+              destinationConnectionId: result.destinationConnectionId,
+              status: 'synced',
+              syncedAt: new Date(),
+              externalOrderId: result.orderRef.orderId,
+              externalOrderNumber: result.orderRef.orderNumber,
+            }
+          );
         } else {
-          return this.orderRecordService.updateSyncStatus(order.id, result.destinationConnectionId, {
-            destinationConnectionId: result.destinationConnectionId,
-            status: 'failed',
-            error: result.error.message,
-          });
+          return this.orderRecordService.updateSyncStatus(
+            order.id,
+            result.destinationConnectionId,
+            {
+              destinationConnectionId: result.destinationConnectionId,
+              status: 'failed',
+              error: result.error.message,
+            }
+          );
         }
-      }),
+      })
     );
     for (const settlement of settlements) {
       if (settlement.status === 'rejected') {
@@ -293,7 +312,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async resolveCustomerId(
     incoming: IncomingOrder,
     connectionId: string,
-    internalOrderId: string,
+    internalOrderId: string
   ): Promise<string | undefined> {
     if (!incoming.customerExternalId) {
       return undefined;
@@ -310,7 +329,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       'Customer',
       incoming.customerExternalId,
       connectionId,
-      { parentEntityType: 'Order', parentInternalId: internalOrderId },
+      { parentEntityType: 'Order', parentInternalId: internalOrderId }
     );
   }
 
@@ -318,7 +337,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     incoming: IncomingOrder,
     internalOrderId: string,
     internalCustomerId: string | undefined,
-    resolvedItems: Order['items'],
+    resolvedItems: Order['items']
   ): Order {
     return {
       id: internalOrderId,
@@ -336,4 +355,3 @@ export class OrderIngestionService implements IOrderIngestionService {
     };
   }
 }
-

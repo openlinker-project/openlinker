@@ -8,6 +8,7 @@
  *
  * @module apps/api/src/listings/http/dto
  */
+import type { ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
 import {
   IsArray,
   IsBoolean,
@@ -26,8 +27,6 @@ import {
   ValidateIf,
   ValidateNested,
   ValidatorConstraint,
-  ValidatorConstraintInterface,
-  ValidationArguments,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -48,7 +47,9 @@ class PlatformParamsSizeValidator implements ValidatorConstraintInterface {
     if (value === undefined || value === null) return true;
     if (typeof value !== 'object') return false;
     try {
-      return Buffer.byteLength(JSON.stringify(value), 'utf8') <= PlatformParamsSizeValidator.MAX_BYTES;
+      return (
+        Buffer.byteLength(JSON.stringify(value), 'utf8') <= PlatformParamsSizeValidator.MAX_BYTES
+      );
     } catch {
       return false;
     }
@@ -98,7 +99,8 @@ export class CreateOfferOverridesDto {
     nullable: true,
     isArray: true,
     type: String,
-    description: 'Image URLs in display order. `null` means "no override". Each entry must be a valid URL.',
+    description:
+      'Image URLs in display order. `null` means "no override". Each entry must be a valid URL.',
   })
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)

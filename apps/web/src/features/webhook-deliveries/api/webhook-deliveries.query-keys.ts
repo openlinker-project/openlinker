@@ -1,7 +1,4 @@
-import type {
-  WebhookDeliveryFilters,
-  WebhookDeliveryPagination,
-} from './webhook-deliveries.types';
+import type { WebhookDeliveryFilters, WebhookDeliveryPagination } from './webhook-deliveries.types';
 
 export const webhookDeliveriesQueryKeys = {
   all: ['webhook-deliveries'] as const,

@@ -26,25 +26,37 @@ import {
   MaxFileSizeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
+import {
+  IAllegroOAuthService,
+  ALLEGRO_OAUTH_SERVICE_TOKEN,
+} from '../application/interfaces/allegro-oauth.service.interface';
 import { AllegroOAuthConnectDto } from './dto/allegro-oauth-connect.dto';
 import { AllegroOAuthCallbackQueryDto } from './dto/allegro-oauth-callback-query.dto';
-import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  ConnectionCursorRepositoryPort,
+  CONNECTION_CURSOR_REPOSITORY_TOKEN,
+} from '@openlinker/core/sync';
+import type { AllegroQuantityCommand } from '@openlinker/integrations-allegro';
 import {
   AllegroQuantityCommandRepositoryPort,
   ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
-  AllegroQuantityCommand,
 } from '@openlinker/integrations-allegro';
 import { AllegroQuantityCommandResponseDto } from './dto/allegro-quantity-command-response.dto';
 import { AllegroCommandsQueryDto } from './dto/allegro-commands-query.dto';
 import { Logger } from '@openlinker/shared/logging';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   type OfferManagerPort,
   type ResponsibleProducerEntry,
@@ -70,7 +82,7 @@ export class AllegroController {
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
     private readonly commandRepository: AllegroQuantityCommandRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService,
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   @Roles('admin')
@@ -86,7 +98,8 @@ export class AllegroController {
       properties: {
         authorizationUrl: {
           type: 'string',
-          example: 'https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?client_id=...&response_type=code&redirect_uri=...&state=...',
+          example:
+            'https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?client_id=...&response_type=code&redirect_uri=...&state=...',
         },
         state: {
           type: 'string',
@@ -101,7 +114,9 @@ export class AllegroController {
     authorizationUrl: string;
     state: string;
   }> {
-    this.logger.log(`Initiating OAuth flow for Allegro (environment: ${dto.environment || 'sandbox'})`);
+    this.logger.log(
+      `Initiating OAuth flow for Allegro (environment: ${dto.environment || 'sandbox'})`
+    );
 
     // Store clientSecret in state temporarily during OAuth flow
     // After OAuth completes, credentials are stored in the database
@@ -112,7 +127,7 @@ export class AllegroController {
       dto.environment || 'sandbox',
       dto.state,
       dto.connectionName,
-      dto.masterCatalogConnectionId,
+      dto.masterCatalogConnectionId
     );
 
     return result;
@@ -122,23 +137,31 @@ export class AllegroController {
   @Get('oauth/callback')
   @ApiOperation({ summary: 'Handle Allegro OAuth callback' })
   @ApiQuery({ name: 'code', description: 'OAuth authorization code', required: true })
-  @ApiQuery({ name: 'state', description: 'OAuth state parameter (required for CSRF protection)', required: false })
+  @ApiQuery({
+    name: 'state',
+    description: 'OAuth state parameter (required for CSRF protection)',
+    required: false,
+  })
   @ApiResponse({
     status: 200,
     description: 'OAuth callback processed successfully',
     schema: {
       type: 'object',
       properties: {
-        message: { type: 'string', example: 'OAuth callback processed successfully. Connection created.' },
+        message: {
+          type: 'string',
+          example: 'OAuth callback processed successfully. Connection created.',
+        },
         connectionId: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
         connectionName: { type: 'string', example: 'Allegro sandbox connection' },
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Invalid OAuth callback parameters or state validation failed' })
-  async callback(
-    @Query() query: AllegroOAuthCallbackQueryDto,
-  ): Promise<{
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid OAuth callback parameters or state validation failed',
+  })
+  async callback(@Query() query: AllegroOAuthCallbackQueryDto): Promise<{
     message: string;
     connectionId: string;
     connectionName: string;
@@ -176,11 +199,14 @@ export class AllegroController {
         stateData.clientId,
         stateData.clientSecret,
         stateData.redirectUri,
-        stateData.environment,
+        stateData.environment
       );
 
       // Store credentials in database and create connection
-      const connection = await this.oauthService.storeCredentialsAndCreateConnection(tokenResponse, stateData);
+      const connection = await this.oauthService.storeCredentialsAndCreateConnection(
+        tokenResponse,
+        stateData
+      );
 
       // Persist completed marker so replayed callbacks within the TTL window get an idempotent 200
       await this.oauthService.markStateCompleted(query.state, connection.id, connection.name);
@@ -199,7 +225,11 @@ export class AllegroController {
   @ApiBearerAuth()
   @Get('connections/:id/validate')
   @ApiOperation({ summary: 'Validate Allegro connection configuration' })
-  @ApiParam({ name: 'id', description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiParam({
+    name: 'id',
+    description: 'Connection ID (UUID)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
   @ApiResponse({
     status: 200,
     description: 'Connection validation result',
@@ -254,7 +284,7 @@ export class AllegroController {
   })
   async getCursors(
     @Param('id') connectionId: string,
-    @Query('cursorKey') cursorKey?: string,
+    @Query('cursorKey') cursorKey?: string
   ): Promise<{
     cursors: Array<{
       cursorKey: string;
@@ -300,7 +330,7 @@ export class AllegroController {
   })
   async getCommands(
     @Param('id') connectionId: string,
-    @Query() query: AllegroCommandsQueryDto,
+    @Query() query: AllegroCommandsQueryDto
   ): Promise<AllegroQuantityCommandResponseDto[]> {
     this.logger.log(`Getting commands for Allegro connection: ${connectionId}`);
 
@@ -311,14 +341,21 @@ export class AllegroController {
       offset: query.offset,
     });
 
-    return commands.map((command: AllegroQuantityCommand) => AllegroQuantityCommandResponseDto.fromDomain(command));
+    return commands.map((command: AllegroQuantityCommand) =>
+      AllegroQuantityCommandResponseDto.fromDomain(command)
+    );
   }
 
   @ApiBearerAuth()
   @Get('connections/:id/commands/failed')
   @ApiOperation({ summary: 'Get failed quantity commands for an Allegro connection' })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Maximum number of commands to return', type: Number })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Maximum number of commands to return',
+    type: Number,
+  })
   @ApiResponse({
     status: 200,
     description: 'List of failed quantity commands',
@@ -326,7 +363,7 @@ export class AllegroController {
   })
   async getFailedCommands(
     @Param('id') connectionId: string,
-    @Query('limit') limit?: number,
+    @Query('limit') limit?: number
   ): Promise<AllegroQuantityCommandResponseDto[]> {
     this.logger.log(`Getting failed commands for Allegro connection: ${connectionId}`);
 
@@ -336,7 +373,9 @@ export class AllegroController {
       limit: limit ? parseInt(String(limit), 10) : undefined,
     });
 
-    return commands.map((command: AllegroQuantityCommand) => AllegroQuantityCommandResponseDto.fromDomain(command));
+    return commands.map((command: AllegroQuantityCommand) =>
+      AllegroQuantityCommandResponseDto.fromDomain(command)
+    );
   }
 
   @ApiBearerAuth()
@@ -352,7 +391,7 @@ export class AllegroController {
   @ApiResponse({ status: 404, description: 'Command not found' })
   async getCommand(
     @Param('id') connectionId: string,
-    @Param('commandId') commandId: string,
+    @Param('commandId') commandId: string
   ): Promise<AllegroQuantityCommandResponseDto> {
     this.logger.log(`Getting command: ${commandId} for connection: ${connectionId}`);
 
@@ -389,18 +428,16 @@ export class AllegroController {
   @ApiParam({ name: 'id', description: 'Connection ID' })
   @ApiResponse({ status: 200, description: 'Responsible-producer entries returned' })
   async listResponsibleProducers(
-    @Param('id') connectionId: string,
+    @Param('id') connectionId: string
   ): Promise<ResponsibleProducerEntry[]> {
-    this.logger.debug(
-      `Listing Allegro responsible producers (connection: ${connectionId})`,
-    );
+    this.logger.debug(`Listing Allegro responsible producers (connection: ${connectionId})`);
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
     if (!isResponsibleProducerReader(adapter)) {
       throw new BadRequestException(
-        `Connection ${connectionId} does not support the ResponsibleProducerReader capability`,
+        `Connection ${connectionId} does not support the ResponsibleProducerReader capability`
       );
     }
     return adapter.fetchResponsibleProducers();
@@ -413,7 +450,7 @@ export class AllegroController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES },
-    }),
+    })
   )
   @ApiOperation({
     summary: 'Upload an Allegro safety-information attachment for a connection',
@@ -434,7 +471,10 @@ export class AllegroController {
     },
   })
   @ApiResponse({ status: 201, type: UploadSafetyAttachmentResponseDto })
-  @ApiResponse({ status: 400, description: 'Validation failed (mime type, size, missing capability)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (mime type, size, missing capability)',
+  })
   async uploadSafetyAttachment(
     @Param('id') connectionId: string,
     @UploadedFile(
@@ -443,16 +483,16 @@ export class AllegroController {
           new MaxFileSizeValidator({ maxSize: ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES }),
           new FileTypeValidator({ fileType: ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN }),
         ],
-      }),
+      })
     )
-    file: Express.Multer.File,
+    file: Express.Multer.File
   ): Promise<UploadSafetyAttachmentResponseDto> {
     this.logger.debug(
-      `Uploading Allegro safety attachment (connection: ${connectionId}, fileName: ${file.originalname}, ${file.size} bytes)`,
+      `Uploading Allegro safety attachment (connection: ${connectionId}, fileName: ${file.originalname}, ${file.size} bytes)`
     );
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
     // Defence-in-depth: this route lives under `integrations/allegro`, so a
     // non-Allegro `connectionId` is rejected by the IntegrationsService
@@ -460,7 +500,7 @@ export class AllegroController {
     // for the day this surface goes capability-scoped (per #472).
     if (!isSafetyAttachmentUploader(adapter)) {
       throw new BadRequestException(
-        `Connection ${connectionId} does not support the SafetyAttachmentUploader capability`,
+        `Connection ${connectionId} does not support the SafetyAttachmentUploader capability`
       );
     }
     const result = await adapter.uploadSafetyAttachment({
@@ -476,4 +516,3 @@ export class AllegroController {
     };
   }
 }
-

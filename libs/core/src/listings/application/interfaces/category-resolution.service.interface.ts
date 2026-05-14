@@ -7,7 +7,7 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
-import {
+import type {
   CategoryResolutionInput,
   CategoryResolutionResult,
 } from '../types/category-resolution.types';

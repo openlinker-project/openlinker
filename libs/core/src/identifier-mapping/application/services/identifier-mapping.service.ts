@@ -19,20 +19,23 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
-import { IIdentifierMappingService } from './identifier-mapping.service.interface';
+import type { IIdentifierMappingService } from './identifier-mapping.service.interface';
 import { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
 import { ConnectionPort } from '../../domain/ports/connection.port';
 import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplicate-identifier-mapping.error';
 import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-already-exists.error';
 import { IdentifierMappingConflictException } from '../../domain/exceptions/identifier-mapping-conflict.exception';
-import {
-  ENTITY_TYPE_ID_PREFIX,
+import type {
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
 } from '../../domain/types/identifier-mapping.types';
-import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
+import { ENTITY_TYPE_ID_PREFIX } from '../../domain/types/identifier-mapping.types';
+import {
+  IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
+  CONNECTION_PORT_TOKEN,
+} from '../../identifier-mapping.tokens';
 
 @Injectable()
 export class IdentifierMappingService implements IIdentifierMappingService {
@@ -42,14 +45,14 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     @Inject(IDENTIFIER_MAPPING_REPOSITORY_TOKEN)
     private readonly repository: IdentifierMappingRepositoryPort,
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort,
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   async getOrCreateInternalId(
     entityType: string,
     externalId: string,
     connectionId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<string> {
     const connection = await this.connectionPort.get(connectionId);
     return this.getOrCreateInternalIdWithPlatform(
@@ -57,14 +60,14 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       externalId,
       connectionId,
       connection.platformType,
-      context,
+      context
     );
   }
 
   async getInternalId(
     entityType: string,
     externalId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<string | null> {
     // Resolve Connection and derive platformType
     const connection = await this.connectionPort.get(connectionId);
@@ -74,15 +77,12 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       entityType,
       platformType,
       connectionId,
-      externalId,
+      externalId
     );
     return mapping?.internalId ?? null;
   }
 
-  async getExternalIds(
-    entityType: string,
-    internalId: string,
-  ): Promise<ExternalIdMapping[]> {
+  async getExternalIds(entityType: string, internalId: string): Promise<ExternalIdMapping[]> {
     const mappings = await this.repository.findByInternalId(entityType, internalId);
     return mappings.map((m) => ({
       externalId: m.externalId,
@@ -109,7 +109,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     externalId: string,
     connectionId: string,
     internalId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<void> {
     const connection = await this.connectionPort.get(connectionId);
     const platformType = connection.platformType;
@@ -123,7 +123,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       connectionId,
       context ?? null,
       new Date(),
-      new Date(),
+      new Date()
     );
 
     try {
@@ -134,14 +134,14 @@ export class IdentifierMappingService implements IIdentifierMappingService {
           entityType,
           platformType,
           connectionId,
-          externalId,
+          externalId
         );
         if (winner) {
           throw new MappingAlreadyExistsError(
             entityType,
             externalId,
             connectionId,
-            winner.internalId,
+            winner.internalId
           );
         }
       }
@@ -149,45 +149,28 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     }
   }
 
-  async deleteMapping(
-    entityType: string,
-    externalId: string,
-    connectionId: string,
-  ): Promise<void> {
+  async deleteMapping(entityType: string, externalId: string, connectionId: string): Promise<void> {
     const connection = await this.connectionPort.get(connectionId);
     const platformType = connection.platformType;
-    await this.repository.deleteByExternalKey(
-      entityType,
-      platformType,
-      connectionId,
-      externalId,
-    );
+    await this.repository.deleteByExternalKey(entityType, platformType, connectionId, externalId);
     this.logger.debug(
-      `Deleted mapping for ${entityType}:${externalId}@${connectionId} (platform=${platformType})`,
+      `Deleted mapping for ${entityType}:${externalId}@${connectionId} (platform=${platformType})`
     );
   }
 
-  async listExternalIdsByConnection(
-    entityType: string,
-    connectionId: string,
-  ): Promise<string[]> {
-    const mappings = await this.repository.findByEntityTypeAndConnection(
-      entityType,
-      connectionId,
-    );
+  async listExternalIdsByConnection(entityType: string, connectionId: string): Promise<string[]> {
+    const mappings = await this.repository.findByEntityTypeAndConnection(entityType, connectionId);
     return mappings.map((m) => m.externalId);
   }
 
   async batchGetOrCreateInternalIds(
-    requests: IdentifierMappingRequest[],
+    requests: IdentifierMappingRequest[]
   ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
 
     // Group by connectionId to batch Connection lookups
     const connectionIds = [...new Set(requests.map((r) => r.connectionId))];
-    const connections = await Promise.all(
-      connectionIds.map((id) => this.connectionPort.get(id)),
-    );
+    const connections = await Promise.all(connectionIds.map((id) => this.connectionPort.get(id)));
     const connectionMap = new Map(connections.map((c) => [c.id, c]));
 
     // Process items with resolved platformType (avoid redundant connection lookups).
@@ -207,13 +190,13 @@ export class IdentifierMappingService implements IIdentifierMappingService {
           request.externalId,
           request.connectionId,
           connection.platformType,
-          request.context,
+          request.context
         );
 
         // Use composite key: externalId:connectionId
         const compositeKey = `${request.externalId}:${request.connectionId}`;
         result.set(compositeKey, internalId);
-      }),
+      })
     );
 
     return result;
@@ -241,7 +224,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     externalId: string,
     connectionId: string,
     platformType: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<string> {
     const internalId = this.generateInternalId(entityType);
     const mapping = new IdentifierMapping(
@@ -253,13 +236,13 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       connectionId,
       context ?? null,
       new Date(),
-      new Date(),
+      new Date()
     );
 
     try {
       await this.repository.insertMapping(mapping);
       this.logger.log(
-        `Created new mapping for ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
+        `Created new mapping for ${entityType}:${externalId}@${connectionId} -> ${internalId}`
       );
       return internalId;
     } catch (error) {
@@ -268,11 +251,11 @@ export class IdentifierMappingService implements IIdentifierMappingService {
           entityType,
           platformType,
           connectionId,
-          externalId,
+          externalId
         );
         if (winner) {
           this.logger.debug(
-            `Mapping already exists for ${entityType}:${externalId}@${connectionId} -> ${winner.internalId}`,
+            `Mapping already exists for ${entityType}:${externalId}@${connectionId} -> ${winner.internalId}`
           );
           return winner.internalId;
         }
@@ -296,7 +279,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     externalId: string,
     internalId: string,
     connectionId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<string> {
     const connection = await this.connectionPort.get(connectionId);
     const platformType = connection.platformType;
@@ -310,13 +293,13 @@ export class IdentifierMappingService implements IIdentifierMappingService {
       connectionId,
       context ?? null,
       new Date(),
-      new Date(),
+      new Date()
     );
 
     try {
       await this.repository.insertMapping(mapping);
       this.logger.debug(
-        `Created mapping: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
+        `Created mapping: ${entityType}:${externalId}@${connectionId} -> ${internalId}`
       );
       return externalId;
     } catch (error) {
@@ -325,12 +308,12 @@ export class IdentifierMappingService implements IIdentifierMappingService {
           entityType,
           platformType,
           connectionId,
-          externalId,
+          externalId
         );
         if (winner) {
           if (winner.internalId === internalId) {
             this.logger.debug(
-              `Mapping already exists: ${entityType}:${externalId}@${connectionId} -> ${internalId}`,
+              `Mapping already exists: ${entityType}:${externalId}@${connectionId} -> ${internalId}`
             );
             return externalId;
           }
@@ -339,7 +322,7 @@ export class IdentifierMappingService implements IIdentifierMappingService {
             externalId,
             connectionId,
             winner.internalId,
-            internalId,
+            internalId
           );
         }
       }
@@ -359,4 +342,3 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     return `ol_${prefix}_${uuid}`;
   }
 }
-

@@ -3,7 +3,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/http/__tests__
  */
-import { Logger } from '@openlinker/shared/logging';
+import type { Logger } from '@openlinker/shared/logging';
 import { parseAllegroErrorBody } from '../parse-allegro-error-body';
 
 describe('parseAllegroErrorBody', () => {
@@ -59,7 +59,7 @@ describe('parseAllegroErrorBody', () => {
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(jest.mocked(logger.warn).mock.calls[0][0]).toContain(
-      'Failed to parse Allegro error body as JSON',
+      'Failed to parse Allegro error body as JSON'
     );
   });
 

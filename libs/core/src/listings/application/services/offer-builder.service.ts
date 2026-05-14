@@ -16,27 +16,22 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
-import {
-  CONNECTION_PORT_TOKEN,
-  ConnectionPort,
-} from '@openlinker/core/identifier-mapping';
+import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { CreateOfferCommand } from '@openlinker/core/listings';
+import type { CreateOfferCommand } from '@openlinker/core/listings';
+import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
-  ProductMasterPort,
   ProductVariantRepositoryPort,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
-import {
-  OfferBuilderValidationException,
-  OfferBuilderValidationIssue,
-} from '../../domain/exceptions/offer-builder-validation.exception';
+import type { OfferBuilderValidationIssue } from '../../domain/exceptions/offer-builder-validation.exception';
+import { OfferBuilderValidationException } from '../../domain/exceptions/offer-builder-validation.exception';
 import { CATEGORY_RESOLUTION_SERVICE_TOKEN } from '../../listings.tokens';
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
-import { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
-import { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
+import type { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
+import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -50,7 +45,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
-    private readonly categoryResolution: ICategoryResolutionService,
+    private readonly categoryResolution: ICategoryResolutionService
   ) {}
 
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
@@ -75,7 +70,7 @@ export class OfferBuilderService implements IOfferBuilderService {
 
     const productMaster = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
       masterConnectionId,
-      'ProductMaster',
+      'ProductMaster'
     );
     const product = await productMaster.getProduct(variant.productId);
 
@@ -134,7 +129,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     };
 
     this.logger.debug(
-      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'}`,
+      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'}`
     );
 
     return command;
@@ -142,7 +137,7 @@ export class OfferBuilderService implements IOfferBuilderService {
 
   private async resolveCategory(
     input: BuildCreateOfferCommandInput,
-    barcode: string | null,
+    barcode: string | null
   ): Promise<string | null> {
     if (input.overrides?.categoryId) {
       return input.overrides.categoryId;
@@ -160,7 +155,7 @@ export class OfferBuilderService implements IOfferBuilderService {
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
     product: { price: number | null; currency: string | null },
-    issues: OfferBuilderValidationIssue[],
+    issues: OfferBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
       return input.price;
@@ -198,7 +193,9 @@ export class OfferBuilderService implements IOfferBuilderService {
     return { amount, currency };
   }
 
-  private readMasterCatalogConnectionId(config: Record<string, unknown> | null | undefined): string | null {
+  private readMasterCatalogConnectionId(
+    config: Record<string, unknown> | null | undefined
+  ): string | null {
     if (!config) return null;
     const value = config['masterCatalogConnectionId'];
     return typeof value === 'string' && value.length > 0 ? value : null;

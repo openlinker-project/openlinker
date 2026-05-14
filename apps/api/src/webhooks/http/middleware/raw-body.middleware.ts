@@ -10,7 +10,7 @@
  *
  * @module apps/api/src/webhooks/http/middleware
  */
-import { Request } from 'express';
+import type { Request } from 'express';
 
 /**
  * Extended Request interface to include rawBody
@@ -29,4 +29,3 @@ export interface RequestWithRawBody extends Request {
  * handled at the application level in main.ts to ensure the verify hook fires
  * before any other body parsing.
  */
-

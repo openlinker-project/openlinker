@@ -10,12 +10,12 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import { IMappingConfigService } from '../interfaces/mapping-config.service.interface';
-import { StatusMapping } from '../../domain/entities/status-mapping.entity';
-import { CarrierMapping } from '../../domain/entities/carrier-mapping.entity';
-import { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
-import { CategoryMapping } from '../../domain/entities/category-mapping.entity';
-import {
+import type { IMappingConfigService } from '../interfaces/mapping-config.service.interface';
+import type { StatusMapping } from '../../domain/entities/status-mapping.entity';
+import type { CarrierMapping } from '../../domain/entities/carrier-mapping.entity';
+import type { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
+import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
+import type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
@@ -42,14 +42,17 @@ export class MappingConfigService implements IMappingConfigService {
     @Inject(PAYMENT_MAPPING_REPOSITORY_TOKEN)
     private readonly paymentRepo: PaymentMappingRepositoryPort,
     @Inject(CATEGORY_MAPPING_REPOSITORY_TOKEN)
-    private readonly categoryRepo: CategoryMappingRepositoryPort,
+    private readonly categoryRepo: CategoryMappingRepositoryPort
   ) {}
 
   getStatusMappings(connectionId: string): Promise<StatusMapping[]> {
     return this.statusRepo.findByConnectionId(connectionId);
   }
 
-  upsertStatusMappings(connectionId: string, items: StatusMappingInput[]): Promise<StatusMapping[]> {
+  upsertStatusMappings(
+    connectionId: string,
+    items: StatusMappingInput[]
+  ): Promise<StatusMapping[]> {
     return this.statusRepo.replaceForConnection(connectionId, items);
   }
 
@@ -57,7 +60,10 @@ export class MappingConfigService implements IMappingConfigService {
     return this.carrierRepo.findByConnectionId(connectionId);
   }
 
-  upsertCarrierMappings(connectionId: string, items: CarrierMappingInput[]): Promise<CarrierMapping[]> {
+  upsertCarrierMappings(
+    connectionId: string,
+    items: CarrierMappingInput[]
+  ): Promise<CarrierMapping[]> {
     return this.carrierRepo.replaceForConnection(connectionId, items);
   }
 
@@ -65,7 +71,10 @@ export class MappingConfigService implements IMappingConfigService {
     return this.paymentRepo.findByConnectionId(connectionId);
   }
 
-  upsertPaymentMappings(connectionId: string, items: PaymentMappingInput[]): Promise<PaymentMapping[]> {
+  upsertPaymentMappings(
+    connectionId: string,
+    items: PaymentMappingInput[]
+  ): Promise<PaymentMapping[]> {
     return this.paymentRepo.replaceForConnection(connectionId, items);
   }
 
@@ -79,7 +88,7 @@ export class MappingConfigService implements IMappingConfigService {
 
   async resolveCarrierMapping(
     connectionId: string,
-    allegroDeliveryMethodId: string,
+    allegroDeliveryMethodId: string
   ): Promise<string | null> {
     // TODO: cache per sync session — same N+1 concern as resolveStatusMapping.
     const mappings = await this.carrierRepo.findByConnectionId(connectionId);
@@ -91,7 +100,10 @@ export class MappingConfigService implements IMappingConfigService {
     return this.categoryRepo.findByConnectionId(connectionId);
   }
 
-  upsertCategoryMapping(connectionId: string, input: CategoryMappingInput): Promise<CategoryMapping> {
+  upsertCategoryMapping(
+    connectionId: string,
+    input: CategoryMappingInput
+  ): Promise<CategoryMapping> {
     return this.categoryRepo.upsertMapping(connectionId, input);
   }
 
@@ -99,8 +111,14 @@ export class MappingConfigService implements IMappingConfigService {
     return this.categoryRepo.deleteMapping(connectionId, prestashopCategoryId);
   }
 
-  async resolveAllegroCategory(connectionId: string, prestashopCategoryId: string): Promise<string | null> {
-    const mapping = await this.categoryRepo.findByPrestashopCategoryId(connectionId, prestashopCategoryId);
+  async resolveAllegroCategory(
+    connectionId: string,
+    prestashopCategoryId: string
+  ): Promise<string | null> {
+    const mapping = await this.categoryRepo.findByPrestashopCategoryId(
+      connectionId,
+      prestashopCategoryId
+    );
     return mapping?.allegroCategoryId ?? null;
   }
 }

@@ -16,15 +16,13 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
-  JobEnqueuePort,
-  JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import {
   IdentifierMappingQueryPort,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -41,18 +39,18 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IdentifierMappingQueryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     this.logger.log(
-      `Executing master.inventory.syncAll job ${job.id} for connection ${job.connectionId}`,
+      `Executing master.inventory.syncAll job ${job.id} for connection ${job.connectionId}`
     );
 
     try {
       const externalIds = await this.identifierMapping.listExternalIdsByConnection(
         'Product',
-        job.connectionId,
+        job.connectionId
       );
 
       // Filter out synthetic variant external IDs (e.g. `product:13`).
@@ -64,13 +62,13 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
       if (productExternalIds.length === 0) {
         this.logger.log(
-          `No product mappings found for connection ${job.connectionId}. Skipping inventory sync.`,
+          `No product mappings found for connection ${job.connectionId}. Skipping inventory sync.`
         );
         return { outcome: 'ok' };
       }
 
       this.logger.log(
-        `Found ${productExternalIds.length} product(s) for connection ${job.connectionId}. Enqueuing inventory sync jobs.`,
+        `Found ${productExternalIds.length} product(s) for connection ${job.connectionId}. Enqueuing inventory sync jobs.`
       );
 
       const enqueuePromises = productExternalIds.map(async (externalId) => {
@@ -96,18 +94,18 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
       if (failed > 0) {
         this.logger.warn(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`,
+          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`
         );
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
             this.logger.error(
-              `Failed to enqueue inventory sync for externalId ${productExternalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`,
+              `Failed to enqueue inventory sync for externalId ${productExternalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`
             );
           }
         });
       } else {
         this.logger.log(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued (${externalIds.length - productExternalIds.length} synthetic variant IDs skipped)`,
+          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued (${externalIds.length - productExternalIds.length} synthetic variant IDs skipped)`
         );
       }
 
@@ -119,7 +117,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }

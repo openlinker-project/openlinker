@@ -9,13 +9,13 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MasterInventorySyncByExternalIdPayloadV1,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 import {
   IMasterInventorySyncService,
   MASTER_INVENTORY_SYNC_SERVICE_TOKEN,
@@ -30,7 +30,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
 
   constructor(
     @Inject(MASTER_INVENTORY_SYNC_SERVICE_TOKEN)
-    private readonly masterInventorySync: IMasterInventorySyncService,
+    private readonly masterInventorySync: IMasterInventorySyncService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -41,16 +41,19 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
         `Invalid objectType for master inventory sync: ${String(payload.objectType)}. Expected 'Inventory' or 'Product'.`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
     this.logger.log(
-      `Executing master inventory sync job ${job.id} (connection: ${job.connectionId}, externalId: ${String(payload.externalId)})`,
+      `Executing master inventory sync job ${job.id} (connection: ${job.connectionId}, externalId: ${String(payload.externalId)})`
     );
 
     try {
-      await this.masterInventorySync.syncFromMasterByExternalId(job.connectionId, payload.externalId);
+      await this.masterInventorySync.syncFromMasterByExternalId(
+        job.connectionId,
+        payload.externalId
+      );
 
       return { outcome: 'ok' };
     } catch (error) {
@@ -60,7 +63,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -72,7 +75,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     if (!payload.externalId || typeof payload.externalId !== 'string') {
@@ -80,7 +83,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
         `Missing or invalid externalId in job payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     if (!payload.objectType || typeof payload.objectType !== 'string') {
@@ -88,7 +91,7 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
         `Missing or invalid objectType in job payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     return {
@@ -98,4 +101,3 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
     };
   }
 }
-

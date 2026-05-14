@@ -18,21 +18,25 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
-import { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
+import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
-import type { InventoryFilters, InventoryPagination, PaginatedInventoryItems } from '../../../domain/types/inventory.types';
+import type {
+  InventoryFilters,
+  InventoryPagination,
+  PaginatedInventoryItems,
+} from '../../../domain/types/inventory.types';
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
   constructor(
     @InjectRepository(InventoryItemOrmEntity)
-    private readonly repository: Repository<InventoryItemOrmEntity>,
+    private readonly repository: Repository<InventoryItemOrmEntity>
   ) {}
 
   async findByProductAndVariant(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null,
+    locationId?: string | null
   ): Promise<InventoryItem | null> {
     const where: Record<string, unknown> = {
       productId,
@@ -68,7 +72,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
 
   async findMany(
     filters: InventoryFilters,
-    pagination: InventoryPagination,
+    pagination: InventoryPagination
   ): Promise<PaginatedInventoryItems> {
     const where: Record<string, unknown> = {};
 
@@ -100,7 +104,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
     const existing = await this.findByProductAndVariant(
       item.productId,
       item.productVariantId,
-      item.locationId,
+      item.locationId
     );
 
     const entity = this.toOrmEntity(item);
@@ -150,7 +154,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       entity.availableQuantity,
       entity.reservedQuantity,
       entity.locationId,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
@@ -169,4 +173,3 @@ export class InventoryRepository implements InventoryRepositoryPort {
     return entity;
   }
 }
-

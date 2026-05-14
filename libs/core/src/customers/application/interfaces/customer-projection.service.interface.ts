@@ -10,9 +10,9 @@
  * @module libs/core/src/customers/application/interfaces
  * @see {@link CustomerProjectionService} for the implementation
  */
-import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
-import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
-import { DestinationAddressMapping } from '../../domain/entities/destination-address-mapping.entity';
+import type { CustomerProjection } from '../../domain/entities/customer-projection.entity';
+import type { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
+import type { DestinationAddressMapping } from '../../domain/entities/destination-address-mapping.entity';
 
 export interface ICustomerProjectionService {
   /**
@@ -41,7 +41,7 @@ export interface ICustomerProjectionService {
    * Stores mapping for address reuse across orders
    */
   upsertDestinationAddressMapping(
-    mapping: DestinationAddressMapping,
+    mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping>;
 }
 

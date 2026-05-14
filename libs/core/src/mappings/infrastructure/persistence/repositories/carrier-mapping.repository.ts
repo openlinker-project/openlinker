@@ -13,9 +13,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { CarrierMappingOrmEntity } from '../entities/carrier-mapping.orm-entity';
-import { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
+import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
-import { CarrierMappingInput } from '../../../domain/types/mapping.types';
+import type { CarrierMappingInput } from '../../../domain/types/mapping.types';
 
 @Injectable()
 export class CarrierMappingRepository implements CarrierMappingRepositoryPort {
@@ -23,7 +23,7 @@ export class CarrierMappingRepository implements CarrierMappingRepositoryPort {
     @InjectRepository(CarrierMappingOrmEntity)
     private readonly repo: Repository<CarrierMappingOrmEntity>,
     @InjectDataSource()
-    private readonly dataSource: DataSource,
+    private readonly dataSource: DataSource
   ) {}
 
   async findByConnectionId(connectionId: string): Promise<CarrierMapping[]> {
@@ -31,7 +31,10 @@ export class CarrierMappingRepository implements CarrierMappingRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
-  async replaceForConnection(connectionId: string, items: CarrierMappingInput[]): Promise<CarrierMapping[]> {
+  async replaceForConnection(
+    connectionId: string,
+    items: CarrierMappingInput[]
+  ): Promise<CarrierMapping[]> {
     return this.dataSource.transaction(async (manager) => {
       await manager.delete(CarrierMappingOrmEntity, { connectionId });
 
@@ -57,7 +60,7 @@ export class CarrierMappingRepository implements CarrierMappingRepositoryPort {
       entity.id,
       entity.connectionId,
       entity.allegroDeliveryMethodId,
-      entity.prestashopCarrierId,
+      entity.prestashopCarrierId
     );
   }
 }

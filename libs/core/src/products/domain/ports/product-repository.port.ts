@@ -9,8 +9,12 @@
  * @module libs/core/src/products/domain/ports
  * @see {@link ProductRepository} for the TypeORM implementation
  */
-import { Product } from '../entities/product.entity';
-import { ProductListFilters, ProductPagination, PaginatedProducts } from '../types/product.types';
+import type { Product } from '../entities/product.entity';
+import type {
+  ProductListFilters,
+  ProductPagination,
+  PaginatedProducts,
+} from '../types/product.types';
 
 /**
  * Product Repository Port
@@ -44,4 +48,3 @@ export interface ProductRepositoryPort {
    */
   upsert(product: Product): Promise<Product>;
 }
-

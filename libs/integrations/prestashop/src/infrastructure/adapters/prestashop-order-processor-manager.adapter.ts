@@ -13,27 +13,21 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderProcessorManagerPort}
  */
+import type { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
+import type { DestinationOptionsReader, MappingOption } from '@openlinker/core/orders';
+import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import {
-  OrderProcessorManagerPort,
-  OrderCreate,
-  OrderRef,
-  type DestinationOptionsReader,
-  type MappingOption,
-} from '@openlinker/core/orders';
-import {
-  IdentifierMappingPort,
-  Connection,
   MappingAlreadyExistsError,
   DuplicateIdentifierMappingError,
 } from '@openlinker/core/identifier-mapping';
-import { IMappingConfigService } from '@openlinker/core/mappings';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
-import {
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
+import type {
   IPrestashopOrderMapper,
   PrestashopOrder,
 } from '../mappers/prestashop.mapper.interface';
-import {
+import type {
   PrestashopCarrier,
   PrestashopOrderState,
 } from '../../domain/types/prestashop-options.types';
@@ -44,11 +38,11 @@ import {
   PrestashopProvisioningException,
 } from '@openlinker/integrations-prestashop';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
-import { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
-import { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
-import { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
-import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
-import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
+import type { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
+import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
 import { hashEmail } from '@openlinker/shared/config';
 
@@ -69,7 +63,8 @@ interface PrestashopCarrierRow {
  * Handles order creation in PrestaShop via WebService API.
  */
 export class PrestashopOrderProcessorManagerAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader {
+  implements OrderProcessorManagerPort, DestinationOptionsReader
+{
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
 
   constructor(
@@ -83,13 +78,13 @@ export class PrestashopOrderProcessorManagerAdapter
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
     // OL PrestaShop module client for HMAC-signed sidecar writes (#516).
     private readonly openlinkerModuleClient: IPrestashopOpenLinkerModuleClient,
-    private readonly mappingConfigService?: IMappingConfigService,
+    private readonly mappingConfigService?: IMappingConfigService
   ) {}
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     this.logger.log(
       `Creating PrestaShop order: orderNumber=${order.orderNumber || 'N/A'}, ` +
-        `status=${order.status}, items=${order.items.length}, total=${order.totals.total} ${order.totals.currency}`,
+        `status=${order.status}, items=${order.items.length}, total=${order.totals.total} ${order.totals.currency}`
     );
 
     this.logger.debug(`order: ${JSON.stringify(order)}`);
@@ -99,14 +94,17 @@ export class PrestashopOrderProcessorManagerAdapter
       // If we have an internal order ID in metadata, check if we've already created this order
       const metadataInternalOrderId = order.metadata?.internalOrderId as string | undefined;
       if (metadataInternalOrderId) {
-        const existingExternalIds = await this.identifierMapping.getExternalIds('Order', metadataInternalOrderId);
+        const existingExternalIds = await this.identifierMapping.getExternalIds(
+          'Order',
+          metadataInternalOrderId
+        );
         const existingPrestashopOrder = existingExternalIds.find(
-          (e: { connectionId: string }) => e.connectionId === this.connection.id,
+          (e: { connectionId: string }) => e.connectionId === this.connection.id
         );
 
         if (existingPrestashopOrder) {
           this.logger.log(
-            `Order already exists in PrestaShop: internalOrderId=${metadataInternalOrderId}, externalOrderId=${existingPrestashopOrder.externalId}`,
+            `Order already exists in PrestaShop: internalOrderId=${metadataInternalOrderId}, externalOrderId=${existingPrestashopOrder.externalId}`
           );
           // No reconcile here post-#516 — totals are correct on first POST
           // via the OL Dynamic carrier sidecar path (#515). Orders that
@@ -123,9 +121,12 @@ export class PrestashopOrderProcessorManagerAdapter
       // Step 1: Resolve or provision customer in PrestaShop
       let externalCustomerId: string | number;
       if (order.customerId) {
-        const externalIds = await this.identifierMapping.getExternalIds('Customer', order.customerId);
+        const externalIds = await this.identifierMapping.getExternalIds(
+          'Customer',
+          order.customerId
+        );
         const prestashopCustomerId = externalIds.find(
-          (e: { connectionId: string }) => e.connectionId === this.connection.id,
+          (e: { connectionId: string }) => e.connectionId === this.connection.id
         );
 
         if (prestashopCustomerId) {
@@ -135,19 +136,21 @@ export class PrestashopOrderProcessorManagerAdapter
         } else {
           // Mapping missing - provision guest customer
           this.logger.debug(
-            `Customer mapping not found for ${order.customerId}, provisioning guest customer in PrestaShop`,
+            `Customer mapping not found for ${order.customerId}, provisioning guest customer in PrestaShop`
           );
 
           // Get customer email from projection
-          const customerProjection = await this.customerProjectionRepository.findById(order.customerId);
+          const customerProjection = await this.customerProjectionRepository.findById(
+            order.customerId
+          );
           if (!customerProjection || !customerProjection.normalizedEmail) {
             throw new PrestashopApiException(
               `Cannot provision customer: customer projection not found or email missing for ${order.customerId}`,
               undefined,
-              undefined,
+              undefined
             );
           }
-          
+
           // Extract name from order addresses if available
           const firstName =
             order.shippingAddress?.firstName || order.billingAddress?.firstName || null;
@@ -171,12 +174,12 @@ export class PrestashopOrderProcessorManagerAdapter
             this.connection.id,
             this.httpClient,
             connectionConfig,
-            this.identifierMapping,
+            this.identifierMapping
           );
 
           externalCustomerId = provisionedCustomerId;
           this.logger.log(
-            `Provisioned guest customer in PrestaShop: ${order.customerId} → ${externalCustomerId}`,
+            `Provisioned guest customer in PrestaShop: ${order.customerId} → ${externalCustomerId}`
           );
         }
       } else {
@@ -185,7 +188,7 @@ export class PrestashopOrderProcessorManagerAdapter
           'Customer ID is required for PrestaShop order creation. ' +
             'Ensure customer identity is resolved before order creation.',
           undefined,
-          undefined,
+          undefined
         );
       }
 
@@ -195,16 +198,19 @@ export class PrestashopOrderProcessorManagerAdapter
 
       for (const item of order.items) {
         // Resolve product ID
-        const productExternalIds = await this.identifierMapping.getExternalIds('Product', item.productId);
+        const productExternalIds = await this.identifierMapping.getExternalIds(
+          'Product',
+          item.productId
+        );
         const prestashopProductId = productExternalIds.find(
-          (e: { connectionId: string }) => e.connectionId === this.connection.id,
+          (e: { connectionId: string }) => e.connectionId === this.connection.id
         );
 
         if (!prestashopProductId) {
           throw new PrestashopApiException(
             `Product not found in PrestaShop: ${item.productId} (no external ID mapping for connection ${this.connection.id})`,
             undefined,
-            undefined,
+            undefined
           );
         }
 
@@ -214,10 +220,10 @@ export class PrestashopOrderProcessorManagerAdapter
         if (item.variantId) {
           const variantExternalIds = await this.identifierMapping.getExternalIds(
             'ProductVariant',
-            item.variantId,
+            item.variantId
           );
           const prestashopVariantId = variantExternalIds.find(
-            (e: { connectionId: string }) => e.connectionId === this.connection.id,
+            (e: { connectionId: string }) => e.connectionId === this.connection.id
           );
 
           if (prestashopVariantId) {
@@ -228,7 +234,7 @@ export class PrestashopOrderProcessorManagerAdapter
       }
 
       this.logger.debug(
-        `Resolved ${externalProductIds.size} product IDs and ${externalVariantIds.size} variant IDs`,
+        `Resolved ${externalProductIds.size} product IDs and ${externalVariantIds.size} variant IDs`
       );
 
       // Step 3: Resolve or provision addresses in PrestaShop
@@ -250,7 +256,7 @@ export class PrestashopOrderProcessorManagerAdapter
           this.customerProjectionRepository,
           // Locker code goes onto the *shipping* address; the billing address
           // (if any) stays the buyer's home and shouldn't carry pickup-point info.
-          order.pickupPoint,
+          order.pickupPoint
         );
         this.logger.debug(`Resolved shipping address ID: ${externalShippingAddressId}`);
       }
@@ -264,7 +270,7 @@ export class PrestashopOrderProcessorManagerAdapter
           this.connection.id,
           this.httpClient,
           connectionConfig,
-          this.customerProjectionRepository,
+          this.customerProjectionRepository
         );
         this.logger.debug(`Resolved billing address ID: ${externalBillingAddressId}`);
       }
@@ -274,7 +280,7 @@ export class PrestashopOrderProcessorManagerAdapter
       const externalCurrencyId = await this.currencyResolver.resolveCurrencyId(
         currencyCode,
         this.connection.id,
-        this.httpClient,
+        this.httpClient
       );
       this.logger.debug(`Resolved currency ID: ${currencyCode} → ${externalCurrencyId}`);
 
@@ -298,7 +304,7 @@ export class PrestashopOrderProcessorManagerAdapter
       const externalCarrierId = await this.resolveExternalCarrierId(
         order,
         config,
-        olDynamicCarrierId,
+        olDynamicCarrierId
       );
 
       // Step 6: Create cart in PrestaShop (required for order creation).
@@ -315,19 +321,22 @@ export class PrestashopOrderProcessorManagerAdapter
         externalBillingAddressId,
         externalCurrencyId,
         externalLangId,
-        externalCarrierId,
+        externalCarrierId
       );
 
       let externalCartId: string | number;
       try {
-        const createdCart = await this.httpClient.createResource<{ id: string | number }>('carts', prestashopCartData);
+        const createdCart = await this.httpClient.createResource<{ id: string | number }>(
+          'carts',
+          prestashopCartData
+        );
         externalCartId = createdCart.id;
         this.logger.debug(`PrestaShop cart created successfully: cartId=${externalCartId}`);
       } catch (cartError) {
         const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
         this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
         throw new PrestashopProvisioningException(
-          `Failed to create cart in PrestaShop: ${errorMessage}`,
+          `Failed to create cart in PrestaShop: ${errorMessage}`
         );
       }
 
@@ -360,7 +369,7 @@ export class PrestashopOrderProcessorManagerAdapter
         });
         this.logger.debug(
           `OL sidecar written: idCart=${idCart} amountTaxIncl=${order.totals.shipping} ` +
-            `source=${sourceLabel ?? '<none>'}`,
+            `source=${sourceLabel ?? '<none>'}`
         );
       }
 
@@ -374,7 +383,7 @@ export class PrestashopOrderProcessorManagerAdapter
         externalBillingAddressId,
         externalCurrencyId,
         externalLangId,
-        externalCarrierId,
+        externalCarrierId
       );
       // Add cart ID to order data (required by PrestaShop)
       prestashopOrderData.id_cart = externalCartId;
@@ -385,47 +394,60 @@ export class PrestashopOrderProcessorManagerAdapter
       let externalOrderId: string;
 
       try {
-        createdOrder = await this.httpClient.createResource<PrestashopOrder>('orders', prestashopOrderData);
+        createdOrder = await this.httpClient.createResource<PrestashopOrder>(
+          'orders',
+          prestashopOrderData
+        );
         externalOrderId = String(createdOrder.id);
-        this.logger.log(`PrestaShop order created successfully: externalOrderId=${externalOrderId}`);
+        this.logger.log(
+          `PrestaShop order created successfully: externalOrderId=${externalOrderId}`
+        );
       } catch (createError) {
         // Check if this is a duplicate key error (order already exists)
         // PrestaShop returns database errors in the response body when there's a 500 error
         // The error might be a QueryFailedError (TypeORM) if PrestaShop returns a database error
         let errorMessage = createError instanceof Error ? createError.message : String(createError);
         let responseBody = '';
-        
+
         // Log error details for debugging (use warn level so it shows up)
         this.logger.warn(
-          `Order creation error type: ${createError?.constructor?.name || 'unknown'}, message: ${formatBodyForLog(errorMessage)}`,
+          `Order creation error type: ${createError?.constructor?.name || 'unknown'}, message: ${formatBodyForLog(errorMessage)}`
         );
-        
+
         // Check if it's a PrestashopApiException and has responseBody
         if (createError instanceof PrestashopApiException) {
           if (createError.responseBody) {
             responseBody = createError.responseBody;
             // Also check the response body for duplicate key errors
             errorMessage = `${errorMessage} ${responseBody}`;
-            this.logger.warn(`PrestaShop API error response body: ${formatBodyForLog(responseBody)}`);
+            this.logger.warn(
+              `PrestaShop API error response body: ${formatBodyForLog(responseBody)}`
+            );
           }
-          this.logger.warn(`PrestaShop API error status code: ${createError.statusCode || 'unknown'}`);
+          this.logger.warn(
+            `PrestaShop API error status code: ${createError.statusCode || 'unknown'}`
+          );
         }
-        
+
         // Check error message for duplicate key indicators (works for any error type)
         const isDuplicateKeyError =
           errorMessage.includes('duplicate key') || errorMessage.includes('unique constraint');
-        
-        this.logger.warn(`Is duplicate key error: ${isDuplicateKeyError}, has order number: ${!!order.orderNumber}`);
+
+        this.logger.warn(
+          `Is duplicate key error: ${isDuplicateKeyError}, has order number: ${!!order.orderNumber}`
+        );
 
         if (isDuplicateKeyError && order.orderNumber) {
           // Order might already exist - try to find it by reference
           this.logger.warn(
-            `Duplicate key error when creating order, attempting to find existing order by reference: ${order.orderNumber}`,
+            `Duplicate key error when creating order, attempting to find existing order by reference: ${order.orderNumber}`
           );
 
           try {
             // Query PrestaShop for the order by reference
-            this.logger.warn(`Querying PrestaShop for existing order by reference: ${order.orderNumber}`);
+            this.logger.warn(
+              `Querying PrestaShop for existing order by reference: ${order.orderNumber}`
+            );
             const existingOrders = await this.httpClient.listResources<PrestashopOrder>(
               'orders',
               {
@@ -434,17 +456,19 @@ export class PrestashopOrderProcessorManagerAdapter
                 },
               },
               1,
-              0,
+              0
             );
 
-            this.logger.warn(`Found ${existingOrders.length} existing order(s) by reference: ${order.orderNumber}`);
+            this.logger.warn(
+              `Found ${existingOrders.length} existing order(s) by reference: ${order.orderNumber}`
+            );
 
             if (existingOrders.length > 0) {
               // Found existing order
               createdOrder = existingOrders[0];
               externalOrderId = String(createdOrder.id);
               this.logger.log(
-                `Found existing PrestaShop order by reference: externalOrderId=${externalOrderId}, reference=${order.orderNumber}`,
+                `Found existing PrestaShop order by reference: externalOrderId=${externalOrderId}, reference=${order.orderNumber}`
               );
             } else {
               // Order not found by reference, re-throw original error
@@ -454,7 +478,7 @@ export class PrestashopOrderProcessorManagerAdapter
           } catch (queryError) {
             // Query failed, re-throw original error
             this.logger.error(
-              `Failed to query PrestaShop for existing order by reference: ${queryError instanceof Error ? queryError.message : String(queryError)}`,
+              `Failed to query PrestaShop for existing order by reference: ${queryError instanceof Error ? queryError.message : String(queryError)}`
             );
             // Re-throw the original create error, not the query error
             throw createError;
@@ -480,20 +504,20 @@ export class PrestashopOrderProcessorManagerAdapter
                 orderNumber: order.orderNumber || createdOrder.reference,
                 createdAt: new Date().toISOString(),
               },
-            },
+            }
           );
         } catch (error) {
           if (error instanceof MappingAlreadyExistsError) {
             // Mapping was read before write (single-worker retry after a
             // prior successful createMapping).
             this.logger.debug(
-              `Destination order mapping already present (read-before-write) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`,
+              `Destination order mapping already present (read-before-write) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`
             );
           } else if (error instanceof DuplicateIdentifierMappingError) {
             // Unique-constraint race: concurrent worker inserted the same
             // mapping between our read and our insert.
             this.logger.debug(
-              `Destination order mapping race resolved (concurrent insert) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`,
+              `Destination order mapping race resolved (concurrent insert) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`
             );
           } else {
             throw error;
@@ -504,7 +528,7 @@ export class PrestashopOrderProcessorManagerAdapter
         // Defensive fallback: no source id in metadata, mint one (old behavior).
         // This path should not be reached in production — warn so drift is detectable.
         this.logger.warn(
-          `createOrder invoked without metadata.internalOrderId for externalOrderId=${externalOrderId} connection=${this.connection.id} — idempotency check will be bypassed`,
+          `createOrder invoked without metadata.internalOrderId for externalOrderId=${externalOrderId} connection=${this.connection.id} — idempotency check will be bypassed`
         );
         internalOrderId = await this.identifierMapping.getOrCreateInternalId(
           'Order',
@@ -515,12 +539,12 @@ export class PrestashopOrderProcessorManagerAdapter
               orderNumber: order.orderNumber || createdOrder.reference,
               createdAt: new Date().toISOString(),
             },
-          },
+          }
         );
       }
 
       this.logger.log(
-        `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`,
+        `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`
       );
 
       // Order created; PS computed shipping totals via the resolved carrier
@@ -547,7 +571,7 @@ export class PrestashopOrderProcessorManagerAdapter
       throw new PrestashopApiException(
         `Failed to create PrestaShop order: ${errorMessage}`,
         undefined,
-        undefined,
+        undefined
       );
     }
   }
@@ -575,11 +599,9 @@ export class PrestashopOrderProcessorManagerAdapter
       'carriers',
       { custom: { external_module_name: 'openlinker' } },
       100,
-      0,
+      0
     );
-    const live = rows.filter(
-      (r) => Number(r.active) === 1 && Number(r.deleted) === 0,
-    );
+    const live = rows.filter((r) => Number(r.active) === 1 && Number(r.deleted) === 0);
 
     if (live.length === 0) {
       throw new PrestashopOlCarrierMissingException(this.connection.id);
@@ -589,7 +611,7 @@ export class PrestashopOrderProcessorManagerAdapter
       this.logger.warn(
         `Multiple live OL Dynamic carrier rows on connection ${this.connection.id} ` +
           `(count=${live.length}, ids=[${live.map((r) => String(r.id)).join(',')}]). ` +
-          `Using first; operator should remove duplicates in PS Back Office.`,
+          `Using first; operator should remove duplicates in PS Back Office.`
       );
     }
 
@@ -602,13 +624,13 @@ export class PrestashopOrderProcessorManagerAdapter
     if (!Number.isFinite(id) || id <= 0) {
       this.logger.warn(
         `OL Dynamic carrier row on connection ${this.connection.id} has invalid id=${String(live[0].id)} ` +
-          `(must be a positive integer). Treating as missing; aborting order create.`,
+          `(must be a positive integer). Treating as missing; aborting order create.`
       );
       throw new PrestashopOlCarrierMissingException(this.connection.id);
     }
 
     this.logger.debug(
-      `Resolved OL Dynamic carrier on connection ${this.connection.id}: id_carrier=${id}`,
+      `Resolved OL Dynamic carrier on connection ${this.connection.id}: id_carrier=${id}`
     );
     return id;
   }
@@ -631,7 +653,7 @@ export class PrestashopOrderProcessorManagerAdapter
   private async resolveExternalCarrierId(
     order: OrderCreate,
     config: PrestashopConnectionConfig,
-    olDynamicCarrierId: number,
+    olDynamicCarrierId: number
   ): Promise<number> {
     const sourceConnectionId = order.source?.connectionId;
     const methodId = order.shipping?.methodId;
@@ -640,20 +662,20 @@ export class PrestashopOrderProcessorManagerAdapter
     if (this.mappingConfigService && sourceConnectionId && methodId) {
       const mapped = await this.mappingConfigService.resolveCarrierMapping(
         sourceConnectionId,
-        methodId,
+        methodId
       );
       if (mapped) {
         const parsed = Number.parseInt(mapped, 10);
         if (Number.isFinite(parsed) && parsed > 0) {
           this.logger.debug(
             `Resolved carrier mapping: methodId=${methodId} → id_carrier=${parsed} ` +
-              `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id})`,
+              `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id})`
           );
           return parsed;
         }
         this.logger.warn(
           `Carrier mapping resolved to non-positive integer "${mapped}" — ignoring. ` +
-            `methodId=${methodId} sourceConnectionId=${sourceConnectionId}`,
+            `methodId=${methodId} sourceConnectionId=${sourceConnectionId}`
         );
       }
     }
@@ -667,20 +689,20 @@ export class PrestashopOrderProcessorManagerAdapter
         this.logger.warn(
           `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
             `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}). ` +
-            `Falling back to connection.config.defaultCarrierId=${config.defaultCarrierId}.`,
+            `Falling back to connection.config.defaultCarrierId=${config.defaultCarrierId}.`
         );
         return config.defaultCarrierId;
       }
       this.logger.warn(
         `Connection config has invalid defaultCarrierId=${String(config.defaultCarrierId)} (must be a positive integer) ` +
-          `for connection ${this.connection.id} — ignoring; falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`,
+          `for connection ${this.connection.id} — ignoring; falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`
       );
     }
 
     this.logger.warn(
       `No carrier mapping for methodId=${methodId ?? '<none>'} (methodName=${methodName ?? '<none>'}, ` +
         `sourceConnectionId=${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}) ` +
-        `and no defaultCarrierId on connection config. Falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`,
+        `and no defaultCarrierId on connection config. Falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`
     );
     return olDynamicCarrierId;
   }
@@ -700,7 +722,7 @@ export class PrestashopOrderProcessorManagerAdapter
       'carriers',
       { custom: { active: '1', deleted: '0' } },
       1000,
-      0,
+      0
     );
     return rows.map((row) => {
       const option: MappingOption = {
@@ -724,7 +746,7 @@ export class PrestashopOrderProcessorManagerAdapter
       'order_states',
       { custom: { deleted: '0' } },
       1000,
-      0,
+      0
     );
     return rows.map((row) => ({
       value: String(row.id),
@@ -772,4 +794,3 @@ export class PrestashopOrderProcessorManagerAdapter
     return '';
   }
 }
-

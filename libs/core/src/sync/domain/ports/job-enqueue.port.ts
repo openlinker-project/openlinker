@@ -9,7 +9,7 @@
  * @module libs/core/src/sync/domain/ports
  * @see {@link RedisStreamsJobEnqueueService} for the Redis Streams implementation
  */
-import { EnqueueJobResult, SyncJobRequest } from '../types/sync-job.types';
+import type { EnqueueJobResult, SyncJobRequest } from '../types/sync-job.types';
 
 /**
  * Job Enqueue Port
@@ -32,6 +32,3 @@ export interface JobEnqueuePort {
    */
   enqueueJob(job: SyncJobRequest): Promise<EnqueueJobResult>;
 }
-
-
-

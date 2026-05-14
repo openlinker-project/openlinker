@@ -7,9 +7,9 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { MasterInventorySyncAllHandler } from '../master-inventory-sync-all.handler';
-import { IdentifierMappingQueryPort } from '@openlinker/core/identifier-mapping';
-import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { IdentifierMappingQueryPort } from '@openlinker/core/identifier-mapping';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 
 describe('MasterInventorySyncAllHandler', () => {
@@ -61,7 +61,7 @@ describe('MasterInventorySyncAllHandler', () => {
     expect(firstCall.jobType).toBe('master.inventory.syncByExternalId');
     expect(firstCall.connectionId).toBe('conn-1');
     expect(firstCall.payload).toEqual(
-      expect.objectContaining({ schemaVersion: 1, externalId: 'ext-1', objectType: 'Product' }),
+      expect.objectContaining({ schemaVersion: 1, externalId: 'ext-1', objectType: 'Product' })
     );
   });
 
@@ -93,9 +93,7 @@ describe('MasterInventorySyncAllHandler', () => {
     await handler.execute(createJob('conn-1'));
 
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
-    const enqueuedIds = jobEnqueue.enqueueJob.mock.calls.map(
-      (call) => (call[0].payload).externalId,
-    );
+    const enqueuedIds = jobEnqueue.enqueueJob.mock.calls.map((call) => call[0].payload.externalId);
     expect(enqueuedIds).toEqual(['13', '14']);
     expect(enqueuedIds).not.toContain('product:13');
   });

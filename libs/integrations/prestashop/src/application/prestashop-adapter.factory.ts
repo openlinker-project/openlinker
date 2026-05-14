@@ -7,12 +7,18 @@
  * @module libs/integrations/prestashop/src/application
  * @implements {IPrestashopAdapterFactory}
  */
-import { IPrestashopAdapterFactory, PrestashopAdapters } from './interfaces/prestashop-adapter.factory.interface';
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort, WebhookSecretProviderPort } from '@openlinker/core/integrations';
-import { IMappingConfigService } from '@openlinker/core/mappings';
-import { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
-import { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
+import type {
+  IPrestashopAdapterFactory,
+  PrestashopAdapters,
+} from './interfaces/prestashop-adapter.factory.interface';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type {
+  CredentialsResolverPort,
+  WebhookSecretProviderPort,
+} from '@openlinker/core/integrations';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
+import type { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
 import { PrestashopConfigException } from '../domain/exceptions/prestashop-config.exception';
 import { PrestashopWebserviceClient } from '../infrastructure/http/prestashop-webservice.client';
 import { PrestashopOpenLinkerModuleClient } from '../infrastructure/http/prestashop-openlinker-module.client';
@@ -23,11 +29,11 @@ import { PrestashopProductMasterAdapter } from '../infrastructure/adapters/prest
 import { PrestashopInventoryMasterAdapter } from '../infrastructure/adapters/prestashop-inventory-master.adapter';
 import { PrestashopOrderSourceAdapter } from '../infrastructure/adapters/prestashop-order-source.adapter';
 import { PrestashopOrderProcessorManagerAdapter } from '../infrastructure/adapters/prestashop-order-processor-manager.adapter';
-import { PrestashopCustomerProvisioner } from '../infrastructure/provisioners/prestashop-customer-provisioner';
+import type { PrestashopCustomerProvisioner } from '../infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
-import { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -48,7 +54,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // module client when both the secret provider and the customer-side
     // dependencies (`customerProvisioner`, `customerProjectionRepository`)
     // are present.
-    private readonly webhookSecretProvider?: WebhookSecretProviderPort,
+    private readonly webhookSecretProvider?: WebhookSecretProviderPort
   ) {
     // Validate that if orderProcessorManager is needed, dependencies are provided
     // Note: Dependencies are optional to allow factory creation without customer provisioning
@@ -60,7 +66,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   async createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<PrestashopAdapters> {
     this.logger.debug(`Creating PrestaShop adapters for connection: ${connection.id}`);
 
@@ -68,14 +74,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     const config = this.validateAndParseConfig(connection.config);
 
     // Resolve credentials
-    const credentials = await credentialsResolver.get<PrestashopCredentials>(connection.credentialsRef);
+    const credentials = await credentialsResolver.get<PrestashopCredentials>(
+      connection.credentialsRef
+    );
 
     // Create HTTP client
-    const httpClient = new PrestashopWebserviceClient(
-      config.baseUrl,
-      credentials,
-      config,
-    );
+    const httpClient = new PrestashopWebserviceClient(config.baseUrl, credentials, config);
 
     // Create mappers. `storefrontBaseUrl` falls back to the webservice `baseUrl`
     // when unset — works for the common case where webservice and storefront
@@ -92,21 +96,17 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       httpClient,
       identifierMapping,
       productMapper,
-      connection,
+      connection
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
       httpClient,
       identifierMapping,
       inventoryMapper,
-      connection,
+      connection
     );
 
-    const orderSource = new PrestashopOrderSourceAdapter(
-      httpClient,
-      orderMapper,
-      connection,
-    );
+    const orderSource = new PrestashopOrderSourceAdapter(httpClient, orderMapper, connection);
 
     // Create orderProcessorManager only if customer provisioning dependencies
     // and the outbound webhook-secret provider (#516) are provided.
@@ -131,7 +131,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       const openlinkerModuleClient = new PrestashopOpenLinkerModuleClient(
         connection.id,
         config.storefrontBaseUrl ?? config.baseUrl,
-        this.webhookSecretProvider,
+        this.webhookSecretProvider
       );
 
       orderProcessorManager = new PrestashopOrderProcessorManagerAdapter(
@@ -144,13 +144,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         currencyResolver,
         this.customerProjectionRepository,
         openlinkerModuleClient,
-        this.mappingConfigService,
+        this.mappingConfigService
       );
     } else {
       this.logger.warn(
         `OrderProcessorManager adapter not created for connection ${connection.id}: ` +
           `customerProvisioner, customerProjectionRepository, or webhookSecretProvider not provided. ` +
-          `This adapter is required for order processing.`,
+          `This adapter is required for order processing.`
       );
     }
 
@@ -177,7 +177,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       throw new PrestashopConfigException(
         'baseUrl is required and must be a string',
         'baseUrl',
-        config.baseUrl,
+        config.baseUrl
       );
     }
 
@@ -188,7 +188,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       throw new PrestashopConfigException(
         `Invalid baseUrl format: ${config.baseUrl}`,
         'baseUrl',
-        config.baseUrl,
+        config.baseUrl
       );
     }
 
@@ -198,7 +198,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         throw new PrestashopConfigException(
           'storefrontBaseUrl must be a string',
           'storefrontBaseUrl',
-          config.storefrontBaseUrl,
+          config.storefrontBaseUrl
         );
       }
       try {
@@ -207,19 +207,20 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         throw new PrestashopConfigException(
           `Invalid storefrontBaseUrl format: ${config.storefrontBaseUrl}`,
           'storefrontBaseUrl',
-          config.storefrontBaseUrl,
+          config.storefrontBaseUrl
         );
       }
     }
 
     // Validate shopId (if provided)
     if (config.shopId !== undefined) {
-      const shopId = typeof config.shopId === 'number' ? config.shopId : parseInt(String(config.shopId), 10);
+      const shopId =
+        typeof config.shopId === 'number' ? config.shopId : parseInt(String(config.shopId), 10);
       if (isNaN(shopId) || shopId < 1) {
         throw new PrestashopConfigException(
           'shopId must be a positive integer',
           'shopId',
-          config.shopId,
+          config.shopId
         );
       }
       config.shopId = shopId;
@@ -227,12 +228,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     // Validate langId (if provided)
     if (config.langId !== undefined) {
-      const langId = typeof config.langId === 'number' ? config.langId : parseInt(String(config.langId), 10);
+      const langId =
+        typeof config.langId === 'number' ? config.langId : parseInt(String(config.langId), 10);
       if (isNaN(langId) || langId < 1) {
         throw new PrestashopConfigException(
           'langId must be a positive integer',
           'langId',
-          config.langId,
+          config.langId
         );
       }
       config.langId = langId;
@@ -248,7 +250,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         throw new PrestashopConfigException(
           'defaultCarrierId must be a positive integer',
           'defaultCarrierId',
-          config.defaultCarrierId,
+          config.defaultCarrierId
         );
       }
       config.defaultCarrierId = defaultCarrierId;
@@ -256,12 +258,15 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     // Validate timeoutMs (if provided)
     if (config.timeoutMs !== undefined) {
-      const timeoutMs = typeof config.timeoutMs === 'number' ? config.timeoutMs : parseInt(String(config.timeoutMs), 10);
+      const timeoutMs =
+        typeof config.timeoutMs === 'number'
+          ? config.timeoutMs
+          : parseInt(String(config.timeoutMs), 10);
       if (isNaN(timeoutMs) || timeoutMs < 1000) {
         throw new PrestashopConfigException(
           'timeoutMs must be at least 1000ms',
           'timeoutMs',
-          config.timeoutMs,
+          config.timeoutMs
         );
       }
       config.timeoutMs = timeoutMs;
@@ -269,12 +274,15 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     // Validate pageSize (if provided)
     if (config.pageSize !== undefined) {
-      const pageSize = typeof config.pageSize === 'number' ? config.pageSize : parseInt(String(config.pageSize), 10);
+      const pageSize =
+        typeof config.pageSize === 'number'
+          ? config.pageSize
+          : parseInt(String(config.pageSize), 10);
       if (isNaN(pageSize) || pageSize < 1 || pageSize > 1000) {
         throw new PrestashopConfigException(
           'pageSize must be between 1 and 1000',
           'pageSize',
-          config.pageSize,
+          config.pageSize
         );
       }
       config.pageSize = pageSize;
@@ -283,11 +291,14 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Validate responseFormat (if provided)
     if (config.responseFormat !== undefined) {
       const validFormats = ['auto', 'json', 'xml'];
-      if (typeof config.responseFormat !== 'string' || !validFormats.includes(config.responseFormat)) {
+      if (
+        typeof config.responseFormat !== 'string' ||
+        !validFormats.includes(config.responseFormat)
+      ) {
         throw new PrestashopConfigException(
           `responseFormat must be one of: ${validFormats.join(', ')}`,
           'responseFormat',
-          config.responseFormat,
+          config.responseFormat
         );
       }
     }
@@ -328,21 +339,16 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       return undefined;
     }
     if (typeof raw !== 'string') {
-      throw new PrestashopConfigException(
-        'currency must be a string',
-        'currency',
-        raw,
-      );
+      throw new PrestashopConfigException('currency must be a string', 'currency', raw);
     }
     const upper = raw.toUpperCase();
     if (!/^[A-Z]{3}$/.test(upper)) {
       throw new PrestashopConfigException(
         'currency must be a 3-letter ISO 4217 code (e.g., PLN, EUR)',
         'currency',
-        raw,
+        raw
       );
     }
     return upper;
   }
 }
-

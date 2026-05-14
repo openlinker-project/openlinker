@@ -5,10 +5,10 @@
  *
  * @module libs/integrations/prestashop/src/__tests__/mocks
  */
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 export function createMockIdentifierMapping(
-  overrides: Partial<IdentifierMappingPort> = {},
+  overrides: Partial<IdentifierMappingPort> = {}
 ): jest.Mocked<IdentifierMappingPort> {
   return {
     getExternalIds: jest.fn().mockResolvedValue([]),
@@ -21,4 +21,3 @@ export function createMockIdentifierMapping(
     ...overrides,
   } as jest.Mocked<IdentifierMappingPort>;
 }
-

@@ -7,9 +7,9 @@
  * @module libs/core/src/products/application/services
  * @see {@link ProductsService} for the implementation
  */
-import { Product } from '../../domain/entities/product.entity';
-import { ProductVariant } from '../../domain/entities/product-variant.entity';
-import {
+import type { Product } from '../../domain/entities/product.entity';
+import type { ProductVariant } from '../../domain/entities/product-variant.entity';
+import type {
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
@@ -56,11 +56,16 @@ export interface IProductsService {
   /**
    * List products with optional filters and pagination
    */
-  listProducts(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts>;
+  listProducts(
+    filters: ProductListFilters,
+    pagination: ProductPagination
+  ): Promise<PaginatedProducts>;
 
   /**
    * List product variants with optional filters and pagination
    */
-  listVariants(filters: ProductVariantListFilters, pagination: ProductPagination): Promise<PaginatedProductVariants>;
+  listVariants(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<PaginatedProductVariants>;
 }
-

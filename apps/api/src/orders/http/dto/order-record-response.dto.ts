@@ -7,8 +7,11 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderRecordStatusValues, SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '@openlinker/core/orders';
-import type { OrderRecordStatus } from '@openlinker/core/orders';
+import {
+  OrderRecordStatusValues,
+  SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+} from '@openlinker/core/orders';
+import { OrderRecordStatus } from '@openlinker/core/orders';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 

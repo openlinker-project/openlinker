@@ -7,13 +7,7 @@
  *
  * @module libs/core/src/products/infrastructure/persistence/entities
  */
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('products')
 export class ProductOrmEntity {
@@ -44,4 +38,3 @@ export class ProductOrmEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-

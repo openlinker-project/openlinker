@@ -11,16 +11,20 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
  */
-import { ConnectionTesterPort, ConnectionTestResult, CredentialsResolverPort } from '@openlinker/core/integrations';
-import { Connection } from '@openlinker/core/identifier-mapping';
+import type {
+  ConnectionTesterPort,
+  ConnectionTestResult,
+  CredentialsResolverPort,
+} from '@openlinker/core/integrations';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
-import { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
-import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 
 export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
   async test(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<ConnectionTestResult> {
     const startedAt = Date.now();
     try {
@@ -34,7 +38,7 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       }
 
       const credentials = await credentialsResolver.get<PrestashopCredentials>(
-        connection.credentialsRef,
+        connection.credentialsRef
       );
 
       const config: PrestashopConnectionConfig = {
@@ -45,12 +49,12 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         responseFormat: 'auto',
       };
 
-      const client = new PrestashopWebserviceClient(
-        baseUrl,
-        credentials,
-        config,
-        { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 },
-      );
+      const client = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        backoffMultiplier: 1,
+      });
 
       await client.listResources('products', undefined, 1);
 

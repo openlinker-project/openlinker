@@ -16,7 +16,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 const VARIABLES_JSON = JSON.stringify([
   { name: 'product.name', type: 'string', required: true },
@@ -58,14 +58,14 @@ export class SeedMasterPromptTemplate1794000000000 implements MigrationInterface
         ($1, NULL, 1, $2, $3, $4::jsonb, 'published', now(), NULL)
       ON CONFLICT DO NOTHING
       `,
-      ['offer.description.suggest', MASTER_SYSTEM_PROMPT, MASTER_USER_TEMPLATE, VARIABLES_JSON],
+      ['offer.description.suggest', MASTER_SYSTEM_PROMPT, MASTER_USER_TEMPLATE, VARIABLES_JSON]
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `DELETE FROM "prompt_templates" WHERE "key" = $1 AND "version" = 1 AND "channel" IS NULL`,
-      ['offer.description.suggest'],
+      ['offer.description.suggest']
     );
   }
 }

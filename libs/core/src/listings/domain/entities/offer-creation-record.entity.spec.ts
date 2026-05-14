@@ -4,10 +4,7 @@
  * @module libs/core/src/listings/domain/entities
  */
 import { OfferCreationRecord } from './offer-creation-record.entity';
-import type {
-  OfferCreationError,
-  OfferCreationStatus,
-} from '../types/offer-creation-record.types';
+import type { OfferCreationError, OfferCreationStatus } from '../types/offer-creation-record.types';
 
 describe('OfferCreationRecord', () => {
   it('should preserve all constructor fields', () => {
@@ -25,7 +22,7 @@ describe('OfferCreationRecord', () => {
       errors,
       true,
       now,
-      now,
+      now
     );
 
     expect(record.id).toBe('rec-uuid');
@@ -50,7 +47,7 @@ describe('OfferCreationRecord', () => {
       null,
       false,
       now,
-      now,
+      now
     );
 
     expect(record.externalOfferId).toBe('allegro-offer-9999');

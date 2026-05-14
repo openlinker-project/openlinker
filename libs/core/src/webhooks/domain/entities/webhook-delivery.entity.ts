@@ -7,10 +7,7 @@
  *
  * @module libs/core/src/webhooks/domain/entities
  */
-import {
-  WebhookDedupResult,
-  WebhookDeliveryStatus,
-} from '../types/webhook-delivery.types';
+import type { WebhookDedupResult, WebhookDeliveryStatus } from '../types/webhook-delivery.types';
 
 export class WebhookDelivery {
   constructor(
@@ -32,6 +29,6 @@ export class WebhookDelivery {
     public readonly dlqReason: string | null,
     public readonly payload: Record<string, unknown> | null,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly updatedAt: Date
   ) {}
 }

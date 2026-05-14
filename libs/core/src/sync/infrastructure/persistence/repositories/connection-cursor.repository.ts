@@ -17,7 +17,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { ConnectionCursorOrmEntity } from '../entities/connection-cursor.orm-entity';
-import { ConnectionCursorRepositoryPort } from '../../../domain/ports/connection-cursor-repository.port';
+import type { ConnectionCursorRepositoryPort } from '../../../domain/ports/connection-cursor-repository.port';
 import type {
   ConnectionCursor,
   ConnectionCursorFilters,
@@ -32,7 +32,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
 
   constructor(
     @InjectRepository(ConnectionCursorOrmEntity)
-    private readonly repository: Repository<ConnectionCursorOrmEntity>,
+    private readonly repository: Repository<ConnectionCursorOrmEntity>
   ) {}
 
   async get(connectionId: string, cursorKey: string): Promise<string | null> {
@@ -42,7 +42,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
       });
 
       this.logger.debug(
-        `Retrieved cursor ${cursorKey} for connection ${connectionId}: ${entity ? 'found' : 'not found'}`,
+        `Retrieved cursor ${cursorKey} for connection ${connectionId}: ${entity ? 'found' : 'not found'}`
       );
 
       return entity?.value ?? null;
@@ -50,7 +50,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
       // Handle infrastructure errors (e.g., invalid UUID format)
       if (error instanceof QueryFailedError) {
         this.logger.warn(
-          `Failed to get cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+          `Failed to get cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
         );
         // Return null for invalid connectionId (treats as "not found")
         return null;
@@ -70,20 +70,20 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
         },
         {
           conflictPaths: ['connectionId', 'cursorKey'],
-        },
+        }
       );
 
       this.logger.debug(
-        `Set cursor ${cursorKey} for connection ${connectionId} to value: ${value}`,
+        `Set cursor ${cursorKey} for connection ${connectionId} to value: ${value}`
       );
     } catch (error) {
       // Handle infrastructure errors (e.g., invalid UUID format, constraint violations)
       if (error instanceof QueryFailedError) {
         this.logger.error(
-          `Failed to set cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+          `Failed to set cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
         );
         throw new Error(
-          `Failed to set cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+          `Failed to set cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
         );
       }
       throw error;
@@ -97,14 +97,12 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
         cursorKey,
       });
 
-      this.logger.debug(
-        `Deleted cursor ${cursorKey} for connection ${connectionId}`,
-      );
+      this.logger.debug(`Deleted cursor ${cursorKey} for connection ${connectionId}`);
     } catch (error) {
       // Handle infrastructure errors (e.g., invalid UUID format)
       if (error instanceof QueryFailedError) {
         this.logger.warn(
-          `Failed to delete cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+          `Failed to delete cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
         );
         // Swallow error for delete operations (idempotent - cursor may not exist)
         return;
@@ -115,7 +113,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
 
   async findMany(
     filters?: ConnectionCursorFilters,
-    pagination?: ConnectionCursorPagination,
+    pagination?: ConnectionCursorPagination
   ): Promise<PaginatedConnectionCursors> {
     const where: Record<string, string> = {};
     if (filters?.connectionId) {
@@ -133,7 +131,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     });
 
     this.logger.debug(
-      `Found ${total} cursors (limit=${limit}, offset=${offset}, connectionId=${filters?.connectionId ?? 'all'})`,
+      `Found ${total} cursors (limit=${limit}, offset=${offset}, connectionId=${filters?.connectionId ?? 'all'})`
     );
 
     return {
@@ -151,7 +149,7 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     } catch (error) {
       if (error instanceof QueryFailedError) {
         this.logger.warn(
-          `Failed to find cursor ${cursorKey} for connection ${connectionId}: ${error.message}`,
+          `Failed to find cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
         );
         return null;
       }
@@ -169,4 +167,3 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     };
   }
 }
-

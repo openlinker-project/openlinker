@@ -24,7 +24,10 @@ import {
   type AiProviderSettingsApi,
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
-import { createConnectionsApi, type ConnectionsApi } from '../../features/connections/api/connections.api';
+import {
+  createConnectionsApi,
+  type ConnectionsApi,
+} from '../../features/connections/api/connections.api';
 import { createContentApi, type ContentApi } from '../../features/content/api/content.api';
 import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
 import { createCustomersApi, type CustomersApi } from '../../features/customers/api/customers.api';
@@ -126,7 +129,11 @@ export function createApiClient({
 
     headers.set('Accept', 'application/json');
 
-    if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    if (
+      init.body !== undefined &&
+      !(init.body instanceof FormData) &&
+      !headers.has('Content-Type')
+    ) {
       headers.set('Content-Type', 'application/json');
     }
 
@@ -135,7 +142,9 @@ export function createApiClient({
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(); }, requestTimeoutMs);
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, requestTimeoutMs);
     // Combine the timeout signal with any caller-supplied signal so both can abort the request
     const signal = init.signal
       ? AbortSignal.any([controller.signal, init.signal])

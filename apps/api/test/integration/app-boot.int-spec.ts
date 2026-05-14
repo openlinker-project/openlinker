@@ -9,10 +9,7 @@
  */
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
-import {
-  ADAPTER_REGISTRY_TOKEN,
-  AdapterRegistryPort,
-} from '@openlinker/core/integrations';
+import { ADAPTER_REGISTRY_TOKEN, AdapterRegistryPort } from '@openlinker/core/integrations';
 
 describe('App Boot Integration', () => {
   let harness: IntegrationTestHarness;
@@ -60,22 +57,18 @@ describe('App Boot Integration', () => {
     // future change breaks the boot-time registration call, this assertion
     // surfaces it directly rather than letting connection-scoped int-specs
     // fail with cryptic "no default adapter" errors downstream.
-    const adapterRegistry = harness
-      .getApp()
-      .get<AdapterRegistryPort>(ADAPTER_REGISTRY_TOKEN);
+    const adapterRegistry = harness.getApp().get<AdapterRegistryPort>(ADAPTER_REGISTRY_TOKEN);
 
     const adapters = await adapterRegistry.listAdapters();
     const adapterKeys = adapters.map((a) => a.adapterKey);
 
     expect(adapterKeys).toEqual(
-      expect.arrayContaining(['prestashop.webservice.v1', 'allegro.publicapi.v1']),
+      expect.arrayContaining(['prestashop.webservice.v1', 'allegro.publicapi.v1'])
     );
     expect(await adapterRegistry.getDefaultAdapterKey('prestashop')).toBe(
-      'prestashop.webservice.v1',
+      'prestashop.webservice.v1'
     );
-    expect(await adapterRegistry.getDefaultAdapterKey('allegro')).toBe(
-      'allegro.publicapi.v1',
-    );
+    expect(await adapterRegistry.getDefaultAdapterKey('allegro')).toBe('allegro.publicapi.v1');
   });
 
   it('should have database tables created', async () => {
@@ -100,10 +93,3 @@ describe('App Boot Integration', () => {
     expect(mappingsTable[0].exists).toBe(true);
   });
 });
-
-
-
-
-
-
-

@@ -30,9 +30,7 @@ export {
 } from './identifier-mapping.tokens';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([IdentifierMappingOrmEntity, ConnectionOrmEntity]),
-  ],
+  imports: [TypeOrmModule.forFeature([IdentifierMappingOrmEntity, ConnectionOrmEntity])],
   providers: [
     // Provide classes directly first
     IdentifierMappingRepository,
@@ -64,4 +62,3 @@ export {
   ],
 })
 export class IdentifierMappingModule {}
-

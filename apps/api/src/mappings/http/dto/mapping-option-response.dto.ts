@@ -14,10 +14,7 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import {
-  MappingOptionKind,
-  MappingOptionKindValues,
-} from '@openlinker/core/orders';
+import { MappingOptionKind, MappingOptionKindValues } from '@openlinker/core/orders';
 
 export class MappingOptionResponseDto {
   @ApiProperty({ description: 'Option value used in mapping configuration' })

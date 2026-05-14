@@ -8,14 +8,14 @@
  *
  * @module libs/core/src/orders/domain/types
  */
-import {
+import type {
   OrderItem,
   OrderTotals,
   Address,
   OrderShipping,
   OrderPickupPoint,
 } from '../types/order.types';
-import { OrderStatus } from './order.types';
+import type { OrderStatus } from './order.types';
 
 /**
  * Source reference for an order being created on a destination platform.
@@ -116,4 +116,3 @@ export interface OrderRef {
    */
   orderNumber?: string;
 }
-

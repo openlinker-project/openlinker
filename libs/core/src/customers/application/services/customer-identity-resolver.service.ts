@@ -12,8 +12,8 @@
  * @see {@link CustomerProjectionRepositoryPort} for projection lookup
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { ICustomerIdentityResolverService } from '../interfaces/customer-identity-resolver.service.interface';
-import {
+import type { ICustomerIdentityResolverService } from '../interfaces/customer-identity-resolver.service.interface';
+import type {
   CustomerIdentityResolutionRequest,
   CustomerIdentityResolutionResult,
   CustomerIdentityMode,
@@ -23,8 +23,8 @@ import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import type { EmailNormalizerPort } from '@openlinker/core/integrations';
 import {
-  EmailNormalizerPort,
   EmailNormalizerRegistryService,
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
   IIntegrationsService,
@@ -32,7 +32,10 @@ import {
 } from '@openlinker/core/integrations';
 import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
 import { hashEmail, getEnv, getPiiConfig } from '@openlinker/shared/config';
-import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN, CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../../customers.tokens';
+import {
+  CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
+  CUSTOMER_PROJECTION_SERVICE_TOKEN,
+} from '../../customers.tokens';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
@@ -54,7 +57,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(EMAIL_NORMALIZER_REGISTRY_TOKEN)
-    private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
+    private readonly emailNormalizerRegistry: EmailNormalizerRegistryService
   ) {
     // Read identity mode from environment (default: email_fallback)
     const modeValue = getEnv('OL_CUSTOMER_IDENTITY_MODE', 'email_fallback');
@@ -65,7 +68,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       modeValue !== 'false'
     ) {
       this.logger.warn(
-        `Invalid OL_CUSTOMER_IDENTITY_MODE value: ${modeValue}. Using default: email_fallback`,
+        `Invalid OL_CUSTOMER_IDENTITY_MODE value: ${modeValue}. Using default: email_fallback`
       );
       this.identityMode = 'email_fallback';
     } else {
@@ -81,13 +84,13 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       this.logger.warn(
         'Customer identity mode is set to email_fallback. ' +
           'This may merge customers with shared emails (families, businesses). ' +
-          'Set OL_CUSTOMER_IDENTITY_MODE=external_only to use external_only mode.',
+          'Set OL_CUSTOMER_IDENTITY_MODE=external_only to use external_only mode.'
       );
     }
   }
 
   async resolveCustomerIdentity(
-    request: CustomerIdentityResolutionRequest,
+    request: CustomerIdentityResolutionRequest
   ): Promise<CustomerIdentityResolutionResult> {
     const { externalBuyerId, email, sourceConnectionId } = request;
 
@@ -98,20 +101,18 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     // the email-fallback branch ultimately upsert a projection.
     // Skip the lookup entirely when `email` is empty (the normalizer is
     // unused on that path).
-    const normalizer = email
-      ? await this.resolveEmailNormalizer(sourceConnectionId)
-      : null;
+    const normalizer = email ? await this.resolveEmailNormalizer(sourceConnectionId) : null;
 
     // Primary: Try external buyer ID mapping
     const existingMapping = await this.identifierMapping.getInternalId(
       'Customer',
       externalBuyerId,
-      sourceConnectionId,
+      sourceConnectionId
     );
 
     if (existingMapping) {
       this.logger.debug(
-        `Resolved customer identity via external mapping: ${externalBuyerId} → ${existingMapping}`,
+        `Resolved customer identity via external mapping: ${externalBuyerId} → ${existingMapping}`
       );
 
       // Update customer projection with email if available
@@ -134,7 +135,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         sourceConnectionId,
         // Email is always meaningful in the fallback path; ensure the
         // baseline normalizer is used when caller passed an empty string.
-        normalizer ?? (await this.resolveEmailNormalizer(sourceConnectionId)),
+        normalizer ?? (await this.resolveEmailNormalizer(sourceConnectionId))
       );
     }
 
@@ -142,11 +143,11 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     const newInternalId = await this.identifierMapping.getOrCreateInternalId(
       'Customer',
       externalBuyerId,
-      sourceConnectionId,
+      sourceConnectionId
     );
 
     this.logger.debug(
-      `Created new customer identity (external_only mode): ${externalBuyerId} → ${newInternalId}`,
+      `Created new customer identity (external_only mode): ${externalBuyerId} → ${newInternalId}`
     );
 
     // Create customer projection with email if available
@@ -165,7 +166,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     externalBuyerId: string,
     email: string,
     sourceConnectionId: string,
-    normalizer: EmailNormalizerPort,
+    normalizer: EmailNormalizerPort
   ): Promise<CustomerIdentityResolutionResult> {
     // Normalize and hash email — per-platform rules (e.g. Allegro's
     // `+transactionId` masked-email suffix) come from the source
@@ -182,11 +183,11 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       const newInternalId = await this.identifierMapping.getOrCreateInternalId(
         'Customer',
         externalBuyerId,
-        sourceConnectionId,
+        sourceConnectionId
       );
 
       this.logger.debug(
-        `Created new customer identity (email fallback, no match): ${externalBuyerId} → ${newInternalId}`,
+        `Created new customer identity (email fallback, no match): ${externalBuyerId} → ${newInternalId}`
       );
 
       // Create customer projection with email
@@ -208,15 +209,20 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
           'Customer',
           externalBuyerId,
           sourceConnectionId,
-          existingInternalId,
+          existingInternalId
         );
 
         this.logger.debug(
-          `Resolved customer identity via email fallback: ${externalBuyerId} → ${existingInternalId}`,
+          `Resolved customer identity via email fallback: ${externalBuyerId} → ${existingInternalId}`
         );
 
         // Update customer projection with email
-        await this.upsertCustomerProjection(existingInternalId, email, sourceConnectionId, normalizer);
+        await this.upsertCustomerProjection(
+          existingInternalId,
+          email,
+          sourceConnectionId,
+          normalizer
+        );
 
         return {
           internalCustomerId: existingInternalId,
@@ -228,13 +234,13 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         const mapping = await this.identifierMapping.getInternalId(
           'Customer',
           externalBuyerId,
-          sourceConnectionId,
+          sourceConnectionId
         );
 
         if (mapping) {
           // Update customer projection with email
           await this.upsertCustomerProjection(mapping, email, sourceConnectionId, normalizer);
-          
+
           return {
             internalCustomerId: mapping,
             usedEmailFallback: true,
@@ -251,13 +257,13 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     // Create new internal customer and log warning (no merge)
     this.logger.warn(
       `Customer identity collision detected: emailHash ${emailHash} matches ${matchingProjections.length} customers. ` +
-        `Creating new internal customer for ${externalBuyerId} to avoid incorrect merge.`,
+        `Creating new internal customer for ${externalBuyerId} to avoid incorrect merge.`
     );
 
     const newInternalId = await this.identifierMapping.getOrCreateInternalId(
       'Customer',
       externalBuyerId,
-      sourceConnectionId,
+      sourceConnectionId
     );
 
     // Create customer projection with email (even in collision case)
@@ -280,7 +286,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     internalCustomerId: string,
     email: string,
     sourceConnectionId: string,
-    normalizer: EmailNormalizerPort,
+    normalizer: EmailNormalizerPort
   ): Promise<void> {
     try {
       const normalizedEmail = normalizer.normalize(email);
@@ -297,7 +303,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         now, // lastSeenAt
         sourceConnectionId,
         now, // createdAt
-        now, // updatedAt
+        now // updatedAt
       );
 
       await this.customerProjectionService.upsertProjection(projection);
@@ -305,7 +311,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       // Log error but don't fail identity resolution if projection update fails
       this.logger.warn(
         `Failed to upsert customer projection for ${internalCustomerId}: ${(error as Error).message}`,
-        error,
+        error
       );
     }
   }
@@ -321,9 +327,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
    * not throw on disabled connections, so customers from a now-disabled
    * connection still resolve correctly.
    */
-  private async resolveEmailNormalizer(
-    sourceConnectionId: string,
-  ): Promise<EmailNormalizerPort> {
+  private async resolveEmailNormalizer(sourceConnectionId: string): Promise<EmailNormalizerPort> {
     const connection = await this.connectionPort.get(sourceConnectionId);
     const metadata = await this.integrationsService.resolveAdapterMetadata({
       platformType: connection.platformType,

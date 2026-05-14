@@ -39,47 +39,45 @@ import {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
-} from '@openlinker/core/listings';
-import type {
-  CategoryParameter,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
-  OfferCreationRecord,
   OfferCreationRecordRepositoryPort,
-  OfferManagerPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
+import type {
+  CategoryParameter,
+  OfferCreationRecord,
+  OfferManagerPort,
+} from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import type { CoreEntityType, IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
-import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
+import { ProductVariantRepositoryPort } from '@openlinker/core/products';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import type { JobEnqueuePort } from '@openlinker/core/sync';
+import { JobEnqueuePort } from '@openlinker/core/sync';
 
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
 import { UpdateOfferFieldsDto, UpdateOfferFieldsResponseDto } from './dto/update-offer-fields.dto';
-import { AutoMatchVariantsRequestDto, AutoMatchVariantsResponseDto } from './dto/auto-match-variants.dto';
+import {
+  AutoMatchVariantsRequestDto,
+  AutoMatchVariantsResponseDto,
+} from './dto/auto-match-variants.dto';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
-import {
-  CategoryParametersListResponseDto,
-  CategoryParameterResponseDto,
-} from './dto/category-parameter-response.dto';
-import {
-  ResolveCategoryRequestDto,
-  ResolveCategoryResponseDto,
-} from './dto/resolve-category.dto';
+import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
+import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
+import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
+import type { FindProductsByBarcodeResponseDto } from './dto/catalog-product.dto';
 import {
   CatalogProductResponseDto,
   FindProductsByBarcodeRequestDto,
-  FindProductsByBarcodeResponseDto,
   findProductsByBarcodeResponseSchema,
 } from './dto/catalog-product.dto';
 
@@ -104,7 +102,7 @@ export class ListingsController {
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
-    private readonly categoryResolution: ICategoryResolutionService,
+    private readonly categoryResolution: ICategoryResolutionService
   ) {}
 
   @Get()
@@ -114,16 +112,20 @@ export class ListingsController {
     description:
       'Returns a paginated list of offer-to-variant mappings. Supports filtering by connectionId, platformType, internalId, and search on externalId.',
   })
-  @ApiResponse({ status: 200, description: 'Paginated offer mappings list', type: PaginatedOfferMappingsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated offer mappings list',
+    type: PaginatedOfferMappingsResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listOfferMappings(
-    @Query() query: ListOfferMappingsQueryDto,
+    @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
     const { connectionId, platformType, internalId, search, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.offerMappingRepository.findMany(
       { connectionId, platformType, internalId, search },
-      { limit, offset },
+      { limit, offset }
     );
 
     return {
@@ -159,7 +161,7 @@ export class ListingsController {
       const [record, linkedVariant] = await Promise.all([
         this.offerCreationRecords.findByExternalOfferIdAndConnectionId(
           mapping.externalId,
-          mapping.connectionId,
+          mapping.connectionId
         ),
         this.productVariantRepository.findById(mapping.internalId),
       ]);
@@ -188,7 +190,10 @@ export class ListingsController {
       'Fetches the live marketplace-side offer (title, image, price, qty, status, …) referenced by an `entityType=Offer` mapping. Resolves the connection\'s `OfferManagerPort` and requires it to implement the `OfferReader` sub-capability; adapters that do not are surfaced as 422 so the FE can render a soft "live data unavailable" fallback while the rest of the page (raw mapping fields, OfferCreation status) keeps rendering.',
   })
   @ApiResponse({ status: 200, description: 'Live offer detail', type: MarketplaceOfferResponseDto })
-  @ApiResponse({ status: 404, description: 'Offer mapping not found, or mapping is not of `entityType=Offer`' })
+  @ApiResponse({
+    status: 404,
+    description: 'Offer mapping not found, or mapping is not of `entityType=Offer`',
+  })
   @ApiResponse({
     status: 422,
     description: 'Adapter for this connection does not implement `OfferReader`',
@@ -203,7 +208,7 @@ export class ListingsController {
     // and the response shape is identical to "mapping doesn't exist".
     if (mapping.entityType !== ('Offer' satisfies CoreEntityType)) {
       throw new NotFoundException(
-        `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`,
+        `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`
       );
     }
 
@@ -212,12 +217,12 @@ export class ListingsController {
     // getCategoryParameters above.
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       mapping.connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isOfferReader(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${mapping.connectionId} does not support live offer reading`,
+        `Adapter for connection ${mapping.connectionId} does not support live offer reading`
       );
     }
 
@@ -234,14 +239,21 @@ export class ListingsController {
     description:
       'Dispatches an async job to update Allegro offer fields (price, title, description). At least one field must be provided. Returns 202 Accepted with a job ID.',
   })
-  @ApiResponse({ status: 202, description: 'Update job dispatched', type: UpdateOfferFieldsResponseDto })
-  @ApiResponse({ status: 400, description: 'Validation error — no fields provided or invalid values' })
+  @ApiResponse({
+    status: 202,
+    description: 'Update job dispatched',
+    type: UpdateOfferFieldsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error — no fields provided or invalid values',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async updateOfferFields(
     @Param('connectionId') connectionId: string,
     @Param('offerId') offerId: string,
     @Body() dto: UpdateOfferFieldsDto,
-    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string
   ): Promise<UpdateOfferFieldsResponseDto> {
     const { jobId } = await this.jobEnqueue.enqueueJob({
       jobType: 'marketplace.offer.updateFields',
@@ -269,12 +281,16 @@ export class ListingsController {
     description:
       'Dispatches a background job that matches PrestaShop product variants to marketplace offers by EAN/SKU. Returns 202 Accepted with a job ID.',
   })
-  @ApiResponse({ status: 202, description: 'Auto-match job dispatched', type: AutoMatchVariantsResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'Auto-match job dispatched',
+    type: AutoMatchVariantsResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async autoMatchVariants(
     @Param('connectionId') connectionId: string,
     @Body() dto: AutoMatchVariantsRequestDto,
-    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string
   ): Promise<AutoMatchVariantsResponseDto> {
     const { jobId } = await this.jobEnqueue.enqueueJob({
       jobType: 'master.variants.autoMatch',
@@ -297,7 +313,11 @@ export class ListingsController {
     description:
       'Validates the connection and adapter capability, pre-creates an OfferCreationRecord (status=pending), and enqueues a marketplace.offer.create job. Poll GET /listings/connections/:connectionId/offers/creation/:offerCreationRecordId for lifecycle updates.',
   })
-  @ApiResponse({ status: 202, description: 'Creation job dispatched', type: CreateOfferResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'Creation job dispatched',
+    type: CreateOfferResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   @ApiResponse({ status: 409, description: 'Connection disabled' })
@@ -305,7 +325,7 @@ export class ListingsController {
   async createOffer(
     @Param('connectionId') connectionId: string,
     @Body() dto: CreateOfferDto,
-    @Headers('x-idempotency-key') clientIdempotencyKey?: string,
+    @Headers('x-idempotency-key') clientIdempotencyKey?: string
   ): Promise<CreateOfferResponseDto> {
     // All orchestration (adapter resolution, capability check, record
     // creation, job enqueue) lives in the core application service so the
@@ -329,14 +349,20 @@ export class ListingsController {
   @Get('connections/:connectionId/offers/creation/:offerCreationRecordId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
-  @ApiParam({ name: 'offerCreationRecordId', description: 'OfferCreationRecord id returned by POST /offers' })
+  @ApiParam({
+    name: 'offerCreationRecordId',
+    description: 'OfferCreationRecord id returned by POST /offers',
+  })
   @ApiOperation({ summary: 'Get offer-creation record status' })
   @ApiResponse({ status: 200, description: 'Record detail', type: OfferCreationStatusResponseDto })
-  @ApiResponse({ status: 404, description: 'Record not found or belongs to a different connection' })
+  @ApiResponse({
+    status: 404,
+    description: 'Record not found or belongs to a different connection',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOfferCreationStatus(
     @Param('connectionId') connectionId: string,
-    @Param('offerCreationRecordId') offerCreationRecordId: string,
+    @Param('offerCreationRecordId') offerCreationRecordId: string
   ): Promise<OfferCreationStatusResponseDto> {
     const record = await this.offerCreationRecords.findById(offerCreationRecordId);
     if (!record || record.connectionId !== connectionId) {
@@ -359,7 +385,7 @@ export class ListingsController {
   @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({ status: 422, description: 'Adapter does not support seller-policy listing' })
   async getSellerPolicies(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<SellerPoliciesResponseDto> {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
@@ -386,18 +412,18 @@ export class ListingsController {
   })
   async getCategoryParameters(
     @Param('connectionId') connectionId: string,
-    @Param('categoryId') categoryId: string,
+    @Param('categoryId') categoryId: string
   ): Promise<CategoryParametersListResponseDto> {
     // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
     // CapabilityNotSupportedException (422) for upstream connection-level issues.
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isCategoryParametersReader(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${connectionId} does not support category-parameters reading`,
+        `Adapter for connection ${connectionId} does not support category-parameters reading`
       );
     }
 
@@ -409,7 +435,9 @@ export class ListingsController {
         // Bubble category-level 404 distinct from connection-level 404 — the FE
         // can show a friendlier message and let the operator pick a different
         // category without re-resolving the connection.
-        throw new NotFoundException(`Category ${categoryId} not found on connection ${connectionId}`);
+        throw new NotFoundException(
+          `Category ${categoryId} not found on connection ${connectionId}`
+        );
       }
       throw err;
     }
@@ -437,7 +465,7 @@ export class ListingsController {
   })
   async resolveCategory(
     @Param('connectionId') connectionId: string,
-    @Body() dto: ResolveCategoryRequestDto,
+    @Body() dto: ResolveCategoryRequestDto
   ): Promise<ResolveCategoryResponseDto> {
     // Validate the connection is a real, active marketplace before delegating.
     // The `OfferManager` capability is the "is this a marketplace connection"
@@ -450,7 +478,7 @@ export class ListingsController {
     // CapabilityNotSupportedException (422).
     await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     const result = await this.categoryResolution.resolveCategory({
@@ -499,18 +527,18 @@ export class ListingsController {
   })
   async findProductsByBarcode(
     @Param('connectionId') connectionId: string,
-    @Body() dto: FindProductsByBarcodeRequestDto,
+    @Body() dto: FindProductsByBarcodeRequestDto
   ): Promise<FindProductsByBarcodeResponseDto> {
     // Throws ConnectionNotFoundException (404) / ConnectionDisabledException (409) /
     // CapabilityNotSupportedException (422).
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isCatalogProductReader(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${connectionId} does not support catalog-product reading`,
+        `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
 
@@ -547,16 +575,16 @@ export class ListingsController {
   })
   async getCatalogProduct(
     @Param('connectionId') connectionId: string,
-    @Param('productId') productId: string,
+    @Param('productId') productId: string
   ): Promise<CatalogProductResponseDto> {
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isCatalogProductReader(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${connectionId} does not support catalog-product reading`,
+        `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
 
@@ -565,7 +593,9 @@ export class ListingsController {
       return this.toCatalogProductResponseDto(product);
     } catch (err) {
       if (err instanceof CatalogProductNotFoundException) {
-        throw new NotFoundException(`Catalog product ${productId} not found on connection ${connectionId}`);
+        throw new NotFoundException(
+          `Catalog product ${productId} not found on connection ${connectionId}`
+        );
       }
       throw err;
     }
@@ -613,8 +643,10 @@ export class ListingsController {
       platformType: mapping.platformType,
       connectionId: mapping.connectionId,
       context: mapping.context as Record<string, unknown> | null,
-      createdAt: mapping.createdAt instanceof Date ? mapping.createdAt.toISOString() : mapping.createdAt,
-      updatedAt: mapping.updatedAt instanceof Date ? mapping.updatedAt.toISOString() : mapping.updatedAt,
+      createdAt:
+        mapping.createdAt instanceof Date ? mapping.createdAt.toISOString() : mapping.createdAt,
+      updatedAt:
+        mapping.updatedAt instanceof Date ? mapping.updatedAt.toISOString() : mapping.updatedAt,
     };
   }
 
@@ -627,8 +659,10 @@ export class ListingsController {
       status: record.status,
       errors: record.errors,
       publishImmediately: record.publishImmediately,
-      createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
-      updatedAt: record.updatedAt instanceof Date ? record.updatedAt.toISOString() : record.updatedAt,
+      createdAt:
+        record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt,
+      updatedAt:
+        record.updatedAt instanceof Date ? record.updatedAt.toISOString() : record.updatedAt,
       // Pass the snapshot through untouched. It's already the on-wire shape
       // (plain object in jsonb); no date fields or instance conversions to run.
       request: record.request,

@@ -5,7 +5,7 @@
  */
 import { MarketplaceOfferCreateHandler } from '../marketplace-offer-create.handler';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { OfferCreationRecord } from '@openlinker/core/listings';
 import type { IOfferCreationExecutionService } from '@openlinker/core/listings';
 
@@ -24,7 +24,7 @@ const buildRecord = (overrides: Partial<OfferCreationRecord> = {}): OfferCreatio
     overrides.errors ?? null,
     overrides.publishImmediately ?? false,
     overrides.createdAt ?? now,
-    overrides.updatedAt ?? now,
+    overrides.updatedAt ?? now
   );
 };
 

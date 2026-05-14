@@ -7,14 +7,14 @@
  *
  * @module apps/worker/src/sync
  */
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
+import type { SyncJobRequest, JobType } from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
-  SyncJobRequest,
-  JobType,
   JobTypeValues,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
@@ -37,7 +37,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly redisClient: RedisClientType,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly jobRepository: SyncJobRepositoryPort,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -67,15 +67,12 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       // XGROUP CREATE stream group $ MKSTREAM
       // $ = start from new messages only
       // MKSTREAM = create stream if it doesn't exist
-      await this.redisClient.xGroupCreate(
-        this.STREAM_NAME,
-        this.CONSUMER_GROUP,
-        '$',
-        {
-          MKSTREAM: true,
-        },
+      await this.redisClient.xGroupCreate(this.STREAM_NAME, this.CONSUMER_GROUP, '$', {
+        MKSTREAM: true,
+      });
+      this.logger.log(
+        `Created consumer group ${this.CONSUMER_GROUP} for stream ${this.STREAM_NAME}`
       );
-      this.logger.log(`Created consumer group ${this.CONSUMER_GROUP} for stream ${this.STREAM_NAME}`);
     } catch (error) {
       // Ignore BUSYGROUP error (group already exists)
       if (error instanceof Error && error.message.includes('BUSYGROUP')) {
@@ -83,7 +80,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       } else {
         this.logger.error(
           `Failed to create consumer group ${this.CONSUMER_GROUP}`,
-          error instanceof Error ? error.stack : String(error),
+          error instanceof Error ? error.stack : String(error)
         );
         throw error;
       }
@@ -100,11 +97,16 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     this.abortController = new AbortController();
     this.isRunning = true;
 
-    this.logger.log(`Starting job intake consumer loop (stream: ${this.STREAM_NAME}, group: ${this.CONSUMER_GROUP}, consumer: ${this.CONSUMER_NAME})`);
+    this.logger.log(
+      `Starting job intake consumer loop (stream: ${this.STREAM_NAME}, group: ${this.CONSUMER_GROUP}, consumer: ${this.CONSUMER_NAME})`
+    );
 
     // Start consumption loop in background (don't await)
     this.consumeLoop().catch((error) => {
-      this.logger.error('Consumption loop error', error instanceof Error ? error.stack : String(error));
+      this.logger.error(
+        'Consumption loop error',
+        error instanceof Error ? error.stack : String(error)
+      );
       // Restart loop after backoff (track timer for cleanup)
       if (this.isRunning) {
         this.restartTimer = setTimeout(() => {
@@ -168,13 +170,15 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           {
             COUNT: this.COUNT,
             BLOCK: this.BLOCK_MS,
-          },
+          }
         );
 
         // Log heartbeat periodically to show loop is alive
         const now = Date.now();
         if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-          this.logger.debug(`Job intake consumer is running (waiting for jobs in stream: ${this.STREAM_NAME})`);
+          this.logger.debug(
+            `Job intake consumer is running (waiting for jobs in stream: ${this.STREAM_NAME})`
+          );
           lastHeartbeat = now;
         }
 
@@ -207,7 +211,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
         // Log error and continue (retry on next iteration)
         this.logger.error(
           'Error in consumption loop',
-          error instanceof Error ? error.stack : String(error),
+          error instanceof Error ? error.stack : String(error)
         );
 
         // Backoff before retrying
@@ -232,9 +236,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       const isValidJobType = this.isValidJobType(jobRequest.jobType);
       if (!isValidJobType) {
         // Unknown job type - persist as dead job
-        this.logger.warn(
-          `Unknown job type: ${jobRequest.jobType}. Persisting as dead job.`,
-        );
+        this.logger.warn(`Unknown job type: ${jobRequest.jobType}. Persisting as dead job.`);
         await this.persistDeadJob(jobRequest, `Unknown job type: ${jobRequest.jobType}`);
         // ACK the message (we've handled it, even if it's invalid)
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
@@ -254,12 +256,12 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
 
       this.logger.debug(
-        `Processed job request ${jobRequest.jobType} for ${jobRequest.connectionId} and persisted to database`,
+        `Processed job request ${jobRequest.jobType} for ${jobRequest.connectionId} and persisted to database`
       );
     } catch (error) {
       this.logger.error(
         `Failed to process message ${messageId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
 
       // Classify errors - some should be ACKed to prevent infinite retry
@@ -270,27 +272,28 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           error.message.includes('Missing required fields')
         ) {
           this.logger.warn(
-            `Invalid message format, persisting as dead job to prevent infinite retry: ${messageId}`,
+            `Invalid message format, persisting as dead job to prevent infinite retry: ${messageId}`
           );
           try {
             // Try to create a minimal dead job from available fields
             // Use a valid JobType as placeholder (repository requires valid JobType)
             const placeholderJobType: JobType = JobTypeValues[0]; // Use first valid job type as placeholder
             const deadJobRequest: SyncJobRequest = {
-              jobType: (fields.jobType && this.isValidJobType(fields.jobType))
-                ? (fields.jobType)
-                : placeholderJobType,
+              jobType:
+                fields.jobType && this.isValidJobType(fields.jobType)
+                  ? fields.jobType
+                  : placeholderJobType,
               connectionId: fields.connectionId || 'unknown',
               payload: { rawFields: fields, _parseError: error.message },
               idempotencyKey: fields.idempotencyKey || `invalid-${messageId}`,
             };
             await this.persistDeadJob(
               deadJobRequest,
-              `Invalid message format: ${error instanceof Error ? error.message : String(error)}`,
+              `Invalid message format: ${error instanceof Error ? error.message : String(error)}`
             );
           } catch (parseError) {
             this.logger.error(
-              `Failed to persist invalid message as dead job: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+              `Failed to persist invalid message as dead job: ${parseError instanceof Error ? parseError.message : String(parseError)}`
             );
           }
           // ACK to prevent infinite retry
@@ -318,7 +321,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
     if (!jobType || !connectionId || !payloadJson || !idempotencyKey) {
       throw new Error(
-        `Missing required fields in job request. Required: jobType, connectionId, payloadJson, idempotencyKey. Got: ${JSON.stringify(fields)}`,
+        `Missing required fields in job request. Required: jobType, connectionId, payloadJson, idempotencyKey. Got: ${JSON.stringify(fields)}`
       );
     }
 
@@ -353,10 +356,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * Creates a job with status 'dead' and error message for unknown job types.
    * Uses a placeholder valid job type since the repository requires a valid JobType.
    */
-  private async persistDeadJob(
-    jobRequest: SyncJobRequest,
-    errorMessage: string,
-  ): Promise<void> {
+  private async persistDeadJob(jobRequest: SyncJobRequest, errorMessage: string): Promise<void> {
     // Use a valid job type as placeholder (repository requires valid JobType)
     // Store the original invalid job type in the payload for debugging
     const placeholderJobType = JobTypeValues[0]; // Use first valid job type as placeholder
@@ -377,4 +377,3 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     await this.jobRepository.markDead(deadJob.id, errorMessage);
   }
 }
-

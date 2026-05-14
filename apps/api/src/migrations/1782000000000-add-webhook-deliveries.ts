@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddWebhookDeliveries1782000000000 implements MigrationInterface {
   name = 'AddWebhookDeliveries1782000000000';
@@ -30,16 +30,16 @@ export class AddWebhookDeliveries1782000000000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "IDX_webhook_deliveries_receivedAt" ON "webhook_deliveries" ("receivedAt")`,
+      `CREATE INDEX "IDX_webhook_deliveries_receivedAt" ON "webhook_deliveries" ("receivedAt")`
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_webhook_deliveries_connection_receivedAt" ON "webhook_deliveries" ("connectionId", "receivedAt")`,
+      `CREATE INDEX "IDX_webhook_deliveries_connection_receivedAt" ON "webhook_deliveries" ("connectionId", "receivedAt")`
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_webhook_deliveries_provider_receivedAt" ON "webhook_deliveries" ("provider", "receivedAt")`,
+      `CREATE INDEX "IDX_webhook_deliveries_provider_receivedAt" ON "webhook_deliveries" ("provider", "receivedAt")`
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_webhook_deliveries_status_receivedAt" ON "webhook_deliveries" ("status", "receivedAt")`,
+      `CREATE INDEX "IDX_webhook_deliveries_status_receivedAt" ON "webhook_deliveries" ("status", "receivedAt")`
     );
   }
 

@@ -11,9 +11,14 @@
  *
  * @module libs/integrations/allegro/src
  */
-import { Module, OnModuleInit, Inject, Optional } from '@nestjs/common';
+import type { OnModuleInit } from '@nestjs/common';
+import { Module, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import type {
+  IntegrationCredentialRepositoryPort,
+  AdapterFactoryPort,
+} from '@openlinker/core/integrations';
 import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
@@ -31,10 +36,8 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
-  AdapterFactoryPort,
 } from '@openlinker/core/integrations';
 import {
   SyncModule,
@@ -54,7 +57,7 @@ import {
   IdentifierMappingPort,
   type Connection,
 } from '@openlinker/core/identifier-mapping';
-import { RedisClientType } from 'redis';
+import type { RedisClientType } from 'redis';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -88,16 +91,13 @@ import { createAllegroPlugin } from './allegro-plugin';
       provide: AllegroTokenRefreshService,
       useFactory: (
         redisClient?: RedisClientType,
-        credentialRepository?: IntegrationCredentialRepositoryPort,
+        credentialRepository?: IntegrationCredentialRepositoryPort
       ): AllegroTokenRefreshService =>
         new AllegroTokenRefreshService(redisClient, credentialRepository),
       inject: ['REDIS_CLIENT', INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN],
     },
   ],
-  exports: [
-    ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
-    'AllegroQuantityCommandRepositoryPort',
-  ],
+  exports: [ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN, 'AllegroQuantityCommandRepositoryPort'],
 })
 export class AllegroIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(AllegroIntegrationModule.name);
@@ -142,7 +142,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
      */
     @Optional()
     @Inject(CACHE_PORT_TOKEN)
-    private readonly cache?: CachePort,
+    private readonly cache?: CachePort
   ) {}
 
   onModuleInit(): void {
@@ -172,8 +172,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
       schedulerTaskRegistry: this.schedulerTaskRegistry,
       webhookProvisioningRegistry: this.webhookProvisioningRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
-      connectionCredentialsShapeValidatorRegistry:
-        this.connectionCredentialsShapeValidatorRegistry,
+      connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
     };
 
     // The three registration lines.
@@ -183,7 +182,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
         conn: Connection,
         cap: string,
         idMap: IdentifierMappingPort,
-        credRes: CredentialsResolverPort,
+        credRes: CredentialsResolverPort
       ): Promise<T> =>
         plugin.createCapabilityAdapter<T>(conn, cap, {
           ...host,

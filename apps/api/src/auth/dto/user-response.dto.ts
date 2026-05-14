@@ -9,12 +9,12 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  User,
   UserRoleValues,
   PermissionValues,
   ROLE_PERMISSIONS,
+  UserRole,
 } from '@openlinker/core/users';
-import type { UserRole, Permission } from '@openlinker/core/users';
+import type { Permission, User } from '@openlinker/core/users';
 
 export class UserResponseDto {
   @ApiProperty({ description: 'Internal user ID (UUID)' })

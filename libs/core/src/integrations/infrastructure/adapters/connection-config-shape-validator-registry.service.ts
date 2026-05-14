@@ -15,7 +15,7 @@
  * @see {@link ConnectionConfigShapeValidatorPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { ConnectionConfigShapeValidatorPort } from '../../domain/ports/connection-config-shape-validator.port';
+import type { ConnectionConfigShapeValidatorPort } from '../../domain/ports/connection-config-shape-validator.port';
 
 @Injectable()
 export class ConnectionConfigShapeValidatorRegistryService {

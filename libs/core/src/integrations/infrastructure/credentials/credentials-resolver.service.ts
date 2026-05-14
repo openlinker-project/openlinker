@@ -15,7 +15,7 @@
  * @implements {CredentialsResolverPort}
  */
 import { Injectable, Inject, Optional } from '@nestjs/common';
-import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
+import type { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '../../integrations.tokens';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
@@ -27,7 +27,7 @@ export class CredentialsResolverService implements CredentialsResolverPort {
   constructor(
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     @Optional()
-    private readonly credentialRepository?: IntegrationCredentialRepositoryPort,
+    private readonly credentialRepository?: IntegrationCredentialRepositoryPort
   ) {}
 
   async get<T = unknown>(credentialsRef: string): Promise<T> {
@@ -51,14 +51,16 @@ export class CredentialsResolverService implements CredentialsResolverPort {
     if (!this.credentialRepository) {
       throw new Error(
         `Database credential backend not available. Cannot resolve: ${credentialsRef}. ` +
-          'Ensure IntegrationCredentialRepository is registered in IntegrationsModule.',
+          'Ensure IntegrationCredentialRepository is registered in IntegrationsModule.'
       );
     }
 
     // Extract ref from 'db:{ref}' format
     const ref = credentialsRef.substring(3); // Remove 'db:' prefix
     if (!ref) {
-      throw new Error(`Invalid database credentials reference format: ${credentialsRef}. Expected format: db:{ref}`);
+      throw new Error(
+        `Invalid database credentials reference format: ${credentialsRef}. Expected format: db:{ref}`
+      );
     }
 
     try {
@@ -69,7 +71,7 @@ export class CredentialsResolverService implements CredentialsResolverPort {
       this.logger.error(`Failed to resolve credentials from database: ${credentialsRef}`, error);
       throw new Error(
         `Credentials not found in database for reference: ${credentialsRef} (ref: ${ref}). ` +
-          `Error: ${error instanceof Error ? error.message : String(error)}`,
+          `Error: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -89,7 +91,7 @@ export class CredentialsResolverService implements CredentialsResolverPort {
       throw new Error(
         `Credentials not found for reference: ${credentialsRef} (looked for env var: ${envKey}). ` +
           'Set the environment variable with JSON-encoded credentials or a plain string (for simple cases). ' +
-          'For database storage, use format: db:{ref}',
+          'For database storage, use format: db:{ref}'
       );
     }
 
@@ -106,19 +108,20 @@ export class CredentialsResolverService implements CredentialsResolverPort {
         // For PrestaShop, if it's a plain string, auto-wrap it as {webserviceApiKey: value}
         // This provides backward compatibility and simpler UX for single-value credentials
         this.logger.debug(
-          `Credentials value is not JSON, treating as plain string and auto-wrapping for PrestaShop compatibility`,
+          `Credentials value is not JSON, treating as plain string and auto-wrapping for PrestaShop compatibility`
         );
         const wrappedCredentials = { webserviceApiKey: credentialsValue } as T;
-        this.logger.debug(`Credentials resolved successfully for reference: ${credentialsRef} (auto-wrapped)`);
+        this.logger.debug(
+          `Credentials resolved successfully for reference: ${credentialsRef} (auto-wrapped)`
+        );
         return Promise.resolve(wrappedCredentials);
       }
 
       // If it looks like JSON but failed to parse, throw the original error
       throw new Error(
         `Failed to parse credentials for reference: ${credentialsRef}. ` +
-          `Invalid JSON in environment variable ${envKey}: ${(jsonError as Error).message}`,
+          `Invalid JSON in environment variable ${envKey}: ${(jsonError as Error).message}`
       );
     }
   }
 }
-

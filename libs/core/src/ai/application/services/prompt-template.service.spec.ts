@@ -7,7 +7,8 @@
  *
  * @module libs/core/src/ai/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { PromptTemplate } from '../../domain/entities/prompt-template.entity';
 import { CannotArchivePublishedTemplateException } from '../../domain/exceptions/cannot-archive-published-template.exception';
 import { PromptTemplateNotFoundException } from '../../domain/exceptions/prompt-template-not-found.exception';
@@ -37,7 +38,7 @@ function makeTemplate(overrides: Partial<PromptTemplate> = {}): PromptTemplate {
     overrides.publishedAt ?? null,
     overrides.createdBy ?? 'admin',
     overrides.createdAt ?? new Date('2026-04-22T10:00:00Z'),
-    overrides.updatedAt ?? new Date('2026-04-22T10:00:00Z'),
+    overrides.updatedAt ?? new Date('2026-04-22T10:00:00Z')
   );
 }
 
@@ -102,7 +103,7 @@ describe('PromptTemplateService', () => {
     it('should throw PromptTemplateNotFoundException when missing', async () => {
       repository.findById.mockResolvedValue(null);
       await expect(service.getById('missing')).rejects.toBeInstanceOf(
-        PromptTemplateNotFoundException,
+        PromptTemplateNotFoundException
       );
     });
   });
@@ -124,7 +125,7 @@ describe('PromptTemplateService', () => {
 
       expect(repository.nextVersion).toHaveBeenCalledWith('offer.description.suggest', 'allegro');
       expect(repository.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ version: 1, state: 'draft', createdBy: 'admin' }),
+        expect.objectContaining({ version: 1, state: 'draft', createdBy: 'admin' })
       );
     });
 
@@ -142,7 +143,7 @@ describe('PromptTemplateService', () => {
       });
 
       expect(repository.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ version: 5, channel: null, createdBy: null }),
+        expect.objectContaining({ version: 5, channel: null, createdBy: null })
       );
     });
   });
@@ -166,24 +167,24 @@ describe('PromptTemplateService', () => {
 
     it('should refuse when state is published', async () => {
       repository.findById.mockResolvedValue(makeTemplate({ state: 'published' }));
-      await expect(
-        service.updateDraft('tmpl-1', { systemPrompt: 'x' }),
-      ).rejects.toBeInstanceOf(PromptTemplateStateException);
+      await expect(service.updateDraft('tmpl-1', { systemPrompt: 'x' })).rejects.toBeInstanceOf(
+        PromptTemplateStateException
+      );
       expect(repository.updateContent).not.toHaveBeenCalled();
     });
 
     it('should refuse when state is archived', async () => {
       repository.findById.mockResolvedValue(makeTemplate({ state: 'archived' }));
-      await expect(
-        service.updateDraft('tmpl-1', { systemPrompt: 'x' }),
-      ).rejects.toBeInstanceOf(PromptTemplateStateException);
+      await expect(service.updateDraft('tmpl-1', { systemPrompt: 'x' })).rejects.toBeInstanceOf(
+        PromptTemplateStateException
+      );
     });
 
     it('should throw NotFound when template is missing', async () => {
       repository.findById.mockResolvedValue(null);
-      await expect(
-        service.updateDraft('missing', { systemPrompt: 'x' }),
-      ).rejects.toBeInstanceOf(PromptTemplateNotFoundException);
+      await expect(service.updateDraft('missing', { systemPrompt: 'x' })).rejects.toBeInstanceOf(
+        PromptTemplateNotFoundException
+      );
     });
   });
 
@@ -203,7 +204,7 @@ describe('PromptTemplateService', () => {
     it('should refuse to publish a non-draft row', async () => {
       repository.findById.mockResolvedValue(makeTemplate({ state: 'published' }));
       await expect(service.publish('tmpl-1', null)).rejects.toBeInstanceOf(
-        PromptTemplateStateException,
+        PromptTemplateStateException
       );
       expect(repository.publishTransition).not.toHaveBeenCalled();
     });
@@ -211,7 +212,7 @@ describe('PromptTemplateService', () => {
     it('should throw NotFound when template is missing', async () => {
       repository.findById.mockResolvedValue(null);
       await expect(service.publish('missing', null)).rejects.toBeInstanceOf(
-        PromptTemplateNotFoundException,
+        PromptTemplateNotFoundException
       );
     });
   });
@@ -251,7 +252,7 @@ describe('PromptTemplateService', () => {
           systemPrompt: 'old-sys',
           userPromptTemplate: 'old-user',
           createdBy: 'admin',
-        }),
+        })
       );
     });
 
@@ -263,7 +264,7 @@ describe('PromptTemplateService', () => {
           channel: 'allegro',
           version: 99,
           createdBy: 'admin',
-        }),
+        })
       ).rejects.toBeInstanceOf(PromptTemplateNotFoundException);
     });
   });
@@ -296,7 +297,7 @@ describe('PromptTemplateService', () => {
           key: 'offer.description.suggest',
           channel: 'allegro',
           values: { product: { name: 'Cap' } },
-        }),
+        })
       ).rejects.toBeInstanceOf(PromptTemplateNotFoundException);
     });
 
@@ -313,7 +314,7 @@ describe('PromptTemplateService', () => {
           key: 'offer.description.suggest',
           channel: 'allegro',
           values: {},
-        }),
+        })
       ).rejects.toBeInstanceOf(PromptTemplateRenderException);
     });
   });
@@ -342,7 +343,7 @@ describe('PromptTemplateService', () => {
     it('should refuse to delete a published row', async () => {
       repository.findById.mockResolvedValue(makeTemplate({ state: 'published' }));
       await expect(service.deleteDraft('tmpl-1')).rejects.toBeInstanceOf(
-        PromptTemplateStateException,
+        PromptTemplateStateException
       );
       expect(repository.deleteById).not.toHaveBeenCalled();
     });
@@ -376,9 +377,9 @@ describe('PromptTemplateService', () => {
     it('should refuse to archive a published row without force', async () => {
       repository.findById.mockResolvedValue(makeTemplate({ state: 'published' }));
 
-      await expect(
-        service.archive('tmpl-1', { actor: 'admin' }),
-      ).rejects.toBeInstanceOf(CannotArchivePublishedTemplateException);
+      await expect(service.archive('tmpl-1', { actor: 'admin' })).rejects.toBeInstanceOf(
+        CannotArchivePublishedTemplateException
+      );
       expect(repository.archiveById).not.toHaveBeenCalled();
     });
 
@@ -395,9 +396,9 @@ describe('PromptTemplateService', () => {
     it('should throw NotFound when the template does not exist', async () => {
       repository.findById.mockResolvedValue(null);
 
-      await expect(
-        service.archive('missing', { actor: 'admin' }),
-      ).rejects.toBeInstanceOf(PromptTemplateNotFoundException);
+      await expect(service.archive('missing', { actor: 'admin' })).rejects.toBeInstanceOf(
+        PromptTemplateNotFoundException
+      );
       expect(repository.archiveById).not.toHaveBeenCalled();
     });
 
@@ -410,12 +411,12 @@ describe('PromptTemplateService', () => {
           actualState: 'published',
           requiredState: 'draft',
           operation: 'be archived (concurrent modification — refresh and retry)',
-        }),
+        })
       );
 
-      await expect(
-        service.archive('tmpl-1', { actor: 'admin' }),
-      ).rejects.toBeInstanceOf(PromptTemplateStateException);
+      await expect(service.archive('tmpl-1', { actor: 'admin' })).rejects.toBeInstanceOf(
+        PromptTemplateStateException
+      );
     });
 
     it('should emit a structured archive log line with key/channel/version/actor/forced', async () => {
@@ -424,13 +425,14 @@ describe('PromptTemplateService', () => {
       repository.findById.mockResolvedValue(published);
       repository.archiveById.mockResolvedValue(archived);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const logSpy = jest.spyOn((service as unknown as { logger: { log: (m: string) => void } }).logger, 'log');
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log: (m: string) => void } }).logger,
+        'log'
+      );
 
       await service.archive('tmpl-1', { force: true, actor: 'admin' });
 
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('templateId=tmpl-1'),
-      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('templateId=tmpl-1'));
       const message = logSpy.mock.calls[0][0];
       expect(message).toContain('archived');
       expect(message).toContain('priorState=published');

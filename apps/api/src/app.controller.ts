@@ -10,7 +10,7 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { AppService } from './app.service';
 import { Public } from './auth/decorators/public.decorator';
 import { IDevStackHealthService } from './health/dev-stack-health.service.interface';
-import {
+import type {
   InternalHealthResponse,
   DevStackHealthResponse,
 } from './health/dev-stack-health.types';
@@ -22,7 +22,7 @@ export class AppController {
   constructor(
     private readonly appService: AppService,
     @Inject(DEV_STACK_HEALTH_SERVICE_TOKEN)
-    private readonly devStackHealthService: IDevStackHealthService,
+    private readonly devStackHealthService: IDevStackHealthService
   ) {}
 
   @Get()
@@ -40,4 +40,3 @@ export class AppController {
     return this.devStackHealthService.checkDevStackHealth();
   }
 }
-

@@ -23,12 +23,7 @@
  * @module apps/api/test/integration/helpers
  */
 import { randomBytes } from 'crypto';
-import {
-  createConnection,
-  Connection,
-  ResultSetHeader,
-  RowDataPacket,
-} from 'mysql2/promise';
+import { createConnection, Connection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 export interface PrestashopFixtureSeed {
   /** Generated WS API key — pass this to the connection's credentials store. */
@@ -80,7 +75,7 @@ const WS_RESOURCES = [
  * `waitForPrestashopInstall` helper that polls `ps_configuration.PS_VERSION_DB`.
  */
 export async function applyPrestashopFixture(
-  options: ApplyFixtureOptions,
+  options: ApplyFixtureOptions
 ): Promise<PrestashopFixtureSeed> {
   const conn = await createConnection({
     host: options.host,
@@ -150,7 +145,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
     `SELECT TABLE_NAME FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = DATABASE()
        AND (TABLE_NAME LIKE 'ps_%api%' OR TABLE_NAME LIKE 'ps_%webservice%')
-     ORDER BY TABLE_NAME`,
+     ORDER BY TABLE_NAME`
   );
   const names = rows.map((r) => r.TABLE_NAME);
   const has = (name: string): boolean => names.includes(name);
@@ -178,7 +173,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
         `PS 9.x WebService account table (ps_webservice_account) is present but ` +
           `no matching permission table found. Looked for: ` +
           `ps_webservice_account_permission, ps_webservice_permission. ` +
-          `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
+          `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`
       );
     }
     // Inspect the permission table column layout to choose the insert
@@ -191,7 +186,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
     const [permCols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-      [permTable],
+      [permTable]
     );
     const colNames = permCols.map((r) => r.COLUMN_NAME.toLowerCase());
     const hasMethodColumn = colNames.includes('method');
@@ -203,7 +198,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
         : (() => {
             throw new Error(
               `PS WebService permission table ${permTable} has neither a 'method' column ` +
-                `nor get/post/put/delete/head bitfield columns. Columns: [${colNames.join(', ')}]`,
+                `nor get/post/put/delete/head bitfield columns. Columns: [${colNames.join(', ')}]`
             );
           })();
     return {
@@ -219,7 +214,7 @@ async function detectWebserviceSchema(conn: Connection): Promise<WebserviceSchem
   throw new Error(
     `Cannot find a PrestaShop WebService account table. ` +
       `Looked for: ps_api_access (legacy 8.x) or ps_webservice_account (9.x). ` +
-      `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`,
+      `Tables matching ps_%api%|ps_%webservice%: [${names.join(', ')}]`
   );
 }
 
@@ -234,7 +229,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
   // same fixture is applied twice — re-asserting permissions is harmless.
   const [existingRows] = await conn.execute<RowDataPacket[]>(
     `SELECT \`${schema.accountPk}\` AS pk FROM \`${schema.accountTable}\` WHERE \`${schema.keyColumn}\` = ? LIMIT 1`,
-    [apiKey],
+    [apiKey]
   );
   let accountId: number;
   if (Array.isArray(existingRows) && existingRows.length > 0) {
@@ -242,7 +237,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
   } else {
     const [result] = await conn.execute<ResultSetHeader>(
       `INSERT INTO \`${schema.accountTable}\` (\`${schema.keyColumn}\`, description, active) VALUES (?, ?, 1)`,
-      [apiKey, 'OpenLinker integration test key'],
+      [apiKey, 'OpenLinker integration test key']
     );
     accountId = result.insertId;
   }
@@ -250,7 +245,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
   // Wipe and re-grant (cheap on a fresh install, idempotent on re-run).
   await conn.execute(
     `DELETE FROM \`${schema.permissionTable}\` WHERE \`${schema.accountPk}\` = ?`,
-    [accountId],
+    [accountId]
   );
 
   // PS 9.x: bind the WS account to all active shops via ps_webservice_account_shop.
@@ -260,17 +255,17 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
   if (schema.variant === 'v9') {
     const [shopJunctionRows] = await conn.execute<(RowDataPacket & { TABLE_NAME: string })[]>(
       `SELECT TABLE_NAME FROM information_schema.TABLES
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_webservice_account_shop'`,
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_webservice_account_shop'`
     );
     if (shopJunctionRows.length > 0) {
       const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-        'SELECT id_shop FROM ps_shop WHERE active = 1',
+        'SELECT id_shop FROM ps_shop WHERE active = 1'
       );
       for (const shop of shopRows) {
         await conn.execute(
           `INSERT IGNORE INTO ps_webservice_account_shop (id_webservice_account, id_shop)
            VALUES (?, ?)`,
-          [accountId, shop.id_shop],
+          [accountId, shop.id_shop]
         );
       }
     }
@@ -284,7 +279,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
         `INSERT INTO \`${schema.permissionTable}\`
            (\`${schema.accountPk}\`, resource, \`get\`, \`post\`, \`put\`, \`delete\`, \`head\`, \`all\`)
          VALUES (?, ?, 1, 1, 1, 1, 1, 1)`,
-        [accountId, resource],
+        [accountId, resource]
       );
     }
   } else {
@@ -296,7 +291,7 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
           `INSERT INTO \`${schema.permissionTable}\`
              (\`${schema.accountPk}\`, resource, method)
            VALUES (?, ?, ?)`,
-          [accountId, resource, method],
+          [accountId, resource, method]
         );
       }
     }
@@ -308,7 +303,7 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
   const [existing] = await conn.execute<(RowDataPacket & { id_carrier: number })[]>(
     `SELECT id_carrier FROM ps_carrier
      WHERE external_module_name = 'openlinker' AND active = 1 AND deleted = 0
-     LIMIT 1`,
+     LIMIT 1`
   );
   if (Array.isArray(existing) && existing.length > 0) {
     return existing[0].id_carrier;
@@ -351,38 +346,40 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
   const insertResult = await dynamicInsert(conn, 'ps_carrier', desiredColumns);
   const idCarrier = insertResult.insertId;
   // PS uses id_carrier as the new id_reference for first-installed rows.
-  await conn.execute('UPDATE ps_carrier SET id_reference = ? WHERE id_carrier = ?', [idCarrier, idCarrier]);
+  await conn.execute('UPDATE ps_carrier SET id_reference = ? WHERE id_carrier = ?', [
+    idCarrier,
+    idCarrier,
+  ]);
 
   // Belt-and-braces: the resolution chain relies on id_carrier == id_reference
   // for first-installed carriers (#535 carrier-mapping spec assumes the two
   // coincide so callers can pass either value as `prestashopCarrierId`). If a
   // future PS image changes that invariant the spec needs to know — surface
   // it here with a precise message rather than at the assertion line.
-  const [verifyRows] = await conn.execute<(RowDataPacket & { id_carrier: number; id_reference: number })[]>(
-    'SELECT id_carrier, id_reference FROM ps_carrier WHERE id_carrier = ?',
-    [idCarrier],
-  );
+  const [verifyRows] = await conn.execute<
+    (RowDataPacket & { id_carrier: number; id_reference: number })[]
+  >('SELECT id_carrier, id_reference FROM ps_carrier WHERE id_carrier = ?', [idCarrier]);
   const row = verifyRows[0];
   if (!row || row.id_carrier !== row.id_reference) {
     throw new Error(
       `OL Dynamic carrier seed: post-insert id_carrier=${row?.id_carrier} != id_reference=${row?.id_reference}. ` +
-        `Update the carrier-mapping spec to track id_reference and id_carrier separately.`,
+        `Update the carrier-mapping spec to track id_reference and id_carrier separately.`
     );
   }
 
   // Per-language delay strings (required by PS — empty-string delay is
   // tolerated but the row must exist for every active language and shop).
   const [langRows] = await conn.execute<(RowDataPacket & { id_lang: number })[]>(
-    'SELECT id_lang FROM ps_lang WHERE active = 1',
+    'SELECT id_lang FROM ps_lang WHERE active = 1'
   );
   const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-    'SELECT id_shop FROM ps_shop WHERE active = 1',
+    'SELECT id_shop FROM ps_shop WHERE active = 1'
   );
   // ps_carrier_zone is required for PS to consider the carrier available;
   // grant against every zone to keep the fixture insensitive to country setup.
   // Hoisted out of the lang loop — zones don't change per language.
   const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
-    'SELECT id_zone FROM ps_zone',
+    'SELECT id_zone FROM ps_zone'
   );
 
   for (const lang of langRows) {
@@ -391,23 +388,23 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
         `INSERT INTO ps_carrier_lang (id_carrier, id_shop, id_lang, delay)
          VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE delay = VALUES(delay)`,
-        [idCarrier, shop.id_shop, lang.id_lang, 'OL dynamic test stub'],
+        [idCarrier, shop.id_shop, lang.id_lang, 'OL dynamic test stub']
       );
     }
   }
 
   for (const zone of zones) {
-    await conn.execute(
-      `INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)`,
-      [idCarrier, zone.id_zone],
-    );
+    await conn.execute(`INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)`, [
+      idCarrier,
+      zone.id_zone,
+    ]);
   }
 
   for (const shop of shopRows) {
-    await conn.execute(
-      `INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)`,
-      [idCarrier, shop.id_shop],
-    );
+    await conn.execute(`INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)`, [
+      idCarrier,
+      shop.id_shop,
+    ]);
   }
 
   return idCarrier;
@@ -432,13 +429,13 @@ async function activateCountry(conn: Connection, iso2: string): Promise<void> {
   await conn.execute('UPDATE ps_country SET active = 1 WHERE iso_code = ?', [iso2]);
   const [zoneCheck] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
     'SELECT id_zone FROM ps_country WHERE iso_code = ? LIMIT 1',
-    [iso2],
+    [iso2]
   );
   if (zoneCheck.length === 0 || Number(zoneCheck[0].id_zone) > 0) {
     return;
   }
   const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
-    'SELECT id_zone FROM ps_zone WHERE active = 1 ORDER BY id_zone ASC LIMIT 1',
+    'SELECT id_zone FROM ps_zone WHERE active = 1 ORDER BY id_zone ASC LIMIT 1'
   );
   if (zones.length === 0) {
     return;
@@ -450,17 +447,15 @@ async function activateCountry(conn: Connection, iso2: string): Promise<void> {
 }
 
 async function seedPlnCurrency(conn: Connection): Promise<number> {
-  const [existing] = await conn.execute<(RowDataPacket & { id_currency: number; deleted: number; active: number })[]>(
-    'SELECT id_currency, deleted, active FROM ps_currency WHERE iso_code = ? LIMIT 1',
-    ['PLN'],
-  );
+  const [existing] = await conn.execute<
+    (RowDataPacket & { id_currency: number; deleted: number; active: number })[]
+  >('SELECT id_currency, deleted, active FROM ps_currency WHERE iso_code = ? LIMIT 1', ['PLN']);
   if (Array.isArray(existing) && existing.length > 0) {
     const row = existing[0];
     if (row.deleted === 1 || row.active === 0) {
-      await conn.execute(
-        'UPDATE ps_currency SET deleted = 0, active = 1 WHERE id_currency = ?',
-        [row.id_currency],
-      );
+      await conn.execute('UPDATE ps_currency SET deleted = 0, active = 1 WHERE id_currency = ?', [
+        row.id_currency,
+      ]);
     }
     await ensureCurrencyShopLink(conn, row.id_currency);
     await ensureCurrencyLangLink(conn, row.id_currency, 'Polish złoty', 'zł', 'PLN');
@@ -502,13 +497,13 @@ async function seedPlnCurrency(conn: Connection): Promise<number> {
 
 async function ensureCurrencyShopLink(conn: Connection, idCurrency: number): Promise<void> {
   const [shops] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-    'SELECT id_shop FROM ps_shop WHERE active = 1',
+    'SELECT id_shop FROM ps_shop WHERE active = 1'
   );
   for (const shop of shops) {
     await conn.execute(
       `INSERT IGNORE INTO ps_currency_shop (id_currency, id_shop, conversion_rate)
        VALUES (?, ?, 1.0)`,
-      [idCurrency, shop.id_shop],
+      [idCurrency, shop.id_shop]
     );
   }
 }
@@ -518,17 +513,17 @@ async function ensureCurrencyLangLink(
   idCurrency: number,
   name: string,
   symbol: string,
-  isoCode: string,
+  isoCode: string
 ): Promise<void> {
   const [langs] = await conn.execute<(RowDataPacket & { id_lang: number })[]>(
-    'SELECT id_lang FROM ps_lang WHERE active = 1',
+    'SELECT id_lang FROM ps_lang WHERE active = 1'
   );
   for (const lang of langs) {
     await conn.execute(
       `INSERT INTO ps_currency_lang (id_currency, id_lang, name, symbol, pattern)
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE name = VALUES(name), symbol = VALUES(symbol)`,
-      [idCurrency, lang.id_lang, name, symbol, `#,##0.00 ${isoCode}`],
+      [idCurrency, lang.id_lang, name, symbol, `#,##0.00 ${isoCode}`]
     );
   }
 }
@@ -541,18 +536,18 @@ async function ensureCurrencyLangLink(
 async function dynamicInsert(
   conn: Connection,
   table: string,
-  desired: Record<string, string | number>,
+  desired: Record<string, string | number>
 ): Promise<ResultSetHeader> {
   const [cols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-    [table],
+    [table]
   );
   const liveCols = new Set(cols.map((r) => r.COLUMN_NAME));
   const usedCols = Object.keys(desired).filter((c) => liveCols.has(c));
   if (usedCols.length === 0) {
     throw new Error(
-      `${table} has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`,
+      `${table} has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`
     );
   }
   const placeholders = usedCols.map(() => '?').join(', ');
@@ -560,7 +555,7 @@ async function dynamicInsert(
   const values = usedCols.map((c) => desired[c]);
   const [result] = await conn.execute<ResultSetHeader>(
     `INSERT INTO \`${table}\` (${colList}) VALUES (${placeholders})`,
-    values,
+    values
   );
   return result;
 }
@@ -577,18 +572,18 @@ async function upsertDynamicByColumnPresence(
   conn: Connection,
   table: string,
   pkColumns: string[],
-  desired: Record<string, string | number>,
+  desired: Record<string, string | number>
 ): Promise<void> {
   const [cols] = await conn.execute<(RowDataPacket & { COLUMN_NAME: string })[]>(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-    [table],
+    [table]
   );
   const liveCols = new Set(cols.map((r) => r.COLUMN_NAME));
   const usedCols = Object.keys(desired).filter((c) => liveCols.has(c));
   if (usedCols.length === 0) {
     throw new Error(
-      `${table} has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`,
+      `${table} has none of the expected columns. Live columns: [${Array.from(liveCols).join(', ')}]`
     );
   }
   const placeholders = usedCols.map(() => '?').join(', ');
@@ -613,7 +608,7 @@ async function upsertDynamicByColumnPresence(
 async function assertNoUnsuppliedNotNullColumns(
   conn: Connection,
   table: string,
-  desired: Record<string, string | number>,
+  desired: Record<string, string | number>
 ): Promise<void> {
   const [cols] = await conn.execute<
     (RowDataPacket & {
@@ -626,7 +621,7 @@ async function assertNoUnsuppliedNotNullColumns(
     `SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, EXTRA
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-    [table],
+    [table]
   );
   const supplied = new Set(Object.keys(desired));
   const missingRequired = cols
@@ -635,13 +630,13 @@ async function assertNoUnsuppliedNotNullColumns(
         c.IS_NULLABLE === 'NO' &&
         c.COLUMN_DEFAULT === null &&
         !c.EXTRA.includes('auto_increment') &&
-        !supplied.has(c.COLUMN_NAME),
+        !supplied.has(c.COLUMN_NAME)
     )
     .map((c) => c.COLUMN_NAME);
   if (missingRequired.length > 0) {
     throw new Error(
       `${table} has NOT-NULL columns without a default that aren't in the desired map: ` +
-        `[${missingRequired.join(', ')}]. Add values for these to the desired map.`,
+        `[${missingRequired.join(', ')}]. Add values for these to the desired map.`
     );
   }
 }
@@ -661,7 +656,7 @@ async function assertNoUnsuppliedNotNullColumns(
  */
 export async function configurePrestashopAccessUrl(
   options: ApplyFixtureOptions,
-  externalHostPort: string,
+  externalHostPort: string
 ): Promise<void> {
   const conn = await createConnection({
     host: options.host,
@@ -680,7 +675,7 @@ export async function configurePrestashopAccessUrl(
       `UPDATE ps_shop_url
          SET domain = ?, domain_ssl = ?, physical_uri = '/'
        WHERE main = 1`,
-      [externalHostPort, externalHostPort],
+      [externalHostPort, externalHostPort]
     );
 
     // Configuration values we want to override so PS doesn't 302 the WS:
@@ -711,7 +706,7 @@ export async function configurePrestashopAccessUrl(
         `INSERT INTO ps_configuration (name, value, date_add, date_upd)
          VALUES (?, ?, NOW(), NOW())
          ON DUPLICATE KEY UPDATE value = VALUES(value), date_upd = NOW()`,
-        [name, value],
+        [name, value]
       );
     }
   } finally {
@@ -732,7 +727,7 @@ export async function configurePrestashopAccessUrl(
  */
 export async function waitForPrestashopInstall(
   options: ApplyFixtureOptions,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -746,7 +741,7 @@ export async function waitForPrestashopInstall(
       });
       try {
         const [rows] = await conn.execute<(RowDataPacket & { value: string | null })[]>(
-          "SELECT value FROM ps_configuration WHERE name = 'PS_VERSION_DB' LIMIT 1",
+          "SELECT value FROM ps_configuration WHERE name = 'PS_VERSION_DB' LIMIT 1"
         );
         if (
           Array.isArray(rows) &&
@@ -766,7 +761,7 @@ export async function waitForPrestashopInstall(
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(
-    `PrestaShop auto-install did not complete within ${timeoutMs}ms (no ps_configuration.PS_VERSION_DB row)`,
+    `PrestaShop auto-install did not complete within ${timeoutMs}ms (no ps_configuration.PS_VERSION_DB row)`
   );
 }
 
@@ -811,7 +806,7 @@ export interface DefaultPrestashopCarriers {
  *      survive the #467 zone-zero wipe.
  */
 export async function getDefaultPsCarriers(
-  options: ApplyFixtureOptions,
+  options: ApplyFixtureOptions
 ): Promise<DefaultPrestashopCarriers> {
   const conn = await createConnection({
     host: options.host,
@@ -826,14 +821,14 @@ export async function getDefaultPsCarriers(
     // "My cheap carrier" (3) — but only 1 + 2 are active by default. Force-activate
     // "My cheap carrier" so we have two distinct *real* carriers for the spec.
     await conn.execute(
-      `UPDATE ps_carrier SET active = 1 WHERE name = 'My cheap carrier' AND deleted = 0`,
+      `UPDATE ps_carrier SET active = 1 WHERE name = 'My cheap carrier' AND deleted = 0`
     );
     // Deactivate "Click and collect" — it's a pickup-only carrier that PS treats
     // specially in cart resolution: even when our adapter explicitly requests
     // `id_carrier=2`/`3`, PS rewrites to carrier 1 if it's available. Disabling
     // it removes the fallback target so PS honours the requested carrier.
     await conn.execute(
-      `UPDATE ps_carrier SET active = 0 WHERE name = 'Click and collect' AND deleted = 0`,
+      `UPDATE ps_carrier SET active = 0 WHERE name = 'Click and collect' AND deleted = 0`
     );
 
     // Order matters here: PS's cart resolution favours the carrier with the
@@ -852,7 +847,7 @@ export async function getDefaultPsCarriers(
     } else {
       throw new Error(
         `No active "My carrier"/"My cheap carrier" rows found on the PS install. ` +
-          `Check the install's PS_COUNTRY / carrier seed.`,
+          `Check the install's PS_COUNTRY / carrier seed.`
       );
     }
 
@@ -876,7 +871,7 @@ export async function getDefaultPsCarriers(
  */
 async function listActiveNonOlCarriersByName(
   conn: Connection,
-  names: string[],
+  names: string[]
 ): Promise<PrestashopCarrierInfo[]> {
   if (names.length === 0) return [];
   const placeholders = names.map(() => '?').join(', ');
@@ -889,7 +884,7 @@ async function listActiveNonOlCarriersByName(
        AND (external_module_name IS NULL OR external_module_name <> 'openlinker')
        AND name IN (${placeholders})
      ORDER BY FIELD(name, ${placeholders})`,
-    [...names, ...names],
+    [...names, ...names]
   );
   return rows.map((row) => ({ idCarrier: row.id_carrier, idReference: row.id_reference }));
 }
@@ -932,13 +927,13 @@ async function seedSecondaryTestCarrier(conn: Connection): Promise<PrestashopCar
   ]);
 
   const [langRows] = await conn.execute<(RowDataPacket & { id_lang: number })[]>(
-    'SELECT id_lang FROM ps_lang WHERE active = 1',
+    'SELECT id_lang FROM ps_lang WHERE active = 1'
   );
   const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-    'SELECT id_shop FROM ps_shop WHERE active = 1',
+    'SELECT id_shop FROM ps_shop WHERE active = 1'
   );
   const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
-    'SELECT id_zone FROM ps_zone',
+    'SELECT id_zone FROM ps_zone'
   );
 
   for (const lang of langRows) {
@@ -947,21 +942,21 @@ async function seedSecondaryTestCarrier(conn: Connection): Promise<PrestashopCar
         `INSERT INTO ps_carrier_lang (id_carrier, id_shop, id_lang, delay)
          VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE delay = VALUES(delay)`,
-        [idCarrier, shop.id_shop, lang.id_lang, 'Test secondary carrier'],
+        [idCarrier, shop.id_shop, lang.id_lang, 'Test secondary carrier']
       );
     }
   }
   for (const zone of zones) {
-    await conn.execute(
-      'INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)',
-      [idCarrier, zone.id_zone],
-    );
+    await conn.execute('INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)', [
+      idCarrier,
+      zone.id_zone,
+    ]);
   }
   for (const shop of shopRows) {
-    await conn.execute(
-      'INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)',
-      [idCarrier, shop.id_shop],
-    );
+    await conn.execute('INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)', [
+      idCarrier,
+      shop.id_shop,
+    ]);
   }
 
   // ps_delivery is the carrier price/weight matrix. Without at least one row
@@ -991,10 +986,10 @@ async function seedSecondaryTestCarrier(conn: Connection): Promise<PrestashopCar
  */
 async function ensureCarrierFullyDelivered(conn: Connection, idCarrier: number): Promise<void> {
   const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
-    'SELECT id_zone FROM ps_zone WHERE active = 1',
+    'SELECT id_zone FROM ps_zone WHERE active = 1'
   );
   const [shops] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-    'SELECT id_shop FROM ps_shop WHERE active = 1',
+    'SELECT id_shop FROM ps_shop WHERE active = 1'
   );
 
   // 1. Force a permissive carrier configuration: shipping_method=0 (price),
@@ -1010,15 +1005,15 @@ async function ensureCarrierFullyDelivered(conn: Connection, idCarrier: number):
          shipping_external = 0, is_module = 0, external_module_name = '',
          position = id_carrier
      WHERE id_carrier = ?`,
-    [idCarrier],
+    [idCarrier]
   );
 
   // 2. Carrier-to-zone coverage for every active zone (idempotent).
   for (const zone of zones) {
-    await conn.execute(
-      'INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)',
-      [idCarrier, zone.id_zone],
-    );
+    await conn.execute('INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)', [
+      idCarrier,
+      zone.id_zone,
+    ]);
   }
 
   // 3. Wipe existing delivery + range rows so the new permissive ranges
@@ -1041,17 +1036,17 @@ async function seedDeliveryRows(
   conn: Connection,
   idCarrier: number,
   zones: Array<{ id_zone: number }>,
-  shops: Array<{ id_shop: number }>,
+  shops: Array<{ id_shop: number }>
 ): Promise<void> {
   const [priceRangeResult] = await conn.execute<ResultSetHeader>(
     `INSERT INTO ps_range_price (id_carrier, delimiter1, delimiter2)
      VALUES (?, 0.000000, 10000.000000)`,
-    [idCarrier],
+    [idCarrier]
   );
   const [weightRangeResult] = await conn.execute<ResultSetHeader>(
     `INSERT INTO ps_range_weight (id_carrier, delimiter1, delimiter2)
      VALUES (?, 0.000000, 10000.000000)`,
-    [idCarrier],
+    [idCarrier]
   );
   for (const zone of zones) {
     for (const shop of shops) {
@@ -1064,12 +1059,12 @@ async function seedDeliveryRows(
       await conn.execute(
         `INSERT IGNORE INTO ps_delivery (id_carrier, id_range_price, id_range_weight, id_zone, id_shop, id_shop_group, price)
          VALUES (?, ?, 0, ?, ?, NULL, 12.50)`,
-        [idCarrier, priceRangeResult.insertId, zone.id_zone, shop.id_shop],
+        [idCarrier, priceRangeResult.insertId, zone.id_zone, shop.id_shop]
       );
       await conn.execute(
         `INSERT IGNORE INTO ps_delivery (id_carrier, id_range_price, id_range_weight, id_zone, id_shop, id_shop_group, price)
          VALUES (?, 0, ?, ?, ?, NULL, 12.50)`,
-        [idCarrier, weightRangeResult.insertId, zone.id_zone, shop.id_shop],
+        [idCarrier, weightRangeResult.insertId, zone.id_zone, shop.id_shop]
       );
     }
   }
@@ -1101,7 +1096,7 @@ export interface SeededPrestashopProduct {
  */
 export async function seedPrestashopProductForOrders(
   options: ApplyFixtureOptions,
-  opts: SeedPrestashopProductForOrdersOpts,
+  opts: SeedPrestashopProductForOrdersOpts
 ): Promise<SeededPrestashopProduct> {
   const conn = await createConnection({
     host: options.host,
@@ -1114,7 +1109,7 @@ export async function seedPrestashopProductForOrders(
   try {
     const existing = await conn.execute<(RowDataPacket & { id_product: number })[]>(
       'SELECT id_product FROM ps_product WHERE reference = ? LIMIT 1',
-      [opts.reference],
+      [opts.reference]
     );
     const existingRows = existing[0];
     if (Array.isArray(existingRows) && existingRows.length > 0) {
@@ -1186,10 +1181,10 @@ export async function seedPrestashopProductForOrders(
     const idProduct = productInsert.insertId;
 
     const [langRows] = await conn.execute<(RowDataPacket & { id_lang: number })[]>(
-      'SELECT id_lang FROM ps_lang WHERE active = 1',
+      'SELECT id_lang FROM ps_lang WHERE active = 1'
     );
     const [shopRows] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
-      'SELECT id_shop FROM ps_shop WHERE active = 1',
+      'SELECT id_shop FROM ps_shop WHERE active = 1'
     );
 
     const linkRewrite = opts.reference.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -1219,7 +1214,7 @@ export async function seedPrestashopProductForOrders(
             available_later: '',
             delivery_in_stock: '',
             delivery_out_stock: '',
-          },
+          }
         );
       }
     }
@@ -1228,48 +1223,43 @@ export async function seedPrestashopProductForOrders(
       // ps_product_shop carries the per-shop product attributes that drive
       // pricing and availability. Without it, PS WS reports the product as
       // unavailable in this shop and the order-create fails on stock check.
-      await upsertDynamicByColumnPresence(
-        conn,
-        'ps_product_shop',
-        ['id_product', 'id_shop'],
-        {
-          id_product: idProduct,
-          id_shop: shop.id_shop,
-          id_category_default: 2,
-          id_tax_rules_group: 0,
-          on_sale: 0,
-          online_only: 0,
-          ecotax: 0,
-          minimal_quantity: 1,
-          low_stock_threshold: 0,
-          low_stock_alert: 0,
-          price,
-          wholesale_price: 0,
-          unity: '',
-          unit_price: 0,
-          unit_price_ratio: 0,
-          additional_shipping_cost: 0,
-          customizable: 0,
-          text_fields: 0,
-          uploadable_files: 0,
-          active: 1,
-          redirect_type: '404',
-          id_type_redirected: 0,
-          available_for_order: 1,
-          available_date: '1970-01-01',
-          show_condition: 1,
-          condition: 'new',
-          show_price: 1,
-          indexed: 1,
-          visibility: 'both',
-          cache_default_attribute: 0,
-          advanced_stock_management: 0,
-          date_add: nowMysql,
-          date_upd: nowMysql,
-          pack_stock_type: 3,
-          product_type: 'standard',
-        },
-      );
+      await upsertDynamicByColumnPresence(conn, 'ps_product_shop', ['id_product', 'id_shop'], {
+        id_product: idProduct,
+        id_shop: shop.id_shop,
+        id_category_default: 2,
+        id_tax_rules_group: 0,
+        on_sale: 0,
+        online_only: 0,
+        ecotax: 0,
+        minimal_quantity: 1,
+        low_stock_threshold: 0,
+        low_stock_alert: 0,
+        price,
+        wholesale_price: 0,
+        unity: '',
+        unit_price: 0,
+        unit_price_ratio: 0,
+        additional_shipping_cost: 0,
+        customizable: 0,
+        text_fields: 0,
+        uploadable_files: 0,
+        active: 1,
+        redirect_type: '404',
+        id_type_redirected: 0,
+        available_for_order: 1,
+        available_date: '1970-01-01',
+        show_condition: 1,
+        condition: 'new',
+        show_price: 1,
+        indexed: 1,
+        visibility: 'both',
+        cache_default_attribute: 0,
+        advanced_stock_management: 0,
+        date_add: nowMysql,
+        date_upd: nowMysql,
+        pack_stock_type: 3,
+        product_type: 'standard',
+      });
     }
 
     // ps_stock_available is what the order-create reads to verify the line.
@@ -1280,7 +1270,7 @@ export async function seedPrestashopProductForOrders(
         `INSERT INTO ps_stock_available (id_product, id_product_attribute, id_shop, id_shop_group, quantity, physical_quantity, reserved_quantity, depends_on_stock, out_of_stock, location)
          VALUES (?, 0, ?, 0, ?, ?, 0, 0, 2, '')
          ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), physical_quantity = VALUES(physical_quantity)`,
-        [idProduct, shop.id_shop, stockQuantity, stockQuantity],
+        [idProduct, shop.id_shop, stockQuantity, stockQuantity]
       );
     }
 

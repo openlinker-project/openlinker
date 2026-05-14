@@ -11,7 +11,10 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { SYNC_JOB_REPOSITORY_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  SYNC_JOB_REPOSITORY_TOKEN,
+  CONNECTION_CURSOR_REPOSITORY_TOKEN,
+} from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobRequest } from '@openlinker/core/sync';
@@ -36,16 +39,17 @@ describe('Allegro Cursor Persistence Integration', () => {
     integrationsService = harness.get(INTEGRATIONS_SERVICE_TOKEN);
     dataSource = harness.getDataSource();
 
-    process.env.CREDENTIALS_TEST_CREDENTIALS_REF = '{"accessToken":"test-token","refreshToken":"test-refresh"}';
+    process.env.CREDENTIALS_TEST_CREDENTIALS_REF =
+      '{"accessToken":"test-token","refreshToken":"test-refresh"}';
   });
 
   beforeEach(async () => {
     await resetTestHarness();
 
     mockMarketplaceAdapter = createMockAllegroMarketplaceAdapter();
-    jest.spyOn(integrationsService, 'getCapabilityAdapter').mockResolvedValue(
-      mockMarketplaceAdapter as any,
-    );
+    jest
+      .spyOn(integrationsService, 'getCapabilityAdapter')
+      .mockResolvedValue(mockMarketplaceAdapter as any);
   });
 
   afterEach(async () => {
@@ -211,6 +215,3 @@ describe('Allegro Cursor Persistence Integration', () => {
     });
   });
 });
-
-
-

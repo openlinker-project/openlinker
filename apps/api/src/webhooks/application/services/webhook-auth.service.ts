@@ -14,7 +14,7 @@ import { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import { WEBHOOK_SECRET_PROVIDER_TOKEN } from '@openlinker/core/integrations';
 import { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import { IWebhookAuthService } from '../interfaces/webhook-auth.service.interface';
+import type { IWebhookAuthService } from '../interfaces/webhook-auth.service.interface';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../errors/webhook-replay.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -28,7 +28,7 @@ export class WebhookAuthService implements IWebhookAuthService {
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly secretProvider: WebhookSecretProviderPort,
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort,
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   async verifySignature(
@@ -36,7 +36,7 @@ export class WebhookAuthService implements IWebhookAuthService {
     connectionId: string,
     timestamp: string,
     rawBody: Buffer,
-    signature: string,
+    signature: string
   ): Promise<boolean> {
     try {
       // Validate signature format: sha256=<hex>
@@ -44,7 +44,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookAuthenticationException(
           `Invalid signature format. Expected 'sha256=<hex>', got: ${signature.substring(0, 20)}...`,
           provider,
-          connectionId,
+          connectionId
         );
       }
 
@@ -55,7 +55,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookAuthenticationException(
           'Invalid signature format. Expected 64-character hex string',
           provider,
-          connectionId,
+          connectionId
         );
       }
 
@@ -65,7 +65,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookAuthenticationException(
           `Connection ${connectionId} is not active (status: ${connection.status})`,
           provider,
-          connectionId,
+          connectionId
         );
       }
 
@@ -74,7 +74,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookAuthenticationException(
           `Provider mismatch: expected ${connection.platformType}, got ${provider}`,
           provider,
-          connectionId,
+          connectionId
         );
       }
 
@@ -82,11 +82,7 @@ export class WebhookAuthService implements IWebhookAuthService {
       const secret = await this.secretProvider.getSecret(provider, connectionId);
 
       // Build signed payload: timestamp + '.' + rawBody
-      const signedPayload = Buffer.concat([
-        Buffer.from(timestamp),
-        Buffer.from('.'),
-        rawBody,
-      ]);
+      const signedPayload = Buffer.concat([Buffer.from(timestamp), Buffer.from('.'), rawBody]);
 
       // Compute expected signature
       const hmac = createHmac('sha256', secret);
@@ -117,18 +113,21 @@ export class WebhookAuthService implements IWebhookAuthService {
 
       this.logger.error(
         `Signature verification error for ${provider}:${connectionId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
 
       throw new WebhookAuthenticationException(
         `Signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         provider,
-        connectionId,
+        connectionId
       );
     }
   }
 
-  validateTimestamp(timestamp: string, skewWindowMs: number = this.DEFAULT_SKEW_WINDOW_MS): boolean {
+  validateTimestamp(
+    timestamp: string,
+    skewWindowMs: number = this.DEFAULT_SKEW_WINDOW_MS
+  ): boolean {
     try {
       // Validate timestamp format (should be numeric string)
       const timestampNum = Number.parseInt(timestamp, 10);
@@ -136,7 +135,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookReplayException(
           `Invalid timestamp format: ${timestamp}`,
           timestamp,
-          skewWindowMs,
+          skewWindowMs
         );
       }
 
@@ -152,7 +151,7 @@ export class WebhookAuthService implements IWebhookAuthService {
         throw new WebhookReplayException(
           `Timestamp outside allowed window. Difference: ${timeDiff}ms, allowed: ±${skewWindowMs}ms`,
           timestamp,
-          skewWindowMs,
+          skewWindowMs
         );
       }
 
@@ -165,7 +164,7 @@ export class WebhookAuthService implements IWebhookAuthService {
       throw new WebhookReplayException(
         `Timestamp validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp,
-        skewWindowMs,
+        skewWindowMs
       );
     }
   }

@@ -7,16 +7,16 @@
  *
  * @module libs/integrations/prestashop/src/application/interfaces
  */
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 // eslint-disable-next-line no-restricted-imports
-import { PrestashopProductMasterAdapter } from '../../infrastructure/adapters/prestashop-product-master.adapter';
+import type { PrestashopProductMasterAdapter } from '../../infrastructure/adapters/prestashop-product-master.adapter';
 // eslint-disable-next-line no-restricted-imports
-import { PrestashopInventoryMasterAdapter } from '../../infrastructure/adapters/prestashop-inventory-master.adapter';
+import type { PrestashopInventoryMasterAdapter } from '../../infrastructure/adapters/prestashop-inventory-master.adapter';
 // eslint-disable-next-line no-restricted-imports
-import { PrestashopOrderSourceAdapter } from '../../infrastructure/adapters/prestashop-order-source.adapter';
+import type { PrestashopOrderSourceAdapter } from '../../infrastructure/adapters/prestashop-order-source.adapter';
 // eslint-disable-next-line no-restricted-imports
-import { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+import type { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/adapters/prestashop-order-processor-manager.adapter';
 
 /**
  * PrestaShop adapter instances
@@ -54,7 +54,6 @@ export interface IPrestashopAdapterFactory {
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<PrestashopAdapters>;
 }
-

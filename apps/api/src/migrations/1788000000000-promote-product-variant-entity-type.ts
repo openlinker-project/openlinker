@@ -25,7 +25,7 @@
  * Generated: 2026-04-22
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class PromoteProductVariantEntityType1788000000000 implements MigrationInterface {
   name = 'PromoteProductVariantEntityType1788000000000';
@@ -34,7 +34,7 @@ export class PromoteProductVariantEntityType1788000000000 implements MigrationIn
     // 1. Drop the inventory_items → product_variants FK so the PK update succeeds.
     //    The FK is ON UPDATE NO ACTION so it does not cascade PK changes.
     await queryRunner.query(
-      `ALTER TABLE "inventory_items" DROP CONSTRAINT IF EXISTS "FK_8fa4cdd8e98fde93d4f14025417"`,
+      `ALTER TABLE "inventory_items" DROP CONSTRAINT IF EXISTS "FK_8fa4cdd8e98fde93d4f14025417"`
     );
 
     // 2. Build a temp projection of (mapping_id, old_id, new_id) covering every
@@ -110,7 +110,7 @@ export class PromoteProductVariantEntityType1788000000000 implements MigrationIn
       const orphanCount = mappingCount - variantUpdateCount;
       queryRunner.connection.logger.log(
         'warn',
-        `[PromoteProductVariantEntityType1788000000000] ${orphanCount} identifier_mappings row(s) flagged as variant had no backing product_variants row. Mappings were still re-prefixed to ol_variant_* so the system remains consistent; pre-existing orphans remain orphans.`,
+        `[PromoteProductVariantEntityType1788000000000] ${orphanCount} identifier_mappings row(s) flagged as variant had no backing product_variants row. Mappings were still re-prefixed to ol_variant_* so the system remains consistent; pre-existing orphans remain orphans.`
       );
     }
 
@@ -121,7 +121,7 @@ export class PromoteProductVariantEntityType1788000000000 implements MigrationIn
 
     // 9. Re-add the inventory_items → product_variants FK with its original semantics.
     await queryRunner.query(
-      `ALTER TABLE "inventory_items" ADD CONSTRAINT "FK_8fa4cdd8e98fde93d4f14025417" FOREIGN KEY ("productVariantId") REFERENCES "product_variants"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+      `ALTER TABLE "inventory_items" ADD CONSTRAINT "FK_8fa4cdd8e98fde93d4f14025417" FOREIGN KEY ("productVariantId") REFERENCES "product_variants"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`
     );
   }
 
@@ -157,12 +157,12 @@ export class PromoteProductVariantEntityType1788000000000 implements MigrationIn
         .map((c) => `(${c.platformType}/${c.connectionId}/externalId=${c.externalId})`)
         .join(', ');
       throw new Error(
-        `[PromoteProductVariantEntityType1788000000000] Cannot revert: ${collisions.length}+ ProductVariant mapping(s) collide with existing Product mappings on (platformType, connectionId, externalId). Reverting would violate the identifier_mappings unique index. Sample: ${sample}. Remediate manually (drop the colliding Product rows or re-run up) before retrying.`,
+        `[PromoteProductVariantEntityType1788000000000] Cannot revert: ${collisions.length}+ ProductVariant mapping(s) collide with existing Product mappings on (platformType, connectionId, externalId). Reverting would violate the identifier_mappings unique index. Sample: ${sample}. Remediate manually (drop the colliding Product rows or re-run up) before retrying.`
       );
     }
 
     await queryRunner.query(
-      `ALTER TABLE "inventory_items" DROP CONSTRAINT IF EXISTS "FK_8fa4cdd8e98fde93d4f14025417"`,
+      `ALTER TABLE "inventory_items" DROP CONSTRAINT IF EXISTS "FK_8fa4cdd8e98fde93d4f14025417"`
     );
 
     await queryRunner.query(`
@@ -216,7 +216,7 @@ export class PromoteProductVariantEntityType1788000000000 implements MigrationIn
     await queryRunner.query(`DROP TABLE variant_id_rollback`);
 
     await queryRunner.query(
-      `ALTER TABLE "inventory_items" ADD CONSTRAINT "FK_8fa4cdd8e98fde93d4f14025417" FOREIGN KEY ("productVariantId") REFERENCES "product_variants"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+      `ALTER TABLE "inventory_items" ADD CONSTRAINT "FK_8fa4cdd8e98fde93d4f14025417" FOREIGN KEY ("productVariantId") REFERENCES "product_variants"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`
     );
   }
 }

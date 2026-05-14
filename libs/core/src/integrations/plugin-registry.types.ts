@@ -8,7 +8,7 @@
  *
  * @module libs/core/src/integrations
  */
-import { DynamicModule, Type } from '@nestjs/common';
+import type { DynamicModule, Type } from '@nestjs/common';
 
 /**
  * A plugin entry is either a Nest module class (static, no per-env config)

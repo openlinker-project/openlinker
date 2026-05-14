@@ -1,8 +1,6 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAdapterKeyToConnections1766837314000
-  implements MigrationInterface
-{
+export class AddAdapterKeyToConnections1766837314000 implements MigrationInterface {
   name = 'AddAdapterKeyToConnections1766837314000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -39,6 +37,3 @@ export class AddAdapterKeyToConnections1766837314000
     await queryRunner.query(`ALTER TABLE "connections" DROP COLUMN "adapterKey"`);
   }
 }
-
-
-

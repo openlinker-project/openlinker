@@ -7,14 +7,18 @@
  * @module apps/api/src/integrations/http
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { INTEGRATIONS_SERVICE_TOKEN, WEBHOOK_SECRET_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 
@@ -32,9 +36,9 @@ describe('ConnectionController', () => {
     'cred_123',
     new Date('2025-01-01'),
     new Date('2025-01-01'),
-  
+
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
   );
 
   const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
@@ -52,7 +56,7 @@ describe('ConnectionController', () => {
       /* lockedBy     */ null,
       /* lastError    */ overrides.lastError ?? null,
       /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z'),
+      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z')
     );
 
   beforeEach(async () => {
@@ -183,9 +187,9 @@ describe('ConnectionController', () => {
         'cred_123',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       service.update.mockResolvedValue(updatedConnection);
@@ -223,9 +227,9 @@ describe('ConnectionController', () => {
         'cred_123',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       service.disable.mockResolvedValue(disabledConnection);
@@ -240,7 +244,10 @@ describe('ConnectionController', () => {
 
   describe('getDiagnostics', () => {
     it('should return diagnostics DTO for existing connection', async () => {
-      const succeededJob = makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') });
+      const succeededJob = makeSyncJob({
+        status: 'succeeded',
+        updatedAt: new Date('2025-01-01T10:01:00Z'),
+      });
       service.get.mockResolvedValue(mockConnection);
       syncJobRepository.findRecentByConnectionId.mockResolvedValue([succeededJob]);
 
@@ -259,7 +266,9 @@ describe('ConnectionController', () => {
     it('should throw NotFoundException for unknown connection', async () => {
       service.get.mockRejectedValue(new NotFoundException('Connection not found'));
 
-      await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
 
     it('should derive lastFailedAt from retrying job with lastError (markFailed sets status queued)', async () => {
@@ -310,17 +319,17 @@ describe('ConnectionController', () => {
       service.updateCredentials.mockRejectedValue(new NotFoundException('Connection not found'));
 
       await expect(
-        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } }),
+        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } })
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should propagate BadRequestException when connection is not db-backed', async () => {
       service.updateCredentials.mockRejectedValue(
-        new BadRequestException('does not have a db-backed credentials reference'),
+        new BadRequestException('does not have a db-backed credentials reference')
       );
 
       await expect(
-        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } }),
+        controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } })
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -342,9 +351,7 @@ describe('ConnectionController', () => {
 
     it('propagates BadRequestException from the service (e.g., unsupported adapter)', async () => {
       service.installWebhooks.mockRejectedValueOnce(
-        new BadRequestException(
-          'Webhook auto-provisioning is not supported for adapter foo.bar.v1',
-        ),
+        new BadRequestException('Webhook auto-provisioning is not supported for adapter foo.bar.v1')
       );
 
       await expect(
@@ -352,7 +359,7 @@ describe('ConnectionController', () => {
           id: 'user-1',
           username: 'admin',
           role: 'admin',
-        }),
+        })
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -362,11 +369,15 @@ describe('ConnectionController', () => {
       service.get.mockResolvedValue(mockConnection);
 
       const mockRes = { setHeader: jest.fn() } as never;
-      const result = await controller.rotateWebhookSecret('connection-123', {
-        id: 'user-1',
-        username: 'admin',
-        role: 'admin',
-      }, mockRes);
+      const result = await controller.rotateWebhookSecret(
+        'connection-123',
+        {
+          id: 'user-1',
+          username: 'admin',
+          role: 'admin',
+        },
+        mockRes
+      );
 
       expect(result.secret).toBe('deadbeef');
       expect(result.revealedOnce).toBe(true);

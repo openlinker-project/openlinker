@@ -7,9 +7,9 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import { PrestashopCountryNotFoundException } from '../../domain/exceptions/prestashop-country-not-found.exception';
-import { PrestashopCountry } from './prestashop-provisioner.types';
+import type { PrestashopCountry } from './prestashop-provisioner.types';
 
 /**
  * Cache entry with timestamp for TTL
@@ -46,7 +46,7 @@ export class PrestashopCountryResolver {
   async resolveCountryId(
     iso2Code: string,
     connectionId: string,
-    webserviceClient: IPrestashopWebserviceClient,
+    webserviceClient: IPrestashopWebserviceClient
   ): Promise<number> {
     // Normalize ISO2 code (uppercase, trim)
     const normalizedIso2 = iso2Code.trim().toUpperCase();
@@ -78,31 +78,32 @@ export class PrestashopCountryResolver {
         // If not supported, we'll filter based on what we get
       },
       10, // limit - get more results to find active ones
-      0, // offset
+      0 // offset
     );
 
     // PrestaShop returns countries in array format
     // Filter for active countries (client-side filtering to avoid double query)
-    const activeCountries = countries?.filter((c) => {
-      const active = c.active;
-      // Handle both string and number formats ('1' or 1 for active)
-      // If active field is not in response, assume active (fallback for PrestaShop versions that don't return it)
-      return active === undefined || active === '1' || active === 1 || active === 'true';
-    }) || [];
+    const activeCountries =
+      countries?.filter((c) => {
+        const active = c.active;
+        // Handle both string and number formats ('1' or 1 for active)
+        // If active field is not in response, assume active (fallback for PrestaShop versions that don't return it)
+        return active === undefined || active === '1' || active === 1 || active === 'true';
+      }) || [];
 
     if (activeCountries.length === 0) {
       // Check if any countries were returned (to distinguish between "not found" and "not active")
       if (countries && countries.length > 0) {
         // Country exists but is inactive
         this.logger.error(
-          `Country found but not active in PrestaShop: ${normalizedIso2} (connection: ${connectionId}). Please activate the country in PrestaShop admin.`,
+          `Country found but not active in PrestaShop: ${normalizedIso2} (connection: ${connectionId}). Please activate the country in PrestaShop admin.`
         );
         throw new PrestashopCountryNotFoundException(
           `${normalizedIso2} (country exists but is not active)`,
-          connectionId,
+          connectionId
         );
       }
-      
+
       // Country not found at all
       throw new PrestashopCountryNotFoundException(normalizedIso2, connectionId);
     }
@@ -113,7 +114,7 @@ export class PrestashopCountryResolver {
 
     if (Number.isNaN(countryId)) {
       this.logger.error(
-        `Invalid country ID returned from PrestaShop: ${country.id} for ISO2: ${normalizedIso2}`,
+        `Invalid country ID returned from PrestaShop: ${country.id} for ISO2: ${normalizedIso2}`
       );
       throw new PrestashopCountryNotFoundException(normalizedIso2, connectionId);
     }

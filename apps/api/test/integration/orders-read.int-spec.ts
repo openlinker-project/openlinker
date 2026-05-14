@@ -9,7 +9,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
 
@@ -91,10 +96,14 @@ describe('Orders Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await createTestOrderRecord(dataSource, {
-        syncStatus: [{ destinationConnectionId: '00000000-0000-0000-0000-000000000002', status: 'synced' }],
+        syncStatus: [
+          { destinationConnectionId: '00000000-0000-0000-0000-000000000002', status: 'synced' },
+        ],
       });
       await createTestOrderRecord(dataSource, {
-        syncStatus: [{ destinationConnectionId: '00000000-0000-0000-0000-000000000002', status: 'failed' }],
+        syncStatus: [
+          { destinationConnectionId: '00000000-0000-0000-0000-000000000002', status: 'failed' },
+        ],
       });
 
       const response = await http
@@ -133,8 +142,12 @@ describe('Orders Read API Integration', () => {
       expect(page2.body.total).toBe(5);
 
       // Pages must not overlap
-      const ids1 = page1.body.items.map((o: { internalOrderId: string }) => o.internalOrderId) as string[];
-      const ids2 = page2.body.items.map((o: { internalOrderId: string }) => o.internalOrderId) as string[];
+      const ids1 = page1.body.items.map(
+        (o: { internalOrderId: string }) => o.internalOrderId
+      ) as string[];
+      const ids2 = page2.body.items.map(
+        (o: { internalOrderId: string }) => o.internalOrderId
+      ) as string[];
       expect(ids1.some((id) => ids2.includes(id))).toBe(false);
     });
 

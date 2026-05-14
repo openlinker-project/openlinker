@@ -3,11 +3,12 @@
  *
  * @module apps/api/src/customers/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import {
-  CustomerProjectionRepositoryPort,
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
   CustomerProjection,
   CustomerAddressProjection,
@@ -26,7 +27,7 @@ describe('CustomersController', () => {
     new Date('2026-01-01T00:00:00Z'),
     'conn-1',
     new Date('2026-01-01T00:00:00Z'),
-    new Date('2026-01-01T00:00:00Z'),
+    new Date('2026-01-01T00:00:00Z')
   );
 
   const mockAddress = new CustomerAddressProjection(
@@ -40,7 +41,7 @@ describe('CustomersController', () => {
     'PL',
     new Date('2026-01-01T00:00:00Z'),
     new Date('2026-01-01T00:00:00Z'),
-    new Date('2026-01-01T00:00:00Z'),
+    new Date('2026-01-01T00:00:00Z')
   );
 
   beforeEach(async () => {
@@ -81,7 +82,7 @@ describe('CustomersController', () => {
       expect(result.offset).toBe(0);
       expect(repository.findMany).toHaveBeenCalledWith(
         { search: undefined, lastSourceConnectionId: undefined },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
     });
 
@@ -97,7 +98,7 @@ describe('CustomersController', () => {
 
       expect(repository.findMany).toHaveBeenCalledWith(
         { search: 'test', lastSourceConnectionId: 'conn-1' },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
 

@@ -9,26 +9,28 @@
  * @implements {IWebhookDeliveryQueryService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import {
+import type {
   PaginatedWebhookDeliveries,
   WebhookDelivery,
   WebhookDeliveryFilters,
   WebhookDeliveryPagination,
+} from '@openlinker/core/webhooks';
+import {
   WebhookDeliveryRepositoryPort,
   WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
 } from '@openlinker/core/webhooks';
-import { IWebhookDeliveryQueryService } from '../interfaces/webhook-delivery-query.service.interface';
+import type { IWebhookDeliveryQueryService } from '../interfaces/webhook-delivery-query.service.interface';
 
 @Injectable()
 export class WebhookDeliveryQueryService implements IWebhookDeliveryQueryService {
   constructor(
     @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
-    private readonly repository: WebhookDeliveryRepositoryPort,
+    private readonly repository: WebhookDeliveryRepositoryPort
   ) {}
 
   list(
     filters: WebhookDeliveryFilters,
-    pagination: WebhookDeliveryPagination,
+    pagination: WebhookDeliveryPagination
   ): Promise<PaginatedWebhookDeliveries> {
     return this.repository.findMany(filters, pagination);
   }

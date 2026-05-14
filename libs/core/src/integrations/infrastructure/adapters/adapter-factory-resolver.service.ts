@@ -7,10 +7,10 @@
  * @module libs/core/src/integrations/infrastructure/adapters
  */
 import { Injectable } from '@nestjs/common';
-import { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
+import type { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -61,23 +61,25 @@ export class AdapterFactoryResolverService {
     connection: Connection,
     capability: string,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<T> {
     const factory = this.factories.get(adapterKey);
     if (!factory) {
       throw new AdapterNotFoundException(
         `No factory registered for adapterKey: ${adapterKey}. ` +
-          `Available factories: ${Array.from(this.factories.keys()).join(', ')}`,
+          `Available factories: ${Array.from(this.factories.keys()).join(', ')}`
       );
     }
 
-    this.logger.debug(`Creating ${capability} adapter for connection ${connection.id} using factory: ${adapterKey}`);
+    this.logger.debug(
+      `Creating ${capability} adapter for connection ${connection.id} using factory: ${adapterKey}`
+    );
 
     return factory.createCapabilityAdapter<T>(
       connection,
       capability,
       identifierMapping,
-      credentialsResolver,
+      credentialsResolver
     );
   }
 
@@ -91,9 +93,3 @@ export class AdapterFactoryResolverService {
     return this.factories.has(adapterKey);
   }
 }
-
-
-
-
-
-

@@ -25,9 +25,9 @@
 import { createHmac } from 'crypto';
 
 import { Logger } from '@openlinker/shared/logging';
-import { WebhookSecretProviderPort } from '@openlinker/core/integrations';
+import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 
-import {
+import type {
   IPrestashopOpenLinkerModuleClient,
   WriteCartShippingInput,
 } from './prestashop-openlinker-module.client.interface';
@@ -58,7 +58,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
   constructor(
     private readonly connectionId: string,
     private readonly baseUrl: string,
-    private readonly secretProvider: WebhookSecretProviderPort,
+    private readonly secretProvider: WebhookSecretProviderPort
   ) {}
 
   async writeCartShipping(input: WriteCartShippingInput): Promise<void> {
@@ -79,7 +79,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
 
     this.logger.debug(
       `OpenLinker module: POST cartshipping connection=${this.connectionId} ` +
-        `idCart=${input.idCart} amountTaxIncl=${input.amountTaxIncl}`,
+        `idCart=${input.idCart} amountTaxIncl=${input.amountTaxIncl}`
     );
 
     let response: Response;
@@ -99,7 +99,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
         this.connectionId,
         input.idCart,
         0,
-        `network: ${err instanceof Error ? err.message : 'unknown'}`,
+        `network: ${err instanceof Error ? err.message : 'unknown'}`
       );
     }
 
@@ -110,14 +110,9 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     const reason = await this.extractReason(response);
     this.logger.warn(
       `OpenLinker module: cartshipping write failed connection=${this.connectionId} ` +
-        `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`,
+        `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
     );
-    throw new PrestashopOlModuleException(
-      this.connectionId,
-      input.idCart,
-      response.status,
-      reason,
-    );
+    throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, reason);
   }
 
   /**

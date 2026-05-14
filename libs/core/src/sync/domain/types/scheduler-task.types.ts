@@ -14,8 +14,8 @@
  *
  * @module domain/types
  */
-import { Connection } from '../../../identifier-mapping/domain/entities/connection.entity';
-import { JobType } from './sync-job.types';
+import type { Connection } from '../../../identifier-mapping/domain/entities/connection.entity';
+import type { JobType } from './sync-job.types';
 
 /**
  * Defines a scheduled task that enqueues jobs for a specific platform or

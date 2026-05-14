@@ -6,9 +6,10 @@
  *
  * @module libs/core/src/customers/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { CustomerProjectionService } from './customer-projection.service';
-import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
+import type { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
 import { DestinationAddressMapping } from '../../domain/entities/destination-address-mapping.entity';
@@ -71,7 +72,7 @@ describe('CustomerProjectionService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
       repository.findById.mockResolvedValue(projection);
 
@@ -108,7 +109,7 @@ describe('CustomerProjectionService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.upsert.mockResolvedValue(projection);
@@ -140,7 +141,7 @@ describe('CustomerProjectionService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
 
       const savedProjection = new CustomerProjection(
@@ -152,7 +153,7 @@ describe('CustomerProjectionService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.upsert.mockResolvedValue(savedProjection);
@@ -187,7 +188,7 @@ describe('CustomerProjectionService', () => {
         'PL',
         new Date(),
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.upsertAddress.mockResolvedValue(address);
@@ -221,7 +222,7 @@ describe('CustomerProjectionService', () => {
         'PL',
         new Date(),
         new Date(),
-        new Date(),
+        new Date()
       );
 
       const savedAddress = new CustomerAddressProjection(
@@ -235,7 +236,7 @@ describe('CustomerProjectionService', () => {
         null,
         new Date(),
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.upsertAddress.mockResolvedValue(savedAddress);
@@ -260,7 +261,7 @@ describe('CustomerProjectionService', () => {
         'shipping',
         'prestashop-address-789',
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.upsertDestinationAddressMapping.mockResolvedValue(mapping);

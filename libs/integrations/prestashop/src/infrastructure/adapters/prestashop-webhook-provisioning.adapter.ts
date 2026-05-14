@@ -27,22 +27,21 @@
 import { Inject, Injectable, BadRequestException } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
-import {
-  ConnectionPort,
-  CONNECTION_PORT_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type {
+  WebhookProvisioningPort,
+  WebhookProvisioningResult,
+} from '@openlinker/core/integrations';
 import {
   IWebhookSecretService,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   CredentialsResolverPort,
   CREDENTIALS_RESOLVER_TOKEN,
-  WebhookProvisioningPort,
-  WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
-import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
-import { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 
 const PROVIDER = 'prestashop';
 
@@ -63,13 +62,10 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort,
+    private readonly credentialsResolver: CredentialsResolverPort
   ) {}
 
-  async install(
-    connectionId: string,
-    actorUserId?: string,
-  ): Promise<WebhookProvisioningResult> {
+  async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
     // Step 1 — validate connection config. Routing by adapterKey via the
     // registry guarantees this adapter only sees PS connections; the
     // unsupported-platform 400 lives in `ConnectionService.installWebhooks`.
@@ -81,45 +77,35 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
       throw new BadRequestException(
         'Set the OL callback URL on the connection-edit page before configuring ' +
           'webhooks. The PS module needs to know where to POST events back to OL ' +
-          '(e.g. http://host.docker.internal:3000 in dev, your public OL URL in prod).',
+          '(e.g. http://host.docker.internal:3000 in dev, your public OL URL in prod).'
       );
     }
 
     if (!config.baseUrl || typeof config.baseUrl !== 'string') {
       // Defensive — should be caught by DTO at save time. Mirrored here so the
       // adapter stays usable in tests / programmatic call paths.
-      throw new BadRequestException(
-        `Connection ${connectionId} is missing baseUrl in config.`,
-      );
+      throw new BadRequestException(`Connection ${connectionId} is missing baseUrl in config.`);
     }
 
     // Step 2 — rotate secret (one-shot plaintext)
-    const { secret } = await this.webhookSecretService.rotate(
-      PROVIDER,
-      connectionId,
-      actorUserId,
-    );
+    const { secret } = await this.webhookSecretService.rotate(PROVIDER, connectionId, actorUserId);
 
     // Step 3 — push 3 config rows via PS WS
     const wsClient = await this.createWebserviceClient(connection.credentialsRef, config);
 
     try {
       await this.upsertConfiguration(wsClient, CONFIG_KEYS.baseUrl, callbackUrl);
-      await this.upsertConfiguration(
-        wsClient,
-        CONFIG_KEYS.connectionId,
-        connectionId,
-      );
+      await this.upsertConfiguration(wsClient, CONFIG_KEYS.connectionId, connectionId);
       await this.upsertConfiguration(wsClient, CONFIG_KEYS.webhookSecret, secret);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Failed to push webhook configuration to PS for connection ${connectionId}: ${message}`,
+        `Failed to push webhook configuration to PS for connection ${connectionId}: ${message}`
       );
       throw new BadRequestException(
         `Configuration push to PrestaShop failed: ${message}. ` +
           `The webhook secret was rotated on OL's side; PS still has the previous ` +
-          `value. Click 'Configure webhooks' again to retry.`,
+          `value. Click 'Configure webhooks' again to retry.`
       );
     }
 
@@ -135,7 +121,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
       this.logger.warn(
         `Webhook configuration pushed to PS but state update failed for ` +
           `${connectionId}: ${message}. PS has the right config; OL did not record success. ` +
-          `Re-running install is safe (idempotent).`,
+          `Re-running install is safe (idempotent).`
       );
     }
 
@@ -147,14 +133,14 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Test ping fire failed for connection ${connectionId}: ${message}. ` +
-          `Configuration is correct; verification just did not complete.`,
+          `Configuration is correct; verification just did not complete.`
       );
     }
 
     this.logger.log(
       `webhook_install.completed connectionId=${connectionId} ` +
         `webhooksConfigured=${stateUpdateOk} testPingTriggered=${pingOk} ` +
-        `actor=${actorUserId ?? 'system'}`,
+        `actor=${actorUserId ?? 'system'}`
     );
 
     if (!stateUpdateOk) {
@@ -187,7 +173,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
   private async upsertConfiguration(
     wsClient: IPrestashopWebserviceClient,
     name: string,
-    value: string,
+    value: string
   ): Promise<void> {
     // TODO(#168 multi-store): if PS ≥ 8.2 with multi-store rejects the bare
     // `{ name, value }` body, retry with explicit `id_shop_group: 1, id_shop: 1`.
@@ -198,7 +184,7 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
       'configurations',
       { custom: { name } },
       1,
-      0,
+      0
     );
     if (existing.length > 0) {
       const id = existing[0].id;
@@ -228,15 +214,13 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
   private async firePing(
     psBaseUrl: string,
     secret: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<boolean> {
     const url = `${psBaseUrl.replace(/\/$/, '')}/module/openlinker/ping`;
     const body = JSON.stringify({ event: 'test.ping', connectionId });
     const timestamp = String(Date.now());
     const signedPayload = `${timestamp}.${body}`;
-    const signatureHex = createHmac('sha256', secret)
-      .update(signedPayload)
-      .digest('hex');
+    const signatureHex = createHmac('sha256', secret).update(signedPayload).digest('hex');
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -259,14 +243,13 @@ export class PrestashopWebhookProvisioningAdapter implements WebhookProvisioning
 
   private async createWebserviceClient(
     credentialsRef: string,
-    config: Partial<PrestashopConnectionConfig>,
+    config: Partial<PrestashopConnectionConfig>
   ): Promise<IPrestashopWebserviceClient> {
-    const credentials =
-      await this.credentialsResolver.get<PrestashopCredentials>(credentialsRef);
+    const credentials = await this.credentialsResolver.get<PrestashopCredentials>(credentialsRef);
     return new PrestashopWebserviceClient(
       config.baseUrl as string,
       credentials,
-      config as PrestashopConnectionConfig,
+      config as PrestashopConnectionConfig
     );
   }
 }

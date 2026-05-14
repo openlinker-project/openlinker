@@ -9,11 +9,11 @@
  * @implements {IOrderRecordService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { Order } from '../../domain/types/order.types';
+import type { Order } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
-import { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
-import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
+import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
@@ -22,7 +22,7 @@ import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 export class OrderRecordService implements IOrderRecordService {
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
-    private readonly repository: OrderRecordRepositoryPort,
+    private readonly repository: OrderRecordRepositoryPort
   ) {}
 
   /**
@@ -39,7 +39,7 @@ export class OrderRecordService implements IOrderRecordService {
   async persistOrder(
     order: Order,
     sourceConnectionId: string,
-    sourceEventId: string | null = null,
+    sourceEventId: string | null = null
   ): Promise<OrderRecord> {
     const piiConfig = getPiiConfig();
     const now = new Date();
@@ -87,7 +87,7 @@ export class OrderRecordService implements IOrderRecordService {
       syncStatus,
       'ready',
       now,
-      now,
+      now
     );
 
     return this.repository.upsert(orderRecord);
@@ -98,7 +98,7 @@ export class OrderRecordService implements IOrderRecordService {
     internalOrderId: string,
     customerId: string | null,
     sourceConnectionId: string,
-    sourceEventId: string | null,
+    sourceEventId: string | null
   ): Promise<OrderRecord> {
     const piiConfig = getPiiConfig();
     const now = new Date();
@@ -135,7 +135,7 @@ export class OrderRecordService implements IOrderRecordService {
       [],
       'awaiting_mapping',
       now,
-      now,
+      now
     );
 
     return this.repository.upsert(orderRecord);
@@ -154,7 +154,7 @@ export class OrderRecordService implements IOrderRecordService {
   async updateSyncStatus(
     internalOrderId: string,
     destinationConnectionId: string,
-    status: OrderSyncStatus,
+    status: OrderSyncStatus
   ): Promise<void> {
     // The service stamps `attemptedAt` so the repository UPDATE statement
     // is purely mechanical (no clock dependency in the persistence layer).
@@ -170,7 +170,7 @@ export class OrderRecordService implements IOrderRecordService {
       internalOrderId,
       destinationConnectionId,
       status,
-      attempt,
+      attempt
     );
   }
 
@@ -193,7 +193,10 @@ export class OrderRecordService implements IOrderRecordService {
    * while keeping structural information (hash can be computed separately).
    */
   private sanitizeAddress(
-    address: { address1?: string; city?: string; postalCode?: string; country?: string } | null | undefined,
+    address:
+      | { address1?: string; city?: string; postalCode?: string; country?: string }
+      | null
+      | undefined
   ): { address1: string; city: string; postalCode: string; country: string } | undefined {
     if (!address) {
       return undefined;

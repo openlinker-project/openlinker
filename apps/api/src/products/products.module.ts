@@ -12,10 +12,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsController, VariantsController } from './http/products.controller';
 
 @Module({
-  imports: [
-    CoreProductsModule,
-    IdentifierMappingModule,
-  ],
+  imports: [CoreProductsModule, IdentifierMappingModule],
   controllers: [ProductsController, VariantsController],
 })
 export class ProductsApiModule {}

@@ -8,7 +8,7 @@
  * @module libs/core/src/integrations/domain/ports
  * @see {@link IntegrationCredentialRepository} for the implementation
  */
-import { IntegrationCredential } from '../entities/integration-credential.entity';
+import type { IntegrationCredential } from '../entities/integration-credential.entity';
 
 /**
  * Credential creation payload
@@ -63,6 +63,3 @@ export interface IntegrationCredentialRepositoryPort {
    */
   delete(ref: string): Promise<boolean>;
 }
-
-
-

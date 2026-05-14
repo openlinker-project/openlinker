@@ -10,7 +10,7 @@
  */
 import { createHmac } from 'crypto';
 
-import { WebhookSecretProviderPort } from '@openlinker/core/integrations';
+import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 
 import { PrestashopOpenLinkerModuleClient } from '../prestashop-openlinker-module.client';
 import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
@@ -54,12 +54,9 @@ describe('PrestashopOpenLinkerModuleClient', () => {
 
       // Assert
       expect(global.fetch).toHaveBeenCalledTimes(1);
-      const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       expect(url).toBe(
-        'https://shop.example.com/index.php?fc=module&module=openlinker&controller=cartshipping',
+        'https://shop.example.com/index.php?fc=module&module=openlinker&controller=cartshipping'
       );
       expect(init.method).toBe('POST');
       expect(JSON.parse(init.body as string)).toEqual({
@@ -85,10 +82,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       });
 
       // Assert — recompute the expected signature from the captured body + timestamp
-      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
       const timestamp = headers['X-OpenLinker-Timestamp'];
       const body = init.body as string;
@@ -111,10 +105,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       await client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 });
 
       // Assert
-      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       const parsedBody = JSON.parse(init.body as string) as { source: unknown };
       expect(parsedBody.source).toBeNull();
     });
@@ -128,7 +119,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
 
       // Act & Assert
       await expect(
-        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 }),
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
       ).rejects.toMatchObject({
         name: 'PrestashopOlModuleException',
         connectionId,
@@ -147,7 +138,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
 
       // Act & Assert
       await expect(
-        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 }),
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
       ).rejects.toBeInstanceOf(PrestashopOlModuleException);
     });
 
@@ -160,7 +151,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
 
       // Act & Assert — should not throw
       await expect(
-        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 }),
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
       ).resolves.toBeUndefined();
     });
 
@@ -170,7 +161,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
 
       // Act & Assert
       await expect(
-        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 }),
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
       ).rejects.toMatchObject({
         name: 'PrestashopOlModuleException',
         connectionId,
@@ -184,7 +175,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       const slashClient = new PrestashopOpenLinkerModuleClient(
         connectionId,
         'https://shop.example.com/',
-        secretProvider,
+        secretProvider
       );
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
@@ -195,12 +186,9 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       await slashClient.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 });
 
       // Assert
-      const [url] = (global.fetch as jest.Mock).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+      const [url] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       expect(url).toBe(
-        'https://shop.example.com/index.php?fc=module&module=openlinker&controller=cartshipping',
+        'https://shop.example.com/index.php?fc=module&module=openlinker&controller=cartshipping'
       );
     });
   });

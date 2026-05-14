@@ -7,14 +7,28 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ProductMasterPort}
  */
-import { ProductMasterPort, Product, ProductVariant, ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate, Category, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
-import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from '../mappers/prestashop.mapper.interface';
+import type {
+  ProductMasterPort,
+  Product,
+  ProductVariant,
+  ProductFilters,
+  ProductCreate,
+  ProductUpdate,
+  ProductVariantCreate,
+  Category,
+} from '@openlinker/core/products';
+import { normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
+import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type {
+  IPrestashopProductMapper,
+  PrestashopProduct,
+  PrestashopCombination,
+} from '../mappers/prestashop.mapper.interface';
+import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 import {
   PrestashopNotSupportedException,
   PrestashopResourceNotFoundException,
-  PrestashopConnectionConfig,
 } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -30,7 +44,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly productMapper: IPrestashopProductMapper,
-    private readonly connection: Connection,
+    private readonly connection: Connection
   ) {}
 
   async getProduct(productId: string): Promise<Product> {
@@ -38,7 +52,9 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     // Resolve internal ID → external ID
     const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
-    const prestashopId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
+    const prestashopId = externalIds.find(
+      (e: { connectionId: string }) => e.connectionId === this.connection.id
+    );
 
     if (!prestashopId) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
@@ -46,7 +62,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
-        this.connection.id,
+        this.connection.id
       );
       throw error;
     }
@@ -54,7 +70,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Fetch from PrestaShop
     const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
       'products',
-      prestashopId.externalId,
+      prestashopId.externalId
     );
 
     // Map to OpenLinker schema
@@ -63,7 +79,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
-    
+
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
     // Return with internal ID
@@ -84,7 +100,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       'products',
       prestashopFilters,
       filters?.limit,
-      filters?.offset,
+      filters?.offset
     );
 
     if (prestashopProducts.length === 0) {
@@ -107,33 +123,36 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
     const langIdValue: number = configLangId ?? 1;
 
-    return prestashopProducts.map((prestashopProduct) => {
-      const externalId = String(prestashopProduct.id);
-      const internalId = idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
+    return prestashopProducts
+      .map((prestashopProduct) => {
+        const externalId = String(prestashopProduct.id);
+        const internalId =
+          idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
 
-      if (!internalId) {
-        this.logger.warn(`No internal ID mapped for external product: ${externalId}`);
-        return null;
-      }
+        if (!internalId) {
+          this.logger.warn(`No internal ID mapped for external product: ${externalId}`);
+          return null;
+        }
 
-      const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
-      return {
-        ...mapped,
-        id: internalId,
-      };
-    }).filter((p): p is Product => p !== null);
+        const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
+        return {
+          ...mapped,
+          id: internalId,
+        };
+      })
+      .filter((p): p is Product => p !== null);
   }
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
     this.logger.debug(
-      `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`,
+      `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`
     );
 
     const raw = await this.httpClient.listResources<{ id: string | number }>(
       'products',
       { display: '[id]' },
       filters?.limit,
-      filters?.offset,
+      filters?.offset
     );
 
     return raw
@@ -142,11 +161,15 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
-    this.logger.debug(`Getting variants for product: ${productId} (connection: ${this.connection.id})`);
+    this.logger.debug(
+      `Getting variants for product: ${productId} (connection: ${this.connection.id})`
+    );
 
     // Resolve internal ID → external ID
     const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
-    const prestashopProductId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
+    const prestashopProductId = externalIds.find(
+      (e: { connectionId: string }) => e.connectionId === this.connection.id
+    );
 
     if (!prestashopProductId) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
@@ -154,7 +177,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
-        this.connection.id,
+        this.connection.id
       );
       throw error;
     }
@@ -162,7 +185,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Fetch product for barcode fallback / synthetic variant
     const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
       'products',
-      prestashopProductId.externalId,
+      prestashopProductId.externalId
     );
 
     // Fetch combinations from PrestaShop
@@ -172,7 +195,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         custom: {
           id_product: prestashopProductId.externalId,
         },
-      },
+      }
     );
 
     if (combinations.length === 0) {
@@ -188,7 +211,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
             variantExternalId: syntheticExternalId,
             synthetic: true,
           },
-        },
+        }
       );
       const sku = prestashopProduct.reference ?? `product-${prestashopProductId.externalId}`;
       const productEan = this.normalizeEan(prestashopProduct.ean13);
@@ -211,7 +234,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     await this.identifierMapping.deleteMapping(
       'ProductVariant',
       syntheticExternalId,
-      this.connection.id,
+      this.connection.id
     );
 
     const mappingRequests = combinations.map((c) => ({
@@ -233,29 +256,32 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const productGtin = this.normalizeGtin(prestashopProduct.upc);
 
     // Map variants with internal IDs
-    return combinations.map((combination) => {
-      const externalId = String(combination.id);
-      const internalId = idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
+    return combinations
+      .map((combination) => {
+        const externalId = String(combination.id);
+        const internalId =
+          idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
 
-      if (!internalId) {
-        this.logger.warn(`No internal ID mapped for external variant: ${externalId}`);
-        return null;
-      }
+        if (!internalId) {
+          this.logger.warn(`No internal ID mapped for external variant: ${externalId}`);
+          return null;
+        }
 
-      const mapped = this.productMapper.mapVariant(combination, productId);
-      if (combinations.length === 1) {
-        if (!mapped.ean && productEan) {
-          mapped.ean = productEan;
+        const mapped = this.productMapper.mapVariant(combination, productId);
+        if (combinations.length === 1) {
+          if (!mapped.ean && productEan) {
+            mapped.ean = productEan;
+          }
+          if (!mapped.gtin && productGtin) {
+            mapped.gtin = productGtin;
+          }
         }
-        if (!mapped.gtin && productGtin) {
-          mapped.gtin = productGtin;
-        }
-      }
-      return {
-        ...mapped,
-        id: internalId,
-      };
-    }).filter((v): v is ProductVariant => v !== null);
+        return {
+          ...mapped,
+          id: internalId,
+        };
+      })
+      .filter((v): v is ProductVariant => v !== null);
   }
 
   private normalizeEan(value?: string | null): string | null {
@@ -272,7 +298,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const error = new PrestashopNotSupportedException(
       'Product creation is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'createProduct',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -282,7 +308,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const error = new PrestashopNotSupportedException(
       'Product update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'updateProduct',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -292,17 +318,20 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const error = new PrestashopNotSupportedException(
       'Product deletion is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'deleteProduct',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
 
-  upsertProductVariant(_productId: string, _variant: ProductVariantCreate): Promise<ProductVariant> {
+  upsertProductVariant(
+    _productId: string,
+    _variant: ProductVariantCreate
+  ): Promise<ProductVariant> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const error = new PrestashopNotSupportedException(
       'Variant creation/update is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'upsertProductVariant',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -312,7 +341,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const error = new PrestashopNotSupportedException(
       'Get product categories is not implemented in MVP.',
       'getProductCategories',
-      'Future implementation',
+      'Future implementation'
     );
     return Promise.reject(error);
   }
@@ -322,7 +351,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const error = new PrestashopNotSupportedException(
       'Category assignment is not supported in MVP. Use PrestaShop admin interface or future write-capability adapter.',
       'assignCategories',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -334,32 +363,36 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     const langId = this.getLangId();
 
-    return raw.map((cat) => {
-      const id = String(cat['id'] ?? '');
-      const nameField = cat['name'];
-      let name = `Category ${id}`;
-      if (typeof nameField === 'string') {
-        name = nameField;
-      } else if (Array.isArray(nameField)) {
-        const lang = (nameField as Array<{ language?: Array<{ attrs?: { id: string }; value: string }> }>)
-          .flatMap((n) => n.language ?? [])
-          .find((l) => String(l.attrs?.id) === String(langId));
-        if (lang) {
-          name = lang.value;
+    return raw
+      .map((cat) => {
+        const id = String(cat['id'] ?? '');
+        const nameField = cat['name'];
+        let name = `Category ${id}`;
+        if (typeof nameField === 'string') {
+          name = nameField;
+        } else if (Array.isArray(nameField)) {
+          const lang = (
+            nameField as Array<{ language?: Array<{ attrs?: { id: string }; value: string }> }>
+          )
+            .flatMap((n) => n.language ?? [])
+            .find((l) => String(l.attrs?.id) === String(langId));
+          if (lang) {
+            name = lang.value;
+          }
         }
-      }
 
-      const parentId = String(cat['id_parent'] ?? '0');
-      const depth = Number(cat['level_depth'] ?? 0);
+        const parentId = String(cat['id_parent'] ?? '0');
+        const depth = Number(cat['level_depth'] ?? 0);
 
-      return {
-        id,
-        name,
-        parentId: parentId === '0' ? undefined : parentId,
-        depth,
-        active: String(cat['active']) === '1',
-      };
-    }).filter((c) => Number(c.depth) > 0); // Exclude root node
+        return {
+          id,
+          name,
+          parentId: parentId === '0' ? undefined : parentId,
+          depth,
+          active: String(cat['active']) === '1',
+        };
+      })
+      .filter((c) => Number(c.depth) > 0); // Exclude root node
   }
 
   private getLangId(): number {
@@ -409,4 +442,3 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     return prestashopFilters;
   }
 }
-

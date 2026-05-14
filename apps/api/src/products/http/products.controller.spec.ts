@@ -5,15 +5,12 @@
  *
  * @module apps/api/src/products/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ProductsController, VariantsController } from './products.controller';
-import {
-  PRODUCTS_SERVICE_TOKEN,
-  Product,
-  ProductVariant,
-} from '@openlinker/core/products';
-import type { IProductsService } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import type { IProductsService, Product, ProductVariant } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
@@ -115,7 +112,7 @@ describe('ProductsController', () => {
 
       expect(productsService.listProducts).toHaveBeenCalledWith(
         { search: 'shirt' },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
 
@@ -136,7 +133,12 @@ describe('ProductsController', () => {
       productsService.getProduct.mockResolvedValue(product);
       productsService.listVariants.mockResolvedValue({ items: [variant], total: 1 });
       identifierMapping.getExternalIds.mockResolvedValue([
-        { externalId: '42', platformType: 'prestashop', connectionId: 'conn-1', entityType: 'Product' },
+        {
+          externalId: '42',
+          platformType: 'prestashop',
+          connectionId: 'conn-1',
+          entityType: 'Product',
+        },
       ]);
 
       const result = await controller.getProduct('ol_product_1');
@@ -170,10 +172,7 @@ describe('ProductsController', () => {
 
     it('should load external IDs in parallel', async () => {
       const product = makeProduct();
-      const variants = [
-        makeVariant({ id: 'ol_product_v1' }),
-        makeVariant({ id: 'ol_product_v2' }),
-      ];
+      const variants = [makeVariant({ id: 'ol_product_v1' }), makeVariant({ id: 'ol_product_v2' })];
       productsService.getProduct.mockResolvedValue(product);
       productsService.listVariants.mockResolvedValue({ items: variants, total: 2 });
       identifierMapping.getExternalIds.mockResolvedValue([]);
@@ -190,13 +189,16 @@ describe('ProductsController', () => {
       const variants = [makeVariant()];
       productsService.listVariants.mockResolvedValue({ items: variants, total: 1 });
 
-      const result = await controller.listVariantsByProduct('ol_product_1', { limit: 20, offset: 0 });
+      const result = await controller.listVariantsByProduct('ol_product_1', {
+        limit: 20,
+        offset: 0,
+      });
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(productsService.listVariants).toHaveBeenCalledWith(
         { productId: 'ol_product_1', search: undefined },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
     });
   });
@@ -210,7 +212,7 @@ describe('ProductsController', () => {
           sku: 'SKU-RED-42',
           ean: '5901234123457',
           attributes: { color: 'Red', size: '42' },
-        }),
+        })
       );
 
       const result = await controller.getVariantSummary('ol_variant_42');
@@ -227,7 +229,7 @@ describe('ProductsController', () => {
 
     it('should leave name undefined when the variant has no string attributes', async () => {
       productsService.getVariant.mockResolvedValue(
-        makeVariant({ id: 'ol_variant_43', attributes: {} }),
+        makeVariant({ id: 'ol_variant_43', attributes: {} })
       );
 
       const result = await controller.getVariantSummary('ol_variant_43');
@@ -252,9 +254,7 @@ describe('VariantsController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [VariantsController],
-      providers: [
-        { provide: PRODUCTS_SERVICE_TOKEN, useValue: mockProductsService },
-      ],
+      providers: [{ provide: PRODUCTS_SERVICE_TOKEN, useValue: mockProductsService }],
     }).compile();
 
     controller = module.get<VariantsController>(VariantsController);
@@ -268,12 +268,16 @@ describe('VariantsController', () => {
       const variants = [makeVariant()];
       productsService.listVariants.mockResolvedValue({ items: variants, total: 1 });
 
-      const result = await controller.searchVariants({ search: '1234567890123', limit: 20, offset: 0 });
+      const result = await controller.searchVariants({
+        search: '1234567890123',
+        limit: 20,
+        offset: 0,
+      });
 
       expect(result.items).toHaveLength(1);
       expect(productsService.listVariants).toHaveBeenCalledWith(
         { search: '1234567890123' },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
     });
 

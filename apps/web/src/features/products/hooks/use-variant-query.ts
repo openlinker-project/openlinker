@@ -11,10 +11,10 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { productsQueryKeys } from '../api/products.query-keys';
 import type { ProductVariantSummary } from '../api/products.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { ApiError } from '../../../shared/api/api-error';
+import type { ApiError } from '../../../shared/api/api-error';
 
 export function useVariantQuery(
-  variantId: string | undefined,
+  variantId: string | undefined
 ): UseQueryResult<ProductVariantSummary, ApiError> {
   const apiClient = useApiClient();
 

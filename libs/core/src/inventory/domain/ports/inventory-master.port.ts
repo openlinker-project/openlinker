@@ -10,7 +10,7 @@
  *
  * @module libs/core/src/inventory/domain/ports
  */
-import { InventoryAdjustment } from '../types/inventory.types';
+import type { InventoryAdjustment } from '../types/inventory.types';
 
 /**
  * Inventory domain entity (minimal interface for port)
@@ -95,9 +95,3 @@ export interface InventoryMasterPort {
    */
   getAvailableQuantity(productId: string, locationId?: string): Promise<number>;
 }
-
-
-
-
-
-

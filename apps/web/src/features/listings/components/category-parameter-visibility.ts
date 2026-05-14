@@ -16,10 +16,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import type {
-  CategoryParameter,
-  CategoryParameterDictionaryEntry,
-} from '../api/listings.types';
+import type { CategoryParameter, CategoryParameterDictionaryEntry } from '../api/listings.types';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
 
 /**
@@ -48,7 +45,7 @@ function readParentValues(values: CategoryParameterFormValues, parameterId: stri
  */
 export function isParameterVisible(
   param: CategoryParameter,
-  values: CategoryParameterFormValues,
+  values: CategoryParameterFormValues
 ): boolean {
   if (!param.dependsOn) return true;
   const parentValues = readParentValues(values, param.dependsOn.parameterId);
@@ -68,7 +65,7 @@ export function isParameterVisible(
  */
 export function visibleDictionaryEntries(
   param: CategoryParameter,
-  values: CategoryParameterFormValues,
+  values: CategoryParameterFormValues
 ): CategoryParameterDictionaryEntry[] {
   if (!param.dictionary) return [];
   if (!param.dependsOn) return param.dictionary;
@@ -93,8 +90,7 @@ export function isFormValueEmpty(v: unknown): boolean {
   if (typeof v === 'object') {
     const r = v as { from?: string; to?: string };
     return (
-      (r.from === undefined || r.from.trim() === '') &&
-      (r.to === undefined || r.to.trim() === '')
+      (r.from === undefined || r.from.trim() === '') && (r.to === undefined || r.to.trim() === '')
     );
   }
   return false;

@@ -9,10 +9,7 @@
  */
 import { PromptTemplateRenderException } from '../../domain/exceptions/prompt-template-render.exception';
 import { renderTemplate } from './render-template';
-import {
-  RENDER_HAPPY_PATH_FIXTURES,
-  RENDER_THROW_FIXTURES,
-} from './render-template.fixtures';
+import { RENDER_HAPPY_PATH_FIXTURES, RENDER_THROW_FIXTURES } from './render-template.fixtures';
 
 describe('renderTemplate', () => {
   describe('happy path fixtures', () => {
@@ -36,7 +33,7 @@ describe('renderTemplate', () => {
             template: fixture.template,
             declared: fixture.declared,
             values: fixture.values,
-          }),
+          })
         ).toThrow(PromptTemplateRenderException);
         try {
           renderTemplate({
@@ -47,7 +44,7 @@ describe('renderTemplate', () => {
         } catch (err) {
           expect(err).toBeInstanceOf(PromptTemplateRenderException);
           expect((err as PromptTemplateRenderException).missingVariableName).toBe(
-            fixture.missingVariableName,
+            fixture.missingVariableName
           );
         }
       });

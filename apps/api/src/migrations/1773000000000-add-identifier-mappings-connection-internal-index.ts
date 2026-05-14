@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddIdentifierMappingsConnectionInternalIndex1773000000000
   implements MigrationInterface

@@ -13,9 +13,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { PaymentMappingOrmEntity } from '../entities/payment-mapping.orm-entity';
-import { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
+import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
-import { PaymentMappingInput } from '../../../domain/types/mapping.types';
+import type { PaymentMappingInput } from '../../../domain/types/mapping.types';
 
 @Injectable()
 export class PaymentMappingRepository implements PaymentMappingRepositoryPort {
@@ -23,7 +23,7 @@ export class PaymentMappingRepository implements PaymentMappingRepositoryPort {
     @InjectRepository(PaymentMappingOrmEntity)
     private readonly repo: Repository<PaymentMappingOrmEntity>,
     @InjectDataSource()
-    private readonly dataSource: DataSource,
+    private readonly dataSource: DataSource
   ) {}
 
   async findByConnectionId(connectionId: string): Promise<PaymentMapping[]> {
@@ -31,7 +31,10 @@ export class PaymentMappingRepository implements PaymentMappingRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
-  async replaceForConnection(connectionId: string, items: PaymentMappingInput[]): Promise<PaymentMapping[]> {
+  async replaceForConnection(
+    connectionId: string,
+    items: PaymentMappingInput[]
+  ): Promise<PaymentMapping[]> {
     return this.dataSource.transaction(async (manager) => {
       await manager.delete(PaymentMappingOrmEntity, { connectionId });
 
@@ -57,7 +60,7 @@ export class PaymentMappingRepository implements PaymentMappingRepositoryPort {
       entity.id,
       entity.connectionId,
       entity.allegroPaymentProvider,
-      entity.prestashopPaymentModule,
+      entity.prestashopPaymentModule
     );
   }
 }

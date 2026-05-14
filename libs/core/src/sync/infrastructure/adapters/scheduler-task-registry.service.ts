@@ -26,7 +26,7 @@
  * @see {@link SchedulerTaskConfig} for the contribution shape.
  */
 import { Injectable } from '@nestjs/common';
-import { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
+import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
 
 @Injectable()
 export class SchedulerTaskRegistryService {

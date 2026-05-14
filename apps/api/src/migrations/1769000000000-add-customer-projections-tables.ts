@@ -7,7 +7,7 @@
  * Generated: 2026-01-27
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddCustomerProjectionsTables1769000000000 implements MigrationInterface {
   name = 'AddCustomerProjectionsTables1769000000000';
@@ -15,8 +15,12 @@ export class AddCustomerProjectionsTables1769000000000 implements MigrationInter
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Check if tables already exist (might have been created manually or by a later migration)
     const customerProjectionsTable = await queryRunner.getTable('customer_projections');
-    const customerAddressProjectionsTable = await queryRunner.getTable('customer_address_projections');
-    const destinationAddressMappingsTable = await queryRunner.getTable('destination_address_mappings');
+    const customerAddressProjectionsTable = await queryRunner.getTable(
+      'customer_address_projections'
+    );
+    const destinationAddressMappingsTable = await queryRunner.getTable(
+      'destination_address_mappings'
+    );
 
     // Create customer_projections table
     if (!customerProjectionsTable) {
@@ -95,13 +99,13 @@ export class AddCustomerProjectionsTables1769000000000 implements MigrationInter
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Drop indexes first
     await queryRunner.query(
-      `DROP INDEX "public"."IDX_destination_address_mappings_connection_hash_type"`,
+      `DROP INDEX "public"."IDX_destination_address_mappings_connection_hash_type"`
     );
     await queryRunner.query(
-      `DROP INDEX "public"."IDX_destination_address_mappings_customer_connection"`,
+      `DROP INDEX "public"."IDX_destination_address_mappings_customer_connection"`
     );
     await queryRunner.query(
-      `DROP INDEX "public"."IDX_customer_address_projections_internalCustomerId"`,
+      `DROP INDEX "public"."IDX_customer_address_projections_internalCustomerId"`
     );
     await queryRunner.query(`DROP INDEX "public"."IDX_customer_projections_emailHash"`);
 

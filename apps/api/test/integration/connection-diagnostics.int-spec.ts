@@ -8,7 +8,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { createTestSyncJob } from './fixtures/sync-job.fixtures';

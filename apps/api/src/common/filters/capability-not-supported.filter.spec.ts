@@ -1,5 +1,9 @@
-import { ArgumentsHost, HttpStatus } from '@nestjs/common';
-import { CapabilityNotSupportedException, CapabilityNotEnabledException } from '@openlinker/core/integrations';
+import type { ArgumentsHost } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
+import {
+  CapabilityNotSupportedException,
+  CapabilityNotEnabledException,
+} from '@openlinker/core/integrations';
 import { CapabilityNotSupportedFilter } from './capability-not-supported.filter';
 
 function createHost(): { host: ArgumentsHost; status: jest.Mock; json: jest.Mock } {
@@ -16,7 +20,10 @@ describe('CapabilityNotSupportedFilter', () => {
 
   it('should return 400 when adapter does not support capability', () => {
     const { host, status, json } = createHost();
-    const exception = new CapabilityNotSupportedException('prestashop.webservice.v1', 'OfferManager');
+    const exception = new CapabilityNotSupportedException(
+      'prestashop.webservice.v1',
+      'OfferManager'
+    );
 
     filter.catch(exception, host);
 
@@ -30,7 +37,11 @@ describe('CapabilityNotSupportedFilter', () => {
 
   it('should return 400 when capability is disabled on connection', () => {
     const { host, status, json } = createHost();
-    const exception = new CapabilityNotEnabledException('conn-1', 'prestashop.webservice.v1', 'OfferManager');
+    const exception = new CapabilityNotEnabledException(
+      'conn-1',
+      'prestashop.webservice.v1',
+      'OfferManager'
+    );
 
     filter.catch(exception, host);
 

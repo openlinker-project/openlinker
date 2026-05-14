@@ -8,9 +8,13 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  * @implements {IPrestashopOrderMapper}
  */
-import { IPrestashopOrderMapper, PrestashopOrder, PrestashopOrderRow } from './prestashop.mapper.interface';
-import { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
-import { OrderCreate } from '@openlinker/core/orders';
+import type {
+  IPrestashopOrderMapper,
+  PrestashopOrder,
+  PrestashopOrderRow,
+} from './prestashop.mapper.interface';
+import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
+import type { OrderCreate } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -37,11 +41,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     // Map line items
     const items: OrderItem[] = orderRows.map((row, index) => {
       // PrestaShop uses "0" or 0 to indicate no variant, treat as undefined
-      const variantId = row.product_attribute_id && 
-        String(row.product_attribute_id) !== '0' && 
+      const variantId =
+        row.product_attribute_id &&
+        String(row.product_attribute_id) !== '0' &&
         row.product_attribute_id !== 0
-        ? String(row.product_attribute_id)
-        : undefined;
+          ? String(row.product_attribute_id)
+          : undefined;
 
       return {
         id: String(row.id || index),
@@ -162,7 +167,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
-    externalCarrierId?: number,
+    externalCarrierId?: number
   ): Record<string, unknown> {
     // Map order status to PrestaShop status ID
     // PrestaShop uses numeric status IDs. For MVP, we'll use common defaults:
@@ -176,12 +181,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         // Log warning before throwing to help debug mapping issues
         this.logger.warn(
           `No external product ID found for internal product ID: ${item.productId}. ` +
-            `This may indicate a missing product mapping or sync issue.`,
+            `This may indicate a missing product mapping or sync issue.`
         );
         throw new PrestashopProvisioningException(
           `No external product ID found for internal product ID: ${item.productId}`,
           undefined,
-          undefined,
+          undefined
         );
       }
 
@@ -195,7 +200,8 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           externalVariantId = 0;
         } else {
           // Ensure variant ID is a number
-          externalVariantId = typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
+          externalVariantId =
+            typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
           if (Number.isNaN(externalVariantId)) {
             externalVariantId = 0;
           }
@@ -295,7 +301,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     } else {
       // This should not happen in practice, but throw error to make it explicit
       throw new PrestashopProvisioningException(
-        'Both shipping and billing addresses are missing. At least one address is required for PrestaShop order creation.',
+        'Both shipping and billing addresses are missing. At least one address is required for PrestaShop order creation.'
       );
     }
 
@@ -327,7 +333,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
-    externalCarrierId?: number,
+    externalCarrierId?: number
   ): Record<string, unknown> {
     // Map cart rows (products)
     const cartRows = orderCreate.items.map((item, index) => {
@@ -336,12 +342,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         // Log warning before throwing to help debug mapping issues
         this.logger.warn(
           `No external product ID found for internal product ID: ${item.productId}. ` +
-            `This may indicate a missing product mapping or sync issue.`,
+            `This may indicate a missing product mapping or sync issue.`
         );
         throw new PrestashopProvisioningException(
           `No external product ID found for internal product ID: ${item.productId}`,
           undefined,
-          undefined,
+          undefined
         );
       }
 
@@ -353,7 +359,8 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           externalVariantId = 0;
         } else {
           // Ensure variant ID is a number
-          externalVariantId = typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
+          externalVariantId =
+            typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
           if (Number.isNaN(externalVariantId)) {
             externalVariantId = 0;
           }
@@ -471,7 +478,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
 
     if (missingFields.length > 0) {
       throw new PrestashopProvisioningException(
-        `Required fields are missing in order data: ${missingFields.join(', ')}`,
+        `Required fields are missing in order data: ${missingFields.join(', ')}`
       );
     }
 
@@ -479,16 +486,13 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     const associations = orderData.associations as Record<string, unknown>;
     if (!associations || !associations.order_rows) {
       throw new PrestashopProvisioningException(
-        'Required field "associations.order_rows" is missing in order data',
+        'Required field "associations.order_rows" is missing in order data'
       );
     }
 
     const orderRows = (associations.order_rows as Record<string, unknown>).order_row;
     if (!orderRows || (Array.isArray(orderRows) && orderRows.length === 0)) {
-      throw new PrestashopProvisioningException(
-        'Order must have at least one order row',
-      );
+      throw new PrestashopProvisioningException('Order must have at least one order row');
     }
   }
 }
-

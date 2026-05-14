@@ -9,8 +9,12 @@
  * @module libs/core/src/products/domain/ports
  * @see {@link ProductVariantRepository} for the TypeORM implementation
  */
-import { ProductVariant } from '../entities/product-variant.entity';
-import { ProductVariantListFilters, ProductPagination, PaginatedProductVariants } from '../types/product.types';
+import type { ProductVariant } from '../entities/product-variant.entity';
+import type {
+  ProductVariantListFilters,
+  ProductPagination,
+  PaginatedProductVariants,
+} from '../types/product.types';
 
 /**
  * Product Variant Repository Port
@@ -63,7 +67,7 @@ export interface ProductVariantRepositoryPort {
   findByEanOrGtinIn(
     connectionId: string,
     values: string[],
-    field: 'ean' | 'gtin',
+    field: 'ean' | 'gtin'
   ): Promise<ProductVariant[]>;
 
   /**
@@ -90,6 +94,8 @@ export interface ProductVariantRepositoryPort {
    * Find variants matching filters with offset pagination.
    * Results are ordered by createdAt DESC.
    */
-  findMany(filters: ProductVariantListFilters, pagination: ProductPagination): Promise<PaginatedProductVariants>;
+  findMany(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<PaginatedProductVariants>;
 }
-

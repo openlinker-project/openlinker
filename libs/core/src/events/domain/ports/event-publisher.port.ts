@@ -9,7 +9,7 @@
  * @module libs/core/src/events/domain/ports
  * @see {@link RedisStreamsEventPublisher} for the Redis Streams implementation
  */
-import { EventEnvelope } from '../types/event.types';
+import type { EventEnvelope } from '../types/event.types';
 
 /**
  * Event Publisher Port
@@ -28,9 +28,3 @@ export interface EventPublisherPort {
    */
   publish(streamName: string, event: EventEnvelope): Promise<string>;
 }
-
-
-
-
-
-

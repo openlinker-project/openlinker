@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddCategoryMappingsTable1779000000000 implements MigrationInterface {
   name = 'AddCategoryMappingsTable1779000000000';

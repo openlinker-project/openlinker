@@ -9,7 +9,7 @@
  * @module libs/core/src/integrations/infrastructure/adapters/__tests__
  */
 import { ConnectionConfigShapeValidatorRegistryService } from '../connection-config-shape-validator-registry.service';
-import { ConnectionConfigShapeValidatorPort } from '../../../domain/ports/connection-config-shape-validator.port';
+import type { ConnectionConfigShapeValidatorPort } from '../../../domain/ports/connection-config-shape-validator.port';
 
 describe('ConnectionConfigShapeValidatorRegistryService', () => {
   let registry: ConnectionConfigShapeValidatorRegistryService;

@@ -8,17 +8,15 @@
  *
  * @module apps/api/src/inventory/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { InventoryController } from './inventory.controller';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
   InventoryItemEntity as InventoryItem,
 } from '@openlinker/core/inventory';
-import type {
-  IInventoryQueryService,
-  InventoryItemView,
-} from '@openlinker/core/inventory';
+import type { IInventoryQueryService, InventoryItemView } from '@openlinker/core/inventory';
 
 describe('InventoryController', () => {
   let controller: InventoryController;
@@ -31,7 +29,7 @@ describe('InventoryController', () => {
     50,
     5,
     null,
-    new Date('2026-04-01T00:00:00Z'),
+    new Date('2026-04-01T00:00:00Z')
   );
   const itemB = new InventoryItem(
     'inv-b',
@@ -40,7 +38,7 @@ describe('InventoryController', () => {
     10,
     0,
     null,
-    new Date('2026-04-02T00:00:00Z'),
+    new Date('2026-04-02T00:00:00Z')
   );
 
   const viewWithProduct: InventoryItemView = {
@@ -130,7 +128,7 @@ describe('InventoryController', () => {
 
       expect(queryService.listInventoryItems).toHaveBeenCalledWith(
         { productId: 'prod-1', productVariantId: 'var-a', locationId: 'loc-1' },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
   });
@@ -158,9 +156,7 @@ describe('InventoryController', () => {
     it('throws NotFoundException when the query service returns null', async () => {
       queryService.getInventoryItem.mockResolvedValue(null);
 
-      await expect(controller.getInventoryItem('inv-missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(controller.getInventoryItem('inv-missing')).rejects.toThrow(NotFoundException);
     });
   });
 });

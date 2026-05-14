@@ -20,10 +20,10 @@ import type {
   OrderShipping,
   OrderPickupPoint,
 } from '@openlinker/core/orders';
-import { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
-import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import {
+import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import type {
   AllegroCheckoutForm,
   AllegroDeliveryMethodsResponse,
   AllegroOrderEventsResponse,
@@ -51,7 +51,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IAllegroHttpClient,
-    _connection: Connection,
+    _connection: Connection
   ) {
     void _connection;
   }
@@ -64,7 +64,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
    */
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug(
-      `Listing Allegro order feed (connection: ${this.connectionId}, fromCursor: ${input.fromCursor || 'none'}, limit: ${input.limit})`,
+      `Listing Allegro order feed (connection: ${this.connectionId}, fromCursor: ${input.fromCursor || 'none'}, limit: ${input.limit})`
     );
 
     try {
@@ -79,7 +79,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       });
 
       this.logger.debug(
-        `Allegro /order/events raw response (connection: ${this.connectionId}): ${JSON.stringify(response.data)}`,
+        `Allegro /order/events raw response (connection: ${this.connectionId}): ${JSON.stringify(response.data)}`
       );
 
       const events = response.data.events || [];
@@ -94,7 +94,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
         (events.length > 0 ? events[events.length - 1]?.id : input.fromCursor || null);
 
       this.logger.debug(
-        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`,
+        `Fetched ${events.length} order events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`
       );
 
       // Deduplicate by checkoutFormId, keeping the latest event (highest ID).
@@ -131,7 +131,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     } catch (error) {
       this.logger.error(
         `Failed to list Allegro order feed (connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -146,12 +146,12 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
     const checkoutFormId = input.externalOrderId;
     this.logger.debug(
-      `Fetching Allegro order by checkout form ID: ${checkoutFormId} (connection: ${this.connectionId})`,
+      `Fetching Allegro order by checkout form ID: ${checkoutFormId} (connection: ${this.connectionId})`
     );
 
     try {
       const response = await this.httpClient.get<AllegroCheckoutForm>(
-        `/order/checkout-forms/${checkoutFormId}`,
+        `/order/checkout-forms/${checkoutFormId}`
       );
 
       const checkoutForm = response.data;
@@ -166,7 +166,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       // a `Payment error` reconciliation gap on every Allegro order.
       const subtotal = checkoutForm.lineItems.reduce(
         (acc, item) => acc + Number.parseFloat(item.price.amount) * item.quantity,
-        0,
+        0
       );
       const total = Number.parseFloat(checkoutForm.summary.totalToPay.amount);
       const shipping = checkoutForm.delivery?.cost
@@ -213,7 +213,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     } catch (error) {
       this.logger.error(
         `Failed to fetch Allegro order ${checkoutFormId} (connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -234,16 +234,16 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
    * we'd emit empty strings for every address field — worse than the fallbacks.
    */
   private resolveShippingAddress(
-    checkoutForm: AllegroCheckoutForm,
+    checkoutForm: AllegroCheckoutForm
   ): IncomingOrderAddress | undefined {
     const deliveryAddr = checkoutForm.delivery?.address;
     const hasDeliveryAddress = Boolean(
-      deliveryAddr && (deliveryAddr.street || deliveryAddr.city || deliveryAddr.zipCode),
+      deliveryAddr && (deliveryAddr.street || deliveryAddr.city || deliveryAddr.zipCode)
     );
 
     if (hasDeliveryAddress && deliveryAddr) {
       this.logger.debug(
-        `Using delivery.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`,
+        `Using delivery.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`
       );
       return {
         firstName: deliveryAddr.firstName,
@@ -259,11 +259,11 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
 
     const pickupAddr = checkoutForm.delivery?.pickupPoint?.address;
     const hasPickupAddress = Boolean(
-      pickupAddr && (pickupAddr.street || pickupAddr.city || pickupAddr.zipCode),
+      pickupAddr && (pickupAddr.street || pickupAddr.city || pickupAddr.zipCode)
     );
     if (hasPickupAddress && pickupAddr) {
       this.logger.debug(
-        `Using delivery.pickupPoint.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`,
+        `Using delivery.pickupPoint.address as shippingAddress for ${checkoutForm.id} (connection: ${this.connectionId})`
       );
       // The recipient is still the buyer; only the geography comes from the locker.
       return {
@@ -279,7 +279,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
 
     if (checkoutForm.buyer.address) {
       this.logger.debug(
-        `Using buyer.address as shippingAddress fallback for ${checkoutForm.id} (connection: ${this.connectionId})`,
+        `Using buyer.address as shippingAddress fallback for ${checkoutForm.id} (connection: ${this.connectionId})`
       );
       return {
         firstName: checkoutForm.buyer.firstName,
@@ -362,7 +362,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       ...sellerMarketplaces.map((marketplace) =>
         this.httpClient.get<AllegroDeliveryMethodsResponse>('/sale/delivery-methods', {
           queryParams: { marketplace },
-        }),
+        })
       ),
     ]);
     const rateSetIds = (rateSets.data.shippingRates ?? []).map((r) => r.id);
@@ -387,12 +387,12 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
       `listDeliveryMethods: connection=${this.connectionId} rateSetIds=${rateSetIds.length} ` +
         `catalogue=${nameById.size} (per-marketplace: ${[...perMarketplaceSizes.entries()]
           .map(([m, n]) => `${m}=${n}`)
-          .join(', ')})`,
+          .join(', ')})`
     );
 
     if (rateSetIds.length === 0) {
       this.logger.warn(
-        `Allegro returned no shipping-rates for connection ${this.connectionId} — listDeliveryMethods is empty. Operator likely needs to configure cenniki in the seller portal first.`,
+        `Allegro returned no shipping-rates for connection ${this.connectionId} — listDeliveryMethods is empty. Operator likely needs to configure cenniki in the seller portal first.`
       );
       return [];
     }
@@ -403,10 +403,8 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     // not a hot path. Caching is deferred to a follow-up if latency bites.
     const details = await Promise.all(
       rateSetIds.map((id) =>
-        this.httpClient.get<AllegroShippingRateDetailResponse>(
-          `/sale/shipping-rates/${id}`,
-        ),
-      ),
+        this.httpClient.get<AllegroShippingRateDetailResponse>(`/sale/shipping-rates/${id}`)
+      )
     );
 
     // Step 3: flatten + dedup by methodId. Allegro returns the method object
@@ -434,7 +432,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     if (result.length === 0) {
       const totalRates = details.reduce((n, d) => n + (d.data.rates?.length ?? 0), 0);
       this.logger.warn(
-        `Walked ${rateSetIds.length} rate-tables with ${totalRates} rates for connection ${this.connectionId} but produced 0 delivery methods — possible API shape regression.`,
+        `Walked ${rateSetIds.length} rate-tables with ${totalRates} rates for connection ${this.connectionId} but produced 0 delivery methods — possible API shape regression.`
       );
     }
 
@@ -446,7 +444,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     const unresolved = result.filter((r) => r.value === r.label);
     if (unresolved.length > 0) {
       this.logger.warn(
-        `listDeliveryMethods: ${unresolved.length}/${result.length} method ids could not be resolved from /sale/delivery-methods catalogue (size=${nameById.size}) for connection ${this.connectionId} — labels falling back to UUIDs.`,
+        `listDeliveryMethods: ${unresolved.length}/${result.length} method ids could not be resolved from /sale/delivery-methods catalogue (size=${nameById.size}) for connection ${this.connectionId} — labels falling back to UUIDs.`
       );
     }
     return result;

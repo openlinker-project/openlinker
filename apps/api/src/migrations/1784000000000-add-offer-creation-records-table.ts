@@ -11,7 +11,7 @@
  * Generated: 2026-04-20
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOfferCreationRecordsTable1784000000000 implements MigrationInterface {
   name = 'AddOfferCreationRecordsTable1784000000000';
@@ -59,8 +59,12 @@ export class AddOfferCreationRecordsTable1784000000000 implements MigrationInter
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_status"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_connectionId"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_variant_connection"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_connectionId"`
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_variant_connection"`
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "offer_creation_records"`);
   }
 }

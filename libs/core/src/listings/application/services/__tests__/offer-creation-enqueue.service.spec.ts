@@ -15,7 +15,7 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
-import { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import { OfferCreationEnqueueService } from '../offer-creation-enqueue.service';
 
 describe('OfferCreationEnqueueService', () => {
@@ -36,13 +36,13 @@ describe('OfferCreationEnqueueService', () => {
     null,
     false,
     new Date('2026-04-21T10:00:00Z'),
-    new Date('2026-04-21T10:00:00Z'),
+    new Date('2026-04-21T10:00:00Z')
   );
 
   const adapterWith = (createOffer: jest.Mock | undefined): OfferManagerPort =>
     ({
       ...(createOffer ? { createOffer } : {}),
-    } as unknown as OfferManagerPort);
+    }) as unknown as OfferManagerPort;
 
   beforeEach(() => {
     integrations = {
@@ -124,7 +124,7 @@ describe('OfferCreationEnqueueService', () => {
     });
 
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: 'client-key-42' }),
+      expect.objectContaining({ idempotencyKey: 'client-key-42' })
     );
   });
 
@@ -137,7 +137,7 @@ describe('OfferCreationEnqueueService', () => {
         connectionId,
         stock: 1,
         publishImmediately: false,
-      }),
+      })
     ).rejects.toThrow(UnprocessableEntityException);
 
     expect(records.create).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('OfferCreationEnqueueService', () => {
         connectionId,
         stock: 1,
         publishImmediately: false,
-      }),
+      })
     ).rejects.toThrow('ConnectionDisabledException');
 
     expect(records.create).not.toHaveBeenCalled();

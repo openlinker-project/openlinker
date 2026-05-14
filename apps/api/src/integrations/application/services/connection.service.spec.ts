@@ -6,44 +6,48 @@
  *
  * @module apps/api/src/integrations/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConnectionService } from './connection.service';
-import {
+import type {
   ConnectionPort,
-  CONNECTION_PORT_TOKEN,
-  Connection,
-  ConnectionNotFoundException,
   ConnectionUpdate,
   ConnectionFilters,
 } from '@openlinker/core/identifier-mapping';
 import {
+  CONNECTION_PORT_TOKEN,
+  Connection,
+  ConnectionNotFoundException,
+} from '@openlinker/core/identifier-mapping';
+import type {
   IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
   IntegrationCredentialRepositoryPort,
+  CredentialsResolverPort,
+  ConnectionTesterPort,
+  WebhookProvisioningPort,
+} from '@openlinker/core/integrations';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   ConnectionTesterRegistryService,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
-  CredentialsResolverPort,
-  ConnectionTesterPort,
   WebhookProvisioningRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
-  WebhookProvisioningPort,
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
 } from '@openlinker/core/integrations';
-import {
-  AllegroConnectionConfigShapeValidatorAdapter,
-} from '@openlinker/integrations-allegro';
+import { AllegroConnectionConfigShapeValidatorAdapter } from '@openlinker/integrations-allegro';
 import {
   PrestashopConnectionConfigShapeValidatorAdapter,
   PrestashopConnectionCredentialsShapeValidatorAdapter,
 } from '@openlinker/integrations-prestashop';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
 describe('ConnectionService', () => {
   let service: ConnectionService;
@@ -67,9 +71,9 @@ describe('ConnectionService', () => {
     'cred_123',
     new Date(),
     new Date(),
-  
+
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
   );
 
   beforeEach(async () => {
@@ -92,7 +96,12 @@ describe('ConnectionService', () => {
       resolveAdapterMetadata: jest.fn().mockResolvedValue({
         adapterKey: 'prestashop.webservice.v1',
         platformType: 'prestashop',
-        supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+        supportedCapabilities: [
+          'ProductMaster',
+          'InventoryMaster',
+          'OrderSource',
+          'OrderProcessorManager',
+        ],
       }),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
@@ -102,17 +111,24 @@ describe('ConnectionService', () => {
 
     const mockCredentialRepository = {
       getByRef: jest.fn(),
-      create: jest.fn().mockImplementation((payload: { ref: string; platformType: string; credentialsJson: Record<string, unknown> }) =>
-        Promise.resolve({
-          id: 'cred-row-1',
-          ref: payload.ref,
-          platformType: payload.platformType,
-          credentialsJson: payload.credentialsJson,
-          encrypted: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      ),
+      create: jest
+        .fn()
+        .mockImplementation(
+          (payload: {
+            ref: string;
+            platformType: string;
+            credentialsJson: Record<string, unknown>;
+          }) =>
+            Promise.resolve({
+              id: 'cred-row-1',
+              ref: payload.ref,
+              platformType: payload.platformType,
+              credentialsJson: payload.credentialsJson,
+              encrypted: false,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+        ),
       update: jest.fn(),
       delete: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<IntegrationCredentialRepositoryPort>;
@@ -136,17 +152,17 @@ describe('ConnectionService', () => {
     configValidatorRegistry = new ConnectionConfigShapeValidatorRegistryService();
     configValidatorRegistry.register(
       'prestashop.webservice.v1',
-      new PrestashopConnectionConfigShapeValidatorAdapter(),
+      new PrestashopConnectionConfigShapeValidatorAdapter()
     );
     configValidatorRegistry.register(
       'allegro.publicapi.v1',
-      new AllegroConnectionConfigShapeValidatorAdapter(),
+      new AllegroConnectionConfigShapeValidatorAdapter()
     );
 
     credentialsValidatorRegistry = new ConnectionCredentialsShapeValidatorRegistryService();
     credentialsValidatorRegistry.register(
       'prestashop.webservice.v1',
-      new PrestashopConnectionCredentialsShapeValidatorAdapter(),
+      new PrestashopConnectionCredentialsShapeValidatorAdapter()
     );
 
     const mockCredentialsResolver: CredentialsResolverPort = {
@@ -162,7 +178,10 @@ describe('ConnectionService', () => {
         { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: mockCredentialRepository },
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
         { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: webhookProvisioningRegistry },
-        { provide: CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN, useValue: configValidatorRegistry },
+        {
+          provide: CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+          useValue: configValidatorRegistry,
+        },
         {
           provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
           useValue: credentialsValidatorRegistry,
@@ -196,15 +215,15 @@ describe('ConnectionService', () => {
         expect.objectContaining({
           ...payload,
           enabledCapabilities: expect.any(Array),
-        }),
+        })
       );
       expect(credentialRepository.create).not.toHaveBeenCalled();
     });
 
     it('should reject raw-key credentialsRef without db: prefix', async () => {
-      await expect(
-        service.create({ ...payload, credentialsRef: 'RAW_KEY_XYZ' }),
-      ).rejects.toThrow(/must start with "db:"/);
+      await expect(service.create({ ...payload, credentialsRef: 'RAW_KEY_XYZ' })).rejects.toThrow(
+        /must start with "db:"/
+      );
       expect(connectionPort.create).not.toHaveBeenCalled();
     });
 
@@ -213,7 +232,7 @@ describe('ConnectionService', () => {
         service.create({
           ...payload,
           credentials: { webserviceApiKey: 'X' },
-        }),
+        })
       ).rejects.toThrow(/Exactly one of/);
     });
 
@@ -238,13 +257,13 @@ describe('ConnectionService', () => {
           platformType: 'prestashop',
           credentialsJson: { webserviceApiKey: 'SECRET123' },
           ref: expect.any(String),
-        }),
+        })
       );
       const credentialCall = credentialRepository.create.mock.calls[0][0];
       expect(connectionPort.create).toHaveBeenCalledWith(
         expect.objectContaining({
           credentialsRef: `db:${credentialCall.ref}`,
-        }),
+        })
       );
     });
 
@@ -255,7 +274,7 @@ describe('ConnectionService', () => {
           platformType: 'prestashop',
           config: { baseUrl: 'https://new.com' },
           credentials: { someOtherField: 'X' },
-        }),
+        })
       ).rejects.toThrow(/webserviceApiKey/);
       expect(credentialRepository.create).not.toHaveBeenCalled();
     });
@@ -269,7 +288,7 @@ describe('ConnectionService', () => {
           platformType: 'prestashop',
           config: { baseUrl: 'https://new.com' },
           credentials: { webserviceApiKey: 'SECRET123' },
-        }),
+        })
       ).rejects.toThrow(/boom/);
 
       expect(credentialRepository.create).toHaveBeenCalledTimes(1);
@@ -292,7 +311,7 @@ describe('ConnectionService', () => {
           jobType: 'master.product.syncAll',
           connectionId: mockConnection.id,
           idempotencyKey: `bootstrap:${mockConnection.id}:product:syncAll`,
-        }),
+        })
       );
     });
 
@@ -326,7 +345,7 @@ describe('ConnectionService', () => {
           service.create({
             ...payload,
             config: { baseUrl: 'shop.example.com' }, // missing protocol
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
@@ -336,7 +355,7 @@ describe('ConnectionService', () => {
           service.create({
             ...payload,
             config: { baseUrl: 'https://shop.example.com', defaultCarrierId: 0 },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
@@ -362,7 +381,7 @@ describe('ConnectionService', () => {
                 safetyInformation: { type: 'NO_SAFETY_INFORMATION' },
               },
             },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
@@ -381,7 +400,7 @@ describe('ConnectionService', () => {
             platformType: 'shopify',
             credentialsRef: 'db:existing-ref',
             config: { whatever: 'goes' },
-          }),
+          })
         ).resolves.toEqual(mockConnection);
         expect(connectionPort.create).toHaveBeenCalled();
       });
@@ -418,13 +437,9 @@ describe('ConnectionService', () => {
     });
 
     it('should throw NotFoundException when connection not found', async () => {
-      connectionPort.get.mockRejectedValue(
-        new ConnectionNotFoundException('connection-123'),
-      );
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
-      await expect(service.get('connection-123')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.get('connection-123')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -440,9 +455,9 @@ describe('ConnectionService', () => {
         'cred_123',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       connectionPort.get.mockResolvedValue(mockConnection);
@@ -455,13 +470,11 @@ describe('ConnectionService', () => {
     });
 
     it('should throw NotFoundException when connection not found', async () => {
-      connectionPort.get.mockRejectedValue(
-        new ConnectionNotFoundException('connection-123'),
-      );
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
-      await expect(
-        service.update('connection-123', { name: 'Updated' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.update('connection-123', { name: 'Updated' })).rejects.toThrow(
+        NotFoundException
+      );
     });
 
     // #437 — service-layer Allegro config validation. Closes the bypass on
@@ -478,7 +491,7 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['OrderSource', 'OfferManager'],
+        ['OrderSource', 'OfferManager']
       );
 
       const validAllegroConfig = {
@@ -509,7 +522,7 @@ describe('ConnectionService', () => {
 
       it('should accept a fully-formed Allegro config', async () => {
         await expect(
-          service.update('allegro-conn-1', { config: validAllegroConfig }),
+          service.update('allegro-conn-1', { config: validAllegroConfig })
         ).resolves.toEqual(allegroConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('allegro-conn-1', {
           config: validAllegroConfig,
@@ -524,9 +537,9 @@ describe('ConnectionService', () => {
             location: { ...validAllegroConfig.sellerDefaults.location, countryCode: undefined },
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -538,9 +551,9 @@ describe('ConnectionService', () => {
             responsibleProducerId: undefined,
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -552,9 +565,9 @@ describe('ConnectionService', () => {
             safetyInformation: {},
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -566,9 +579,9 @@ describe('ConnectionService', () => {
             safetyInformation: { type: 'TEXT' },
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -580,9 +593,9 @@ describe('ConnectionService', () => {
             safetyInformation: { type: 'ATTACHMENTS' },
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -595,9 +608,9 @@ describe('ConnectionService', () => {
             safetyInformation: { type: 'ATTACHMENTS', attachments: tooMany },
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.update('allegro-conn-1', { config: partial })).rejects.toThrow(
+          BadRequestException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -612,9 +625,9 @@ describe('ConnectionService', () => {
             },
           },
         };
-        await expect(
-          service.update('allegro-conn-1', { config: partial }),
-        ).resolves.toEqual(allegroConnection);
+        await expect(service.update('allegro-conn-1', { config: partial })).resolves.toEqual(
+          allegroConnection
+        );
         expect(connectionPort.update).toHaveBeenCalled();
       });
 
@@ -633,7 +646,7 @@ describe('ConnectionService', () => {
           new Date(),
           new Date(),
           undefined,
-          [],
+          []
         );
         connectionPort.get.mockResolvedValue(shopifyConnection);
         connectionPort.update.mockResolvedValue(shopifyConnection);
@@ -649,7 +662,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('shopify-conn-1', {
             config: { whatever: 'goes' },
-          }),
+          })
         ).resolves.toEqual(shopifyConnection);
         expect(connectionPort.update).toHaveBeenCalled();
       });
@@ -669,7 +682,7 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager']
       );
 
       const validPsConfig = {
@@ -687,9 +700,9 @@ describe('ConnectionService', () => {
       });
 
       it('should accept a fully-formed PrestaShop config', async () => {
-        await expect(
-          service.update('ps-conn-1', { config: validPsConfig }),
-        ).resolves.toEqual(prestashopConnection);
+        await expect(service.update('ps-conn-1', { config: validPsConfig })).resolves.toEqual(
+          prestashopConnection
+        );
         expect(connectionPort.update).toHaveBeenCalledWith('ps-conn-1', {
           config: validPsConfig,
         });
@@ -699,7 +712,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, baseUrl: 'shop.example.com' },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -708,7 +721,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, defaultCarrierId: 0 },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -717,7 +730,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, guestCustomerGroupId: -1 },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -726,7 +739,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, currency: 'pln' },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -735,7 +748,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, responseFormat: 'csv' },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -744,7 +757,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, timeoutMs: 999999999 },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -753,7 +766,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, pageSize: 5000 },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -765,7 +778,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, futureFlag: true },
-          }),
+          })
         ).resolves.toEqual(prestashopConnection);
         expect(connectionPort.update).toHaveBeenCalled();
       });
@@ -774,7 +787,7 @@ describe('ConnectionService', () => {
         await expect(
           service.update('ps-conn-1', {
             config: { ...validPsConfig, paymentModuleOverrides: ['ok', 42] },
-          }),
+          })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
@@ -793,7 +806,7 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster'],
+        ['ProductMaster']
       );
       connectionPort.get.mockResolvedValue(dbConnection);
 
@@ -815,12 +828,12 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster'],
+        ['ProductMaster']
       );
       connectionPort.get.mockResolvedValue(legacy);
 
       await expect(
-        service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' }),
+        service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
       ).rejects.toThrow(/does not have a db-backed/);
       expect(credentialRepository.update).not.toHaveBeenCalled();
     });
@@ -853,7 +866,7 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        [],
+        []
       );
       connectionPort.get.mockResolvedValue(adapterLessConnection);
       integrationsService.resolveAdapterMetadata.mockResolvedValue({
@@ -862,9 +875,7 @@ describe('ConnectionService', () => {
         supportedCapabilities: [],
       });
 
-      await expect(service.testConnection('connection-999')).rejects.toThrow(
-        /not supported/,
-      );
+      await expect(service.testConnection('connection-999')).rejects.toThrow(/not supported/);
     });
   });
 
@@ -882,10 +893,7 @@ describe('ConnectionService', () => {
         webhooksConfigured: true,
         testPingTriggered: true,
       });
-      expect(mockWebhookProvisioner.install).toHaveBeenCalledWith(
-        'connection-123',
-        'user-1',
-      );
+      expect(mockWebhookProvisioner.install).toHaveBeenCalledWith('connection-123', 'user-1');
     });
 
     it('should throw BadRequest when no provisioner is registered for the adapter', async () => {
@@ -899,7 +907,7 @@ describe('ConnectionService', () => {
         new Date(),
         new Date(),
         undefined,
-        [],
+        []
       );
       connectionPort.get.mockResolvedValue(adapterLessConnection);
       integrationsService.resolveAdapterMetadata.mockResolvedValue({
@@ -908,12 +916,8 @@ describe('ConnectionService', () => {
         supportedCapabilities: [],
       });
 
-      await expect(service.installWebhooks('connection-999')).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.installWebhooks('connection-999')).rejects.toThrow(
-        /not supported/,
-      );
+      await expect(service.installWebhooks('connection-999')).rejects.toThrow(BadRequestException);
+      await expect(service.installWebhooks('connection-999')).rejects.toThrow(/not supported/);
     });
   });
 
@@ -928,9 +932,9 @@ describe('ConnectionService', () => {
         'cred_123',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       connectionPort.disable.mockResolvedValue(disabledConnection);
@@ -942,19 +946,9 @@ describe('ConnectionService', () => {
     });
 
     it('should throw NotFoundException when connection not found', async () => {
-      connectionPort.disable.mockRejectedValue(
-        new ConnectionNotFoundException('connection-123'),
-      );
+      connectionPort.disable.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
-      await expect(service.disable('connection-123')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.disable('connection-123')).rejects.toThrow(NotFoundException);
     });
   });
 });
-
-
-
-
-
-

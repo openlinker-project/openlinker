@@ -9,7 +9,7 @@
  * @implements {CachePort}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type { RedisClientType } from 'redis';
+import { RedisClientType } from 'redis';
 import { Logger } from '../logging';
 import type { CachePort } from './cache.port';
 

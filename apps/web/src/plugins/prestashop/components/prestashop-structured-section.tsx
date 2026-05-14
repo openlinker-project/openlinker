@@ -12,7 +12,7 @@
  *
  * @module plugins/prestashop/components
  */
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';

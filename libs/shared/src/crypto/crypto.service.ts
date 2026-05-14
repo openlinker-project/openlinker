@@ -11,7 +11,8 @@
  *
  * @module libs/shared/src/crypto
  */
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import type { OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
 import { Logger } from '../logging/logger';
@@ -38,20 +39,20 @@ export class CryptoService implements OnModuleInit {
         this.key = createHash('sha256').update(DEV_KEY_SEED).digest();
         this.logger.warn(
           'OPENLINKER_CREDENTIALS_ENCRYPTION_KEY not set — using deterministic dev fallback. ' +
-            'Never use this in production.',
+            'Never use this in production.'
         );
         return;
       }
       throw new Error(
         'OPENLINKER_CREDENTIALS_ENCRYPTION_KEY is required. ' +
-          'Set it to a base64-encoded 32-byte key.',
+          'Set it to a base64-encoded 32-byte key.'
       );
     }
 
     const decoded = Buffer.from(raw, 'base64');
     if (decoded.length !== KEY_BYTES) {
       throw new Error(
-        `OPENLINKER_CREDENTIALS_ENCRYPTION_KEY must decode to ${KEY_BYTES} bytes (got ${decoded.length}).`,
+        `OPENLINKER_CREDENTIALS_ENCRYPTION_KEY must decode to ${KEY_BYTES} bytes (got ${decoded.length}).`
       );
     }
     this.key = decoded;

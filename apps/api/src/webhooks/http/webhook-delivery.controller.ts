@@ -27,7 +27,7 @@ import {
 import { ListWebhookDeliveriesQueryDto } from './dto/list-webhook-deliveries-query.dto';
 import { PaginatedWebhookDeliveriesResponseDto } from './dto/paginated-webhook-deliveries-response.dto';
 import { WebhookDeliveryDetailResponseDto } from './dto/webhook-delivery-detail-response.dto';
-import { WebhookDeliverySummaryResponseDto } from './dto/webhook-delivery-summary-response.dto';
+import type { WebhookDeliverySummaryResponseDto } from './dto/webhook-delivery-summary-response.dto';
 import type { WebhookDelivery } from '@openlinker/core/webhooks';
 
 @Roles('admin')
@@ -37,7 +37,7 @@ import type { WebhookDelivery } from '@openlinker/core/webhooks';
 export class WebhookDeliveryController {
   constructor(
     @Inject(WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN)
-    private readonly queryService: IWebhookDeliveryQueryService,
+    private readonly queryService: IWebhookDeliveryQueryService
   ) {}
 
   @Get()
@@ -49,9 +49,18 @@ export class WebhookDeliveryController {
   })
   @ApiResponse({ status: 200, type: PaginatedWebhookDeliveriesResponseDto })
   async list(
-    @Query() query: ListWebhookDeliveriesQueryDto,
+    @Query() query: ListWebhookDeliveriesQueryDto
   ): Promise<PaginatedWebhookDeliveriesResponseDto> {
-    const { provider, connectionId, eventType, status, since, until, limit = 20, offset = 0 } = query;
+    const {
+      provider,
+      connectionId,
+      eventType,
+      status,
+      since,
+      until,
+      limit = 20,
+      offset = 0,
+    } = query;
 
     const { items, total } = await this.queryService.list(
       {
@@ -62,7 +71,7 @@ export class WebhookDeliveryController {
         since: since ? new Date(since) : undefined,
         until: until ? new Date(until) : undefined,
       },
-      { limit, offset },
+      { limit, offset }
     );
 
     return {
@@ -78,9 +87,7 @@ export class WebhookDeliveryController {
   @ApiOperation({ summary: 'Get webhook delivery by id' })
   @ApiResponse({ status: 200, type: WebhookDeliveryDetailResponseDto })
   @ApiResponse({ status: 404, description: 'Delivery not found' })
-  async getById(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<WebhookDeliveryDetailResponseDto> {
+  async getById(@Param('id', ParseUUIDPipe) id: string): Promise<WebhookDeliveryDetailResponseDto> {
     const delivery = await this.queryService.getById(id);
     if (!delivery) {
       throw new NotFoundException(`Webhook delivery not found: ${id}`);

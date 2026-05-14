@@ -8,10 +8,15 @@
  * @module libs/integrations/prestashop/src/infrastructure/http
  * @implements {IPrestashopWebserviceClient}
  */
-import { IPrestashopWebserviceClient, PrestashopQueryFilters } from './prestashop-webservice.client.interface';
-import {
+import type {
+  IPrestashopWebserviceClient,
+  PrestashopQueryFilters,
+} from './prestashop-webservice.client.interface';
+import type {
   PrestashopConnectionConfig,
   PrestashopCredentials,
+} from '@openlinker/integrations-prestashop';
+import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
   PrestashopApiException,
@@ -58,7 +63,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     baseUrl: string,
     credentials: PrestashopCredentials,
     config: PrestashopConnectionConfig,
-    retryConfig?: Partial<RetryConfig>,
+    retryConfig?: Partial<RetryConfig>
   ) {
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
@@ -115,7 +120,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const parsed = PrestashopResponseParser.parse(
       response.body,
       response.contentType,
-      responseFormat,
+      responseFormat
     );
 
     // Unwrap single resource response
@@ -138,7 +143,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     resource: string,
     filters?: PrestashopQueryFilters,
     limit?: number,
-    offset?: number,
+    offset?: number
   ): Promise<T[]> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
@@ -149,11 +154,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       filters,
       this.config,
       limit ?? pageSize,
-      offset,
+      offset
     );
     const url = `${this.baseUrl}${path}?${query}`;
 
-    this.logger.debug(`Listing resources: ${resource} (limit: ${limit ?? pageSize}, offset: ${offset ?? 0})`);
+    this.logger.debug(
+      `Listing resources: ${resource} (limit: ${limit ?? pageSize}, offset: ${offset ?? 0})`
+    );
 
     const response = await this.requestWithRetry(url, {
       method: 'GET',
@@ -164,7 +171,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const parsed = PrestashopResponseParser.parse(
       response.body,
       response.contentType,
-      responseFormat,
+      responseFormat
     );
 
     // PrestaShop returns collections in different formats
@@ -179,7 +186,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   async updateResource<T = unknown>(
     resource: string,
     id: string | number,
-    data: Record<string, unknown>,
+    data: Record<string, unknown>
   ): Promise<T> {
     return this.writeResource<T>(resource, id, data);
   }
@@ -196,13 +203,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private async writeResource<T = unknown>(
     resource: string,
     id: string | number | undefined,
-    data: Record<string, unknown>,
+    data: Record<string, unknown>
   ): Promise<T> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
     const url = `${this.baseUrl}${path}`;
 
     const isUpdate = id !== undefined;
-    this.logger.debug(`${isUpdate ? 'Updating' : 'Creating'} resource: ${resource}${isUpdate ? `/${id}` : ''}`);
+    this.logger.debug(
+      `${isUpdate ? 'Updating' : 'Creating'} resource: ${resource}${isUpdate ? `/${id}` : ''}`
+    );
 
     const configResponseFormat = this.config.responseFormat;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
@@ -235,7 +244,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const parsed = PrestashopResponseParser.parse(
       response.body,
       response.contentType,
-      responseFormat,
+      responseFormat
     );
 
     // Unwrap single resource response
@@ -255,17 +264,23 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const prestashop = parsedObj.prestashop as Record<string, unknown>;
       // Try singular form first (correct for most resources)
       if (prestashop[singularResourceKey] && typeof prestashop[singularResourceKey] === 'object') {
-        return this.normalizeWriteResponseId(prestashop[singularResourceKey] as Record<string, unknown>) as T;
+        return this.normalizeWriteResponseId(
+          prestashop[singularResourceKey] as Record<string, unknown>
+        ) as T;
       }
       // Fallback: try original resourceKey (for edge cases)
       if (prestashop[resourceKey] && typeof prestashop[resourceKey] === 'object') {
-        return this.normalizeWriteResponseId(prestashop[resourceKey] as Record<string, unknown>) as T;
+        return this.normalizeWriteResponseId(
+          prestashop[resourceKey] as Record<string, unknown>
+        ) as T;
       }
     }
 
     // Try without prestashop wrapper (direct resource key)
     if (parsedObj[singularResourceKey] && typeof parsedObj[singularResourceKey] === 'object') {
-      return this.normalizeWriteResponseId(parsedObj[singularResourceKey] as Record<string, unknown>) as T;
+      return this.normalizeWriteResponseId(
+        parsedObj[singularResourceKey] as Record<string, unknown>
+      ) as T;
     }
 
     // Fallback: try original resourceKey
@@ -275,7 +290,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
     // Final fallback: return as-is and log warning
     this.logger.warn(
-      `Could not extract resource from PrestaShop response. Resource: ${resource}, ResourceKey: ${resourceKey}, SingularKey: ${singularResourceKey}. Response structure: ${JSON.stringify(Object.keys(parsedObj))}`,
+      `Could not extract resource from PrestaShop response. Resource: ${resource}, ResourceKey: ${resourceKey}, SingularKey: ${singularResourceKey}. Response structure: ${JSON.stringify(Object.keys(parsedObj))}`
     );
     return parsed as T;
   }
@@ -312,11 +327,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       }
       return xml;
     } catch (error) {
-      this.logger.error(`Failed to convert data to XML: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `Failed to convert data to XML: ${error instanceof Error ? error.message : String(error)}`
+      );
       throw new PrestashopApiException(
         `Failed to convert request data to XML format: ${error instanceof Error ? error.message : String(error)}`,
         undefined,
-        undefined,
+        undefined
       );
     }
   }
@@ -330,7 +347,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
    */
   private async requestWithRetry(
     url: string,
-    options: RequestInit,
+    options: RequestInit
   ): Promise<{ body: string; contentType?: string }> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
@@ -351,7 +368,12 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         }
         if (error instanceof PrestashopApiException) {
           const statusCode = error.statusCode;
-          if (statusCode !== undefined && statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
+          if (
+            statusCode !== undefined &&
+            statusCode >= 400 &&
+            statusCode < 500 &&
+            statusCode !== 429
+          ) {
             throw error; // Don't retry client errors (except 429)
           }
         }
@@ -361,7 +383,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           this.logger.error(lastError.message);
           this.logger.error(lastError.stack);
           this.logger.warn(
-            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`,
+            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
           );
           await this.sleep(delay);
           delay = Math.min(delay * this.retryConfig.backoffMultiplier, this.retryConfig.maxDelayMs);
@@ -380,7 +402,10 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
    * @param options - Fetch options
    * @returns Response with body and content type
    */
-  private async request(url: string, options: RequestInit): Promise<{ body: string; contentType?: string }> {
+  private async request(
+    url: string,
+    options: RequestInit
+  ): Promise<{ body: string; contentType?: string }> {
     const startTime = Date.now();
 
     // Build headers
@@ -402,7 +427,9 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       if (options.method === 'POST' && typeof options.body === 'string') {
         this.logger.debug(`Body (full): ${options.body}`);
       } else {
-        this.logger.debug(`Body: ${typeof options.body === 'string' ? formatBodyForLog(options.body) : '[binary]'}`);
+        this.logger.debug(
+          `Body: ${typeof options.body === 'string' ? formatBodyForLog(options.body) : '[binary]'}`
+        );
       }
     }
 
@@ -423,7 +450,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const duration = Date.now() - startTime;
       const contentType = response.headers.get('content-type') || undefined;
       const body = await response.text();
-      
+
       // Log full response details
       this.logger.debug(`=== HTTP Response ===`);
       this.logger.debug(`Status: ${response.status} ${response.statusText}`);
@@ -451,7 +478,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         const timeoutError = new PrestashopApiException(
           `Request timeout after ${timeoutMs}ms: ${url}`,
           undefined,
-          undefined,
+          undefined
         );
         throw timeoutError;
       }
@@ -467,7 +494,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const networkError = new PrestashopApiException(
         `Network error: ${errorMessage}`,
         undefined,
-        undefined,
+        undefined
       );
       throw networkError;
     } finally {
@@ -484,7 +511,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const authError = new PrestashopAuthenticationException(
         `Authentication failed: Invalid API key for ${url}`,
         undefined,
-        this.baseUrl,
+        this.baseUrl
       );
       throw authError;
     }
@@ -494,7 +521,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const notFoundError = new PrestashopResourceNotFoundException(
         `Resource not found: ${url}`,
         undefined,
-        undefined,
+        undefined
       );
       throw notFoundError;
     }
@@ -504,13 +531,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       // `OL_LOG_BODY_MAX_BYTES`; the exception carries the FULL body so any
       // downstream consumer can inspect or parse it (matches Allegro #409).
       this.logger.error(
-        `PrestaShop API server error (${statusCode}): ${url}. Response body: ${formatBodyForLog(body)}`,
+        `PrestaShop API server error (${statusCode}): ${url}. Response body: ${formatBodyForLog(body)}`
       );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const serverError = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
-        body,
+        body
       );
       throw serverError;
     }
@@ -519,7 +546,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const apiError = new PrestashopApiException(
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,
-      body,
+      body
     );
     throw apiError;
   }
@@ -606,4 +633,3 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

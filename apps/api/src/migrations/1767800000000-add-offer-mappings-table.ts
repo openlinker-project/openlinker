@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOfferMappingsTable1767800000000 implements MigrationInterface {
   name = 'AddOfferMappingsTable1767800000000';
@@ -58,5 +58,3 @@ export class AddOfferMappingsTable1767800000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE "offer_mappings"`);
   }
 }
-
-

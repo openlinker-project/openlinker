@@ -12,7 +12,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AI_PROVIDER_ACTIVE_SETTING_SINGLETON_ID, AiProviderActiveSetting } from '../../../domain/entities/ai-provider-active-setting.entity';
+import {
+  AI_PROVIDER_ACTIVE_SETTING_SINGLETON_ID,
+  AiProviderActiveSetting,
+} from '../../../domain/entities/ai-provider-active-setting.entity';
 import type { AiProviderActiveSettingRepositoryPort } from '../../../domain/ports/ai-provider-active-setting-repository.port';
 import { AiProviderValues, type AiProvider } from '../../../domain/types/ai-completion.types';
 import { AiProviderActiveSettingOrmEntity } from '../entities/ai-provider-active-setting.orm-entity';
@@ -21,12 +24,10 @@ const isAiProvider = (value: string): value is AiProvider =>
   (AiProviderValues as readonly string[]).includes(value);
 
 @Injectable()
-export class AiProviderActiveSettingRepository
-  implements AiProviderActiveSettingRepositoryPort
-{
+export class AiProviderActiveSettingRepository implements AiProviderActiveSettingRepositoryPort {
   constructor(
     @InjectRepository(AiProviderActiveSettingOrmEntity)
-    private readonly ormRepository: Repository<AiProviderActiveSettingOrmEntity>,
+    private readonly ormRepository: Repository<AiProviderActiveSettingOrmEntity>
   ) {}
 
   async findActive(): Promise<AiProviderActiveSetting | null> {
@@ -38,7 +39,7 @@ export class AiProviderActiveSettingRepository
 
   async upsertActive(
     activeProvider: AiProvider,
-    updatedBy: string | null,
+    updatedBy: string | null
   ): Promise<AiProviderActiveSetting> {
     await this.ormRepository.upsert(
       {
@@ -46,7 +47,7 @@ export class AiProviderActiveSettingRepository
         activeProvider,
         updatedBy,
       },
-      { conflictPaths: ['id'] },
+      { conflictPaths: ['id'] }
     );
     const saved = await this.ormRepository.findOneOrFail({
       where: { id: AI_PROVIDER_ACTIVE_SETTING_SINGLETON_ID },
@@ -61,7 +62,7 @@ export class AiProviderActiveSettingRepository
       // value drift from a future code change leaves the row in a state
       // we can't represent, surface it loudly rather than coerce silently.
       throw new Error(
-        `ai_provider_active_setting.active_provider has an unknown value '${entity.activeProvider}'`,
+        `ai_provider_active_setting.active_provider has an unknown value '${entity.activeProvider}'`
       );
     }
     return new AiProviderActiveSetting(entity.activeProvider, entity.updatedAt, entity.updatedBy);

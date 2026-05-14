@@ -27,14 +27,9 @@
  *
  * @module libs/plugin-sdk/src
  */
-import {
-  DynamicModule,
-  Module,
-  Inject,
-  Optional,
-  OnModuleInit,
-  Provider,
-} from '@nestjs/common';
+import type { DynamicModule, OnModuleInit, Provider } from '@nestjs/common';
+import { Module, Inject, Optional } from '@nestjs/common';
+import type { AdapterFactoryPort } from '@openlinker/core/integrations';
 import {
   IntegrationsModule,
   ADAPTER_REGISTRY_TOKEN,
@@ -53,7 +48,6 @@ import {
   ConnectionCredentialsShapeValidatorRegistryService,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
-  AdapterFactoryPort,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
@@ -90,16 +84,12 @@ export interface CreateNestAdapterModuleOptions {
   readonly exports?: NonNullable<DynamicModule['exports']>;
 }
 
-export function createNestAdapterModule(
-  options: CreateNestAdapterModuleOptions,
-): DynamicModule {
+export function createNestAdapterModule(options: CreateNestAdapterModuleOptions): DynamicModule {
   const { plugin, imports = [], providers = [], exports: extraExports = [] } = options;
 
   @Module({})
   class PluginHostModule implements OnModuleInit {
-    private readonly logger = new Logger(
-      `PluginHost:${plugin.manifest.adapterKey}`,
-    );
+    private readonly logger = new Logger(`PluginHost:${plugin.manifest.adapterKey}`);
 
     constructor(
       @Inject(ADAPTER_REGISTRY_TOKEN)
@@ -126,12 +116,12 @@ export function createNestAdapterModule(
       private readonly credentialsResolver: CredentialsResolverPort,
       @Optional()
       @Inject(CACHE_PORT_TOKEN)
-      private readonly cache?: CachePort,
+      private readonly cache?: CachePort
     ) {}
 
     onModuleInit(): void {
       this.logger.log(
-        `Registering plugin: ${plugin.manifest.adapterKey} (${plugin.manifest.platformType})`,
+        `Registering plugin: ${plugin.manifest.adapterKey} (${plugin.manifest.platformType})`
       );
 
       const host: HostServices = {
@@ -158,7 +148,7 @@ export function createNestAdapterModule(
           conn: Connection,
           cap: string,
           idMap: IdentifierMappingPort,
-          credRes: CredentialsResolverPort,
+          credRes: CredentialsResolverPort
         ): Promise<T> =>
           plugin.createCapabilityAdapter<T>(conn, cap, {
             ...host,
@@ -172,10 +162,7 @@ export function createNestAdapterModule(
             credentialsResolver: credRes,
           }),
       };
-      host.factoryResolver.registerFactory(
-        plugin.manifest.adapterKey,
-        factoryAdapter,
-      );
+      host.factoryResolver.registerFactory(plugin.manifest.adapterKey, factoryAdapter);
 
       plugin.register?.(host);
 

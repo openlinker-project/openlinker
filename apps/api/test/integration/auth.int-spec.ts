@@ -9,13 +9,18 @@
  */
 import * as bcrypt from 'bcryptjs';
 import { DataSource } from 'typeorm';
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 
 async function seedUser(
   dataSource: DataSource,
   username: string,
   password: string,
-  email: string | null = null,
+  email: string | null = null
 ): Promise<string> {
   // Use low cost factor (4) for test speed; real cost is set by the application layer
   const passwordHash = await bcrypt.hash(password, 4);
@@ -23,7 +28,7 @@ async function seedUser(
     `INSERT INTO users (username, email, password_hash)
      VALUES ($1, $2, $3)
      RETURNING id`,
-    [username, email, passwordHash],
+    [username, email, passwordHash]
   );
   return result[0].id;
 }
@@ -75,10 +80,7 @@ describe('Auth Integration', () => {
     it('should return 401 when user does not exist', async () => {
       const http = harness.getHttp();
 
-      await http
-        .post('/auth/login')
-        .send({ username: 'ghost', password: 'any' })
-        .expect(401);
+      await http.post('/auth/login').send({ username: 'ghost', password: 'any' }).expect(401);
     });
   });
 
@@ -119,10 +121,7 @@ describe('Auth Integration', () => {
     it('should return 401 when token is invalid', async () => {
       const http = harness.getHttp();
 
-      await http
-        .get('/auth/me')
-        .set('Authorization', 'Bearer this.is.not.valid')
-        .expect(401);
+      await http.get('/auth/me').set('Authorization', 'Bearer this.is.not.valid').expect(401);
     });
   });
 });

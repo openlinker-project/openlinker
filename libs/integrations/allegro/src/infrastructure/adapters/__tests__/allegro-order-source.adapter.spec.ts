@@ -9,9 +9,9 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters/__tests__
  */
 import { AllegroOrderSourceAdapter } from '../allegro-order-source.adapter';
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import {
+import type {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
@@ -41,7 +41,7 @@ describe('AllegroOrderSourceAdapter', () => {
       new Date(),
       new Date(),
       undefined,
-      ['OrderSource', 'OfferManager'],
+      ['OrderSource', 'OfferManager']
     );
 
     adapter = new AllegroOrderSourceAdapter(connectionId, httpClient, connection);
@@ -628,7 +628,7 @@ describe('AllegroOrderSourceAdapter', () => {
             { value: 'BOUGHT', label: 'Bought (awaiting payment)' },
             { value: 'READY_FOR_PROCESSING', label: 'Ready for processing (paid)' },
             { value: 'CANCELLED', label: 'Cancelled' },
-          ]),
+          ])
         );
         expect(result).toHaveLength(4);
       });
@@ -647,7 +647,7 @@ describe('AllegroOrderSourceAdapter', () => {
             { value: 'ONLINE', label: 'Online payment (Allegro Pay / card / instant transfer)' },
             { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
             { value: 'BANK_TRANSFER', label: 'Bank transfer' },
-          ]),
+          ])
         );
         expect(result.length).toBeGreaterThanOrEqual(6);
       });
@@ -677,7 +677,7 @@ describe('AllegroOrderSourceAdapter', () => {
             id: string;
             name: string;
           }>;
-        },
+        }
       ): void {
         const marketplaces = ['allegro-pl', 'allegro-cz', 'allegro-sk', 'allegro-hu'] as const;
         for (const marketplace of marketplaces) {
@@ -689,7 +689,8 @@ describe('AllegroOrderSourceAdapter', () => {
                 name: e.name,
                 marketplaces: [marketplace],
                 dispatchCountry: 'PL',
-                destinationCountry: marketplace === 'allegro-pl' ? 'PL' : marketplace.split('-')[1].toUpperCase(),
+                destinationCountry:
+                  marketplace === 'allegro-pl' ? 'PL' : marketplace.split('-')[1].toUpperCase(),
               })),
             },
             status: 200,
@@ -780,9 +781,7 @@ describe('AllegroOrderSourceAdapter', () => {
         });
         // Catalogue only knows about PACZKOMAT — the rate-table also references
         // ORPHAN_ID, which should fall through to id-as-label.
-        mockDeliveryMethodsCatalogue([
-          { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' },
-        ]);
+        mockDeliveryMethodsCatalogue([{ id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' }]);
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
@@ -812,9 +811,7 @@ describe('AllegroOrderSourceAdapter', () => {
           status: 200,
           headers: {},
         });
-        mockDeliveryMethodsCatalogue([
-          { id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' },
-        ]);
+        mockDeliveryMethodsCatalogue([{ id: PACZKOMAT_ID, name: 'Allegro Paczkomaty InPost' }]);
         httpClient.get.mockResolvedValueOnce({
           data: {
             id: 'rate-set-1',
@@ -826,9 +823,7 @@ describe('AllegroOrderSourceAdapter', () => {
         });
 
         const result = await adapter.listDeliveryMethods();
-        expect(result).toEqual([
-          { value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' },
-        ]);
+        expect(result).toEqual([{ value: PACZKOMAT_ID, label: 'Allegro Paczkomaty InPost' }]);
       });
 
       it('unions catalogues across PL/CZ/SK/HU marketplaces so cross-border ids resolve', async () => {
@@ -847,7 +842,7 @@ describe('AllegroOrderSourceAdapter', () => {
             'allegro-cz': [{ id: KURIER_ID, name: 'Allegro International Kurier Czechy, InPost' }],
             'allegro-sk': [],
             'allegro-hu': [],
-          },
+          }
         );
         httpClient.get.mockResolvedValueOnce({
           data: {
@@ -967,7 +962,7 @@ describe('AllegroOrderSourceAdapter', () => {
 
         expect(result).toEqual([]);
         expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringMatching(/produced 0 delivery methods.*possible API shape regression/i),
+          expect.stringMatching(/produced 0 delivery methods.*possible API shape regression/i)
         );
 
         warnSpy.mockRestore();
@@ -1012,7 +1007,7 @@ describe('AllegroOrderSourceAdapter', () => {
           { value: KURIER_ID, label: KURIER_ID },
         ]);
         expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringMatching(/2\/2 method ids could not be resolved.*falling back to UUIDs/i),
+          expect.stringMatching(/2\/2 method ids could not be resolved.*falling back to UUIDs/i)
         );
 
         warnSpy.mockRestore();

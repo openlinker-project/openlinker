@@ -12,14 +12,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Logger, CryptoService } from '@openlinker/shared';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import { WebhookSecretProviderPort, webhookSecretRef } from '../../domain/ports/webhook-secret-provider.port';
+import {
+  WebhookSecretProviderPort,
+  webhookSecretRef,
+} from '../../domain/ports/webhook-secret-provider.port';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import {
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
 } from '../../integrations.tokens';
-import {
+import type {
   IWebhookSecretService,
   RotateWebhookSecretResult,
 } from '../interfaces/webhook-secret.service.interface';
@@ -37,13 +40,13 @@ export class WebhookSecretService implements IWebhookSecretService {
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
     private readonly crypto: CryptoService,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
-    private readonly secretProvider: WebhookSecretProviderPort,
+    private readonly secretProvider: WebhookSecretProviderPort
   ) {}
 
   async rotate(
     provider: string,
     connectionId: string,
-    actorUserId?: string,
+    actorUserId?: string
   ): Promise<RotateWebhookSecretResult> {
     const connection = await this.connectionPort.get(connectionId);
 

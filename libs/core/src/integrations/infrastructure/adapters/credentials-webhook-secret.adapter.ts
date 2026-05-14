@@ -16,7 +16,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Logger, CryptoService } from '@openlinker/shared';
-import { WebhookSecretProviderPort, webhookSecretRef } from '../../domain/ports/webhook-secret-provider.port';
+import type { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
+import { webhookSecretRef } from '../../domain/ports/webhook-secret-provider.port';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '../../integrations.tokens';
@@ -41,7 +42,7 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
     private readonly crypto: CryptoService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async getSecret(provider: string, connectionId: string): Promise<string> {
@@ -64,7 +65,7 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
     }
 
     throw new Error(
-      `Webhook secret not found for provider=${provider} connectionId=${connectionId}`,
+      `Webhook secret not found for provider=${provider} connectionId=${connectionId}`
     );
   }
 
@@ -78,14 +79,14 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
       const ciphertext = credential.credentialsJson?.ciphertext;
       if (typeof ciphertext !== 'string') {
         this.logger.error(
-          `Webhook secret credential ${credential.ref} is missing a ciphertext field`,
+          `Webhook secret credential ${credential.ref} is missing a ciphertext field`
         );
         return null;
       }
       // Honor the encrypted flag: only decrypt when the credential was stored encrypted.
       if (!credential.encrypted) {
         this.logger.warn(
-          `Webhook secret credential ${credential.ref} is not marked encrypted — returning raw value`,
+          `Webhook secret credential ${credential.ref} is not marked encrypted — returning raw value`
         );
         return ciphertext;
       }
@@ -98,11 +99,7 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
     }
   }
 
-  private tryLoadFromEnv(
-    provider: string,
-    connectionId: string,
-    cacheKey: string,
-  ): string | null {
+  private tryLoadFromEnv(provider: string, connectionId: string, cacheKey: string): string | null {
     const connectionKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}__${connectionId.toUpperCase()}`;
     const providerKey = `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}`;
     const value =
@@ -114,7 +111,7 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
       this.warnedEnvKeys.add(cacheKey);
       this.logger.warn(
         `Webhook secret for ${provider}:${connectionId} resolved from env var. ` +
-          `This fallback is deprecated — rotate the secret via the API to persist it encrypted.`,
+          `This fallback is deprecated — rotate the secret via the API to persist it encrypted.`
       );
     }
 

@@ -8,15 +8,13 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
-  JobEnqueuePort,
-  JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -55,13 +53,13 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const productId = job.payload?.productId as string | undefined;
     this.logger.log(
-      `Executing inventory propagate to marketplaces job ${job.id} for product ${productId ?? 'unknown'}`,
+      `Executing inventory propagate to marketplaces job ${job.id} for product ${productId ?? 'unknown'}`
     );
 
     try {
@@ -72,12 +70,12 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       const inventory = await this.inventoryService.getInventory(
         payload.productId,
         payload.variantId || null,
-        null, // Location ID - MVP assumes single location
+        null // Location ID - MVP assumes single location
       );
 
       if (!inventory) {
         this.logger.warn(
-          `No inventory found for product ${payload.productId}${payload.variantId ? `, variant ${payload.variantId}` : ''}. Skipping propagation.`,
+          `No inventory found for product ${payload.productId}${payload.variantId ? `, variant ${payload.variantId}` : ''}. Skipping propagation.`
         );
         return { outcome: 'ok' };
       }
@@ -85,7 +83,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       const availableQuantity = inventory.availableQuantity;
 
       this.logger.debug(
-        `Current inventory for product ${payload.productId}: ${availableQuantity} available`,
+        `Current inventory for product ${payload.productId}: ${availableQuantity} available`
       );
 
       // Step 3: Find all marketplace offers mapped to this internal product
@@ -95,13 +93,13 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
 
       if (mappings.length === 0) {
         this.logger.debug(
-          `No offer mappings found for product ${payload.productId}. Skipping propagation.`,
+          `No offer mappings found for product ${payload.productId}. Skipping propagation.`
         );
         return { outcome: 'ok' };
       }
 
       this.logger.log(
-        `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`,
+        `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`
       );
 
       // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job.
@@ -134,14 +132,14 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         await this.jobEnqueue.enqueueJob(updateJobRequest);
 
         this.logger.debug(
-          `Enqueued offer quantity update job for offer ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`,
+          `Enqueued offer quantity update job for offer ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`
         );
       });
 
       await Promise.all(enqueuePromises);
 
       this.logger.log(
-        `Successfully enqueued ${mappings.length} offer quantity update job(s) for product ${payload.productId}`,
+        `Successfully enqueued ${mappings.length} offer quantity update job(s) for product ${payload.productId}`
       );
 
       return { outcome: 'ok' };
@@ -152,7 +150,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId || 'N/A', // connectionId may be empty for inventory propagation jobs
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -168,7 +166,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Missing or invalid productId in job payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -180,4 +178,3 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     };
   }
 }
-

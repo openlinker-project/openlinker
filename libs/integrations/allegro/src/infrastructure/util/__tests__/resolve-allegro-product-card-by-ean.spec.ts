@@ -8,7 +8,7 @@
  * @module libs/integrations/allegro/src/infrastructure/util/__tests__
  */
 import type { CachePort } from '@openlinker/shared';
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import { resolveAllegroProductCardByEan } from '../resolve-allegro-product-card-by-ean';
 
@@ -81,7 +81,7 @@ describe('resolveAllegroProductCardByEan', () => {
     expect(cache.set).toHaveBeenCalledWith(
       'allegro:product-card:cat-1:5901234123457',
       { kind: 'unique', productId: 'allegro-prod-1' },
-      expect.any(Number),
+      expect.any(Number)
     );
   });
 
@@ -115,9 +115,7 @@ describe('resolveAllegroProductCardByEan', () => {
     cache.get.mockResolvedValue(null);
     httpClient.get.mockResolvedValue({
       data: {
-        products: [
-          { id: 'allegro-prod-1', name: 'Fuzzy match', ean: '9999999999999' },
-        ],
+        products: [{ id: 'allegro-prod-1', name: 'Fuzzy match', ean: '9999999999999' }],
       },
       status: 200,
       headers: {},
@@ -132,7 +130,7 @@ describe('resolveAllegroProductCardByEan', () => {
     expect(cache.set).toHaveBeenCalledWith(
       'allegro:product-card:cat-1:5901234123457',
       { kind: 'no_match' },
-      expect.any(Number),
+      expect.any(Number)
     );
   });
 
@@ -143,8 +141,8 @@ describe('resolveAllegroProductCardByEan', () => {
         'Internal',
         500,
         '{"errors":[{"code":"INTERNAL"}]}',
-        'https://api.allegro.pl/sale/products',
-      ),
+        'https://api.allegro.pl/sale/products'
+      )
     );
 
     const result = await resolveAllegroProductCardByEan(httpClient, cache, {

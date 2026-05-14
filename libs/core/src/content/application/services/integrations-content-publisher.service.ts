@@ -31,7 +31,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   isOfferFieldUpdater,
@@ -53,9 +53,9 @@ import type {
 // description format is a `sections[].items[]` tree of `TEXT` blocks. We
 // wrap the operator-supplied string as a single TEXT item inside a single
 // section — a richer WYSIWYG story is deferred per issue #339.
-function toChannelDescriptionPayload(
-  value: string,
-): { sections: Array<{ items: Array<{ type: 'TEXT'; content: string }> }> } {
+function toChannelDescriptionPayload(value: string): {
+  sections: Array<{ items: Array<{ type: 'TEXT'; content: string }> }>;
+} {
   return { sections: [{ items: [{ type: 'TEXT', content: value }] }] };
 }
 
@@ -67,7 +67,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
-    private readonly offerMappings: OfferMappingRepositoryPort,
+    private readonly offerMappings: OfferMappingRepositoryPort
   ) {}
 
   async publish(request: ContentPublishRequest): Promise<ContentPublishResult> {
@@ -92,7 +92,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
       // (e.g. the connection that owns the product) when multi-master is real.
       this.logger.warn(
         `[content] Multiple ProductMaster adapters resolved (${masters.length}); using the first. ` +
-          `Refine selection when multi-master is wired.`,
+          `Refine selection when multi-master is wired.`
       );
     }
 
@@ -111,17 +111,17 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
   private async publishChannel(
     request: ContentPublishRequest,
-    connectionId: string,
+    connectionId: string
   ): Promise<ContentPublishResult> {
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
     if (!isOfferFieldUpdater(adapter)) {
       throw new ChannelAdapterLacksFieldUpdaterException(
         request.productId,
         connectionId,
-        request.fieldKey,
+        request.fieldKey
       );
     }
 
@@ -141,7 +141,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
     for (const variant of variants) {
       const page = await this.offerMappings.findMany(
         { connectionId, internalId: variant.id },
-        { limit: 100, offset: 0 },
+        { limit: 100, offset: 0 }
       );
       for (const mapping of page.items) {
         externalOfferIds.add(mapping.externalId);
@@ -165,7 +165,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     this.logger.log(
       `[content] channel publish ok: productId=${request.productId} connectionId=${connectionId} ` +
-        `fieldKey=${request.fieldKey} offers=${externalOfferIds.size} publishedAt=${publishedAtIso}`,
+        `fieldKey=${request.fieldKey} offers=${externalOfferIds.size} publishedAt=${publishedAtIso}`
     );
 
     // Synthetic baseVersion: the channel side has no inbound-reconcile pipeline

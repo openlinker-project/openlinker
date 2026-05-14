@@ -12,11 +12,14 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ICategoriesCacheService, PrestashopCategoryDto } from './categories-cache.service.interface';
+import type {
+  ICategoriesCacheService,
+  PrestashopCategoryDto,
+} from './categories-cache.service.interface';
 import { AllegroCategoryCacheOrmEntity } from './persistence/allegro-category-cache.orm-entity';
-import { OfferManagerPort, isCategoryBrowser } from '@openlinker/core/listings';
+import { isCategoryBrowser } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { OfferCategory } from '@openlinker/core/listings';
+import type { OfferCategory, OfferManagerPort } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -30,7 +33,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
     @InjectRepository(AllegroCategoryCacheOrmEntity)
     private readonly cacheRepo: Repository<AllegroCategoryCacheOrmEntity>,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService,
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async getAllegroCategories(connectionId: string, parentId?: string): Promise<OfferCategory[]> {
@@ -42,16 +45,18 @@ export class CategoriesCacheService implements ICategoriesCacheService {
 
     // Cache miss or stale — fetch from Allegro API
     this.logger.debug(
-      `Cache miss for Allegro categories (connection: ${connectionId}, parentId: ${parentId ?? 'root'}), fetching from API`,
+      `Cache miss for Allegro categories (connection: ${connectionId}, parentId: ${parentId ?? 'root'}), fetching from API`
     );
 
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isCategoryBrowser(adapter)) {
-      this.logger.warn(`Marketplace adapter for connection ${connectionId} does not support fetchCategories`);
+      this.logger.warn(
+        `Marketplace adapter for connection ${connectionId} does not support fetchCategories`
+      );
       return [];
     }
 
@@ -68,11 +73,13 @@ export class CategoriesCacheService implements ICategoriesCacheService {
 
     const adapter = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
       connectionId,
-      'ProductMaster',
+      'ProductMaster'
     );
 
     if (!adapter.getCategories) {
-      this.logger.warn(`ProductMaster adapter for connection ${connectionId} does not support getCategories`);
+      this.logger.warn(
+        `ProductMaster adapter for connection ${connectionId} does not support getCategories`
+      );
       return [];
     }
 
@@ -94,7 +101,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
 
   private async findCached(
     connectionId: string,
-    parentId?: string,
+    parentId?: string
   ): Promise<AllegroCategoryCacheOrmEntity[]> {
     const staleThreshold = new Date();
     staleThreshold.setHours(staleThreshold.getHours() - CACHE_TTL_HOURS);
@@ -117,10 +124,7 @@ export class CategoriesCacheService implements ICategoriesCacheService {
     return entities;
   }
 
-  private async storeInCache(
-    connectionId: string,
-    categories: OfferCategory[],
-  ): Promise<void> {
+  private async storeInCache(connectionId: string, categories: OfferCategory[]): Promise<void> {
     if (categories.length === 0) {
       return;
     }

@@ -9,7 +9,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderSyncStatusFilterValues } from '@openlinker/core/orders';
-import type { OrderSyncStatusFilter } from '@openlinker/core/orders';
+import { OrderSyncStatusFilter } from '@openlinker/core/orders';
 
 export class SyncAttemptResponseDto {
   @ApiProperty({ description: 'Destination connection ID' })

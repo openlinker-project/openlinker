@@ -7,8 +7,8 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { PrestashopCurrency } from './prestashop-provisioner.types';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { PrestashopCurrency } from './prestashop-provisioner.types';
 
 /**
  * Cache entry with timestamp for TTL
@@ -50,7 +50,7 @@ export class PrestashopCurrencyResolver {
   async resolveCurrencyId(
     isoCode: string,
     connectionId: string,
-    webserviceClient: IPrestashopWebserviceClient,
+    webserviceClient: IPrestashopWebserviceClient
   ): Promise<number> {
     // Normalize ISO code (uppercase, trim)
     const normalizedIso = isoCode.trim().toUpperCase();
@@ -80,12 +80,12 @@ export class PrestashopCurrencyResolver {
           custom: { iso_code: normalizedIso },
         },
         1, // limit
-        0, // offset
+        0 // offset
       );
 
       if (!currencies || currencies.length === 0) {
         this.logger.warn(
-          `Currency not found in PrestaShop: ${normalizedIso} (connection: ${connectionId}), using default currency ID: ${DEFAULT_CURRENCY_ID}`,
+          `Currency not found in PrestaShop: ${normalizedIso} (connection: ${connectionId}), using default currency ID: ${DEFAULT_CURRENCY_ID}`
         );
         // Cache default to avoid repeated lookups
         this.cache.set(cacheKey, {
@@ -101,7 +101,7 @@ export class PrestashopCurrencyResolver {
 
       if (Number.isNaN(currencyId)) {
         this.logger.warn(
-          `Invalid currency ID returned from PrestaShop: ${currency.id} for ISO: ${normalizedIso}, using default: ${DEFAULT_CURRENCY_ID}`,
+          `Invalid currency ID returned from PrestaShop: ${currency.id} for ISO: ${normalizedIso}, using default: ${DEFAULT_CURRENCY_ID}`
         );
         // Cache default
         this.cache.set(cacheKey, {
@@ -122,7 +122,7 @@ export class PrestashopCurrencyResolver {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Failed to resolve currency ${normalizedIso} in PrestaShop (connection: ${connectionId}): ${errorMessage}, using default currency ID: ${DEFAULT_CURRENCY_ID}`,
+        `Failed to resolve currency ${normalizedIso} in PrestaShop (connection: ${connectionId}): ${errorMessage}, using default currency ID: ${DEFAULT_CURRENCY_ID}`
       );
       // Cache default to avoid repeated failed lookups
       this.cache.set(cacheKey, {

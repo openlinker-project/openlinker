@@ -10,7 +10,7 @@
  * Hand-written: 2026-04-21
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddSellerPoliciesCache1785000000000 implements MigrationInterface {
   name = 'AddSellerPoliciesCache1785000000000';

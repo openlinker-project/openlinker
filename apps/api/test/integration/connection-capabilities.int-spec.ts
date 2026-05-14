@@ -11,7 +11,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, resetTestHarness, teardownTestHarness, IntegrationTestHarness } from './setup';
+import {
+  getTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+  IntegrationTestHarness,
+} from './setup';
 import { createPrestashopConnectionDto } from './fixtures/connection.fixtures';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 
@@ -32,7 +37,7 @@ describe('Connection Capabilities Integration', () => {
 
   async function createConnection(
     body: object,
-    token?: string,
+    token?: string
   ): Promise<{ id: string; enabledCapabilities: string[]; supportedCapabilities: string[] }> {
     const http = harness.getHttp();
     const dataSource = harness.getDataSource();
@@ -49,9 +54,12 @@ describe('Connection Capabilities Integration', () => {
     const dto = createPrestashopConnectionDto({ name: 'Default caps store' });
     const created = await createConnection(dto);
 
-    expect(created.supportedCapabilities.sort()).toEqual(
-      ['InventoryMaster', 'OrderProcessorManager', 'OrderSource', 'ProductMaster'],
-    );
+    expect(created.supportedCapabilities.sort()).toEqual([
+      'InventoryMaster',
+      'OrderProcessorManager',
+      'OrderSource',
+      'ProductMaster',
+    ]);
     expect(created.enabledCapabilities.sort()).toEqual(created.supportedCapabilities.sort());
   });
 
@@ -75,11 +83,7 @@ describe('Connection Capabilities Integration', () => {
       enabledCapabilities: ['ProductMaster', 'OfferManager'], // Marketplace not supported by prestashop.webservice.v1
     } as Record<string, unknown>);
 
-    await http
-      .post('/connections')
-      .set('Authorization', `Bearer ${token}`)
-      .send(dto)
-      .expect(400);
+    await http.post('/connections').set('Authorization', `Bearer ${token}`).send(dto).expect(400);
   });
 
   it('allows PATCH to narrow enabledCapabilities', async () => {
@@ -87,7 +91,10 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Narrow me' }), token);
+    const created = await createConnection(
+      createPrestashopConnectionDto({ name: 'Narrow me' }),
+      token
+    );
 
     const updated = await http
       .patch(`/connections/${created.id}`)
@@ -96,9 +103,12 @@ describe('Connection Capabilities Integration', () => {
       .expect(200);
 
     expect(updated.body.enabledCapabilities).toEqual(['ProductMaster']);
-    expect(updated.body.supportedCapabilities.sort()).toEqual(
-      ['InventoryMaster', 'OrderProcessorManager', 'OrderSource', 'ProductMaster'],
-    );
+    expect(updated.body.supportedCapabilities.sort()).toEqual([
+      'InventoryMaster',
+      'OrderProcessorManager',
+      'OrderSource',
+      'ProductMaster',
+    ]);
   });
 
   it('rejects PATCH that changes adapterKey', async () => {
@@ -106,7 +116,10 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Immutable key' }), token);
+    const created = await createConnection(
+      createPrestashopConnectionDto({ name: 'Immutable key' }),
+      token
+    );
 
     await http
       .patch(`/connections/${created.id}`)
@@ -120,7 +133,10 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const token = await loginAsAdmin(http, dataSource);
 
-    const created = await createConnection(createPrestashopConnectionDto({ name: 'Validate subset' }), token);
+    const created = await createConnection(
+      createPrestashopConnectionDto({ name: 'Validate subset' }),
+      token
+    );
 
     await http
       .patch(`/connections/${created.id}`)

@@ -11,7 +11,7 @@
  * @module apps/web/src/features/connections/components
  */
 import { useForm, type UseFormReturn } from 'react-hook-form';
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';

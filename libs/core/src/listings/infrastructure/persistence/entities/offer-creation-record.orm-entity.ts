@@ -16,10 +16,8 @@ import {
   Index,
 } from 'typeorm';
 
-import type {
-  OfferCreationError,
-  OfferCreationStatus,
-} from '../../../domain/types/offer-creation-record.types';
+import { OfferCreationStatus } from '../../../domain/types/offer-creation-record.types';
+import type { OfferCreationError } from '../../../domain/types/offer-creation-record.types';
 import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-creation-request-snapshot.types';
 
 @Entity('offer_creation_records')
@@ -30,9 +28,13 @@ import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-c
 // `WHERE "externalOfferId" IS NOT NULL` keeps pre-creation pending rows (which
 // always have a null external id) out of the index. Explicit name so the
 // migration's `down()` can target it deterministically.
-@Index('IDX_offer_creation_records_external_offer_connection', ['externalOfferId', 'connectionId'], {
-  where: '"externalOfferId" IS NOT NULL',
-})
+@Index(
+  'IDX_offer_creation_records_external_offer_connection',
+  ['externalOfferId', 'connectionId'],
+  {
+    where: '"externalOfferId" IS NOT NULL',
+  }
+)
 export class OfferCreationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

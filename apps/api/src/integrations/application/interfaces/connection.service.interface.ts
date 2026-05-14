@@ -7,9 +7,16 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
-import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
-import { ConnectionTestResult, WebhookProvisioningResult } from '@openlinker/core/integrations';
-import { ConnectionCreateInput } from './connection.service.types';
+import type {
+  Connection,
+  ConnectionUpdate,
+  ConnectionFilters,
+} from '@openlinker/core/identifier-mapping';
+import type {
+  ConnectionTestResult,
+  WebhookProvisioningResult,
+} from '@openlinker/core/integrations';
+import type { ConnectionCreateInput } from './connection.service.types';
 
 export type { ConnectionCreateInput };
 
@@ -50,10 +57,7 @@ export interface IConnectionService {
    * @param connectionId - The connection identifier (UUID)
    * @param credentials - Platform-specific credential payload (replaces stored value)
    */
-  updateCredentials(
-    connectionId: string,
-    credentials: Record<string, unknown>,
-  ): Promise<void>;
+  updateCredentials(connectionId: string, credentials: Record<string, unknown>): Promise<void>;
 
   /**
    * Probe the connection using its adapter-specific tester. Never throws on
@@ -74,10 +78,7 @@ export interface IConnectionService {
    * @param actorUserId - Optional ID of the user triggering the install (for audit)
    * @returns Structured result with `webhooksConfigured`, `testPingTriggered`, optional `warning`
    */
-  installWebhooks(
-    connectionId: string,
-    actorUserId?: string,
-  ): Promise<WebhookProvisioningResult>;
+  installWebhooks(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult>;
 
   /**
    * Disable a connection

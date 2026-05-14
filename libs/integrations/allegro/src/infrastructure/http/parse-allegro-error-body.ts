@@ -14,7 +14,8 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/http
  */
-import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
+import type { Logger } from '@openlinker/shared/logging';
+import { formatBodyForLog } from '@openlinker/shared/logging';
 import type { AllegroValidationError } from '../../domain/types/allegro-api.types';
 
 interface AllegroErrorBodyShape {
@@ -23,7 +24,7 @@ interface AllegroErrorBodyShape {
 
 export function parseAllegroErrorBody(
   responseBody: string | undefined | null,
-  logger?: Logger,
+  logger?: Logger
 ): AllegroValidationError[] {
   if (!responseBody) return [];
   try {
@@ -38,7 +39,7 @@ export function parseAllegroErrorBody(
     // an opaque "errors=0" upstream — same contract as #409.
     logger?.warn(
       `Failed to parse Allegro error body as JSON: ${(err as Error).message}. ` +
-        `Raw body: ${formatBodyForLog(responseBody)}`,
+        `Raw body: ${formatBodyForLog(responseBody)}`
     );
     return [];
   }

@@ -14,11 +14,11 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { listingsQueryKeys } from '../api/listings.query-keys';
 import type { MarketplaceOfferResponse } from '../api/listings.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { ApiError } from '../../../shared/api/api-error';
+import type { ApiError } from '../../../shared/api/api-error';
 
 export function useListingMarketplaceOfferQuery(
   mappingId: string,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean }
 ): UseQueryResult<MarketplaceOfferResponse, ApiError> {
   const apiClient = useApiClient();
 

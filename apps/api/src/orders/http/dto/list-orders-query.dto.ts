@@ -5,11 +5,20 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { IsOptional, IsString, IsUUID, IsEnum, IsInt, Min, Max, IsDateString } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderSyncStatusFilterValues, OrderRecordStatusValues } from '@openlinker/core/orders';
-import type { OrderSyncStatusFilter, OrderRecordStatus } from '@openlinker/core/orders';
+import { OrderSyncStatusFilter, OrderRecordStatus } from '@openlinker/core/orders';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -50,7 +59,8 @@ export class ListOrdersQueryDto {
 
   @ApiPropertyOptional({
     enum: OrderRecordStatusValues,
-    description: 'Filter by record status (ready = fully resolved, awaiting_mapping = item refs unresolved)',
+    description:
+      'Filter by record status (ready = fully resolved, awaiting_mapping = item refs unresolved)',
   })
   @IsOptional()
   @IsEnum(OrderRecordStatusValues)

@@ -10,11 +10,11 @@
  * @see {@link CustomerProjectionRepositoryPort} for persistence port
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
+import type { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
 import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
-import { DestinationAddressMapping } from '../../domain/entities/destination-address-mapping.entity';
+import type { DestinationAddressMapping } from '../../domain/entities/destination-address-mapping.entity';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '../../customers.tokens';
 
@@ -24,7 +24,7 @@ export class CustomerProjectionService implements ICustomerProjectionService {
 
   constructor(
     @Inject(CUSTOMER_PROJECTION_REPOSITORY_TOKEN)
-    private readonly repository: CustomerProjectionRepositoryPort,
+    private readonly repository: CustomerProjectionRepositoryPort
   ) {}
 
   async getProjection(internalCustomerId: string): Promise<CustomerProjection | null> {
@@ -44,14 +44,14 @@ export class CustomerProjectionService implements ICustomerProjectionService {
           projection.lastSeenAt,
           projection.lastSourceConnectionId,
           projection.createdAt,
-          projection.updatedAt,
+          projection.updatedAt
         );
 
     return this.repository.upsert(projectionToSave);
   }
 
   async upsertAddressProjection(
-    address: CustomerAddressProjection,
+    address: CustomerAddressProjection
   ): Promise<CustomerAddressProjection> {
     // If PII storage is disabled, clear PII fields but keep addressHash
     const addressToSave = this.piiConfig.storePii
@@ -67,14 +67,14 @@ export class CustomerProjectionService implements ICustomerProjectionService {
           null, // countryIso2
           address.lastSeenAt,
           address.createdAt,
-          address.updatedAt,
+          address.updatedAt
         );
 
     return this.repository.upsertAddress(addressToSave);
   }
 
   async upsertDestinationAddressMapping(
-    mapping: DestinationAddressMapping,
+    mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping> {
     // Destination address mapping doesn't contain PII, so no filtering needed
     return this.repository.upsertDestinationAddressMapping(mapping);

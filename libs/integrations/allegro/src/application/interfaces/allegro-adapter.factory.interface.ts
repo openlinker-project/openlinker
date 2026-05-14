@@ -7,12 +7,12 @@
  *
  * @module libs/integrations/allegro/src/application/interfaces
  */
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 // eslint-disable-next-line no-restricted-imports
-import { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
+import type { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
 // eslint-disable-next-line no-restricted-imports
-import { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/allegro-order-source.adapter';
+import type { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/allegro-order-source.adapter';
 
 /**
  * Allegro adapter instances
@@ -43,6 +43,6 @@ export interface IAllegroAdapterFactory {
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<AllegroAdapters>;
 }

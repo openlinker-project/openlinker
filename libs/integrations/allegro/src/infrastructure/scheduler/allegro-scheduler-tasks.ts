@@ -20,9 +20,9 @@
  * @module libs/integrations/allegro/src/infrastructure/scheduler
  * @see {@link SchedulerTaskConfig} in `@openlinker/core/sync`.
  */
-import { ConfigService } from '@nestjs/config';
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { SchedulerTaskConfig } from '@openlinker/core/sync';
+import type { ConfigService } from '@nestjs/config';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 
 const isEnabled = (configService: ConfigService, key: string): boolean =>
   configService.get<string>(key, 'true') !== 'false';
@@ -48,7 +48,7 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
   if (isEnabled(configService, 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED')) {
     const cronExpression = configService.get<string>(
       'OL_ALLEGRO_POLL_INTERVAL_CRON',
-      '*/5 * * * *',
+      '*/5 * * * *'
     );
 
     tasks.push({
@@ -70,10 +70,10 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
   if (isEnabled(configService, 'OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED')) {
     const cronExpression = configService.get<string>(
       'OL_ALLEGRO_OFFERS_SYNC_INTERVAL_CRON',
-      '*/30 * * * *',
+      '*/30 * * * *'
     );
     const pageLimitRaw = Number(
-      configService.get<string>('OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100'),
+      configService.get<string>('OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT', '100')
     );
     const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 100;
     const offersFeedTypeRaw = configService

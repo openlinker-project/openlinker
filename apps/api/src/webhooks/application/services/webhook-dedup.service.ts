@@ -13,7 +13,7 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { IWebhookDedupService } from '../interfaces/webhook-dedup.service.interface';
+import type { IWebhookDedupService } from '../interfaces/webhook-dedup.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -24,7 +24,7 @@ export class WebhookDedupService implements IWebhookDedupService {
 
   constructor(
     @Inject('REDIS_CLIENT')
-    private readonly redisClient: RedisClientType,
+    private readonly redisClient: RedisClientType
   ) {}
 
   private getDedupKey(provider: string, connectionId: string, eventId: string): string {
@@ -35,7 +35,7 @@ export class WebhookDedupService implements IWebhookDedupService {
     provider: string,
     connectionId: string,
     eventId: string,
-    ttlSeconds: number = this.DEFAULT_PROCESSING_TTL,
+    ttlSeconds: number = this.DEFAULT_PROCESSING_TTL
   ): Promise<boolean> {
     const key = this.getDedupKey(provider, connectionId, eventId);
 
@@ -65,7 +65,7 @@ export class WebhookDedupService implements IWebhookDedupService {
     } catch (error) {
       this.logger.error(
         `Failed to mark webhook as processing: ${provider}:${connectionId}:${eventId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       throw error;
     }
@@ -75,7 +75,7 @@ export class WebhookDedupService implements IWebhookDedupService {
     provider: string,
     connectionId: string,
     eventId: string,
-    ttlSeconds: number = this.DEFAULT_DONE_TTL,
+    ttlSeconds: number = this.DEFAULT_DONE_TTL
   ): Promise<void> {
     const key = this.getDedupKey(provider, connectionId, eventId);
 
@@ -93,7 +93,7 @@ export class WebhookDedupService implements IWebhookDedupService {
       } else {
         // Key doesn't exist - this shouldn't happen if markProcessing was called first
         this.logger.warn(
-          `Attempted to mark done but key doesn't exist: ${provider}:${connectionId}:${eventId}`,
+          `Attempted to mark done but key doesn't exist: ${provider}:${connectionId}:${eventId}`
         );
         // Still set it as done (might have expired or been cleared)
         await this.redisClient.set(key, 'done', {
@@ -104,17 +104,13 @@ export class WebhookDedupService implements IWebhookDedupService {
       // Non-fatal: log but don't throw (per plan requirements)
       this.logger.warn(
         `Failed to mark webhook as done (non-fatal): ${provider}:${connectionId}:${eventId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       // Don't throw - event is already published, this is just cleanup
     }
   }
 
-  async clearProcessing(
-    provider: string,
-    connectionId: string,
-    eventId: string,
-  ): Promise<void> {
+  async clearProcessing(provider: string, connectionId: string, eventId: string): Promise<void> {
     const key = this.getDedupKey(provider, connectionId, eventId);
 
     try {
@@ -123,15 +119,9 @@ export class WebhookDedupService implements IWebhookDedupService {
     } catch (error) {
       this.logger.error(
         `Failed to clear processing marker: ${provider}:${connectionId}:${eventId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       throw error;
     }
   }
 }
-
-
-
-
-
-

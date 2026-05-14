@@ -11,7 +11,7 @@
  * @module libs/core/src/customers/domain/ports
  * @see {@link CustomerIdentityResolverService} for the implementation
  */
-import {
+import type {
   CustomerIdentityResolutionRequest,
   CustomerIdentityResolutionResult,
 } from '../types/customer-identity.types';
@@ -28,6 +28,6 @@ export interface CustomerIdentityResolverPort {
    * @returns Customer identity resolution result
    */
   resolveCustomerIdentity(
-    request: CustomerIdentityResolutionRequest,
+    request: CustomerIdentityResolutionRequest
   ): Promise<CustomerIdentityResolutionResult>;
 }

@@ -7,12 +7,12 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 import { OrderSyncService } from '../order-sync.service';
-import { IIntegrationsService } from '@openlinker/core/integrations';
-import { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
-import { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
-import { Order } from '../../../domain/types/order.types';
-import { OrderRef } from '../../../domain/types/order-processor.types';
-import { IMappingConfigService } from '@openlinker/core/mappings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
+import type { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
+import type { Order } from '../../../domain/types/order.types';
+import type { OrderRef } from '../../../domain/types/order-processor.types';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 
 describe('OrderSyncService', () => {
@@ -26,7 +26,7 @@ describe('OrderSyncService', () => {
     }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
   const registerDestinations = (
-    destinations: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>,
+    destinations: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>
   ): void => {
     integrationsService.listCapabilityAdapters.mockResolvedValue(
       destinations.map(({ connectionId, adapter }) => ({
@@ -34,7 +34,7 @@ describe('OrderSyncService', () => {
         connection: { id: connectionId } as never,
         adapter,
         metadata: {} as never,
-      })),
+      }))
     );
   };
 
@@ -113,7 +113,7 @@ describe('OrderSyncService', () => {
           metadata: expect.objectContaining({
             internalOrderId: 'ol_order_123',
           }),
-        }),
+        })
       );
       expect(results).toEqual([
         {
@@ -160,7 +160,7 @@ describe('OrderSyncService', () => {
         expect(adapter.createOrder).toHaveBeenCalledWith(
           expect.objectContaining({
             metadata: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
-          }),
+          })
         );
       }
     });
@@ -221,7 +221,7 @@ describe('OrderSyncService', () => {
         service.syncOrder({
           order: createOrder(),
           sourceConnectionId: 'source-1',
-        }),
+        })
       ).rejects.toThrow(NoOrderDestinationsAvailableException);
     });
 
@@ -249,7 +249,7 @@ describe('OrderSyncService', () => {
         service.syncOrder({
           order: createOrder(),
           sourceConnectionId: 'source-1',
-        }),
+        })
       ).rejects.toThrow(NoOrderDestinationsAvailableException);
     });
 
@@ -265,10 +265,10 @@ describe('OrderSyncService', () => {
 
       expect(mappingConfigService.resolveStatusMapping).toHaveBeenCalledWith(
         'source-1',
-        'READY_FOR_PROCESSING',
+        'READY_FOR_PROCESSING'
       );
       expect(adapter.createOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'processing' }),
+        expect.objectContaining({ status: 'processing' })
       );
     });
 
@@ -282,7 +282,7 @@ describe('OrderSyncService', () => {
       await service.syncOrder({ order, sourceConnectionId: 'source-1' });
 
       expect(adapter.createOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'shipped' }),
+        expect.objectContaining({ status: 'shipped' })
       );
     });
 
@@ -296,18 +296,18 @@ describe('OrderSyncService', () => {
       await service.syncOrder({ order, sourceConnectionId: 'source-1' });
 
       expect(adapter.createOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'pending' }),
+        expect.objectContaining({ status: 'pending' })
       );
     });
 
     it('should propagate mapping service errors', async () => {
       registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
       mappingConfigService.resolveStatusMapping.mockRejectedValue(
-        new Error('Mapping service unavailable'),
+        new Error('Mapping service unavailable')
       );
 
       await expect(
-        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' }),
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
       ).rejects.toThrow('Mapping service unavailable');
     });
   });

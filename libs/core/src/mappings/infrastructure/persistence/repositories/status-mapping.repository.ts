@@ -13,9 +13,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StatusMappingOrmEntity } from '../entities/status-mapping.orm-entity';
-import { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
+import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
-import { StatusMappingInput } from '../../../domain/types/mapping.types';
+import type { StatusMappingInput } from '../../../domain/types/mapping.types';
 
 @Injectable()
 export class StatusMappingRepository implements StatusMappingRepositoryPort {
@@ -23,7 +23,7 @@ export class StatusMappingRepository implements StatusMappingRepositoryPort {
     @InjectRepository(StatusMappingOrmEntity)
     private readonly repo: Repository<StatusMappingOrmEntity>,
     @InjectDataSource()
-    private readonly dataSource: DataSource,
+    private readonly dataSource: DataSource
   ) {}
 
   async findByConnectionId(connectionId: string): Promise<StatusMapping[]> {
@@ -31,7 +31,10 @@ export class StatusMappingRepository implements StatusMappingRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
-  async replaceForConnection(connectionId: string, items: StatusMappingInput[]): Promise<StatusMapping[]> {
+  async replaceForConnection(
+    connectionId: string,
+    items: StatusMappingInput[]
+  ): Promise<StatusMapping[]> {
     return this.dataSource.transaction(async (manager) => {
       await manager.delete(StatusMappingOrmEntity, { connectionId });
 
@@ -57,7 +60,7 @@ export class StatusMappingRepository implements StatusMappingRepositoryPort {
       entity.id,
       entity.connectionId,
       entity.allegroStatus,
-      entity.prestashopStatusId,
+      entity.prestashopStatusId
     );
   }
 }

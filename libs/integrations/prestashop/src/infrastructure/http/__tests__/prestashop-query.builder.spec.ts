@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/http/__tests__
  */
 import { PrestashopQueryBuilder } from '../prestashop-query.builder';
-import { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
+import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
 describe('PrestashopQueryBuilder', () => {
   describe('buildQuery', () => {
@@ -91,12 +91,23 @@ describe('PrestashopQueryBuilder', () => {
 
   describe('buildQueryWithPagination', () => {
     it('should include limit parameter', () => {
-      const query = PrestashopQueryBuilder.buildQueryWithPagination('products', undefined, undefined, 50);
+      const query = PrestashopQueryBuilder.buildQueryWithPagination(
+        'products',
+        undefined,
+        undefined,
+        50
+      );
       expect(query).toContain('limit=50');
     });
 
     it('should include offset parameter', () => {
-      const query = PrestashopQueryBuilder.buildQueryWithPagination('products', undefined, undefined, undefined, 100);
+      const query = PrestashopQueryBuilder.buildQueryWithPagination(
+        'products',
+        undefined,
+        undefined,
+        undefined,
+        100
+      );
       expect(query).toContain('offset=100');
     });
 
@@ -104,7 +115,13 @@ describe('PrestashopQueryBuilder', () => {
       const filters = {
         status: 'pending',
       };
-      const query = PrestashopQueryBuilder.buildQueryWithPagination('orders', filters, undefined, 25, 50);
+      const query = PrestashopQueryBuilder.buildQueryWithPagination(
+        'orders',
+        filters,
+        undefined,
+        25,
+        50
+      );
       expect(query).toContain('filter[current_state]=[pending]');
       expect(query).toContain('limit=25');
       expect(query).toContain('offset=50');
@@ -128,4 +145,3 @@ describe('PrestashopQueryBuilder', () => {
     });
   });
 });
-

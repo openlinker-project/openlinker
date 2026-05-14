@@ -6,12 +6,14 @@
  *
  * @module apps/api/src/auth
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
-import { USER_REPOSITORY_TOKEN, User, UserRepositoryPort } from '@openlinker/core/users';
+import type { UserRepositoryPort } from '@openlinker/core/users';
+import { USER_REPOSITORY_TOKEN, User } from '@openlinker/core/users';
 
 const makeUser = (overrides: Partial<User> = {}): User =>
   new User(
@@ -21,7 +23,7 @@ const makeUser = (overrides: Partial<User> = {}): User =>
     overrides.passwordHash ?? '$2a$10$hashedpassword',
     overrides.role ?? 'admin',
     overrides.createdAt ?? new Date(),
-    overrides.updatedAt ?? new Date(),
+    overrides.updatedAt ?? new Date()
   );
 
 describe('AuthService', () => {

@@ -16,8 +16,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
 import { Connection } from '../../../domain/entities/connection.entity';
-import { ConnectionPort } from '../../../domain/ports/connection.port';
-import {
+import type { ConnectionPort } from '../../../domain/ports/connection.port';
+import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
@@ -31,7 +31,7 @@ export class ConnectionRepository implements ConnectionPort {
 
   constructor(
     @InjectRepository(ConnectionOrmEntity)
-    private readonly repository: Repository<ConnectionOrmEntity>,
+    private readonly repository: Repository<ConnectionOrmEntity>
   ) {}
 
   async get(connectionId: string): Promise<Connection> {
@@ -88,10 +88,7 @@ export class ConnectionRepository implements ConnectionPort {
     return connection;
   }
 
-  async update(
-    connectionId: string,
-    patch: ConnectionUpdate,
-  ): Promise<Connection> {
+  async update(connectionId: string, patch: ConnectionUpdate): Promise<Connection> {
     try {
       // Load existing entity
       const existing = await this.repository.findOne({
@@ -102,22 +99,22 @@ export class ConnectionRepository implements ConnectionPort {
         throw new ConnectionNotFoundException(connectionId);
       }
 
-    // Apply patch
-    if (patch.name !== undefined) {
-      existing.name = patch.name;
-    }
-    if (patch.status !== undefined) {
-      existing.status = patch.status;
-    }
-    if (patch.config !== undefined) {
-      existing.config = patch.config as Record<string, unknown>;
-    }
-    if (patch.adapterKey !== undefined) {
-      existing.adapterKey = patch.adapterKey;
-    }
-    if (patch.enabledCapabilities !== undefined) {
-      existing.enabledCapabilities = patch.enabledCapabilities;
-    }
+      // Apply patch
+      if (patch.name !== undefined) {
+        existing.name = patch.name;
+      }
+      if (patch.status !== undefined) {
+        existing.status = patch.status;
+      }
+      if (patch.config !== undefined) {
+        existing.config = patch.config as Record<string, unknown>;
+      }
+      if (patch.adapterKey !== undefined) {
+        existing.adapterKey = patch.adapterKey;
+      }
+      if (patch.enabledCapabilities !== undefined) {
+        existing.enabledCapabilities = patch.enabledCapabilities;
+      }
 
       // Save updated entity
       const saved = await this.repository.save(existing);
@@ -152,13 +149,11 @@ export class ConnectionRepository implements ConnectionPort {
       entity.createdAt,
       entity.updatedAt,
       entity.adapterKey,
-      (entity.enabledCapabilities ?? []),
+      entity.enabledCapabilities ?? []
     );
   }
 
-  private toOrm(
-    payload: ConnectionCreate | ConnectionOrmEntity,
-  ): ConnectionOrmEntity {
+  private toOrm(payload: ConnectionCreate | ConnectionOrmEntity): ConnectionOrmEntity {
     const entity = new ConnectionOrmEntity();
 
     if ('id' in payload) {
@@ -183,7 +178,7 @@ export class ConnectionRepository implements ConnectionPort {
       entity.adapterKey = payload.adapterKey;
       if (payload.enabledCapabilities === undefined) {
         throw new Error(
-          'ConnectionCreate.enabledCapabilities must be set by ConnectionService before reaching the repository',
+          'ConnectionCreate.enabledCapabilities must be set by ConnectionService before reaching the repository'
         );
       }
       entity.enabledCapabilities = payload.enabledCapabilities;
@@ -192,4 +187,3 @@ export class ConnectionRepository implements ConnectionPort {
     return entity;
   }
 }
-

@@ -5,7 +5,7 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentMapping } from '@openlinker/core/mappings';
+import type { PaymentMapping } from '@openlinker/core/mappings';
 
 export class PaymentMappingResponseDto {
   @ApiProperty()

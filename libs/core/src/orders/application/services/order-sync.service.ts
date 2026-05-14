@@ -12,9 +12,13 @@
  * @see {@link IIntegrationsService} for adapter resolution
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from '../interfaces/order-sync.service.interface';
-import { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
-import { OrderCreate } from '../../domain/types/order-processor.types';
+import type {
+  IOrderSyncService,
+  OrderSyncRequest,
+  OrderSyncResult,
+} from '../interfaces/order-sync.service.interface';
+import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
+import type { OrderCreate } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -30,14 +34,14 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
-    private readonly mappingConfigService: IMappingConfigService,
+    private readonly mappingConfigService: IMappingConfigService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
 
     this.logger.log(
-      `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`,
+      `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`
     );
 
     const destinations = await this.resolveDestinations(sourceConnectionId);
@@ -49,7 +53,7 @@ export class OrderSyncService implements IOrderSyncService {
     // Resolve status mapping once — identical across all destinations
     const resolvedStatus = await this.mappingConfigService.resolveStatusMapping(
       sourceConnectionId,
-      order.status,
+      order.status
     );
     const orderStatus = resolvedStatus
       ? this.validateOrderStatus(resolvedStatus)
@@ -90,10 +94,8 @@ export class OrderSyncService implements IOrderSyncService {
     // Dispatch in parallel with per-destination error isolation
     const settled = await Promise.allSettled(
       destinations.map(({ connectionId, adapter }) =>
-        adapter
-          .createOrder(orderCreate)
-          .then((orderRef) => ({ connectionId, orderRef })),
-      ),
+        adapter.createOrder(orderCreate).then((orderRef) => ({ connectionId, orderRef }))
+      )
     );
 
     return settled.map((outcome, index): OrderSyncResult => {
@@ -102,7 +104,7 @@ export class OrderSyncService implements IOrderSyncService {
       if (outcome.status === 'fulfilled') {
         const { orderRef } = outcome.value;
         this.logger.log(
-          `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`,
+          `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`
         );
         return {
           destinationConnectionId,
@@ -115,7 +117,7 @@ export class OrderSyncService implements IOrderSyncService {
         outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
       this.logger.error(
         `Order ${order.id} failed to sync to destination ${destinationConnectionId}: ${message}`,
-        outcome.reason instanceof Error ? outcome.reason.stack : undefined,
+        outcome.reason instanceof Error ? outcome.reason.stack : undefined
       );
       return {
         destinationConnectionId,
@@ -126,11 +128,12 @@ export class OrderSyncService implements IOrderSyncService {
   }
 
   private async resolveDestinations(
-    sourceConnectionId: string,
+    sourceConnectionId: string
   ): Promise<Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>> {
-    const resolved = await this.integrationsService.listCapabilityAdapters<OrderProcessorManagerPort>({
-      capability: 'OrderProcessorManager',
-    });
+    const resolved =
+      await this.integrationsService.listCapabilityAdapters<OrderProcessorManagerPort>({
+        capability: 'OrderProcessorManager',
+      });
 
     return resolved
       .filter(({ connectionId }) => connectionId !== sourceConnectionId)

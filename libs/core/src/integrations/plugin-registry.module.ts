@@ -14,10 +14,12 @@
  *
  * @module libs/core/src/integrations
  */
-import { DynamicModule, Inject, Module, OnModuleInit } from '@nestjs/common';
+import type { DynamicModule, OnModuleInit } from '@nestjs/common';
+import { Inject, Module } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { PLUGIN_REGISTRY_OPTIONS_TOKEN } from './integrations.tokens';
-import { PluginEntry, PluginRegistryOptions } from './plugin-registry.types';
+import type { PluginEntry } from './plugin-registry.types';
+import { PluginRegistryOptions } from './plugin-registry.types';
 
 @Module({})
 export class PluginRegistryModule implements OnModuleInit {
@@ -25,7 +27,7 @@ export class PluginRegistryModule implements OnModuleInit {
 
   constructor(
     @Inject(PLUGIN_REGISTRY_OPTIONS_TOKEN)
-    private readonly options: PluginRegistryOptions,
+    private readonly options: PluginRegistryOptions
   ) {}
 
   static forRoot(options: PluginRegistryOptions): DynamicModule {

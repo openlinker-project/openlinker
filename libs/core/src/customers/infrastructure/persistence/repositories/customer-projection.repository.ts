@@ -19,11 +19,11 @@ import { Repository } from 'typeorm';
 import { CustomerProjectionOrmEntity } from '../entities/customer-projection.orm-entity';
 import { CustomerAddressProjectionOrmEntity } from '../entities/customer-address-projection.orm-entity';
 import { DestinationAddressMappingOrmEntity } from '../entities/destination-address-mapping.orm-entity';
-import { CustomerProjectionRepositoryPort } from '../../../domain/ports/customer-projection-repository.port';
+import type { CustomerProjectionRepositoryPort } from '../../../domain/ports/customer-projection-repository.port';
 import { CustomerProjection } from '../../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../../domain/entities/customer-address-projection.entity';
 import { DestinationAddressMapping } from '../../../domain/entities/destination-address-mapping.entity';
-import {
+import type {
   AddressType,
   CustomerProjectionFilters,
   CustomerProjectionPagination,
@@ -38,7 +38,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     @InjectRepository(CustomerAddressProjectionOrmEntity)
     private readonly addressRepository: Repository<CustomerAddressProjectionOrmEntity>,
     @InjectRepository(DestinationAddressMappingOrmEntity)
-    private readonly mappingRepository: Repository<DestinationAddressMappingOrmEntity>,
+    private readonly mappingRepository: Repository<DestinationAddressMappingOrmEntity>
   ) {}
 
   async findById(internalCustomerId: string): Promise<CustomerProjection | null> {
@@ -55,7 +55,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
 
   async findMany(
     filters: CustomerProjectionFilters,
-    pagination: CustomerProjectionPagination,
+    pagination: CustomerProjectionPagination
   ): Promise<PaginatedCustomerProjections> {
     const qb = this.customerRepository.createQueryBuilder('customer');
 
@@ -63,7 +63,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
       qb.where(
         '(customer.emailHash ILIKE :search OR customer.normalizedEmail ILIKE :search OR customer.firstName ILIKE :search OR customer.lastName ILIKE :search)',
-        { search: `%${escapedSearch}%` },
+        { search: `%${escapedSearch}%` }
       );
     }
 
@@ -73,9 +73,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       });
     }
 
-    qb.orderBy('customer.lastSeenAt', 'DESC')
-      .skip(pagination.offset)
-      .take(pagination.limit);
+    qb.orderBy('customer.lastSeenAt', 'DESC').skip(pagination.offset).take(pagination.limit);
 
     const [entities, total] = await qb.getManyAndCount();
     return { items: entities.map((e) => this.toDomainCustomer(e)), total };
@@ -97,7 +95,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
   }
 
   async findAddressesByCustomerId(
-    internalCustomerId: string,
+    internalCustomerId: string
   ): Promise<CustomerAddressProjection[]> {
     const entities = await this.addressRepository.find({
       where: { internalCustomerId },
@@ -117,7 +115,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     internalCustomerId: string,
     destinationConnectionId: string,
     addressHash: string,
-    addressType: AddressType,
+    addressType: AddressType
   ): Promise<DestinationAddressMapping | null> {
     const entity = await this.mappingRepository.findOne({
       where: {
@@ -136,7 +134,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
   }
 
   async upsertDestinationAddressMapping(
-    mapping: DestinationAddressMapping,
+    mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping> {
     const entity = this.toOrmMapping(mapping);
     // TypeORM save() performs upsert on composite primary key
@@ -154,7 +152,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       entity.lastSeenAt,
       entity.lastSourceConnectionId,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
@@ -172,9 +170,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     return entity;
   }
 
-  private toDomainAddress(
-    entity: CustomerAddressProjectionOrmEntity,
-  ): CustomerAddressProjection {
+  private toDomainAddress(entity: CustomerAddressProjectionOrmEntity): CustomerAddressProjection {
     return new CustomerAddressProjection(
       entity.internalCustomerId,
       entity.addressHash,
@@ -186,13 +182,11 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       entity.countryIso2,
       entity.lastSeenAt,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
-  private toOrmAddress(
-    address: CustomerAddressProjection,
-  ): CustomerAddressProjectionOrmEntity {
+  private toOrmAddress(address: CustomerAddressProjection): CustomerAddressProjectionOrmEntity {
     const entity = new CustomerAddressProjectionOrmEntity();
     entity.internalCustomerId = address.internalCustomerId;
     entity.addressHash = address.addressHash;
@@ -216,7 +210,7 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       entity.addressType as AddressType,
       entity.destinationAddressId,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 

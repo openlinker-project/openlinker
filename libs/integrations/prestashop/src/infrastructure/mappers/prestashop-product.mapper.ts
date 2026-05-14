@@ -7,9 +7,14 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  * @implements {IPrestashopProductMapper}
  */
-import { Product, ProductVariant, normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
-import { IPrestashopProductMapper, PrestashopProduct, PrestashopCombination } from './prestashop.mapper.interface';
-import { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
+import type { Product, ProductVariant } from '@openlinker/core/products';
+import { normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
+import type {
+  IPrestashopProductMapper,
+  PrestashopProduct,
+  PrestashopCombination,
+} from './prestashop.mapper.interface';
+import type { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
 
 /**
  * PrestaShop image-variant suffix used by `buildImageUrl` when the
@@ -60,7 +65,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     // and JSON shape ([...] directly) — see unwrapAssociationEntries.
     const optionValues = this.unwrapAssociationEntries(
       combination.associations?.product_option_values,
-      'product_option_value',
+      'product_option_value'
     );
     optionValues.forEach((ov, index) => {
       const id = this.readAssociationId(ov);
@@ -95,10 +100,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
    * @param preferredLangId - Preferred language ID (defaults to 1)
    * @returns Extracted text value (trimmed, or undefined if empty/whitespace)
    */
-  private getLocalizedField(
-    field: unknown,
-    preferredLangId: number = 1,
-  ): string | undefined {
+  private getLocalizedField(field: unknown, preferredLangId: number = 1): string | undefined {
     if (!field) {
       return undefined;
     }
@@ -113,8 +115,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     // PrestaShop JSON API returns: [{ id: 1, value: '...' }, { id: 2, value: '...' }]
     if (Array.isArray(field)) {
       const languageNodes = field.filter(
-        (node): node is Record<string, unknown> =>
-          node !== null && typeof node === 'object',
+        (node): node is Record<string, unknown> => node !== null && typeof node === 'object'
       );
 
       if (languageNodes.length === 0) {
@@ -124,7 +125,9 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       // Try to find preferred language first
       const preferredLang = languageNodes.find((node) => {
         const nodeId = node.id;
-        return nodeId !== null && nodeId !== undefined && String(nodeId) === String(preferredLangId);
+        return (
+          nodeId !== null && nodeId !== undefined && String(nodeId) === String(preferredLangId)
+        );
       });
 
       if (preferredLang) {
@@ -203,8 +206,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
 
     if (Array.isArray(language)) {
       return language.filter(
-        (node): node is Record<string, unknown> =>
-          node !== null && typeof node === 'object',
+        (node): node is Record<string, unknown> => node !== null && typeof node === 'object'
       );
     }
 
@@ -492,4 +494,3 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     return undefined;
   }
 }
-

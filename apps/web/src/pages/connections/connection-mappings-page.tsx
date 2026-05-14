@@ -7,7 +7,7 @@
  * @module apps/web/src/pages/connections
  */
 
-import { type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';

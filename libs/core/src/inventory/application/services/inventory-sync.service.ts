@@ -8,10 +8,15 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { OfferManagerPort, isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { UpdateOfferQuantityCommand, UpdateOfferQuantitiesBatchCommand, UpdateOfferQuantitiesBatchResult } from '@openlinker/core/listings';
-import { IInventorySyncService } from './inventory-sync.service.interface';
+import type {
+  UpdateOfferQuantityCommand,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+} from '@openlinker/core/listings';
+import type { IInventorySyncService } from './inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -20,19 +25,19 @@ export class InventorySyncService implements IInventorySyncService {
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService,
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async updateOfferQuantity(
     connectionId: string,
-    cmd: UpdateOfferQuantityCommand,
+    cmd: UpdateOfferQuantityCommand
   ): Promise<UpdateOfferQuantitiesBatchResult> {
     return this.updateOfferQuantities(connectionId, { items: [cmd] });
   }
 
   async updateOfferQuantities(
     connectionId: string,
-    cmd: UpdateOfferQuantitiesBatchCommand,
+    cmd: UpdateOfferQuantitiesBatchCommand
   ): Promise<UpdateOfferQuantitiesBatchResult> {
     if (!cmd.items || cmd.items.length === 0) {
       return { succeeded: [], failed: [] };
@@ -40,14 +45,15 @@ export class InventorySyncService implements IInventorySyncService {
 
     const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     const normalized: UpdateOfferQuantitiesBatchCommand = {
       idempotencyKey: cmd.idempotencyKey,
       items: cmd.items.map((i) => ({
         ...i,
-        idempotencyKey: i.idempotencyKey ?? this.buildIdempotencyKey(connectionId, i.offerId, i.quantity),
+        idempotencyKey:
+          i.idempotencyKey ?? this.buildIdempotencyKey(connectionId, i.offerId, i.quantity),
       })),
     };
 
@@ -58,7 +64,7 @@ export class InventorySyncService implements IInventorySyncService {
       } catch (error) {
         // Fall back to per-item to allow partial progress if batch fails.
         this.logger.warn(
-          `Batch offer quantity update failed, falling back to per-item updates: ${(error as Error).message}`,
+          `Batch offer quantity update failed, falling back to per-item updates: ${(error as Error).message}`
         );
       }
     }
@@ -88,4 +94,3 @@ export class InventorySyncService implements IInventorySyncService {
     return `inv:${digest}`;
   }
 }
-

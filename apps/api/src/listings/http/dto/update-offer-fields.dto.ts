@@ -6,6 +6,7 @@
  *
  * @module apps/api/src/listings/http/dto
  */
+import type { ValidationOptions, ValidationArguments } from 'class-validator';
 import {
   IsString,
   IsNotEmpty,
@@ -15,8 +16,6 @@ import {
   IsIn,
   MaxLength,
   registerDecorator,
-  ValidationOptions,
-  ValidationArguments,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -70,7 +69,11 @@ function AtLeastOneField(validationOptions?: ValidationOptions) {
       validator: {
         validate(_value: unknown, args: ValidationArguments): boolean {
           const obj = args.object as Record<string, unknown>;
-          return obj['price'] !== undefined || obj['title'] !== undefined || obj['description'] !== undefined;
+          return (
+            obj['price'] !== undefined ||
+            obj['title'] !== undefined ||
+            obj['description'] !== undefined
+          );
         },
         defaultMessage(): string {
           return 'At least one of price, title, or description must be provided';

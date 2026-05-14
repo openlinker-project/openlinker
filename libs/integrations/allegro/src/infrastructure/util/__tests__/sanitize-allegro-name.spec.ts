@@ -10,10 +10,7 @@
  * @module infrastructure/util
  */
 
-import {
-  BANNED_NAME_CHAR_MAP,
-  sanitizeAllegroName,
-} from '../sanitize-allegro-name';
+import { BANNED_NAME_CHAR_MAP, sanitizeAllegroName } from '../sanitize-allegro-name';
 
 describe('sanitizeAllegroName', () => {
   it('replaces em-dash with " - " (the sandbox-confirmed case)', () => {
@@ -85,7 +82,7 @@ describe('sanitizeAllegroName', () => {
 
   it('replaces multiple banned chars in the same string', () => {
     expect(sanitizeAllegroName('“Smart” phone — “Pro” model…')).toBe(
-      '"Smart" phone - "Pro" model...',
+      '"Smart" phone - "Pro" model...'
     );
   });
 

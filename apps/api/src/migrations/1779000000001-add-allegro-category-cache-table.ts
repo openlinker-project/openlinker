@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddAllegroCategoryCacheTable1779000000001 implements MigrationInterface {
   name = 'AddAllegroCategoryCacheTable1779000000001';

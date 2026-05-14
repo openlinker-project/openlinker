@@ -16,20 +16,18 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryFailedError, EntityManager } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
+import { Repository, QueryFailedError } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { SyncJobOrmEntity } from '../entities/sync-job.orm-entity';
-import { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
+import type { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repository.port';
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
-import {
+import type {
   JobOutcome,
-  JobOutcomeValues,
   JobStatus,
-  JobStatusValues,
   JobType,
-  JobTypeValues,
   SyncJobFilters,
   SyncJobPagination,
   PaginatedSyncJobs,
@@ -38,12 +36,17 @@ import {
   SyncJobGroupFilters,
   BulkRetryResult,
 } from '../../../domain/types/sync-job.types';
+import {
+  JobOutcomeValues,
+  JobStatusValues,
+  JobTypeValues,
+} from '../../../domain/types/sync-job.types';
 
 @Injectable()
 export class SyncJobRepository implements SyncJobRepositoryPort {
   constructor(
     @InjectRepository(SyncJobOrmEntity)
-    private readonly repository: Repository<SyncJobOrmEntity>,
+    private readonly repository: Repository<SyncJobOrmEntity>
   ) {}
 
   /**
@@ -67,7 +70,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       | 'createdAt'
       | 'updatedAt'
     >,
-    options?: { runAfter?: Date },
+    options?: { runAfter?: Date }
   ): Promise<SyncJob> {
     // Try to create job - handle race condition with unique constraint
     try {
@@ -92,15 +95,14 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       // Handle unique constraint violation (race condition)
       if (
         error instanceof QueryFailedError &&
-        (error.message.includes('duplicate key') ||
-          error.message.includes('unique constraint'))
+        (error.message.includes('duplicate key') || error.message.includes('unique constraint'))
       ) {
         // Job already exists, fetch and return it
         // Retry with a small delay to handle race conditions
         let existing = await this.repository.findOne({
           where: { idempotencyKey: job.idempotencyKey },
         });
-        
+
         // If still not found, wait a bit and retry (race condition handling)
         if (!existing) {
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -108,11 +110,9 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
             where: { idempotencyKey: job.idempotencyKey },
           });
         }
-        
+
         if (!existing) {
-          throw new Error(
-            `Failed to create or find job by idempotency key: ${job.idempotencyKey}`,
-          );
+          throw new Error(`Failed to create or find job by idempotency key: ${job.idempotencyKey}`);
         }
         return this.toDomain(existing);
       }
@@ -136,7 +136,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         LIMIT $3
         FOR UPDATE SKIP LOCKED
         `,
-        ['queued', now, limit],
+        ['queued', now, limit]
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -211,8 +211,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
-  async findMany(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs> {
-    const where: { status?: string; connectionId?: string; jobType?: string; outcome?: string } = {};
+  async findMany(
+    filters: SyncJobFilters,
+    pagination: SyncJobPagination
+  ): Promise<PaginatedSyncJobs> {
+    const where: { status?: string; connectionId?: string; jobType?: string; outcome?: string } =
+      {};
     if (filters.status) where.status = filters.status;
     if (filters.connectionId) where.connectionId = filters.connectionId;
     if (filters.jobType) where.jobType = filters.jobType;
@@ -289,7 +293,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
 
   async findGroupedByStatus(
     filters: SyncJobGroupFilters,
-    maxGroups: number,
+    maxGroups: number
   ): Promise<SyncJobGroupsResult> {
     // Inputs are DTO-validated upstream (IsEnum JobStatus, IsUUID, @Max(100)).
     // Raw SQL used because TypeORM QueryBuilder doesn't model window functions cleanly.
@@ -374,7 +378,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   async requeueDeadJobsInGroup(
     connectionId: string,
     jobType: string,
-    maxBatchSize: number,
+    maxBatchSize: number
   ): Promise<BulkRetryResult> {
     // Two-query approach: SELECT the batch, then UPDATE with status='dead' guard.
     // The guard tolerates the rare race where a job flipped out of 'dead' between
@@ -453,7 +457,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lastError,
       entity.createdAt,
       entity.updatedAt,
-      entity.outcome ?? null,
+      entity.outcome ?? null
     );
   }
 
@@ -478,4 +482,3 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return (JobOutcomeValues as readonly string[]).includes(value);
   }
 }
-

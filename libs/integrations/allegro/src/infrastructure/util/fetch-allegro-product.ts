@@ -26,10 +26,7 @@
  * @module libs/integrations/allegro/src/infrastructure/util
  */
 import type { CachePort } from '@openlinker/shared';
-import type {
-  CatalogProduct,
-  CatalogProductParameter,
-} from '@openlinker/core/listings';
+import type { CatalogProduct, CatalogProductParameter } from '@openlinker/core/listings';
 import { CatalogProductNotFoundException } from '@openlinker/core/listings';
 import type {
   AllegroProductDto,
@@ -52,7 +49,7 @@ export async function fetchAllegroProduct(
   httpClient: IAllegroHttpClient,
   cache: CachePort | undefined,
   productId: string,
-  options?: FetchAllegroProductOptions,
+  options?: FetchAllegroProductOptions
 ): Promise<CatalogProduct> {
   const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
   const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
@@ -66,7 +63,7 @@ export async function fetchAllegroProduct(
   let dto: AllegroProductDto;
   try {
     const response = await httpClient.get<AllegroProductDto>(
-      `/sale/products/${encodeURIComponent(productId)}`,
+      `/sale/products/${encodeURIComponent(productId)}`
     );
     dto = response.data;
   } catch (error) {
@@ -97,7 +94,9 @@ export async function fetchAllegroProduct(
  *   (full list) is preserved verbatim as plain URL strings.
  */
 export function mapAllegroProductDtoToNeutral(dto: AllegroProductDto): CatalogProduct {
-  const images = dto.images?.map((img) => img.url).filter((u): u is string => typeof u === 'string');
+  const images = dto.images
+    ?.map((img) => img.url)
+    .filter((u): u is string => typeof u === 'string');
   const imageUrl = images?.[0];
   const ean = extractEanFromParameters(dto.parameters);
   const parameters = (dto.parameters ?? []).map(mapAllegroParameterToNeutral);
@@ -122,7 +121,7 @@ function mapAllegroParameterToNeutral(p: AllegroProductDtoParameter): CatalogPro
 }
 
 function extractEanFromParameters(
-  parameters: AllegroProductDtoParameter[] | undefined,
+  parameters: AllegroProductDtoParameter[] | undefined
 ): string | undefined {
   if (!parameters) return undefined;
   for (const p of parameters) {

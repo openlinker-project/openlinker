@@ -1,9 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { WebhookDeliveryQueryService } from '../webhook-delivery-query.service';
-import {
-  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
-  WebhookDeliveryRepositoryPort,
-} from '@openlinker/core/webhooks';
+import type { WebhookDeliveryRepositoryPort } from '@openlinker/core/webhooks';
+import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
 
 describe('WebhookDeliveryQueryService', () => {
   let service: WebhookDeliveryQueryService;
@@ -26,14 +25,11 @@ describe('WebhookDeliveryQueryService', () => {
 
   it('should delegate list to repository.findMany', async () => {
     repo.findMany.mockResolvedValue({ items: [], total: 0 });
-    const result = await service.list(
-      { provider: 'prestashop' },
-      { limit: 10, offset: 0 },
-    );
+    const result = await service.list({ provider: 'prestashop' }, { limit: 10, offset: 0 });
     expect(result).toEqual({ items: [], total: 0 });
     expect(repo.findMany).toHaveBeenCalledWith(
       { provider: 'prestashop' },
-      { limit: 10, offset: 0 },
+      { limit: 10, offset: 0 }
     );
   });
 

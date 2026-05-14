@@ -22,16 +22,13 @@ import type { Product } from '@openlinker/core/products';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type {
-  InventoryFilters,
-  InventoryPagination,
-} from '../../domain/types/inventory.types';
+import type { InventoryFilters, InventoryPagination } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
   InventoryViewProduct,
   PaginatedInventoryView,
 } from '../types/inventory-view.types';
-import { IInventoryQueryService } from './inventory-query.service.interface';
+import type { IInventoryQueryService } from './inventory-query.service.interface';
 
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
@@ -39,17 +36,14 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
     @Inject(PRODUCT_REPOSITORY_TOKEN)
-    private readonly productRepository: ProductRepositoryPort,
+    private readonly productRepository: ProductRepositoryPort
   ) {}
 
   async listInventoryItems(
     filters: InventoryFilters,
-    pagination: InventoryPagination,
+    pagination: InventoryPagination
   ): Promise<PaginatedInventoryView> {
-    const { items, total } = await this.inventoryRepository.findMany(
-      filters,
-      pagination,
-    );
+    const { items, total } = await this.inventoryRepository.findMany(filters, pagination);
     const productMap = await this.buildProductMap(items.map((i) => i.productId));
     return {
       items: items.map((item) => this.compose(item, productMap.get(item.productId) ?? null)),
@@ -71,9 +65,7 @@ export class InventoryQueryService implements IInventoryQueryService {
   // For typical page sizes (≤20 items) this is acceptable, but a batch method would be more efficient.
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
     const uniqueIds = [...new Set(productIds)];
-    const products = await Promise.all(
-      uniqueIds.map((id) => this.productRepository.findById(id)),
-    );
+    const products = await Promise.all(uniqueIds.map((id) => this.productRepository.findById(id)));
     const map = new Map<string, Product>();
     uniqueIds.forEach((id, idx) => {
       const product = products[idx];

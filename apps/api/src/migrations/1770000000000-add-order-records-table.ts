@@ -7,7 +7,7 @@
  * Generated: 2026-01-11
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOrderRecordsTable1770000000000 implements MigrationInterface {
   name = 'AddOrderRecordsTable1770000000000';

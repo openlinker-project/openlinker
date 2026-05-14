@@ -7,21 +7,21 @@
  */
 
 import { OrderIngestionService } from '../order-ingestion.service';
-import { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
-import {
+import type {
   ConnectionCursorRepositoryPort,
   SyncJobQueuePort,
   SyncLockPort,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
-import {
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type {
   ICustomerIdentityResolverService,
   IOrderCustomerProjectionUpdaterService,
 } from '@openlinker/core/customers';
-import { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
-import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
-import { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
+import type { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
+import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
+import type { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 
 describe('OrderIngestionService', () => {
@@ -118,7 +118,7 @@ describe('OrderIngestionService', () => {
       orderSyncService,
       customerIdentityResolver,
       orderRecordService,
-      customerProjectionUpdater,
+      customerProjectionUpdater
     );
   });
 
@@ -161,7 +161,10 @@ describe('OrderIngestionService', () => {
         expect.objectContaining({
           type: 'marketplace.order.sync',
           connectionId,
-          payload: expect.objectContaining({ externalOrderId: 'checkout-1', eventKey: 'event-101' }),
+          payload: expect.objectContaining({
+            externalOrderId: 'checkout-1',
+            eventKey: 'event-101',
+          }),
           options: { dedupeKey: `marketplace:${connectionId}:order:event-101` },
         }),
       ]);
@@ -186,9 +189,9 @@ describe('OrderIngestionService', () => {
 
       jobQueue.enqueueBulk.mockRejectedValueOnce(new Error('enqueue failed'));
 
-      await expect(
-        service.ingestOrders(connectionId, { cursorKey, limit: 10 }),
-      ).rejects.toThrow('enqueue failed');
+      await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toThrow(
+        'enqueue failed'
+      );
 
       expect(cursorRepository.set).not.toHaveBeenCalled();
     });
@@ -248,18 +251,18 @@ describe('OrderIngestionService', () => {
         'ol_order_test',
         null,
         connectionId,
-        null,
+        null
       );
       expect(orderRecordService.persistOrder).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'ol_order_test' }),
         connectionId,
-        null,
+        null
       );
       expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
-        orderRecordService.persistOrder.mock.invocationCallOrder[0],
+        orderRecordService.persistOrder.mock.invocationCallOrder[0]
       );
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
-        orderSyncService.syncOrder.mock.invocationCallOrder[0],
+        orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
     });
 
@@ -277,7 +280,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
         'ol_order_test',
         'dest-conn-1',
-        expect.objectContaining({ status: 'synced', externalOrderId: 'ext-order-1' }),
+        expect.objectContaining({ status: 'synced', externalOrderId: 'ext-order-1' })
       );
     });
 
@@ -295,16 +298,16 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
         'ol_order_test',
         'dest-conn-1',
-        expect.objectContaining({ status: 'failed', error: 'destination unavailable' }),
+        expect.objectContaining({ status: 'failed', error: 'destination unavailable' })
       );
     });
 
     it('should persist snapshot and order even when syncOrder throws', async () => {
       orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
 
-      await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId),
-      ).rejects.toThrow('no destinations');
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+        'no destinations'
+      );
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
@@ -330,13 +333,13 @@ describe('OrderIngestionService', () => {
         .mockRejectedValueOnce(new Error('db write failed'));
 
       await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId)
       ).resolves.not.toThrow();
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
         'Failed to update order record sync status',
-        expect.any(Error),
+        expect.any(Error)
       );
     });
 
@@ -355,14 +358,14 @@ describe('OrderIngestionService', () => {
       expect(customerProjectionUpdater.updateProjectionsForOrder).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'ol_order_test' }),
         'ol_customer_test',
-        connectionId,
+        connectionId
       );
       // Order: persistOrder → updateProjectionsForOrder → syncOrder
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
-        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0],
+        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0]
       );
       expect(
-        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0],
+        customerProjectionUpdater.updateProjectionsForOrder.mock.invocationCallOrder[0]
       ).toBeLessThan(orderSyncService.syncOrder.mock.invocationCallOrder[0]);
     });
 
@@ -375,17 +378,17 @@ describe('OrderIngestionService', () => {
         customerEmail: 'buyer@example.com',
       });
       customerProjectionUpdater.updateProjectionsForOrder.mockRejectedValueOnce(
-        new Error('projection write failed'),
+        new Error('projection write failed')
       );
 
       await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId)
       ).resolves.not.toThrow();
 
       expect(orderSyncService.syncOrder).toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Failed to update customer projections'),
-        expect.any(Error),
+        expect.any(Error)
       );
     });
 
@@ -433,13 +436,13 @@ describe('OrderIngestionService', () => {
           externalBuyerId: 'buyer-ext-1',
           email: 'buyer@example.com',
           sourceConnectionId: connectionId,
-        }),
+        })
       );
       expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
         'Customer',
         expect.anything(),
         expect.anything(),
-        expect.anything(),
+        expect.anything()
       );
     });
 
@@ -457,7 +460,7 @@ describe('OrderIngestionService', () => {
         'Customer',
         'buyer-ext-2',
         connectionId,
-        expect.objectContaining({ parentEntityType: 'Order' }),
+        expect.objectContaining({ parentEntityType: 'Order' })
       );
     });
   });
@@ -478,7 +481,12 @@ describe('OrderIngestionService', () => {
           name: 'Offer A',
           imageUrl: 'https://cdn.example/a.jpg',
         },
-        { id: 'item-2', productRef: { type: 'offer' as const, externalId: 'offer-b' }, quantity: 2, price: 4.99 },
+        {
+          id: 'item-2',
+          productRef: { type: 'offer' as const, externalId: 'offer-b' },
+          quantity: 2,
+          price: 4.99,
+        },
       ],
       totals: { subtotal: 19.97, tax: 0, shipping: 0, total: 19.97, currency: 'PLN' },
       createdAt: '2024-01-01T00:00:00Z',
@@ -494,8 +502,16 @@ describe('OrderIngestionService', () => {
 
     it('happy path: all items resolve — persistIncomingSnapshot then persistOrder called', async () => {
       orderItemRefResolver.tryResolve
-        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
-        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
@@ -520,11 +536,19 @@ describe('OrderIngestionService', () => {
 
     it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
       orderItemRefResolver.tryResolve
-        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
-        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping' });
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'no mapping',
+        });
 
       await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId)
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
@@ -534,11 +558,19 @@ describe('OrderIngestionService', () => {
 
     it('all unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
       orderItemRefResolver.tryResolve
-        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-a' }, reason: 'no mapping a' })
-        .mockResolvedValueOnce({ resolved: false, productRef: { type: 'offer', externalId: 'offer-b' }, reason: 'no mapping b' });
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-a' },
+          reason: 'no mapping a',
+        })
+        .mockResolvedValueOnce({
+          resolved: false,
+          productRef: { type: 'offer', externalId: 'offer-b' },
+          reason: 'no mapping b',
+        });
 
       await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId),
+        service.syncOrderFromSource(connectionId, externalOrderId)
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
@@ -546,4 +578,3 @@ describe('OrderIngestionService', () => {
     });
   });
 });
-

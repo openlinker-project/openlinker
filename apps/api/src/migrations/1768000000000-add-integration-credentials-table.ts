@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddIntegrationCredentialsTable1768000000000 implements MigrationInterface {
   name = 'AddIntegrationCredentialsTable1768000000000';
@@ -44,4 +44,3 @@ export class AddIntegrationCredentialsTable1768000000000 implements MigrationInt
     await queryRunner.query(`DROP TABLE "integration_credentials"`);
   }
 }
-

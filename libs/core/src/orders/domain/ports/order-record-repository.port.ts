@@ -7,8 +7,12 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
-import { OrderRecord } from '../entities/order-record.entity';
-import type { OrderRecordFilters, OrderRecordPagination, PaginatedOrderRecords } from '../types/order-record.types';
+import type { OrderRecord } from '../entities/order-record.entity';
+import type {
+  OrderRecordFilters,
+  OrderRecordPagination,
+  PaginatedOrderRecords,
+} from '../types/order-record.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 
 export interface OrderRecordRepositoryPort {
@@ -37,7 +41,7 @@ export interface OrderRecordRepositoryPort {
     internalOrderId: string,
     destinationConnectionId: string,
     status: OrderRecord['syncStatus'][0],
-    attempt: SyncAttempt,
+    attempt: SyncAttempt
   ): Promise<void>;
 
   /**
@@ -45,6 +49,6 @@ export interface OrderRecordRepositoryPort {
    */
   findMany(
     filters: OrderRecordFilters,
-    pagination: OrderRecordPagination,
+    pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords>;
 }

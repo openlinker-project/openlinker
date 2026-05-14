@@ -8,7 +8,15 @@
  * @module apps/api/src/ai/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import type { PromptTemplateChannel } from '@openlinker/core/ai';
 
 export class RevertPromptTemplateDto {

@@ -12,7 +12,7 @@
  * @module libs/core/src/identifier-mapping/domain/ports
  * @see {@link IdentifierMappingService} for the implementation
  */
-import {
+import type {
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
@@ -32,7 +32,7 @@ export interface IdentifierMappingQueryPort {
   getInternalId(
     entityType: string,
     externalId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<string | null>;
 
   /**
@@ -47,10 +47,7 @@ export interface IdentifierMappingQueryPort {
    * Used by periodic sync to enumerate all known entities for a connection
    * without calling the external platform API.
    */
-  listExternalIdsByConnection(
-    entityType: string,
-    connectionId: string,
-  ): Promise<string[]>;
+  listExternalIdsByConnection(entityType: string, connectionId: string): Promise<string[]>;
 }
 
 /**
@@ -66,7 +63,7 @@ export interface IdentifierMappingCommandPort {
     entityType: string,
     externalId: string,
     connectionId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<string>;
 
   /**
@@ -78,16 +75,14 @@ export interface IdentifierMappingCommandPort {
     externalId: string,
     connectionId: string,
     internalId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<void>;
 
   /**
    * Batch get or create internal identifiers.
    * Returns map with composite key `${externalId}:${connectionId}` -> internalId.
    */
-  batchGetOrCreateInternalIds(
-    requests: IdentifierMappingRequest[],
-  ): Promise<Map<string, string>>;
+  batchGetOrCreateInternalIds(requests: IdentifierMappingRequest[]): Promise<Map<string, string>>;
 
   /**
    * Get or create exact mapping between external and internal identifiers.
@@ -99,17 +94,13 @@ export interface IdentifierMappingCommandPort {
     externalId: string,
     internalId: string,
     connectionId: string,
-    context?: MappingContext,
+    context?: MappingContext
   ): Promise<string>;
 
   /**
    * Delete mapping by external key (idempotent).
    */
-  deleteMapping(
-    entityType: string,
-    externalId: string,
-    connectionId: string,
-  ): Promise<void>;
+  deleteMapping(entityType: string, externalId: string, connectionId: string): Promise<void>;
 }
 
 /**

@@ -7,9 +7,10 @@
  * @module libs/integrations/prestashop/src/application/__tests__
  */
 import { PrestashopAdapterFactory } from '../prestashop-adapter.factory';
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
-import { PrestashopConfigException, PrestashopCredentials } from '@openlinker/integrations-prestashop';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { PrestashopCredentials } from '@openlinker/integrations-prestashop';
+import { PrestashopConfigException } from '@openlinker/integrations-prestashop';
 
 describe('PrestashopAdapterFactory', () => {
   let factory: PrestashopAdapterFactory;
@@ -46,7 +47,12 @@ describe('PrestashopAdapterFactory', () => {
         },
         credentialsRef: 'test_credentials',
         adapterKey: undefined,
-        enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+        enabledCapabilities: [
+          'ProductMaster',
+          'InventoryMaster',
+          'OrderSource',
+          'OrderProcessorManager',
+        ],
         createdAt: new Date(),
         updatedAt: new Date(),
       } as Connection;
@@ -61,7 +67,7 @@ describe('PrestashopAdapterFactory', () => {
       const adapters = await factory.createAdapters(
         connection,
         mockIdentifierMapping,
-        mockCredentialsResolver,
+        mockCredentialsResolver
       );
 
       expect(adapters.productMaster).toBeDefined();
@@ -86,7 +92,7 @@ describe('PrestashopAdapterFactory', () => {
       const adapters = await factory.createAdapters(
         connection,
         mockIdentifierMapping,
-        mockCredentialsResolver,
+        mockCredentialsResolver
       );
 
       // Adapters should be created with defaults
@@ -214,13 +220,13 @@ describe('PrestashopAdapterFactory', () => {
           validateConfig({
             baseUrl: 'https://shop.example.com',
             currency: 'PL',
-          }),
+          })
         ).toThrow(PrestashopConfigException);
         expect(() =>
           validateConfig({
             baseUrl: 'https://shop.example.com',
             currency: 'PL',
-          }),
+          })
         ).toThrow(/ISO 4217/);
       });
 
@@ -229,13 +235,13 @@ describe('PrestashopAdapterFactory', () => {
           validateConfig({
             baseUrl: 'https://shop.example.com',
             currency: 123,
-          }),
+          })
         ).toThrow(PrestashopConfigException);
         expect(() =>
           validateConfig({
             baseUrl: 'https://shop.example.com',
             currency: 123,
-          }),
+          })
         ).toThrow(/must be a string/);
       });
 
@@ -250,4 +256,3 @@ describe('PrestashopAdapterFactory', () => {
     });
   });
 });
-

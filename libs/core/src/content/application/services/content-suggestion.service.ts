@@ -24,7 +24,7 @@ import {
   type IPromptTemplateService,
 } from '@openlinker/core/ai';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
@@ -46,7 +46,7 @@ export class ContentSuggestionService implements IContentSuggestionService {
     @Inject(PROMPT_TEMPLATE_SERVICE_TOKEN)
     private readonly promptTemplates: IPromptTemplateService,
     @Inject(AI_COMPLETION_PORT_TOKEN)
-    private readonly ai: AiCompletionPort,
+    private readonly ai: AiCompletionPort
   ) {}
 
   async suggestDescription(cmd: SuggestDescriptionCommand): Promise<SuggestionResult> {
@@ -97,7 +97,7 @@ export class ContentSuggestionService implements IContentSuggestionService {
         `templateKey=${SUGGESTION_TEMPLATE_KEY} templateVersion=${rendered.version} ` +
         `requestId=${requestId} model=${completion.modelUsed} latencyMs=${completion.latencyMs} ` +
         `inputTokens=${completion.usage.inputTokens} outputTokens=${completion.usage.outputTokens} ` +
-        `cachedInputTokens=${completion.usage.cachedInputTokens}`,
+        `cachedInputTokens=${completion.usage.cachedInputTokens}`
     );
 
     return {

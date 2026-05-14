@@ -15,8 +15,8 @@ import { Repository } from 'typeorm';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
-import { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
-import {
+import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type {
   CreateOfferCreationRecordInput,
   OfferCreationError,
   OfferCreationStatus,
@@ -27,7 +27,7 @@ import { OfferCreationRecordOrmEntity } from '../entities/offer-creation-record.
 export class OfferCreationRecordRepository implements OfferCreationRecordRepositoryPort {
   constructor(
     @InjectRepository(OfferCreationRecordOrmEntity)
-    private readonly repository: Repository<OfferCreationRecordOrmEntity>,
+    private readonly repository: Repository<OfferCreationRecordOrmEntity>
   ) {}
 
   async create(input: CreateOfferCreationRecordInput): Promise<OfferCreationRecord> {
@@ -43,7 +43,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
 
   async findLatestByVariantAndConnection(
     variantId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<OfferCreationRecord | null> {
     const entity = await this.repository.findOne({
       where: { internalVariantId: variantId, connectionId },
@@ -54,7 +54,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
 
   async findByExternalOfferIdAndConnectionId(
     externalOfferId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<OfferCreationRecord | null> {
     const entity = await this.repository.findOne({
       where: { externalOfferId, connectionId },
@@ -65,7 +65,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
   async updateStatus(
     id: string,
     status: OfferCreationStatus,
-    errors?: OfferCreationError[] | null,
+    errors?: OfferCreationError[] | null
   ): Promise<OfferCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
@@ -93,7 +93,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     id: string,
     externalOfferId: string,
     status: OfferCreationStatus,
-    errors?: OfferCreationError[] | null,
+    errors?: OfferCreationError[] | null
   ): Promise<OfferCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
@@ -131,7 +131,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
       entity.publishImmediately,
       entity.createdAt,
       entity.updatedAt,
-      entity.request,
+      entity.request
     );
   }
 }

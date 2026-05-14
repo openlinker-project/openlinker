@@ -10,19 +10,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
-import {
-  OrderRecordOrmEntity,
-  OrderSyncStatusJson,
-  SyncAttemptJson,
-} from '../entities/order-record.orm-entity';
-import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { SelectQueryBuilder } from 'typeorm';
+import { Repository } from 'typeorm';
+import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
+import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
+import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
-import {
-  OrderSyncStatus,
-  SyncAttempt,
-  SYNC_ATTEMPTS_PER_DESTINATION_CAP,
-} from '../../../domain/types/order-sync.types';
+import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import type {
   OrderRecordFilters,
@@ -35,7 +30,7 @@ import type {
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
   constructor(
     @InjectRepository(OrderRecordOrmEntity)
-    private readonly repository: Repository<OrderRecordOrmEntity>,
+    private readonly repository: Repository<OrderRecordOrmEntity>
   ) {}
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
@@ -52,7 +47,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
   async findMany(
     filters: OrderRecordFilters,
-    pagination: OrderRecordPagination,
+    pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords> {
     const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
       .createQueryBuilder('rec')
@@ -87,10 +82,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.syncStatus) {
       // JSONB containment: find orders where any destination has this status
       // 'order' is a reserved word in PostgreSQL so the alias is 'rec'
-      qb.andWhere(
-        `rec."syncStatus" @> :syncStatusFilter::jsonb`,
-        { syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]) },
-      );
+      qb.andWhere(`rec."syncStatus" @> :syncStatusFilter::jsonb`, {
+        syncStatusFilter: JSON.stringify([{ status: filters.syncStatus }]),
+      });
     }
 
     if (filters.recordStatus) {
@@ -126,7 +120,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     internalOrderId: string,
     destinationConnectionId: string,
     status: OrderSyncStatus,
-    attempt: SyncAttempt,
+    attempt: SyncAttempt
   ): Promise<void> {
     const newStatusRow: OrderSyncStatusJson = {
       destinationConnectionId: status.destinationConnectionId,
@@ -191,11 +185,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         JSON.stringify(newStatusRow),
         JSON.stringify(newAttemptRow),
         SYNC_ATTEMPTS_PER_DESTINATION_CAP,
-      ],
+      ]
     )) as unknown;
 
-    const affected =
-      Array.isArray(result) && typeof result[1] === 'number' ? result[1] : 0;
+    const affected = Array.isArray(result) && typeof result[1] === 'number' ? result[1] : 0;
     if (affected === 0) {
       throw new OrderRecordNotFoundException(internalOrderId);
     }
@@ -233,7 +226,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
       entity.updatedAt,
-      syncAttempts,
+      syncAttempts
     );
   }
 

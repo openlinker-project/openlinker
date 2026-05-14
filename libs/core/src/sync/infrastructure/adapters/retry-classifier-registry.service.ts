@@ -22,7 +22,7 @@
  * @see {@link RetryClassifierPort} for the port interface.
  */
 import { Injectable } from '@nestjs/common';
-import { RetryClassifierPort } from '../../domain/ports/retry-classifier.port';
+import type { RetryClassifierPort } from '../../domain/ports/retry-classifier.port';
 
 @Injectable()
 export class RetryClassifierRegistryService {

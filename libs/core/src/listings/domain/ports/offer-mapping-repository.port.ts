@@ -6,8 +6,8 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
-import {
+import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
@@ -25,7 +25,7 @@ export interface OfferMappingRepositoryPort {
    */
   findMany(
     filters: OfferMappingFilters,
-    pagination: OfferMappingPagination,
+    pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings>;
 
   /**
@@ -36,6 +36,6 @@ export interface OfferMappingRepositoryPort {
    */
   countByConnectionAndVariants(
     connectionId: string,
-    internalIds: ReadonlyArray<string>,
+    internalIds: ReadonlyArray<string>
   ): Promise<Map<string, number>>;
 }

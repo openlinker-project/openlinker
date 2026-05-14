@@ -16,7 +16,7 @@
  * @implements {LoggerPort}
  */
 import { ConsoleLoggerAdapter } from './console-logger.adapter';
-import { LoggerPort } from './logger.port';
+import type { LoggerPort } from './logger.port';
 
 let activeBackend: LoggerPort = new ConsoleLoggerAdapter();
 

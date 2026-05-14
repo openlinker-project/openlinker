@@ -8,10 +8,20 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link AllegroOAuthService} for the implementation
  */
-import { Connection } from '@openlinker/core/identifier-mapping';
-import type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAuthStateData, CompletedStateData } from './allegro-oauth.service.types';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type {
+  AllegroOAuthAuthorizationResponse,
+  AllegroOAuthTokenResponse,
+  OAuthStateData,
+  CompletedStateData,
+} from './allegro-oauth.service.types';
 
-export type { AllegroOAuthAuthorizationResponse, AllegroOAuthTokenResponse, OAuthStateData, CompletedStateData };
+export type {
+  AllegroOAuthAuthorizationResponse,
+  AllegroOAuthTokenResponse,
+  OAuthStateData,
+  CompletedStateData,
+};
 
 export const ALLEGRO_OAUTH_SERVICE_TOKEN = Symbol('IAllegroOAuthService');
 
@@ -26,7 +36,7 @@ export interface IAllegroOAuthService {
     environment?: string,
     state?: string,
     connectionName?: string,
-    masterCatalogConnectionId?: string,
+    masterCatalogConnectionId?: string
   ): Promise<AllegroOAuthAuthorizationResponse>;
 
   /**
@@ -43,7 +53,7 @@ export interface IAllegroOAuthService {
     clientId: string,
     clientSecret: string,
     redirectUri: string,
-    environment?: string,
+    environment?: string
   ): Promise<AllegroOAuthTokenResponse>;
 
   /**
@@ -56,7 +66,7 @@ export interface IAllegroOAuthService {
    */
   storeCredentialsAndCreateConnection(
     tokenResponse: AllegroOAuthTokenResponse,
-    stateData: OAuthStateData,
+    stateData: OAuthStateData
   ): Promise<Connection>;
 
   /**
@@ -66,18 +76,14 @@ export interface IAllegroOAuthService {
     refreshToken: string,
     clientId: string,
     clientSecret: string,
-    environment?: string,
+    environment?: string
   ): Promise<AllegroOAuthTokenResponse>;
 
   /**
    * Persist a short-lived completed marker in Redis after a successful callback.
    * Enables idempotent replay of the callback within the TTL window.
    */
-  markStateCompleted(
-    state: string,
-    connectionId: string,
-    connectionName: string,
-  ): Promise<void>;
+  markStateCompleted(state: string, connectionId: string, connectionName: string): Promise<void>;
 
   /**
    * Check whether a completed marker exists for the given state.

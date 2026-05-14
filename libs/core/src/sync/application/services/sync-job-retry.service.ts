@@ -11,8 +11,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
-import { SyncJob } from '../../domain/entities/sync-job.entity';
-import { ISyncJobRetryService } from './sync-job-retry.service.interface';
+import type { SyncJob } from '../../domain/entities/sync-job.entity';
+import type { ISyncJobRetryService } from './sync-job-retry.service.interface';
 
 @Injectable()
 export class SyncJobRetryService implements ISyncJobRetryService {
@@ -20,7 +20,7 @@ export class SyncJobRetryService implements ISyncJobRetryService {
 
   constructor(
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
+    private readonly syncJobRepository: SyncJobRepositoryPort
   ) {}
 
   async retryJob(id: string): Promise<SyncJob> {
@@ -29,7 +29,7 @@ export class SyncJobRetryService implements ISyncJobRetryService {
     const job = await this.syncJobRepository.requeueDeadJob(id);
 
     this.logger.log(
-      `Job requeued for retry: ${job.id} (type: ${job.jobType}, connection: ${job.connectionId})`,
+      `Job requeued for retry: ${job.id} (type: ${job.jobType}, connection: ${job.connectionId})`
     );
 
     return job;

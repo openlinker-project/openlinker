@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/scheduler/__tests__
  */
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { buildAllegroSchedulerTasks } from '../allegro-scheduler-tasks';
 
@@ -30,7 +30,7 @@ const makeConnection = (overrides: Partial<{ config: Record<string, unknown> }> 
     new Date(),
     new Date(),
     undefined,
-    ['OrderSource', 'OfferManager'],
+    ['OrderSource', 'OfferManager']
   );
 
 describe('buildAllegroSchedulerTasks', () => {
@@ -42,14 +42,14 @@ describe('buildAllegroSchedulerTasks', () => {
 
     it('should omit orders-poll when OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false', () => {
       const tasks = buildAllegroSchedulerTasks(
-        makeConfig({ OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false' }),
+        makeConfig({ OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false' })
       );
       expect(tasks.map((t) => t.taskId)).toEqual(['allegro-offers-sync']);
     });
 
     it('should omit offers-sync when OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED=false', () => {
       const tasks = buildAllegroSchedulerTasks(
-        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false' }),
+        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false' })
       );
       expect(tasks.map((t) => t.taskId)).toEqual(['allegro-orders-poll']);
     });
@@ -59,7 +59,7 @@ describe('buildAllegroSchedulerTasks', () => {
         makeConfig({
           OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
-        }),
+        })
       );
       expect(tasks).toEqual([]);
     });
@@ -91,7 +91,7 @@ describe('buildAllegroSchedulerTasks', () => {
 
     it('should honour OL_ALLEGRO_POLL_INTERVAL_CRON override', () => {
       const tasks2 = buildAllegroSchedulerTasks(
-        makeConfig({ OL_ALLEGRO_POLL_INTERVAL_CRON: '*/2 * * * *' }),
+        makeConfig({ OL_ALLEGRO_POLL_INTERVAL_CRON: '*/2 * * * *' })
       );
       const orders = tasks2.find((t) => t.taskId === 'allegro-orders-poll');
       expect(orders?.cronExpression).toBe('*/2 * * * *');
@@ -120,7 +120,7 @@ describe('buildAllegroSchedulerTasks', () => {
 
     it('should switch to feedType=offers without a cursor key when OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE=offers', () => {
       const tasks = buildAllegroSchedulerTasks(
-        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE: 'offers' }),
+        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE: 'offers' })
       );
       const offersSync = tasks.find((t) => t.taskId === 'allegro-offers-sync');
       const payload = offersSync?.generatePayload(makeConnection());
@@ -130,7 +130,7 @@ describe('buildAllegroSchedulerTasks', () => {
 
     it('should fall back to limit=100 when OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT is non-numeric', () => {
       const tasks = buildAllegroSchedulerTasks(
-        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT: 'not-a-number' }),
+        makeConfig({ OL_ALLEGRO_OFFERS_SYNC_PAGE_LIMIT: 'not-a-number' })
       );
       const offersSync = tasks.find((t) => t.taskId === 'allegro-offers-sync');
       const payload = offersSync?.generatePayload(makeConnection());
@@ -153,16 +153,16 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(offersSync?.generatePayload(makeConnection())?.masterConnectionId).toBeNull();
       expect(
         offersSync?.generatePayload(makeConnection({ config: { masterCatalogConnectionId: 42 } }))
-          ?.masterConnectionId,
+          ?.masterConnectionId
       ).toBeNull();
     });
 
     it('should generate a per-connection, per-minute idempotency key', () => {
       const tasks = buildAllegroSchedulerTasks(makeConfig());
       const offersSync = tasks.find((t) => t.taskId === 'allegro-offers-sync');
-      expect(
-        offersSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34'),
-      ).toBe('marketplace:conn-allegro-1:offers:sync:2026-05-11-12-34');
+      expect(offersSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:offers:sync:2026-05-11-12-34'
+      );
     });
   });
 });

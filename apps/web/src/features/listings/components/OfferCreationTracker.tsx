@@ -14,7 +14,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useOfferCreationStatusQuery } from '../hooks/use-offer-creation-status-query';
 import {

@@ -12,8 +12,8 @@
  * @module libs/core/src/sync/domain/ports
  * @see {@link PrestashopProductSyncHandler} for an example implementation
  */
-import { SyncJob } from '../entities/sync-job.entity';
-import { SyncJobHandlerResult } from '../types/sync-job.types';
+import type { SyncJob } from '../entities/sync-job.entity';
+import type { SyncJobHandlerResult } from '../types/sync-job.types';
 
 /**
  * Sync Job Handler Port
@@ -39,4 +39,3 @@ export interface SyncJobHandler {
    */
   execute(job: SyncJob): Promise<SyncJobHandlerResult>;
 }
-

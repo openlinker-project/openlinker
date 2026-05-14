@@ -3,10 +3,11 @@
  *
  * @module apps/api/src/auth
  */
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
-import { User, UserRepositoryPort } from '@openlinker/core/users';
+import type { UserRepositoryPort } from '@openlinker/core/users';
+import { User } from '@openlinker/core/users';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 
 const makeUser = (username: string): User =>
@@ -54,10 +55,7 @@ describe('BootstrapAdminService', () => {
     repo.findByUsername.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
 
-    const service = new BootstrapAdminService(
-      makeConfig({ NODE_ENV: 'development' }),
-      repo,
-    );
+    const service = new BootstrapAdminService(makeConfig({ NODE_ENV: 'development' }), repo);
     await service.bootstrap();
 
     expect(repo.save).toHaveBeenCalledTimes(1);
@@ -79,10 +77,7 @@ describe('BootstrapAdminService', () => {
     repo.findByUsername.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
 
-    const service = new BootstrapAdminService(
-      makeConfig({ NODE_ENV: 'production' }),
-      repo,
-    );
+    const service = new BootstrapAdminService(makeConfig({ NODE_ENV: 'production' }), repo);
     await service.bootstrap();
 
     expect(repo.save).toHaveBeenCalledTimes(1);
@@ -105,7 +100,7 @@ describe('BootstrapAdminService', () => {
 
     const service = new BootstrapAdminService(
       makeConfig({ OL_BOOTSTRAP_ADMIN_PASSWORD: 'secret-pass' }),
-      repo,
+      repo
     );
     await service.bootstrap();
 
@@ -114,7 +109,7 @@ describe('BootstrapAdminService', () => {
     expect(await bcrypt.compare('secret-pass', hash)).toBe(true);
     expect(warnMessages).toHaveLength(0);
     expect(logMessages).toContainEqual(
-      expect.stringContaining("Seeded default admin user 'admin' with provided password"),
+      expect.stringContaining("Seeded default admin user 'admin' with provided password")
     );
   });
 
@@ -133,7 +128,7 @@ describe('BootstrapAdminService', () => {
     const repo = makeRepo();
     const service = new BootstrapAdminService(
       makeConfig({ OL_BOOTSTRAP_ADMIN_ENABLED: 'false' }),
-      repo,
+      repo
     );
     await service.bootstrap();
 

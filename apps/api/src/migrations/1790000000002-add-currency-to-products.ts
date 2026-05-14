@@ -24,17 +24,17 @@
  * After this migration runs, every previously-affected environment converges
  * to a consistent end state.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddCurrencyToProducts1790000000002 implements MigrationInterface {
   name = 'AddCurrencyToProducts1790000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `DELETE FROM "migrations" WHERE "name" = 'AddCurrencyToProducts1790000000000'`,
+      `DELETE FROM "migrations" WHERE "name" = 'AddCurrencyToProducts1790000000000'`
     );
     await queryRunner.query(
-      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "currency" character varying(3)`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "currency" character varying(3)`
     );
   }
 

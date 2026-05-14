@@ -6,14 +6,18 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddVariantBarcodes1774000000000 implements MigrationInterface {
   name = 'AddVariantBarcodes1774000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "ean" character varying`);
-    await queryRunner.query(`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "gtin" character varying`);
+    await queryRunner.query(
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "ean" character varying`
+    );
+    await queryRunner.query(
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "gtin" character varying`
+    );
 
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_product_variants_ean_not_null"

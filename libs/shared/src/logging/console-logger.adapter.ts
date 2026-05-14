@@ -15,8 +15,8 @@
  * @module libs/shared/src/logging
  */
 /* eslint-disable no-console -- This adapter is the one legitimate caller of console.* in the codebase. */
-import { LoggerPort } from './logger.port';
-import { LogLevel } from './logger.types';
+import type { LoggerPort } from './logger.port';
+import type { LogLevel } from './logger.types';
 
 export class ConsoleLoggerAdapter implements LoggerPort {
   log(message: unknown, ...optionalParams: unknown[]): void {

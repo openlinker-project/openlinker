@@ -8,15 +8,12 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
-import { RedisClientType } from 'redis';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { RedisClientType } from 'redis';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopProvisioningException } from '../../domain/exceptions/prestashop-provisioning.exception';
-import {
-  PrestashopCustomer,
-  PrestashopCustomerCreate,
-} from './prestashop-provisioner.types';
+import type { PrestashopCustomer, PrestashopCustomerCreate } from './prestashop-provisioner.types';
 import { randomBytes } from 'crypto';
 
 /**
@@ -46,16 +43,19 @@ function generatePassword(): string {
   // Generate random bytes and convert to base64
   const randomBytesBuffer = randomBytes(24);
   let alphanumeric = randomBytesBuffer.toString('base64').replace(/[^a-zA-Z0-9]/g, '');
-  
+
   // Determine target length (between MIN and MAX)
-  const length = MIN_PASSWORD_LENGTH + Math.floor(Math.random() * (MAX_PASSWORD_LENGTH - MIN_PASSWORD_LENGTH));
-  
+  const length =
+    MIN_PASSWORD_LENGTH + Math.floor(Math.random() * (MAX_PASSWORD_LENGTH - MIN_PASSWORD_LENGTH));
+
   // Ensure we have enough characters (base64 may have many special chars after filtering)
   while (alphanumeric.length < length) {
-    const additional = randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '');
+    const additional = randomBytes(8)
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '');
     alphanumeric += additional;
   }
-  
+
   return alphanumeric.substring(0, length);
 }
 
@@ -66,7 +66,7 @@ export class PrestashopCustomerProvisioner {
   constructor(
     @Inject('REDIS_CLIENT')
     @Optional()
-    private readonly redisClient: RedisClientType | null,
+    private readonly redisClient: RedisClientType | null
   ) {}
 
   /**
@@ -151,18 +151,18 @@ export class PrestashopCustomerProvisioner {
     destinationConnectionId: string,
     webserviceClient: IPrestashopWebserviceClient,
     connectionConfig: PrestashopConnectionConfig,
-    identifierMapping: IdentifierMappingPort,
+    identifierMapping: IdentifierMappingPort
   ): Promise<string> {
     // Step 1: Check existing mapping
-    this.logger.debug(`Internal customer ID: ${internalCustomerId}, destinationConnectionId: ${destinationConnectionId}`);
-    const externalIds = await identifierMapping.getExternalIds('Customer', internalCustomerId);
-    const prestashopMapping = externalIds.find(
-      (e) => e.connectionId === destinationConnectionId,
+    this.logger.debug(
+      `Internal customer ID: ${internalCustomerId}, destinationConnectionId: ${destinationConnectionId}`
     );
+    const externalIds = await identifierMapping.getExternalIds('Customer', internalCustomerId);
+    const prestashopMapping = externalIds.find((e) => e.connectionId === destinationConnectionId);
 
     if (prestashopMapping) {
       this.logger.debug(
-        `Customer mapping found: ${internalCustomerId} → ${prestashopMapping.externalId}`,
+        `Customer mapping found: ${internalCustomerId} → ${prestashopMapping.externalId}`
       );
       return String(prestashopMapping.externalId);
     }
@@ -179,12 +179,12 @@ export class PrestashopCustomerProvisioner {
       // Re-check mapping after waiting
       const retryMapping = await identifierMapping.getExternalIds('Customer', internalCustomerId);
       const retryPrestashopMapping = retryMapping.find(
-        (e) => e.connectionId === destinationConnectionId,
+        (e) => e.connectionId === destinationConnectionId
       );
 
       if (retryPrestashopMapping) {
         this.logger.debug(
-          `Customer mapping found after lock wait: ${internalCustomerId} → ${retryPrestashopMapping.externalId}`,
+          `Customer mapping found after lock wait: ${internalCustomerId} → ${retryPrestashopMapping.externalId}`
         );
         return String(retryPrestashopMapping.externalId);
       }
@@ -196,111 +196,114 @@ export class PrestashopCustomerProvisioner {
         internalCustomerId,
         destinationConnectionId,
         emailHash,
-        normalizedEmail,
+        normalizedEmail
       );
     }
 
     try {
       // Step 3: Re-check mapping after lock acquisition
-      const postLockMapping = await identifierMapping.getExternalIds('Customer', internalCustomerId);
+      const postLockMapping = await identifierMapping.getExternalIds(
+        'Customer',
+        internalCustomerId
+      );
       const postLockPrestashopMapping = postLockMapping.find(
-        (e) => e.connectionId === destinationConnectionId,
+        (e) => e.connectionId === destinationConnectionId
       );
 
       if (postLockPrestashopMapping) {
         this.logger.debug(
-          `Customer mapping found after lock acquisition: ${internalCustomerId} → ${postLockPrestashopMapping.externalId}`,
+          `Customer mapping found after lock acquisition: ${internalCustomerId} → ${postLockPrestashopMapping.externalId}`
         );
         return String(postLockPrestashopMapping.externalId);
       }
 
       // Step 4: Try to find existing customer in PrestaShop by email
-    // NOTE: PrestaShop WebService API may not support email filtering in all versions
-    let prestashopCustomerId: string | null = null;
+      // NOTE: PrestaShop WebService API may not support email filtering in all versions
+      let prestashopCustomerId: string | null = null;
 
-    try {
-      const customers = await webserviceClient.listResources<PrestashopCustomer>(
-        'customers',
-        { custom: { email: normalizedEmail } },
-        1, // Only need one match
-        0,
-      );
+      try {
+        const customers = await webserviceClient.listResources<PrestashopCustomer>(
+          'customers',
+          { custom: { email: normalizedEmail } },
+          1, // Only need one match
+          0
+        );
 
-      const matchingCustomer = customers?.find(
-        (c) => c.email?.toLowerCase().trim() === normalizedEmail.toLowerCase().trim(),
-      );
+        const matchingCustomer = customers?.find(
+          (c) => c.email?.toLowerCase().trim() === normalizedEmail.toLowerCase().trim()
+        );
 
-      if (matchingCustomer) {
-        prestashopCustomerId = matchingCustomer.id;
-        this.logger.log(
-          `Found existing PrestaShop customer by email: ${prestashopCustomerId} (email: ${normalizedEmail})`,
+        if (matchingCustomer) {
+          prestashopCustomerId = matchingCustomer.id;
+          this.logger.log(
+            `Found existing PrestaShop customer by email: ${prestashopCustomerId} (email: ${normalizedEmail})`
+          );
+        }
+      } catch (queryError) {
+        // Email query might not be supported - log and continue with creation
+        this.logger.debug(
+          `Email query failed (may not be supported): ${queryError instanceof Error ? queryError.message : String(queryError)}. Will create customer.`
         );
       }
-    } catch (queryError) {
-      // Email query might not be supported - log and continue with creation
-      this.logger.debug(
-        `Email query failed (may not be supported): ${queryError instanceof Error ? queryError.message : String(queryError)}. Will create customer.`,
-      );
-    }
 
       // Step 5: Create customer if not found
       if (!prestashopCustomerId) {
-      // PS's stock-fixture "Guest" group. Carriers with group restrictions
-      // reject any group-0 customer at POST /orders time and silently zero
-      // the order's id_carrier (#505). Operators with non-standard group
-      // setups can override via connection.config.guestCustomerGroupId.
-      const PS_GUEST_GROUP_DEFAULT = 2;
-      const configuredGroupId = connectionConfig.guestCustomerGroupId;
-      let groupId = PS_GUEST_GROUP_DEFAULT;
-      if (configuredGroupId !== undefined) {
-        if (Number.isFinite(configuredGroupId) && configuredGroupId > 0) {
-          groupId = configuredGroupId;
-        } else {
-          this.logger.warn(
-            `Connection config has invalid guestCustomerGroupId=${String(configuredGroupId)} ` +
-              `(must be a positive integer) for connection ${destinationConnectionId} — ` +
-              `falling back to PS default Guest group (id=${PS_GUEST_GROUP_DEFAULT}).`,
+        // PS's stock-fixture "Guest" group. Carriers with group restrictions
+        // reject any group-0 customer at POST /orders time and silently zero
+        // the order's id_carrier (#505). Operators with non-standard group
+        // setups can override via connection.config.guestCustomerGroupId.
+        const PS_GUEST_GROUP_DEFAULT = 2;
+        const configuredGroupId = connectionConfig.guestCustomerGroupId;
+        let groupId = PS_GUEST_GROUP_DEFAULT;
+        if (configuredGroupId !== undefined) {
+          if (Number.isFinite(configuredGroupId) && configuredGroupId > 0) {
+            groupId = configuredGroupId;
+          } else {
+            this.logger.warn(
+              `Connection config has invalid guestCustomerGroupId=${String(configuredGroupId)} ` +
+                `(must be a positive integer) for connection ${destinationConnectionId} — ` +
+                `falling back to PS default Guest group (id=${PS_GUEST_GROUP_DEFAULT}).`
+            );
+          }
+        }
+
+        const customerData: PrestashopCustomerCreate = {
+          is_guest: 1,
+          passwd: generatePassword(),
+          firstname: firstName || 'Guest',
+          lastname: lastName || 'Customer',
+          email: normalizedEmail,
+          active: 1,
+          id_default_group: groupId,
+          associations: {
+            groups: { group: [{ id: groupId }] },
+          },
+        };
+
+        if (connectionConfig.shopId) {
+          customerData.id_shop = connectionConfig.shopId;
+        }
+
+        this.logger.debug(`Creating guest customer in PrestaShop with email: ${normalizedEmail}`);
+
+        const createdCustomer = await webserviceClient.createResource<PrestashopCustomer>(
+          'customers',
+          customerData
+        );
+
+        // Extract ID - handle both 'id' property and '@_id' attribute (from XML parsing)
+        const customerResponse = createdCustomer as unknown as Record<string, unknown>;
+        prestashopCustomerId = String(customerResponse.id || customerResponse['@_id'] || '');
+
+        if (!prestashopCustomerId) {
+          throw new PrestashopProvisioningException(
+            `Failed to extract customer ID from PrestaShop response. Response: ${JSON.stringify(createdCustomer)}`,
+            destinationConnectionId
           );
         }
-      }
-
-      const customerData: PrestashopCustomerCreate = {
-        is_guest: 1,
-        passwd: generatePassword(),
-        firstname: firstName || 'Guest',
-        lastname: lastName || 'Customer',
-        email: normalizedEmail,
-        active: 1,
-        id_default_group: groupId,
-        associations: {
-          groups: { group: [{ id: groupId }] },
-        },
-      };
-
-      if (connectionConfig.shopId) {
-        customerData.id_shop = connectionConfig.shopId;
-      }
-
-      this.logger.debug(`Creating guest customer in PrestaShop with email: ${normalizedEmail}`);
-
-      const createdCustomer = await webserviceClient.createResource<PrestashopCustomer>(
-        'customers',
-        customerData,
-      );
-
-      // Extract ID - handle both 'id' property and '@_id' attribute (from XML parsing)
-      const customerResponse = createdCustomer as unknown as Record<string, unknown>;
-      prestashopCustomerId = String(customerResponse.id || customerResponse['@_id'] || '');
-
-      if (!prestashopCustomerId) {
-        throw new PrestashopProvisioningException(
-          `Failed to extract customer ID from PrestaShop response. Response: ${JSON.stringify(createdCustomer)}`,
-          destinationConnectionId,
-        );
-      }
 
         this.logger.log(
-          `Created guest customer in PrestaShop: ${prestashopCustomerId} (email: ${normalizedEmail})`,
+          `Created guest customer in PrestaShop: ${prestashopCustomerId} (email: ${normalizedEmail})`
         );
       }
 
@@ -310,19 +313,22 @@ export class PrestashopCustomerProvisioner {
           'Customer',
           prestashopCustomerId,
           internalCustomerId,
-          destinationConnectionId,
+          destinationConnectionId
         );
         return externalId;
       } catch (error) {
         // Mapping may already exist (concurrent request), fetch it
-        const duplicateMapping = await identifierMapping.getExternalIds('Customer', internalCustomerId);
+        const duplicateMapping = await identifierMapping.getExternalIds(
+          'Customer',
+          internalCustomerId
+        );
         const duplicatePrestashopMapping = duplicateMapping.find(
-          (e) => e.connectionId === destinationConnectionId,
+          (e) => e.connectionId === destinationConnectionId
         );
 
         if (duplicatePrestashopMapping) {
           this.logger.debug(
-            `Mapping already exists (concurrent request): ${internalCustomerId} → ${duplicatePrestashopMapping.externalId}`,
+            `Mapping already exists (concurrent request): ${internalCustomerId} → ${duplicatePrestashopMapping.externalId}`
           );
           return String(duplicatePrestashopMapping.externalId);
         }
@@ -343,7 +349,7 @@ export class PrestashopCustomerProvisioner {
         internalCustomerId,
         destinationConnectionId,
         emailHash,
-        normalizedEmail,
+        normalizedEmail
       );
     } finally {
       // Step 7: Release lock

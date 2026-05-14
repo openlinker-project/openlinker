@@ -7,9 +7,9 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  */
-import { Product, ProductVariant } from '@openlinker/core/products';
-import { Inventory } from '@openlinker/core/inventory';
-import { Order, OrderCreate } from '@openlinker/core/orders';
+import type { Product, ProductVariant } from '@openlinker/core/products';
+import type { Inventory } from '@openlinker/core/inventory';
+import type { Order, OrderCreate } from '@openlinker/core/orders';
 
 /**
  * PrestaShop product data (from API response)
@@ -160,7 +160,7 @@ export interface IPrestashopInventoryMapper {
   mapInventory(
     stockAvailable: PrestashopStockAvailable,
     productId: string,
-    variantId?: string,
+    variantId?: string
   ): Omit<Inventory, 'id'>;
 }
 
@@ -197,7 +197,7 @@ export interface IPrestashopOrderMapper {
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
     externalLangId?: string | number,
-    externalCarrierId?: number,
+    externalCarrierId?: number
   ): Record<string, unknown>;
 
   /**
@@ -227,10 +227,6 @@ export interface IPrestashopOrderMapper {
      * #503: PS reads `id_carrier` off the cart (not the order body) at
      * `POST /orders` time. Without this, every order lands at id_carrier=0.
      */
-    externalCarrierId?: number,
+    externalCarrierId?: number
   ): Record<string, unknown>;
 }
-
-
-
-

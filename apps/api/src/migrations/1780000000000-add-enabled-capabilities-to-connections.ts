@@ -1,11 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddEnabledCapabilitiesToConnections1780000000000 implements MigrationInterface {
   name = 'AddEnabledCapabilitiesToConnections1780000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "connections" ADD COLUMN "enabledCapabilities" jsonb NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE "connections" ADD COLUMN "enabledCapabilities" jsonb NOT NULL DEFAULT '[]'`
     );
 
     // Backfill existing rows with the full supported capability set for their
@@ -17,20 +17,20 @@ export class AddEnabledCapabilitiesToConnections1780000000000 implements Migrati
          SET "enabledCapabilities" =
            '["ProductMaster","InventoryMaster","OrderSource","OrderProcessorManager"]'::jsonb
          WHERE COALESCE("adapterKey", '') = 'prestashop.webservice.v1'
-            OR ("adapterKey" IS NULL AND "platformType" = 'prestashop')`,
+            OR ("adapterKey" IS NULL AND "platformType" = 'prestashop')`
     );
 
     await queryRunner.query(
       `UPDATE "connections"
          SET "enabledCapabilities" = '["Marketplace"]'::jsonb
          WHERE COALESCE("adapterKey", '') = 'allegro.publicapi.v1'
-            OR ("adapterKey" IS NULL AND "platformType" = 'allegro')`,
+            OR ("adapterKey" IS NULL AND "platformType" = 'allegro')`
     );
 
     // GIN index so `listCapabilityAdapters` can filter by a single capability
     // without scanning every active connection when this grows past hundreds.
     await queryRunner.query(
-      `CREATE INDEX "IDX_connections_enabled_capabilities" ON "connections" USING gin ("enabledCapabilities" jsonb_path_ops)`,
+      `CREATE INDEX "IDX_connections_enabled_capabilities" ON "connections" USING gin ("enabledCapabilities" jsonb_path_ops)`
     );
 
     await queryRunner.query(`
@@ -50,11 +50,7 @@ export class AddEnabledCapabilitiesToConnections1780000000000 implements Migrati
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "IDX_connections_enabled_capabilities"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "connections" DROP COLUMN "enabledCapabilities"`,
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_connections_enabled_capabilities"`);
+    await queryRunner.query(`ALTER TABLE "connections" DROP COLUMN "enabledCapabilities"`);
   }
 }

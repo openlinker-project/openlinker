@@ -18,16 +18,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-entity';
-import { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
+import type { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
 import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
-import { MappingContext } from '@openlinker/core/identifier-mapping';
+import type { MappingContext } from '@openlinker/core/identifier-mapping';
 
 @Injectable()
 export class IdentifierMappingRepository implements IdentifierMappingRepositoryPort {
   constructor(
     @InjectRepository(IdentifierMappingOrmEntity)
-    private readonly repository: Repository<IdentifierMappingOrmEntity>,
+    private readonly repository: Repository<IdentifierMappingOrmEntity>
   ) {}
 
   /**
@@ -38,7 +38,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     entityType: string,
     platformType: string,
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<IdentifierMapping | null> {
     const entity = await this.repository.findOne({
       where: {
@@ -56,10 +56,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     return this.toDomain(entity);
   }
 
-  async findByInternalId(
-    entityType: string,
-    internalId: string,
-  ): Promise<IdentifierMapping[]> {
+  async findByInternalId(entityType: string, internalId: string): Promise<IdentifierMapping[]> {
     const entities = await this.repository.find({
       where: {
         entityType,
@@ -67,9 +64,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
       },
     });
 
-    return entities.map((entity: IdentifierMappingOrmEntity) =>
-      this.toDomain(entity),
-    );
+    return entities.map((entity: IdentifierMappingOrmEntity) => this.toDomain(entity));
   }
 
   /**
@@ -96,7 +91,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
           mapping.entityType,
           mapping.externalId,
           mapping.platformType,
-          mapping.connectionId,
+          mapping.connectionId
         );
       }
       throw error;
@@ -105,7 +100,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
 
   async findByEntityTypeAndConnection(
     entityType: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<IdentifierMapping[]> {
     const entities = await this.repository.find({
       where: {
@@ -120,7 +115,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     entityType: string,
     platformType: string,
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<void> {
     await this.repository.delete({
       entityType,
@@ -144,7 +139,7 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
       entity.connectionId,
       entity.context as MappingContext | null,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
@@ -162,4 +157,3 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     return entity;
   }
 }
-

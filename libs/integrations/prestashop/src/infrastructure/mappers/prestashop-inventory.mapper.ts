@@ -7,8 +7,11 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  * @implements {IPrestashopInventoryMapper}
  */
-import { IPrestashopInventoryMapper, PrestashopStockAvailable } from './prestashop.mapper.interface';
-import { Inventory } from '@openlinker/core/inventory';
+import type {
+  IPrestashopInventoryMapper,
+  PrestashopStockAvailable,
+} from './prestashop.mapper.interface';
+import type { Inventory } from '@openlinker/core/inventory';
 
 /**
  * PrestaShop Inventory Mapper
@@ -19,7 +22,7 @@ export class PrestashopInventoryMapper implements IPrestashopInventoryMapper {
   mapInventory(
     stockAvailable: PrestashopStockAvailable,
     productId: string,
-    variantId?: string,
+    variantId?: string
   ): Omit<Inventory, 'id'> {
     const quantity = this.parseNumber(stockAvailable.quantity) || 0;
     const reserved = 0; // PrestaShop doesn't provide reserved quantity in stock_available
@@ -52,10 +55,3 @@ export class PrestashopInventoryMapper implements IPrestashopInventoryMapper {
     return undefined;
   }
 }
-
-
-
-
-
-
-

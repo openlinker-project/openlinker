@@ -9,11 +9,12 @@
  *
  * @module apps/api/src/auth/guards
  */
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '@openlinker/core/users';
+import type { UserRole } from '@openlinker/core/users';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { AuthenticatedUser } from '../auth.types';
+import type { AuthenticatedUser } from '../auth.types';
 
 @Injectable()
 export class RolesGuard implements CanActivate {

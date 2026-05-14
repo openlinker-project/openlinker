@@ -6,11 +6,12 @@
  *
  * @module apps/api/src/auth/guards
  */
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from './roles.guard';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { UserRole } from '@openlinker/core/users';
+import type { UserRole } from '@openlinker/core/users';
 
 function createMockExecutionContext(user?: { role: UserRole }): ExecutionContext {
   return {
@@ -79,9 +80,6 @@ describe('RolesGuard', () => {
 
     guard.canActivate(context);
 
-    expect(spy).toHaveBeenCalledWith(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    expect(spy).toHaveBeenCalledWith(ROLES_KEY, [context.getHandler(), context.getClass()]);
   });
 });

@@ -43,12 +43,18 @@
  * @see {@link AllegroOfferManagerAdapter.createOffer} — sole consumer
  */
 import imageSize from 'image-size';
-import { CreateOfferValidationError } from '@openlinker/core/listings';
-import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import type { CreateOfferValidationError } from '@openlinker/core/listings';
+import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
-import { UploadImagesResult, UploadImagesViaAllegroOptions } from './upload-images-via-allegro.types';
+import type {
+  UploadImagesResult,
+  UploadImagesViaAllegroOptions,
+} from './upload-images-via-allegro.types';
 
-export type { UploadImagesResult, UploadImagesViaAllegroOptions } from './upload-images-via-allegro.types';
+export type {
+  UploadImagesResult,
+  UploadImagesViaAllegroOptions,
+} from './upload-images-via-allegro.types';
 
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30_000;
 
@@ -76,7 +82,7 @@ export const ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX = 400;
 export async function uploadImagesViaAllegro(
   uploadHttpClient: IAllegroHttpClient,
   imageUrls: string[],
-  options?: UploadImagesViaAllegroOptions,
+  options?: UploadImagesViaAllegroOptions
 ): Promise<UploadImagesResult> {
   if (imageUrls.length === 0) {
     return { ok: true, locations: [] };
@@ -95,13 +101,13 @@ export async function uploadImagesViaAllegro(
         uploadHttpClient,
         download.contentType,
         download.bytes,
-        url,
+        url
       );
       if (!upload.ok) {
         return { ok: false as const, failure: upload.failure };
       }
       return { ok: true as const, location: upload.location };
-    }),
+    })
   );
 
   const failures: CreateOfferValidationError[] = [];
@@ -128,7 +134,7 @@ type DownloadErr = { ok: false; failure: CreateOfferValidationError };
 async function downloadImage(
   url: string,
   fetchImpl: typeof fetch,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<DownloadOk | DownloadErr> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -138,7 +144,10 @@ async function downloadImage(
     response = await fetchImpl(url, { method: 'GET', signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return downloadFailure('IMAGE_DOWNLOAD_FAILED', `Image URL '${url}' timed out after ${timeoutMs}ms`);
+      return downloadFailure(
+        'IMAGE_DOWNLOAD_FAILED',
+        `Image URL '${url}' timed out after ${timeoutMs}ms`
+      );
     }
     const message = error instanceof Error ? error.message : String(error);
     return downloadFailure('IMAGE_DOWNLOAD_FAILED', `Image URL '${url}': ${message}`);
@@ -149,7 +158,7 @@ async function downloadImage(
   if (!response.ok) {
     return downloadFailure(
       'IMAGE_DOWNLOAD_FAILED',
-      `Image URL '${url}' returned HTTP ${response.status}`,
+      `Image URL '${url}' returned HTTP ${response.status}`
     );
   }
 
@@ -158,7 +167,7 @@ async function downloadImage(
   if (!contentType) {
     return downloadFailure(
       'IMAGE_DOWNLOAD_INVALID_TYPE',
-      `Image URL '${url}' returned content-type '${rawContentType ?? 'missing'}', expected one of image/jpeg, image/png, image/gif, image/webp`,
+      `Image URL '${url}' returned content-type '${rawContentType ?? 'missing'}', expected one of image/jpeg, image/png, image/gif, image/webp`
     );
   }
 
@@ -167,7 +176,10 @@ async function downloadImage(
     bytes = new Uint8Array(await response.arrayBuffer());
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return downloadFailure('IMAGE_DOWNLOAD_FAILED', `Image URL '${url}': failed to read body — ${message}`);
+    return downloadFailure(
+      'IMAGE_DOWNLOAD_FAILED',
+      `Image URL '${url}': failed to read body — ${message}`
+    );
   }
 
   // Header-only dimension check — `image-size` reads the format header
@@ -187,7 +199,7 @@ async function downloadImage(
     const message = error instanceof Error ? error.message : String(error);
     return downloadFailure(
       'IMAGE_DOWNLOAD_INVALID_TYPE',
-      `Image URL '${url}': bytes claimed content-type '${contentType}' but could not be decoded — ${message}`,
+      `Image URL '${url}': bytes claimed content-type '${contentType}' but could not be decoded — ${message}`
     );
   }
 
@@ -197,7 +209,7 @@ async function downloadImage(
       'IMAGE_TOO_SMALL_FOR_PRODUCT',
       `Image URL '${url}' is ${width ?? '?'}×${height ?? '?'}px; ` +
         `Allegro requires a longer side ≥ ${ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX}px ` +
-        `for product images. Use a larger source image.`,
+        `for product images. Use a larger source image.`
     );
   }
 
@@ -211,14 +223,14 @@ async function uploadOneImage(
   uploadHttpClient: IAllegroHttpClient,
   contentType: string,
   bytes: Uint8Array,
-  sourceUrl: string,
+  sourceUrl: string
 ): Promise<UploadOk | UploadErr> {
   let response;
   try {
     response = await uploadHttpClient.postBinary<{ location?: unknown }>(
       '/sale/images',
       contentType,
-      bytes,
+      bytes
     );
   } catch (error) {
     const status = error instanceof AllegroApiException ? error.statusCode : undefined;
@@ -247,7 +259,7 @@ function normalizeImageContentType(raw: string | null): string | null {
 
 function downloadFailure(
   code: 'IMAGE_DOWNLOAD_FAILED' | 'IMAGE_DOWNLOAD_INVALID_TYPE' | 'IMAGE_TOO_SMALL_FOR_PRODUCT',
-  message: string,
+  message: string
 ): DownloadErr {
   return { ok: false, failure: { field: 'images', code, message } };
 }

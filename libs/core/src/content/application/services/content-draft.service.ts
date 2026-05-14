@@ -17,8 +17,8 @@ import {
   CONTENT_PUBLISHER_PORT_TOKEN,
   PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
 } from '../../content.tokens';
-import type { ContentPublisherPort } from '../../domain/ports/content-publisher.port';
-import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
+import { ContentPublisherPort } from '../../domain/ports/content-publisher.port';
+import { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 import type {
   DiscardDraftCommand,
   PublishDraftCommand,
@@ -36,7 +36,7 @@ export class ContentDraftService implements IContentDraftService {
     @Inject(PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN)
     private readonly repository: ProductContentFieldRepositoryPort,
     @Inject(CONTENT_PUBLISHER_PORT_TOKEN)
-    private readonly publisher: ContentPublisherPort,
+    private readonly publisher: ContentPublisherPort
   ) {}
 
   async saveDraft(cmd: SaveDraftCommand): Promise<ProductContentField> {
@@ -105,7 +105,7 @@ export class ContentDraftService implements IContentDraftService {
     if (existing.draftValue === null) {
       // Row exists but no draft to publish — idempotent no-op, return as-is.
       this.logger.debug(
-        `[content] publishDraft no-op (no draft): productId=${cmd.productId} connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`,
+        `[content] publishDraft no-op (no draft): productId=${cmd.productId} connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`
       );
       return existing;
     }
@@ -177,7 +177,7 @@ export class ContentDraftService implements IContentDraftService {
     // Draft + divergence → mark conflict, advance the base, preserve the draft.
     this.logger.warn(
       `[content] conflict detected: productId=${cmd.productId} connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey} ` +
-        `baseVersion=${existing.baseVersion ?? '-'} externalVersion=${cmd.externalVersion}`,
+        `baseVersion=${existing.baseVersion ?? '-'} externalVersion=${cmd.externalVersion}`
     );
     return this.repository.upsert({
       productId: cmd.productId,

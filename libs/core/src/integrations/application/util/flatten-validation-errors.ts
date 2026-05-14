@@ -27,14 +27,8 @@
 // in the domain layer (they form part of `InvalidConnectionConfigException`'s
 // contract). Imported here for the function signatures, then re-exported so
 // consumers that only need the utility don't have to reach into `domain/types/`.
-import type {
-  ValidationErrorLike,
-  FlatValidationIssue,
-} from '../../domain/types/validation.types';
-export type {
-  ValidationErrorLike,
-  FlatValidationIssue,
-} from '../../domain/types/validation.types';
+import type { ValidationErrorLike, FlatValidationIssue } from '../../domain/types/validation.types';
+export type { ValidationErrorLike, FlatValidationIssue } from '../../domain/types/validation.types';
 
 /**
  * Walk a `ValidationError` tree depth-first, joining nested property names
@@ -43,7 +37,7 @@ export type {
  */
 export function flattenValidationErrors(
   errors: ValidationErrorLike[],
-  parentPath = '',
+  parentPath = ''
 ): FlatValidationIssue[] {
   const out: FlatValidationIssue[] = [];
 

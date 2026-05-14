@@ -12,7 +12,7 @@
  * @module libs/core/src/identifier-mapping/domain/ports
  * @see {@link IdentifierMappingRepository} for the implementation
  */
-import { IdentifierMapping } from '../entities/identifier-mapping.entity';
+import type { IdentifierMapping } from '../entities/identifier-mapping.entity';
 
 export interface IdentifierMappingRepositoryPort {
   /**
@@ -23,7 +23,7 @@ export interface IdentifierMappingRepositoryPort {
     entityType: string,
     platformType: string,
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<IdentifierMapping | null>;
 
   /**
@@ -49,7 +49,7 @@ export interface IdentifierMappingRepositoryPort {
     entityType: string,
     platformType: string,
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<void>;
 
   /**
@@ -57,7 +57,6 @@ export interface IdentifierMappingRepositoryPort {
    */
   findByEntityTypeAndConnection(
     entityType: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<IdentifierMapping[]>;
 }
-

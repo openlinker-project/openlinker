@@ -7,7 +7,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderSyncStatusFilterValues } from '@openlinker/core/orders';
-import type { OrderSyncStatusFilter } from '@openlinker/core/orders';
+import { OrderSyncStatusFilter } from '@openlinker/core/orders';
 
 export class OrderSyncStatusResponseDto {
   @ApiProperty({ description: 'Destination connection ID' })
@@ -22,7 +22,10 @@ export class OrderSyncStatusResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'External order ID in destination system' })
   externalOrderId!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'External order number in destination system' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'External order number in destination system',
+  })
   externalOrderNumber!: string | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Error message if sync failed' })

@@ -17,16 +17,20 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
-import { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
-import { ProductVariant } from '../../../domain/entities/product-variant.entity';
-import { ProductVariantListFilters, ProductPagination, PaginatedProductVariants } from '../../../domain/types/product.types';
+import type { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
+import type { ProductVariant } from '../../../domain/entities/product-variant.entity';
+import type {
+  ProductVariantListFilters,
+  ProductPagination,
+  PaginatedProductVariants,
+} from '../../../domain/types/product.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
 
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {
   constructor(
     @InjectRepository(ProductVariantOrmEntity)
-    private readonly repository: Repository<ProductVariantOrmEntity>,
+    private readonly repository: Repository<ProductVariantOrmEntity>
   ) {}
 
   async findById(id: string): Promise<ProductVariant | null> {
@@ -76,23 +80,22 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   async findByEanOrGtinIn(
     connectionId: string,
     values: string[],
-    field: 'ean' | 'gtin',
+    field: 'ean' | 'gtin'
   ): Promise<ProductVariant[]> {
     const normalizedValues = [
       ...new Set(
-        values
-          .flatMap((value) => {
-            if (field === 'ean') {
-              // normalizeToEan13 converts UPC-A (12-digit) → EAN-13; search both forms
-              // so rows inserted before the normalization fix are still found.
-              const ean13 = normalizeToEan13(value);
-              const raw = normalizeBarcode(value);
-              if (!ean13 && !raw) return [];
-              return [...new Set([ean13, raw].filter((v): v is string => !!v))];
-            }
-            const normalized = normalizeBarcode(value);
-            return normalized ? [normalized] : [];
-          }),
+        values.flatMap((value) => {
+          if (field === 'ean') {
+            // normalizeToEan13 converts UPC-A (12-digit) → EAN-13; search both forms
+            // so rows inserted before the normalization fix are still found.
+            const ean13 = normalizeToEan13(value);
+            const raw = normalizeBarcode(value);
+            if (!ean13 && !raw) return [];
+            return [...new Set([ean13, raw].filter((v): v is string => !!v))];
+          }
+          const normalized = normalizeBarcode(value);
+          return normalized ? [normalized] : [];
+        })
       ),
     ];
     if (normalizedValues.length === 0) {
@@ -114,15 +117,15 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
         {
           connectionId,
           entityType: 'ProductVariant',
-        },
+        }
       )
       .where(
         new Brackets((qb) => {
           qb.where(`variant.${field} IN (:...values)`, { values: normalizedValues }).orWhere(
             `(variant.${field} IS NULL AND variant.attributes ->> '${attributeKey}' IN (:...values))`,
-            { values: normalizedValues },
+            { values: normalizedValues }
           );
-        }),
+        })
       )
       .getMany();
 
@@ -131,7 +134,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
 
   async findMany(
     filters: ProductVariantListFilters,
-    pagination: ProductPagination,
+    pagination: ProductPagination
   ): Promise<PaginatedProductVariants> {
     const qb = this.repository.createQueryBuilder('variant');
 
@@ -143,7 +146,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
       qb.andWhere(
         '(variant.sku ILIKE :search OR variant.ean ILIKE :search OR variant.gtin ILIKE :search)',
-        { search: `%${escapedSearch}%` },
+        { search: `%${escapedSearch}%` }
       );
     }
 
@@ -152,19 +155,17 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
         'identifier_mappings',
         'mapping',
         `mapping.internalId = variant.id AND mapping.connectionId = :connectionId AND mapping.entityType = :entityType`,
-        { connectionId: filters.connectionId, entityType: 'ProductVariant' },
+        { connectionId: filters.connectionId, entityType: 'ProductVariant' }
       );
     }
 
     if (filters.hasIdentifiers) {
       qb.andWhere(
-        '(variant.ean IS NOT NULL OR variant.gtin IS NOT NULL OR variant.sku IS NOT NULL)',
+        '(variant.ean IS NOT NULL OR variant.gtin IS NOT NULL OR variant.sku IS NOT NULL)'
       );
     }
 
-    qb.orderBy('variant.createdAt', 'DESC')
-      .skip(pagination.offset)
-      .take(pagination.limit);
+    qb.orderBy('variant.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
 
     const [entities, total] = await qb.getManyAndCount();
     return { items: entities.map((e) => this.toDomain(e)), total };
@@ -203,7 +204,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
           error.message.includes('violates foreign key constraint'))
       ) {
         throw new Error(
-          `Cannot save variants: Product with id ${productId} does not exist. Ensure product is saved before variants.`,
+          `Cannot save variants: Product with id ${productId} does not exist. Ensure product is saved before variants.`
         );
       }
       throw error;
@@ -244,4 +245,3 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     return entity;
   }
 }
-

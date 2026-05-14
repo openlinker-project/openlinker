@@ -11,7 +11,7 @@
  * @module libs/core/src/integrations/infrastructure/adapters/__tests__
  */
 import { WebhookProvisioningRegistryService } from '../webhook-provisioning-registry.service';
-import { WebhookProvisioningPort } from '../../../domain/ports/webhook-provisioning.port';
+import type { WebhookProvisioningPort } from '../../../domain/ports/webhook-provisioning.port';
 
 describe('WebhookProvisioningRegistryService', () => {
   let registry: WebhookProvisioningRegistryService;

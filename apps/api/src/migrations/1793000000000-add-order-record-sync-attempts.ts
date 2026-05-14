@@ -14,12 +14,12 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOrderRecordSyncAttempts1793000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "order_records" ADD COLUMN "syncAttempts" jsonb NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE "order_records" ADD COLUMN "syncAttempts" jsonb NOT NULL DEFAULT '[]'`
     );
   }
 

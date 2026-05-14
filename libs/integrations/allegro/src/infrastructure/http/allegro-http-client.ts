@@ -14,13 +14,13 @@
  * @implements {IAllegroHttpClient}
  * @see {@link AllegroConnectionTokenState} — owns the per-connection token
  */
-import {
+import type {
   IAllegroHttpClient,
   AllegroHttpRequestOptions,
   AllegroHttpResponse,
   AllegroMultipartPart,
 } from './allegro-http-client.interface';
-import { AllegroConnectionTokenState } from './allegro-connection-token-state';
+import type { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
@@ -78,7 +78,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     connectionId: string,
     baseUrl: string,
     tokenState: AllegroConnectionTokenState,
-    retryConfig?: Partial<RetryConfig>,
+    retryConfig?: Partial<RetryConfig>
   ) {
     this.connectionId = connectionId;
     // Normalize baseUrl (remove trailing slash)
@@ -89,7 +89,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
   async get<T = unknown>(
     path: string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     return this.request<T>('GET', path, undefined, undefined, options);
   }
@@ -97,7 +97,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   async post<T = unknown>(
     path: string,
     body?: Record<string, unknown> | string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     return this.request<T>('POST', path, body, undefined, options);
   }
@@ -105,7 +105,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   async put<T = unknown>(
     path: string,
     body?: Record<string, unknown> | string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     return this.request<T>('PUT', path, body, undefined, options);
   }
@@ -113,7 +113,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   async patch<T = unknown>(
     path: string,
     body?: Record<string, unknown> | string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     return this.request<T>('PATCH', path, body, undefined, options);
   }
@@ -122,7 +122,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     path: string,
     contentType: string,
     body: Uint8Array,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     return this.request<T>('POST', path, body, contentType, options);
   }
@@ -130,7 +130,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   async postMultipart<T = unknown>(
     path: string,
     parts: AllegroMultipartPart[],
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     const boundary = `----OpenLinkerFormBoundary${randomUUID().replace(/-/g, '')}`;
     const body = buildMultipartBody(parts, boundary);
@@ -155,7 +155,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     path: string,
     body?: Record<string, unknown> | string | Uint8Array,
     binaryContentType?: string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
@@ -182,10 +182,13 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           if (attempt < this.retryConfig.maxRetries) {
             const retryAfter = error.retryAfter || delay;
             this.logger.warn(
-              `Rate limit exceeded (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying after ${retryAfter}ms`,
+              `Rate limit exceeded (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying after ${retryAfter}ms`
             );
             await this.sleep(retryAfter);
-            delay = Math.min(delay * this.retryConfig.backoffMultiplier, this.retryConfig.maxDelayMs);
+            delay = Math.min(
+              delay * this.retryConfig.backoffMultiplier,
+              this.retryConfig.maxDelayMs
+            );
             continue;
           }
           throw error;
@@ -194,7 +197,12 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         // Don't retry on client errors (4xx) except 429
         if (error instanceof AllegroApiException) {
           const statusCode = error.statusCode;
-          if (statusCode !== undefined && statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
+          if (
+            statusCode !== undefined &&
+            statusCode >= 400 &&
+            statusCode < 500 &&
+            statusCode !== 429
+          ) {
             throw error; // Don't retry client errors (except 429)
           }
         }
@@ -202,7 +210,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         // Retry on server errors (5xx) or network errors
         if (attempt < this.retryConfig.maxRetries) {
           this.logger.warn(
-            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`,
+            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
           );
           await this.sleep(delay);
           delay = Math.min(delay * this.retryConfig.backoffMultiplier, this.retryConfig.maxDelayMs);
@@ -229,7 +237,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     path: string,
     body?: Record<string, unknown> | string | Uint8Array,
     binaryContentType?: string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
   ): Promise<AllegroHttpResponse<T>> {
     const startTime = Date.now();
     const traceId = randomUUID();
@@ -300,7 +308,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
     try {
       this.logger.debug(
-        `[${traceId}] ${method} ${url.pathname}${url.search} (connection: ${this.connectionId})`,
+        `[${traceId}] ${method} ${url.pathname}${url.search} (connection: ${this.connectionId})`
       );
 
       const response = await fetch(url.toString(), {
@@ -321,14 +329,20 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       });
 
       this.logger.debug(
-        `[${traceId}] Response: ${response.status} (${duration}ms) - ${method} ${url.pathname}`,
+        `[${traceId}] Response: ${response.status} (${duration}ms) - ${method} ${url.pathname}`
       );
 
       const responseBody = await response.text();
 
       // Handle errors
       if (!response.ok) {
-        await this.handleError(response.status, responseBody, url.toString(), responseHeaders, traceId);
+        await this.handleError(
+          response.status,
+          responseBody,
+          url.toString(),
+          responseHeaders,
+          traceId
+        );
       }
 
       // Parse JSON response
@@ -336,7 +350,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       try {
         data = responseBody ? (JSON.parse(responseBody) as T) : ({} as T);
       } catch (parseError) {
-        this.logger.error(`[${traceId}] Failed to parse JSON response: ${(parseError as Error).message}`);
+        this.logger.error(
+          `[${traceId}] Failed to parse JSON response: ${(parseError as Error).message}`
+        );
         // Pass full body to the exception (#409) — `parseAllegroErrors`
         // and similar downstream parsers need the complete payload, not
         // a truncated half-message.
@@ -344,7 +360,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           `Invalid JSON response from Allegro API: ${url.toString()}`,
           response.status,
           responseBody,
-          url.toString(),
+          url.toString()
         );
       }
 
@@ -359,7 +375,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           `Request timeout after ${timeoutMs}ms: ${url.toString()}`,
           undefined,
           undefined,
-          url.toString(),
+          url.toString()
         );
       }
       if (
@@ -380,7 +396,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         `Network error: ${errorMessage}`,
         undefined,
         undefined,
-        url.toString(),
+        url.toString()
       );
     } finally {
       clearTimeout(timeoutId);
@@ -398,7 +414,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     body: string,
     url: string,
     headers: Record<string, string>,
-    traceId: string,
+    traceId: string
   ): Promise<never> {
     if (statusCode === 401) {
       // Check if this is a token expiry (vs invalid token)
@@ -422,12 +438,12 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         // `AllegroNetworkException` so the runner retries with backoff.
         if (outcome.reason === 'network-failure') {
           this.logger.warn(
-            `[${traceId}] Token refresh failed due to network error — surfacing as transient: ${outcome.cause?.message ?? 'unknown'}`,
+            `[${traceId}] Token refresh failed due to network error — surfacing as transient: ${outcome.cause?.message ?? 'unknown'}`
           );
           throw new AllegroNetworkException(
             `Allegro token refresh failed due to network error: ${outcome.cause?.message ?? 'unknown'}`,
             url,
-            { cause: outcome.cause },
+            { cause: outcome.cause }
           );
         }
         // 'no-callback' or 'credential-rejected' — fall through to auth exception.
@@ -437,7 +453,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       throw new AllegroAuthenticationException(
         `Authentication failed: Invalid or expired access token for ${url}`,
         statusCode,
-        url,
+        url
       );
     }
 
@@ -447,13 +463,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : undefined; // Convert to milliseconds
 
       this.logger.warn(
-        `[${traceId}] Rate limit exceeded (429)${retryAfter ? `, retry after ${retryAfter}ms` : ''}`,
+        `[${traceId}] Rate limit exceeded (429)${retryAfter ? `, retry after ${retryAfter}ms` : ''}`
       );
-      throw new AllegroRateLimitException(
-        `Rate limit exceeded: ${url}`,
-        retryAfter,
-        url,
-      );
+      throw new AllegroRateLimitException(`Rate limit exceeded: ${url}`, retryAfter, url);
     }
 
     if (statusCode >= 500) {
@@ -468,12 +480,14 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         statusCode,
         body,
         url,
-        allegroErrors.length > 0 ? allegroErrors : undefined,
+        allegroErrors.length > 0 ? allegroErrors : undefined
       );
     }
 
     // Other client errors (4xx)
-    this.logger.error(`[${traceId}] Allegro API error (${statusCode}): ${url} - ${formatBodyForLog(body)}`);
+    this.logger.error(
+      `[${traceId}] Allegro API error (${statusCode}): ${url} - ${formatBodyForLog(body)}`
+    );
     // Parse the structured `errors[]` once at the chokepoint (#486). Every
     // downstream consumer (offer-create, content-publish, offer-update) then
     // reads `error.allegroErrors` directly. Empty array → undefined so a
@@ -485,7 +499,7 @@ export class AllegroHttpClient implements IAllegroHttpClient {
       statusCode,
       body,
       url,
-      allegroErrors.length > 0 ? allegroErrors : undefined,
+      allegroErrors.length > 0 ? allegroErrors : undefined
     );
   }
 

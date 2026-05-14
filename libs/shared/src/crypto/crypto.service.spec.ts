@@ -3,7 +3,7 @@
  *
  * @module libs/shared/src/crypto
  */
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { CryptoService } from './crypto.service';
 
@@ -55,7 +55,9 @@ describe('CryptoService', () => {
 
   it('rejects keys that do not decode to 32 bytes', () => {
     expect(() =>
-      makeService({ OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: Buffer.from('short').toString('base64') }),
+      makeService({
+        OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: Buffer.from('short').toString('base64'),
+      })
     ).toThrow(/32 bytes/);
   });
 });

@@ -41,7 +41,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import { Response } from 'express';
 import {
   AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   AI_PROVIDER_KEY_SERVICE_TOKEN,
@@ -51,7 +51,7 @@ import {
   type AiProvider,
   type IAiProviderKeyService,
 } from '@openlinker/core/ai';
-import type { IAiProviderActiveSettingsService } from '@openlinker/core/ai';
+import { IAiProviderActiveSettingsService } from '@openlinker/core/ai';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -70,7 +70,7 @@ export class AiProviderSettingsController {
     @Inject(AI_PROVIDER_KEY_SERVICE_TOKEN)
     private readonly keys: IAiProviderKeyService,
     @Inject(AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN)
-    private readonly active: IAiProviderActiveSettingsService,
+    private readonly active: IAiProviderActiveSettingsService
   ) {}
 
   @Roles('admin')
@@ -80,9 +80,7 @@ export class AiProviderSettingsController {
   })
   @ApiResponse({ status: 200, type: AiProviderSettingsResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async get(
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<AiProviderSettingsResponseDto> {
+  async get(@Res({ passthrough: true }) res: Response): Promise<AiProviderSettingsResponseDto> {
     res.setHeader('Cache-Control', 'no-store');
     const view = await this.active.getMultiProviderView();
     return AiProviderSettingsResponseDto.fromView(view);
@@ -105,7 +103,7 @@ export class AiProviderSettingsController {
     @Param('provider') providerParam: string,
     @Body() dto: UpdateAiProviderKeyDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: Response
   ): Promise<void> {
     res.setHeader('Cache-Control', 'no-store');
     const provider = this.parseProvider(providerParam);
@@ -127,7 +125,7 @@ export class AiProviderSettingsController {
   async clearKey(
     @Param('provider') providerParam: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: Response
   ): Promise<void> {
     res.setHeader('Cache-Control', 'no-store');
     const provider = this.parseProvider(providerParam);
@@ -149,7 +147,7 @@ export class AiProviderSettingsController {
   async setActive(
     @Body() dto: SetActiveAiProviderDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: Response
   ): Promise<void> {
     res.setHeader('Cache-Control', 'no-store');
     await this.withDomainExceptionMapping(() => this.active.setActive(dto.provider, user?.id));
@@ -158,7 +156,7 @@ export class AiProviderSettingsController {
   private parseProvider(value: string): AiProvider {
     if (!isAiProvider(value)) {
       throw new NotFoundException(
-        `Unknown AI provider '${value}'. Allowed values: ${AiProviderValues.join(', ')}.`,
+        `Unknown AI provider '${value}'. Allowed values: ${AiProviderValues.join(', ')}.`
       );
     }
     return value;

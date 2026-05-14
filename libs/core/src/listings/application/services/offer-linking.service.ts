@@ -7,10 +7,13 @@
  * @implements {IOfferLinkingService}
  */
 import { Injectable } from '@nestjs/common';
-import { OfferFeedItem } from '@openlinker/core/listings';
-import { normalizeBarcode as normalizeBarcodeValue, normalizeToEan13 } from '@openlinker/core/products';
-import { IOfferLinkingService } from '../interfaces/offer-linking.service.interface';
-import { OfferLinkingLookups, OfferLinkingResult } from '../types/offer-linking.types';
+import type { OfferFeedItem } from '@openlinker/core/listings';
+import {
+  normalizeBarcode as normalizeBarcodeValue,
+  normalizeToEan13,
+} from '@openlinker/core/products';
+import type { IOfferLinkingService } from '../interfaces/offer-linking.service.interface';
+import type { OfferLinkingLookups, OfferLinkingResult } from '../types/offer-linking.types';
 
 @Injectable()
 export class OfferLinkingService implements IOfferLinkingService {

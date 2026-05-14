@@ -12,16 +12,22 @@
  */
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { IConnectionService } from '../interfaces/connection.service.interface';
-import { ConnectionCreateInput } from '../interfaces/connection.service.types';
-import {
-  ConnectionPort,
+import type { IConnectionService } from '../interfaces/connection.service.interface';
+import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+} from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
+import type {
+  ConnectionTestResult,
+  WebhookProvisioningResult,
+} from '@openlinker/core/integrations';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -31,10 +37,8 @@ import {
   CONNECTION_TESTER_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
-  ConnectionTestResult,
   WebhookProvisioningRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
-  WebhookProvisioningResult,
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
@@ -42,11 +46,8 @@ import {
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
 } from '@openlinker/core/integrations';
-import {
-  JobEnqueuePort,
-  JOB_ENQUEUE_TOKEN,
-  SyncJobRequest,
-} from '@openlinker/core/sync';
+import type { SyncJobRequest } from '@openlinker/core/sync';
+import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -72,7 +73,7 @@ export class ConnectionService implements IConnectionService {
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
-    private readonly credentialsResolver: CredentialsResolverPort,
+    private readonly credentialsResolver: CredentialsResolverPort
   ) {}
 
   /**
@@ -82,7 +83,10 @@ export class ConnectionService implements IConnectionService {
    * 400 with the flattened error list. Plugin packages don't depend on
    * `@nestjs/common` for the failure path (#586 / #587).
    */
-  private async validateConfigShape(adapterKey: string, config: Record<string, unknown>): Promise<void> {
+  private async validateConfigShape(
+    adapterKey: string,
+    config: Record<string, unknown>
+  ): Promise<void> {
     const validator = this.connectionConfigShapeValidatorRegistry.get(adapterKey);
     if (!validator) return;
     try {
@@ -100,7 +104,7 @@ export class ConnectionService implements IConnectionService {
 
   private async validateCredentialsShape(
     adapterKey: string,
-    credentials: Record<string, unknown>,
+    credentials: Record<string, unknown>
   ): Promise<void> {
     const validator = this.connectionCredentialsShapeValidatorRegistry.get(adapterKey);
     if (!validator) return;
@@ -116,7 +120,7 @@ export class ConnectionService implements IConnectionService {
 
   async installWebhooks(
     connectionId: string,
-    actorUserId?: string,
+    actorUserId?: string
   ): Promise<WebhookProvisioningResult> {
     // Resolve the connection's adapter and look up the matching webhook
     // provisioner. Routing by adapterKey (mirrors `testConnection`) keeps the
@@ -130,11 +134,11 @@ export class ConnectionService implements IConnectionService {
     const provisioner = this.webhookProvisioningRegistry.get(metadata.adapterKey);
     if (!provisioner) {
       throw new BadRequestException(
-        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`,
+        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`
       );
     }
     this.logger.log(
-      `Installing webhooks on connection ${connectionId} (adapter: ${metadata.adapterKey})`,
+      `Installing webhooks on connection ${connectionId} (adapter: ${metadata.adapterKey})`
     );
     return provisioner.install(connectionId, actorUserId);
   }
@@ -151,16 +155,14 @@ export class ConnectionService implements IConnectionService {
     const tester = this.connectionTesterRegistry.get(metadata.adapterKey);
     if (!tester) {
       throw new BadRequestException(
-        `Connection testing is not supported for adapter ${metadata.adapterKey}`,
+        `Connection testing is not supported for adapter ${metadata.adapterKey}`
       );
     }
-    this.logger.log(
-      `Testing connection ${connectionId} (adapter: ${metadata.adapterKey})`,
-    );
+    this.logger.log(`Testing connection ${connectionId} (adapter: ${metadata.adapterKey})`);
     const result = await tester.test(connection, this.credentialsResolver);
     this.logger.log(
       `Connection test ${result.success ? 'succeeded' : 'failed'} for ${connectionId} in ${result.latencyMs}ms` +
-        (result.status !== undefined ? ` (status=${result.status})` : ''),
+        (result.status !== undefined ? ` (status=${result.status})` : '')
     );
     return result;
   }
@@ -170,12 +172,12 @@ export class ConnectionService implements IConnectionService {
 
     if ((credentials && credentialsRef) || (!credentials && !credentialsRef)) {
       throw new BadRequestException(
-        'Exactly one of `credentials` or `credentialsRef` must be provided',
+        'Exactly one of `credentials` or `credentialsRef` must be provided'
       );
     }
     if (credentialsRef && !credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
-        'credentialsRef must start with "db:" — raw keys are no longer accepted',
+        'credentialsRef must start with "db:" — raw keys are no longer accepted'
       );
     }
 
@@ -187,15 +189,14 @@ export class ConnectionService implements IConnectionService {
         adapterKey: rest.adapterKey,
       });
 
-      const enabledCapabilities =
-        rest.enabledCapabilities ?? [...metadata.supportedCapabilities];
+      const enabledCapabilities = rest.enabledCapabilities ?? [...metadata.supportedCapabilities];
 
       const invalid = enabledCapabilities.filter(
-        (c) => !metadata.supportedCapabilities.includes(c),
+        (c) => !metadata.supportedCapabilities.includes(c)
       );
       if (invalid.length > 0) {
         throw new BadRequestException(
-          `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`,
+          `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
         );
       }
 
@@ -226,7 +227,7 @@ export class ConnectionService implements IConnectionService {
         createdCredentialRef = ref;
         resolvedCredentialsRef = `db:${ref}`;
         this.logger.log(
-          `Persisted credentials for new ${rest.platformType} connection (ref: db:${ref})`,
+          `Persisted credentials for new ${rest.platformType} connection (ref: db:${ref})`
         );
       }
 
@@ -242,11 +243,11 @@ export class ConnectionService implements IConnectionService {
           try {
             await this.credentialRepository.delete(createdCredentialRef);
             this.logger.warn(
-              `Rolled back orphaned credential ${createdCredentialRef} after connection create failure`,
+              `Rolled back orphaned credential ${createdCredentialRef} after connection create failure`
             );
           } catch (cleanupError) {
             this.logger.error(
-              `Failed to roll back orphaned credential ${createdCredentialRef}: ${(cleanupError as Error).message}`,
+              `Failed to roll back orphaned credential ${createdCredentialRef}: ${(cleanupError as Error).message}`
             );
           }
         }
@@ -291,18 +292,20 @@ export class ConnectionService implements IConnectionService {
 
       const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
       this.logger.log(
-        `Bootstrap catalog sync ${isExisting ? 'already enqueued' : 'enqueued'} for connection ${connection.id}: ${jobId}`,
+        `Bootstrap catalog sync ${isExisting ? 'already enqueued' : 'enqueued'} for connection ${connection.id}: ${jobId}`
       );
     } catch (error) {
       this.logger.warn(
-        `Bootstrap catalog sync skipped for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`,
+        `Bootstrap catalog sync skipped for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
 
   async list(filters?: ConnectionFilters): Promise<Connection[]> {
     try {
-      this.logger.debug(`Listing connections${filters ? ` with filters: ${JSON.stringify(filters)}` : ''}`);
+      this.logger.debug(
+        `Listing connections${filters ? ` with filters: ${JSON.stringify(filters)}` : ''}`
+      );
       const connections = await this.connectionPort.list(filters);
       this.logger.debug(`Found ${connections.length} connection(s)`);
       return connections;
@@ -316,7 +319,9 @@ export class ConnectionService implements IConnectionService {
     try {
       this.logger.debug(`Getting connection: ${connectionId}`);
       const connection = await this.connectionPort.get(connectionId);
-      this.logger.debug(`Connection retrieved: ${connection.id} (${connection.name}, status: ${connection.status})`);
+      this.logger.debug(
+        `Connection retrieved: ${connection.id} (${connection.name}, status: ${connection.status})`
+      );
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
@@ -328,18 +333,17 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
-  async update(
-    connectionId: string,
-    patch: ConnectionUpdate,
-  ): Promise<Connection> {
+  async update(connectionId: string, patch: ConnectionUpdate): Promise<Connection> {
     try {
-      this.logger.log(`Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`);
+      this.logger.log(
+        `Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`
+      );
 
       const existing = await this.connectionPort.get(connectionId);
 
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
         throw new BadRequestException(
-          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`,
+          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
         );
       }
 
@@ -361,11 +365,11 @@ export class ConnectionService implements IConnectionService {
 
       if (patch.enabledCapabilities !== undefined && metadata) {
         const invalid = patch.enabledCapabilities.filter(
-          (c) => !metadata.supportedCapabilities.includes(c),
+          (c) => !metadata.supportedCapabilities.includes(c)
         );
         if (invalid.length > 0) {
           throw new BadRequestException(
-            `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`,
+            `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
           );
         }
       }
@@ -383,7 +387,9 @@ export class ConnectionService implements IConnectionService {
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);
-      this.logger.log(`Connection updated successfully: ${connection.id} (status: ${connection.status})`);
+      this.logger.log(
+        `Connection updated successfully: ${connection.id} (status: ${connection.status})`
+      );
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
@@ -397,13 +403,13 @@ export class ConnectionService implements IConnectionService {
 
   async updateCredentials(
     connectionId: string,
-    credentials: Record<string, unknown>,
+    credentials: Record<string, unknown>
   ): Promise<void> {
     const connection = await this.get(connectionId);
     if (!connection.credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
-          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`,
+          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`
       );
     }
     const metadata = await this.integrationsService.resolveAdapterMetadata({
@@ -431,6 +437,4 @@ export class ConnectionService implements IConnectionService {
       throw error;
     }
   }
-
 }
-

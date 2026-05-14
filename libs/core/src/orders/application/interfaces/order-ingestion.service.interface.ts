@@ -7,8 +7,8 @@
  * @module libs/core/src/orders/application/interfaces
  */
 
-import { OrderFeedEventType } from '@openlinker/core/orders';
-import { OrderSyncResult } from './order-sync.service.interface';
+import type { OrderFeedEventType } from '@openlinker/core/orders';
+import type { OrderSyncResult } from './order-sync.service.interface';
 
 export interface OrderIngestionOptions {
   cursorKey: string;
@@ -28,10 +28,7 @@ export interface IOrderIngestionService {
   /**
    * Poll marketplace feed, enqueue downstream sync jobs, and commit cursor safely.
    */
-  ingestOrders(
-    connectionId: string,
-    options: OrderIngestionOptions,
-  ): Promise<OrderIngestionResult>;
+  ingestOrders(connectionId: string, options: OrderIngestionOptions): Promise<OrderIngestionResult>;
 
   /**
    * Hydrate a marketplace order and route it to destination processor(s).
@@ -39,7 +36,6 @@ export interface IOrderIngestionService {
   syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
-    sourceEventId?: string,
+    sourceEventId?: string
   ): Promise<OrderSyncResult[]>;
 }
-

@@ -20,17 +20,15 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
-  JobEnqueuePort,
-  JOB_ENQUEUE_TOKEN,
   SyncJobRequest,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { ProductMasterPort } from '@openlinker/core/products';
+import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -47,18 +45,18 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     private readonly integrationsService: IIntegrationsService,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     this.logger.log(
-      `Executing master.product.syncAll job ${job.id} for connection ${job.connectionId}`,
+      `Executing master.product.syncAll job ${job.id} for connection ${job.connectionId}`
     );
 
     try {
       const productMaster = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
         job.connectionId,
-        'ProductMaster',
+        'ProductMaster'
       );
 
       const pageSize = this.getPageSize();
@@ -66,13 +64,13 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
 
       if (externalIds.length === 0) {
         this.logger.log(
-          `No products found on source platform for connection ${job.connectionId}. Nothing to sync.`,
+          `No products found on source platform for connection ${job.connectionId}. Nothing to sync.`
         );
         return { outcome: 'ok' };
       }
 
       this.logger.log(
-        `Discovered ${externalIds.length} product(s) on source for connection ${job.connectionId}. Fanning out sync jobs.`,
+        `Discovered ${externalIds.length} product(s) on source for connection ${job.connectionId}. Fanning out sync jobs.`
       );
 
       const enqueuePromises = externalIds.map(async (externalId) => {
@@ -96,18 +94,18 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
 
       if (failed > 0) {
         this.logger.warn(
-          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`,
+          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`
         );
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
             this.logger.error(
-              `Failed to enqueue product sync for externalId ${externalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`,
+              `Failed to enqueue product sync for externalId ${externalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`
             );
           }
         });
       } else {
         this.logger.log(
-          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} product sync job(s) enqueued`,
+          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} product sync job(s) enqueued`
         );
       }
 
@@ -119,7 +117,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -127,7 +125,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
   private async collectExternalIds(
     productMaster: ProductMasterPort,
     pageSize: number,
-    connectionId: string,
+    connectionId: string
   ): Promise<string[]> {
     const collected: string[] = [];
     let offset = 0;
@@ -148,7 +146,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     // that would have terminated the loop naturally. Signals the guard truncated us.
     if (collected.length >= MAX_PAGES * pageSize) {
       this.logger.warn(
-        `master.product.syncAll hit MAX_PAGES guard for connection ${connectionId}; pagination may be truncated`,
+        `master.product.syncAll hit MAX_PAGES guard for connection ${connectionId}; pagination may be truncated`
       );
     }
 
@@ -159,7 +157,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
   private getPageSize(): number {
     const raw = this.configService.get<string>(
       'OL_PRODUCT_SYNC_PAGE_SIZE',
-      String(DEFAULT_PAGE_SIZE),
+      String(DEFAULT_PAGE_SIZE)
     );
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PAGE_SIZE;

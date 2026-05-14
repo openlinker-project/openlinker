@@ -35,13 +35,13 @@ import {
   AI_PROVIDER_ACTIVE_SETTINGS_SERVICE_TOKEN,
   AiCompletionError,
   DuplicateAiProviderError,
-} from '@openlinker/core/ai';
+
+  IAiProviderActiveSettingsService} from '@openlinker/core/ai';
 import type {
   AiCompletionInput,
   AiCompletionPort,
   AiCompletionResult,
-  AiProvider,
-  IAiProviderActiveSettingsService,
+  AiProvider
 } from '@openlinker/core/ai';
 
 @Injectable()

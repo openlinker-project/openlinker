@@ -10,13 +10,13 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { RedisClientType } from 'redis';
-import { SyncLockPort, SyncLockToken } from '../ports/sync-lock.port';
+import type { SyncLockPort, SyncLockToken } from '../ports/sync-lock.port';
 
 @Injectable()
 export class RedisSyncLockService implements SyncLockPort {
   constructor(
     @Inject('REDIS_CLIENT')
-    private readonly redisClient: RedisClientType,
+    private readonly redisClient: RedisClientType
   ) {}
 
   async acquire(key: string, ttlMs: number): Promise<SyncLockToken | null> {
@@ -65,4 +65,3 @@ export class RedisSyncLockService implements SyncLockPort {
     return result === 1;
   }
 }
-

@@ -4,7 +4,8 @@
  * @module libs/core/src/mappings/application/services/__tests__
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { MappingConfigService } from '../mapping-config.service';
 import {
   STATUS_MAPPING_REPOSITORY_TOKEN,
@@ -12,10 +13,10 @@ import {
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
 } from '../../../mappings.tokens';
-import { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
-import { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
-import { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
-import { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
+import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
+import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
+import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
+import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
@@ -67,9 +68,7 @@ describe('MappingConfigService', () => {
 
   describe('getStatusMappings', () => {
     it('should return mappings from repository', async () => {
-      const mappings = [
-        new StatusMapping('id-1', CONNECTION_ID, 'READY_FOR_PROCESSING', '2'),
-      ];
+      const mappings = [new StatusMapping('id-1', CONNECTION_ID, 'READY_FOR_PROCESSING', '2')];
       statusRepo.findByConnectionId.mockResolvedValue(mappings);
 
       const result = await service.getStatusMappings(CONNECTION_ID);
@@ -129,9 +128,7 @@ describe('MappingConfigService', () => {
 
   describe('getCarrierMappings', () => {
     it('should return carrier mappings from repository', async () => {
-      const mappings = [
-        new CarrierMapping('id-1', CONNECTION_ID, 'INPOST_PACZKOMAT', '2'),
-      ];
+      const mappings = [new CarrierMapping('id-1', CONNECTION_ID, 'INPOST_PACZKOMAT', '2')];
       carrierRepo.findByConnectionId.mockResolvedValue(mappings);
 
       const result = await service.getCarrierMappings(CONNECTION_ID);
@@ -190,9 +187,7 @@ describe('MappingConfigService', () => {
 
   describe('getPaymentMappings', () => {
     it('should return payment mappings from repository', async () => {
-      const mappings = [
-        new PaymentMapping('id-1', CONNECTION_ID, 'P24', 'przelewy24'),
-      ];
+      const mappings = [new PaymentMapping('id-1', CONNECTION_ID, 'P24', 'przelewy24')];
       paymentRepo.findByConnectionId.mockResolvedValue(mappings);
 
       const result = await service.getPaymentMappings(CONNECTION_ID);
@@ -219,7 +214,14 @@ describe('MappingConfigService', () => {
   describe('getCategoryMappings', () => {
     it('should return category mappings from repository', async () => {
       const mappings = [
-        new CategoryMapping('id-1', CONNECTION_ID, '3', '258066', 'Smartphones', 'Electronics > Phones > Smartphones'),
+        new CategoryMapping(
+          'id-1',
+          CONNECTION_ID,
+          '3',
+          '258066',
+          'Smartphones',
+          'Electronics > Phones > Smartphones'
+        ),
       ];
       categoryRepo.findByConnectionId.mockResolvedValue(mappings);
 
@@ -238,7 +240,14 @@ describe('MappingConfigService', () => {
         allegroCategoryName: 'Smartphones',
         allegroCategoryPath: 'Electronics > Phones > Smartphones',
       };
-      const saved = new CategoryMapping('id-5', CONNECTION_ID, '5', '258066', 'Smartphones', 'Electronics > Phones > Smartphones');
+      const saved = new CategoryMapping(
+        'id-5',
+        CONNECTION_ID,
+        '5',
+        '258066',
+        'Smartphones',
+        'Electronics > Phones > Smartphones'
+      );
       categoryRepo.upsertMapping.mockResolvedValue(saved);
 
       const result = await service.upsertCategoryMapping(CONNECTION_ID, input);
@@ -260,7 +269,14 @@ describe('MappingConfigService', () => {
 
   describe('resolveAllegroCategory', () => {
     it('should return allegroCategoryId when mapping exists', async () => {
-      const mapping = new CategoryMapping('id-1', CONNECTION_ID, '3', '258066', 'Smartphones', null);
+      const mapping = new CategoryMapping(
+        'id-1',
+        CONNECTION_ID,
+        '3',
+        '258066',
+        'Smartphones',
+        null
+      );
       categoryRepo.findByPrestashopCategoryId.mockResolvedValue(mapping);
 
       const result = await service.resolveAllegroCategory(CONNECTION_ID, '3');

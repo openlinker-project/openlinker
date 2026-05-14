@@ -8,15 +8,15 @@
  * @module libs/core/src/mappings/domain/ports
  */
 
-import { CategoryMapping } from '../entities/category-mapping.entity';
-import { CategoryMappingInput } from '../types/mapping.types';
+import type { CategoryMapping } from '../entities/category-mapping.entity';
+import type { CategoryMappingInput } from '../types/mapping.types';
 
 export interface CategoryMappingRepositoryPort {
   findByConnectionId(connectionId: string): Promise<CategoryMapping[]>;
 
   findByPrestashopCategoryId(
     connectionId: string,
-    prestashopCategoryId: string,
+    prestashopCategoryId: string
   ): Promise<CategoryMapping | null>;
 
   /**

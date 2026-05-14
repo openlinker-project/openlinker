@@ -19,18 +19,9 @@ import {
   HttpStatus,
   Inject,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import {
-  IMappingConfigService,
-  MAPPING_CONFIG_SERVICE_TOKEN,
-} from '@openlinker/core/mappings';
+import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import { UpsertStatusMappingsDto } from './dto/upsert-status-mappings.dto';
 import { UpsertCarrierMappingsDto } from './dto/upsert-carrier-mappings.dto';
 import { UpsertPaymentMappingsDto } from './dto/upsert-payment-mappings.dto';
@@ -47,7 +38,7 @@ import { CategoryMappingResponseDto } from './dto/category-mapping-response.dto'
 export class MappingsController {
   constructor(
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
-    private readonly mappingConfigService: IMappingConfigService,
+    private readonly mappingConfigService: IMappingConfigService
   ) {}
 
   // ── Status mappings ──────────────────────────────────────────────────────
@@ -58,7 +49,7 @@ export class MappingsController {
   @ApiResponse({ status: 200, type: [StatusMappingResponseDto] })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getStatusMappings(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<StatusMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.getStatusMappings(connectionId);
     return mappings.map((m) => StatusMappingResponseDto.fromDomain(m));
@@ -73,7 +64,7 @@ export class MappingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async upsertStatusMappings(
     @Param('connectionId') connectionId: string,
-    @Body() dto: UpsertStatusMappingsDto,
+    @Body() dto: UpsertStatusMappingsDto
   ): Promise<StatusMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.upsertStatusMappings(connectionId, dto.items);
     return mappings.map((m) => StatusMappingResponseDto.fromDomain(m));
@@ -87,7 +78,7 @@ export class MappingsController {
   @ApiResponse({ status: 200, type: [CarrierMappingResponseDto] })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getCarrierMappings(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<CarrierMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.getCarrierMappings(connectionId);
     return mappings.map((m) => CarrierMappingResponseDto.fromDomain(m));
@@ -102,7 +93,7 @@ export class MappingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async upsertCarrierMappings(
     @Param('connectionId') connectionId: string,
-    @Body() dto: UpsertCarrierMappingsDto,
+    @Body() dto: UpsertCarrierMappingsDto
   ): Promise<CarrierMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.upsertCarrierMappings(connectionId, dto.items);
     return mappings.map((m) => CarrierMappingResponseDto.fromDomain(m));
@@ -116,7 +107,7 @@ export class MappingsController {
   @ApiResponse({ status: 200, type: [PaymentMappingResponseDto] })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getPaymentMappings(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<PaymentMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.getPaymentMappings(connectionId);
     return mappings.map((m) => PaymentMappingResponseDto.fromDomain(m));
@@ -131,7 +122,7 @@ export class MappingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async upsertPaymentMappings(
     @Param('connectionId') connectionId: string,
-    @Body() dto: UpsertPaymentMappingsDto,
+    @Body() dto: UpsertPaymentMappingsDto
   ): Promise<PaymentMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.upsertPaymentMappings(connectionId, dto.items);
     return mappings.map((m) => PaymentMappingResponseDto.fromDomain(m));
@@ -145,7 +136,7 @@ export class MappingsController {
   @ApiResponse({ status: 200, type: [CategoryMappingResponseDto] })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getCategoryMappings(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<CategoryMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.getCategoryMappings(connectionId);
     return mappings.map((m) => CategoryMappingResponseDto.fromDomain(m));
@@ -162,7 +153,7 @@ export class MappingsController {
   async upsertCategoryMapping(
     @Param('connectionId') connectionId: string,
     @Param('prestashopCategoryId') prestashopCategoryId: string,
-    @Body() dto: CategoryMappingInputDto,
+    @Body() dto: CategoryMappingInputDto
   ): Promise<CategoryMappingResponseDto> {
     const mapping = await this.mappingConfigService.upsertCategoryMapping(connectionId, {
       prestashopCategoryId,
@@ -182,7 +173,7 @@ export class MappingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async deleteCategoryMapping(
     @Param('connectionId') connectionId: string,
-    @Param('prestashopCategoryId') prestashopCategoryId: string,
+    @Param('prestashopCategoryId') prestashopCategoryId: string
   ): Promise<void> {
     await this.mappingConfigService.deleteCategoryMapping(connectionId, prestashopCategoryId);
   }

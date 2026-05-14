@@ -6,19 +6,15 @@
  * @module libs/integrations/prestashop/src/__tests__/fixtures
  */
 // eslint-disable-next-line no-restricted-imports
-import { PrestashopProduct } from '../../infrastructure/mappers/prestashop.mapper.interface';
+import type { PrestashopProduct } from '../../infrastructure/mappers/prestashop.mapper.interface';
 
 export const samplePrestashopProduct: PrestashopProduct = {
   id: '1',
   name: {
-    language: [
-      { '#text': 'Test Product', '@_id': '1' },
-    ],
+    language: [{ '#text': 'Test Product', '@_id': '1' }],
   },
   description: {
-    language: [
-      { '#text': 'Test Description', '@_id': '1' },
-    ],
+    language: [{ '#text': 'Test Description', '@_id': '1' }],
   },
   reference: 'TEST-001',
   price: '19.99',
@@ -51,4 +47,3 @@ export const samplePrestashopProductXml = `<?xml version="1.0" encoding="UTF-8"?
     </product>
   </products>
 </prestashop>`;
-

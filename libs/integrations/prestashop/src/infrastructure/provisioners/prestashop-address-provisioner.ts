@@ -11,23 +11,18 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
-import { RedisClientType } from 'redis';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { RedisClientType } from 'redis';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopCountryResolver } from './prestashop-country-resolver';
 import { PrestashopProvisioningException } from '../../domain/exceptions/prestashop-provisioning.exception';
 import { PrestashopCountryNotFoundException } from '../../domain/exceptions/prestashop-country-not-found.exception';
-import { hashAddress, NormalizedAddress } from '@openlinker/shared/config';
-import {
-  CustomerProjectionRepositoryPort,
-  DestinationAddressMapping,
-  AddressType,
-} from '@openlinker/core/customers';
-import { Address, OrderPickupPoint } from '@openlinker/core/orders';
-import {
-  PrestashopAddress,
-  PrestashopAddressCreate,
-} from './prestashop-provisioner.types';
+import type { NormalizedAddress } from '@openlinker/shared/config';
+import { hashAddress } from '@openlinker/shared/config';
+import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
+import { DestinationAddressMapping } from '@openlinker/core/customers';
+import type { Address, OrderPickupPoint } from '@openlinker/core/orders';
+import type { PrestashopAddress, PrestashopAddressCreate } from './prestashop-provisioner.types';
 
 /**
  * Lock TTL in seconds (30 seconds is sufficient for PrestaShop API calls)
@@ -75,7 +70,7 @@ export class PrestashopAddressProvisioner {
     @Inject('REDIS_CLIENT')
     @Optional()
     private readonly redisClient: RedisClientType | null,
-    private readonly countryResolver: PrestashopCountryResolver,
+    private readonly countryResolver: PrestashopCountryResolver
   ) {}
 
   /**
@@ -85,7 +80,7 @@ export class PrestashopAddressProvisioner {
     destinationConnectionId: string,
     prestashopCustomerId: string,
     addressHash: string,
-    addressType: AddressType,
+    addressType: AddressType
   ): string {
     return `prestashop:address-provision:${destinationConnectionId}:${prestashopCustomerId}:${addressHash}:${addressType}`;
   }
@@ -180,7 +175,7 @@ export class PrestashopAddressProvisioner {
     webserviceClient: IPrestashopWebserviceClient,
     _connectionConfig: PrestashopConnectionConfig,
     customerProjectionRepository: CustomerProjectionRepositoryPort,
-    pickupPoint?: OrderPickupPoint,
+    pickupPoint?: OrderPickupPoint
   ): Promise<string> {
     // Step 0: Single locker-aware view used for BOTH hashing and the PS create
     // payload (#458). Keeping these tied together prevents drift — re-syncing
@@ -198,18 +193,23 @@ export class PrestashopAddressProvisioner {
       internalCustomerId,
       destinationConnectionId,
       addressHash,
-      addressType,
+      addressType
     );
 
     if (existingMapping) {
       this.logger.debug(
-        `Address mapping found: ${internalCustomerId} → ${existingMapping.destinationAddressId} (${addressType})`,
+        `Address mapping found: ${internalCustomerId} → ${existingMapping.destinationAddressId} (${addressType})`
       );
       return existingMapping.destinationAddressId;
     }
 
     // Step 3: Fallback - Acquire distributed lock
-    const lockKey = this.getLockKey(destinationConnectionId, prestashopCustomerId, addressHash, addressType);
+    const lockKey = this.getLockKey(
+      destinationConnectionId,
+      prestashopCustomerId,
+      addressHash,
+      addressType
+    );
     const lockAcquired = await this.acquireLock(lockKey);
 
     if (!lockAcquired) {
@@ -222,12 +222,12 @@ export class PrestashopAddressProvisioner {
         internalCustomerId,
         destinationConnectionId,
         addressHash,
-        addressType,
+        addressType
       );
 
       if (retryMapping) {
         this.logger.debug(
-          `Address mapping found after lock wait: ${internalCustomerId} → ${retryMapping.destinationAddressId} (${addressType})`,
+          `Address mapping found after lock wait: ${internalCustomerId} → ${retryMapping.destinationAddressId} (${addressType})`
         );
         return retryMapping.destinationAddressId;
       }
@@ -238,7 +238,7 @@ export class PrestashopAddressProvisioner {
           `Another process may be creating the address. Please retry.`,
         internalCustomerId,
         destinationConnectionId,
-        addressHash, // Include addressHash for debugging
+        addressHash // Include addressHash for debugging
       );
     }
 
@@ -248,12 +248,12 @@ export class PrestashopAddressProvisioner {
         internalCustomerId,
         destinationConnectionId,
         addressHash,
-        addressType,
+        addressType
       );
 
       if (postLockMapping) {
         this.logger.debug(
-          `Address mapping found after lock acquisition: ${internalCustomerId} → ${postLockMapping.destinationAddressId} (${addressType})`,
+          `Address mapping found after lock acquisition: ${internalCustomerId} → ${postLockMapping.destinationAddressId} (${addressType})`
         );
         return postLockMapping.destinationAddressId;
       }
@@ -269,7 +269,7 @@ export class PrestashopAddressProvisioner {
           custom: { id_customer: prestashopCustomerId },
         },
         100, // limit (reasonable for address list, but may miss addresses if customer has >100)
-        0, // offset
+        0 // offset
       );
 
       // Step 6: Match by hash (best effort - compare hashes of fetched addresses)
@@ -323,14 +323,16 @@ export class PrestashopAddressProvisioner {
       if (matchingAddress) {
         // Address exists in PrestaShop, use existing ID
         prestashopAddressId = matchingAddress.id;
-        this.logger.debug(`Found existing PrestaShop address: ${prestashopAddressId} (${addressType})`);
+        this.logger.debug(
+          `Found existing PrestaShop address: ${prestashopAddressId} (${addressType})`
+        );
       } else {
         // Create new address
         // Resolve country ID
         const countryId = await this.countryResolver.resolveCountryId(
           effectiveAddress.country,
           destinationConnectionId,
-          webserviceClient,
+          webserviceClient
         );
 
         // Generate deterministic alias
@@ -347,7 +349,7 @@ export class PrestashopAddressProvisioner {
             `Invalid PrestaShop customer ID: ${prestashopCustomerId}`,
             internalCustomerId,
             destinationConnectionId,
-            addressHash,
+            addressHash
           );
         }
 
@@ -366,12 +368,12 @@ export class PrestashopAddressProvisioner {
 
         const createdAddress = await webserviceClient.createResource<PrestashopAddress>(
           'addresses',
-          addressData,
+          addressData
         );
 
         prestashopAddressId = createdAddress.id;
         this.logger.log(
-          `Created address in PrestaShop: ${prestashopAddressId} (${addressType}, alias: ${alias})`,
+          `Created address in PrestaShop: ${prestashopAddressId} (${addressType}, alias: ${alias})`
         );
       }
 
@@ -384,7 +386,7 @@ export class PrestashopAddressProvisioner {
           addressType,
           prestashopAddressId,
           new Date(),
-          new Date(),
+          new Date()
         );
 
         await customerProjectionRepository.upsertDestinationAddressMapping(mapping);
@@ -394,12 +396,12 @@ export class PrestashopAddressProvisioner {
           internalCustomerId,
           destinationConnectionId,
           addressHash,
-          addressType,
+          addressType
         );
 
         if (duplicateMapping) {
           this.logger.debug(
-            `Mapping already exists (concurrent request): ${internalCustomerId} → ${duplicateMapping.destinationAddressId} (${addressType})`,
+            `Mapping already exists (concurrent request): ${internalCustomerId} → ${duplicateMapping.destinationAddressId} (${addressType})`
           );
           return duplicateMapping.destinationAddressId;
         }
@@ -411,7 +413,10 @@ export class PrestashopAddressProvisioner {
       return prestashopAddressId;
     } catch (error) {
       // Re-throw domain exceptions as-is
-      if (error instanceof PrestashopProvisioningException || error instanceof PrestashopCountryNotFoundException) {
+      if (
+        error instanceof PrestashopProvisioningException ||
+        error instanceof PrestashopCountryNotFoundException
+      ) {
         throw error;
       }
 
@@ -421,7 +426,7 @@ export class PrestashopAddressProvisioner {
         `Failed to provision address in PrestaShop: ${errorMessage}`,
         internalCustomerId,
         destinationConnectionId,
-        addressHash,
+        addressHash
       );
     } finally {
       // Step 9: Release lock
