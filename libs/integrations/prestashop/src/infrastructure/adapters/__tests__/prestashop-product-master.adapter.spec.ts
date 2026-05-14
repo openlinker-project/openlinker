@@ -49,7 +49,7 @@ describe('PrestashopProductMasterAdapter', () => {
       const internalId = 'internal-product-123';
       const externalId = '42';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         {
           connectionId: connection.id,
@@ -60,7 +60,7 @@ describe('PrestashopProductMasterAdapter', () => {
 
       mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProduct(internalId);
 
       expect(mockIdentifierMapping.getExternalIds).toHaveBeenCalledWith('Product', internalId);
@@ -73,10 +73,10 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should throw PrestashopResourceNotFoundException when no external ID mapping exists', async () => {
       const internalId = 'internal-product-123';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.getProduct(internalId)).rejects.toThrow(
         PrestashopResourceNotFoundException
       );
@@ -85,7 +85,7 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should throw PrestashopResourceNotFoundException when external ID not found for this connection', async () => {
       const internalId = 'internal-product-123';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         {
           connectionId: 'other-connection-id',
@@ -94,7 +94,7 @@ describe('PrestashopProductMasterAdapter', () => {
         },
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.getProduct(internalId)).rejects.toThrow(
         PrestashopResourceNotFoundException
       );
@@ -114,7 +114,7 @@ describe('PrestashopProductMasterAdapter', () => {
         connectionWithLang
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         {
           connectionId: connectionWithLang.id,
@@ -128,20 +128,20 @@ describe('PrestashopProductMasterAdapter', () => {
       await adapterWithLang.getProduct(internalId);
 
       // Verify mapper was called with langId 2
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.getResource).toHaveBeenCalled();
     });
   });
 
   describe('getProducts', () => {
     it('should fetch and map multiple products', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const products: PrestashopProduct[] = [
         { ...samplePrestashopProduct, id: '1' },
         { ...samplePrestashopProduct, id: '2', reference: 'TEST-002' },
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue(products);
 
       const idMap = new Map([
@@ -149,13 +149,13 @@ describe('PrestashopProductMasterAdapter', () => {
         ['2:test-connection-id', 'internal-2'],
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProducts();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
         {},
@@ -170,7 +170,7 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should return empty array when no products found', async () => {
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProducts();
 
       expect(result).toEqual([]);
@@ -178,23 +178,23 @@ describe('PrestashopProductMasterAdapter', () => {
     });
 
     it('should pass filters to HTTP client', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const products: PrestashopProduct[] = [{ ...samplePrestashopProduct, id: '1' }];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue(products);
 
       const idMap = new Map([['1:test-connection-id', 'internal-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
 
       await adapter.getProducts({ status: 'active', limit: 50, offset: 100 });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           custom: expect.objectContaining({
             active: 1,
           }),
@@ -205,21 +205,21 @@ describe('PrestashopProductMasterAdapter', () => {
     });
 
     it('should filter out products without internal ID mapping', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const products: PrestashopProduct[] = [
         { ...samplePrestashopProduct, id: '1' },
         { ...samplePrestashopProduct, id: '2' },
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue(products);
 
       // Only map first product
       const idMap = new Map([['1:test-connection-id', 'internal-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProducts();
 
       expect(result).toHaveLength(1);
@@ -271,7 +271,7 @@ describe('PrestashopProductMasterAdapter', () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         {
           connectionId: connection.id,
@@ -306,19 +306,19 @@ describe('PrestashopProductMasterAdapter', () => {
         ['102:test-connection-id', 'internal-variant-2'],
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProductVariants(productId);
 
       expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalProductId);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'combinations',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           custom: expect.objectContaining({
             id_product: externalProductId,
           }),
@@ -394,7 +394,7 @@ describe('PrestashopProductMasterAdapter', () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
         {
           connectionId: connection.id,
@@ -406,7 +406,7 @@ describe('PrestashopProductMasterAdapter', () => {
       mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const result = await adapter.getProductVariants(productId);
 
       expect(result).toHaveLength(1);
@@ -433,10 +433,10 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should throw PrestashopResourceNotFoundException when product not found', async () => {
       const productId = 'internal-product-123';
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.getProductVariants(productId)).rejects.toThrow(
         PrestashopResourceNotFoundException
       );
@@ -445,42 +445,42 @@ describe('PrestashopProductMasterAdapter', () => {
 
   describe('write operations (not supported)', () => {
     it('should throw PrestashopNotSupportedException for createProduct', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
       await expect(adapter.createProduct({ name: 'New Product' } as any)).rejects.toThrow(
         PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for updateProduct', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
       await expect(adapter.updateProduct('product-id', { name: 'Updated' } as any)).rejects.toThrow(
         PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for deleteProduct', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.deleteProduct('product-id')).rejects.toThrow(
         PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for upsertProductVariant', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
       await expect(adapter.upsertProductVariant('product-id', {} as any)).rejects.toThrow(
         PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for assignCategories', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.assignCategories('product-id', ['cat-1'])).rejects.toThrow(
         PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for getProductCategories', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       await expect(adapter.getProductCategories('product-id')).rejects.toThrow(
         PrestashopNotSupportedException
       );
@@ -489,18 +489,18 @@ describe('PrestashopProductMasterAdapter', () => {
 
   describe('searchProducts', () => {
     it('should delegate to getProducts with query filter', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const products: PrestashopProduct[] = [{ ...samplePrestashopProduct, id: '1' }];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockHttpClient.listResources = jest.fn().mockResolvedValue(products);
 
       const idMap = new Map([['1:test-connection-id', 'internal-1']]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(idMap);
 
       await adapter.searchProducts('test query', { status: 'active' });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
         expect.any(Object),

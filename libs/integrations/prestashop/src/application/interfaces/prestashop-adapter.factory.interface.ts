@@ -9,13 +9,13 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopProductMasterAdapter } from '../../infrastructure/adapters/prestashop-product-master.adapter';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopInventoryMasterAdapter } from '../../infrastructure/adapters/prestashop-inventory-master.adapter';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopOrderSourceAdapter } from '../../infrastructure/adapters/prestashop-order-source.adapter';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/adapters/prestashop-order-processor-manager.adapter';
 
 /**

@@ -65,12 +65,12 @@ describe('AllegroHttpClient', () => {
         'https://api.allegro.pl/',
         new AllegroConnectionTokenState(connectionId, credentials)
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect((clientWithSlash as any).baseUrl).toBe('https://api.allegro.pl');
     });
 
     it('should use default retry config values', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       const retryConfig = (client as any).retryConfig as {
         maxRetries: number;
         initialDelayMs: number;
@@ -96,7 +96,7 @@ describe('AllegroHttpClient', () => {
         new AllegroConnectionTokenState(connectionId, credentials),
         customRetryConfig
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       const retryConfig = (clientWithCustom as any).retryConfig as {
         maxRetries: number;
         initialDelayMs: number;

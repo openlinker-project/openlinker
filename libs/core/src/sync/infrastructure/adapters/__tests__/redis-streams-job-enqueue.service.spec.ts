@@ -75,7 +75,7 @@ describe('RedisStreamsJobEnqueueService', () => {
           connectionId: jobRequest.connectionId,
           payloadJson: JSON.stringify(jobRequest.payload),
           idempotencyKey: jobRequest.idempotencyKey,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           createdAt: expect.any(String),
         })
       );

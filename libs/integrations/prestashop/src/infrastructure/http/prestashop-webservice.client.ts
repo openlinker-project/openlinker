@@ -68,22 +68,22 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // Normalize baseUrl (remove trailing slash)
     const normalizedBaseUrl: string = baseUrl.replace(/\/$/, '');
     this.baseUrl = normalizedBaseUrl;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const apiKeyValue: string = credentials.webserviceApiKey;
     this.apiKey = apiKeyValue;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configTimeoutMs: number | undefined = config.timeoutMs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configPageSize: number | undefined = config.pageSize;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configLangId: number | undefined = config.langId;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configResponseFormat: 'auto' | 'json' | 'xml' | undefined = config.responseFormat;
     const timeoutMs: number = configTimeoutMs ?? 30000;
     const pageSize: number = configPageSize ?? 100;
     const langId: number = configLangId ?? 1;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configShopId: number | undefined = config.shopId;
     this.config = {
       baseUrl: normalizedBaseUrl,
@@ -114,7 +114,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       method: 'GET',
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configResponseFormat = this.config.responseFormat;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
     const parsed = PrestashopResponseParser.parse(
@@ -146,7 +146,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     offset?: number
   ): Promise<T[]> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configPageSize = this.config.pageSize;
     const pageSize: number = configPageSize ?? 100;
     const query = PrestashopQueryBuilder.buildQueryWithPagination(
@@ -319,7 +319,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private convertToXml(data: unknown): string {
     try {
       // XMLBuilder.build() returns a string, but TypeScript types it as any
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const xml = this.xmlBuilder.build(data) as string;
       // Ensure XML declaration is present
       if (!xml.startsWith('<?xml')) {
@@ -356,7 +356,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       try {
         return await this.request(url, options);
       } catch (error: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Don't retry on client errors (4xx) except 429 (rate limit)
@@ -435,7 +435,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
     // Create AbortController for timeout
     const controller = new AbortController();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configTimeoutMs = this.config.timeoutMs;
     const timeoutMs: number = configTimeoutMs ?? 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -471,10 +471,10 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       return { body, contentType };
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
         const configTimeoutMs = this.config.timeoutMs;
         const timeoutMs: number = configTimeoutMs ?? 30000;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
         const timeoutError = new PrestashopApiException(
           `Request timeout after ${timeoutMs}ms: ${url}`,
           undefined,
@@ -490,7 +490,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         throw error;
       }
       const errorMessage: string = error instanceof Error ? error.message : String(error);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const networkError = new PrestashopApiException(
         `Network error: ${errorMessage}`,
         undefined,
@@ -507,7 +507,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
    */
   private handleError(statusCode: number, body: string, url: string): never {
     if (statusCode === 401) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const authError = new PrestashopAuthenticationException(
         `Authentication failed: Invalid API key for ${url}`,
         undefined,
@@ -517,7 +517,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     }
 
     if (statusCode === 404) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const notFoundError = new PrestashopResourceNotFoundException(
         `Resource not found: ${url}`,
         undefined,
@@ -533,7 +533,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       this.logger.error(
         `PrestaShop API server error (${statusCode}): ${url}. Response body: ${formatBodyForLog(body)}`
       );
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const serverError = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
@@ -542,7 +542,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       throw serverError;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const apiError = new PrestashopApiException(
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,

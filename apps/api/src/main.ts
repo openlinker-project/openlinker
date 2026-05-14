@@ -76,14 +76,14 @@ async function bootstrap(): Promise<void> {
   const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces (accessible from Docker)
   await app.listen(port, host);
 
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- bootstrap log: emits before LoggerPort backend is installed
   console.log(`Application is running on: http://localhost:${port}`);
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- bootstrap log: emits before LoggerPort backend is installed
   console.log(`Swagger documentation available at: http://localhost:${port}/api`);
 }
 
 bootstrap().catch((error) => {
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- bootstrap log: emits before LoggerPort backend is installed
   console.error('Error starting application:', error);
   process.exit(1);
 });

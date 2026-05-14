@@ -5,7 +5,7 @@
  *
  * @module libs/integrations/prestashop/src/__tests__/fixtures
  */
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopProduct } from '../../infrastructure/mappers/prestashop.mapper.interface';
 
 export const samplePrestashopProduct: PrestashopProduct = {

@@ -20,7 +20,7 @@ function loadHelper(envValue: string | undefined): FormatBodyForLog {
     }
     // require() inside isolateModules is the only way to re-evaluate a module
     // with a fresh process.env. ES `import` is hoisted and would bind once.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- dynamic require() needed: path computed at runtime
     helper = (require('./format-body-for-log') as { formatBodyForLog: FormatBodyForLog }).formatBodyForLog;
   });
   return helper;

@@ -41,7 +41,7 @@ describe('PrestashopResponseParser', () => {
       const invalidJson = '{ invalid json }';
       expect(() => {
         PrestashopResponseParser.parse(invalidJson, 'application/json', 'json');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
       }).toThrow(PrestashopParseException);
     });
   });

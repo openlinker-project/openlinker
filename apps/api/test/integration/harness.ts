@@ -18,7 +18,7 @@ interface HarnessState {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+  // eslint-disable-next-line no-var -- global augmentation requires `var`; let / const don't attach to globalThis at module scope
   var __API_TEST_HARNESS__: HarnessState | undefined;
 }
 

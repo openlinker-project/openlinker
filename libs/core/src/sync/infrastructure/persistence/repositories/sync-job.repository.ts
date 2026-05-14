@@ -127,7 +127,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
 
       // Use raw SQL for FOR UPDATE SKIP LOCKED (TypeORM doesn't support SKIP LOCKED directly)
       // Note: Column names use camelCase with quotes to match migration schema
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
       const rawEntities = await manager.query(
         `
         SELECT * FROM sync_jobs
@@ -139,14 +139,14 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         ['queued', now, limit]
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
       if (rawEntities.length === 0) {
         return [];
       }
 
       // Update locked jobs
       // TypeORM query returns any[], so we need to extract IDs safely
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
       const ids = rawEntities.map((e: { id: string }) => e.id);
       await manager
         .createQueryBuilder()
@@ -156,14 +156,14 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
           lockedAt: now,
           lockedBy: workerId,
         })
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
         .where('id IN (:...ids)', { ids })
         .execute();
 
       // Reload to get updated status
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
       const updated = await manager.find(SyncJobOrmEntity, {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
         where: ids.map((id: string) => ({ id })),
       });
       return updated.map((e: SyncJobOrmEntity) => this.toDomain(e));

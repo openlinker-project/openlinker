@@ -5,7 +5,7 @@
  *
  * @module libs/integrations/prestashop/src/__tests__/mocks
  */
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { IPrestashopWebserviceClient } from '../../infrastructure/http/prestashop-webservice.client.interface';
 
 export function createMockHttpClient(

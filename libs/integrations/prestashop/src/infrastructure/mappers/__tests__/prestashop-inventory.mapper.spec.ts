@@ -70,7 +70,7 @@ describe('PrestashopInventoryMapper', () => {
         id: '101',
         id_product: '42',
         id_product_attribute: '0',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         quantity: 100 as any, // Numeric instead of string
         out_of_stock: '0',
       };
@@ -85,7 +85,7 @@ describe('PrestashopInventoryMapper', () => {
         id: '101',
         id_product: '42',
         id_product_attribute: '0',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         quantity: 'invalid' as any,
         out_of_stock: '0',
       };
@@ -101,7 +101,7 @@ describe('PrestashopInventoryMapper', () => {
         id: '101',
         id_product: '42',
         id_product_attribute: '0',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         quantity: null as any,
         out_of_stock: '0',
       };

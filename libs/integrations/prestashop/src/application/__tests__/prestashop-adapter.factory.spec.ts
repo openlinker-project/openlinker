@@ -106,7 +106,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = {};
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -116,7 +116,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = { baseUrl: 'not-a-url' };
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -126,7 +126,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = { baseUrl: 'https://shop.example.com', shopId: -1 };
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -136,7 +136,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = { baseUrl: 'https://shop.example.com', timeoutMs: 500 };
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -146,7 +146,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = { baseUrl: 'https://shop.example.com', pageSize: 2000 };
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -156,7 +156,7 @@ describe('PrestashopAdapterFactory', () => {
       const invalidConfig = { baseUrl: 'https://shop.example.com', responseFormat: 'invalid' };
 
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
         (factory as any).validateAndParseConfig(invalidConfig);
       }).toThrow(PrestashopConfigException);
     });
@@ -172,20 +172,20 @@ describe('PrestashopAdapterFactory', () => {
         responseFormat: 'auto',
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       const result = (factory as any).validateAndParseConfig(validConfig);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.baseUrl).toBe('https://shop.example.com');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.shopId).toBe(1);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.langId).toBe(1);
     });
 
     describe('currency', () => {
       const validateConfig = (config: Record<string, unknown>): unknown => {
         const factory = new PrestashopAdapterFactory();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- test mock: explicit any narrows the dynamic spy / fixture shape
         return (factory as any).validateAndParseConfig(config);
       };
 

@@ -327,7 +327,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
     let payload: Record<string, unknown>;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- redis stream payload is untyped; validated by the handler
       payload = JSON.parse(payloadJson) as Record<string, unknown>;
     } catch (error) {
       throw new Error(`Invalid JSON in payloadJson: ${payloadJson}`);

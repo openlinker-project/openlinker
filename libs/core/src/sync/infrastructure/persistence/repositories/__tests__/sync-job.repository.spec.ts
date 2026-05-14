@@ -329,7 +329,7 @@ describe('SyncJobRepository', () => {
 
       expect(updateQueryBuilder.set).toHaveBeenCalledWith({
         status: 'running',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
         lockedAt: expect.any(Date),
         lockedBy: workerId,
       });
@@ -480,7 +480,7 @@ describe('SyncJobRepository', () => {
         execute: jest.fn().mockResolvedValue({ affected: 3 }),
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
       ormRepository.createQueryBuilder.mockReturnValue(updateQueryBuilder as any);
 
       const result = await repository.requeueStuckJobs(lockTimeoutMinutes);
@@ -498,7 +498,7 @@ describe('SyncJobRepository', () => {
       expect(updateQueryBuilder.andWhere).toHaveBeenCalledWith(
         '"lockedAt" < :threshold',
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           threshold: expect.any(Date),
         })
       );
@@ -516,7 +516,7 @@ describe('SyncJobRepository', () => {
         execute: jest.fn().mockResolvedValue({ affected: 0 }),
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
       ormRepository.createQueryBuilder.mockReturnValue(updateQueryBuilder as any);
 
       const result = await repository.requeueStuckJobs(lockTimeoutMinutes);
@@ -536,13 +536,13 @@ describe('SyncJobRepository', () => {
         execute: jest.fn().mockResolvedValue({ affected: 0 }),
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock: explicit any narrows the dynamic spy / fixture shape
       ormRepository.createQueryBuilder.mockReturnValue(updateQueryBuilder as any);
 
       await repository.requeueStuckJobs(lockTimeoutMinutes);
 
       const afterCall = new Date();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
       const threshold = (updateQueryBuilder.andWhere.mock.calls[0][1] as { threshold: Date })
         .threshold;
 
@@ -575,37 +575,37 @@ describe('SyncJobRepository', () => {
       });
 
       // Access private method via reflection (for testing)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
       const result = (repository as any).toDomain(ormEntity);
 
       expect(result).toBeInstanceOf(SyncJob);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.id).toBe(ormEntity.id);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.jobType).toBe(ormEntity.jobType);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(result.status).toBe(ormEntity.status);
     });
 
     it('should throw error for invalid job type', () => {
       const ormEntity = createMockOrmEntity({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         jobType: 'invalid.job.type' as any,
         status: 'queued',
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job jobType');
     });
 
     it('should throw error for invalid job status', () => {
       const ormEntity = createMockOrmEntity({
         jobType: 'master.product.syncByExternalId',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
         status: 'invalid-status' as any,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- test mock: explicit any narrows the dynamic spy / fixture shape
       expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job status');
     });
   });

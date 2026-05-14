@@ -9,9 +9,9 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
-// eslint-disable-next-line no-restricted-imports
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/allegro-order-source.adapter';
 
 /**
