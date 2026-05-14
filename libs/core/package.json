@@ -23,6 +23,11 @@
       "require": "./dist/integrations/orm-entities.js",
       "default": "./dist/integrations/orm-entities.js"
     },
+    "./integrations/testing": {
+      "types": "./dist/integrations/testing/index.d.ts",
+      "require": "./dist/integrations/testing/index.js",
+      "default": "./dist/integrations/testing/index.js"
+    },
     "./identifier-mapping": {
       "types": "./dist/identifier-mapping/index.d.ts",
       "require": "./dist/identifier-mapping/index.js",
@@ -32,6 +37,11 @@
       "types": "./dist/identifier-mapping/orm-entities.d.ts",
       "require": "./dist/identifier-mapping/orm-entities.js",
       "default": "./dist/identifier-mapping/orm-entities.js"
+    },
+    "./identifier-mapping/testing": {
+      "types": "./dist/identifier-mapping/testing/index.d.ts",
+      "require": "./dist/identifier-mapping/testing/index.js",
+      "default": "./dist/identifier-mapping/testing/index.js"
     },
     "./mappings": {
       "types": "./dist/mappings/index.d.ts",
@@ -72,6 +82,11 @@
       "types": "./dist/events/index.d.ts",
       "require": "./dist/events/index.js",
       "default": "./dist/events/index.js"
+    },
+    "./events/testing": {
+      "types": "./dist/events/testing/index.d.ts",
+      "require": "./dist/events/testing/index.js",
+      "default": "./dist/events/testing/index.js"
     },
     "./sync": {
       "types": "./dist/sync/index.d.ts",
