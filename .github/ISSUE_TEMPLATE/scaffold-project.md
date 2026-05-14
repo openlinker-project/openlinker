@@ -328,5 +328,5 @@ Set up the initial project structure, configuration files, and development envir
 
 - [Architecture Overview](../docs/architecture-overview.md)
 - [Engineering Standards](../docs/engineering-standards.md)
-- [AI Assistant Guide](../docs/ai-assistant-guide.md)
+- [AI Coding Assistant Guide](../docs/ai-coding-assistant.md)
 

@@ -21,7 +21,6 @@ Before writing or modifying code, read the relevant doc(s):
 | Frontend technical architecture and state rules | `docs/frontend-architecture.md` |
 | Frontend visual and interaction style | `docs/frontend-ui-style-guide.md` |
 | Implementation plan process | `docs/implementation-plan-generator-guide.md` |
-| Claude Code workflow, worktrees, context mgmt | `docs/claude-code-workflow-guide.md` |
 
 Architecture docs define **intent and direction**, not every implementation detail. You may infer missing layers or patterns if they clearly align — but always justify them explicitly.
 
