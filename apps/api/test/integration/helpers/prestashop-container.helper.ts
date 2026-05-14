@@ -21,7 +21,7 @@
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { mkdtempSync, rmSync } from 'fs';
-import { createConnection, RowDataPacket } from 'mysql2/promise';
+import { createConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { Readable } from 'stream';
@@ -95,6 +95,24 @@ const MYSQL_ROOT_PASSWORD = 'rootpassword';
 const INSTALL_DEADLINE_MS = 12 * 60_000;
 
 /**
+ * Path to the OpenLinker PrestaShop module source on the host, resolved
+ * relative to this helper's location. Hoisted to a named constant because
+ * the `../../../../` depth count is brittle if this helper ever moves —
+ * grep for `MODULE_SOURCE_PATH` to find the resolution target instead of
+ * recounting `..`s in a call site. Target: `apps/prestashop-module/openlinker`.
+ */
+const MODULE_SOURCE_PATH = resolve(__dirname, '../../../../prestashop-module/openlinker');
+
+/**
+ * Default per-`bin/console` exec timeout. PS module install + uninstall
+ * cycles complete in ~2-5s on warm-cache locally; 120s gives generous
+ * headroom for slow CI runners while still failing actionably if the
+ * underlying PHP hangs (lock contention, fatal error, OOM). Without this,
+ * a hung exec would silently consume the 15-minute `beforeAll` deadline.
+ */
+const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
+
+/**
  * Start a PrestaShop test container with MySQL companion.
  *
  * Steps:
@@ -154,12 +172,11 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     // module-install failure still triggers the container teardown path
     // below (logs dump + `Promise.allSettled(stop)` + network removal).
     const webhookSharedSecret = randomBytes(32).toString('hex');
-    const modulePath = resolve(__dirname, '../../../../prestashop-module/openlinker');
     await installOpenLinkerModuleIntoContainer({
       prestashop,
       mysqlAddress: mysqlOptions,
       sharedSecret: webhookSharedSecret,
-      modulePath,
+      modulePath: MODULE_SOURCE_PATH,
     });
 
     const seed: PrestashopFixtureSeed = await applyPrestashopFixture(mysqlOptions);
@@ -630,13 +647,11 @@ async function installOpenLinkerModuleIntoContainer(
     // KEY UPDATE with NULL shop bindings would create a sibling row that the
     // module's `Configuration::get` ignores, and the pre-flight assertion
     // below would still see the empty original.
-    const [updateResult] = await conn.execute(
+    const [updateResult] = await conn.execute<ResultSetHeader>(
       `UPDATE ps_configuration SET value = ?, date_upd = NOW() WHERE name = 'OPENLINKER_WEBHOOK_SECRET'`,
       [sharedSecret],
     );
-    // mysql2 ResultSetHeader exposes affectedRows for UPDATE
-    const affected = (updateResult as { affectedRows?: number }).affectedRows ?? 0;
-    if (affected === 0) {
+    if (updateResult.affectedRows === 0) {
       throw new Error(
         `OL module install: no OPENLINKER_WEBHOOK_SECRET row in ps_configuration after install. ` +
           `Expected setDefaultConfiguration() to have created it. Check the install-cycle output above.`,
@@ -687,17 +702,45 @@ async function installOpenLinkerModuleIntoContainer(
  * `prestashop.exec`-with-throw helper. Captures stdout/stderr so a non-zero
  * exit code surfaces an actionable diagnostic to the CI log instead of a bare
  * "module install failed" message.
+ *
+ * Wraps `prestashop.exec` in a `Promise.race` against a timeout deadline —
+ * testcontainers' exec API doesn't expose cancellation, so the underlying
+ * exec may keep running inside the container after a timeout, but we stop
+ * blocking the test and fail with an actionable message. Without this,
+ * a hung exec would silently consume the suite's `beforeAll` deadline.
+ * Default 120s per call; override via `opts.timeoutMs` for commands that
+ * legitimately take longer.
  */
 async function runExecOrThrow(
   prestashop: StartedTestContainer,
   command: string[],
-  opts?: { workingDir?: string },
+  opts?: { workingDir?: string; timeoutMs?: number },
 ): Promise<void> {
-  const result = await prestashop.exec(command, opts);
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Command failed in PS container (exit=${result.exitCode}): ${command.join(' ')}\n` +
-        `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-    );
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(
+        new Error(
+          `Command timed out after ${timeoutMs}ms in PS container: ${command.join(' ')}\n` +
+            `Underlying exec may still be running inside the container; check docker logs ` +
+            `for the PS PHP error log if this is a hang on install.`,
+        ),
+      );
+    }, timeoutMs);
+  });
+  try {
+    const result = await Promise.race([
+      prestashop.exec(command, opts ? { workingDir: opts.workingDir } : undefined),
+      timeoutPromise,
+    ]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Command failed in PS container (exit=${result.exitCode}): ${command.join(' ')}\n` +
+          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }

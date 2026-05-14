@@ -309,14 +309,18 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
   );
   if (Array.isArray(existing) && existing.length > 0) {
     const existingId = existing[0].id_carrier;
-    // The module install's `Zone::getZones(true)` snapshot fires BEFORE
-    // `activateCountry(PL)` below — so the PL zone (newly activated by
-    // applyPrestashopFixture) isn't yet linked to the OL Dynamic carrier.
-    // PS's carrier-validation pass at POST /orders then rejects the OL
-    // Dynamic carrier as unavailable for a PL delivery address and falls
-    // back to the next available carrier (myCheapCarrier), breaking S-3.
-    // Top up zone links idempotently here so newly-activated zones (PL)
-    // are always covered, regardless of install ordering.
+    // Defensive parity with the SQL-stub insert path below, which links the
+    // carrier to every zone via the same `INSERT IGNORE` loop. The real OL
+    // PS module's install hook calls `addZone(Zone::getZones(true))` for
+    // active zones at install time; under the current fixture ordering that
+    // already covers every PL-relevant zone, so this call is a no-op today.
+    // It's kept idempotent + cheap so a future change that activates a new
+    // zone AFTER module install (or relocates `activateCountry` ahead of it)
+    // doesn't silently leave the OL Dynamic carrier under-linked. The
+    // observed carrier-id rewrite at POST /orders (`id_carrier` 6→3 in S-3's
+    // early debug run) was PS's "cheapest available + tiebreak by position-
+    // ASC" — see the S-3 spec's soft-assertion comment for the operative
+    // explanation; that path is *not* what this helper guards.
     await linkCarrierToAllZones(conn, existingId);
     return existingId;
   }
