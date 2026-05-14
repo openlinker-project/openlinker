@@ -31,7 +31,7 @@ import type {
   IdentifierMappingRequest,
   ExternalIdMapping,
 } from '../../domain/types/identifier-mapping.types';
-import { ENTITY_TYPE_ID_PREFIX } from '../../domain/types/identifier-mapping.types';
+import { formatInternalId } from '../../domain/types/identifier-mapping.types';
 import {
   IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
   CONNECTION_PORT_TOKEN,
@@ -331,14 +331,6 @@ export class IdentifierMappingService implements IIdentifierMappingService {
   }
 
   private generateInternalId(entityType: string): string {
-    // Format: ol_{prefix}_{uuid} — prefix defaults to entityType.toLowerCase()
-    // unless overridden in ENTITY_TYPE_ID_PREFIX (e.g. ProductVariant → 'variant').
-    // The override map is keyed by CoreEntityType; widen to a string index here
-    // so plugin-registered entity types (#577) fall through to the default
-    // lowercased prefix instead of failing the indexed access.
-    const overrides: Record<string, string | undefined> = ENTITY_TYPE_ID_PREFIX;
-    const uuid = randomUUID().replace(/-/g, '');
-    const prefix = overrides[entityType] ?? entityType.toLowerCase();
-    return `ol_${prefix}_${uuid}`;
+    return formatInternalId(entityType);
   }
 }

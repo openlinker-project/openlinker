@@ -43,6 +43,10 @@
     "./cache": {
       "types": "./dist/cache/index.d.ts",
       "require": "./dist/cache/index.js"
+    },
+    "./cache/testing": {
+      "types": "./dist/cache/testing/index.d.ts",
+      "require": "./dist/cache/testing/index.js"
     }
   },
   "files": [

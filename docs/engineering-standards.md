@@ -1234,12 +1234,15 @@ import { Logger } from '../../../shared/logging';
 - **Short relative for same-context cross-layer**: avoids the `ERR_PACKAGE_PATH_NOT_EXPORTED` runtime trap and keeps intra-context refactors local.
 - **Enforceable**: ESLint guards at `.eslintrc.js` (port files, integration packages, host apps) reject deep aliases at lint time; package.json `exports` reject them at Node runtime.
 
-**Sub-barrels** are the narrow exception to "top-level-barrel-only". They exist to expose a host-only seam that would otherwise pollute the contract surface plugins consume. Two exist today:
+**Sub-barrels** are the narrow exception to "top-level-barrel-only". They exist to expose a host-only seam that would otherwise pollute the contract surface plugins consume. Three exist today:
 
 - `@openlinker/core/listings/services` — the `ListingsModule` + the 7 `@Injectable` service classes. Kept off the main `@openlinker/core/listings` barrel to prevent runtime circular requires when sibling packages value-import the contract from the main barrel (#337/#359).
 - `@openlinker/core/<ctx>/orm-entities` — TypeORM-decorated ORM entities for each context that has cross-context consumers (today: `products`, `inventory`, `orders`, `sync`, `identifier-mapping`, `integrations`, `content`). Kept off the main barrel because TypeORM entities are infrastructure detail; exposing them would couple plugins to TypeORM (#594). Consumed only by integration-test fixtures/helpers in `apps/{api,worker}/test/` and by core orchestration modules that need to register a sibling context's entity (today: `listings.module.ts`). The TypeORM CLI itself discovers entities via a filesystem glob in `apps/api/src/database/data-source.ts`, not through these sub-barrels.
+- `@openlinker/<package>/<ctx>/testing` — in-memory fake adapters for plugin-author `*.spec.ts` consumption (#601). Today: `@openlinker/core/identifier-mapping/testing`, `@openlinker/core/integrations/testing`, `@openlinker/core/events/testing`, `@openlinker/shared/cache/testing`. Each fake implements the corresponding `*.port.ts` interface and lives at `<ctx>/testing/in-memory-{capability}.adapter.ts`. Kept off the main barrel because (1) plugin authors consume them only from test files, never from runtime code, and (2) keeping them on a dedicated subpath prevents accidental imports from production paths that would pull test-only logic into the runtime bundle.
 
 Add a new `<ctx>/orm-entities` sub-barrel only when an external consumer needs a context's ORM entity — same-module registrations should keep using relative paths into `infrastructure/persistence/entities/`. Plugin packages (`libs/integrations/**`) and core port files are ESLint-blocked from importing any `orm-entities` sub-barrel.
+
+Add a new `<ctx>/testing` sub-barrel when a port's mocking surface is large or stateful enough that hand-rolling it in every spec is high-friction (the four ports listed above qualify; trivial ports with one or two methods do not). The fake class implements the port interface verbatim and exposes a small set of `clear()` / `seed(...)` test helpers; plugin authors consume them via the package-exports subpath.
 
 **Import Order**:
 1. External packages (NestJS, TypeORM, etc.)

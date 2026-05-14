@@ -722,6 +722,69 @@ the system under test, in which case you mock everything *it* depends on).
 PrestaShop's adapter specs:
 [`libs/integrations/prestashop/src/infrastructure/adapters/__tests__/`](../libs/integrations/prestashop/src/infrastructure/adapters/__tests__/).
 
+#### Testing without containers — in-memory fakes (#601)
+
+For the four ports plugin authors mock most often, core publishes
+ready-made in-memory fakes via dedicated `*/testing` subpaths. Each
+fake implements the corresponding port verbatim, replicates the
+production semantics (ID format, conflict exceptions, TTL behaviour,
+…), and exposes a small set of `clear()` / `seed(...)` test helpers:
+
+| Port | Fake | Subpath |
+|---|---|---|
+| `IdentifierMappingPort` | `InMemoryIdentifierMappingAdapter` | `@openlinker/core/identifier-mapping/testing` |
+| `CredentialsResolverPort` | `InMemoryCredentialsResolverAdapter` | `@openlinker/core/integrations/testing` |
+| `EventPublisherPort` | `InMemoryEventPublisherAdapter` | `@openlinker/core/events/testing` |
+| `CachePort` | `InMemoryCacheAdapter` | `@openlinker/shared/cache/testing` |
+
+Typical adapter spec — no Postgres, no Redis, no fixture files:
+
+```typescript
+import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
+import { InMemoryCredentialsResolverAdapter } from '@openlinker/core/integrations/testing';
+import { YourPlatformOrderSourceAdapter } from '../your-platform-order-source.adapter';
+
+describe('YourPlatformOrderSourceAdapter', () => {
+  let identifierMapping: InMemoryIdentifierMappingAdapter;
+  let credentials: InMemoryCredentialsResolverAdapter;
+
+  beforeEach(() => {
+    identifierMapping = new InMemoryIdentifierMappingAdapter({
+      'conn-1': 'your-platform',
+    });
+    credentials = new InMemoryCredentialsResolverAdapter({
+      'env:YOUR_PLATFORM_TOKEN': { token: 'test-token' },
+    });
+    // Pre-seed any mappings the spec expects to already exist:
+    identifierMapping.seed({
+      entityType: 'Order',
+      externalId: 'platform-order-1',
+      connectionId: 'conn-1',
+      internalId: 'ol_order_seeded',
+    });
+  });
+
+  it('should map external order IDs through IdentifierMapping', async () => {
+    const adapter = new YourPlatformOrderSourceAdapter(identifierMapping, credentials, /* ... */);
+    // … exercise the adapter; the in-memory fakes back the port calls.
+  });
+});
+```
+
+**TTL testing with `InMemoryCacheAdapter`**: TTL is honored against the
+real clock. To assert expiry behaviour, wrap the test in
+`jest.useFakeTimers()` and call `jest.advanceTimersByTime(...)` past
+the configured TTL. See
+[`libs/shared/src/cache/testing/__tests__/in-memory-cache.adapter.spec.ts`](../libs/shared/src/cache/testing/__tests__/in-memory-cache.adapter.spec.ts)
+for the reference shape.
+
+**When to use a hand-rolled mock instead**: ports outside the four-fake
+list above (most capability ports — `OfferManagerPort`,
+`OrderSourcePort`, `OfferLister`, …) are typically narrow enough that a
+`jest.fn()` per method is the cleanest spec — no shared state, no
+semantics to replicate. The fakes exist specifically for ports whose
+mock-by-hand cost is high enough to justify a shared abstraction.
+
 ### Integration tests (`*.int-spec.ts`)
 
 Optional but high-value for a new plugin. The integration-test harness
