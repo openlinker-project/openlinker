@@ -3,8 +3,9 @@
  *
  * Production implementation of WebhookSecretProviderPort backed by the
  * encrypted integration_credentials table. Per-connection secrets are stored
- * with ref = `webhook-secret:<connectionId>` and encrypted at rest using
- * CryptoService (AES-256-GCM).
+ * with ref = `webhook-secret:<connectionId>`. Encryption-at-rest is handled
+ * by the repository layer (#709) — this adapter only sees plaintext domain
+ * entities.
  *
  * Env-variable-based secrets (legacy stub behavior) are
  * supported as a deprecated read-through fallback for one release — callers
@@ -15,7 +16,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Logger, CryptoService } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared';
 import type { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
 import { webhookSecretRef } from '../../domain/ports/webhook-secret-provider.port';
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
@@ -41,7 +42,6 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
   constructor(
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
-    private readonly crypto: CryptoService,
     private readonly configService: ConfigService
   ) {}
 
@@ -76,21 +76,14 @@ export class CredentialsWebhookSecretAdapter implements WebhookSecretProviderPor
   private async tryLoadFromDb(connectionId: string): Promise<string | null> {
     try {
       const credential = await this.credentialRepository.getByRef(webhookSecretRef(connectionId));
-      const ciphertext = credential.credentialsJson?.ciphertext;
-      if (typeof ciphertext !== 'string') {
+      const webhookSecret = credential.credentialsJson?.webhookSecret;
+      if (typeof webhookSecret !== 'string') {
         this.logger.error(
-          `Webhook secret credential ${credential.ref} is missing a ciphertext field`
+          `Webhook secret credential ${credential.ref} is missing a webhookSecret field`
         );
         return null;
       }
-      // Honor the encrypted flag: only decrypt when the credential was stored encrypted.
-      if (!credential.encrypted) {
-        this.logger.warn(
-          `Webhook secret credential ${credential.ref} is not marked encrypted — returning raw value`
-        );
-        return ciphertext;
-      }
-      return this.crypto.decrypt(ciphertext);
+      return webhookSecret;
     } catch (error) {
       if (error instanceof CredentialNotFoundException) {
         return null;

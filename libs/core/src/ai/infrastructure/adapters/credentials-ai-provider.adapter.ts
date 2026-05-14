@@ -6,6 +6,9 @@
  * encrypted `integration_credentials` table) and its own 60 s in-process
  * cache. Resolution priority per provider: DB → env → throw.
  *
+ * Encryption-at-rest is handled by the repository layer (#709) — this adapter
+ * only sees plaintext domain entities.
+ *
  * The adapter is independent of which provider is currently *active* — that
  * resolution lives in `AiProviderActiveSettingsService`. This split lets
  * the `MultiProviderAiCompletionAdapter` route to the right Vercel adapter
@@ -21,7 +24,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Logger, CryptoService } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared';
 import {
   IntegrationCredentialRepositoryPort,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
@@ -54,7 +57,6 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
   constructor(
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
-    private readonly crypto: CryptoService,
     private readonly configService: ConfigService
   ) {}
 
@@ -125,18 +127,12 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
     const ref = aiProviderCredentialsRef(provider);
     try {
       const credential = await this.credentialRepository.getByRef(ref);
-      const ciphertext = credential.credentialsJson?.ciphertext;
-      if (typeof ciphertext !== 'string') {
-        this.logger.error(`AI provider credential ${ref} is missing a ciphertext field`);
+      const apiKey = credential.credentialsJson?.apiKey;
+      if (typeof apiKey !== 'string') {
+        this.logger.error(`AI provider credential ${ref} is missing an apiKey field`);
         return null;
       }
-      if (!credential.encrypted) {
-        this.logger.warn(
-          `AI provider credential ${ref} is not marked encrypted — returning raw value`
-        );
-        return ciphertext;
-      }
-      return this.crypto.decrypt(ciphertext);
+      return apiKey;
     } catch (error) {
       if (error instanceof CredentialNotFoundException) {
         return null;

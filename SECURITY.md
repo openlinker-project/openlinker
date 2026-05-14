@@ -120,6 +120,41 @@ This safe harbor does not extend to attacks against OpenLinker operators
 (production instances run by third parties) — please research against your
 own local installation only.
 
+## Threat Model
+
+OpenLinker stores third-party platform credentials — OAuth refresh
+tokens, webhook signing secrets, AI provider API keys, marketplace API
+keys — in the `integration_credentials` Postgres table. Since #709 every
+row is wrapped in an AES-256-GCM envelope keyed off
+`OPENLINKER_CREDENTIALS_ENCRYPTION_KEY`; the table holds no plaintext.
+
+**The control protects against:**
+
+- **Database dump leakage** — logical backups, replica snapshots, or
+  exfiltration of `pg_dump` output. Without the encryption key the
+  envelopes are opaque.
+- **Read-only DBA / support access** — operators inspecting the table
+  for debugging see ciphertext, not credentials.
+
+**It does not protect against:**
+
+- **App-server compromise** — the running process holds the key in
+  memory and can decrypt at will. Hardening the host is out of scope
+  for this control.
+- **Joint key + DB leakage** — if the key file and a DB dump leak
+  together the envelopes are recoverable. Independent rotation of every
+  upstream credential is the only remediation; see
+  [`docs/operations/credentials-rotation.md`](./docs/operations/credentials-rotation.md).
+- **Plaintext leakage through logs, metrics, or error responses** —
+  adapters and services that handle decrypted values must not log them.
+  Reviewers should reject PRs that log credential fields.
+
+The plaintext env-var credentials backend
+(`CredentialsResolverService.getFromEnvironment`) and the env-var
+encryption-key fallback (`loadEncryptionKey`) are both **disabled under
+`NODE_ENV=production`**. A misconfigured deploy fails fast at boot
+rather than silently writing plaintext credentials.
+
 ## Acknowledgements
 
 We will publicly credit reporters on the published advisory unless you

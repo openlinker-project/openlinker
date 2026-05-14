@@ -1,19 +1,21 @@
 /**
  * Integration Credential ORM Entity
  *
- * TypeORM entity representing the integration_credentials table in PostgreSQL.
- * Stores encrypted or unencrypted credentials for integrations. Credentials are
- * stored as JSONB to support platform-specific credential structures.
+ * TypeORM entity for the `integration_credentials` table. Stores the
+ * AES-256-GCM-encrypted base64 envelope of the credential payload in
+ * `credentialsCiphertext` (#709). The repository is responsible for
+ * encryption on write and decryption on read; application services and
+ * adapters only ever see the decrypted domain entity.
  *
  * @module libs/core/src/integrations/infrastructure/persistence/entities
  */
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
   Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('integration_credentials')
@@ -29,11 +31,13 @@ export class IntegrationCredentialOrmEntity {
   @Column()
   platformType!: string;
 
-  @Column({ type: 'jsonb' })
-  credentialsJson!: Record<string, unknown>;
-
-  @Column({ type: 'boolean', default: false })
-  encrypted!: boolean;
+  /**
+   * Base64-encoded AES-256-GCM envelope: `nonce[12] || ciphertext || authTag[16]`.
+   * Wraps `JSON.stringify(credentialsJson)`. Decrypted to a `Record<string, unknown>`
+   * by `IntegrationCredentialRepository.toDomain()`.
+   */
+  @Column({ type: 'varchar' })
+  credentialsCiphertext!: string;
 
   @CreateDateColumn()
   createdAt!: Date;
@@ -41,5 +45,3 @@ export class IntegrationCredentialOrmEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-
-

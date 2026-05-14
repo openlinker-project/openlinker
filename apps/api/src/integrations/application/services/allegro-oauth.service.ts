@@ -327,13 +327,12 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       clientSecret: stateData.clientSecret,
     };
 
-    // Store credentials in database
+    // Store credentials in database — repository handles encryption-at-rest (#709).
     try {
       await this.credentialRepository.create({
         ref: credentialRef,
         platformType: 'allegro',
         credentialsJson: credentials as unknown as Record<string, unknown>,
-        encrypted: false, // For MVP, credentials are stored unencrypted. Encryption can be added later.
       });
       this.logger.log(`Credentials stored in database: ${credentialRef}`);
     } catch (error) {

@@ -21,6 +21,16 @@ import type { AiProvider } from '../types/ai-completion.types';
 import type { AiProviderSettingsView } from '../types/ai-provider-credentials.types';
 
 /**
+ * Canonical credential ref prefix for per-provider AI keys.
+ *
+ * Exported separately from `aiProviderCredentialsRef` (#709) so the
+ * credentials-encryption migration can dispatch on
+ * `row.ref.startsWith(prefix)` against a typed constant rather than a
+ * hardcoded string literal.
+ */
+export const AI_PROVIDER_CREDENTIALS_REF_PREFIX = 'ai-provider:';
+
+/**
  * Build the credential `ref` for a given provider. Single source of truth
  * shared between the write side (`AiProviderKeyService`) and the read side
  * (`CredentialsAiProviderAdapter`). Lives in the domain layer so both
@@ -28,7 +38,7 @@ import type { AiProviderSettingsView } from '../types/ai-provider-credentials.ty
  * file — never on each other.
  */
 export const aiProviderCredentialsRef = (provider: AiProvider): string =>
-  `ai-provider:${provider}`;
+  `${AI_PROVIDER_CREDENTIALS_REF_PREFIX}${provider}`;
 
 export interface AiProviderCredentialsPort {
   /**

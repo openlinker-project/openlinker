@@ -14,7 +14,7 @@
  * @implements {IAiProviderKeyService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { Logger, CryptoService } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared';
 import {
   IntegrationCredentialRepositoryPort,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
@@ -42,7 +42,6 @@ export class AiProviderKeyService implements IAiProviderKeyService {
     private readonly credentialsPort: AiProviderCredentialsPort,
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
-    private readonly crypto: CryptoService,
   ) {}
 
   describe(provider: AiProvider): Promise<AiProviderSettingsView> {
@@ -56,21 +55,19 @@ export class AiProviderKeyService implements IAiProviderKeyService {
   async setKey(provider: AiProvider, apiKey: string, actorUserId?: string): Promise<void> {
     this.assertProviderRequiresKey(provider);
 
-    const ciphertext = this.crypto.encrypt(apiKey);
     const ref = aiProviderCredentialsRef(provider);
 
+    // Plaintext at this layer — the repository encrypts on write (#709).
     try {
       await this.credentialRepository.update(ref, {
-        credentialsJson: { ciphertext },
-        encrypted: true,
+        credentialsJson: { apiKey },
       });
     } catch (error) {
       if (error instanceof CredentialNotFoundException) {
         await this.credentialRepository.create({
           ref,
           platformType: provider,
-          credentialsJson: { ciphertext },
-          encrypted: true,
+          credentialsJson: { apiKey },
         });
       } else {
         throw error;

@@ -12,6 +12,7 @@
  */
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
+import { encryptWithKey, loadEncryptionKey } from '@openlinker/shared';
 import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/orm-entities';
 import { MAPPING_CONFIG_SERVICE_TOKEN, IMappingConfigService } from '@openlinker/core/mappings';
@@ -159,8 +160,9 @@ export async function createTestPrestashopDestinationConnection(
 }
 
 /**
- * Seed an `integration_credentials` row directly. Bypasses the encrypted-write
- * path on purpose — test credentials never need to go through encryption.
+ * Seed an `integration_credentials` row directly. Encrypts the payload with
+ * the same primitive the production repository uses (#709) so that downstream
+ * decryption through `IntegrationCredentialRepository.getByRef` round-trips.
  */
 async function seedIntegrationCredential(
   dataSource: DataSource,
@@ -170,13 +172,13 @@ async function seedIntegrationCredential(
     credentialsJson: Record<string, unknown>;
   },
 ): Promise<void> {
+  const { key } = loadEncryptionKey(process.env);
   const repo = dataSource.getRepository(IntegrationCredentialOrmEntity);
   await repo.save(
     repo.create({
       ref: args.ref,
       platformType: args.platformType,
-      credentialsJson: args.credentialsJson,
-      encrypted: false,
+      credentialsCiphertext: encryptWithKey(key, JSON.stringify(args.credentialsJson)),
     }),
   );
 }

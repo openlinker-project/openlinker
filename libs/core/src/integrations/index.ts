@@ -26,7 +26,11 @@ export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.por
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
-export { WebhookSecretProviderPort, webhookSecretRef } from './domain/ports/webhook-secret-provider.port';
+export {
+  WebhookSecretProviderPort,
+  webhookSecretRef,
+  WEBHOOK_SECRET_REF_PREFIX,
+} from './domain/ports/webhook-secret-provider.port';
 export {
   IntegrationCredentialRepositoryPort,
   CredentialCreate,

@@ -1,28 +1,31 @@
 /**
  * Integration Credential Repository
  *
- * Repository implementation for IntegrationCredential persistence operations.
- * Provides data access methods for CRUD operations on credentials, with conversion
- * between domain entities and ORM entities. Implements IntegrationCredentialRepositoryPort
- * interface for use by the credentials resolver service.
+ * Persistence implementation of `IntegrationCredentialRepositoryPort`.
+ * Encrypts the credential payload via `CryptoService` on write and
+ * decrypts on read so callers (`CredentialsResolverService`,
+ * `CredentialsWebhookSecretAdapter`, `CredentialsAiProviderAdapter`) only
+ * ever see plaintext domain entities (#709). The encrypted-at-rest envelope
+ * lives in `IntegrationCredentialOrmEntity.credentialsCiphertext`.
  *
  * @module libs/core/src/integrations/infrastructure/persistence/repositories
  * @implements {IntegrationCredentialRepositoryPort}
- * @see {@link IntegrationCredentialOrmEntity} for the database entity
- * @see {@link IntegrationCredentialRepositoryPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { IntegrationCredentialOrmEntity } from '../entities/integration-credential.orm-entity';
+
+import { CryptoService } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared/logging';
+
 import { IntegrationCredential } from '../../../domain/entities/integration-credential.entity';
+import { CredentialNotFoundException } from '../../../domain/exceptions/credential-not-found.exception';
 import type {
-  IntegrationCredentialRepositoryPort,
   CredentialCreate,
   CredentialUpdate,
+  IntegrationCredentialRepositoryPort,
 } from '../../../domain/ports/integration-credential-repository.port';
-import { CredentialNotFoundException } from '../../../domain/exceptions/credential-not-found.exception';
-import { Logger } from '@openlinker/shared/logging';
+import { IntegrationCredentialOrmEntity } from '../entities/integration-credential.orm-entity';
 
 @Injectable()
 export class IntegrationCredentialRepository implements IntegrationCredentialRepositoryPort {
@@ -30,18 +33,15 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
 
   constructor(
     @InjectRepository(IntegrationCredentialOrmEntity)
-    private readonly repository: Repository<IntegrationCredentialOrmEntity>
+    private readonly repository: Repository<IntegrationCredentialOrmEntity>,
+    private readonly crypto: CryptoService,
   ) {}
 
   async getByRef(ref: string): Promise<IntegrationCredential> {
-    const entity = await this.repository.findOne({
-      where: { ref },
-    });
-
+    const entity = await this.repository.findOne({ where: { ref } });
     if (!entity) {
       throw new CredentialNotFoundException(ref);
     }
-
     return this.toDomain(entity);
   }
 
@@ -55,21 +55,13 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
   }
 
   async update(ref: string, patch: CredentialUpdate): Promise<IntegrationCredential> {
-    // Load existing entity
-    const existing = await this.repository.findOne({
-      where: { ref },
-    });
-
+    const existing = await this.repository.findOne({ where: { ref } });
     if (!existing) {
       throw new CredentialNotFoundException(ref);
     }
 
-    // Apply patch
     if (patch.credentialsJson !== undefined) {
-      existing.credentialsJson = patch.credentialsJson;
-    }
-    if (patch.encrypted !== undefined) {
-      existing.encrypted = patch.encrypted;
+      existing.credentialsCiphertext = this.crypto.encrypt(JSON.stringify(patch.credentialsJson));
     }
 
     const saved = await this.repository.save(existing);
@@ -87,30 +79,24 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
     return deleted;
   }
 
-  /**
-   * Convert ORM entity to domain entity
-   */
   private toDomain(entity: IntegrationCredentialOrmEntity): IntegrationCredential {
+    const plaintext = this.crypto.decrypt(entity.credentialsCiphertext);
+    const credentialsJson = JSON.parse(plaintext) as Record<string, unknown>;
     return new IntegrationCredential(
       entity.id,
       entity.ref,
       entity.platformType,
-      entity.credentialsJson,
-      entity.encrypted,
+      credentialsJson,
       entity.createdAt,
-      entity.updatedAt
+      entity.updatedAt,
     );
   }
 
-  /**
-   * Convert creation payload to ORM entity
-   */
   private toOrm(payload: CredentialCreate): IntegrationCredentialOrmEntity {
     const entity = new IntegrationCredentialOrmEntity();
     entity.ref = payload.ref;
     entity.platformType = payload.platformType;
-    entity.credentialsJson = payload.credentialsJson;
-    entity.encrypted = payload.encrypted ?? false;
+    entity.credentialsCiphertext = this.crypto.encrypt(JSON.stringify(payload.credentialsJson));
     return entity;
   }
 }
