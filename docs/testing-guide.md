@@ -281,18 +281,35 @@ completion signal (HTTP probes race the install). Default deadline is 12 min.
 
 ### What gets seeded
 
-`applyPrestashopFixture` (in `prestashop-fixture.helper.ts`) inserts:
+`startPrestashopContainer` runs two seed phases against a fresh PS install:
+
+**Phase 1 — `installOpenLinkerModuleIntoContainer` (#692, closes #513):**
+The real OpenLinker PrestaShop module is copied into the container at
+`/var/www/html/modules/openlinker` (via testcontainers' post-start
+`copyDirectoriesToContainer`) and installed via `php bin/console prestashop:module install openlinker`,
+followed by an `uninstall + install` cycle to dodge the PS 9.0.2 Symfony-installer
+flake where the legacy `install()` hook is skipped on first invocation. After
+install, the helper SQL-upserts `OPENLINKER_WEBHOOK_SECRET` into
+`ps_configuration` (the module's `setDefaultConfiguration()` reset it to
+empty string), then verifies the carrier row + sidecar table + secret all
+landed. This is what makes the `writeCartShipping` → `cartshipping.php` HMAC
+round-trip exercise-able from S-3.
+
+**Phase 2 — `applyPrestashopFixture` inserts:**
 
 1. A **WS API key** (random per run) granted CRUD on the resources our
    adapters touch (carriers, carts, orders, customers, addresses, products,
    currencies, languages, …).
-2. The **OpenLinker Dynamic carrier stub** (`external_module_name='openlinker'`)
-   — sufficient for `discoverDynamicCarrierId()` to succeed. **Important**:
-   this is a stub row only. The runtime OL Dynamic path
-   (`writeCartShipping` → module front-controller) requires the OL PHP module
-   loaded; the SQL stub does NOT enable that path. Source of truth for the
-   real install is `apps/prestashop-module/openlinker/openlinker.php`'s
-   `installCarrier()` method.
+2. The **OpenLinker Dynamic carrier** — `seedOlDynamicCarrier` early-returns
+   when it finds the module-installed row from Phase 1 (matched by
+   `external_module_name='openlinker'`), so the helper acts as a no-op when
+   the real module is present. The function retains its SQL-stub branch for
+   diagnostic resilience: if a future PS-version regression breaks the module
+   install path, the stub provides enough of a row for `discoverDynamicCarrierId()`
+   to succeed and surface a more actionable downstream failure. Source of
+   truth for the real install hook (carrier metadata, zones, logo, config key)
+   is `apps/prestashop-module/openlinker/openlinker.php`'s
+   `installDynamicCarrier()` method.
 3. The **PLN currency** (PS install with `PS_COUNTRY=us|en` defaults to
    USD/EUR; the spec mirrors an Allegro-PL order). Seeded with
    `conversion_rate = 1.0` to keep `total_shipping == 12.50` literal in the
