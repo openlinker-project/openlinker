@@ -39,19 +39,7 @@ A hyphenated slug like `smoke-test` is **deliberately not used**: a local dry-ru
 
 ### 3.3 Trigger paths
 
-```yaml
-on:
-  pull_request:
-    paths:
-      - 'scripts/create-adapter*.mjs'
-      - 'scripts/create-adapter-templates/**'
-      - 'libs/core/**'
-      - 'libs/shared/**'
-      - 'libs/plugin-sdk/**'
-      - '.github/workflows/scaffold-smoke.yml'
-```
-
-Matches the issue body's recommendation. The workflow file itself is included so edits to it re-trigger.
+The issue body recommends `libs/{core,shared,plugin-sdk}/**` plus the scaffolder/template paths. The committed filter narrows each `libs/<pkg>/**` entry to exclude `*.spec.ts` and `__tests__/**`: spec-only changes can't affect scaffolded-output compilability, and the negation patterns keep noise bounded without changing the core trigger logic. The workflow file itself is included so edits to it re-trigger.
 
 ### 3.4 Runner — `ubuntu-latest`
 
@@ -98,8 +86,8 @@ No source-code changes. No test changes. Existing checks unaffected.
 
 - **Architecture**: N/A (pure DX). No domain/application/infra/interface touch.
 - **Naming**: workflow file `.github/workflows/scaffold-smoke.yml` (issue body verbatim); job id `scaffold-smoke`; step names in sentence case matching `ci.yml`.
-- **Security**: `pull_request` trigger (not `pull_request_target`) — runs against the PR's checkout, no access to repo secrets. Equivalent risk profile to existing lint/test jobs.
-- **Wall time estimate**: ~2 min on `ubuntu-latest` (checkout 5s + setup 10s + install 60s + scaffold 1s + relink 30s + build 50s + cleanup 1s). Well under the 10-min timeout.
+- **Security**: `pull_request` trigger (not `pull_request_target`) — runs against the PR's checkout, no access to repo secrets. Top-level `permissions: contents: read` scopes the `GITHUB_TOKEN` to read-only as belt-and-suspenders.
+- **Wall time estimate**: ~3-5 min on a `ubuntu-latest` cold cache (checkout 5-10s + Node/pnpm setup 30-60s + `pnpm install --frozen-lockfile` 60-90s + scaffold 1s + re-link 30-60s + `tsc -b` of three core packages + the scaffold 30-50s + cleanup 1s). Well under the 10-min timeout. Warm-cache subsequent runs trim install/re-link by ~half.
 
 ## 6. Out of scope (follow-ups)
 

@@ -21,10 +21,25 @@ on:
     paths:
       - 'scripts/create-adapter*.mjs'
       - 'scripts/create-adapter-templates/**'
+      # libs/core, libs/shared, libs/plugin-sdk source — excluding spec/test
+      # files that can't affect scaffolded-output compilability.
       - 'libs/core/**'
+      - '!libs/core/**/*.spec.ts'
+      - '!libs/core/**/__tests__/**'
       - 'libs/shared/**'
+      - '!libs/shared/**/*.spec.ts'
+      - '!libs/shared/**/__tests__/**'
       - 'libs/plugin-sdk/**'
+      - '!libs/plugin-sdk/**/*.spec.ts'
+      - '!libs/plugin-sdk/**/__tests__/**'
       - '.github/workflows/scaffold-smoke.yml'
+
+# Read-only token — this workflow only runs compilation. No API writes,
+# commits, or comments. Belt-and-suspenders supply-chain hardening on top
+# of the `pull_request` (not `pull_request_target`) trigger that already
+# blocks secret injection from fork PRs.
+permissions:
+  contents: read
 
 jobs:
   scaffold-smoke:
