@@ -206,11 +206,18 @@ const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
  * In this mode S-3 is reported as skipped rather than failed; S-1 + S-2
  * still run (they don't need the module).
  *
- * Explicit override available via `OL_SKIP_PS_MODULE_INSTALL=true` for
- * developers reproducing the CI behavior locally.
+ * Explicit overrides:
+ *   - `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (used by
+ *     local devs reproducing the CI behavior).
+ *   - `OL_FORCE_PS_MODULE_INSTALL=true` — force-enable the install even in
+ *     CI. Used for diagnostic CI runs that intentionally exercise the
+ *     failing install path to capture root-cause data via the in-container
+ *     log dumps in `prestashop-container.helper.ts`. S-3 will still likely
+ *     fail under this flag — the goal is to capture data, not to pass.
  */
 const INSTALL_OL_MODULE =
-  process.env.CI !== 'true' && process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true';
+  process.env.OL_FORCE_PS_MODULE_INSTALL === 'true' ||
+  (process.env.CI !== 'true' && process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true');
 
 /** Conditional `it` — runs the test when the OL module is installed, skips otherwise. */
 const itWhenOlModuleInstalled = INSTALL_OL_MODULE ? it : it.skip;

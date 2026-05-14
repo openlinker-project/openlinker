@@ -300,6 +300,17 @@ export async function startPrestashopContainer(
     if (prestashop) dockerInspectFallback('prestashop', prestashop);
     if (mysql) dockerInspectFallback('mysql', mysql);
 
+    // PS app-internal logs: Apache error_log, Symfony app log, PS legacy
+    // log, plus a directory listing of /modules/openlinker to verify the
+    // module copy landed. These live inside the container filesystem and
+    // are invisible to `docker logs` — execing into the still-running
+    // container is the only way to surface them in a CI run.
+    //
+    // Best-effort: if the container has already exited, `exec` will fail
+    // and the helper swallows the error. The dumpInspect output above
+    // tells us whether that's the case.
+    if (prestashop) await dumpPrestashopAppLogs(prestashop);
+
     await Promise.allSettled([
       prestashop?.stop() ?? Promise.resolve(),
       mysql?.stop() ?? Promise.resolve(),
@@ -335,6 +346,12 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   let lastError: unknown;
   let lastRedirectLocation: string | null = null;
 
+  // Capture the body of the most recent error response. PS Symfony renders
+  // its exception page (or the JSON `errors` array from the WS layer) inline
+  // in the response body — this is usually the single most useful piece of
+  // root-cause data on a 500 and is otherwise invisible to the caller.
+  let lastErrorBody: string | null = null;
+
   while (Date.now() < deadline) {
     try {
       // Don't follow redirects automatically. PS will 302 to its configured
@@ -357,12 +374,26 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
           `PS WS probe HTTP ${response.status} → Location: ${lastRedirectLocation ?? '<none>'}`,
         );
       } else {
+        // Slurp body for 4xx/5xx. Cap to 8KB — a Symfony stack trace fits
+        // comfortably; anything larger is almost certainly an HTML error
+        // page that won't help.
+        lastErrorBody = await response
+          .text()
+          .then((body) => (body.length > 8192 ? `${body.slice(0, 8192)}…[truncated]` : body))
+          .catch(() => null);
         lastError = new Error(`PS WS probe HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
       lastError = err;
     }
     await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  if (lastErrorBody) {
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `[prestashop-container] last failed probe response body (${lastErrorBody.length} bytes):\n${lastErrorBody}`,
+    );
   }
 
   throw new Error(
@@ -516,6 +547,56 @@ function dockerInspectFallback(
     const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker inspect failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
+  }
+}
+
+/**
+ * Exec into the still-running PS container and dump the application logs
+ * that aren't visible to `docker logs`:
+ *   - Apache `error.log` / `access.log` (php errors + request log)
+ *   - Symfony app log (`/var/www/html/var/logs/*.log`) — stack traces
+ *   - PS legacy log (`/var/www/html/cache/log/*.log`) — older code paths
+ *   - Directory listing of `/var/www/html/modules/openlinker` — verifies
+ *     the module copy + ownership chown actually landed
+ *
+ * The single `sh -c` payload is intentional: one exec call, all relevant
+ * sources, fully best-effort (`|| true` guards) so a missing file never
+ * masks an existing one. Output is funneled through `console.error` so
+ * the GitHub Actions log captures it.
+ *
+ * No-op (but logs why) if the container has already exited — the inspect
+ * dump above will say whether that's the case.
+ */
+async function dumpPrestashopAppLogs(prestashop: StartedTestContainer): Promise<void> {
+  const tag = '[prestashop-container app-logs]';
+  const script = [
+    'echo "--- /var/log/apache2/error.log (tail 200) ---"',
+    'tail -n 200 /var/log/apache2/error.log 2>/dev/null || echo "(no apache error.log)"',
+    'echo "--- /var/log/apache2/access.log (tail 100) ---"',
+    'tail -n 100 /var/log/apache2/access.log 2>/dev/null || echo "(no apache access.log)"',
+    'echo "--- /var/www/html/var/logs (Symfony app logs) ---"',
+    'ls -la /var/www/html/var/logs/ 2>/dev/null || echo "(no /var/www/html/var/logs)"',
+    'for f in /var/www/html/var/logs/*.log; do [ -f "$f" ] && { echo "--- $f (tail 200) ---"; tail -n 200 "$f"; }; done 2>/dev/null',
+    'echo "--- /var/www/html/cache/log (PS legacy logs) ---"',
+    'ls -la /var/www/html/cache/log/ 2>/dev/null || echo "(no /var/www/html/cache/log)"',
+    'for f in /var/www/html/cache/log/*.log; do [ -f "$f" ] && { echo "--- $f (tail 200) ---"; tail -n 200 "$f"; }; done 2>/dev/null',
+    'echo "--- /var/www/html/modules/openlinker (module install state) ---"',
+    'ls -la /var/www/html/modules/openlinker/ 2>/dev/null || echo "(no /var/www/html/modules/openlinker)"',
+    'echo "--- php -v ---"',
+    'php -v 2>&1 || true',
+  ].join('; ');
+  try {
+    const result = await prestashop.exec(['sh', '-c', script]);
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `${tag} exit=${result.exitCode}\nstdout:\n${result.stdout}` +
+        (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `${tag} exec failed (container may have already exited): ${formatError(err)}`,
+    );
   }
 }
 
@@ -781,6 +862,19 @@ async function runExecOrThrow(
       throw new Error(
         `Command failed in PS container (exit=${result.exitCode}): ${command.join(' ')}\n` +
           `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+    // In CI, dump the success-path output too. The install/uninstall/install
+    // cycle "succeeds" (exit=0) but can still leave PS in a broken state —
+    // a deprecation notice in stderr, a Symfony cache-clear warning, a
+    // missing-class autoload error after install. Without this dump those
+    // signals never reach the CI log. Local dev defaults to quiet to keep
+    // the test output legible.
+    if (process.env.CI === 'true') {
+      // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+      console.error(
+        `[prestashop-container exec] ${command.join(' ')} → exit=0\nstdout:\n${result.stdout}` +
+          (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
       );
     }
   } finally {

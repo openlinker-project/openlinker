@@ -309,10 +309,37 @@ do not.
 (see `INSTALL_OL_MODULE` in `allegro-prestashop-carrier-mapping.int-spec.ts`).
 In CI mode the test that exercises the module path (S-3 today) is reported
 as `it.skip` instead of failing. Other scenarios in the same spec (S-1, S-2)
-still run because they don't need the module. Override available via
-`OL_SKIP_PS_MODULE_INSTALL=true` for developers reproducing the CI behavior
-locally. When the install-in-CI root cause is fixed, drop the gate and
-re-enable S-3 in CI.
+still run because they don't need the module. Three overrides:
+
+- `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (developers
+  reproducing the CI behavior locally).
+- `OL_FORCE_PS_MODULE_INSTALL=true` — force-enable the install even in
+  CI. Used for **diagnostic CI runs** that intentionally exercise the
+  failing install path to root-cause it. S-3 will still likely fail under
+  this flag — the goal is to capture data via the in-container log dumps,
+  not to pass.
+
+When the install-in-CI root cause is fixed, drop the gate and re-enable
+S-3 in CI.
+
+**Diagnostic dumps on PS startup failure** (`prestashop-container.helper.ts`):
+when `verifyApacheUp` fails, the catch block emits the following via
+`console.error` (captured by GitHub Actions):
+
+- testcontainers' streaming log buffer for both PS and MySQL.
+- `docker logs --tail 200` + `docker inspect` for both containers
+  (status, exit code, OOM flag).
+- Body of the last failed `/api/carriers` probe (Symfony renders its
+  exception stack trace inline in 500 bodies).
+- An in-container `sh -c` dump of `/var/log/apache2/error.log`,
+  `/var/log/apache2/access.log`, `/var/www/html/var/logs/*.log`,
+  `/var/www/html/cache/log/*.log`, and `ls -la /var/www/html/modules/openlinker`.
+
+Additionally, when `CI=true`, `runExecOrThrow` emits `stdout` and `stderr`
+from every `prestashop:module install/uninstall` invocation on the
+success path too (not just on non-zero exit), so the install cycle's
+output is visible even when each individual `bin/console` call succeeds
+but leaves PS in a broken state.
 
 **Phase 2 (always) — `applyPrestashopFixture` inserts:**
 
