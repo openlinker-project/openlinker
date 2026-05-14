@@ -11,14 +11,14 @@
  *
  * Channel is open-world per #580 — the schema and the picker's option
  * list are derived from the plugin registry at render time via
- * `usePlugins()`. A plugin that ships its own `PlatformPlugin` is
+ * `usePlatforms()`. A plugin that ships its own `platform` contribution is
  * automatically a valid channel target with no further edits here.
  *
  * @module apps/web/src/features/prompt-templates/components
  */
 import { useMemo } from 'react';
 import { z } from 'zod';
-import { usePlugins } from '../../../shared/plugins';
+import { usePlatforms } from '../../../shared/plugins';
 import {
   PromptTemplateVariableTypeValues,
   type PromptTemplateChannel,
@@ -63,13 +63,13 @@ export interface NewPromptTemplateApiInput {
 
 /**
  * Registry-driven Zod schema for the create-prompt-template form. Channel
- * is validated against the live `PlatformPlugin` set plus the `'master'`
- * sentinel — so adding a new plugin (e.g. Shopify) automatically opens up
- * authoring a `'shopify'`-channel template with zero schema edits.
+ * is validated against the live platform set (`usePlatforms()`) plus the
+ * `'master'` sentinel — so adding a new plugin (e.g. Shopify) automatically
+ * opens up authoring a `'shopify'`-channel template with zero schema edits.
  *
  * Wrapped in `useMemo([plugins])` so the resolver passed to
  * react-hook-form is stable across renders. The plugin manifest is
- * static-at-import-time today (see `IN_TREE_PLUGINS` in
+ * static-at-import-time today (see `plugins` in
  * `apps/web/src/plugins/index.ts`) — the memo guards against future
  * dynamic-registry shapes regenerating the schema needlessly.
  */
@@ -77,7 +77,7 @@ export function useNewPromptTemplateSchema(): z.ZodType<
   NewPromptTemplateFormValues,
   NewPromptTemplateFormValues
 > {
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
   return useMemo(() => {
     // Guard the reserved `'master'` sentinel — a plugin that registered
     // `platformType: 'master'` would conflate the master template with itself
@@ -170,7 +170,7 @@ export interface ChannelSelectOption {
 }
 
 export function useChannelSelectOptions(): readonly ChannelSelectOption[] {
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
   return useMemo(
     () => [
       { value: MASTER_CHANNEL_SENTINEL, label: 'Master (generic)' },

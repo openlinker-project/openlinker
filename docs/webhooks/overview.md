@@ -246,11 +246,200 @@ Key log messages:
 - [ ] Dead-letter queue for failed events
 - [ ] Metrics and alerting
 
+---
+
+## Testing webhooks
+
+### Prerequisites
+
+1. API running (`pnpm start:dev:api`)
+2. Postgres and Redis up (`pnpm dev:stack:up`)
+3. An active connection (any platform that supports webhook ingestion — currently PrestaShop)
+
+### Manual testing
+
+**1. Create a test connection**
+
+```bash
+curl -X POST http://localhost:3000/connections \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test PrestaShop Connection",
+    "platformType": "prestashop",
+    "adapterKey": "prestashop.webservice.v1",
+    "status": "active",
+    "credentials": {
+      "apiUrl": "https://example.com/api",
+      "apiKey": "test-key"
+    }
+  }'
+```
+
+Save the `connectionId` from the response.
+
+**2. Set the webhook secret**
+
+```bash
+# Connection-scoped (preferred)
+export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP__<CONNECTION_ID>=your-secret-key-here
+
+# Or provider-level fallback
+export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=your-secret-key-here
+```
+
+Replace `<CONNECTION_ID>` with your connection ID (uppercase, no dashes).
+
+**3. Generate a valid signature**
+
+Signature scheme: `HMAC_SHA256(secret, timestamp + '.' + rawBody)`. The raw body must match byte-for-byte what's sent on the wire (preserving whitespace and property order).
+
+```javascript
+// generate-signature.js
+const crypto = require('crypto');
+
+const secret = process.env.OPENLINKER_WEBHOOK_SECRET__PRESTASHOP || 'your-secret-key-here';
+const timestamp = Date.now().toString();
+const rawBody = JSON.stringify({
+  schemaVersion: 1,
+  eventId: 'test-event-123',
+  eventType: 'product.saved',
+  occurredAt: new Date().toISOString(),
+  object: { type: 'product', externalId: '12345' },
+  payload: { name: 'Test Product', price: 29.99 },
+});
+
+const signedPayload = timestamp + '.' + rawBody;
+const signature = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
+
+console.log('Timestamp:', timestamp);
+console.log('Signature:', `sha256=${signature}`);
+console.log('Raw Body:', rawBody);
+```
+
+**4. Send the request**
+
+```bash
+curl -X POST http://localhost:3000/webhooks/prestashop/<CONNECTION_ID> \
+  -H "Content-Type: application/json" \
+  -H "X-OpenLinker-Timestamp: <TIMESTAMP>" \
+  -H "X-OpenLinker-Signature: sha256=<SIGNATURE>" \
+  -d '<RAW_BODY_FROM_STEP_3>'
+```
+
+Expected response: `202 Accepted` (no body).
+
+**5. Verify**
+
+Look in the API logs for:
+
+- `Published inbound webhook event test-event-123 to stream events.inbound.webhooks`
+- `Processed webhook event test-event-123 and enqueued job master.product.syncByExternalId`
+
+Inspect Redis:
+
+```bash
+redis-cli
+XREAD STREAMS events.inbound.webhooks 0   # the inbound event
+XREAD STREAMS jobs.sync 0                  # the enqueued sync job
+XINFO GROUPS events.inbound.webhooks       # consumer group state
+KEYS webhook:prestashop:*                  # deduplication keys
+```
+
+### Integration tests
+
+Webhook integration tests live at `apps/api/test/integration/webhook-ingestion.int-spec.ts` and cover:
+
+- valid webhook acceptance and event publishing,
+- invalid-signature rejection,
+- duplicate-event prevention (deduplication semantics),
+- raw-body signature correctness (whitespace / property order),
+- handler crash / retry with job-level dedup.
+
+Run them with:
+
+```bash
+pnpm test:integration                                                # all integration tests
+pnpm --filter @openlinker/api test:integration webhook-ingestion     # webhook only
+```
+
+Requires Docker — see [Testing Guide](../testing-guide.md) for the Testcontainers setup.
+
+A representative test shape:
+
+```typescript
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import { createTestConnection } from './helpers/test-connection.helper';
+import * as crypto from 'crypto';
+
+describe('Webhook Ingestion', () => {
+  let harness;
+  const webhookSecret = 'test-secret-key';
+
+  beforeAll(async () => {
+    harness = await getTestHarness();
+    process.env.OPENLINKER_WEBHOOK_SECRET__PRESTASHOP = webhookSecret;
+  });
+
+  afterEach(async () => { await resetTestHarness(); });
+  afterAll(async () => { await teardownTestHarness(); });
+
+  it('should accept valid webhook and publish event', async () => {
+    const connection = await createTestConnection(harness.getDataSource(), {
+      platformType: 'prestashop',
+      status: 'active',
+    });
+
+    const payload = {
+      schemaVersion: 1,
+      eventId: 'test-event-123',
+      eventType: 'product.saved',
+      occurredAt: new Date().toISOString(),
+      object: { type: 'product', externalId: '12345' },
+      payload: { name: 'Test Product' },
+    };
+
+    const rawBody = Buffer.from(JSON.stringify(payload));
+    const timestamp = Date.now().toString();
+    const signature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(timestamp + '.' + rawBody.toString())
+      .digest('hex');
+
+    await harness
+      .getHttp()
+      .post(`/webhooks/prestashop/${connection.id}`)
+      .set('X-OpenLinker-Timestamp', timestamp)
+      .set('X-OpenLinker-Signature', `sha256=${signature}`)
+      .send(payload)
+      .expect(202);
+
+    // ... assertions against events.inbound.webhooks stream
+  });
+});
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `401 Unauthorized` | Signature mismatch (raw body bytes differ), wrong secret env var name, or timestamp outside the ±5-minute skew window |
+| `404 Not Found` | Connection ID doesn't exist, is disabled, or the URL provider doesn't match `connection.platformType` |
+| `400 Bad Request` | Missing `X-OpenLinker-Timestamp` / `X-OpenLinker-Signature` header, or payload doesn't match the expected DTO |
+| Events not landing in the stream | Handler consumer group not initialized; check API logs for `Created consumer group webhook-handler`. Verify Redis is reachable. |
+
+Debugging:
+
+- `LOG_LEVEL=debug` for verbose webhook tracing
+- `XINFO STREAM events.inbound.webhooks` to inspect stream state
+- `XINFO GROUPS events.inbound.webhooks` for consumer status
+- `KEYS webhook:*` for dedup state
+
+---
+
 ## Related Documentation
 
-- [Webhook Testing Guide](../webhook-testing-guide.md)
 - [PrestaShop Webhook Integration](./prestashop.md)
-- [Production Readiness Checklist](./production-readiness.md)
 - [Architecture Overview](../architecture-overview.md)
+- [Testing Guide](../testing-guide.md)
 - [Engineering Standards](../engineering-standards.md)
 

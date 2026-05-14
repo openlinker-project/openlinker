@@ -31,9 +31,9 @@ OpenLinker should feel less like:
 
 ## Direction (FE-002)
 
-Adopted during the UI refactor epic ([#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236), audit at `docs/ui-audit/audit.md`).
+Adopted during the UI refactor epic ([#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236)).
 
-**Aesthetic baseline:** **shadcn/ui** look-and-feel (compact inputs, subdued palette, restrained shadows, clean proportions, small radii) — **implemented in vanilla CSS**, not Tailwind. Reference concepts live in `docs/ui-audit/concepts/`.
+**Aesthetic baseline:** **shadcn/ui** look-and-feel (compact inputs, subdued palette, restrained shadows, clean proportions, small radii) — **implemented in vanilla CSS**, not Tailwind.
 
 **Density posture:** *restrained cockpit* (Linear × Shopify admin). Typography-led hierarchy, generous-but-purposeful spacing, color reserved for operational meaning. Targeted *denser* patterns transplanted from a data-oriented variant: sparklines on KPI cards, filter chip bars above tables, monospace for every timestamp / ID / duration, and a queue-pressure composition widget for triage surfaces.
 
@@ -586,8 +586,6 @@ Adopted (FE-002):
 | `@radix-ui/react-toast` | queue + focus management | `Toast` |
 | `@radix-ui/react-tabs` | roving tabindex | `Tabs` |
 
-Decision record: `docs/ui-audit/library-analysis.md`.
-
 **Adding a library requires:** (1) a written rationale in the PR description explaining why the behavior can't be built from native HTML, (2) a wrapping primitive under `shared/ui/` with its own CSS, (3) an update to this section.
 
 ## Density & Row Heights
@@ -759,17 +757,6 @@ Used for:
 - field mappings
 - shipping mappings
 
-### Reference concepts
-
-Concrete renderings of each pattern live in `docs/ui-audit/concepts/`. The gallery at `concepts/index.html` links them with annotated audit-finding coverage.
-
-- Dashboard (triage + KPI strip) — `concepts/dashboard-a.html`
-- List to detail — `concepts/orders.html` + `concepts/order-detail.html`
-- Health drilldown — `concepts/connection-detail.html`
-- Mapping editor — `concepts/category-mappings.html`
-
-These are the measuring stick for implementation. When in doubt about density, composition, or element placement, match the concept.
-
 ## Accessibility
 
 The operations cockpit must remain accessible even when dense.
@@ -792,19 +779,9 @@ Required:
 - do not make settings the center of the product
 - do not optimize for empty whitespace over operational readability
 
-## Baselines
+## FE-002 refactor epic
 
-### FE-001 baseline (audited 2026-04-19)
-
-Captured as 34 screenshots + 5 Lighthouse reports under `docs/ui-audit/baseline/`. Lighthouse scores were already strong (Accessibility 96, Best Practices 100); the refactor targets UX, density, and information hierarchy, not a11y remediation.
-
-Full ranked findings at `docs/ui-audit/audit.md` (4 P0 + 15 P1 findings grouped into 8 themes).
-
-### FE-002 direction (2026-04-19 → in progress)
-
-Tracked by epic [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236) with six phase sub-issues (tokens → shell → primitives → detail pages → forms → dashboard).
-
-This style guide is the measuring stick. Concepts under `docs/ui-audit/concepts/` are the rendering. Every phase PR attaches before/after screenshots against the FE-001 baseline.
+Tracked by epic [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236) with six phase sub-issues (tokens → shell → primitives → detail pages → forms → dashboard). Every phase PR should attach before/after screenshots and reason about the change against this style guide.
 
 ---
 

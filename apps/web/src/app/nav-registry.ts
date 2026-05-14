@@ -99,6 +99,6 @@ export function buildNavGroups({ isAdmin }: BuildNavGroupsInput): NavGroup[] {
     return true;
   });
 
-  const contributions = plugins.flatMap((plugin) => plugin.navItems ?? []);
+  const contributions = plugins.flatMap((plugin) => plugin.build?.navItems ?? []);
   return mergePluginNavContributions(baseGroups, contributions, { isAdmin });
 }

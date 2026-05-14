@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
-import { usePlugins } from '../../shared/plugins';
+import { usePlatforms } from '../../shared/plugins';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-state';
@@ -65,7 +65,7 @@ const COLUMNS: DataTableColumn<Connection>[] = [
 export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';

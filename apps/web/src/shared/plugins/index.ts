@@ -1,19 +1,27 @@
 /**
  * Plugin Registry Public Surface
  *
- * Re-exports the registry contract (types, provider, hooks) consumed by
- * features, pages, and the app composition root. The actual plugin
- * instances live in `apps/web/src/plugins/` and are wired into the
- * provider via `IN_TREE_PLUGINS` in `apps/web/src/plugins/index.ts`.
+ * Re-exports the unified plugin contract (#702) and the runtime resolution
+ * hooks consumed by features, pages, and the app composition root. The
+ * actual plugin instances live in `apps/web/src/plugins/` and are wired
+ * into the provider via the `plugins` array exported from
+ * `apps/web/src/plugins/index.ts`.
  *
  * @module shared/plugins
  */
 export type {
-  PlatformPlugin,
+  OpenLinkerPlugin,
+  BuildContribution,
+  PlatformContribution,
+  Platform,
   PlatformSetupCard,
   StructuredConfigSectionProps,
   ExtraConfigSectionProps,
+  NavContribution,
+  OfferCreationWizardContribution,
+  OfferCreationWizardProps,
+  PluginApiNamespacesFactory,
 } from './plugin.types';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';
-export { usePlugins } from './use-plugins';
-export { usePlugin } from './use-plugin';
+export { usePlatforms } from './use-platforms';
+export { usePlatform } from './use-platform';

@@ -7,18 +7,24 @@
 import { describe, expect, it } from 'vitest';
 import type { ComponentType } from 'react';
 
+import type {
+  OfferCreationWizardProps,
+  OpenLinkerPlugin,
+} from '../shared/plugins';
+
 import { resolveOfferCreationWizard } from './resolve-offer-creation-wizard';
-import type { OfferCreationWizardProps, WebPlugin } from './plugin.types';
 
 const dummyComponent: ComponentType<OfferCreationWizardProps> = () => null;
 
-function plugin(id: string, platformType?: string): WebPlugin {
+function plugin(id: string, platformType?: string): OpenLinkerPlugin {
   if (platformType === undefined) {
     return { id };
   }
   return {
     id,
-    offerCreationWizard: { platformType, component: dummyComponent },
+    build: {
+      offerCreationWizard: { platformType, component: dummyComponent },
+    },
   };
 }
 
@@ -48,9 +54,15 @@ describe('resolveOfferCreationWizard', () => {
   it('returns the first match when multiple plugins contribute for the same platformType', () => {
     const firstComponent: ComponentType<OfferCreationWizardProps> = () => null;
     const secondComponent: ComponentType<OfferCreationWizardProps> = () => null;
-    const plugins: WebPlugin[] = [
-      { id: 'first', offerCreationWizard: { platformType: 'allegro', component: firstComponent } },
-      { id: 'second', offerCreationWizard: { platformType: 'allegro', component: secondComponent } },
+    const plugins: OpenLinkerPlugin[] = [
+      {
+        id: 'first',
+        build: { offerCreationWizard: { platformType: 'allegro', component: firstComponent } },
+      },
+      {
+        id: 'second',
+        build: { offerCreationWizard: { platformType: 'allegro', component: secondComponent } },
+      },
     ];
     expect(resolveOfferCreationWizard(plugins, 'allegro')?.component).toBe(firstComponent);
   });

@@ -141,12 +141,17 @@ module.exports = {
       },
     },
     {
-      // `shared/plugins/` is the FE plugin-contract surface (#578/#579). It
-      // necessarily references the `Connection` shape that plugins receive
-      // and the form-value shapes plugins compose into. The Connection type
-      // lives in `features/connections/api/` today; making this exemption
-      // narrow keeps `shared/plugins/` cleanly typed without hoisting the
-      // entire connections domain into `shared/` for one type.
+      // `shared/plugins/` is the FE plugin-contract surface (#578/#579, #702).
+      // The unified `OpenLinkerPlugin` shape necessarily references types that
+      // live in `app/` and `features/`:
+      //   - `Connection`, `EditConnectionFormValues` — platform-side bag shapes (#578/#579)
+      //   - `Role` — declarative role gate on `NavContribution` (#610)
+      //   - `ApiRequest`, `PluginApiNamespaces` — build-side `apiNamespaces` factory (#604/#605)
+      //   - `CreateOfferRequest` — `OfferCreationWizardProps.initialValues` (#608)
+      // Each is a deliberate pinhole. Hoisting all of them into `shared/types/`
+      // would invert the dependency direction and inflate `shared/` with
+      // feature-private surface — keeping the exemption narrow + explicit
+      // documents which seams plugins observably depend on.
       files: ['apps/web/src/shared/plugins/**/*.{ts,tsx}'],
       rules: {
         'no-restricted-imports': [
@@ -155,9 +160,10 @@ module.exports = {
             patterns: [
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
-                importNamePattern: '^(?!Connection$|EditConnectionFormValues$).+',
+                importNamePattern:
+                  '^(?!Connection$|EditConnectionFormValues$|Role$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$).+',
                 message:
-                  'shared/plugins/ may only type-import `Connection` and `EditConnectionFormValues` from features/. All other feature imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, Role, ApiRequest, PluginApiNamespaces, CreateOfferRequest) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },
@@ -481,13 +487,43 @@ module.exports = {
             selector:
               "BinaryExpression[operator=/^(===|!==)$/][left.property.name='platformType'][right.type='Literal']",
             message:
-              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlugin()/usePlugins() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlatform()/usePlatforms() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
           },
           {
             selector:
               "BinaryExpression[operator=/^(===|!==)$/][right.property.name='platformType'][left.type='Literal']",
             message:
-              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlugin()/usePlugins() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlatform()/usePlatforms() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+          },
+        ],
+      },
+    },
+    {
+      // Anti-regression guard (#702): the old `WebPlugin` / `PlatformPlugin` /
+      // `IN_TREE_PLUGINS` symbols were collapsed into a single `OpenLinkerPlugin`
+      // shape. Banning them as identifiers catches both accidental re-creation
+      // (a future PR re-introduces the name) and a half-merged refactor (a
+      // call site still references the old name after a partial rename).
+      // JSDoc comments are not parsed as identifiers, so historical references
+      // in new-file headers (`Renamed from usePlugin`...) are unaffected.
+      files: ['apps/web/src/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: "Identifier[name='WebPlugin']",
+            message:
+              '`WebPlugin` was unified into `OpenLinkerPlugin` (#702). Import `OpenLinkerPlugin` from `shared/plugins`.',
+          },
+          {
+            selector: "Identifier[name='PlatformPlugin']",
+            message:
+              '`PlatformPlugin` was unified into `OpenLinkerPlugin` (#702). For the runtime view returned by `usePlatform()`, import `Platform` from `shared/plugins`.',
+          },
+          {
+            selector: "Identifier[name='IN_TREE_PLUGINS']",
+            message:
+              '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
           },
         ],
       },

@@ -48,7 +48,7 @@ paths:
   - `@tanstack/react-table` — `DataTable` state engine
   - `@tanstack/react-virtual` — virtualized long lists
   - `@radix-ui/react-*` — `Dialog`, `Select`, `DropdownMenu`, `Tooltip`, `Popover`, `Toast`, `Tabs` (a11y + keyboard behavior only)
-- Rationale: we write every pixel of CSS (vanilla CSS + tokens), libraries only contribute behavior and a11y. See `docs/ui-audit/library-analysis.md` for the decision record.
+- Rationale: we write every pixel of CSS (vanilla CSS + tokens), libraries only contribute behavior and a11y.
 - Use `tone` for variant props (not `variant` or `color`)
 - Class construction: `['base', condition ? 'modifier' : '', className].filter(Boolean).join(' ')`
 

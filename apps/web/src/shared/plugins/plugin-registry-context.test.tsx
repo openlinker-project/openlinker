@@ -9,27 +9,27 @@ import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { PluginRegistryProvider } from './plugin-registry-context';
-import { usePlugin } from './use-plugin';
-import { usePlugins } from './use-plugins';
-import type { PlatformPlugin } from './plugin.types';
+import { usePlatform } from './use-platform';
+import { usePlatforms } from './use-platforms';
+import type { OpenLinkerPlugin } from './plugin.types';
 
 function PluginsCount(): ReactElement {
-  const plugins = usePlugins();
+  const plugins = usePlatforms();
   return <span data-testid="count">{plugins.length}</span>;
 }
 
 function PluginByKey({ platformType }: { platformType: string }): ReactElement {
-  const plugin = usePlugin(platformType);
+  const plugin = usePlatform(platformType);
   return <span data-testid="display">{plugin?.displayName ?? 'NONE'}</span>;
 }
 
-const fixturePlugins: PlatformPlugin[] = [
-  { platformType: 'foo', displayName: 'Foo' },
-  { platformType: 'bar', displayName: 'Bar' },
+const fixturePlugins: OpenLinkerPlugin[] = [
+  { id: 'foo', platformType: 'foo', platform: { displayName: 'Foo' } },
+  { id: 'bar', platformType: 'bar', platform: { displayName: 'Bar' } },
 ];
 
 describe('PluginRegistryContext', () => {
-  it('exposes the plugin manifest via usePlugins()', () => {
+  it('exposes the plugin manifest via usePlatforms()', () => {
     const { getByTestId } = render(
       <PluginRegistryProvider plugins={fixturePlugins}>
         <PluginsCount />
@@ -65,7 +65,7 @@ describe('PluginRegistryContext', () => {
     expect(getByTestId('display').textContent).toBe('NONE');
   });
 
-  it('throws when usePlugins() is used outside the provider', () => {
+  it('throws when usePlatforms() is used outside the provider', () => {
     const ConsumerSansProvider = (): ReactElement => <PluginsCount />;
     // React swallows render-phase errors and surfaces them via error boundary
     // or the global error handler. We assert by silencing console.error and
@@ -74,7 +74,7 @@ describe('PluginRegistryContext', () => {
     console.error = (): void => {};
     try {
       expect(() => render(<ConsumerSansProvider />)).toThrow(
-        /usePlugins\(\) must be used inside <PluginRegistryProvider>/,
+        /usePlatforms\(\) must be used inside <PluginRegistryProvider>/,
       );
     } finally {
       console.error = originalError;

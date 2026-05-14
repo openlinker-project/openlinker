@@ -160,7 +160,7 @@ The shell resolves the active crumb by calling `useMatches()` and walking the ma
 - Marketplace-specific breadcrumbs (e.g. `Connect Allegro`, `Connect PrestaShop`) ship with the plugin route module — never with the host shell.
 - A parameterized contract test at `apps/web/src/app/routes/route-handle.test.ts` asserts every authenticated leaf route declares a crumb. Same enforcement shape as `route-lazy.test.ts`.
 
-Plugins contribute breadcrumbs the same way: a plugin route module's `RouteObject` carries its own `handle.crumb`. See [Platform Plugins](#platform-plugins-plugins) for the build-time `WebPlugin` route contribution shape and the optional `requiresRole` gate available on `NavContribution`.
+Plugins contribute breadcrumbs the same way: a plugin route module's `RouteObject` carries its own `handle.crumb`. See [Platform Plugins](#platform-plugins-plugins) for the `OpenLinkerPlugin.build.routes` contribution shape and the optional `requiresRole` gate available on `NavContribution`.
 
 ## API Client Conventions
 
@@ -423,15 +423,13 @@ Rules:
 - The wrapper is responsible for all CSS. No library-shipped CSS gets imported.
 - When a native HTML element covers the use case (`<dialog>`, `<select>`, `<details>`), prefer it over a Radix wrapper.
 
-See [`docs/ui-audit/library-analysis.md`](./ui-audit/library-analysis.md) for the decision record.
-
 ## Dependency Rules
 
 Dependency direction must remain simple and enforceable:
 
 - `app` may import `pages`, `features`, `plugins`, and `shared`
 - `pages` may import `features` and `shared`
-- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam — see [Plugins](#platform-plugins-plugins) for both the build-time `WebPlugin` and runtime `PlatformPlugin` contracts). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
+- `plugins` may import `pages`, `features`, `shared`, and type-only from `app/api/api-client` and `app/app-shell` (the public type seam — see [Plugins](#platform-plugins-plugins) for the unified `OpenLinkerPlugin` contract with `build` and `platform` sub-bags). Plugins must not import host internals — router, routes, layouts, hooks, providers, the API client provider hook.
 - `features` may import `shared`
 - `shared` must not import `features`, `pages`, or `plugins` — with one narrow exemption documented below
 
@@ -451,26 +449,45 @@ Additional rules:
 
 ## Platform Plugins (`plugins/`)
 
-The in-tree plugins live in `apps/web/src/plugins/<name>/`. Two parallel concerns are surfaced from the same barrel (`plugins/index.ts`):
+The in-tree plugins live in `apps/web/src/plugins/<name>/`. Each plugin is a single `OpenLinkerPlugin` object (#702) that contributes both build-time concerns and platform-side UI affordances through namespaced sub-bags:
 
-1. **Build-time `WebPlugin`** (#604/#605) — host composition: routes, nav contributions, typed API client namespaces. Authored via `definePlugin({...})`; collected as the exported `plugins: WebPlugin[]` array. Iterated by the router and `createApiClient` at boot. Both runtime composition AND TS declaration-merging require the plugin to be in this array.
-2. **Runtime `PlatformPlugin`** (#578/#579) — per-platform UI affordances: setup card, callback-URL default, structured edit-form sections, extra sections, credentials panel, connection actions. Collected as the exported `IN_TREE_PLUGINS: readonly PlatformPlugin[]` array. Resolved at render time via `usePlugin(platformType)` / `usePlugins()` from `shared/plugins/`.
+```ts
+interface OpenLinkerPlugin {
+  id: string;                    // unique kebab-case key; required
+  platformType?: string;         // present iff `platform` is set; runtime lookup key
+  build?: BuildContribution;     // composed at module load
+  platform?: PlatformContribution; // resolved at render time via React context
+}
+```
 
-The two contracts live side-by-side because they answer different questions ("what does this plugin contribute to the app shell?" vs "what platform-specific UI does this connection's platformType expose?"). A single per-platform directory typically contributes both: `plugins/allegro/index.ts` exports an `allegroPlugin: WebPlugin`; `plugins/allegro/allegro.plugin.tsx` exports an `allegroPlatformPlugin: PlatformPlugin`.
+- **Build-time `build`** (#604/#605) — host composition: routes, nav contributions, typed API client namespaces, offer-creation wizard. Iterated by the router, `nav-registry.ts`, and `createApiClient` at boot. Both runtime composition AND TS declaration-merging require the plugin to be in the `plugins` array (its declare-module block enters the import graph through that reference).
+- **Platform-side `platform`** (#578/#579) — per-platform UI affordances: setup card, callback-URL default, structured edit-form sections, extra sections, credentials panel, connection actions, content publish-error extractor. Resolved at render time via `usePlatform(platformType)` / `usePlatforms()` from `shared/plugins/`.
 
-`WebPlugin.navItems` accepts an optional `requiresRole?: Role` (today: `'admin'`) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
+Both bags are exported from one barrel (`apps/web/src/plugins/index.ts`) as a single `plugins: readonly OpenLinkerPlugin[]` array. The runtime hooks see a flattened `Platform = { platformType } & PlatformContribution` view — call sites read `platform.displayName`, `platform.setupCard`, etc. directly without a `.platform.` chain.
 
-Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append entries to both arrays in `plugins/index.ts`.
+A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containing one `definePlugin({...})` call. Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append one entry to the `plugins` array.
 
-Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlugin()`, `usePlugins()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this.
+`build.navItems` accepts an optional `requiresRole?: Role` (today: `'admin'`) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
 
-### PlatformPlugin slot reference
+Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
+
+### `BuildContribution` slot reference
+
+Every slot is optional.
+
+| Slot | Type | Consumed by | Purpose |
+|---|---|---|---|
+| `routes` | `RouteObject[]` | `root.route.tsx` | React Router route objects appended to the root route's children. |
+| `navItems` | `NavContribution[]` | `nav-registry.ts` | Sidebar nav items merged into existing nav groups by label. |
+| `apiNamespaces` | `(request) => Partial<PluginApiNamespaces>` | `createApiClient` | Factory that produces typed API client namespaces. Plugins extend `PluginApiNamespaces` via TS declaration merging. |
+| `offerCreationWizard` | `OfferCreationWizardContribution` | `useOfferCreationWizard` | Per-platform offer-creation wizard registered against the `OfferCreationLauncher` dispatch site (#608). |
+
+### `PlatformContribution` slot reference
 
 Every slot is optional. A plugin contributes only the affordances its platform actually needs; the consuming surface falls back to a generic rendering (or hides the affordance entirely) when the slot is absent.
 
 | Slot | Type | Consumed by | Purpose |
 |---|---|---|---|
-| `platformType` | `string` | registry lookup | Stable key — matches `connection.platformType`. Required. |
 | `displayName` | `string` | dropdowns, alerts | Human-readable label. Required. |
 | `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
 | `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
@@ -480,8 +497,9 @@ Every slot is optional. A plugin contributes only the affordances its platform a
 | `CredentialsPanel` | `ComponentType<{ connection }>` | `EditConnectionForm` | Full credentials panel including the rotate-key UI shape that fits the platform's credential model. When absent, the form renders a read-only "Stored securely (managed by integration)" / "Environment variable" affordance. |
 | `ConnectionActions` | `ComponentType<{ connection }>` | `ConnectionActionsPanel` | Extra platform-specific actions on the connection-detail page (PS: "Configure webhooks"). |
 | `supportsListingEdit` | `boolean` | `ListingDetailPage` | Gates the "Edit offer" button on the listing-detail page. |
+| `extractContentPublishErrors` | `(err: unknown) => StructuredError[] \| null` | `extractPlatformErrors` | Optional platform-specific structured-error extractor for content-publish failures (#613). |
 
-Module-load validation in `apps/web/src/plugins/index.ts` rejects duplicate `platformType` keys before any provider mounts. `PluginRegistryProvider` re-runs the same check at mount time as belt-and-suspenders for test fixtures.
+Module-load validation in `apps/web/src/plugins/index.ts` rejects duplicate plugin `id`s and duplicate `platformType`s before any provider mounts. `PluginRegistryProvider` re-runs the same check at mount time as belt-and-suspenders for test fixtures.
 
 ## Async UX Conventions
 

@@ -47,9 +47,9 @@ This guide explains how to set up and use the local development environment for 
 
 ### PrestaShop
 - **URL**: `http://localhost:8080`
-- **Admin Panel**: `http://localhost:8080/admin9379z0kucdhp9b8xfor` (folder name is auto-generated for security)
-- **Admin Credentials**: Set during first-time installation (see PrestaShop Setup below)
-- **Note**: The admin folder name is randomly generated during installation. Check the actual folder name with: `docker compose exec prestashop ls -la /var/www/html/ | grep admin`
+- **Admin Panel**: `http://localhost:8080/admin-dev/`
+- **Admin Credentials**: Set in `docker-compose.yml` and seeded by the post-install scripts (see [Getting Started](./getting-started.md))
+- **Note**: PrestaShop's installer initially creates a randomized admin folder for security. The post-install wrapper (`docker/prestashop/post-install/10-rename-admin.sh`) renames it to the stable `/admin-dev/` path so dev URLs and bookmarks don't drift between fresh installs.
 - **Database**: 
   - **Host**: `mysql` (internal Docker network) or `localhost:3306` (external)
   - **Database**: `prestashop`
@@ -195,15 +195,12 @@ PrestaShop is configured to auto-install on first startup using environment vari
 
 - Demo data enabled (`PS_DEMO_MODE=1`)
 - Default language: English (US)
-- Admin folder: Auto-generated random name (e.g., `admin9379z0kucdhp9b8xfor`) for security
+- Admin folder: renamed to stable `/admin-dev/` by `docker/prestashop/post-install/10-rename-admin.sh` (PrestaShop's installer generates a random folder for security; the wrapper renames it to a known path so dev URLs are stable)
 
 ### Accessing PrestaShop
 
 1. **Frontend**: `http://localhost:8080`
-2. **Admin Panel**: 
-   - Find the admin folder name: `docker compose exec prestashop ls -la /var/www/html/ | grep admin`
-   - Access at: `http://localhost:8080/{admin-folder-name}/login`
-   - Example: `http://localhost:8080/admin9379z0kucdhp9b8xfor/login`
+2. **Admin Panel**: `http://localhost:8080/admin-dev/login`
 
 ### Post-Installation Security Step
 
@@ -396,6 +393,6 @@ If you encounter issues not covered here:
 - [Testing Guide](./testing-guide.md) - **Comprehensive testing documentation** (unit tests, integration tests, Testcontainers)
 - [Architecture Overview](./architecture-overview.md) - System architecture
 - [Engineering Standards](./engineering-standards.md) - Coding standards
-- [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants
+- [AI Coding Assistant Guide](./ai-coding-assistant.md) - Behaviour, reasoning expectations and guardrails for AI coding assistants
 - [Database Migrations](./migrations.md) - Migration workflow
 

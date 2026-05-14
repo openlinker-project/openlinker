@@ -1531,5 +1531,5 @@ Future: Worker processes jobs
 ## Related Documentation
 
 - [Engineering Standards](./engineering-standards.md) - Coding standards and conventions
-- [AI Assistant Guide](./ai-assistant-guide.md) - Guide for AI coding assistants
+- [AI Coding Assistant Guide](./ai-coding-assistant.md) - Behaviour, reasoning expectations and guardrails for AI coding assistants
 

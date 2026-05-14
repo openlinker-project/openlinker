@@ -14,7 +14,7 @@
  * @module plugins
  */
 import type { LiveNavGroup, LiveNavItem, NavGroup } from '../app/nav-registry.types';
-import type { NavContribution } from './plugin.types';
+import type { NavContribution } from '../shared/plugins';
 
 function toLiveNavItem(contribution: NavContribution): LiveNavItem {
   return {

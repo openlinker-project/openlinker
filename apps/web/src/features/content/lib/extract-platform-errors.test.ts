@@ -10,13 +10,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { extractPlatformErrors } from './extract-platform-errors';
-import type { PlatformPlugin } from '../../../shared/plugins';
+import type { Platform } from '../../../shared/plugins';
 import type { StructuredError } from '../../../shared/types/structured-error.types';
 
 function stubPlugin(
   platformType: string,
-  extractor?: PlatformPlugin['extractContentPublishErrors'],
-): PlatformPlugin {
+  extractor?: Platform['extractContentPublishErrors'],
+): Platform {
   return {
     platformType,
     displayName: platformType,
