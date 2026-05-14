@@ -19,6 +19,7 @@ import type {
 } from '@openlinker/core/products';
 import { normalizeBarcode, normalizeToEan13 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   IPrestashopProductMapper,
@@ -51,7 +52,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     this.logger.debug(`Getting product: ${productId} (connection: ${this.connection.id})`);
 
     // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
+    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
     const prestashopId = externalIds.find(
       (e: { connectionId: string }) => e.connectionId === this.connection.id
     );
@@ -60,7 +61,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        'Product',
+        CORE_ENTITY_TYPE.Product,
         productId,
         this.connection.id
       );
@@ -166,7 +167,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     // Resolve internal ID → external ID
-    const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
+    const externalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, productId);
     const prestashopProductId = externalIds.find(
       (e: { connectionId: string }) => e.connectionId === this.connection.id
     );
@@ -175,7 +176,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
-        'Product',
+        CORE_ENTITY_TYPE.Product,
         productId,
         this.connection.id
       );
@@ -201,11 +202,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     if (combinations.length === 0) {
       const syntheticExternalId = `product:${prestashopProductId.externalId}`;
       const internalId = await this.identifierMapping.getOrCreateInternalId(
-        'ProductVariant',
+        CORE_ENTITY_TYPE.ProductVariant,
         syntheticExternalId,
         this.connection.id,
         {
-          parentEntityType: 'Product',
+          parentEntityType: CORE_ENTITY_TYPE.Product,
           parentInternalId: productId,
           metadata: {
             variantExternalId: syntheticExternalId,
@@ -232,7 +233,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Ensure stale synthetic variant mapping is removed once combinations exist
     const syntheticExternalId = `product:${prestashopProductId.externalId}`;
     await this.identifierMapping.deleteMapping(
-      'ProductVariant',
+      CORE_ENTITY_TYPE.ProductVariant,
       syntheticExternalId,
       this.connection.id
     );
@@ -242,7 +243,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
       externalId: String(c.id),
       connectionId: this.connection.id,
       context: {
-        parentEntityType: 'Product',
+        parentEntityType: CORE_ENTITY_TYPE.Product,
         parentInternalId: productId,
         metadata: {
           variantExternalId: String(c.id),

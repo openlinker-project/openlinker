@@ -19,7 +19,7 @@
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
 import type { OfferManagerPort } from '@openlinker/core/listings';
-import { isOfferCreator } from '@openlinker/core/listings';
+import { isOfferCreator, OFFER_CREATION_STATUS } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
@@ -87,7 +87,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
       externalOfferId: null,
-      status: 'pending',
+      status: OFFER_CREATION_STATUS.Pending,
       errors: null,
       publishImmediately: input.publishImmediately,
       request: requestSnapshot,

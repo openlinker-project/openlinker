@@ -16,10 +16,7 @@
 import type { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
 import type { DestinationOptionsReader, MappingOption } from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
-import {
-  MappingAlreadyExistsError,
-  DuplicateIdentifierMappingError,
-} from '@openlinker/core/identifier-mapping';
+import { MappingAlreadyExistsError, DuplicateIdentifierMappingError, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
@@ -95,7 +92,7 @@ export class PrestashopOrderProcessorManagerAdapter
       const metadataInternalOrderId = order.metadata?.internalOrderId as string | undefined;
       if (metadataInternalOrderId) {
         const existingExternalIds = await this.identifierMapping.getExternalIds(
-          'Order',
+          CORE_ENTITY_TYPE.Order,
           metadataInternalOrderId
         );
         const existingPrestashopOrder = existingExternalIds.find(
@@ -122,7 +119,7 @@ export class PrestashopOrderProcessorManagerAdapter
       let externalCustomerId: string | number;
       if (order.customerId) {
         const externalIds = await this.identifierMapping.getExternalIds(
-          'Customer',
+          CORE_ENTITY_TYPE.Customer,
           order.customerId
         );
         const prestashopCustomerId = externalIds.find(
@@ -199,7 +196,7 @@ export class PrestashopOrderProcessorManagerAdapter
       for (const item of order.items) {
         // Resolve product ID
         const productExternalIds = await this.identifierMapping.getExternalIds(
-          'Product',
+          CORE_ENTITY_TYPE.Product,
           item.productId
         );
         const prestashopProductId = productExternalIds.find(
@@ -219,7 +216,7 @@ export class PrestashopOrderProcessorManagerAdapter
         // Resolve variant ID if present
         if (item.variantId) {
           const variantExternalIds = await this.identifierMapping.getExternalIds(
-            'ProductVariant',
+            CORE_ENTITY_TYPE.ProductVariant,
             item.variantId
           );
           const prestashopVariantId = variantExternalIds.find(
@@ -495,7 +492,7 @@ export class PrestashopOrderProcessorManagerAdapter
       if (metadataInternalOrderId) {
         try {
           await this.identifierMapping.createMapping(
-            'Order',
+            CORE_ENTITY_TYPE.Order,
             externalOrderId,
             this.connection.id,
             metadataInternalOrderId,
@@ -531,7 +528,7 @@ export class PrestashopOrderProcessorManagerAdapter
           `createOrder invoked without metadata.internalOrderId for externalOrderId=${externalOrderId} connection=${this.connection.id} — idempotency check will be bypassed`
         );
         internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-          'Order',
+          CORE_ENTITY_TYPE.Order,
           externalOrderId,
           this.connection.id,
           {

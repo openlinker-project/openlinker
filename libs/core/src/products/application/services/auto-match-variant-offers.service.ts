@@ -15,11 +15,7 @@ import {
   type OfferFeedOutput,
 } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-  IdentifierMappingConflictException,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, IdentifierMappingConflictException, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IAutoMatchVariantOffersService } from './auto-match-variant-offers.service.interface';
 import type {
@@ -104,7 +100,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
 
       try {
         await this.identifierMapping.getOrCreateExactMapping(
-          'Offer',
+          CORE_ENTITY_TYPE.Offer,
           matchResult.offerId,
           variant.id,
           connectionId,

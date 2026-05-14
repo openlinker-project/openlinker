@@ -19,6 +19,7 @@ import type {
   IncomingOrderAddress,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   IPrestashopOrderMapper,
@@ -125,7 +126,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       if (error instanceof PrestashopApiException && error.statusCode === 404) {
         throw new PrestashopResourceNotFoundException(
           `Order not found: ${externalOrderId} on connection ${this.connection.id}`,
-          'Order',
+          CORE_ENTITY_TYPE.Order,
           externalOrderId,
           this.connection.id
         );

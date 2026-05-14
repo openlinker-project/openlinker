@@ -30,6 +30,7 @@ import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openl
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
 type SyncJob = SyncJobEntity;
 
@@ -80,7 +81,7 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
           payload: {
             schemaVersion: 1,
             externalId,
-            objectType: 'Product',
+            objectType: CORE_ENTITY_TYPE.Product,
           },
           idempotencyKey: `master:${job.connectionId}:product:sync:${externalId}:${job.id}`,
         };

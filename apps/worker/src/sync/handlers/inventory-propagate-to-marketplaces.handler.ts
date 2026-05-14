@@ -15,10 +15,7 @@ import type {
   SyncJobRequest,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 
 type SyncJob = SyncJobEntity;
@@ -89,7 +86,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // Step 3: Find all marketplace offers mapped to this internal product
       // (Offer mappings are stored in identifier_mappings as entityType='Offer')
       const mappingTargetId = payload.variantId || payload.productId;
-      const mappings = await this.identifierMapping.getExternalIds('Offer', mappingTargetId);
+      const mappings = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId);
 
       if (mappings.length === 0) {
         this.logger.debug(

@@ -10,10 +10,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
 import { IInventoryService } from './inventory.service.interface';
 import type {
@@ -45,7 +42,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     externalId: string
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
-      'Product',
+      CORE_ENTITY_TYPE.Product,
       externalId,
       connectionId
     );

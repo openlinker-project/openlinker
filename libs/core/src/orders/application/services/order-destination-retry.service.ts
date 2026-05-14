@@ -15,10 +15,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, type SyncJobRequest } from '@openlinker/core/sync';
 import type {
   IOrderDestinationRetryService,
@@ -75,7 +72,7 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
       );
     }
 
-    const sourceExternalIds = await this.identifierMapping.getExternalIds('Order', internalOrderId);
+    const sourceExternalIds = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Order, internalOrderId);
     const sourceMapping = sourceExternalIds.find(
       (m) => m.connectionId === order.sourceConnectionId
     );

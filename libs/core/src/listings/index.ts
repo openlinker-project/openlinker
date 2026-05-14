@@ -59,7 +59,10 @@ export type {
   OfferFieldUpdate,
 } from './domain/types/offer-update.types';
 export { OfferCreationRecord } from './domain/entities/offer-creation-record.entity';
-export { OfferCreationStatusValues } from './domain/types/offer-creation-record.types';
+export {
+  OfferCreationStatusValues,
+  OFFER_CREATION_STATUS,
+} from './domain/types/offer-creation-record.types';
 export type {
   OfferCreationStatus,
   OfferCreationError,

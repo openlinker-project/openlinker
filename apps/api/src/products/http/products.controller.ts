@@ -23,7 +23,7 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { PRODUCTS_SERVICE_TOKEN, IProductsService } from '@openlinker/core/products';
-import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
+import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -155,8 +155,8 @@ export class ProductsController {
 
     // Load external IDs for product and all variants in parallel
     const [productExternalIds, ...variantExternalIdResults] = await Promise.all([
-      this.identifierMapping.getExternalIds('Product', id),
-      ...variants.map((v) => this.identifierMapping.getExternalIds('Product', v.id)),
+      this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id),
+      ...variants.map((v) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, v.id)),
     ]);
 
     const variantDtos = variants.map((v, i) => {

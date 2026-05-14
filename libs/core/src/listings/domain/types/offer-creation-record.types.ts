@@ -35,6 +35,23 @@ export const OfferCreationStatusValues = [
 export type OfferCreationStatus = (typeof OfferCreationStatusValues)[number];
 
 /**
+ * Named-constant map for the offer-creation lifecycle status (#668).
+ *
+ * Lets call sites reference status values by name
+ * (`OFFER_CREATION_STATUS.Pending`) rather than repeating bare
+ * `'pending'` / `'failed'` literals. The `as const satisfies` keeps the map
+ * in lockstep with the union — drop an entry → TS errors; type a value to a
+ * non-member literal → TS errors.
+ */
+export const OFFER_CREATION_STATUS = {
+  Pending: 'pending',
+  Draft: 'draft',
+  Validating: 'validating',
+  Active: 'active',
+  Failed: 'failed',
+} as const satisfies Record<string, OfferCreationStatus>;
+
+/**
  * Structured error from the platform (or validation path).
  * Persisted in `OfferCreationRecord.errors` when status is `failed`.
  */

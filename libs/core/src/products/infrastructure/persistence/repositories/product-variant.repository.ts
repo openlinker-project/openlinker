@@ -25,6 +25,7 @@ import type {
   PaginatedProductVariants,
 } from '../../../domain/types/product.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {
@@ -116,7 +117,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
         `,
         {
           connectionId,
-          entityType: 'ProductVariant',
+          entityType: CORE_ENTITY_TYPE.ProductVariant,
         }
       )
       .where(
@@ -155,7 +156,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
         'identifier_mappings',
         'mapping',
         `mapping.internalId = variant.id AND mapping.connectionId = :connectionId AND mapping.entityType = :entityType`,
-        { connectionId: filters.connectionId, entityType: 'ProductVariant' }
+        { connectionId: filters.connectionId, entityType: CORE_ENTITY_TYPE.ProductVariant }
       );
     }
 

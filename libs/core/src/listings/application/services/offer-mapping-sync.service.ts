@@ -10,11 +10,7 @@ import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isOfferEventReader, isOfferLister } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferFeedItem } from '@openlinker/core/listings';
-import {
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-  IdentifierMappingConflictException,
-} from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, IdentifierMappingConflictException, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   ProductVariantRepositoryPort,
@@ -76,7 +72,7 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
       if (result.status === 'linked' && result.internalVariantId) {
         try {
           await this.identifierMapping.getOrCreateExactMapping(
-            'Offer',
+            CORE_ENTITY_TYPE.Offer,
             item.offerId,
             result.internalVariantId,
             connectionId,
