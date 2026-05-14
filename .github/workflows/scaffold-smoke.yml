@@ -1,0 +1,71 @@
+# Scaffold Smoke (#686)
+#
+# Full tsc smoke on the output of `scripts/create-adapter.mjs`. Catches the
+# drift class the in-`pnpm lint` shape check (`scripts/check-create-adapter.mjs`,
+# #684) cannot: a core API rename in `@openlinker/{core,shared,plugin-sdk}`
+# that silently breaks the scaffolded code's imports.
+#
+# Paths-filtered to changes that could plausibly affect scaffolded-output
+# compilability. Runs on ubuntu-latest so fork PRs see the signal too —
+# orthogonal to #557 (the five existing self-hosted jobs).
+#
+# The smoke scaffolds into `libs/integrations/smoketest/` rather than a literal
+# tmp dir because the template `tsconfig.json` uses relative project references
+# (`../../core`) and the template `package.json` uses `workspace:*` deps —
+# neither resolves outside the workspace. Cleanup runs unconditionally.
+
+name: Scaffold Smoke
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/create-adapter*.mjs'
+      - 'scripts/create-adapter-templates/**'
+      - 'libs/core/**'
+      - 'libs/shared/**'
+      - 'libs/plugin-sdk/**'
+      - '.github/workflows/scaffold-smoke.yml'
+
+jobs:
+  scaffold-smoke:
+    name: Scaffolded Adapter Builds
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Defensive — fresh GitHub-hosted runners shouldn't have this, but a
+      # leftover from a partial previous run would otherwise fail the scaffolder
+      # ("Target directory already exists").
+      - name: Cleanup any leftover scaffold dir
+        run: rm -rf libs/integrations/smoketest
+
+      - name: Scaffold smoke adapter
+        run: node scripts/create-adapter.mjs smoketest
+
+      # The scaffolded package didn't exist when pnpm-lock.yaml was committed,
+      # so --frozen-lockfile would refuse here. The mutation stays on the
+      # runner; we never push it.
+      - name: Re-link workspace
+        run: pnpm install --no-frozen-lockfile
+
+      # tsc -b walks the composite project references and builds
+      # @openlinker/{shared,core,plugin-sdk} on the way — no pre-build needed.
+      - name: Build scaffolded adapter (tsc -b)
+        run: pnpm --filter @openlinker/integrations-smoketest build
+
+      - name: Cleanup scaffold dir
+        if: always()
+        run: rm -rf libs/integrations/smoketest
