@@ -299,14 +299,30 @@ async function seedWebserviceApiKey(conn: Connection, apiKey: string): Promise<v
 }
 
 async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
-  // Already seeded?
+  // Already seeded? Includes the case where the real OL PS module has been
+  // installed by the test harness (#692) — the install hook creates the
+  // carrier row with the same `external_module_name='openlinker'` shape.
   const [existing] = await conn.execute<(RowDataPacket & { id_carrier: number })[]>(
     `SELECT id_carrier FROM ps_carrier
      WHERE external_module_name = 'openlinker' AND active = 1 AND deleted = 0
      LIMIT 1`
   );
   if (Array.isArray(existing) && existing.length > 0) {
-    return existing[0].id_carrier;
+    const existingId = existing[0].id_carrier;
+    // Defensive parity with the SQL-stub insert path below, which links the
+    // carrier to every zone via the same `INSERT IGNORE` loop. The real OL
+    // PS module's install hook calls `addZone(Zone::getZones(true))` for
+    // active zones at install time; under the current fixture ordering that
+    // already covers every PL-relevant zone, so this call is a no-op today.
+    // It's kept idempotent + cheap so a future change that activates a new
+    // zone AFTER module install (or relocates `activateCountry` ahead of it)
+    // doesn't silently leave the OL Dynamic carrier under-linked. The
+    // observed carrier-id rewrite at POST /orders (`id_carrier` 6→3 in S-3's
+    // early debug run) was PS's "cheapest available + tiebreak by position-
+    // ASC" — see the S-3 spec's soft-assertion comment for the operative
+    // explanation; that path is *not* what this helper guards.
+    await linkCarrierToAllZones(conn, existingId);
+    return existingId;
   }
 
   // Build the INSERT dynamically from the actual `ps_carrier` columns that
@@ -408,6 +424,29 @@ async function seedOlDynamicCarrier(conn: Connection): Promise<number> {
   }
 
   return idCarrier;
+}
+
+/**
+ * Link a carrier to every zone in `ps_zone` (no active filter). Idempotent —
+ * uses `INSERT IGNORE` so re-running against an already-linked carrier is a
+ * no-op. Used by `seedOlDynamicCarrier`'s early-return path (#692) to keep
+ * the module-installed-carrier branch on par with the SQL-stub-insert branch
+ * below, which already does the same zone-link loop. The real OL PS module's
+ * install hook only links to zones that were active at PS install time
+ * (`Zone::getZones(true)`); this helper backfills any zone added later (e.g.
+ * by a future fixture step that activates a new zone), preventing a class of
+ * carrier-availability failures from drifting in silently.
+ */
+async function linkCarrierToAllZones(conn: Connection, idCarrier: number): Promise<void> {
+  const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
+    'SELECT id_zone FROM ps_zone'
+  );
+  for (const zone of zones) {
+    await conn.execute(
+      'INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)',
+      [idCarrier, zone.id_zone]
+    );
+  }
 }
 
 /**
@@ -1275,6 +1314,69 @@ export async function seedPrestashopProductForOrders(
     }
 
     return { idProduct };
+  } finally {
+    await conn.end();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// OL Dynamic carrier — sidecar read (#692 / closes #513)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * A row from the OL module's per-cart shipping sidecar table.
+ *
+ * Mirrors `apps/prestashop-module/openlinker/openlinker.php::createCartShippingTable`.
+ * `amount_tax_excl` / `amount_tax_incl` are MySQL `DECIMAL(20,6)` — mysql2
+ * returns them as numeric strings by default; this type coerces at the boundary.
+ */
+export interface CartShippingRow {
+  amountTaxExcl: number;
+  amountTaxIncl: number;
+  source: string | null;
+}
+
+/**
+ * Read the `ps_openlinker_cart_shipping` row for the given cart id. Returns
+ * `null` when no row exists. The S-3 carrier-mapping scenario uses this to
+ * prove the adapter → cartshipping.php → CartShippingRepository::upsert
+ * round-trip persisted the buyer-paid amount: a populated row is the unique
+ * signal that the OL Dynamic carrier branch was taken (S-1 / S-2's static
+ * carriers never write the sidecar).
+ */
+export async function readCartShipping(
+  options: ApplyFixtureOptions,
+  idCart: number,
+): Promise<CartShippingRow | null> {
+  const conn = await createConnection({
+    host: options.host,
+    port: options.port,
+    user: options.user,
+    password: options.password,
+    database: options.database,
+    multipleStatements: false,
+  });
+  try {
+    const [rows] = await conn.execute<
+      (RowDataPacket & {
+        amount_tax_excl: string | number;
+        amount_tax_incl: string | number;
+        source: string | null;
+      })[]
+    >(
+      `SELECT amount_tax_excl, amount_tax_incl, source
+       FROM ps_openlinker_cart_shipping
+       WHERE id_cart = ?
+       LIMIT 1`,
+      [idCart],
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      amountTaxExcl: Number(row.amount_tax_excl),
+      amountTaxIncl: Number(row.amount_tax_incl),
+      source: row.source,
+    };
   } finally {
     await conn.end();
   }

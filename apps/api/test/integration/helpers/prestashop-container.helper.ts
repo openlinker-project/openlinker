@@ -19,14 +19,17 @@
  * @module apps/api/test/integration/helpers
  */
 import { execFileSync } from 'child_process';
+import { randomBytes } from 'crypto';
 import { mkdtempSync, rmSync } from 'fs';
+import { createConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { Readable } from 'stream';
 import { GenericContainer, Network, StartedNetwork, StartedTestContainer } from 'testcontainers';
 import { MySqlContainer, StartedMySqlContainer } from '@testcontainers/mysql';
 import {
   applyPrestashopFixture,
+  ApplyFixtureOptions,
   configurePrestashopAccessUrl,
   PrestashopFixtureSeed,
   waitForPrestashopInstall,
@@ -37,10 +40,38 @@ export interface PrestashopTestContainer {
   baseUrl: string;
   /** WS API key seeded into ps_api_access. Use as the basic-auth username with empty password. */
   webserviceApiKey: string;
-  /** id_carrier of the OpenLinker Dynamic stub carrier. */
+  /**
+   * id_carrier of the OpenLinker Dynamic carrier.
+   *
+   * When the harness was started with `installOlModule: true` this is the
+   * live module-installed carrier row: its `cartshipping.php` front-controller
+   * endpoint is wired and HMAC-verified, so adapter-side `writeCartShipping`
+   * calls produce real sidecar rows that `Carrier::getOrderShippingCostExternal`
+   * reads at order-create time. Coincides with
+   * `ps_configuration.OPENLINKER_DYNAMIC_CARRIER_ID`.
+   *
+   * When `installOlModule` is false (default) this is the SQL-stub row seeded
+   * by `seedOlDynamicCarrier` — sufficient for `discoverDynamicCarrierId()`
+   * to find a row, but the runtime `cartshipping.php` controller is not
+   * installed, so the HMAC round-trip is not exercised. Specs that need the
+   * round-trip MUST opt in via `installOlModule: true`.
+   */
   olDynamicCarrierId: number;
   /** id_currency of PLN. */
   plnCurrencyId: number;
+  /**
+   * HMAC shared secret (random per run, 64 hex chars).
+   *
+   * Only meaningful when the harness was started with `installOlModule: true`,
+   * in which case the same bytes are seeded into
+   * `ps_configuration.OPENLINKER_WEBHOOK_SECRET` (module-receiver side) AND
+   * returned here so the int-spec can wire the adapter side via the
+   * `WebhookSecretProviderPort` env-var fallback.
+   *
+   * When `installOlModule` is false the secret is generated but unused; it's
+   * always populated to keep the harness shape stable across configurations.
+   */
+  webhookSharedSecret: string;
   /**
    * MySQL companion connection details — exposed so vertical-slice specs
    * (e.g. carrier-mapping #535) can seed additional rows the WS doesn't
@@ -76,6 +107,44 @@ const MYSQL_ROOT_PASSWORD = 'rootpassword';
 const INSTALL_DEADLINE_MS = 12 * 60_000;
 
 /**
+ * Path to the OpenLinker PrestaShop module source on the host, resolved
+ * relative to this helper's location. Hoisted to a named constant because
+ * the `../../../../` depth count is brittle if this helper ever moves —
+ * grep for `MODULE_SOURCE_PATH` to find the resolution target instead of
+ * recounting `..`s in a call site. Target: `apps/prestashop-module/openlinker`.
+ */
+const MODULE_SOURCE_PATH = resolve(__dirname, '../../../../prestashop-module/openlinker');
+
+/**
+ * Default per-`bin/console` exec timeout. PS module install + uninstall
+ * cycles complete in ~2-5s on warm-cache locally; 120s gives generous
+ * headroom for slow CI runners while still failing actionably if the
+ * underlying PHP hangs (lock contention, fatal error, OOM). Without this,
+ * a hung exec would silently consume the 15-minute `beforeAll` deadline.
+ */
+const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
+
+/**
+ * Options for {@link startPrestashopContainer}. Today only carries the
+ * OL-module opt-in flag; new knobs land here without a signature break.
+ */
+export interface StartPrestashopContainerOptions {
+  /**
+   * When true, install the real OpenLinker PrestaShop module into the
+   * container between `waitForPrestashopInstall` and `applyPrestashopFixture`.
+   * Required for specs that exercise the OL Dynamic carrier round-trip (#692).
+   *
+   * Default `false` — keeps boot fast for specs that don't need it AND avoids
+   * a known CI-environment failure mode where the install transition leaves
+   * the PS WS returning HTTP 500 on the subsequent `verifyApacheUp` probe
+   * (works locally on macOS Docker-Desktop, fails on the self-hosted Linux
+   * runner — root cause TBD). Specs that opt in should expect this risk and
+   * handle CI flakes accordingly.
+   */
+  installOlModule?: boolean;
+}
+
+/**
  * Start a PrestaShop test container with MySQL companion.
  *
  * Steps:
@@ -83,10 +152,15 @@ const INSTALL_DEADLINE_MS = 12 * 60_000;
  *   2. Start MySQL 8.4 with a known root password.
  *   3. Start PrestaShop with `PS_INSTALL_AUTO=1` pointing at the MySQL companion.
  *   4. Wait for `ps_configuration.PS_VERSION_DB` to appear → install complete.
- *   5. Apply the fixture (WS API key, OL Dynamic carrier stub, PLN currency).
- *   6. Return container details + cleanup.
+ *   5. (Optional, when `options.installOlModule` is true) Install the real OL
+ *      PrestaShop module — see {@link installOpenLinkerModuleIntoContainer}.
+ *   6. Apply the fixture (WS API key, OL Dynamic carrier stub OR module-installed
+ *      row, PLN currency).
+ *   7. Return container details + cleanup.
  */
-export async function startPrestashopContainer(): Promise<PrestashopTestContainer> {
+export async function startPrestashopContainer(
+  options: StartPrestashopContainerOptions = {},
+): Promise<PrestashopTestContainer> {
   // Track started resources so we can tear them down on a partial-start
   // failure. `beforeAll` swallows post-throw teardown (Jest skips `afterAll`
   // when setup throws), so without this guard a failed PS boot would leak
@@ -126,6 +200,27 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     };
 
     await waitForPrestashopInstall(mysqlOptions, INSTALL_DEADLINE_MS);
+
+    // Always generate the per-run secret so the returned harness has a stable
+    // shape. When `options.installOlModule` is false the bytes are unused —
+    // a small waste of entropy in exchange for not making `webhookSharedSecret`
+    // nullable downstream.
+    const webhookSharedSecret = randomBytes(32).toString('hex');
+    if (options.installOlModule) {
+      // Install the OL PS module BEFORE applyPrestashopFixture. The fixture's
+      // `seedOlDynamicCarrier` early-returns when it finds a carrier row with
+      // `external_module_name='openlinker'` — which the module install creates
+      // first — so this ordering avoids the stub-vs-real conflict that would
+      // arise from running the fixture first. Inside the same try/catch so a
+      // module-install failure still triggers the container teardown path
+      // below (logs dump + `Promise.allSettled(stop)` + network removal).
+      await installOpenLinkerModuleIntoContainer({
+        prestashop,
+        mysqlAddress: mysqlOptions,
+        sharedSecret: webhookSharedSecret,
+        modulePath: MODULE_SOURCE_PATH,
+      });
+    }
 
     const seed: PrestashopFixtureSeed = await applyPrestashopFixture(mysqlOptions);
 
@@ -180,6 +275,7 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
       webserviceApiKey: seed.webserviceApiKey,
       olDynamicCarrierId: seed.olDynamicCarrierId,
       plnCurrencyId: seed.plnCurrencyId,
+      webhookSharedSecret,
       mysqlAddress: mysqlOptions,
       cleanup,
     };
@@ -203,6 +299,17 @@ export async function startPrestashopContainer(): Promise<PrestashopTestContaine
     // `docker inspect`, again routed through child_process for reliability.
     if (prestashop) dockerInspectFallback('prestashop', prestashop);
     if (mysql) dockerInspectFallback('mysql', mysql);
+
+    // PS app-internal logs: Apache error_log, Symfony app log, PS legacy
+    // log, plus a directory listing of /modules/openlinker to verify the
+    // module copy landed. These live inside the container filesystem and
+    // are invisible to `docker logs` — execing into the still-running
+    // container is the only way to surface them in a CI run.
+    //
+    // Best-effort: if the container has already exited, `exec` will fail
+    // and the helper swallows the error. The dumpInspect output above
+    // tells us whether that's the case.
+    if (prestashop) await dumpPrestashopAppLogs(prestashop);
 
     await Promise.allSettled([
       prestashop?.stop() ?? Promise.resolve(),
@@ -239,6 +346,12 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   let lastError: unknown;
   let lastRedirectLocation: string | null = null;
 
+  // Capture the body of the most recent error response. PS Symfony renders
+  // its exception page (or the JSON `errors` array from the WS layer) inline
+  // in the response body — this is usually the single most useful piece of
+  // root-cause data on a 500 and is otherwise invisible to the caller.
+  let lastErrorBody: string | null = null;
+
   while (Date.now() < deadline) {
     try {
       // Don't follow redirects automatically. PS will 302 to its configured
@@ -261,12 +374,26 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
           `PS WS probe HTTP ${response.status} → Location: ${lastRedirectLocation ?? '<none>'}`,
         );
       } else {
+        // Slurp body for 4xx/5xx. Cap to 8KB — a Symfony stack trace fits
+        // comfortably; anything larger is almost certainly an HTML error
+        // page that won't help.
+        lastErrorBody = await response
+          .text()
+          .then((body) => (body.length > 8192 ? `${body.slice(0, 8192)}…[truncated]` : body))
+          .catch(() => null);
         lastError = new Error(`PS WS probe HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
       lastError = err;
     }
     await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  if (lastErrorBody) {
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `[prestashop-container] last failed probe response body (${lastErrorBody.length} bytes):\n${lastErrorBody}`,
+    );
   }
 
   throw new Error(
@@ -423,6 +550,56 @@ function dockerInspectFallback(
   }
 }
 
+/**
+ * Exec into the still-running PS container and dump the application logs
+ * that aren't visible to `docker logs`:
+ *   - Apache `error.log` / `access.log` (php errors + request log)
+ *   - Symfony app log (`/var/www/html/var/logs/*.log`) — stack traces
+ *   - PS legacy log (`/var/www/html/cache/log/*.log`) — older code paths
+ *   - Directory listing of `/var/www/html/modules/openlinker` — verifies
+ *     the module copy + ownership chown actually landed
+ *
+ * The single `sh -c` payload is intentional: one exec call, all relevant
+ * sources, fully best-effort (`|| true` guards) so a missing file never
+ * masks an existing one. Output is funneled through `console.error` so
+ * the GitHub Actions log captures it.
+ *
+ * No-op (but logs why) if the container has already exited — the inspect
+ * dump above will say whether that's the case.
+ */
+async function dumpPrestashopAppLogs(prestashop: StartedTestContainer): Promise<void> {
+  const tag = '[prestashop-container app-logs]';
+  const script = [
+    'echo "--- /var/log/apache2/error.log (tail 200) ---"',
+    'tail -n 200 /var/log/apache2/error.log 2>/dev/null || echo "(no apache error.log)"',
+    'echo "--- /var/log/apache2/access.log (tail 100) ---"',
+    'tail -n 100 /var/log/apache2/access.log 2>/dev/null || echo "(no apache access.log)"',
+    'echo "--- /var/www/html/var/logs (Symfony app logs) ---"',
+    'ls -la /var/www/html/var/logs/ 2>/dev/null || echo "(no /var/www/html/var/logs)"',
+    'for f in /var/www/html/var/logs/*.log; do [ -f "$f" ] && { echo "--- $f (tail 200) ---"; tail -n 200 "$f"; }; done 2>/dev/null',
+    'echo "--- /var/www/html/cache/log (PS legacy logs) ---"',
+    'ls -la /var/www/html/cache/log/ 2>/dev/null || echo "(no /var/www/html/cache/log)"',
+    'for f in /var/www/html/cache/log/*.log; do [ -f "$f" ] && { echo "--- $f (tail 200) ---"; tail -n 200 "$f"; }; done 2>/dev/null',
+    'echo "--- /var/www/html/modules/openlinker (module install state) ---"',
+    'ls -la /var/www/html/modules/openlinker/ 2>/dev/null || echo "(no /var/www/html/modules/openlinker)"',
+    'echo "--- php -v ---"',
+    'php -v 2>&1 || true',
+  ].join('; ');
+  try {
+    const result = await prestashop.exec(['sh', '-c', script]);
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `${tag} exit=${result.exitCode}\nstdout:\n${result.stdout}` +
+        (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+    console.error(
+      `${tag} exec failed (container may have already exited): ${formatError(err)}`,
+    );
+  }
+}
+
 function formatError(err: unknown): string {
   if (err instanceof Error) return `${err.name}: ${err.message}`;
   return String(err);
@@ -505,4 +682,202 @@ async function startPrestashop(
     // check; PS_VERSION_DB covers "is the install finished".
     .withStartupTimeout(180_000)
     .start();
+}
+
+/**
+ * Options for {@link installOpenLinkerModuleIntoContainer}. Named-object shape
+ * because a four-arg positional call would force every future option (timeout
+ * override, alternate module name, ...) into a positional slot that's hard to
+ * grep at call sites.
+ */
+interface InstallOpenLinkerModuleOptions {
+  /** Started PrestaShop container — must have completed auto-install. */
+  prestashop: StartedTestContainer;
+  /** MySQL connection details for the same shop. */
+  mysqlAddress: ApplyFixtureOptions;
+  /**
+   * HMAC shared secret to seed into `ps_configuration.OPENLINKER_WEBHOOK_SECRET`.
+   * Caller is responsible for wiring the same bytes into the adapter side
+   * (e.g. via `process.env.OPENLINKER_WEBHOOK_SECRET__PRESTASHOP`).
+   */
+  sharedSecret: string;
+  /** Absolute path on the host to `apps/prestashop-module/openlinker`. */
+  modulePath: string;
+}
+
+/**
+ * Install the real OpenLinker PrestaShop module into a running PS Testcontainer.
+ *
+ * Flow:
+ *   1. Copy the module directory from the worktree into the container's
+ *      `/var/www/html/modules/openlinker`. Post-start `copyDirectoriesToContainer`
+ *      rather than builder-time `withCopyDirectoriesToContainer` — the bind-mount
+ *      on `/var/www/html` (populated by PS's entrypoint after start) would mask
+ *      a builder-time copy.
+ *   2. `chown -R www-data:www-data` so PS's `installDynamicCarrier()` can write
+ *      the carrier logo into `_PS_SHIP_IMG_DIR_` (fail-fast on copy error per
+ *      the LP Express pattern in `openlinker.php:818`).
+ *   3. `php bin/console prestashop:module install openlinker`, then `uninstall`
+ *      + `install` cycle. Per `docs/operations/prestashop-module-rename-migration.md:127-131`
+ *      PS 9.0.2's Symfony module-installer occasionally bypasses the legacy
+ *      `install()` hook on first invocation; the cycle forces it. Cost ~2-5s.
+ *   4. SQL-upsert `OPENLINKER_WEBHOOK_SECRET` into `ps_configuration` — the
+ *      module's `setDefaultConfiguration()` resets it to empty string during
+ *      install, so this MUST happen after step 3.
+ *   5. Pre-flight: SELECT the secret back, assert it equals the seeded value.
+ *      Catches a future PS-version regression in `Configuration::updateValue()`
+ *      semantics with a precise diagnostic instead of a 401 from `cartshipping.php`.
+ *
+ * Throws with captured stdout/stderr on any non-zero exec exit, so the failure
+ * mode reaches the CI log without an interactive debugger.
+ */
+async function installOpenLinkerModuleIntoContainer(
+  options: InstallOpenLinkerModuleOptions,
+): Promise<void> {
+  const { prestashop, mysqlAddress, sharedSecret, modulePath } = options;
+
+  // 1. Materialise the module source inside the container.
+  await prestashop.copyDirectoriesToContainer([
+    { source: modulePath, target: '/var/www/html/modules/openlinker' },
+  ]);
+
+  // 2. Apache (www-data) needs RW on the module dir for the install-time
+  //    logo copy (`@copy(.../carrier.jpg, _PS_SHIP_IMG_DIR_)`). Files arrive
+  //    owned by root via the docker-cp shape testcontainers uses.
+  await runExecOrThrow(prestashop, ['chown', '-R', 'www-data:www-data', '/var/www/html/modules/openlinker']);
+
+  // 3. Install cycle. First `install` registers the module; the
+  //    `uninstall + install` follow-up forces the legacy `install()` hook
+  //    to run (PS 9.0.2 Symfony installer flake — see docblock).
+  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'], { workingDir: '/var/www/html' });
+  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'uninstall', 'openlinker'], { workingDir: '/var/www/html' });
+  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'], { workingDir: '/var/www/html' });
+
+  // 4. Seed the HMAC secret. setDefaultConfiguration() set it to '' on install.
+  const conn = await createConnection({
+    host: mysqlAddress.host,
+    port: mysqlAddress.port,
+    user: mysqlAddress.user,
+    password: mysqlAddress.password,
+    database: mysqlAddress.database,
+    multipleStatements: false,
+  });
+  try {
+    // PS's `setDefaultConfiguration()` already created the row via
+    // `Configuration::updateValue('OPENLINKER_WEBHOOK_SECRET', '')` during
+    // install — populated with `(id_shop, id_shop_group)` matching the PS
+    // single-shop default. We UPDATE in place keyed on `name` alone (all
+    // shop-binding variants get the same secret). A bare INSERT...ON DUPLICATE
+    // KEY UPDATE with NULL shop bindings would create a sibling row that the
+    // module's `Configuration::get` ignores, and the pre-flight assertion
+    // below would still see the empty original.
+    const [updateResult] = await conn.execute<ResultSetHeader>(
+      `UPDATE ps_configuration SET value = ?, date_upd = NOW() WHERE name = 'OPENLINKER_WEBHOOK_SECRET'`,
+      [sharedSecret],
+    );
+    if (updateResult.affectedRows === 0) {
+      throw new Error(
+        `OL module install: no OPENLINKER_WEBHOOK_SECRET row in ps_configuration after install. ` +
+          `Expected setDefaultConfiguration() to have created it. Check the install-cycle output above.`,
+      );
+    }
+
+    // 5. Pre-flight: verify the seed actually landed. Cheap belt-and-braces.
+    const [secretRows] = await conn.execute<(RowDataPacket & { value: string })[]>(
+      `SELECT value FROM ps_configuration WHERE name = 'OPENLINKER_WEBHOOK_SECRET' LIMIT 1`,
+    );
+    if (secretRows.length === 0 || secretRows[0].value !== sharedSecret) {
+      throw new Error(
+        `OL module install: OPENLINKER_WEBHOOK_SECRET seed verification failed. ` +
+          `Expected ${sharedSecret.length}-char secret, got ${secretRows[0]?.value?.length ?? 0} chars. ` +
+          `Configuration::updateValue() semantics may have drifted in this PS version.`,
+      );
+    }
+
+    // Verify the carrier + sidecar table the module's install hook should have
+    // produced. If either is missing, the install-cycle hack didn't take and
+    // S-3 would 401 / 500 cryptically downstream.
+    const [carrierRows] = await conn.execute<(RowDataPacket & { id_carrier: number })[]>(
+      `SELECT id_carrier FROM ps_carrier WHERE external_module_name = 'openlinker' AND active = 1 AND deleted = 0 LIMIT 1`,
+    );
+    if (carrierRows.length === 0) {
+      throw new Error(
+        `OL module install: no ps_carrier row with external_module_name='openlinker' after install. ` +
+          `The legacy install() hook didn't run — Symfony installer flake (see docblock); ` +
+          `try increasing the uninstall+install cycle to two iterations.`,
+      );
+    }
+    const [tableRows] = await conn.execute<(RowDataPacket & { TABLE_NAME: string })[]>(
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_openlinker_cart_shipping' LIMIT 1`,
+    );
+    if (tableRows.length === 0) {
+      throw new Error(
+        `OL module install: ps_openlinker_cart_shipping table missing after install. ` +
+          `Same root cause as the carrier-row check above — the legacy install() hook did not run.`,
+      );
+    }
+  } finally {
+    await conn.end();
+  }
+}
+
+/**
+ * `prestashop.exec`-with-throw helper. Captures stdout/stderr so a non-zero
+ * exit code surfaces an actionable diagnostic to the CI log instead of a bare
+ * "module install failed" message.
+ *
+ * Wraps `prestashop.exec` in a `Promise.race` against a timeout deadline —
+ * testcontainers' exec API doesn't expose cancellation, so the underlying
+ * exec may keep running inside the container after a timeout, but we stop
+ * blocking the test and fail with an actionable message. Without this,
+ * a hung exec would silently consume the suite's `beforeAll` deadline.
+ * Default 120s per call; override via `opts.timeoutMs` for commands that
+ * legitimately take longer.
+ */
+async function runExecOrThrow(
+  prestashop: StartedTestContainer,
+  command: string[],
+  opts?: { workingDir?: string; timeoutMs?: number },
+): Promise<void> {
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(
+        new Error(
+          `Command timed out after ${timeoutMs}ms in PS container: ${command.join(' ')}\n` +
+            `Underlying exec may still be running inside the container; check docker logs ` +
+            `for the PS PHP error log if this is a hang on install.`,
+        ),
+      );
+    }, timeoutMs);
+  });
+  try {
+    const result = await Promise.race([
+      prestashop.exec(command, opts ? { workingDir: opts.workingDir } : undefined),
+      timeoutPromise,
+    ]);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Command failed in PS container (exit=${result.exitCode}): ${command.join(' ')}\n` +
+          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+    // In CI, dump the success-path output too. The install/uninstall/install
+    // cycle "succeeds" (exit=0) but can still leave PS in a broken state —
+    // a deprecation notice in stderr, a Symfony cache-clear warning, a
+    // missing-class autoload error after install. Without this dump those
+    // signals never reach the CI log. Local dev defaults to quiet to keep
+    // the test output legible.
+    if (process.env.CI === 'true') {
+      // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
+      console.error(
+        `[prestashop-container exec] ${command.join(' ')} → exit=0\nstdout:\n${result.stdout}` +
+          (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
+      );
+    }
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
