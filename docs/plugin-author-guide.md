@@ -724,10 +724,110 @@ PrestaShop's adapter specs:
 
 ### Integration tests (`*.int-spec.ts`)
 
-Optional but high-value for a new plugin. Live under
-`apps/api/test/integration/`, opt into the PrestaShop Testcontainer
-helper if your test depends on a real PrestaShop response (see
-[`docs/testing-guide.md § PrestaShop Testcontainer Pattern (#506)`](./testing-guide.md#prestashop-testcontainer-pattern-506)).
+Optional but high-value for a new plugin. The integration-test harness
+(`@openlinker/test-kit`, #600) is published as a workspace package, so
+your plugin owns its int-specs without reaching into `apps/api`.
+
+#### Wiring the harness in your plugin
+
+Add the workspace dep to your plugin's `package.json`:
+
+```jsonc
+{
+  "devDependencies": {
+    "@openlinker/test-kit": "workspace:*",
+    "@nestjs/testing": "^10.0.0",
+    "@testcontainers/postgresql": "^10.0.0",
+    "@testcontainers/redis": "^10.0.0",
+    "express": "^4.0.0",
+    "supertest": "^6.0.0",
+    "typeorm": "^0.3.0"
+  }
+}
+```
+
+Then ship a thin per-suite setup file at
+`libs/integrations/<plugin>/test/integration/setup.ts`:
+
+```typescript
+import { createIntegrationTestHarness } from '@openlinker/test-kit';
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { YourPluginModule } from '../../src/your-plugin.module';
+
+// Compose only what your int-spec actually needs — usually TypeORM root +
+// your plugin module, NOT the entire host AppModule.
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT),
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_DATABASE,
+      entities: [/* your plugin's ORM entities */],
+      synchronize: true,
+    }),
+    YourPluginModule,
+  ],
+})
+class PluginIntegrationTestModule {}
+
+const harness = createIntegrationTestHarness({
+  imports: [PluginIntegrationTestModule],
+  tablesToTruncate: [
+    // List ONLY the tables your plugin owns — caller-supplied, not hardcoded.
+    'your_plugin_table',
+  ],
+});
+
+export const { getTestHarness, resetTestHarness, teardownTestHarness } = harness;
+export type { IntegrationTestHarness } from '@openlinker/test-kit';
+```
+
+Then write int-specs against the harness handle:
+
+```typescript
+import { getTestHarness, resetTestHarness, teardownTestHarness, IntegrationTestHarness } from './setup';
+
+describe('YourPlugin integration', () => {
+  let harness: IntegrationTestHarness;
+
+  beforeAll(async () => { harness = await getTestHarness(); });
+  afterEach(async () => { await resetTestHarness(); });
+  afterAll(async () => { await teardownTestHarness(); });
+
+  it('should round-trip through the real DB', async () => {
+    const ds = harness.getDataSource();
+    // … insert, assert, etc.
+  });
+});
+```
+
+The harness accepts these `config` knobs (full reference:
+`libs/test-kit/src/types.ts`):
+
+- `imports` — Nest modules to register in the test app (required).
+- `tablesToTruncate` — table names truncated between tests via `reset()`.
+  Caller-supplied; plugin authors list only their tables.
+- `env` — env vars set before container startup (feature flags, JWT secrets).
+- `configureBodyParser` — hook to install raw-body / signature-verification
+  middleware (apps/api uses this for `/webhooks`).
+- `validationPipe` — pass `false` to disable, or a `ValidationPipeOptions`
+  object; default mirrors apps/api production.
+- `redisClientToken` — DI token used to resolve the Redis client. Defaults
+  to `'REDIS_CLIENT'`; pass `false` if the test app doesn't bind one.
+
+#### Two reference patterns in-tree
+
+- **Generic Testcontainer harness** (Postgres + Redis): see how apps/api
+  consumes the test-kit at
+  [`apps/api/test/integration/setup.ts`](../apps/api/test/integration/setup.ts).
+- **PrestaShop-specific Testcontainer pattern**: when your test depends on
+  real PrestaShop response shapes, layer the
+  [PrestaShop Testcontainer helper](./testing-guide.md#prestashop-testcontainer-pattern-506)
+  on top of the generic harness.
 
 Reference vertical-slice spec:
 [`apps/api/test/integration/orders/allegro-prestashop-carrier-mapping.int-spec.ts`](../apps/api/test/integration/orders/allegro-prestashop-carrier-mapping.int-spec.ts).

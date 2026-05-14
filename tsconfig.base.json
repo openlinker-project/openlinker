@@ -40,7 +40,9 @@
       "@openlinker/integrations-prestashop": ["libs/integrations/prestashop/src/index.ts"],
       "@openlinker/integrations-prestashop/*": ["libs/integrations/prestashop/src/*"],
       "@openlinker/plugin-sdk": ["libs/plugin-sdk/src/index.ts"],
-      "@openlinker/plugin-sdk/*": ["libs/plugin-sdk/src/*"]
+      "@openlinker/plugin-sdk/*": ["libs/plugin-sdk/src/*"],
+      "@openlinker/test-kit": ["libs/test-kit/src/index.ts"],
+      "@openlinker/test-kit/*": ["libs/test-kit/src/*"]
     }
   }
 }

@@ -422,6 +422,11 @@ pnpm test && pnpm test:integration
 
 ## Test Organization
 
+> **Plugin authors**: the integration-test harness is published as
+> `@openlinker/test-kit` (#600). For wiring it into a plugin package's own
+> `*.int-spec.ts` files, see
+> [`docs/plugin-author-guide.md § Step 10 — Tests § Integration tests`](./plugin-author-guide.md#integration-tests-int-spects).
+
 ### File Naming Conventions
 
 | Test Type | Pattern | Example |
