@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  typeorm: 0.3.17
+
 importers:
 
   .:
@@ -162,10 +165,10 @@ importers:
         version: 10.28.0
       '@testcontainers/postgresql':
         specifier: ^10.9.0
-        version: 10.28.0
+        version: 10.13.2
       '@testcontainers/redis':
         specifier: ^10.9.0
-        version: 10.28.0
+        version: 10.13.2
       '@types/express':
         specifier: 4.17.21
         version: 4.17.21
@@ -362,10 +365,10 @@ importers:
         version: 10.3.0(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(@nestjs/platform-express@10.3.0)
       '@testcontainers/postgresql':
         specifier: ^10.9.0
-        version: 10.28.0
+        version: 10.13.2
       '@testcontainers/redis':
         specifier: ^10.9.0
-        version: 10.28.0
+        version: 10.13.2
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -409,7 +412,7 @@ importers:
         specifier: ^10.0.0
         version: 10.0.2(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(reflect-metadata@0.2.1)(rxjs@7.8.1)(typeorm@0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))
       typeorm:
-        specifier: ^0.3.0
+        specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
       '@types/jest':
@@ -631,10 +634,13 @@ importers:
         version: 3.2.0(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(rxjs@7.8.1)
       '@nestjs/typeorm':
         specifier: ^10.0.0
-        version: 10.0.2(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(reflect-metadata@0.2.1)(rxjs@7.8.1)(typeorm@0.3.20(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))
+        version: 10.0.2(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(reflect-metadata@0.2.1)(rxjs@7.8.1)(typeorm@0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))
       redis:
         specifier: 4.6.12
         version: 4.6.12
+      typeorm:
+        specifier: 0.3.17
+        version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
       '@types/jest':
         specifier: 29.5.12
@@ -712,8 +718,8 @@ importers:
         specifier: 29.1.2
         version: 29.1.2(@babel/core@7.28.5)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.5))(jest@29.7.0(@types/node@20.11.30)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))(typescript@5.4.3)
       typeorm:
-        specifier: 0.3.20
-        version: 0.3.20(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
+        specifier: 0.3.17
+        version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
       typescript:
         specifier: 5.4.3
         version: 5.4.3
@@ -1388,7 +1394,7 @@ packages:
       '@nestjs/core': ^8.0.0 || ^9.0.0 || ^10.0.0
       reflect-metadata: ^0.1.13 || ^0.2.0
       rxjs: ^7.2.0
-      typeorm: ^0.3.0
+      typeorm: 0.3.17
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -2011,14 +2017,8 @@ packages:
   '@testcontainers/postgresql@10.13.2':
     resolution: {integrity: sha512-xd3u/rL8FrOBHFMu1aU+2d4sqPz9ffEb19ITtopT/tyBZWW9qCsgR6wSg0r2BJUd+2hT4UR5nR5cymi+ROkehw==}
 
-  '@testcontainers/postgresql@10.28.0':
-    resolution: {integrity: sha512-NN25rruG5D4Q7pCNIJuHwB+G85OSeJ3xHZ2fWx0O6sPoPEfCYwvpj8mq99cyn68nxFkFYZeyrZJtSFO+FnydiA==}
-
   '@testcontainers/redis@10.13.2':
     resolution: {integrity: sha512-SFNdO/aGkJlgyS04pXPTGiC8lJqR7aw6xdhgB5NXVnEPoic+y6SozxY4Fa7DeXxyYftF/xYW7D0iDobpMik6Vg==}
-
-  '@testcontainers/redis@10.28.0':
-    resolution: {integrity: sha512-xDNKSJTBmQca/3v5sdHmqSCYr68vjvAGSxoHCuWylha77gAYn88g5nUZK0ocNbUZgBq69KhIzj/f9zlHkw34uA==}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -2998,9 +2998,6 @@ packages:
   date-fns@2.30.0:
     resolution: {integrity: sha512-fnULvOpxnC5/Vg3NCiWelDsLiUc9bRwAPs/+LfTLNvetFCtCTN+yQz15C/fs4AwX1R9K5GLtLfn8QW+dWisaAw==}
     engines: {node: '>=0.11'}
-
-  dayjs@1.11.20:
-    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -5460,64 +5457,6 @@ packages:
       typeorm-aurora-data-api-driver:
         optional: true
 
-  typeorm@0.3.20:
-    resolution: {integrity: sha512-sJ0T08dV5eoZroaq9uPKBoNcGslHBR4E4y+EBHs//SiGbblGe7IeduP/IH4ddCcj0qp3PHwDwGnuvqEAnKlq/Q==}
-    engines: {node: '>=16.13.0'}
-    hasBin: true
-    peerDependencies:
-      '@google-cloud/spanner': ^5.18.0
-      '@sap/hana-client': ^2.12.25
-      better-sqlite3: ^7.1.2 || ^8.0.0 || ^9.0.0
-      hdb-pool: ^0.1.6
-      ioredis: ^5.0.4
-      mongodb: ^5.8.0
-      mssql: ^9.1.1 || ^10.0.1
-      mysql2: ^2.2.5 || ^3.0.1
-      oracledb: ^6.3.0
-      pg: ^8.5.1
-      pg-native: ^3.0.0
-      pg-query-stream: ^4.0.0
-      redis: ^3.1.1 || ^4.0.0
-      sql.js: ^1.4.0
-      sqlite3: ^5.0.3
-      ts-node: ^10.7.0
-      typeorm-aurora-data-api-driver: ^2.0.0
-    peerDependenciesMeta:
-      '@google-cloud/spanner':
-        optional: true
-      '@sap/hana-client':
-        optional: true
-      better-sqlite3:
-        optional: true
-      hdb-pool:
-        optional: true
-      ioredis:
-        optional: true
-      mongodb:
-        optional: true
-      mssql:
-        optional: true
-      mysql2:
-        optional: true
-      oracledb:
-        optional: true
-      pg:
-        optional: true
-      pg-native:
-        optional: true
-      pg-query-stream:
-        optional: true
-      redis:
-        optional: true
-      sql.js:
-        optional: true
-      sqlite3:
-        optional: true
-      ts-node:
-        optional: true
-      typeorm-aurora-data-api-driver:
-        optional: true
-
   typescript@5.3.3:
     resolution: {integrity: sha512-pXWcraxM0uxAS+tN0AG/BF2TyqmHO014Z070UsJ+pFvYuRSq8KH8DmWpnbXe0pEPDHXZV3FcAbJkijJ5oNEnWw==}
     engines: {node: '>=14.17'}
@@ -6711,15 +6650,6 @@ snapshots:
       typeorm: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
       uuid: 9.0.1
 
-  '@nestjs/typeorm@10.0.2(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(reflect-metadata@0.2.1)(rxjs@7.8.1)(typeorm@0.3.20(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))':
-    dependencies:
-      '@nestjs/common': 10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1)
-      '@nestjs/core': 10.3.0(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/platform-express@10.3.0)(reflect-metadata@0.2.1)(rxjs@7.8.1)
-      reflect-metadata: 0.2.1
-      rxjs: 7.8.1
-      typeorm: 0.3.20(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
-      uuid: 9.0.1
-
   '@noble/hashes@1.8.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
@@ -7303,25 +7233,7 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@testcontainers/postgresql@10.28.0':
-    dependencies:
-      testcontainers: 10.28.0
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - react-native-b4a
-      - supports-color
-
   '@testcontainers/redis@10.13.2':
-    dependencies:
-      testcontainers: 10.28.0
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - react-native-b4a
-      - supports-color
-
-  '@testcontainers/redis@10.28.0':
     dependencies:
       testcontainers: 10.28.0
     transitivePeerDependencies:
@@ -8490,8 +8402,6 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.28.4
 
-  dayjs@1.11.20: {}
-
   debug@2.6.9:
     dependencies:
       ms: 2.0.0
@@ -9025,7 +8935,7 @@ snapshots:
       '@paralleldrive/cuid2': 2.3.1
       dezalgo: 1.0.4
       once: 1.4.0
-      qs: 6.11.0
+      qs: 6.13.0
 
   formidable@3.5.4:
     dependencies:
@@ -10921,7 +10831,7 @@ snapshots:
       formidable: 2.1.5
       methods: 1.1.2
       mime: 2.6.0
-      qs: 6.11.0
+      qs: 6.13.0
       semver: 7.7.3
     transitivePeerDependencies:
       - supports-color
@@ -10936,7 +10846,7 @@ snapshots:
       formidable: 3.5.4
       methods: 1.1.2
       mime: 2.6.0
-      qs: 6.11.0
+      qs: 6.13.0
     transitivePeerDependencies:
       - supports-color
 
@@ -11262,31 +11172,6 @@ snapshots:
       glob: 8.1.0
       mkdirp: 2.1.6
       reflect-metadata: 0.1.14
-      sha.js: 2.4.12
-      tslib: 2.8.1
-      uuid: 9.0.1
-      yargs: 17.7.2
-    optionalDependencies:
-      mysql2: 3.22.3(@types/node@20.11.30)
-      pg: 8.11.3
-      redis: 4.6.12
-      ts-node: 10.9.2(@types/node@20.11.30)(typescript@5.4.3)
-    transitivePeerDependencies:
-      - supports-color
-
-  typeorm@0.3.20(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)):
-    dependencies:
-      '@sqltools/formatter': 1.2.5
-      app-root-path: 3.1.0
-      buffer: 6.0.3
-      chalk: 4.1.2
-      cli-highlight: 2.1.11
-      dayjs: 1.11.20
-      debug: 4.4.3
-      dotenv: 16.6.1
-      glob: 10.3.10
-      mkdirp: 2.1.6
-      reflect-metadata: 0.2.1
       sha.js: 2.4.12
       tslib: 2.8.1
       uuid: 9.0.1
