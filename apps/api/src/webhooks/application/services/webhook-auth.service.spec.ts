@@ -3,11 +3,14 @@
  *
  * @module apps/api/src/webhooks/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { WebhookAuthService } from './webhook-auth.service';
-import { WebhookSecretProviderPort, WEBHOOK_SECRET_PROVIDER_TOKEN } from '@openlinker/core/integrations';
-import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
+import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
+import { WEBHOOK_SECRET_PROVIDER_TOKEN } from '@openlinker/core/integrations';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../errors/webhook-replay.exception';
 import * as crypto from 'crypto';
@@ -28,7 +31,7 @@ describe('WebhookAuthService', () => {
     new Date(),
     new Date(),
     'prestashop.webservice.v1',
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager']
   );
 
   beforeEach(async () => {
@@ -81,7 +84,7 @@ describe('WebhookAuthService', () => {
         connectionId,
         timestamp,
         rawBody,
-        `sha256=${signature}`,
+        `sha256=${signature}`
       );
 
       expect(result).toBe(true);
@@ -102,7 +105,7 @@ describe('WebhookAuthService', () => {
         connectionId,
         timestamp,
         rawBody,
-        invalidSignature,
+        invalidSignature
       );
 
       expect(result).toBe(false);
@@ -115,7 +118,7 @@ describe('WebhookAuthService', () => {
       const rawBody = Buffer.from('{"test": "data"}');
 
       await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, 'invalid-format'),
+        service.verifySignature(provider, connectionId, timestamp, rawBody, 'invalid-format')
       ).rejects.toThrow(WebhookAuthenticationException);
     });
 
@@ -129,7 +132,7 @@ describe('WebhookAuthService', () => {
       const signature = 'sha256=test';
 
       await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, signature),
+        service.verifySignature(provider, connectionId, timestamp, rawBody, signature)
       ).rejects.toThrow();
     });
 
@@ -144,7 +147,7 @@ describe('WebhookAuthService', () => {
         mockConnection.createdAt,
         mockConnection.updatedAt,
         mockConnection.adapterKey,
-        mockConnection.enabledCapabilities,
+        mockConnection.enabledCapabilities
       );
       connectionPort.get.mockResolvedValue(disabledConnection);
 
@@ -155,7 +158,7 @@ describe('WebhookAuthService', () => {
       const signature = 'sha256=test';
 
       await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, signature),
+        service.verifySignature(provider, connectionId, timestamp, rawBody, signature)
       ).rejects.toThrow(WebhookAuthenticationException);
     });
   });
@@ -185,4 +188,3 @@ describe('WebhookAuthService', () => {
     });
   });
 });
-

@@ -17,7 +17,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { createTestOfferCreationRecord } from './fixtures/offer-creation-record.fixtures';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 

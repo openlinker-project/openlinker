@@ -10,7 +10,7 @@
  * @see {@link ConnectionTesterPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { ConnectionTesterPort } from '../../domain/ports/connection-tester.port';
+import type { ConnectionTesterPort } from '../../domain/ports/connection-tester.port';
 
 @Injectable()
 export class ConnectionTesterRegistryService {

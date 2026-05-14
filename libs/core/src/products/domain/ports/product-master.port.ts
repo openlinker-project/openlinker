@@ -10,7 +10,12 @@
  *
  * @module libs/core/src/products/domain/ports
  */
-import { ProductFilters, ProductCreate, ProductUpdate, ProductVariantCreate } from '../types/product.types';
+import type {
+  ProductFilters,
+  ProductCreate,
+  ProductUpdate,
+  ProductVariantCreate,
+} from '../types/product.types';
 import type { Product } from '../entities/product.entity';
 import type { ProductVariant } from '../entities/product-variant.entity';
 
@@ -177,10 +182,3 @@ export interface ProductMasterPort {
    */
   getCategories?(): Promise<Category[]>;
 }
-
-
-
-
-
-
-

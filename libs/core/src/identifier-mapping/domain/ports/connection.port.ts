@@ -8,8 +8,8 @@
  * @module libs/core/src/identifier-mapping/domain/ports
  * @see {@link ConnectionRepository} for the implementation
  */
-import { Connection } from '../entities/connection.entity';
-import {
+import type { Connection } from '../entities/connection.entity';
+import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
@@ -55,6 +55,3 @@ export interface ConnectionPort {
    */
   disable(connectionId: string): Promise<Connection>;
 }
-
-
-

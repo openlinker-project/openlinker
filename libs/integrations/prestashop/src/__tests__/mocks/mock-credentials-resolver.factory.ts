@@ -5,14 +5,13 @@
  *
  * @module libs/integrations/prestashop/src/__tests__/mocks
  */
-import { CredentialsResolverPort } from '@openlinker/core/integrations';
-import { PrestashopCredentials } from '@openlinker/integrations-prestashop';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { PrestashopCredentials } from '@openlinker/integrations-prestashop';
 
 export function createMockCredentialsResolver(
-  credentials: PrestashopCredentials = { webserviceApiKey: 'test-api-key' },
+  credentials: PrestashopCredentials = { webserviceApiKey: 'test-api-key' }
 ): CredentialsResolverPort {
   return {
     get: jest.fn().mockResolvedValue(credentials),
   } as CredentialsResolverPort;
 }
-

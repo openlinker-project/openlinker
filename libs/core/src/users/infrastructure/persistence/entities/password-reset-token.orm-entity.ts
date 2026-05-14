@@ -5,13 +5,7 @@
  *
  * @module libs/core/src/users/infrastructure/persistence/entities
  */
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('password_reset_tokens')
 export class PasswordResetTokenOrmEntity {

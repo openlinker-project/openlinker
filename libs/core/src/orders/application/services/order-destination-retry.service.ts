@@ -19,12 +19,8 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import {
-  JobEnqueuePort,
-  JOB_ENQUEUE_TOKEN,
-  type SyncJobRequest,
-} from '@openlinker/core/sync';
-import {
+import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, type SyncJobRequest } from '@openlinker/core/sync';
+import type {
   IOrderDestinationRetryService,
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
@@ -35,10 +31,7 @@ import { OrderRecordNotFoundException } from '../../domain/exceptions/order-reco
 import { OrderDestinationNotFoundException } from '../../domain/exceptions/order-destination-not-found.exception';
 import { OrderDestinationNotRetryableException } from '../../domain/exceptions/order-destination-not-retryable.exception';
 import { MissingSourceExternalIdException } from '../../domain/exceptions/missing-source-external-id.exception';
-import {
-  ORDER_RECORD_REPOSITORY_TOKEN,
-  ORDER_RECORD_SERVICE_TOKEN,
-} from '../../orders.tokens';
+import { ORDER_RECORD_REPOSITORY_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 
 @Injectable()
 export class OrderDestinationRetryService implements IOrderDestinationRetryService {
@@ -52,14 +45,14 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async retry(input: OrderDestinationRetryInput): Promise<OrderDestinationRetryResult> {
     const { internalOrderId, destinationConnectionId } = input;
 
     this.logger.log(
-      `Operator retry requested: order=${internalOrderId} destination=${destinationConnectionId}`,
+      `Operator retry requested: order=${internalOrderId} destination=${destinationConnectionId}`
     );
 
     const order = await this.orderRecordRepository.findById(internalOrderId);
@@ -68,7 +61,7 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     }
 
     const destinationRow = order.syncStatus.find(
-      (s) => s.destinationConnectionId === destinationConnectionId,
+      (s) => s.destinationConnectionId === destinationConnectionId
     );
     if (!destinationRow) {
       throw new OrderDestinationNotFoundException(internalOrderId, destinationConnectionId);
@@ -78,16 +71,13 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
       throw new OrderDestinationNotRetryableException(
         internalOrderId,
         destinationConnectionId,
-        destinationRow.status,
+        destinationRow.status
       );
     }
 
-    const sourceExternalIds = await this.identifierMapping.getExternalIds(
-      'Order',
-      internalOrderId,
-    );
+    const sourceExternalIds = await this.identifierMapping.getExternalIds('Order', internalOrderId);
     const sourceMapping = sourceExternalIds.find(
-      (m) => m.connectionId === order.sourceConnectionId,
+      (m) => m.connectionId === order.sourceConnectionId
     );
     if (!sourceMapping) {
       throw new MissingSourceExternalIdException(internalOrderId, order.sourceConnectionId);
@@ -97,14 +87,10 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     const originalError = destinationRow.error;
 
     // Claim the slot: flip failed → pending. From here a concurrent click 409s.
-    await this.orderRecordService.updateSyncStatus(
-      internalOrderId,
+    await this.orderRecordService.updateSyncStatus(internalOrderId, destinationConnectionId, {
       destinationConnectionId,
-      {
-        destinationConnectionId,
-        status: 'pending',
-      },
-    );
+      status: 'pending',
+    });
 
     const idempotencyKey = `marketplace:${order.sourceConnectionId}:order:${order.sourceEventId ?? internalOrderId}:retry:${Date.now()}`;
 
@@ -122,34 +108,31 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     try {
       const { jobId } = await this.jobEnqueue.enqueueJob(jobRequest);
       this.logger.log(
-        `Retry enqueued: jobId=${jobId} order=${internalOrderId} destination=${destinationConnectionId} sourceConnection=${order.sourceConnectionId}`,
+        `Retry enqueued: jobId=${jobId} order=${internalOrderId} destination=${destinationConnectionId} sourceConnection=${order.sourceConnectionId}`
       );
       return { jobId, jobType: 'marketplace.order.sync' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Retry enqueue failed; reverting destination back to 'failed'. order=${internalOrderId} destination=${destinationConnectionId}: ${message}`,
-        error instanceof Error ? error.stack : undefined,
+        error instanceof Error ? error.stack : undefined
       );
       // Revert: restore failed state with the original error preserved. If the revert
       // *itself* throws (rare DB blip between claim and revert), the row is left in
       // `pending` and the operator can no longer click Retry on it — log loudly so
       // someone notices and can flip the row by hand.
       try {
-        await this.orderRecordService.updateSyncStatus(
-          internalOrderId,
+        await this.orderRecordService.updateSyncStatus(internalOrderId, destinationConnectionId, {
           destinationConnectionId,
-          {
-            destinationConnectionId,
-            status: 'failed',
-            error: originalError,
-          },
-        );
+          status: 'failed',
+          error: originalError,
+        });
       } catch (revertError) {
-        const revertMessage = revertError instanceof Error ? revertError.message : String(revertError);
+        const revertMessage =
+          revertError instanceof Error ? revertError.message : String(revertError);
         this.logger.error(
           `Revert to 'failed' also failed; destination row stuck in 'pending'. order=${internalOrderId} destination=${destinationConnectionId}: ${revertMessage}`,
-          revertError instanceof Error ? revertError.stack : undefined,
+          revertError instanceof Error ? revertError.stack : undefined
         );
       }
       throw error;

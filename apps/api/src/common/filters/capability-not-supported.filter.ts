@@ -11,7 +11,8 @@
  * @see {@link CapabilityNotSupportedException} for the domain exception shape
  */
 
-import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus } from '@nestjs/common';
+import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
+import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 

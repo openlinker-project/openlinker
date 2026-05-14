@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/products/application/services
  */
-import { AutoMatchResult, AutoMatchOptions } from '../types/auto-match.types';
+import type { AutoMatchResult, AutoMatchOptions } from '../types/auto-match.types';
 
 export interface IAutoMatchVariantOffersService {
   /**

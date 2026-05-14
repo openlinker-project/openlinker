@@ -11,7 +11,7 @@
  *
  * @module libs/integrations/ai/infrastructure/adapters
  */
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import {
   VercelAiCompletionAdapter,
   type VercelGenerateTextFn,
@@ -63,7 +63,7 @@ const buildSuccessResult = (
     outputTokens: number;
     cacheReadTokens: number;
     cachedInputTokensDeprecated: number;
-  }> = {},
+  }> = {}
 ): Awaited<ReturnType<VercelGenerateTextFn>> =>
   ({
     text: overrides.text ?? 'generated text',
@@ -84,25 +84,25 @@ const buildSuccessResult = (
 const buildAnthropicAdapter = (
   generateTextFn: jest.Mock,
   config: ConfigService = buildConfigService(),
-  credentials: jest.Mocked<AiProviderCredentialsPort> = buildCredentialsPort(),
+  credentials: jest.Mocked<AiProviderCredentialsPort> = buildCredentialsPort()
 ): VercelAiCompletionAdapter =>
   new VercelAiCompletionAdapter(
     'anthropic',
     config,
     credentials,
-    generateTextFn as unknown as VercelGenerateTextFn,
+    generateTextFn as unknown as VercelGenerateTextFn
   );
 
 const buildOpenAiAdapter = (
   generateTextFn: jest.Mock,
   config: ConfigService = buildConfigService(),
-  credentials: jest.Mocked<AiProviderCredentialsPort> = buildCredentialsPort(),
+  credentials: jest.Mocked<AiProviderCredentialsPort> = buildCredentialsPort()
 ): VercelAiCompletionAdapter =>
   new VercelAiCompletionAdapter(
     'openai',
     config,
     credentials,
-    generateTextFn as unknown as VercelGenerateTextFn,
+    generateTextFn as unknown as VercelGenerateTextFn
   );
 
 describe('VercelAiCompletionAdapter', () => {
@@ -145,7 +145,7 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
       const adapter = buildAnthropicAdapter(
         generateTextFn,
-        buildConfigService({ OL_AI_DEFAULT_MODEL: 'claude-haiku-4-5' }),
+        buildConfigService({ OL_AI_DEFAULT_MODEL: 'claude-haiku-4-5' })
       );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
@@ -185,7 +185,7 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
       const adapter = buildOpenAiAdapter(
         generateTextFn,
-        buildConfigService({ OL_AI_OPENAI_MODEL: 'gpt-5-nano' }),
+        buildConfigService({ OL_AI_OPENAI_MODEL: 'gpt-5-nano' })
       );
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
@@ -223,7 +223,11 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
       const adapter = buildAnthropicAdapter(generateTextFn);
 
-      const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u', model: 'custom-model-id' });
+      const result = await adapter.complete({
+        systemPrompt: 's',
+        userPrompt: 'u',
+        model: 'custom-model-id',
+      });
 
       expect(result.modelUsed).toBe('custom-model-id');
     });
@@ -231,7 +235,9 @@ describe('VercelAiCompletionAdapter', () => {
     it('prefers usage.inputTokenDetails.cacheReadTokens over deprecated usage.cachedInputTokens', async () => {
       const generateTextFn = jest
         .fn()
-        .mockResolvedValue(buildSuccessResult({ cacheReadTokens: 42, cachedInputTokensDeprecated: 7 }));
+        .mockResolvedValue(
+          buildSuccessResult({ cacheReadTokens: 42, cachedInputTokensDeprecated: 7 })
+        );
       const adapter = buildAnthropicAdapter(generateTextFn);
 
       const result = await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
@@ -265,7 +271,7 @@ describe('VercelAiCompletionAdapter', () => {
       const adapter = buildAnthropicAdapter(generateTextFn);
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
-        AiTimeoutError,
+        AiTimeoutError
       );
     });
 
@@ -275,7 +281,7 @@ describe('VercelAiCompletionAdapter', () => {
       const adapter = buildAnthropicAdapter(generateTextFn);
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
-        AiRateLimitError,
+        AiRateLimitError
       );
     });
 
@@ -284,7 +290,7 @@ describe('VercelAiCompletionAdapter', () => {
       const adapter = buildAnthropicAdapter(generateTextFn);
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
-        AiCompletionError,
+        AiCompletionError
       );
     });
 
@@ -293,7 +299,7 @@ describe('VercelAiCompletionAdapter', () => {
       const adapter = buildAnthropicAdapter(generateTextFn);
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
-        AiInvalidResponseError,
+        AiInvalidResponseError
       );
     });
 
@@ -310,7 +316,7 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn().mockResolvedValue(buildSuccessResult());
       const adapter = buildAnthropicAdapter(
         generateTextFn,
-        buildConfigService({ OL_AI_DEFAULT_MAX_TOKENS: '512', OL_AI_TIMEOUT_MS: '15000' }),
+        buildConfigService({ OL_AI_DEFAULT_MAX_TOKENS: '512', OL_AI_TIMEOUT_MS: '15000' })
       );
 
       await adapter.complete({ systemPrompt: 's', userPrompt: 'u' });
@@ -324,12 +330,12 @@ describe('VercelAiCompletionAdapter', () => {
       const generateTextFn = jest.fn();
       const credentials = buildCredentialsPort();
       credentials.getApiKey.mockRejectedValueOnce(
-        new AiProviderKeyMissingError('No API key configured for AI provider'),
+        new AiProviderKeyMissingError('No API key configured for AI provider')
       );
       const adapter = buildAnthropicAdapter(generateTextFn, buildConfigService(), credentials);
 
       await expect(adapter.complete({ systemPrompt: 's', userPrompt: 'u' })).rejects.toBeInstanceOf(
-        AiProviderKeyMissingError,
+        AiProviderKeyMissingError
       );
       expect(generateTextFn).not.toHaveBeenCalled();
     });

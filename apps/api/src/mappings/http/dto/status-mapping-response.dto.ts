@@ -7,7 +7,7 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import { StatusMapping } from '@openlinker/core/mappings';
+import type { StatusMapping } from '@openlinker/core/mappings';
 
 export class StatusMappingResponseDto {
   @ApiProperty()

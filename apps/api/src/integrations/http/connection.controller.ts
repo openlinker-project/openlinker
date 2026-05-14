@@ -37,7 +37,11 @@ import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
-import { Connection, ConnectionUpdate, ConnectionFilters } from '@openlinker/core/identifier-mapping';
+import type {
+  Connection,
+  ConnectionUpdate,
+  ConnectionFilters,
+} from '@openlinker/core/identifier-mapping';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -55,7 +59,7 @@ export class ConnectionController {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
-    private readonly webhookSecretService: IWebhookSecretService,
+    private readonly webhookSecretService: IWebhookSecretService
   ) {}
 
   private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
@@ -72,7 +76,7 @@ export class ConnectionController {
       // recognized" notice. We still want this to be observable in the API
       // logs so operators can spot and fix the offending row.
       this.logger.warn(
-        `Could not resolve adapter metadata for connection ${connection.id} (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`,
+        `Could not resolve adapter metadata for connection ${connection.id} (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`
       );
       supported = [];
     }
@@ -90,9 +94,7 @@ export class ConnectionController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async create(
-    @Body() dto: CreateConnectionDto,
-  ): Promise<ConnectionResponseDto> {
+  async create(@Body() dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
     return this.toResponse(connection);
   }
@@ -104,9 +106,7 @@ export class ConnectionController {
     description: 'List of connections',
     type: [ConnectionResponseDto],
   })
-  async list(
-    @Query() filtersDto: ConnectionFiltersDto,
-  ): Promise<ConnectionResponseDto[]> {
+  async list(@Query() filtersDto: ConnectionFiltersDto): Promise<ConnectionResponseDto[]> {
     const filters: ConnectionFilters = {
       ...(filtersDto.platformType && { platformType: filtersDto.platformType }),
       ...(filtersDto.status && { status: filtersDto.status }),
@@ -140,7 +140,7 @@ export class ConnectionController {
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async update(
     @Param('id') id: string,
-    @Body() dto: UpdateConnectionDto,
+    @Body() dto: UpdateConnectionDto
   ): Promise<ConnectionResponseDto> {
     const patch: ConnectionUpdate = {
       ...(dto.name !== undefined && { name: dto.name }),
@@ -190,12 +190,16 @@ export class ConnectionController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Rotate the credentials stored for this connection' })
   @ApiResponse({ status: 204, description: 'Credentials rotated' })
-  @ApiResponse({ status: 400, description: 'Invalid credential payload, failed shape validation, or connection is not db-backed' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid credential payload, failed shape validation, or connection is not db-backed',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async updateCredentials(
     @Param('id') id: string,
-    @Body() dto: UpdateConnectionCredentialsDto,
+    @Body() dto: UpdateConnectionCredentialsDto
   ): Promise<void> {
     await this.connectionService.updateCredentials(id, dto.credentials);
   }
@@ -214,14 +218,14 @@ export class ConnectionController {
   async rotateWebhookSecret(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: Response
   ): Promise<RotateWebhookSecretResponseDto> {
     res.setHeader('Cache-Control', 'no-store');
     const connection = await this.connectionService.get(id);
     const { secret } = await this.webhookSecretService.rotate(
       connection.platformType,
       id,
-      user?.id,
+      user?.id
     );
     return {
       secret,
@@ -262,7 +266,7 @@ export class ConnectionController {
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async installWebhooks(
     @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<InstallWebhooksResponseDto> {
     const result = await this.connectionService.installWebhooks(id, user?.id);
     return InstallWebhooksResponseDto.fromDomain(result);
@@ -283,4 +287,3 @@ export class ConnectionController {
     return this.toResponse(connection);
   }
 }
-

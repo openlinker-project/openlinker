@@ -19,13 +19,13 @@ import {
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OfferCreationInvariantException,
 } from '@openlinker/core/listings';
-import {
+import type {
   MarketplaceOfferCreatePayloadV1,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -36,14 +36,14 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
 
   constructor(
     @Inject(OFFER_CREATION_EXECUTION_SERVICE_TOKEN)
-    private readonly offerCreation: IOfferCreationExecutionService,
+    private readonly offerCreation: IOfferCreationExecutionService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.offer.create job ${job.id} variant=${payload.internalVariantId} connection=${job.connectionId}`,
+      `Executing marketplace.offer.create job ${job.id} variant=${payload.internalVariantId} connection=${job.connectionId}`
     );
 
     try {
@@ -59,7 +59,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `Offer creation finished: job=${job.id} recordId=${offerCreationRecord.id} status=${offerCreationRecord.status} outcome=${outcome} externalOfferId=${offerCreationRecord.externalOfferId ?? 'n/a'}`,
+        `Offer creation finished: job=${job.id} recordId=${offerCreationRecord.id} status=${offerCreationRecord.status} outcome=${outcome} externalOfferId=${offerCreationRecord.externalOfferId ?? 'n/a'}`
       );
 
       return { outcome };
@@ -77,7 +77,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -90,7 +90,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -99,7 +99,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         `Unsupported schemaVersion (${String(payload.schemaVersion)}) in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -108,16 +108,20 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         `Missing or invalid internalVariantId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
-    if (typeof payload.stock !== 'number' || !Number.isInteger(payload.stock) || payload.stock < 0) {
+    if (
+      typeof payload.stock !== 'number' ||
+      !Number.isInteger(payload.stock) ||
+      payload.stock < 0
+    ) {
       throw new SyncJobExecutionError(
         `Missing or invalid stock in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -126,7 +130,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         `Missing or invalid publishImmediately in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 

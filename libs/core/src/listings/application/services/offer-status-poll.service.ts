@@ -22,9 +22,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
 import {
   isOfferStatusReader,
-  OfferManagerPort,
   OfferNotFoundOnMarketplaceException,
   OfferPollNotSupportedException,
   type OfferStatusReadResult,
@@ -37,7 +37,7 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import { OFFER_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
-import type { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
+import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import type {
   OfferCreationError,
   OfferCreationStatus,
@@ -71,15 +71,13 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly syncJobRepository: SyncJobRepositoryPort,
-    configService: ConfigService,
+    configService: ConfigService
   ) {
     this.cadence = {
       initialDelaySeconds:
         configService.get<number>('OL_ALLEGRO_OFFER_POLL_INITIAL_DELAY_SECONDS') ?? 5,
-      backoffMultiplier:
-        configService.get<number>('OL_ALLEGRO_OFFER_POLL_BACKOFF_MULTIPLIER') ?? 2,
-      maxDelaySeconds:
-        configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_DELAY_SECONDS') ?? 60,
+      backoffMultiplier: configService.get<number>('OL_ALLEGRO_OFFER_POLL_BACKOFF_MULTIPLIER') ?? 2,
+      maxDelaySeconds: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_DELAY_SECONDS') ?? 60,
       maxAttempts: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_ATTEMPTS') ?? 12,
     };
   }
@@ -99,13 +97,13 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     const record = await this.offerCreationRecords.findById(input.offerCreationRecordId);
     if (!record) {
       this.logger.warn(
-        `Poll iteration ${input.pollAttempt} found no record ${input.offerCreationRecordId} — dropping.`,
+        `Poll iteration ${input.pollAttempt} found no record ${input.offerCreationRecordId} — dropping.`
       );
       return { outcome: 'ok' };
     }
     if (record.status !== 'validating') {
       this.logger.debug(
-        `Poll iteration ${input.pollAttempt} sees record ${input.offerCreationRecordId} already at terminal '${record.status}' — no-op.`,
+        `Poll iteration ${input.pollAttempt} sees record ${input.offerCreationRecordId} already at terminal '${record.status}' — no-op.`
       );
       return { outcome: 'ok' };
     }
@@ -117,7 +115,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       await this.markFailedAtomically(
         input.offerCreationRecordId,
         `POLL_TIMEOUT after ${this.cadence.maxAttempts} attempts`,
-        'POLL_TIMEOUT',
+        'POLL_TIMEOUT'
       );
       return { outcome: 'business_failure' };
     }
@@ -125,7 +123,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     // Resolve the adapter and ensure it implements OfferStatusReader.
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       input.connectionId,
-      'OfferManager',
+      'OfferManager'
     );
     if (!isOfferStatusReader(adapter)) {
       const reason = new OfferPollNotSupportedException(input.connectionId);
@@ -133,7 +131,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       await this.markFailedAtomically(
         input.offerCreationRecordId,
         reason.message,
-        'OFFER_POLL_NOT_SUPPORTED',
+        'OFFER_POLL_NOT_SUPPORTED'
       );
       return { outcome: 'business_failure' };
     }
@@ -147,7 +145,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         await this.markFailedAtomically(
           input.offerCreationRecordId,
           err.message,
-          'OFFER_NOT_FOUND',
+          'OFFER_NOT_FOUND'
         );
         return { outcome: 'business_failure' };
       }
@@ -160,7 +158,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       await this.offerCreationRecords.updateStatus(
         input.offerCreationRecordId,
         decision.recordStatus,
-        decision.errors,
+        decision.errors
       );
       return { outcome: decision.outcome };
     }
@@ -171,9 +169,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   }
 
   /** Map the marketplace observation (§5.1 plan) to a record-side decision. */
-  private decideTerminalState(
-    result: OfferStatusReadResult,
-  ):
+  private decideTerminalState(result: OfferStatusReadResult):
     | { terminal: false }
     | {
         terminal: true;
@@ -215,10 +211,10 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         current.offerCreationRecordId,
         `Allegro never finished validating offer ${current.externalOfferId} after ` +
           `${this.cadence.maxAttempts} poll iterations`,
-        'POLL_TIMEOUT',
+        'POLL_TIMEOUT'
       );
       this.logger.warn(
-        `Poll cadence exhausted for record ${current.offerCreationRecordId} (offer ${current.externalOfferId}) — marked failed.`,
+        `Poll cadence exhausted for record ${current.offerCreationRecordId} (offer ${current.externalOfferId}) — marked failed.`
       );
       return;
     }
@@ -255,12 +251,12 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         idempotencyKey,
         maxAttempts: RUNNER_RETRY_BUDGET,
       },
-      { runAfter },
+      { runAfter }
     );
 
     this.logger.debug(
       `Scheduled poll iteration ${input.pollAttempt} for record ${input.offerCreationRecordId} ` +
-        `at +${delaySeconds}s (offer ${input.externalOfferId}).`,
+        `at +${delaySeconds}s (offer ${input.externalOfferId}).`
     );
   }
 
@@ -282,7 +278,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   private async markFailedAtomically(
     recordId: string,
     message: string,
-    code: string,
+    code: string
   ): Promise<void> {
     const error: OfferCreationError = { code, message };
     await this.offerCreationRecords.updateStatus(recordId, 'failed', [error]);

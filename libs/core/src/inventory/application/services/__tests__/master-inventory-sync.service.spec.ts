@@ -17,11 +17,11 @@ import { MasterInventorySyncService } from '../master-inventory-sync.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IInventoryService } from '../inventory.service.interface';
-import {
+import type {
   InventoryMasterPort,
   Inventory as InventoryPortInterface,
-  InventoryItemEntity as InventoryItem,
 } from '@openlinker/core/inventory';
+import { InventoryItemEntity as InventoryItem } from '@openlinker/core/inventory';
 
 describe('MasterInventorySyncService', () => {
   let service: MasterInventorySyncService;
@@ -68,7 +68,7 @@ describe('MasterInventorySyncService', () => {
     service = new MasterInventorySyncService(
       integrationsService,
       identifierMapping,
-      inventoryService,
+      inventoryService
     );
   });
 
@@ -91,11 +91,11 @@ describe('MasterInventorySyncService', () => {
       expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         'Product',
         externalId,
-        connectionId,
+        connectionId
       );
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         connectionId,
-        'InventoryMaster',
+        'InventoryMaster'
       );
       expect(inventoryAdapter.getInventory).toHaveBeenCalledWith(internalProductId, undefined);
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
@@ -106,7 +106,7 @@ describe('MasterInventorySyncService', () => {
           reservedQuantity: 3,
           locationId: 'loc-1',
           updatedAt: adapterInventory.updatedAt,
-        }),
+        })
       );
       expect(result).toEqual({
         internalProductId,
@@ -134,7 +134,7 @@ describe('MasterInventorySyncService', () => {
         expect.objectContaining({
           availableQuantity: 15,
           reservedQuantity: 5,
-        }),
+        })
       );
       expect(result.availableQuantity).toBe(15);
       expect(result.reservedQuantity).toBe(5);
@@ -148,7 +148,7 @@ describe('MasterInventorySyncService', () => {
         0,
         0,
         'loc-1',
-        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
       );
       inventoryService.getInventory.mockResolvedValue(existing);
       inventoryAdapter.getInventory.mockResolvedValue({
@@ -164,9 +164,13 @@ describe('MasterInventorySyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(inventoryService.getInventory).toHaveBeenCalledWith(internalProductId, 'var-1', 'loc-1');
+      expect(inventoryService.getInventory).toHaveBeenCalledWith(
+        internalProductId,
+        'var-1',
+        'loc-1'
+      );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'preserved-inv-id' }),
+        expect.objectContaining({ id: 'preserved-inv-id' })
       );
     });
 
@@ -187,10 +191,12 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.getInventory).toHaveBeenCalledWith(internalProductId, null, null);
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+          id: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          ),
           productVariantId: null,
           locationId: null,
-        }),
+        })
       );
     });
 
@@ -207,7 +213,7 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
-        expect.objectContaining({ updatedAt: expect.any(Date) }),
+        expect.objectContaining({ updatedAt: expect.any(Date) })
       );
     });
 
@@ -215,9 +221,7 @@ describe('MasterInventorySyncService', () => {
       const boom = new Error('identifier-mapping unavailable');
       identifierMapping.getOrCreateInternalId.mockRejectedValueOnce(boom);
 
-      await expect(
-        service.syncFromMasterByExternalId(connectionId, externalId),
-      ).rejects.toBe(boom);
+      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
       expect(inventoryAdapter.getInventory).not.toHaveBeenCalled();
@@ -228,9 +232,7 @@ describe('MasterInventorySyncService', () => {
       const boom = new Error('Capability InventoryMaster not supported by connection');
       integrationsService.getCapabilityAdapter.mockRejectedValueOnce(boom);
 
-      await expect(
-        service.syncFromMasterByExternalId(connectionId, externalId),
-      ).rejects.toBe(boom);
+      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
       expect(inventoryAdapter.getInventory).not.toHaveBeenCalled();
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
@@ -240,9 +242,7 @@ describe('MasterInventorySyncService', () => {
       const boom = new Error('master inventory fetch failed');
       inventoryAdapter.getInventory.mockRejectedValueOnce(boom);
 
-      await expect(
-        service.syncFromMasterByExternalId(connectionId, externalId),
-      ).rejects.toBe(boom);
+      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
     });

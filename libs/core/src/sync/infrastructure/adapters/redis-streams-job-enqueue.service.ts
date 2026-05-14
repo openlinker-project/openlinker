@@ -11,8 +11,8 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
-import { EnqueueJobResult, SyncJobRequest } from '../../domain/types/sync-job.types';
+import type { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
+import type { EnqueueJobResult, SyncJobRequest } from '../../domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -24,7 +24,7 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
 
   constructor(
     @Inject('REDIS_CLIENT')
-    private readonly redisClient: RedisClientType,
+    private readonly redisClient: RedisClientType
   ) {}
 
   async enqueueJob(job: SyncJobRequest): Promise<EnqueueJobResult> {
@@ -39,7 +39,7 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
 
       if (idempotencyResult !== 'OK') {
         this.logger.debug(
-          `Job already enqueued (idempotent): ${job.jobType} for ${job.connectionId}`,
+          `Job already enqueued (idempotent): ${job.jobType} for ${job.connectionId}`
         );
         return { jobId: job.idempotencyKey, isExisting: true };
       }
@@ -79,18 +79,21 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
       });
 
       this.logger.debug(
-        `Enqueued job ${job.jobType} for ${job.connectionId} with message ID ${messageId}`,
+        `Enqueued job ${job.jobType} for ${job.connectionId} with message ID ${messageId}`
       );
 
       return { jobId: messageId, isExisting: false };
     } catch (error) {
       this.logger.error(
         `Failed to enqueue job ${job.jobType} for ${job.connectionId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
 
       // If error is already our custom error (from messageId check), re-throw as-is
-      if (error instanceof Error && error.message.includes(`Failed to enqueue job to stream: ${this.STREAM_NAME}`)) {
+      if (
+        error instanceof Error &&
+        error.message.includes(`Failed to enqueue job to stream: ${this.STREAM_NAME}`)
+      ) {
         throw error;
       }
 
@@ -103,6 +106,3 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
     }
   }
 }
-
-
-

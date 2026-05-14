@@ -17,7 +17,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { IIntegrationsService } from '@openlinker/core/integrations';
 import {
   isOfferFieldUpdater,
   OFFER_MAPPING_REPOSITORY_TOKEN,
@@ -27,7 +27,7 @@ import {
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN } from '../../content.tokens';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
-import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
+import { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 import type { FieldKey } from '../../domain/types/content.types';
 import type {
   ContentChannelState,
@@ -46,7 +46,7 @@ export class ContentStateReaderService implements IContentStateReaderService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
-    private readonly offerMappings: OfferMappingRepositoryPort,
+    private readonly offerMappings: OfferMappingRepositoryPort
   ) {}
 
   async readState(productId: string): Promise<ContentState> {
@@ -71,7 +71,7 @@ export class ContentStateReaderService implements IContentStateReaderService {
       if (variants.length > 0) {
         const counts = await this.offerMappings.countByConnectionAndVariants(
           entry.connectionId,
-          variants,
+          variants
         );
         for (const count of counts.values()) {
           linkedOfferCount += count;
@@ -84,15 +84,15 @@ export class ContentStateReaderService implements IContentStateReaderService {
           entry.connectionId,
           entry.connection,
           channelRowsById.get(entry.connectionId),
-          linkedOfferCount,
-        ),
+          linkedOfferCount
+        )
       );
     }
 
     channels.sort(
       (a, b) =>
         a.connectionName.localeCompare(b.connectionName) ||
-        a.connectionId.localeCompare(b.connectionId),
+        a.connectionId.localeCompare(b.connectionId)
     );
 
     return {
@@ -127,7 +127,7 @@ function toChannelState(
   connectionId: string,
   connection: { name: string; platformType: string; status: string },
   row: ProductContentField | undefined,
-  linkedOfferCount: number,
+  linkedOfferCount: number
 ): ContentChannelState {
   return {
     connectionId,

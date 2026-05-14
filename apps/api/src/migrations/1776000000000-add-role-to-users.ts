@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddRoleToUsers1776000000000 implements MigrationInterface {
   name = 'AddRoleToUsers1776000000000';

@@ -8,20 +8,22 @@
  *
  * @module apps/api/src/webhooks/application/handlers
  */
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
-import { SyncJobRequest, JobType, JobTypeValues } from '@openlinker/core/sync';
+import type { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
+import type { SyncJobRequest, JobType } from '@openlinker/core/sync';
+import { JobTypeValues } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
   WebhookDeliveryRepositoryPort,
-  WebhookDeliveryUpsertInput,
   WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
 } from '@openlinker/core/webhooks';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../webhooks.tokens';
-import { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
+import type { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
 
 @Injectable()
 export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
@@ -42,7 +44,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
-    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
+    private readonly deliveryRepository: WebhookDeliveryRepositoryPort
   ) {}
 
   private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
@@ -50,7 +52,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       await this.deliveryRepository.upsert(input);
     } catch (error) {
       this.logger.warn(
-        `Failed to record webhook delivery from handler (non-fatal): eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to record webhook delivery from handler (non-fatal): eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -76,15 +78,12 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       // XGROUP CREATE stream group $ MKSTREAM
       // $ = start from new messages only
       // MKSTREAM = create stream if it doesn't exist
-      await this.redisClient.xGroupCreate(
-        this.STREAM_NAME,
-        this.CONSUMER_GROUP,
-        '$',
-        {
-          MKSTREAM: true,
-        },
+      await this.redisClient.xGroupCreate(this.STREAM_NAME, this.CONSUMER_GROUP, '$', {
+        MKSTREAM: true,
+      });
+      this.logger.log(
+        `Created consumer group ${this.CONSUMER_GROUP} for stream ${this.STREAM_NAME}`
       );
-      this.logger.log(`Created consumer group ${this.CONSUMER_GROUP} for stream ${this.STREAM_NAME}`);
     } catch (error) {
       // Ignore BUSYGROUP error (group already exists)
       if (error instanceof Error && error.message.includes('BUSYGROUP')) {
@@ -92,7 +91,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       } else {
         this.logger.error(
           `Failed to create consumer group ${this.CONSUMER_GROUP}`,
-          error instanceof Error ? error.stack : String(error),
+          error instanceof Error ? error.stack : String(error)
         );
         throw error;
       }
@@ -111,7 +110,10 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
 
     // Start consumption loop in background (don't await)
     this.consumeLoop().catch((error) => {
-      this.logger.error('Consumption loop error', error instanceof Error ? error.stack : String(error));
+      this.logger.error(
+        'Consumption loop error',
+        error instanceof Error ? error.stack : String(error)
+      );
       // Restart loop after backoff
       if (this.isRunning) {
         setTimeout(() => this.startConsumptionLoop(), 5000);
@@ -161,7 +163,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
           {
             BLOCK: this.BLOCK_MS,
             COUNT: this.COUNT,
-          },
+          }
         );
 
         if (!messages || messages.length === 0) {
@@ -188,7 +190,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         // Log error and continue with backoff
         this.logger.error(
           'Error reading from stream',
-          error instanceof Error ? error.stack : String(error),
+          error instanceof Error ? error.stack : String(error)
         );
 
         // Backoff before retry
@@ -219,7 +221,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       // round-trip succeeded.
       if (event.eventType.startsWith('test.')) {
         this.logger.debug(
-          `Skipping test event ${event.eventId} (eventType: ${event.eventType}) - no job created`,
+          `Skipping test event ${event.eventId} (eventType: ${event.eventType}) - no job created`
         );
         await this.recordDelivery({
           eventId: event.eventId,
@@ -240,9 +242,10 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       } catch (mappingError) {
         // Mapping failed (invalid job type, unmappable objectType, etc.)
         // ACK the webhook message and send to DLQ to prevent infinite retries
-        const errorMessage = mappingError instanceof Error ? mappingError.message : String(mappingError);
+        const errorMessage =
+          mappingError instanceof Error ? mappingError.message : String(mappingError);
         this.logger.warn(
-          `Failed to map webhook event to job: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, error=${errorMessage}`,
+          `Failed to map webhook event to job: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, error=${errorMessage}`
         );
         await this.sendToDeadLetterQueue(event, errorMessage, fields);
         await this.recordDelivery({
@@ -271,14 +274,12 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       // ACK message only after successful enqueue
       await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
 
-      this.logger.debug(
-        `Processed webhook event ${event.eventId} and enqueued job ${job.jobType}`,
-      );
+      this.logger.debug(`Processed webhook event ${event.eventId} and enqueued job ${job.jobType}`);
     } catch (error) {
       // Unexpected error (network, Redis, etc.) - don't ACK, allow retry
       this.logger.error(
         `Failed to process message ${messageId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       // Don't ACK - message will be re-delivered after timeout
       // This is for transient errors (network, Redis connection, etc.)
@@ -305,7 +306,9 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    */
   private mapToInboundWebhookEvent(envelope: EventEnvelope): InboundWebhookEvent {
     const payload = JSON.parse(envelope.payloadJson) as WebhookPayload;
-    const metadata = (envelope.metadataJson ? JSON.parse(envelope.metadataJson) : {}) as WebhookMetadata;
+    const metadata = (
+      envelope.metadataJson ? JSON.parse(envelope.metadataJson) : {}
+    ) as WebhookMetadata;
 
     // Extract event type (remove 'inbound.webhook.' prefix)
     const eventType = envelope.eventType.replace(/^inbound\.webhook\./, '');
@@ -356,7 +359,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       const supported = ['product', 'inventory'];
       if (!supported.includes(canonicalObjectType.toLowerCase())) {
         throw new Error(
-          `Unsupported master objectType: ${canonicalObjectType}. Supported: ${supported.join(', ')}`,
+          `Unsupported master objectType: ${canonicalObjectType}. Supported: ${supported.join(', ')}`
         );
       }
     }
@@ -482,7 +485,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private async sendToDeadLetterQueue(
     event: InboundWebhookEvent,
     errorReason: string,
-    originalFields: Record<string, string>,
+    originalFields: Record<string, string>
   ): Promise<void> {
     try {
       const dlqPayload = {
@@ -513,15 +516,14 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       });
 
       this.logger.warn(
-        `Sent unmappable webhook event to DLQ: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, reason=${errorReason}`,
+        `Sent unmappable webhook event to DLQ: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, reason=${errorReason}`
       );
     } catch (dlqError) {
       // Non-fatal: log but don't fail the ACK
       this.logger.error(
         `Failed to send event to DLQ (non-fatal): eventId=${event.eventId}`,
-        dlqError instanceof Error ? dlqError.stack : String(dlqError),
+        dlqError instanceof Error ? dlqError.stack : String(dlqError)
       );
     }
   }
 }
-

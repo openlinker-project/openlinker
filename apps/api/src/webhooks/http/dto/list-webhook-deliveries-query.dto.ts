@@ -8,10 +8,7 @@
 import { IsEnum, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  WebhookDeliveryStatus,
-  WebhookDeliveryStatusValues,
-} from '@openlinker/core/webhooks';
+import { WebhookDeliveryStatus, WebhookDeliveryStatusValues } from '@openlinker/core/webhooks';
 
 export class ListWebhookDeliveriesQueryDto {
   @ApiPropertyOptional({ description: 'Filter by webhook provider (e.g. prestashop)' })
@@ -29,7 +26,10 @@ export class ListWebhookDeliveriesQueryDto {
   @IsString()
   eventType?: string;
 
-  @ApiPropertyOptional({ enum: WebhookDeliveryStatusValues, description: 'Filter by delivery status' })
+  @ApiPropertyOptional({
+    enum: WebhookDeliveryStatusValues,
+    description: 'Filter by delivery status',
+  })
   @IsOptional()
   @IsEnum(WebhookDeliveryStatusValues)
   status?: WebhookDeliveryStatus;

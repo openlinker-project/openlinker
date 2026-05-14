@@ -8,14 +8,7 @@
  *
  * @module libs/core/src/sync/infrastructure/persistence/entities
  */
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('connection_cursors')
 @Index(['connectionId', 'cursorKey'], { unique: true })
@@ -35,6 +28,3 @@ export class ConnectionCursorOrmEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-
-
-

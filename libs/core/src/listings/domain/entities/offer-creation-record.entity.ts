@@ -11,11 +11,8 @@
  * @module libs/core/src/listings/domain/entities
  */
 
-import {
-  OfferCreationError,
-  OfferCreationStatus,
-} from '../types/offer-creation-record.types';
-import { OfferCreationRequestSnapshot } from '../types/offer-creation-request-snapshot.types';
+import type { OfferCreationError, OfferCreationStatus } from '../types/offer-creation-record.types';
+import type { OfferCreationRequestSnapshot } from '../types/offer-creation-request-snapshot.types';
 
 export class OfferCreationRecord {
   constructor(
@@ -34,6 +31,6 @@ export class OfferCreationRecord {
      * not pass the snapshot. Surfaced on the status response for retry
      * pre-fill on the wizard.
      */
-    public readonly request: OfferCreationRequestSnapshot | null = null,
+    public readonly request: OfferCreationRequestSnapshot | null = null
   ) {}
 }

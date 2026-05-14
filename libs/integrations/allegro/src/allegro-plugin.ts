@@ -33,7 +33,7 @@ import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
 import { AllegroConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/allegro-connection-config-shape-validator.adapter';
 import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
-import { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
+import type { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 import type { AllegroQuantityCommandRepositoryPort } from './domain/ports/allegro-quantity-command-repository.port';
 
 export interface CreateAllegroPluginDeps {
@@ -104,19 +104,19 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroConnectionTesterAdapter(),
+        new AllegroConnectionTesterAdapter()
       );
       host.emailNormalizerRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroEmailNormalizerAdapter(),
+        new AllegroEmailNormalizerAdapter()
       );
       host.retryClassifierRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroRetryClassifierAdapter(),
+        new AllegroRetryClassifierAdapter()
       );
       host.connectionConfigShapeValidatorRegistry.register(
         'allegro.publicapi.v1',
-        new AllegroConnectionConfigShapeValidatorAdapter(ALLEGRO_BRAND),
+        new AllegroConnectionConfigShapeValidatorAdapter(ALLEGRO_BRAND)
       );
       // Allegro does NOT register a credentials shape validator — token
       // shape is enforced by `AllegroAdapterFactory.resolveCredentials` at
@@ -131,7 +131,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
     async createCapabilityAdapter<T>(
       connection: Connection,
       capability: string,
-      host: HostServices,
+      host: HostServices
     ): Promise<T> {
       const factory = new AllegroAdapterFactory(
         deps.customerIdentityResolver,
@@ -139,12 +139,12 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         deps.commandRepository,
         deps.quantityPollConfig,
         host.cache,
-        deps.catParamsTtlSec,
+        deps.catParamsTtlSec
       );
       const adapters = await factory.createAdapters(
         connection,
         host.identifierMapping,
-        host.credentialsResolver,
+        host.credentialsResolver
       );
       return dispatchCapability<T>(
         capability,
@@ -152,7 +152,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
           OfferManager: () => adapters.offerManager,
           OrderSource: () => adapters.orderSource,
         },
-        ALLEGRO_BRAND,
+        ALLEGRO_BRAND
       );
     },
   };

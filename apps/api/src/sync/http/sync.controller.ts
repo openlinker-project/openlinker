@@ -26,7 +26,6 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
-  SyncJobRequest,
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
@@ -34,8 +33,8 @@ import {
   InvalidSyncJobStateError,
   SyncJobNotFoundError,
 } from '@openlinker/core/sync';
-import type { SyncJob } from '@openlinker/core/sync';
-import type { ISyncJobRetryService, ISyncJobBulkRetryService } from '@openlinker/core/sync';
+import type { SyncJob, SyncJobRequest } from '@openlinker/core/sync';
+import { ISyncJobRetryService, ISyncJobBulkRetryService } from '@openlinker/core/sync';
 import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
 import { EnqueueSyncJobResponseDto } from './dto/enqueue-sync-job-response.dto';
 import { ListSyncJobsQueryDto } from './dto/list-sync-jobs-query.dto';
@@ -62,7 +61,7 @@ export class SyncController {
     @Inject(SYNC_JOB_RETRY_SERVICE_TOKEN)
     private readonly retryService: ISyncJobRetryService,
     @Inject(SYNC_JOB_BULK_RETRY_SERVICE_TOKEN)
-    private readonly bulkRetryService: ISyncJobBulkRetryService,
+    private readonly bulkRetryService: ISyncJobBulkRetryService
   ) {}
 
   @Post('jobs')
@@ -84,7 +83,7 @@ export class SyncController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async enqueueJob(@Body() dto: EnqueueSyncJobDto): Promise<EnqueueSyncJobResponseDto> {
     this.logger.log(
-      `Enqueuing sync job: ${dto.jobType} for connection ${dto.connectionId} (idempotencyKey: ${dto.idempotencyKey})`,
+      `Enqueuing sync job: ${dto.jobType} for connection ${dto.connectionId} (idempotencyKey: ${dto.idempotencyKey})`
     );
 
     try {
@@ -99,7 +98,7 @@ export class SyncController {
       const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
 
       this.logger.log(
-        `Job enqueued successfully: ${jobId} (type: ${dto.jobType}, connection: ${dto.connectionId})`,
+        `Job enqueued successfully: ${jobId} (type: ${dto.jobType}, connection: ${dto.connectionId})`
       );
 
       return {
@@ -111,7 +110,7 @@ export class SyncController {
     } catch (error) {
       this.logger.error(
         `Failed to enqueue job: ${dto.jobType} for connection ${dto.connectionId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
 
       if (error instanceof Error) {
@@ -129,14 +128,18 @@ export class SyncController {
     description:
       'Returns a paginated list of sync jobs. Supports filtering by status, outcome, connectionId, and jobType.',
   })
-  @ApiResponse({ status: 200, description: 'Paginated job list', type: PaginatedSyncJobsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated job list',
+    type: PaginatedSyncJobsResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listJobs(@Query() query: ListSyncJobsQueryDto): Promise<PaginatedSyncJobsResponseDto> {
     const { status, connectionId, jobType, outcome, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.syncJobRepository.findMany(
       { status, connectionId, jobType, outcome },
-      { limit, offset },
+      { limit, offset }
     );
 
     return {
@@ -152,17 +155,23 @@ export class SyncController {
   @ApiOperation({
     summary: 'List sync jobs grouped by (connectionId, jobType)',
     description:
-      'Aggregates jobs matching the status filter into one row per (connectionId, jobType) signature. Returns count, latest updatedAt, a representative job ID, and the group\'s lastError. Sorted by count DESC, then latestUpdatedAt DESC.',
+      "Aggregates jobs matching the status filter into one row per (connectionId, jobType) signature. Returns count, latest updatedAt, a representative job ID, and the group's lastError. Sorted by count DESC, then latestUpdatedAt DESC.",
   })
-  @ApiResponse({ status: 200, description: 'Aggregated group list', type: GroupedSyncJobsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Aggregated group list',
+    type: GroupedSyncJobsResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listGroupedJobs(
-    @Query() query: ListGroupedSyncJobsQueryDto,
+    @Query() query: ListGroupedSyncJobsQueryDto
   ): Promise<GroupedSyncJobsResponseDto> {
     const { status, connectionId, limit = 100 } = query;
 
-    const { groups, totalGroups, totalJobs } =
-      await this.syncJobRepository.findGroupedByStatus({ status, connectionId }, limit);
+    const { groups, totalGroups, totalJobs } = await this.syncJobRepository.findGroupedByStatus(
+      { status, connectionId },
+      limit
+    );
 
     return {
       groups: groups.map((g) => ({
@@ -186,11 +195,15 @@ export class SyncController {
     description:
       'Re-queues every dead sync job matching the group selector, capped at a server-side batch size. Jobs that flipped out of dead between our selection and the update are counted as skipped. Emits one sync.job.bulk-retry-requested event when at least one job is re-queued.',
   })
-  @ApiResponse({ status: 200, description: 'Bulk retry result', type: RetryGroupedSyncJobsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk retry result',
+    type: RetryGroupedSyncJobsResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryGroupedJobs(
-    @Body() dto: RetryGroupedSyncJobsDto,
+    @Body() dto: RetryGroupedSyncJobsDto
   ): Promise<RetryGroupedSyncJobsResponseDto> {
     const result = await this.bulkRetryService.retryGroup(dto.connectionId, dto.jobType);
     return {
@@ -255,9 +268,8 @@ export class SyncController {
       updatedAt: job.updatedAt instanceof Date ? job.updatedAt.toISOString() : job.updatedAt,
       payloadJson: job.payload ?? null,
       idempotencyKey: job.idempotencyKey ?? null,
-      lockedAt: job.lockedAt instanceof Date ? job.lockedAt.toISOString() : (job.lockedAt ?? null),
+      lockedAt: job.lockedAt instanceof Date ? job.lockedAt.toISOString() : job.lockedAt ?? null,
       lockedBy: job.lockedBy ?? null,
     };
   }
 }
-

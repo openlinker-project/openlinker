@@ -7,8 +7,8 @@
  */
 
 import { InventorySyncService } from '../inventory-sync.service';
-import { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
-import { IIntegrationsService } from '@openlinker/core/integrations';
+import type { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
@@ -55,7 +55,7 @@ describe('InventorySyncService', () => {
   it('falls back to per-item updates and reports partial failures', async () => {
     // Make batch fail so service falls back to per-item
     (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockRejectedValueOnce(
-      new Error('batch failed'),
+      new Error('batch failed')
     );
     marketplace.updateOfferQuantity
       .mockResolvedValueOnce(undefined)
@@ -70,9 +70,7 @@ describe('InventorySyncService', () => {
 
     expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(2);
     expect(result.succeeded).toEqual(['o1']);
-    expect(result.failed).toEqual([
-      { offerId: 'o2', errorCode: 'unknown', message: 'boom' },
-    ]);
+    expect(result.failed).toEqual([{ offerId: 'o2', errorCode: 'unknown', message: 'boom' }]);
   });
 
   it('should short-circuit with an empty result when items is empty (no adapter resolution)', async () => {
@@ -154,4 +152,3 @@ describe('InventorySyncService', () => {
     expect(thirdCallArg.idempotencyKey).not.toBe(firstCallArg.idempotencyKey);
   });
 });
-

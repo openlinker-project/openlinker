@@ -6,21 +6,29 @@
  *
  * @module libs/core/src/integrations/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { IntegrationsService } from './integrations.service';
-import { ConnectionPort } from '@openlinker/core/identifier-mapping';
-import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
-import { AdapterFactoryResolverService } from '../../infrastructure/adapters/adapter-factory-resolver.service';
-import { CONNECTION_PORT_TOKEN, IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import { ADAPTER_REGISTRY_TOKEN, ADAPTER_FACTORY_RESOLVER_TOKEN, CREDENTIALS_RESOLVER_TOKEN } from '@openlinker/core/integrations';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '../../domain/ports/credentials-resolver.port';
+import type { AdapterFactoryResolverService } from '../../infrastructure/adapters/adapter-factory-resolver.service';
+import {
+  CONNECTION_PORT_TOKEN,
+  IDENTIFIER_MAPPING_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  ADAPTER_REGISTRY_TOKEN,
+  ADAPTER_FACTORY_RESOLVER_TOKEN,
+  CREDENTIALS_RESOLVER_TOKEN,
+} from '@openlinker/core/integrations';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { CapabilityNotSupportedException } from '../../domain/exceptions/capability-not-supported.exception';
-import { AdapterMetadata } from '../../domain/types/adapter.types';
+import type { AdapterMetadata } from '../../domain/types/adapter.types';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
@@ -37,9 +45,9 @@ describe('IntegrationsService', () => {
     'cred_123',
     new Date(),
     new Date(),
-  
+
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
   );
 
   const mockAdapterMetadata: AdapterMetadata = {
@@ -134,7 +142,7 @@ describe('IntegrationsService', () => {
         new Date(),
         new Date(),
         'prestashop.webservice.v1',
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager']
       );
 
       connectionPort.get.mockResolvedValue(connectionWithKey);
@@ -144,9 +152,7 @@ describe('IntegrationsService', () => {
 
       expect(result.connection).toEqual(connectionWithKey);
       expect(result.metadata).toEqual(mockAdapterMetadata);
-      expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith(
-        'prestashop.webservice.v1',
-      );
+      expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith('prestashop.webservice.v1');
     });
 
     it('should derive adapterKey from platformType when not provided', async () => {
@@ -160,18 +166,14 @@ describe('IntegrationsService', () => {
       // IntegrationsService asks the registry for the platform default
       // (#571 — replaces the hardcoded deriveAdapterKey map).
       expect(adapterRegistry.getDefaultAdapterKey).toHaveBeenCalledWith('prestashop');
-      expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith(
-        'prestashop.webservice.v1',
-      );
+      expect(adapterRegistry.getAdapterMetadata).toHaveBeenCalledWith('prestashop.webservice.v1');
     });
 
     it('should throw ConnectionNotFoundException when connection not found', async () => {
-      connectionPort.get.mockRejectedValue(
-        new ConnectionNotFoundException('connection-123'),
-      );
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
       await expect(service.getAdapter('connection-123')).rejects.toThrow(
-        ConnectionNotFoundException,
+        ConnectionNotFoundException
       );
     });
 
@@ -185,27 +187,25 @@ describe('IntegrationsService', () => {
         'cred_123',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       connectionPort.get.mockResolvedValue(disabledConnection);
 
       await expect(service.getAdapter('connection-123')).rejects.toThrow(
-        ConnectionDisabledException,
+        ConnectionDisabledException
       );
     });
 
     it('should throw AdapterNotFoundException when adapter key not found', async () => {
       connectionPort.get.mockResolvedValue(mockConnection);
       adapterRegistry.getAdapterMetadata.mockRejectedValue(
-        new AdapterNotFoundException('unknown.adapter.v1'),
+        new AdapterNotFoundException('unknown.adapter.v1')
       );
 
-      await expect(service.getAdapter('connection-123')).rejects.toThrow(
-        AdapterNotFoundException,
-      );
+      await expect(service.getAdapter('connection-123')).rejects.toThrow(AdapterNotFoundException);
     });
   });
 
@@ -215,10 +215,7 @@ describe('IntegrationsService', () => {
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
       factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
 
-      const result = await service.getCapabilityAdapter<unknown>(
-        'connection-123',
-        'ProductMaster',
-      );
+      const result = await service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster');
 
       expect(result).toEqual(mockCapabilityAdapter);
       expect(factoryResolver.createCapabilityAdapter).toHaveBeenCalledWith(
@@ -226,7 +223,7 @@ describe('IntegrationsService', () => {
         mockConnection,
         'ProductMaster',
         expect.anything(),
-        expect.anything(),
+        expect.anything()
       );
     });
 
@@ -237,11 +234,13 @@ describe('IntegrationsService', () => {
       connectionPort.get.mockResolvedValue(mockConnection);
       adapterRegistry.getAdapterMetadata.mockResolvedValue(mockAdapterMetadata);
       factoryResolver.createCapabilityAdapter.mockRejectedValue(
-        new AdapterNotFoundException('No factory registered for adapterKey: prestashop.webservice.v1'),
+        new AdapterNotFoundException(
+          'No factory registered for adapterKey: prestashop.webservice.v1'
+        )
       );
 
       await expect(
-        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster'),
+        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster')
       ).rejects.toThrow(AdapterNotFoundException);
     });
 
@@ -252,12 +251,10 @@ describe('IntegrationsService', () => {
       };
 
       connectionPort.get.mockResolvedValue(mockConnection);
-      adapterRegistry.getAdapterMetadata.mockResolvedValue(
-        metadataWithoutCapability,
-      );
+      adapterRegistry.getAdapterMetadata.mockResolvedValue(metadataWithoutCapability);
 
       await expect(
-        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster'),
+        service.getCapabilityAdapter<unknown>('connection-123', 'ProductMaster')
       ).rejects.toThrow(CapabilityNotSupportedException);
     });
   });
@@ -273,9 +270,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       const allegroConnection = new Connection(
@@ -287,9 +284,9 @@ describe('IntegrationsService', () => {
         'cred_2',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       // Mock both adapters to support the same capability for testing purposes
@@ -307,10 +304,7 @@ describe('IntegrationsService', () => {
         supportedCapabilities: ['ProductMaster', 'OfferManager'],
       };
 
-      connectionPort.list.mockResolvedValue([
-        prestashopConnection,
-        allegroConnection,
-      ]);
+      connectionPort.list.mockResolvedValue([prestashopConnection, allegroConnection]);
 
       adapterRegistry.getAdapterMetadata
         .mockResolvedValueOnce(prestashopMetadata)
@@ -340,9 +334,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       const prestashopMetadata: AdapterMetadata = {
@@ -377,9 +371,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       // connectionPort.list is called with { status: 'active' } filter,
@@ -415,9 +409,9 @@ describe('IntegrationsService', () => {
         'cred_1',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       const invalidConnection = new Connection(
@@ -429,9 +423,9 @@ describe('IntegrationsService', () => {
         'cred_2',
         new Date(),
         new Date(),
-      
+
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       connectionPort.list.mockResolvedValue([validConnection, invalidConnection]);
@@ -445,7 +439,7 @@ describe('IntegrationsService', () => {
       adapterRegistry.getAdapterMetadata
         .mockResolvedValueOnce(metadata)
         .mockRejectedValueOnce(
-          new AdapterNotFoundException('No default adapterKey found for platformType: unknown'),
+          new AdapterNotFoundException('No default adapterKey found for platformType: unknown')
         );
 
       factoryResolver.createCapabilityAdapter.mockResolvedValue(mockCapabilityAdapter);
@@ -460,4 +454,3 @@ describe('IntegrationsService', () => {
     });
   });
 });
-

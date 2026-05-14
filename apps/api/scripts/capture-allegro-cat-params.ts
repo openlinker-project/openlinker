@@ -29,7 +29,10 @@
 import { NestFactory } from '@nestjs/core';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { AppModule } from '../src/app.module';
 
@@ -40,15 +43,14 @@ interface AllegroLikeAdapter extends OfferManagerPort {
 // Worktree root resolved from this script's location: apps/api/scripts/<this>
 // → ../../.. takes us to the repo root regardless of where pnpm sets cwd.
 const WORKTREE_ROOT = resolve(__dirname, '..', '..', '..');
-const DEFAULT_FIXTURE_DIR =
-  'libs/integrations/allegro/src/infrastructure/adapters/__fixtures__';
+const DEFAULT_FIXTURE_DIR = 'libs/integrations/allegro/src/infrastructure/adapters/__fixtures__';
 
 async function main(): Promise<void> {
   const [, , connectionId, categoryId, outputPathArg] = process.argv;
 
   if (!connectionId || !categoryId) {
     process.stderr.write(
-      'Usage: capture-allegro-cat-params <connectionId> <categoryId> [outputPath]\n',
+      'Usage: capture-allegro-cat-params <connectionId> <categoryId> [outputPath]\n'
     );
     process.exit(1);
   }
@@ -71,12 +73,12 @@ async function main(): Promise<void> {
     const integrationsService = app.get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN);
     const adapter = (await integrationsService.getCapabilityAdapter(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     )) as AllegroLikeAdapter;
 
     if (typeof adapter.fetchCategoryParametersRaw !== 'function') {
       process.stderr.write(
-        `! Adapter for connection ${connectionId} does not expose fetchCategoryParametersRaw — only the Allegro adapter implements this dev hook.\n`,
+        `! Adapter for connection ${connectionId} does not expose fetchCategoryParametersRaw — only the Allegro adapter implements this dev hook.\n`
       );
       process.exit(2);
     }
@@ -88,7 +90,7 @@ async function main(): Promise<void> {
     mkdirSync(dirname(resolvedOutputPath), { recursive: true });
     writeFileSync(resolvedOutputPath, json + '\n', 'utf8');
     process.stderr.write(
-      `> Wrote ${json.length.toLocaleString()} bytes to ${resolvedOutputPath}\n`,
+      `> Wrote ${json.length.toLocaleString()} bytes to ${resolvedOutputPath}\n`
     );
     reportShape(raw);
   } finally {
@@ -122,7 +124,9 @@ function reportShape(raw: unknown): void {
     if (options && typeof options.dependsOnParameterId === 'string') {
       paramVisibilityCount += 1;
     }
-    const dict = Array.isArray(op.dictionary) ? (op.dictionary as Array<Record<string, unknown>>) : [];
+    const dict = Array.isArray(op.dictionary)
+      ? (op.dictionary as Array<Record<string, unknown>>)
+      : [];
     dictionaryEntries += dict.length;
     for (const entry of dict) {
       if (Array.isArray(entry.dependsOnValueIds) && entry.dependsOnValueIds.length > 0) {
@@ -134,16 +138,16 @@ function reportShape(raw: unknown): void {
   process.stderr.write(
     `> Shape: ${params.length} parameters, ${dictionaryEntries.toLocaleString()} dictionary entries, ` +
       `${paramVisibilityCount} parameter-level dependsOnParameterId, ` +
-      `${entryFilterCount.toLocaleString()} entries with dependsOnValueIds.\n`,
+      `${entryFilterCount.toLocaleString()} entries with dependsOnValueIds.\n`
   );
 
   if (entryFilterCount > 0) {
     process.stderr.write(
-      '> ✅ This category has dictionary-entry filtering — good candidate for the cascading fixture.\n',
+      '> ✅ This category has dictionary-entry filtering — good candidate for the cascading fixture.\n'
     );
   } else {
     process.stderr.write(
-      '> ⚠ This category has no dictionary-entry filtering. Try another category if you need the cascading fixture.\n',
+      '> ⚠ This category has no dictionary-entry filtering. Try another category if you need the cascading fixture.\n'
     );
   }
 }

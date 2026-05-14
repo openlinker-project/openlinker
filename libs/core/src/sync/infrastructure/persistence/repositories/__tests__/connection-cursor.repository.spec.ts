@@ -6,9 +6,11 @@
  *
  * @module libs/core/src/sync/infrastructure/persistence/repositories
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, QueryFailedError, InsertResult } from 'typeorm';
+import type { Repository, InsertResult } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 import { ConnectionCursorRepository } from '../connection-cursor.repository';
 import { ConnectionCursorOrmEntity } from '../../entities/connection-cursor.orm-entity';
 import { randomUUID } from 'crypto';
@@ -94,7 +96,7 @@ describe('ConnectionCursorRepository', () => {
       ormRepository.findOne.mockRejectedValue(error);
 
       await expect(repository.get(connectionId, cursorKey)).rejects.toThrow(
-        'Unexpected database error',
+        'Unexpected database error'
       );
     });
   });
@@ -122,7 +124,7 @@ describe('ConnectionCursorRepository', () => {
         },
         {
           conflictPaths: ['connectionId', 'cursorKey'],
-        },
+        }
       );
     });
 
@@ -144,21 +146,17 @@ describe('ConnectionCursorRepository', () => {
         },
         {
           conflictPaths: ['connectionId', 'cursorKey'],
-        },
+        }
       );
     });
 
     it('should throw error when QueryFailedError occurs (invalid UUID)', async () => {
-      const error = new QueryFailedError(
-        'invalid input syntax for type uuid',
-        [],
-        '',
-      );
+      const error = new QueryFailedError('invalid input syntax for type uuid', [], '');
       ormRepository.upsert.mockRejectedValue(error);
 
-      await expect(
-        repository.set('invalid-uuid', cursorKey, cursorValue),
-      ).rejects.toThrow('Failed to set cursor');
+      await expect(repository.set('invalid-uuid', cursorKey, cursorValue)).rejects.toThrow(
+        'Failed to set cursor'
+      );
 
       expect(ormRepository.upsert).toHaveBeenCalled();
     });
@@ -168,7 +166,7 @@ describe('ConnectionCursorRepository', () => {
       ormRepository.upsert.mockRejectedValue(error);
 
       await expect(repository.set(connectionId, cursorKey, cursorValue)).rejects.toThrow(
-        'Unexpected database error',
+        'Unexpected database error'
       );
     });
   });
@@ -217,9 +215,8 @@ describe('ConnectionCursorRepository', () => {
       ormRepository.delete.mockRejectedValue(error);
 
       await expect(repository.delete(connectionId, cursorKey)).rejects.toThrow(
-        'Unexpected database error',
+        'Unexpected database error'
       );
     });
   });
 });
-

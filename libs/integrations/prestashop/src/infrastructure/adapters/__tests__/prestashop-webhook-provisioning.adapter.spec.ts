@@ -22,11 +22,9 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
 import { BadRequestException } from '@nestjs/common';
-import { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
-import {
-  IWebhookSecretService,
-  CredentialsResolverPort,
-} from '@openlinker/core/integrations';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { Connection } from '@openlinker/core/identifier-mapping';
+import type { IWebhookSecretService, CredentialsResolverPort } from '@openlinker/core/integrations';
 import { PrestashopWebhookProvisioningAdapter } from '../prestashop-webhook-provisioning.adapter';
 import * as wsClientModule from '../../http/prestashop-webservice.client';
 
@@ -56,7 +54,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
     new Date(),
     new Date(),
     undefined,
-    ['ProductMaster'],
+    ['ProductMaster']
   );
 
   beforeEach(() => {
@@ -97,7 +95,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
     adapter = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
-      credentialsResolver,
+      credentialsResolver
     );
   });
 
@@ -112,7 +110,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
       expect(webhookSecretService.rotate).toHaveBeenCalledWith(
         'prestashop',
         'connection-123',
-        'user-1',
+        'user-1'
       );
 
       // Three upsert attempts (each does a list-by-name → create flow because list returns empty).
@@ -121,12 +119,10 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
 
       // PS WS body must be flat (`{ name, value }`) — the WS client adds the
       // `{ prestashop: { configuration: ... } }` wrapper itself. (#541)
-      const namesPushed = mockWsClient.createResource.mock.calls.map(
-        (call: unknown[]) => {
-          const body = call[1] as { name: string };
-          return body.name;
-        },
-      );
+      const namesPushed = mockWsClient.createResource.mock.calls.map((call: unknown[]) => {
+        const body = call[1] as { name: string };
+        return body.name;
+      });
       expect(namesPushed).toEqual([
         'OPENLINKER_BASE_URL',
         'OPENLINKER_CONNECTION_ID',
@@ -147,7 +143,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
         'connection-123',
         expect.objectContaining({
           config: expect.objectContaining({ webhooksConfigured: true }),
-        }),
+        })
       );
 
       // Ping fired against the PS shop URL with HMAC headers.
@@ -178,7 +174,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
         expect.objectContaining({
           id: '42',
           name: 'OPENLINKER_BASE_URL',
-        }),
+        })
       );
       const updateCalls = mockWsClient.updateResource.mock.calls as unknown[][];
       const updateBody = updateCalls[0][1] as Record<string, unknown>;
@@ -200,13 +196,11 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
           new Date(),
           new Date(),
           undefined,
-          [],
-        ),
+          []
+        )
       );
       await expect(adapter.install('connection-123')).rejects.toThrow(BadRequestException);
-      await expect(adapter.install('connection-123')).rejects.toThrow(
-        /OL callback URL/,
-      );
+      await expect(adapter.install('connection-123')).rejects.toThrow(/OL callback URL/);
       expect(webhookSecretService.rotate).not.toHaveBeenCalled();
     });
 
@@ -222,8 +216,8 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
           new Date(),
           new Date(),
           undefined,
-          [],
-        ),
+          []
+        )
       );
       await expect(adapter.install('connection-123')).rejects.toThrow(/baseUrl/);
     });
@@ -234,7 +228,7 @@ describe('PrestashopWebhookProvisioningAdapter', () => {
       mockWsClient.listResources.mockRejectedValueOnce(new Error('PS WS 401'));
 
       await expect(adapter.install('connection-123')).rejects.toThrow(
-        /Configuration push to PrestaShop failed/,
+        /Configuration push to PrestaShop failed/
       );
 
       // Secret was rotated — connection.update was NOT called (push failed before).

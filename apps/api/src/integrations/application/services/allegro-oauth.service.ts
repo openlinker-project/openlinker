@@ -8,15 +8,25 @@
  * @module apps/api/src/integrations/application/services
  * @implements {IAllegroOAuthService}
  */
-import { Injectable, BadRequestException, InternalServerErrorException, Inject, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  InternalServerErrorException,
+  Inject,
+  NotFoundException,
+} from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
 import { RedisClientType } from 'redis';
-import { AllegroConnectionConfig, AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
+import type { AllegroConnectionConfig } from '@openlinker/integrations-allegro';
+import { AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
-import { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
-import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
-import { IAllegroOAuthService } from '../interfaces/allegro-oauth.service.interface';
+import type { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
+import {
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  IntegrationCredentialRepositoryPort,
+} from '@openlinker/core/integrations';
+import type { IAllegroOAuthService } from '../interfaces/allegro-oauth.service.interface';
 import type {
   AllegroOAuthAuthorizationResponse,
   AllegroOAuthTokenResponse,
@@ -37,7 +47,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository: IntegrationCredentialRepositoryPort,
+    private readonly credentialRepository: IntegrationCredentialRepositoryPort
   ) {}
 
   /**
@@ -54,7 +64,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     environment: string = 'sandbox',
     state?: string,
     connectionName?: string,
-    masterCatalogConnectionId?: string,
+    masterCatalogConnectionId?: string
   ): Promise<AllegroOAuthAuthorizationResponse> {
     // Generate state if not provided
     const oauthState = state || randomBytes(32).toString('hex');
@@ -70,11 +80,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       masterCatalogConnectionId,
     };
     const stateKey = `allegro:oauth:state:${oauthState}`;
-    await this.redisClient.setEx(
-      stateKey,
-      this.STATE_TTL_SECONDS,
-      JSON.stringify(stateData),
-    );
+    await this.redisClient.setEx(stateKey, this.STATE_TTL_SECONDS, JSON.stringify(stateData));
 
     // Determine API base URL based on environment
     const apiBaseUrl = this.getApiBaseUrl(environment);
@@ -89,7 +95,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     authorizationUrl.searchParams.set('state', oauthState);
 
     this.logger.debug(
-      `Generated OAuth authorization URL for environment: ${environment}, state: ${oauthState}`,
+      `Generated OAuth authorization URL for environment: ${environment}, state: ${oauthState}`
     );
 
     return {
@@ -145,7 +151,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     clientId: string,
     clientSecret: string,
     redirectUri: string,
-    environment: string = 'sandbox',
+    environment: string = 'sandbox'
   ): Promise<AllegroOAuthTokenResponse> {
     const apiBaseUrl = this.getApiBaseUrl(environment);
 
@@ -175,22 +181,24 @@ export class AllegroOAuthService implements IAllegroOAuthService {
           },
           body: new URLSearchParams(tokenRequest).toString(),
         },
-        ALLEGRO_OAUTH_TIMEOUT_MS,
+        ALLEGRO_OAUTH_TIMEOUT_MS
       );
 
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `Failed to exchange code for token: ${response.status} ${response.statusText} - ${errorText}`,
+          `Failed to exchange code for token: ${response.status} ${response.statusText} - ${errorText}`
         );
         throw new BadRequestException(
-          `Failed to exchange authorization code for token: ${response.statusText}`,
+          `Failed to exchange authorization code for token: ${response.statusText}`
         );
       }
 
       const tokenData = (await response.json()) as AllegroOAuthTokenResponse;
 
-      this.logger.debug(`Successfully exchanged code for token (token_type: ${tokenData.token_type})`);
+      this.logger.debug(
+        `Successfully exchanged code for token (token_type: ${tokenData.token_type})`
+      );
 
       return tokenData;
     } catch (error) {
@@ -200,7 +208,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       const formatted = this.formatFetchError(error);
       this.logger.error(
         `Error exchanging code for token (environment: ${environment}): ${formatted}`,
-        error instanceof Error ? error.stack : undefined,
+        error instanceof Error ? error.stack : undefined
       );
       throw new InternalServerErrorException('Failed to exchange authorization code for token');
     }
@@ -220,7 +228,9 @@ export class AllegroOAuthService implements IAllegroOAuthService {
 
       // Check platform type
       if (connection.platformType !== 'allegro') {
-        errors.push(`Connection is not an Allegro connection (platformType: ${connection.platformType})`);
+        errors.push(
+          `Connection is not an Allegro connection (platformType: ${connection.platformType})`
+        );
         return { valid: false, errors };
       }
 
@@ -237,7 +247,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
         errors.push('Config is missing environment');
       } else if (!AllegroEnvironmentValues.includes(config.environment)) {
         errors.push(
-          `Invalid environment: ${config.environment}. Must be one of: ${AllegroEnvironmentValues.join(', ')}`,
+          `Invalid environment: ${config.environment}. Must be one of: ${AllegroEnvironmentValues.join(', ')}`
         );
       }
 
@@ -270,7 +280,10 @@ export class AllegroOAuthService implements IAllegroOAuthService {
         errors.push(`Connection not found: ${connectionId}`);
         return { valid: false, errors };
       }
-      this.logger.error(`Error validating connection ${connectionId}: ${(error as Error).message}`, error);
+      this.logger.error(
+        `Error validating connection ${connectionId}: ${(error as Error).message}`,
+        error
+      );
       errors.push(`Failed to validate connection: ${(error as Error).message}`);
       return { valid: false, errors };
     }
@@ -288,10 +301,10 @@ export class AllegroOAuthService implements IAllegroOAuthService {
    */
   async storeCredentialsAndCreateConnection(
     tokenResponse: AllegroOAuthTokenResponse,
-    stateData: OAuthStateData,
+    stateData: OAuthStateData
   ): Promise<Connection> {
     this.logger.log(
-      `Storing credentials and creating connection for Allegro (environment: ${stateData.environment}, connectionName: ${stateData.connectionName || 'N/A'})`,
+      `Storing credentials and creating connection for Allegro (environment: ${stateData.environment}, connectionName: ${stateData.connectionName || 'N/A'})`
     );
 
     // Generate credential reference
@@ -326,7 +339,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     } catch (error) {
       this.logger.error(`Failed to store credentials: ${(error as Error).message}`, error);
       throw new InternalServerErrorException(
-        `Failed to store credentials: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to store credentials: ${error instanceof Error ? error.message : String(error)}`
       );
     }
 
@@ -341,14 +354,16 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     // Create connection with database credentials reference
     const connection = await this.connectionService.create({
       platformType: 'allegro',
-      name: stateData.connectionName || `Allegro ${stateData.environment} (${new Date().toISOString()})`,
+      name:
+        stateData.connectionName ||
+        `Allegro ${stateData.environment} (${new Date().toISOString()})`,
       config: config as unknown as ConnectionConfig,
       credentialsRef: `db:${credentialRef}`, // Use db: prefix for database backend
       adapterKey: 'allegro.publicapi.v1',
     });
 
     this.logger.log(
-      `Connection created successfully: ${connection.id} (name: ${connection.name}, credentialsRef: ${connection.credentialsRef})`,
+      `Connection created successfully: ${connection.id} (name: ${connection.name}, credentialsRef: ${connection.credentialsRef})`
     );
 
     return connection;
@@ -370,7 +385,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     refreshToken: string,
     clientId: string,
     clientSecret: string,
-    environment: string = 'sandbox',
+    environment: string = 'sandbox'
   ): Promise<AllegroOAuthTokenResponse> {
     const apiBaseUrl = this.getApiBaseUrl(environment);
 
@@ -399,22 +414,24 @@ export class AllegroOAuthService implements IAllegroOAuthService {
           },
           body: new URLSearchParams(tokenRequest).toString(),
         },
-        ALLEGRO_OAUTH_TIMEOUT_MS,
+        ALLEGRO_OAUTH_TIMEOUT_MS
       );
 
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `Failed to refresh token: ${response.status} ${response.statusText} - ${errorText}`,
+          `Failed to refresh token: ${response.status} ${response.statusText} - ${errorText}`
         );
         throw new BadRequestException(
-          `Failed to refresh access token: ${response.statusText}. The refresh token may be invalid or expired.`,
+          `Failed to refresh access token: ${response.statusText}. The refresh token may be invalid or expired.`
         );
       }
 
       const tokenData = (await response.json()) as AllegroOAuthTokenResponse;
 
-      this.logger.debug(`Successfully refreshed access token (token_type: ${tokenData.token_type})`);
+      this.logger.debug(
+        `Successfully refreshed access token (token_type: ${tokenData.token_type})`
+      );
 
       return tokenData;
     } catch (error) {
@@ -424,7 +441,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       const formatted = this.formatFetchError(error);
       this.logger.error(
         `Error refreshing token (environment: ${environment}): ${formatted}`,
-        error instanceof Error ? error.stack : undefined,
+        error instanceof Error ? error.stack : undefined
       );
       throw new InternalServerErrorException('Failed to refresh access token');
     }
@@ -438,7 +455,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
   async markStateCompleted(
     state: string,
     connectionId: string,
-    connectionName: string,
+    connectionName: string
   ): Promise<void> {
     const key = `allegro:oauth:completed:${state}`;
     const value: CompletedStateData = { connectionId, connectionName };
@@ -496,7 +513,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
   private async fetchWithTimeout(
     url: string,
     init: RequestInit,
-    timeoutMs: number,
+    timeoutMs: number
   ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -531,9 +548,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       if (Array.isArray(errorsProp)) {
         const codes = errorsProp
           .map((e) =>
-            e && typeof e === 'object' && 'code' in e
-              ? (e as { code?: unknown }).code
-              : undefined,
+            e && typeof e === 'object' && 'code' in e ? (e as { code?: unknown }).code : undefined
           )
           .filter((c): c is string => typeof c === 'string');
         const codeSummary = codes.length > 0 ? codes.join(', ') : 'unknown';
@@ -550,4 +565,3 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     return `${baseMessage} (cause: unknown — n/a)`;
   }
 }
-

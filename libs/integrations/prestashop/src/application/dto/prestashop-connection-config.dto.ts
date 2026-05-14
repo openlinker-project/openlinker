@@ -29,10 +29,7 @@ import {
 // Sibling type in same package — relative path. The barrel re-exports
 // these, but reaching for the self-package alias from inside the package
 // itself creates a cycle through the compiled `dist/`.
-import {
-  ResponseFormat,
-  ResponseFormatValues,
-} from '../../domain/types/prestashop-config.types';
+import { ResponseFormat, ResponseFormatValues } from '../../domain/types/prestashop-config.types';
 
 /**
  * PrestaShop Connection Config DTO

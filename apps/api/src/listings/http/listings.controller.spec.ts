@@ -4,7 +4,8 @@
  * @module apps/api/src/listings/http
  */
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import type {
   CatalogProduct,
@@ -13,10 +14,29 @@ import type {
   OfferManagerPort,
   SellerPolicies,
 } from '@openlinker/core/listings';
-import { CatalogProductNotFoundException, CategoryNotFoundException } from '@openlinker/core/listings';
-import { ConnectionNotFoundException, IdentifierMapping } from '@openlinker/core/identifier-mapping';
-import { CATEGORY_RESOLUTION_SERVICE_TOKEN, OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, OFFER_CREATION_RECORD_REPOSITORY_TOKEN, OFFER_MAPPING_REPOSITORY_TOKEN, OfferCreationRecord, SELLER_POLICIES_SERVICE_TOKEN } from '@openlinker/core/listings';
-import type { ICategoryResolutionService, IOfferCreationEnqueueService, ISellerPoliciesService, OfferCreationRecordRepositoryPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import {
+  CatalogProductNotFoundException,
+  CategoryNotFoundException,
+} from '@openlinker/core/listings';
+import {
+  ConnectionNotFoundException,
+  IdentifierMapping,
+} from '@openlinker/core/identifier-mapping';
+import {
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
+  OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
+  OfferCreationRecord,
+  SELLER_POLICIES_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
+import type {
+  ICategoryResolutionService,
+  IOfferCreationEnqueueService,
+  ISellerPoliciesService,
+  OfferCreationRecordRepositoryPort,
+  OfferMappingRepositoryPort,
+} from '@openlinker/core/listings';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
@@ -46,7 +66,7 @@ describe('ListingsController', () => {
     'conn-1',
     null,
     new Date('2026-01-01T00:00:00Z'),
-    new Date('2026-01-01T00:00:00Z'),
+    new Date('2026-01-01T00:00:00Z')
   );
 
   const mockRecord = new OfferCreationRecord(
@@ -58,7 +78,7 @@ describe('ListingsController', () => {
     null,
     false,
     new Date('2026-04-20T10:00:00Z'),
-    new Date('2026-04-20T10:00:00Z'),
+    new Date('2026-04-20T10:00:00Z')
   );
 
   beforeEach(async () => {
@@ -128,8 +148,13 @@ describe('ListingsController', () => {
       expect(result.limit).toBe(20);
       expect(result.offset).toBe(0);
       expect(repository.findMany).toHaveBeenCalledWith(
-        { connectionId: undefined, platformType: undefined, internalId: undefined, search: undefined },
-        { limit: 20, offset: 0 },
+        {
+          connectionId: undefined,
+          platformType: undefined,
+          internalId: undefined,
+          search: undefined,
+        },
+        { limit: 20, offset: 0 }
       );
     });
 
@@ -146,8 +171,13 @@ describe('ListingsController', () => {
       });
 
       expect(repository.findMany).toHaveBeenCalledWith(
-        { connectionId: 'conn-1', platformType: 'allegro', internalId: 'ol_offer_variant123', search: '456' },
-        { limit: 10, offset: 5 },
+        {
+          connectionId: 'conn-1',
+          platformType: 'allegro',
+          internalId: 'ol_offer_variant123',
+          search: '456',
+        },
+        { limit: 10, offset: 5 }
       );
     });
 
@@ -191,7 +221,7 @@ describe('ListingsController', () => {
         null,
         true,
         new Date('2026-04-20T10:00:00Z'),
-        new Date('2026-04-20T11:00:00Z'),
+        new Date('2026-04-20T11:00:00Z')
       );
       offerCreationRecords.findByExternalOfferIdAndConnectionId.mockResolvedValue(linkedRecord);
 
@@ -199,7 +229,7 @@ describe('ListingsController', () => {
 
       expect(offerCreationRecords.findByExternalOfferIdAndConnectionId).toHaveBeenCalledWith(
         'allegro-offer-456',
-        'conn-1',
+        'conn-1'
       );
       expect(result.offerCreation).toEqual({
         id: 'record-42',
@@ -235,7 +265,7 @@ describe('ListingsController', () => {
         'conn-2',
         null,
         new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T00:00:00Z'),
+        new Date('2026-01-01T00:00:00Z')
       );
       repository.findById.mockResolvedValue(productMapping);
 
@@ -308,7 +338,10 @@ describe('ListingsController', () => {
       const result = await controller.getMarketplaceOffer('uuid-1');
 
       expect(repository.findById).toHaveBeenCalledWith('uuid-1');
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(getOffer).toHaveBeenCalledWith({ externalId: 'allegro-offer-456' });
       expect(result).toEqual({
         externalId: 'allegro-offer-456',
@@ -328,7 +361,7 @@ describe('ListingsController', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(controller.getMarketplaceOffer('uuid-missing')).rejects.toThrow(
-        NotFoundException,
+        NotFoundException
       );
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
@@ -343,7 +376,7 @@ describe('ListingsController', () => {
         'conn-1',
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       repository.findById.mockResolvedValue(productMapping);
 
@@ -359,7 +392,7 @@ describe('ListingsController', () => {
       } as unknown as OfferManagerPort);
 
       await expect(controller.getMarketplaceOffer('uuid-1')).rejects.toThrow(
-        UnprocessableEntityException,
+        UnprocessableEntityException
       );
     });
 
@@ -410,27 +443,27 @@ describe('ListingsController', () => {
       await controller.createOffer('conn-1', validDto, 'client-key-42');
 
       expect(offerCreationEnqueue.enqueueCreation).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'client-key-42' }),
+        expect.objectContaining({ idempotencyKey: 'client-key-42' })
       );
     });
 
     it('propagates UnprocessableEntityException from the service (adapter lacks createOffer)', async () => {
       offerCreationEnqueue.enqueueCreation.mockRejectedValue(
-        new UnprocessableEntityException('adapter does not support offer creation'),
+        new UnprocessableEntityException('adapter does not support offer creation')
       );
 
       await expect(controller.createOffer('conn-1', validDto)).rejects.toThrow(
-        UnprocessableEntityException,
+        UnprocessableEntityException
       );
     });
 
     it('propagates connection-level exceptions from the service unchanged', async () => {
       offerCreationEnqueue.enqueueCreation.mockRejectedValue(
-        new Error('ConnectionDisabledException'),
+        new Error('ConnectionDisabledException')
       );
 
       await expect(controller.createOffer('conn-1', validDto)).rejects.toThrow(
-        'ConnectionDisabledException',
+        'ConnectionDisabledException'
       );
     });
   });
@@ -478,7 +511,7 @@ describe('ListingsController', () => {
         true,
         new Date('2026-04-22T10:00:00Z'),
         new Date('2026-04-22T10:00:01Z'),
-        request,
+        request
       );
       offerCreationRecords.findById.mockResolvedValue(recordWithRequest);
 
@@ -492,7 +525,7 @@ describe('ListingsController', () => {
       offerCreationRecords.findById.mockResolvedValue(null);
 
       await expect(controller.getOfferCreationStatus('conn-1', 'missing')).rejects.toThrow(
-        NotFoundException,
+        NotFoundException
       );
     });
 
@@ -500,7 +533,7 @@ describe('ListingsController', () => {
       offerCreationRecords.findById.mockResolvedValue(mockRecord);
 
       await expect(controller.getOfferCreationStatus('conn-other', 'record-1')).rejects.toThrow(
-        NotFoundException,
+        NotFoundException
       );
     });
   });
@@ -553,7 +586,7 @@ describe('ListingsController', () => {
 
     function makeAdapter(
       withCategoryParametersReader: boolean,
-      fetch: jest.Mock = jest.fn().mockResolvedValue(sampleNeutral),
+      fetch: jest.Mock = jest.fn().mockResolvedValue(sampleNeutral)
     ): OfferManagerPort {
       // Adapter is a plain object — only the `fetchCategoryParameters` method
       // matters for the type-guard narrowing.
@@ -570,7 +603,10 @@ describe('ListingsController', () => {
 
       const result = await controller.getCategoryParameters('conn-1', '257933');
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(fetch).toHaveBeenCalledWith({ categoryId: '257933' });
       expect(result.parameters).toHaveLength(2);
       expect(result.parameters[0]).toMatchObject({
@@ -608,18 +644,16 @@ describe('ListingsController', () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
 
       await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toBeInstanceOf(
-        UnprocessableEntityException,
+        UnprocessableEntityException
       );
     });
 
     it('translates CategoryNotFoundException to a 404 NotFoundException', async () => {
-      const fetch = jest
-        .fn()
-        .mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
 
       await expect(controller.getCategoryParameters('conn-1', '999999')).rejects.toBeInstanceOf(
-        NotFoundException,
+        NotFoundException
       );
     });
 
@@ -628,7 +662,7 @@ describe('ListingsController', () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
 
       await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toThrow(
-        'upstream-503',
+        'upstream-503'
       );
     });
   });
@@ -650,7 +684,10 @@ describe('ListingsController', () => {
         barcode: '5901234567890',
       });
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
         connectionId: 'conn-1',
         barcode: '5901234567890',
@@ -670,7 +707,10 @@ describe('ListingsController', () => {
         sourceCategoryIds: ['ps-cat-99', 'ps-cat-7'],
       });
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
         connectionId: 'conn-1',
         barcode: null,
@@ -690,7 +730,10 @@ describe('ListingsController', () => {
 
       // `manual` is a normal outcome — the controller surfaces it as a 200
       // response (decorator-level @HttpCode is implicit) with the null id.
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(result).toEqual({ allegroCategoryId: null, method: 'manual' });
     });
 
@@ -700,11 +743,11 @@ describe('ListingsController', () => {
       // this controller — without it, an unknown connection would silently
       // fall through to method=manual inside the service.
       integrationsService.getCapabilityAdapter.mockRejectedValue(
-        new ConnectionNotFoundException('conn-missing'),
+        new ConnectionNotFoundException('conn-missing')
       );
 
       await expect(
-        controller.resolveCategory('conn-missing', { barcode: '5901234567890' }),
+        controller.resolveCategory('conn-missing', { barcode: '5901234567890' })
       ).rejects.toBeInstanceOf(ConnectionNotFoundException);
 
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
@@ -717,7 +760,7 @@ describe('ListingsController', () => {
       methods: Partial<{
         findProductsByBarcode: jest.Mock;
         getProduct: jest.Mock;
-      }> = {},
+      }> = {}
     ): OfferManagerPort {
       const base = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
       if (catalogReader) {
@@ -735,9 +778,7 @@ describe('ListingsController', () => {
       ean: '5901234123457',
       imageUrl: 'https://img/a.jpg',
       images: ['https://img/a.jpg'],
-      parameters: [
-        { parameterId: '224017', name: 'Brand', valueStrings: ['Canon'] },
-      ],
+      parameters: [{ parameterId: '224017', name: 'Brand', valueStrings: ['Canon'] }],
     };
 
     describe('findProductsByBarcode', () => {
@@ -747,7 +788,7 @@ describe('ListingsController', () => {
           product: sampleProduct,
         } satisfies CatalogProductMatchResult);
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { findProductsByBarcode: find }),
+          makeAdapter(true, { findProductsByBarcode: find })
         );
 
         const result = await controller.findProductsByBarcode('conn-1', {
@@ -768,7 +809,7 @@ describe('ListingsController', () => {
           ],
         } satisfies CatalogProductMatchResult);
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { findProductsByBarcode: find }),
+          makeAdapter(true, { findProductsByBarcode: find })
         );
 
         const result = await controller.findProductsByBarcode('conn-1', {
@@ -786,9 +827,11 @@ describe('ListingsController', () => {
       });
 
       it('returns no_match as a 200 (not a 404)', async () => {
-        const find = jest.fn().mockResolvedValue({ kind: 'no_match' } satisfies CatalogProductMatchResult);
+        const find = jest
+          .fn()
+          .mockResolvedValue({ kind: 'no_match' } satisfies CatalogProductMatchResult);
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { findProductsByBarcode: find }),
+          makeAdapter(true, { findProductsByBarcode: find })
         );
 
         const result = await controller.findProductsByBarcode('conn-1', {
@@ -803,17 +846,17 @@ describe('ListingsController', () => {
         integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
 
         await expect(
-          controller.findProductsByBarcode('conn-1', { barcode: '5901234123457' }),
+          controller.findProductsByBarcode('conn-1', { barcode: '5901234123457' })
         ).rejects.toBeInstanceOf(UnprocessableEntityException);
       });
 
       it('propagates ConnectionNotFoundException from the capability pre-flight', async () => {
         integrationsService.getCapabilityAdapter.mockRejectedValue(
-          new ConnectionNotFoundException('conn-missing'),
+          new ConnectionNotFoundException('conn-missing')
         );
 
         await expect(
-          controller.findProductsByBarcode('conn-missing', { barcode: '5901234123457' }),
+          controller.findProductsByBarcode('conn-missing', { barcode: '5901234123457' })
         ).rejects.toBeInstanceOf(ConnectionNotFoundException);
       });
     });
@@ -822,7 +865,7 @@ describe('ListingsController', () => {
       it('returns the catalog product', async () => {
         const get = jest.fn().mockResolvedValue(sampleProduct);
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { getProduct: get }),
+          makeAdapter(true, { getProduct: get })
         );
 
         const result = await controller.getCatalogProduct('conn-1', 'p1');
@@ -835,25 +878,25 @@ describe('ListingsController', () => {
         integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(false));
 
         await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toBeInstanceOf(
-          UnprocessableEntityException,
+          UnprocessableEntityException
         );
       });
 
       it('translates CatalogProductNotFoundException to a 404 NotFoundException', async () => {
         const get = jest.fn().mockRejectedValue(new CatalogProductNotFoundException('missing'));
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { getProduct: get }),
+          makeAdapter(true, { getProduct: get })
         );
 
         await expect(controller.getCatalogProduct('conn-1', 'missing')).rejects.toBeInstanceOf(
-          NotFoundException,
+          NotFoundException
         );
       });
 
       it('propagates non-CatalogProductNotFoundException errors unchanged', async () => {
         const get = jest.fn().mockRejectedValue(new Error('upstream-503'));
         integrationsService.getCapabilityAdapter.mockResolvedValue(
-          makeAdapter(true, { getProduct: get }),
+          makeAdapter(true, { getProduct: get })
         );
 
         await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toThrow('upstream-503');

@@ -12,8 +12,8 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { EventPublisherPort } from '@openlinker/core/events';
 import { EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
-import { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
-import { IWebhookEventPublisher } from '../interfaces/webhook-event-publisher.service.interface';
+import type { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
+import type { IWebhookEventPublisher } from '../interfaces/webhook-event-publisher.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -25,7 +25,7 @@ export class WebhookEventPublisher implements IWebhookEventPublisher {
 
   constructor(
     @Inject(EVENT_PUBLISHER_TOKEN)
-    private readonly eventPublisher: EventPublisherPort,
+    private readonly eventPublisher: EventPublisherPort
   ) {}
 
   async publishInboundWebhook(event: InboundWebhookEvent): Promise<string> {
@@ -35,7 +35,7 @@ export class WebhookEventPublisher implements IWebhookEventPublisher {
       if (payloadJson.length > this.MAX_PAYLOAD_SIZE) {
         throw new Error(
           `Event payload exceeds maximum size of ${this.MAX_PAYLOAD_SIZE} bytes. ` +
-            `Actual size: ${payloadJson.length} bytes`,
+            `Actual size: ${payloadJson.length} bytes`
         );
       }
 
@@ -70,17 +70,16 @@ export class WebhookEventPublisher implements IWebhookEventPublisher {
       const messageId = await this.eventPublisher.publish(this.STREAM_NAME, envelope);
 
       this.logger.log(
-        `Published inbound webhook event ${event.eventId} to stream ${this.STREAM_NAME} with message ID ${messageId}`,
+        `Published inbound webhook event ${event.eventId} to stream ${this.STREAM_NAME} with message ID ${messageId}`
       );
 
       return messageId;
     } catch (error) {
       this.logger.error(
         `Failed to publish inbound webhook event ${event.eventId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       throw error;
     }
   }
 }
-

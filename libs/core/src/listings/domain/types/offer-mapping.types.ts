@@ -7,7 +7,7 @@
  *
  * @module libs/core/src/listings/domain/types
  */
-import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
+import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 
 /**
  * Offer mapping list filters

@@ -7,12 +7,13 @@
  *
  * @module apps/worker/src/sync
  */
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { SyncJobEntity } from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
-  SyncJobEntity,
   SyncJobExecutionError,
   RetryClassifierRegistryService,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
@@ -47,7 +48,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly configService: ConfigService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
-    private readonly retryClassifierRegistry: RetryClassifierRegistryService,
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService
   ) {}
 
   onModuleInit(): void {
@@ -79,12 +80,17 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.abortController = new AbortController();
     this.isRunning = true;
 
-    this.logger.log(`Starting sync job runner loop (worker: ${this.WORKER_ID}, batch size: ${this.BATCH_SIZE}, poll interval: ${this.POLL_INTERVAL_MS}ms)`);
+    this.logger.log(
+      `Starting sync job runner loop (worker: ${this.WORKER_ID}, batch size: ${this.BATCH_SIZE}, poll interval: ${this.POLL_INTERVAL_MS}ms)`
+    );
 
     // Start runner loop in background (don't await)
     this.runnerLoopPromise = this.runnerLoop()
       .catch((error) => {
-        this.logger.error('Runner loop error', error instanceof Error ? error.stack : String(error));
+        this.logger.error(
+          'Runner loop error',
+          error instanceof Error ? error.stack : String(error)
+        );
         // Restart loop after backoff (track timer for cleanup)
         if (this.isRunning) {
           this.restartTimer = setTimeout(() => {
@@ -153,7 +159,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       void (async (): Promise<void> => {
         try {
           const requeuedCount = await this.jobRepository.requeueStuckJobs(
-            this.STUCK_JOB_TIMEOUT_MINUTES,
+            this.STUCK_JOB_TIMEOUT_MINUTES
           );
           if (requeuedCount > 0) {
             this.logger.warn(`Requeued ${requeuedCount} stuck job(s)`);
@@ -161,20 +167,21 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         } catch (error) {
           this.logger.error(
             'Error in stuck job recovery',
-            error instanceof Error ? error.stack : String(error),
+            error instanceof Error ? error.stack : String(error)
           );
         }
       })();
     }, interval);
 
     // Don't keep process alive if only this interval is running
-    if (this.stuckJobRecoveryInterval && typeof this.stuckJobRecoveryInterval.unref === 'function') {
+    if (
+      this.stuckJobRecoveryInterval &&
+      typeof this.stuckJobRecoveryInterval.unref === 'function'
+    ) {
       this.stuckJobRecoveryInterval.unref();
     }
 
-    this.logger.log(
-      `Started stuck job recovery (checking every ${interval / 1000}s)`,
-    );
+    this.logger.log(`Started stuck job recovery (checking every ${interval / 1000}s)`);
   }
 
   /**
@@ -189,15 +196,14 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     while (this.isRunning && !this.abortController?.signal.aborted) {
       try {
         // Find and lock due jobs (atomic operation)
-        const jobs = await this.jobRepository.findAndLockDueJobs(
-          this.BATCH_SIZE,
-          this.WORKER_ID,
-        );
+        const jobs = await this.jobRepository.findAndLockDueJobs(this.BATCH_SIZE, this.WORKER_ID);
 
         // Log heartbeat periodically to show loop is alive
         const now = Date.now();
         if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-          this.logger.debug(`Sync job runner is running (polling for queued jobs every ${this.POLL_INTERVAL_MS}ms)`);
+          this.logger.debug(
+            `Sync job runner is running (polling for queued jobs every ${this.POLL_INTERVAL_MS}ms)`
+          );
           lastHeartbeat = now;
         }
 
@@ -225,7 +231,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         // Log error and continue (retry on next iteration)
         this.logger.error(
           'Error in runner loop',
-          error instanceof Error ? error.stack : String(error),
+          error instanceof Error ? error.stack : String(error)
         );
 
         // Backoff before retrying (abortable sleep)
@@ -242,7 +248,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private async processJob(job: SyncJobEntity): Promise<void> {
     this.logger.debug(
-      `Processing job ${job.id} (${job.jobType}) for connection ${job.connectionId} (attempt ${job.attempts + 1}/${job.maxAttempts})`,
+      `Processing job ${job.id} (${job.jobType}) for connection ${job.connectionId} (attempt ${job.attempts + 1}/${job.maxAttempts})`
     );
 
     try {
@@ -263,7 +269,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       // Success - mark as succeeded with the handler's reported outcome
       await this.jobRepository.markSucceeded(job.id, result.outcome);
       this.logger.log(
-        `Job ${job.id} (${job.jobType}) succeeded with outcome=${result.outcome} after ${job.attempts + 1} attempt(s)`,
+        `Job ${job.id} (${job.jobType}) succeeded with outcome=${result.outcome} after ${job.attempts + 1} attempt(s)`
       );
     } catch (error) {
       // Handle execution error
@@ -286,15 +292,13 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
     this.logger.error(
       `Job ${job.id} (${job.jobType}) failed on attempt ${nextAttempt}/${job.maxAttempts}: ${errorMessage}`,
-      error instanceof Error ? error.stack : undefined,
+      error instanceof Error ? error.stack : undefined
     );
 
     // Check for non-retryable errors (authentication failures)
     if (this.isNonRetryableError(error)) {
       await this.jobRepository.markDead(job.id, errorMessage);
-      this.logger.warn(
-        `Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`,
-      );
+      this.logger.warn(`Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`);
       return;
     }
 
@@ -303,7 +307,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       // Max attempts reached - mark as dead
       await this.jobRepository.markDead(job.id, errorMessage);
       this.logger.warn(
-        `Job ${job.id} (${job.jobType}) marked as dead after ${nextAttempt} attempt(s)`,
+        `Job ${job.id} (${job.jobType}) marked as dead after ${nextAttempt} attempt(s)`
       );
       return;
     }
@@ -315,7 +319,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // Mark as failed and schedule retry
     await this.jobRepository.markFailed(job.id, errorMessage, nextRunAt);
     this.logger.debug(
-      `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`,
+      `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`
     );
   }
 
@@ -349,8 +353,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * @returns True if error is non-retryable
    */
   private isNonRetryableError(error: unknown): boolean {
-    const cause =
-      error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+    const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
 
     if (cause instanceof OfferCreationInvariantException) {
       return true;
@@ -382,8 +385,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // For attempt 2, we want baseDelay * multiplier (60s)
     // Formula: baseDelay * (multiplier ^ (attemptNumber - 1))
     const delay =
-      this.RETRY_BASE_DELAY_SECONDS *
-      Math.pow(this.RETRY_MULTIPLIER, attemptNumber - 1);
+      this.RETRY_BASE_DELAY_SECONDS * Math.pow(this.RETRY_MULTIPLIER, attemptNumber - 1);
 
     // Cap at max delay
     return Math.min(delay, this.RETRY_MAX_DELAY_SECONDS);
@@ -435,4 +437,3 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     });
   }
 }
-

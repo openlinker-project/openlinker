@@ -14,8 +14,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { AllegroQuantityCommandOrmEntity } from '../entities/allegro-quantity-command.orm-entity';
-import { AllegroQuantityCommandRepositoryPort, AllegroQuantityCommandFilters } from '../../../domain/ports/allegro-quantity-command-repository.port';
-import { AllegroQuantityCommand, AllegroQuantityCommandStatus } from '../../../domain/entities/allegro-quantity-command.entity';
+import type {
+  AllegroQuantityCommandRepositoryPort,
+  AllegroQuantityCommandFilters,
+} from '../../../domain/ports/allegro-quantity-command-repository.port';
+import type { AllegroQuantityCommandStatus } from '../../../domain/entities/allegro-quantity-command.entity';
+import { AllegroQuantityCommand } from '../../../domain/entities/allegro-quantity-command.entity';
 import { DuplicateAllegroQuantityCommandError } from '../../../domain/exceptions/duplicate-allegro-quantity-command.error';
 import { AllegroQuantityCommandNotFoundException } from '../../../domain/exceptions/allegro-quantity-command-not-found.error';
 import { Logger } from '@openlinker/shared/logging';
@@ -26,7 +30,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
 
   constructor(
     @InjectRepository(AllegroQuantityCommandOrmEntity)
-    private readonly ormRepository: Repository<AllegroQuantityCommandOrmEntity>,
+    private readonly ormRepository: Repository<AllegroQuantityCommandOrmEntity>
   ) {}
 
   async findByCommandId(commandId: string): Promise<AllegroQuantityCommand | null> {
@@ -45,7 +49,9 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     const queryBuilder = this.ormRepository.createQueryBuilder('command');
 
     if (filters.connectionId) {
-      queryBuilder.andWhere('command.connectionId = :connectionId', { connectionId: filters.connectionId });
+      queryBuilder.andWhere('command.connectionId = :connectionId', {
+        connectionId: filters.connectionId,
+      });
     }
 
     if (filters.status) {
@@ -68,7 +74,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
 
   async create(command: AllegroQuantityCommand): Promise<AllegroQuantityCommand> {
     this.logger.debug(
-      `Creating command record: commandId=${command.commandId}, connectionId=${command.connectionId}, offerId=${command.offerId}, status=${command.status}`,
+      `Creating command record: commandId=${command.commandId}, connectionId=${command.connectionId}, offerId=${command.offerId}, status=${command.status}`
     );
 
     try {
@@ -79,7 +85,11 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     } catch (error) {
       if (error instanceof QueryFailedError) {
         const errorMessage = error.message.toLowerCase();
-        if (errorMessage.includes('unique') || errorMessage.includes('duplicate') || errorMessage.includes('duplicate key value')) {
+        if (
+          errorMessage.includes('unique') ||
+          errorMessage.includes('duplicate') ||
+          errorMessage.includes('duplicate key value')
+        ) {
           this.logger.error(`Duplicate command record: commandId=${command.commandId}`);
           // Throw domain-level error instead of infrastructure error
           throw new DuplicateAllegroQuantityCommandError(command.commandId);
@@ -93,7 +103,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
   async updateStatus(
     commandId: string,
     status: AllegroQuantityCommandStatus,
-    error?: string | null,
+    error?: string | null
   ): Promise<AllegroQuantityCommand> {
     this.logger.debug(`Updating command status: commandId=${commandId}, status=${status}`);
 
@@ -110,7 +120,9 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     entity.updatedAt = new Date();
 
     const saved = await this.ormRepository.save(entity);
-    this.logger.debug(`Command status updated: commandId=${saved.commandId}, status=${saved.status}`);
+    this.logger.debug(
+      `Command status updated: commandId=${saved.commandId}, status=${saved.status}`
+    );
     return this.toDomain(saved);
   }
 
@@ -127,7 +139,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
       entity.status,
       entity.error,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
@@ -150,4 +162,3 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     return entity;
   }
 }
-

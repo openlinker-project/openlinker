@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/sync/application/services
  */
-import { SyncJob } from '../../domain/entities/sync-job.entity';
+import type { SyncJob } from '../../domain/entities/sync-job.entity';
 
 export interface ISyncJobRetryService {
   /**

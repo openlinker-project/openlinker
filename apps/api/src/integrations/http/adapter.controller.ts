@@ -9,7 +9,8 @@
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { AdapterRegistryPort, ADAPTER_REGISTRY_TOKEN, AdapterMetadata } from '@openlinker/core/integrations';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
+import { AdapterRegistryPort, ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
 
 @ApiBearerAuth()
 @ApiTags('adapters')
@@ -17,7 +18,7 @@ import { AdapterRegistryPort, ADAPTER_REGISTRY_TOKEN, AdapterMetadata } from '@o
 export class AdapterController {
   constructor(
     @Inject(ADAPTER_REGISTRY_TOKEN)
-    private readonly adapterRegistry: AdapterRegistryPort,
+    private readonly adapterRegistry: AdapterRegistryPort
   ) {}
 
   @Get()
@@ -31,4 +32,3 @@ export class AdapterController {
     return await this.adapterRegistry.listAdapters();
   }
 }
-

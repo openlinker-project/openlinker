@@ -11,11 +11,7 @@
  * @module libs/core/src/identifier-mapping/domain/entities
  * @see {@link ConnectionPort} for the port interface
  */
-import {
-  PlatformType,
-  ConnectionStatus,
-  ConnectionConfig,
-} from '../types/connection.types';
+import type { PlatformType, ConnectionStatus, ConnectionConfig } from '../types/connection.types';
 export class Connection {
   constructor(
     public readonly id: string,
@@ -34,6 +30,6 @@ export class Connection {
      * `CoreCapability` / `CoreCapabilityValues`; plugin adapters may
      * register additional names (#576).
      */
-    public readonly enabledCapabilities: string[],
+    public readonly enabledCapabilities: string[]
   ) {}
 }

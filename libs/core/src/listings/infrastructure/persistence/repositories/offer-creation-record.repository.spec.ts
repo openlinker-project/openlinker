@@ -5,9 +5,10 @@
  *
  * @module libs/core/src/listings/infrastructure/persistence/repositories
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 
 import { OfferCreationRecordRepository } from './offer-creation-record.repository';
 import { OfferCreationRecordOrmEntity } from '../entities/offer-creation-record.orm-entity';
@@ -26,7 +27,7 @@ describe('OfferCreationRecordRepository', () => {
   const now = new Date('2026-04-20T10:00:00Z');
 
   const buildOrm = (
-    overrides: Partial<OfferCreationRecordOrmEntity> = {},
+    overrides: Partial<OfferCreationRecordOrmEntity> = {}
   ): OfferCreationRecordOrmEntity => ({
     id: 'rec-uuid',
     internalVariantId: 'ol_variant_123',
@@ -42,7 +43,7 @@ describe('OfferCreationRecordRepository', () => {
   });
 
   const buildRequestSnapshot = (
-    overrides: Partial<OfferCreationRequestSnapshot> = {},
+    overrides: Partial<OfferCreationRequestSnapshot> = {}
   ): OfferCreationRequestSnapshot => ({
     schemaVersion: 1,
     internalVariantId: 'ol_variant_123',
@@ -153,7 +154,7 @@ describe('OfferCreationRecordRepository', () => {
         errors,
       };
       ormRepository.save.mockResolvedValue(
-        buildOrm({ externalOfferId: 'allegro-1', status: 'failed', errors }),
+        buildOrm({ externalOfferId: 'allegro-1', status: 'failed', errors })
       );
 
       const result = await repository.create(input);
@@ -190,7 +191,10 @@ describe('OfferCreationRecordRepository', () => {
     it('should order by createdAt DESC and scope to the pair', async () => {
       ormRepository.findOne.mockResolvedValue(buildOrm());
 
-      const result = await repository.findLatestByVariantAndConnection('ol_variant_123', 'conn-uuid');
+      const result = await repository.findLatestByVariantAndConnection(
+        'ol_variant_123',
+        'conn-uuid'
+      );
 
       expect(ormRepository.findOne).toHaveBeenCalledWith({
         where: { internalVariantId: 'ol_variant_123', connectionId: 'conn-uuid' },
@@ -214,7 +218,7 @@ describe('OfferCreationRecordRepository', () => {
 
       const result = await repository.findByExternalOfferIdAndConnectionId(
         'allegro-999',
-        'conn-uuid',
+        'conn-uuid'
       );
 
       expect(ormRepository.findOne).toHaveBeenCalledWith({
@@ -229,7 +233,7 @@ describe('OfferCreationRecordRepository', () => {
 
       const result = await repository.findByExternalOfferIdAndConnectionId(
         'allegro-unknown',
-        'conn-uuid',
+        'conn-uuid'
       );
 
       expect(result).toBeNull();
@@ -244,7 +248,7 @@ describe('OfferCreationRecordRepository', () => {
       ormRepository.findOne.mockResolvedValueOnce(null);
       const missForWrongConn = await repository.findByExternalOfferIdAndConnectionId(
         'shared-offer-1',
-        'conn-wrong',
+        'conn-wrong'
       );
       expect(ormRepository.findOne).toHaveBeenLastCalledWith({
         where: { externalOfferId: 'shared-offer-1', connectionId: 'conn-wrong' },
@@ -252,11 +256,11 @@ describe('OfferCreationRecordRepository', () => {
       expect(missForWrongConn).toBeNull();
 
       ormRepository.findOne.mockResolvedValueOnce(
-        buildOrm({ externalOfferId: 'shared-offer-1', connectionId: 'conn-right' }),
+        buildOrm({ externalOfferId: 'shared-offer-1', connectionId: 'conn-right' })
       );
       const hit = await repository.findByExternalOfferIdAndConnectionId(
         'shared-offer-1',
-        'conn-right',
+        'conn-right'
       );
       expect(ormRepository.findOne).toHaveBeenLastCalledWith({
         where: { externalOfferId: 'shared-offer-1', connectionId: 'conn-right' },
@@ -301,7 +305,7 @@ describe('OfferCreationRecordRepository', () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(repository.updateStatus('missing', 'active')).rejects.toBeInstanceOf(
-        OfferCreationRecordNotFoundException,
+        OfferCreationRecordNotFoundException
       );
       expect(ormRepository.save).not.toHaveBeenCalled();
     });
@@ -325,7 +329,7 @@ describe('OfferCreationRecordRepository', () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(repository.updateExternalOfferId('missing', 'x')).rejects.toBeInstanceOf(
-        OfferCreationRecordNotFoundException,
+        OfferCreationRecordNotFoundException
       );
       expect(ormRepository.save).not.toHaveBeenCalled();
     });
@@ -349,7 +353,7 @@ describe('OfferCreationRecordRepository', () => {
         'rec-uuid',
         'allegro-offer-42',
         'draft',
-        errors,
+        errors
       );
 
       expect(ormRepository.save).toHaveBeenCalledTimes(1);
@@ -397,7 +401,7 @@ describe('OfferCreationRecordRepository', () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(
-        repository.updateExternalIdAndStatus('missing', 'x', 'draft'),
+        repository.updateExternalIdAndStatus('missing', 'x', 'draft')
       ).rejects.toBeInstanceOf(OfferCreationRecordNotFoundException);
       expect(ormRepository.save).not.toHaveBeenCalled();
     });
@@ -414,7 +418,7 @@ describe('OfferCreationRecordRepository', () => {
           errors,
           publishImmediately: true,
           request,
-        }),
+        })
       );
 
       const result = await repository.findById('rec-uuid');
@@ -430,8 +434,8 @@ describe('OfferCreationRecordRepository', () => {
           true,
           now,
           now,
-          request,
-        ),
+          request
+        )
       );
     });
   });

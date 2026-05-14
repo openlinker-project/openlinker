@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/users/domain/ports
  */
-import { User } from '../entities/user.entity';
+import type { User } from '../entities/user.entity';
 
 export interface PasswordResetNotifierPort {
   notifyResetRequested(user: User, rawToken: string): Promise<void>;

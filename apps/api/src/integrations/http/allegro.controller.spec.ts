@@ -6,14 +6,20 @@
  *
  * @module apps/api/src/integrations/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
-import { IAllegroOAuthService, ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
-import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
-import { ConnectionCursorRepositoryPort, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import type { IAllegroOAuthService } from '../application/interfaces/allegro-oauth.service.interface';
+import { ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
 import {
-  AllegroQuantityCommandRepositoryPort,
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
+import type { ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
+import { CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import type { AllegroQuantityCommandRepositoryPort } from '@openlinker/integrations-allegro';
+import {
   ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
   AllegroQuantityCommand,
 } from '@openlinker/integrations-allegro';
@@ -34,9 +40,9 @@ describe('AllegroController', () => {
     'db:allegro_123',
     new Date('2025-01-01'),
     new Date('2025-01-01'),
-  
+
     undefined,
-    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+    ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
   );
 
   beforeEach(async () => {
@@ -113,7 +119,8 @@ describe('AllegroController', () => {
       };
 
       const expectedResult = {
-        authorizationUrl: 'https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?client_id=test-client-id&response_type=code&redirect_uri=https://example.com/callback&state=state-123',
+        authorizationUrl:
+          'https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?client_id=test-client-id&response_type=code&redirect_uri=https://example.com/callback&state=state-123',
         state: 'state-123',
       };
 
@@ -129,7 +136,7 @@ describe('AllegroController', () => {
         'sandbox',
         undefined,
         'Test Connection',
-        undefined,
+        undefined
       );
     });
 
@@ -156,7 +163,7 @@ describe('AllegroController', () => {
         'sandbox',
         undefined,
         undefined,
-        undefined,
+        undefined
       );
     });
   });
@@ -201,10 +208,17 @@ describe('AllegroController', () => {
         'test-client-id',
         'test-client-secret',
         'https://example.com/callback',
-        'sandbox',
+        'sandbox'
       );
-      expect(oauthService.storeCredentialsAndCreateConnection).toHaveBeenCalledWith(tokenResponse, stateData);
-      expect(oauthService.markStateCompleted).toHaveBeenCalledWith('state-123', 'connection-123', 'Test Allegro Connection');
+      expect(oauthService.storeCredentialsAndCreateConnection).toHaveBeenCalledWith(
+        tokenResponse,
+        stateData
+      );
+      expect(oauthService.markStateCompleted).toHaveBeenCalledWith(
+        'state-123',
+        'connection-123',
+        'Test Allegro Connection'
+      );
     });
 
     it('should throw BadRequestException when state is missing', async () => {
@@ -227,7 +241,9 @@ describe('AllegroController', () => {
       oauthService.checkCompletedState.mockResolvedValue(null);
 
       await expect(controller.callback(query)).rejects.toThrow(BadRequestException);
-      await expect(controller.callback(query)).rejects.toThrow('Invalid or expired OAuth state parameter');
+      await expect(controller.callback(query)).rejects.toThrow(
+        'Invalid or expired OAuth state parameter'
+      );
       await expect(controller.callback(query)).rejects.toMatchObject({
         response: { code: 'OAUTH_STATE_INVALID' },
       });
@@ -401,7 +417,14 @@ describe('AllegroController', () => {
     it('should return failed commands for connection', async () => {
       const connectionId = 'connection-123';
       const commands: AllegroQuantityCommand[] = [
-        AllegroQuantityCommand.create('cmd-1', connectionId, 'offer-1', 10, 'failed', 'Error message'),
+        AllegroQuantityCommand.create(
+          'cmd-1',
+          connectionId,
+          'offer-1',
+          10,
+          'failed',
+          'Error message'
+        ),
       ];
 
       commandRepository.find.mockResolvedValue(commands);
@@ -421,7 +444,13 @@ describe('AllegroController', () => {
     it('should return command by ID for connection', async () => {
       const connectionId = 'connection-123';
       const commandId = 'cmd-123';
-      const command = AllegroQuantityCommand.create(commandId, connectionId, 'offer-1', 10, 'accepted');
+      const command = AllegroQuantityCommand.create(
+        commandId,
+        connectionId,
+        'offer-1',
+        10,
+        'accepted'
+      );
 
       commandRepository.findByCommandId.mockResolvedValue(command);
 
@@ -438,20 +467,33 @@ describe('AllegroController', () => {
 
       commandRepository.findByCommandId.mockResolvedValue(null);
 
-      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(NotFoundException);
-      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow('Command not found');
+      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
+        'Command not found'
+      );
     });
 
     it('should throw NotFoundException when command belongs to different connection', async () => {
       const connectionId = 'connection-123';
       const commandId = 'cmd-123';
-      const command = AllegroQuantityCommand.create(commandId, 'other-connection-id', 'offer-1', 10, 'accepted');
+      const command = AllegroQuantityCommand.create(
+        commandId,
+        'other-connection-id',
+        'offer-1',
+        10,
+        'accepted'
+      );
 
       commandRepository.findByCommandId.mockResolvedValue(command);
 
-      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(NotFoundException);
-      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow('Command not found');
+      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
+        'Command not found'
+      );
     });
   });
 });
-

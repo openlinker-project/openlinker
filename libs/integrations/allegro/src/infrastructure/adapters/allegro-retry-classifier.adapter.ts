@@ -30,7 +30,7 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
  */
-import { RetryClassifierPort } from '@openlinker/core/sync';
+import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 

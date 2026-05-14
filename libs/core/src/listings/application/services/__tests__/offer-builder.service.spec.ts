@@ -3,7 +3,8 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
@@ -64,7 +65,9 @@ describe('OfferBuilderService', () => {
       }),
     };
     integrationsService = {
-      getCapabilityAdapter: jest.fn().mockResolvedValue(productMaster as unknown as OfferManagerPort),
+      getCapabilityAdapter: jest
+        .fn()
+        .mockResolvedValue(productMaster as unknown as OfferManagerPort),
     };
     categoryResolution = {
       resolveCategory: jest
@@ -98,7 +101,7 @@ describe('OfferBuilderService', () => {
       expect(connectionPort.get).toHaveBeenCalledWith(MARKETPLACE_CONN_ID);
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         MASTER_CONN_ID,
-        'ProductMaster',
+        'ProductMaster'
       );
       expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
         connectionId: MARKETPLACE_CONN_ID,
@@ -149,7 +152,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: VARIANT_ID,
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
     });
@@ -165,7 +168,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: VARIANT_ID,
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
     });
   });
@@ -179,7 +182,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: 'missing',
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
       expect(connectionPort.get).not.toHaveBeenCalled();
     });
@@ -195,7 +198,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: VARIANT_ID,
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(MasterCatalogConnectionNotConfiguredException);
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
@@ -227,7 +230,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: VARIANT_ID,
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
     });
 
@@ -245,7 +248,7 @@ describe('OfferBuilderService', () => {
           internalVariantId: VARIANT_ID,
           connectionId: MARKETPLACE_CONN_ID,
           stock: 1,
-        }),
+        })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
     });
   });

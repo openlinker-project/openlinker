@@ -6,10 +6,11 @@
  *
  * @module libs/core/src/customers/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { OrderCustomerProjectionUpdaterService } from './order-customer-projection-updater.service';
-import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
-import { Order } from '@openlinker/core/orders';
+import type { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
+import type { Order } from '@openlinker/core/orders';
 import { CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../interfaces/customer-projection.service.interface';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
@@ -35,8 +36,8 @@ describe('OrderCustomerProjectionUpdaterService', () => {
           new Date(),
           'connection-123',
           new Date(),
-          new Date(),
-        ),
+          new Date()
+        )
       ),
       upsertProjection: jest.fn(),
       upsertAddressProjection: jest.fn(),
@@ -53,7 +54,9 @@ describe('OrderCustomerProjectionUpdaterService', () => {
       ],
     }).compile();
 
-    service = module.get<OrderCustomerProjectionUpdaterService>(OrderCustomerProjectionUpdaterService);
+    service = module.get<OrderCustomerProjectionUpdaterService>(
+      OrderCustomerProjectionUpdaterService
+    );
   });
 
   afterEach(() => {
@@ -112,12 +115,12 @@ describe('OrderCustomerProjectionUpdaterService', () => {
     it('should throw error when internalCustomerId is empty', async () => {
       const order = createOrder();
 
-      await expect(
-        service.updateProjectionsForOrder(order, '', 'connection-123'),
-      ).rejects.toThrow('Internal customer ID is required for projection updates');
+      await expect(service.updateProjectionsForOrder(order, '', 'connection-123')).rejects.toThrow(
+        'Internal customer ID is required for projection updates'
+      );
 
       await expect(
-        service.updateProjectionsForOrder(order, '   ', 'connection-123'),
+        service.updateProjectionsForOrder(order, '   ', 'connection-123')
       ).rejects.toThrow('Internal customer ID is required for projection updates');
     });
 
@@ -136,7 +139,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
         'PL',
         expect.any(Date),
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
       customerProjectionService.upsertAddressProjection.mockResolvedValue(savedAddress);
 
@@ -274,12 +277,12 @@ describe('OrderCustomerProjectionUpdaterService', () => {
       process.env.OL_STORE_PII = 'true';
 
       await service.updateProjectionsForOrder(order1, 'internal-customer-456', 'connection-123');
-      const hash1 = (customerProjectionService.upsertAddressProjection.mock.calls[0][0]).addressHash;
+      const hash1 = customerProjectionService.upsertAddressProjection.mock.calls[0][0].addressHash;
 
       jest.clearAllMocks();
 
       await service.updateProjectionsForOrder(order2, 'internal-customer-456', 'connection-123');
-      const hash2 = (customerProjectionService.upsertAddressProjection.mock.calls[0][0]).addressHash;
+      const hash2 = customerProjectionService.upsertAddressProjection.mock.calls[0][0].addressHash;
 
       expect(hash1).toBe(hash2);
     });
@@ -290,8 +293,10 @@ describe('OrderCustomerProjectionUpdaterService', () => {
 
       await service.updateProjectionsForOrder(order, 'internal-customer-456', 'connection-123');
 
-      const shippingHash = (customerProjectionService.upsertAddressProjection.mock.calls[0][0]).addressHash;
-      const billingHash = (customerProjectionService.upsertAddressProjection.mock.calls[1][0]).addressHash;
+      const shippingHash =
+        customerProjectionService.upsertAddressProjection.mock.calls[0][0].addressHash;
+      const billingHash =
+        customerProjectionService.upsertAddressProjection.mock.calls[1][0].addressHash;
 
       expect(shippingHash).not.toBe(billingHash);
     });
@@ -316,7 +321,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
           ? overrides.lastSourceConnectionId ?? null
           : 'connection-123',
         new Date('2026-04-01T00:00:00Z'),
-        new Date('2026-04-30T00:00:00Z'),
+        new Date('2026-04-30T00:00:00Z')
       );
 
     beforeEach(() => {
@@ -325,7 +330,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
 
     it('upserts projection with merged names when shipping has firstName/lastName and existing has nulls', async () => {
       customerProjectionService.getProjection.mockResolvedValue(
-        baseProjection({ firstName: null, lastName: null }),
+        baseProjection({ firstName: null, lastName: null })
       );
       const order = createOrder({
         shippingAddress: {
@@ -395,7 +400,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
 
     it('preserves existing names when neither address has names (no clobber to null)', async () => {
       customerProjectionService.getProjection.mockResolvedValue(
-        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+        baseProjection({ firstName: 'Old', lastName: 'Name' })
       );
       const order = createOrder({
         shippingAddress: {
@@ -415,7 +420,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
 
     it('treats whitespace-only and empty-string incoming names as null (no clobber)', async () => {
       customerProjectionService.getProjection.mockResolvedValue(
-        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+        baseProjection({ firstName: 'Old', lastName: 'Name' })
       );
       const order = createOrder({
         shippingAddress: {
@@ -436,7 +441,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
 
     it('updates names when incoming differs from existing', async () => {
       customerProjectionService.getProjection.mockResolvedValue(
-        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+        baseProjection({ firstName: 'Old', lastName: 'Name' })
       );
       const order = createOrder({
         shippingAddress: {
@@ -460,7 +465,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
     it('forces names to null when OL_STORE_PII=false (intentional clobber)', async () => {
       process.env.OL_STORE_PII = 'false';
       customerProjectionService.getProjection.mockResolvedValue(
-        baseProjection({ firstName: 'Old', lastName: 'Name' }),
+        baseProjection({ firstName: 'Old', lastName: 'Name' })
       );
       const order = createOrder({
         shippingAddress: {
@@ -499,7 +504,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
           firstName: 'Piotr',
           lastName: 'Swierzy',
           lastSourceConnectionId: 'connection-123',
-        }),
+        })
       );
       const order = createOrder({
         shippingAddress: {

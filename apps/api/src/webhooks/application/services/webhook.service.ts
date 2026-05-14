@@ -9,16 +9,16 @@
  * @implements {IWebhookService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { IWebhookService } from '../interfaces/webhook.service.interface';
+import type { IWebhookService } from '../interfaces/webhook.service.interface';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
 import { WebhookEventPublisher } from './webhook-event-publisher.service';
-import { InboundWebhookEvent } from '@openlinker/core/events';
-import { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
+import type { InboundWebhookEvent } from '@openlinker/core/events';
+import type { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
 import { Logger } from '@openlinker/shared/logging';
+import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
   WebhookDeliveryRepositoryPort,
-  WebhookDeliveryUpsertInput,
   WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
 } from '@openlinker/core/webhooks';
 
@@ -31,7 +31,7 @@ export class WebhookService implements IWebhookService {
     private readonly dedupService: WebhookDedupService,
     private readonly eventPublisher: WebhookEventPublisher,
     @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
-    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
+    private readonly deliveryRepository: WebhookDeliveryRepositoryPort
   ) {}
 
   private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
@@ -39,7 +39,7 @@ export class WebhookService implements IWebhookService {
       await this.deliveryRepository.upsert(input);
     } catch (error) {
       this.logger.warn(
-        `Failed to record webhook delivery (non-fatal): provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to record webhook delivery (non-fatal): provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -49,12 +49,12 @@ export class WebhookService implements IWebhookService {
     connectionId: string,
     request: WebhookRequestDto,
     rawBody: Buffer,
-    headers: Record<string, string>,
+    headers: Record<string, string>
   ): Promise<void> {
     const correlationId = request.eventId; // Use eventId as correlation ID
 
     this.logger.log(
-      `Processing webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, eventType=${request.eventType}`,
+      `Processing webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, eventType=${request.eventType}`
     );
 
     const receivedAt = new Date();
@@ -74,14 +74,26 @@ export class WebhookService implements IWebhookService {
     const signature = headers['x-openlinker-signature'] || headers['X-OpenLinker-Signature'];
 
     if (!timestamp) {
-      this.logger.warn(`Missing X-OpenLinker-Timestamp header: provider=${provider}, connectionId=${connectionId}`);
-      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'missing_timestamp_header' });
+      this.logger.warn(
+        `Missing X-OpenLinker-Timestamp header: provider=${provider}, connectionId=${connectionId}`
+      );
+      await this.recordDelivery({
+        ...baseDelivery,
+        status: 'rejected',
+        rejectionReason: 'missing_timestamp_header',
+      });
       throw new Error('Missing X-OpenLinker-Timestamp header');
     }
 
     if (!signature) {
-      this.logger.warn(`Missing X-OpenLinker-Signature header: provider=${provider}, connectionId=${connectionId}`);
-      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'missing_signature_header' });
+      this.logger.warn(
+        `Missing X-OpenLinker-Signature header: provider=${provider}, connectionId=${connectionId}`
+      );
+      await this.recordDelivery({
+        ...baseDelivery,
+        status: 'rejected',
+        rejectionReason: 'missing_signature_header',
+      });
       throw new Error('Missing X-OpenLinker-Signature header');
     }
 
@@ -91,9 +103,13 @@ export class WebhookService implements IWebhookService {
     } catch (error) {
       this.logger.warn(
         `Timestamp validation failed: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : String(error)
       );
-      await this.recordDelivery({ ...baseDelivery, status: 'rejected', rejectionReason: 'stale_timestamp' });
+      await this.recordDelivery({
+        ...baseDelivery,
+        status: 'rejected',
+        rejectionReason: 'stale_timestamp',
+      });
       throw error;
     }
 
@@ -103,12 +119,12 @@ export class WebhookService implements IWebhookService {
       connectionId,
       timestamp,
       rawBody,
-      signature,
+      signature
     );
 
     if (!isValid) {
       this.logger.error(
-        `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
+        `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
       await this.recordDelivery({
         ...baseDelivery,
@@ -119,7 +135,9 @@ export class WebhookService implements IWebhookService {
       throw new Error('Invalid webhook signature');
     }
 
-    this.logger.debug(`Signature verified: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`);
+    this.logger.debug(
+      `Signature verified: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
+    );
 
     // Step 3: Check deduplication (mark as processing)
     const isNew = await this.dedupService.markProcessing(provider, connectionId, request.eventId);
@@ -127,7 +145,7 @@ export class WebhookService implements IWebhookService {
     if (!isNew) {
       // Duplicate event - already processing or done
       this.logger.warn(
-        `Duplicate webhook event detected: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
+        `Duplicate webhook event detected: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
       await this.recordDelivery({
         ...baseDelivery,
@@ -154,7 +172,7 @@ export class WebhookService implements IWebhookService {
       // Step 5: Publish event to event bus
       const messageId = await this.eventPublisher.publishInboundWebhook(event);
       this.logger.log(
-        `Published webhook event: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, messageId=${messageId}`,
+        `Published webhook event: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, messageId=${messageId}`
       );
       await this.recordDelivery({
         ...baseDelivery,
@@ -171,7 +189,7 @@ export class WebhookService implements IWebhookService {
         // Non-fatal: log but don't fail the request
         this.logger.warn(
           `Failed to mark webhook as done (non-fatal): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-          markDoneError instanceof Error ? markDoneError.message : String(markDoneError),
+          markDoneError instanceof Error ? markDoneError.message : String(markDoneError)
         );
       }
     } catch (error) {
@@ -181,24 +199,24 @@ export class WebhookService implements IWebhookService {
       } catch (clearError) {
         this.logger.error(
           `Failed to clear processing marker: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-          clearError instanceof Error ? clearError.stack : String(clearError),
+          clearError instanceof Error ? clearError.stack : String(clearError)
         );
       }
 
       this.logger.error(
         `Failed to process webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
       await this.recordDelivery({
         ...baseDelivery,
         signatureValid: true,
         dedupResult: 'new',
         status: 'failed',
-        rejectionReason: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+        rejectionReason:
+          error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
       });
 
       throw error;
     }
   }
 }
-

@@ -8,24 +8,27 @@
  *
  * @module apps/worker/src/health
  */
-import { Injectable, Inject, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
-import { IWorkerHeartbeatService } from './worker-heartbeat.service.interface';
+import type { IWorkerHeartbeatService } from './worker-heartbeat.service.interface';
 import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_SECONDS = 120;
 
 @Injectable()
-export class WorkerHeartbeatService implements IWorkerHeartbeatService, OnModuleInit, OnModuleDestroy {
+export class WorkerHeartbeatService
+  implements IWorkerHeartbeatService, OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(WorkerHeartbeatService.name);
   private intervalId: NodeJS.Timeout | undefined;
 
   constructor(
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   onModuleInit(): void {
@@ -41,7 +44,9 @@ export class WorkerHeartbeatService implements IWorkerHeartbeatService, OnModule
       void this.writeHeartbeat();
     }, HEARTBEAT_INTERVAL_MS);
 
-    this.logger.log(`Worker heartbeat started (interval=${HEARTBEAT_INTERVAL_MS}ms, TTL=${HEARTBEAT_TTL_SECONDS}s)`);
+    this.logger.log(
+      `Worker heartbeat started (interval=${HEARTBEAT_INTERVAL_MS}ms, TTL=${HEARTBEAT_TTL_SECONDS}s)`
+    );
   }
 
   onModuleDestroy(): void {
@@ -53,11 +58,9 @@ export class WorkerHeartbeatService implements IWorkerHeartbeatService, OnModule
 
   private async writeHeartbeat(): Promise<void> {
     try {
-      await this.redisClient.set(
-        WORKER_HEARTBEAT_REDIS_KEY,
-        Date.now().toString(),
-        { EX: HEARTBEAT_TTL_SECONDS },
-      );
+      await this.redisClient.set(WORKER_HEARTBEAT_REDIS_KEY, Date.now().toString(), {
+        EX: HEARTBEAT_TTL_SECONDS,
+      });
     } catch (error) {
       // Heartbeat failure must not crash the worker — log and continue.
       const message = error instanceof Error ? error.message : String(error);

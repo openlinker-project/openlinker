@@ -15,8 +15,11 @@ import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
-import { PrestashopOrder, PrestashopOrderRow } from '../../mappers/prestashop.mapper.interface';
-import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type {
+  PrestashopOrder,
+  PrestashopOrderRow,
+} from '../../mappers/prestashop.mapper.interface';
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 
 describe('PrestashopOrderSourceAdapter', () => {
   let adapter: PrestashopOrderSourceAdapter;
@@ -34,8 +37,18 @@ describe('PrestashopOrderSourceAdapter', () => {
   describe('listOrderFeed', () => {
     it('should return feed items with a monotonic cursor advance', async () => {
       const orders: PrestashopOrder[] = [
-        { id: '1', reference: 'ORDER-1', date_add: '2024-01-01 10:00:00', date_upd: '2024-01-01 10:00:00' },
-        { id: '2', reference: 'ORDER-2', date_add: '2024-01-02 09:00:00', date_upd: '2024-01-02 11:00:00' },
+        {
+          id: '1',
+          reference: 'ORDER-1',
+          date_add: '2024-01-01 10:00:00',
+          date_upd: '2024-01-01 10:00:00',
+        },
+        {
+          id: '2',
+          reference: 'ORDER-2',
+          date_add: '2024-01-02 09:00:00',
+          date_upd: '2024-01-02 11:00:00',
+        },
       ];
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
 
@@ -69,7 +82,11 @@ describe('PrestashopOrderSourceAdapter', () => {
       ];
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
 
-      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10, eventTypes: ['updated'] });
+      const result = await adapter.listOrderFeed({
+        fromCursor: null,
+        limit: 10,
+        eventTypes: ['updated'],
+      });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0].externalOrderId).toBe('2');
@@ -138,7 +155,7 @@ describe('PrestashopOrderSourceAdapter', () => {
         .fn()
         .mockRejectedValueOnce(new PrestashopApiException('Not Found', 404));
       await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
     });
 

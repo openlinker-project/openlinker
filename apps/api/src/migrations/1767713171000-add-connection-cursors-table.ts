@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddConnectionCursorsTable1767713171000 implements MigrationInterface {
   name = 'AddConnectionCursorsTable1767713171000';
@@ -26,4 +26,3 @@ export class AddConnectionCursorsTable1767713171000 implements MigrationInterfac
     await queryRunner.query(`DROP TABLE "connection_cursors"`);
   }
 }
-

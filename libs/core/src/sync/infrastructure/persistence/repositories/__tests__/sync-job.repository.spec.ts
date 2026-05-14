@@ -6,13 +6,15 @@
  *
  * @module libs/core/src/sync/infrastructure/persistence/repositories
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryFailedError, EntityManager } from 'typeorm';
+import type { Repository, DataSource, EntityManager } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 import { SyncJobRepository } from '../sync-job.repository';
 import { SyncJobOrmEntity } from '../../entities/sync-job.orm-entity';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
-import { JobType } from '@openlinker/core/sync';
+import type { JobType } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('SyncJobRepository', () => {
@@ -59,12 +61,14 @@ describe('SyncJobRepository', () => {
 
     repository = module.get<SyncJobRepository>(SyncJobRepository);
     ormRepository = module.get(getRepositoryToken(SyncJobOrmEntity));
-    dataSource = (ormRepository.manager.connection as unknown) as jest.Mocked<DataSource>;
-    dataSource.transaction = jest.fn().mockImplementation(
-      async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
-        return runInTransaction(mockEntityManager);
-      },
-    );
+    dataSource = ormRepository.manager.connection as unknown as jest.Mocked<DataSource>;
+    dataSource.transaction = jest
+      .fn()
+      .mockImplementation(
+        async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+          return runInTransaction(mockEntityManager);
+        }
+      );
   });
 
   afterEach(() => {
@@ -119,7 +123,7 @@ describe('SyncJobRepository', () => {
       const duplicateError = new QueryFailedError(
         'duplicate key value violates unique constraint',
         [],
-        new Error('duplicate key'),
+        new Error('duplicate key')
       );
       ormRepository.save.mockRejectedValueOnce(duplicateError);
 
@@ -140,14 +144,14 @@ describe('SyncJobRepository', () => {
       const duplicateError = new QueryFailedError(
         'duplicate key value violates unique constraint',
         [],
-        new Error('duplicate key'),
+        new Error('duplicate key')
       );
       ormRepository.save.mockRejectedValueOnce(duplicateError);
       ormRepository.findOne.mockResolvedValueOnce(null);
 
-      await expect(
-        repository.createIfNotExistsByIdempotencyKey(jobRequest),
-      ).rejects.toThrow(`Failed to create or find job by idempotency key: ${jobRequest.idempotencyKey}`);
+      await expect(repository.createIfNotExistsByIdempotencyKey(jobRequest)).rejects.toThrow(
+        `Failed to create or find job by idempotency key: ${jobRequest.idempotencyKey}`
+      );
     });
 
     it('should re-throw non-unique-constraint errors', async () => {
@@ -155,7 +159,7 @@ describe('SyncJobRepository', () => {
       ormRepository.save.mockRejectedValueOnce(otherError);
 
       await expect(repository.createIfNotExistsByIdempotencyKey(jobRequest)).rejects.toThrow(
-        'Database connection failed',
+        'Database connection failed'
       );
     });
 
@@ -168,7 +172,7 @@ describe('SyncJobRepository', () => {
       const uniqueConstraintError = new QueryFailedError(
         'unique constraint violation',
         [],
-        new Error('unique constraint'),
+        new Error('unique constraint')
       );
       ormRepository.save.mockRejectedValueOnce(uniqueConstraintError);
       ormRepository.findOne.mockResolvedValueOnce(existingEntity);
@@ -213,10 +217,7 @@ describe('SyncJobRepository', () => {
       });
 
       const mockEntityManager = {
-        query: jest.fn().mockResolvedValue([
-          { ...dueJob1 },
-          { ...dueJob2 },
-        ]),
+        query: jest.fn().mockResolvedValue([{ ...dueJob1 }, { ...dueJob2 }]),
         createQueryBuilder: jest.fn().mockReturnValue({
           update: jest.fn().mockReturnThis(),
           set: jest.fn().mockReturnThis(),
@@ -226,17 +227,19 @@ describe('SyncJobRepository', () => {
         find: jest.fn().mockResolvedValue([updatedJob1, updatedJob2]),
       } as unknown as jest.Mocked<EntityManager>;
 
-      dataSource.transaction = jest.fn().mockImplementation(
-        async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
-          return runInTransaction(mockEntityManager);
-        },
-      );
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(
+          async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+            return runInTransaction(mockEntityManager);
+          }
+        );
 
       const result = await repository.findAndLockDueJobs(limit, workerId);
 
       expect(mockEntityManager.query).toHaveBeenCalledWith(
         expect.stringContaining('FOR UPDATE SKIP LOCKED'),
-        ['queued', expect.any(Date), limit],
+        ['queued', expect.any(Date), limit]
       );
       expect(mockEntityManager.createQueryBuilder).toHaveBeenCalled();
       expect(result).toHaveLength(2);
@@ -254,11 +257,13 @@ describe('SyncJobRepository', () => {
         query: jest.fn().mockResolvedValue([]),
       } as unknown as jest.Mocked<EntityManager>;
 
-      dataSource.transaction = jest.fn().mockImplementation(
-        async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
-          return runInTransaction(mockEntityManager);
-        },
-      );
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(
+          async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+            return runInTransaction(mockEntityManager);
+          }
+        );
 
       const result = await repository.findAndLockDueJobs(limit, workerId);
 
@@ -274,18 +279,20 @@ describe('SyncJobRepository', () => {
         query: jest.fn().mockResolvedValue([]), // SKIP LOCKED returns empty
       } as unknown as jest.Mocked<EntityManager>;
 
-      dataSource.transaction = jest.fn().mockImplementation(
-        async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
-          return runInTransaction(mockEntityManager);
-        },
-      );
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(
+          async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+            return runInTransaction(mockEntityManager);
+          }
+        );
 
       const result = await repository.findAndLockDueJobs(limit, workerId);
 
       expect(result).toEqual([]);
       expect(mockEntityManager.query).toHaveBeenCalledWith(
         expect.stringContaining('FOR UPDATE SKIP LOCKED'),
-        expect.any(Array),
+        expect.any(Array)
       );
     });
 
@@ -310,11 +317,13 @@ describe('SyncJobRepository', () => {
         find: jest.fn().mockResolvedValue([dueJob]),
       } as unknown as jest.Mocked<EntityManager>;
 
-      dataSource.transaction = jest.fn().mockImplementation(
-        async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
-          return runInTransaction(mockEntityManager);
-        },
-      );
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(
+          async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+            return runInTransaction(mockEntityManager);
+          }
+        );
 
       await repository.findAndLockDueJobs(limit, workerId);
 
@@ -397,7 +406,7 @@ describe('SyncJobRepository', () => {
       ormRepository.findOne.mockResolvedValueOnce(null);
 
       await expect(repository.markFailed(jobId, errorMessage, nextRunAt)).rejects.toThrow(
-        `Job not found: ${jobId}`,
+        `Job not found: ${jobId}`
       );
     });
 
@@ -420,7 +429,7 @@ describe('SyncJobRepository', () => {
         jobId,
         expect.objectContaining({
           lastError: 'x'.repeat(1000), // Truncated
-        }),
+        })
       );
     });
   });
@@ -454,7 +463,7 @@ describe('SyncJobRepository', () => {
         jobId,
         expect.objectContaining({
           lastError: 'x'.repeat(1000), // Truncated
-        }),
+        })
       );
     });
   });
@@ -491,7 +500,7 @@ describe('SyncJobRepository', () => {
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           threshold: expect.any(Date),
-        }),
+        })
       );
       expect(result).toBe(3);
     });
@@ -540,7 +549,9 @@ describe('SyncJobRepository', () => {
       // Threshold should be approximately 30 minutes ago (within 1 second tolerance)
       const expectedThreshold = new Date(beforeCall.getTime() - lockTimeoutMinutes * 60 * 1000);
       expect(threshold.getTime()).toBeGreaterThanOrEqual(expectedThreshold.getTime() - 1000);
-      expect(threshold.getTime()).toBeLessThanOrEqual(afterCall.getTime() - lockTimeoutMinutes * 60 * 1000 + 1000);
+      expect(threshold.getTime()).toBeLessThanOrEqual(
+        afterCall.getTime() - lockTimeoutMinutes * 60 * 1000 + 1000
+      );
     });
   });
 
@@ -603,9 +614,7 @@ describe('SyncJobRepository', () => {
 /**
  * Helper function to create mock ORM entity
  */
-function createMockOrmEntity(
-  overrides?: Partial<SyncJobOrmEntity>,
-): SyncJobOrmEntity {
+function createMockOrmEntity(overrides?: Partial<SyncJobOrmEntity>): SyncJobOrmEntity {
   const now = new Date();
   return {
     id: randomUUID(),
@@ -625,4 +634,3 @@ function createMockOrmEntity(
     ...overrides,
   } as SyncJobOrmEntity;
 }
-

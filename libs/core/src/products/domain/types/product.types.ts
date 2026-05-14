@@ -7,8 +7,8 @@
  *
  * @module libs/core/src/products/domain/types
  */
-import { Product } from '../entities/product.entity';
-import { ProductVariant } from '../entities/product-variant.entity';
+import type { Product } from '../entities/product.entity';
+import type { ProductVariant } from '../entities/product-variant.entity';
 
 /**
  * Product filters
@@ -145,5 +145,3 @@ export interface PaginatedProductVariants {
   items: ProductVariant[];
   total: number;
 }
-
-

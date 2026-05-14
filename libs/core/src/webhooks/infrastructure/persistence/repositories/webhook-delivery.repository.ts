@@ -11,21 +11,24 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, FindOptionsWhere, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import type { FindOptionsWhere } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import { WebhookDeliveryOrmEntity } from '../entities/webhook-delivery.orm-entity';
 import { WebhookDelivery } from '../../../domain/entities/webhook-delivery.entity';
 import { WebhookDeliveryUpsertFailedError } from '../../../domain/exceptions/webhook-delivery-upsert-failed.error';
-import {
+import type {
   WebhookDeliveryRepositoryPort,
   WebhookDeliveryUpsertInput,
 } from '../../../domain/ports/webhook-delivery-repository.port';
-import {
+import type {
   PaginatedWebhookDeliveries,
   WebhookDedupResult,
-  WebhookDedupResultValues,
   WebhookDeliveryFilters,
   WebhookDeliveryPagination,
   WebhookDeliveryStatus,
+} from '../../../domain/types/webhook-delivery.types';
+import {
+  WebhookDedupResultValues,
   WebhookDeliveryStatusValues,
 } from '../../../domain/types/webhook-delivery.types';
 
@@ -33,7 +36,7 @@ import {
 export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort {
   constructor(
     @InjectRepository(WebhookDeliveryOrmEntity)
-    private readonly repository: Repository<WebhookDeliveryOrmEntity>,
+    private readonly repository: Repository<WebhookDeliveryOrmEntity>
   ) {}
 
   async upsert(input: WebhookDeliveryUpsertInput): Promise<WebhookDelivery> {
@@ -53,7 +56,8 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
     if (input.signatureValid !== undefined) overlay.signatureValid = input.signatureValid;
     if (input.dedupResult !== undefined) overlay.dedupResult = input.dedupResult;
     if (input.rejectionReason !== undefined) overlay.rejectionReason = input.rejectionReason;
-    if (input.publishedMessageId !== undefined) overlay.publishedMessageId = input.publishedMessageId;
+    if (input.publishedMessageId !== undefined)
+      overlay.publishedMessageId = input.publishedMessageId;
     if (input.downstreamJobId !== undefined) overlay.downstreamJobId = input.downstreamJobId;
     if (input.downstreamJobType !== undefined) overlay.downstreamJobType = input.downstreamJobType;
     if (input.dlqReason !== undefined) overlay.dlqReason = input.dlqReason;
@@ -95,7 +99,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
 
   async findMany(
     filters: WebhookDeliveryFilters,
-    pagination: WebhookDeliveryPagination,
+    pagination: WebhookDeliveryPagination
   ): Promise<PaginatedWebhookDeliveries> {
     const where: FindOptionsWhere<WebhookDeliveryOrmEntity> = {};
     if (filters.provider) where.provider = filters.provider;
@@ -140,7 +144,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       entity.dlqReason,
       entity.payload,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 

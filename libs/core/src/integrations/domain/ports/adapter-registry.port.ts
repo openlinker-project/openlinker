@@ -8,7 +8,7 @@
  * @module libs/core/src/integrations/domain/ports
  * @see {@link AdapterRegistryService} for the implementation
  */
-import { AdapterMetadata } from '../types/adapter.types';
+import type { AdapterMetadata } from '../types/adapter.types';
 
 export interface AdapterRegistryPort {
   /**
@@ -54,9 +54,3 @@ export interface AdapterRegistryPort {
    */
   getDefaultAdapterKey(platformType: string): Promise<string>;
 }
-
-
-
-
-
-

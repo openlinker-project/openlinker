@@ -10,7 +10,7 @@
  */
 import { ConsoleLoggerAdapter } from './console-logger.adapter';
 import { Logger, getLoggerBackend, setLoggerBackend } from './logger';
-import { LoggerPort } from './logger.port';
+import type { LoggerPort } from './logger.port';
 
 function createFakeBackend(): jest.Mocked<LoggerPort> {
   return {

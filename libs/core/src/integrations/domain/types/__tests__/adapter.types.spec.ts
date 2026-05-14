@@ -8,11 +8,8 @@
  *
  * @module libs/core/src/integrations/domain/types/__tests__
  */
-import {
-  CoreCapabilityValues,
-  CoreCapability,
-  AdapterMetadata,
-} from '../adapter.types';
+import type { CoreCapability, AdapterMetadata } from '../adapter.types';
+import { CoreCapabilityValues } from '../adapter.types';
 
 describe('adapter.types', () => {
   describe('CoreCapabilityValues', () => {

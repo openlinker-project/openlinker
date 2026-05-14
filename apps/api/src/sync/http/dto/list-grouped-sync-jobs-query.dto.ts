@@ -11,7 +11,7 @@ import { IsEnum, IsOptional, IsUUID, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JobStatusValues } from '@openlinker/core/sync';
-import type { JobStatus } from '@openlinker/core/sync';
+import { JobStatus } from '@openlinker/core/sync';
 
 export class ListGroupedSyncJobsQueryDto {
   @ApiProperty({ enum: JobStatusValues, description: 'Job status to aggregate' })

@@ -8,14 +8,7 @@
  *
  * @module libs/core/src/customers/infrastructure/persistence/entities
  */
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('customer_address_projections')
 @Index(['internalCustomerId'])

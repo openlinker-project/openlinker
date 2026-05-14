@@ -7,16 +7,22 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AllegroQuantityCommand } from '@openlinker/integrations-allegro';
+import type { AllegroQuantityCommand } from '@openlinker/integrations-allegro';
 
 export class AllegroQuantityCommandResponseDto {
-  @ApiProperty({ description: 'Command record ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiProperty({
+    description: 'Command record ID (UUID)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
   id!: string;
 
   @ApiProperty({ description: 'Allegro command ID', example: 'abc123-def456' })
   commandId!: string;
 
-  @ApiProperty({ description: 'Connection ID (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiProperty({
+    description: 'Connection ID (UUID)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
   connectionId!: string;
 
   @ApiProperty({ description: 'Allegro offer ID', example: 'offer-123' })
@@ -32,7 +38,10 @@ export class AllegroQuantityCommandResponseDto {
   })
   status!: string;
 
-  @ApiPropertyOptional({ description: 'Error message (if status is failed or rejected)', example: 'Invalid offer ID' })
+  @ApiPropertyOptional({
+    description: 'Error message (if status is failed or rejected)',
+    example: 'Invalid offer ID',
+  })
   error?: string | null;
 
   @ApiProperty({ description: 'Creation timestamp' })
@@ -55,6 +64,3 @@ export class AllegroQuantityCommandResponseDto {
     return dto;
   }
 }
-
-
-

@@ -23,10 +23,7 @@
  * @module apps/api/test/integration/prestashop
  */
 import { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
-import type {
-  CredentialsResolverPort,
-  IWebhookSecretService,
-} from '@openlinker/core/integrations';
+import type { CredentialsResolverPort, IWebhookSecretService } from '@openlinker/core/integrations';
 import { PrestashopWebhookProvisioningAdapter } from '@openlinker/integrations-prestashop';
 import {
   PrestashopTestContainer,
@@ -48,7 +45,7 @@ interface PrestashopConfigurationRow {
 async function fetchConfigurationByName(
   baseUrl: string,
   apiKey: string,
-  name: string,
+  name: string
 ): Promise<PrestashopConfigurationRow | null> {
   const url = new URL(`${baseUrl.replace(/\/$/, '')}/api/configurations`);
   url.searchParams.set('display', 'full');
@@ -64,7 +61,7 @@ async function fetchConfigurationByName(
     const body = await response.text();
     throw new Error(
       `PS WS GET /api/configurations?filter[name]=${name} failed: ` +
-        `${response.status} ${response.statusText} — ${body.slice(0, 200)}`,
+        `${response.status} ${response.statusText} — ${body.slice(0, 200)}`
     );
   }
   const data = (await response.json()) as { configurations?: PrestashopConfigurationRow[] };
@@ -112,7 +109,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
       new Date(),
       new Date(),
       undefined,
-      [],
+      []
     );
 
     connectionPort = {
@@ -143,7 +140,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     service = new PrestashopWebhookProvisioningAdapter(
       connectionPort,
       webhookSecretService,
-      credentialsResolver,
+      credentialsResolver
     );
   });
 
@@ -161,7 +158,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
       TEST_CONNECTION_ID,
       expect.objectContaining({
         config: expect.objectContaining({ webhooksConfigured: true }),
-      }),
+      })
     );
 
     // PS-side proof — read the rows back via a separate raw fetch (different
@@ -170,7 +167,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     const baseUrlRow = await fetchConfigurationByName(
       container.baseUrl,
       container.webserviceApiKey,
-      'OPENLINKER_BASE_URL',
+      'OPENLINKER_BASE_URL'
     );
     expect(baseUrlRow).not.toBeNull();
     expect(baseUrlRow?.value).toBe(TEST_CALLBACK_URL);
@@ -178,7 +175,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     const connectionIdRow = await fetchConfigurationByName(
       container.baseUrl,
       container.webserviceApiKey,
-      'OPENLINKER_CONNECTION_ID',
+      'OPENLINKER_CONNECTION_ID'
     );
     expect(connectionIdRow).not.toBeNull();
     expect(connectionIdRow?.value).toBe(TEST_CONNECTION_ID);
@@ -186,7 +183,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     const secretRow = await fetchConfigurationByName(
       container.baseUrl,
       container.webserviceApiKey,
-      'OPENLINKER_WEBHOOK_SECRET',
+      'OPENLINKER_WEBHOOK_SECRET'
     );
     expect(secretRow).not.toBeNull();
     expect(secretRow?.value).toBe(lastRotatedSecret);
@@ -198,7 +195,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     const firstSecretRow = await fetchConfigurationByName(
       container.baseUrl,
       container.webserviceApiKey,
-      'OPENLINKER_WEBHOOK_SECRET',
+      'OPENLINKER_WEBHOOK_SECRET'
     );
     expect(firstSecretRow).not.toBeNull();
     const firstId = firstSecretRow!.id;
@@ -214,7 +211,7 @@ describe('PrestaShop webhook provisioning — install() against real PS (#541)',
     const secondSecretRow = await fetchConfigurationByName(
       container.baseUrl,
       container.webserviceApiKey,
-      'OPENLINKER_WEBHOOK_SECRET',
+      'OPENLINKER_WEBHOOK_SECRET'
     );
     expect(secondSecretRow).not.toBeNull();
     // Same row (no duplicate insert) — same id_configuration.

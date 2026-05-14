@@ -9,7 +9,11 @@
  * @implements {IAutoMatchVariantOffersService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { isOfferLister, type OfferManagerPort, type OfferFeedOutput } from '@openlinker/core/listings';
+import {
+  isOfferLister,
+  type OfferManagerPort,
+  type OfferFeedOutput,
+} from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
@@ -17,17 +21,15 @@ import {
   IdentifierMappingConflictException,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
-import { IAutoMatchVariantOffersService } from './auto-match-variant-offers.service.interface';
-import {
+import type { IAutoMatchVariantOffersService } from './auto-match-variant-offers.service.interface';
+import type {
   AutoMatchResult,
   AutoMatchOptions,
   MatchError,
   OfferIdentifiers,
   MatchResult,
 } from '../types/auto-match.types';
-import {
-  PRODUCT_VARIANT_REPOSITORY_TOKEN,
-} from '../../products.tokens';
+import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
 import { normalizeBarcode } from '../../domain/utils/barcode-normalization';
 
@@ -44,36 +46,37 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
-    private readonly variantRepository: ProductVariantRepositoryPort,
+    private readonly variantRepository: ProductVariantRepositoryPort
   ) {}
 
-  async autoMatch(
-    connectionId: string,
-    options: AutoMatchOptions,
-  ): Promise<AutoMatchResult> {
+  async autoMatch(connectionId: string, options: AutoMatchOptions): Promise<AutoMatchResult> {
     const dryRun = options.dryRun ?? false;
     const { connection } = await this.integrationsService.getAdapter(connectionId);
     const masterConnectionId = this.getMasterCatalogConnectionId(connection.config);
 
     if (!masterConnectionId) {
       this.logger.warn(
-        `No masterCatalogConnectionId configured for connection=${connectionId}; cannot auto-match`,
+        `No masterCatalogConnectionId configured for connection=${connectionId}; cannot auto-match`
       );
       return { matched: 0, skippedAmbiguous: 0, skippedNoMatch: 0, errors: [] };
     }
 
     const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     const allOffers = await this.loadAllOffers(marketplace);
-    this.logger.log(`Loaded ${allOffers.length} offers from marketplace (connection=${connectionId})`);
+    this.logger.log(
+      `Loaded ${allOffers.length} offers from marketplace (connection=${connectionId})`
+    );
 
     const { eanToOffer, skuToOffer } = this.buildOfferLookups(allOffers);
 
     const variants = await this.loadVariantsWithIdentifiers(masterConnectionId);
-    this.logger.log(`Loaded ${variants.length} variants with identifiers from master catalog (connection=${masterConnectionId})`);
+    this.logger.log(
+      `Loaded ${variants.length} variants with identifiers from master catalog (connection=${masterConnectionId})`
+    );
 
     let matched = 0;
     let skippedAmbiguous = 0;
@@ -90,9 +93,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
 
       if (matchResult.status === 'ambiguous') {
         skippedAmbiguous += 1;
-        this.logger.warn(
-          `Ambiguous ${matchResult.method} match for variant=${variant.id}`,
-        );
+        this.logger.warn(`Ambiguous ${matchResult.method} match for variant=${variant.id}`);
         continue;
       }
 
@@ -112,13 +113,13 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
               linkMethod: matchResult.method,
               source: 'master.variants.autoMatch',
             },
-          },
+          }
         );
         matched += 1;
       } catch (error) {
         if (error instanceof IdentifierMappingConflictException) {
           this.logger.warn(
-            `Mapping conflict for variant=${variant.id}, offer=${matchResult.offerId}: ${error.message}`,
+            `Mapping conflict for variant=${variant.id}, offer=${matchResult.offerId}: ${error.message}`
           );
           errors.push({
             variantId: variant.id,
@@ -133,7 +134,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     }
 
     this.logger.log(
-      `Auto-match complete (connection=${connectionId}, dryRun=${dryRun}): matched=${matched}, skippedAmbiguous=${skippedAmbiguous}, skippedNoMatch=${skippedNoMatch}, errors=${errors.length}`,
+      `Auto-match complete (connection=${connectionId}, dryRun=${dryRun}): matched=${matched}, skippedAmbiguous=${skippedAmbiguous}, skippedNoMatch=${skippedNoMatch}, errors=${errors.length}`
     );
 
     return { matched, skippedAmbiguous, skippedNoMatch, errors };
@@ -184,11 +185,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     return { eanToOffer, skuToOffer };
   }
 
-  private addToUniqueMap(
-    map: Map<string, string | null>,
-    key: string,
-    value: string,
-  ): void {
+  private addToUniqueMap(map: Map<string, string | null>, key: string, value: string): void {
     const existing = map.get(key);
     if (existing === undefined) {
       map.set(key, value);
@@ -200,7 +197,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
   private findMatch(
     variant: { id: string; ean: string | null; sku: string | null },
     eanToOffer: Map<string, string | null>,
-    skuToOffer: Map<string, string | null>,
+    skuToOffer: Map<string, string | null>
   ): MatchResult {
     const ean = this.normalizeBarcodeValue(variant.ean);
     if (ean) {
@@ -228,7 +225,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
   }
 
   private async loadVariantsWithIdentifiers(
-    masterConnectionId: string,
+    masterConnectionId: string
   ): Promise<Array<{ id: string; ean: string | null; sku: string | null }>> {
     const allVariants: Array<{ id: string; ean: string | null; sku: string | null }> = [];
     let offset = 0;
@@ -236,7 +233,7 @@ export class AutoMatchVariantOffersService implements IAutoMatchVariantOffersSer
     do {
       const page = await this.variantRepository.findMany(
         { connectionId: masterConnectionId, hasIdentifiers: true },
-        { limit: VARIANT_PAGE_SIZE, offset },
+        { limit: VARIANT_PAGE_SIZE, offset }
       );
       for (const v of page.items) {
         allVariants.push({ id: v.id, ean: v.ean ?? null, sku: v.sku ?? null });

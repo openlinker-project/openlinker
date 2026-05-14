@@ -5,12 +5,10 @@
  *
  * @module libs/integrations/prestashop/src/__tests__/fixtures
  */
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
-export function createTestConnection(
-  overrides: Partial<Connection> = {},
-): Connection {
+export function createTestConnection(overrides: Partial<Connection> = {}): Connection {
   const defaultConfig: PrestashopConnectionConfig = {
     baseUrl: 'https://shop.example.com',
     shopId: 1,
@@ -32,4 +30,3 @@ export function createTestConnection(
     ...overrides,
   } as Connection;
 }
-

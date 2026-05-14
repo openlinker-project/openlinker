@@ -9,7 +9,7 @@
 import { IsEnum, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { JobTypeValues } from '@openlinker/core/sync';
-import type { JobType } from '@openlinker/core/sync';
+import { JobType } from '@openlinker/core/sync';
 
 export class RetryGroupedSyncJobsDto {
   @ApiProperty({ description: 'Connection ID scoping the failure signature (UUID)' })

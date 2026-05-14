@@ -15,9 +15,9 @@ import { CannotArchivePublishedTemplateException } from '../../domain/exceptions
 import { PromptTemplateNotFoundException } from '../../domain/exceptions/prompt-template-not-found.exception';
 import { PromptTemplateStateException } from '../../domain/exceptions/prompt-template-state.exception';
 import type { PromptTemplate } from '../../domain/entities/prompt-template.entity';
+import { PromptTemplateRepositoryPort } from '../../domain/ports/prompt-template-repository.port';
 import type {
   PromptTemplateListFilters,
-  PromptTemplateRepositoryPort,
   PromptTemplateSummary,
 } from '../../domain/ports/prompt-template-repository.port';
 import type { PromptTemplateChannel } from '../../domain/types/prompt-template.types';
@@ -38,7 +38,7 @@ export class PromptTemplateService implements IPromptTemplateService {
 
   constructor(
     @Inject(PROMPT_TEMPLATE_REPOSITORY_TOKEN)
-    private readonly repository: PromptTemplateRepositoryPort,
+    private readonly repository: PromptTemplateRepositoryPort
   ) {}
 
   listLatestByKey(filters?: PromptTemplateListFilters): Promise<PromptTemplateSummary[]> {
@@ -59,7 +59,7 @@ export class PromptTemplateService implements IPromptTemplateService {
 
   getLatestPublished(
     key: string,
-    channel: PromptTemplateChannel | null,
+    channel: PromptTemplateChannel | null
   ): Promise<PromptTemplate | null> {
     return this.repository.findLatestPublished(key, channel);
   }
@@ -117,17 +117,13 @@ export class PromptTemplateService implements IPromptTemplateService {
     this.logger.log(
       `[prompt-template] published templateId=${published.id} key=${published.key} channel=${
         published.channel ?? 'master'
-      } version=${published.version} actor=${actor ?? 'system'}`,
+      } version=${published.version} actor=${actor ?? 'system'}`
     );
     return published;
   }
 
   async revertTo(cmd: RevertToCommand): Promise<PromptTemplate> {
-    const source = await this.repository.findByKeyChannelVersion(
-      cmd.key,
-      cmd.channel,
-      cmd.version,
-    );
+    const source = await this.repository.findByKeyChannelVersion(cmd.key, cmd.channel, cmd.version);
     if (source === null) {
       throw new PromptTemplateNotFoundException({
         key: cmd.key,
@@ -151,7 +147,7 @@ export class PromptTemplateService implements IPromptTemplateService {
     this.logger.log(
       `[prompt-template] reverted source=v${source.version} into draft=v${clone.version} key=${clone.key} channel=${
         clone.channel ?? 'master'
-      } templateId=${clone.id} actor=${cmd.createdBy ?? 'system'}`,
+      } templateId=${clone.id} actor=${cmd.createdBy ?? 'system'}`
     );
     return clone;
   }
@@ -190,7 +186,7 @@ export class PromptTemplateService implements IPromptTemplateService {
 
   async archive(
     id: string,
-    opts: { force?: boolean; actor?: string | null },
+    opts: { force?: boolean; actor?: string | null }
   ): Promise<PromptTemplate> {
     const existing = await this.repository.findById(id);
     if (existing === null) {
@@ -219,14 +215,14 @@ export class PromptTemplateService implements IPromptTemplateService {
     this.logger.log(
       `[prompt-template] archived templateId=${archived.id} key=${archived.key} channel=${
         archived.channel ?? 'master'
-      } version=${archived.version} priorState=${existing.state} actor=${opts.actor ?? 'system'} forced=${opts.force === true}`,
+      } version=${archived.version} priorState=${existing.state} actor=${opts.actor ?? 'system'} forced=${opts.force === true}`
     );
     return archived;
   }
 
   private renderFromEntity(
     template: PromptTemplate,
-    values: Record<string, unknown>,
+    values: Record<string, unknown>
   ): RenderedPrompt {
     return {
       templateId: template.id,

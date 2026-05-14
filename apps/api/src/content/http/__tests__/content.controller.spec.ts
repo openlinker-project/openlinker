@@ -7,7 +7,8 @@
  * @module apps/api/src/content/http/__tests__
  */
 import { BadGatewayException, UnprocessableEntityException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import {
   CONTENT_DRAFT_SERVICE_TOKEN,
   CONTENT_STATE_READER_SERVICE_TOKEN,
@@ -58,17 +59,19 @@ describe('ContentController', () => {
             {
               code: 'RESPONSIBLE_PRODUCER_NOT_SPECIFIED',
               message: 'Responsible producer is required for every product in the offer',
-              userMessage: 'Producent odpowiedzialny jest obowiązkowy dla każdego produktu w ofercie',
+              userMessage:
+                'Producent odpowiedzialny jest obowiązkowy dla każdego produktu w ofercie',
               path: 'offer.modules.productSafety.data.productsData[0].responsibleProducer',
             },
             {
               code: 'ConstraintViolationException.AfterSalesServiceConditionsRequiredByCompany',
-              message: 'Offer Terms (for returns and complaints) are required for Business Accounts.',
+              message:
+                'Offer Terms (for returns and complaints) are required for Business Accounts.',
               userMessage: 'Warunki oferty (zwroty, reklamacje) są wymagane dla kont firma.',
               path: 'null',
             },
-          ],
-        ),
+          ]
+        )
       );
 
       const captured = await controller
@@ -105,7 +108,7 @@ describe('ContentController', () => {
             code: 'SOME_CODE',
             message: 'English message only',
           },
-        ]),
+        ])
       );
 
       const captured = await controller
@@ -119,19 +122,19 @@ describe('ContentController', () => {
       expect(response.errors[0].message).toBe('English message only');
     });
 
-    it('surfaces 5xx as BadGatewayException (not the operator\'s problem)', async () => {
+    it("surfaces 5xx as BadGatewayException (not the operator's problem)", async () => {
       drafts.publishDraft.mockRejectedValueOnce(
         new AllegroApiException(
           'Allegro API server error (502)',
           502,
           '<html>upstream proxy error</html>',
           undefined,
-          undefined,
-        ),
+          undefined
+        )
       );
 
       await expect(
-        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' }),
+        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBeInstanceOf(BadGatewayException);
     });
 
@@ -145,12 +148,12 @@ describe('ContentController', () => {
           422,
           '<html>not-json</html>',
           undefined,
-          undefined,
-        ),
+          undefined
+        )
       );
 
       await expect(
-        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' }),
+        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBeInstanceOf(BadGatewayException);
     });
 
@@ -159,7 +162,7 @@ describe('ContentController', () => {
       drafts.publishDraft.mockRejectedValueOnce(original);
 
       await expect(
-        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' }),
+        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBe(original);
     });
   });

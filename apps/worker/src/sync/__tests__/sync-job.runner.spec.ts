@@ -7,17 +7,18 @@
  * @module apps/worker/src/sync
  */
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SyncJobRunner } from '../sync-job.runner';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import {
   SYNC_JOB_REPOSITORY_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
-import { SyncJobHandler } from '@openlinker/core/sync';
+import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 // The runner's *production* code is now platform-neutral (#581) — it
@@ -74,10 +75,7 @@ describe('SyncJobRunner', () => {
     // they did before this PR" silently weakens. Track parallel work in
     // Thread E follow-ups.
     const retryClassifierRegistry = new RetryClassifierRegistryService();
-    retryClassifierRegistry.register(
-      'allegro.publicapi.v1',
-      new AllegroRetryClassifierAdapter(),
-    );
+    retryClassifierRegistry.register('allegro.publicapi.v1', new AllegroRetryClassifierAdapter());
 
     moduleRef = await Test.createTestingModule({
       providers: [
@@ -147,7 +145,7 @@ describe('SyncJobRunner', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
     };
 
@@ -189,7 +187,7 @@ describe('SyncJobRunner', () => {
       expect(handlerRegistry.getHandler).toHaveBeenCalledWith(job.jobType);
       expect(jobRepository.markDead).toHaveBeenCalledWith(
         job.id,
-        `No handler registered for job type: ${job.jobType}`,
+        `No handler registered for job type: ${job.jobType}`
       );
       expect(mockHandler.execute).not.toHaveBeenCalled();
       expect(jobRepository.markSucceeded).not.toHaveBeenCalled();
@@ -215,7 +213,7 @@ describe('SyncJobRunner', () => {
         'Product not found',
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
       mockHandler.execute.mockRejectedValueOnce(error);
       handlerRegistry.getHandler.mockReturnValueOnce(mockHandler);
@@ -244,7 +242,7 @@ describe('SyncJobRunner', () => {
         'worker-123',
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
     };
 
@@ -266,11 +264,7 @@ describe('SyncJobRunner', () => {
 
       await (runner as any).handleJobFailure(job, error);
 
-      expect(jobRepository.markFailed).toHaveBeenCalledWith(
-        job.id,
-        'Test error',
-        expect.any(Date),
-      );
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, 'Test error', expect.any(Date));
       expect(jobRepository.markDead).not.toHaveBeenCalled();
 
       // Verify nextRunAt is in the future (exponential backoff)
@@ -285,7 +279,7 @@ describe('SyncJobRunner', () => {
         'Product sync failed',
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
@@ -294,7 +288,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'Product sync failed',
-        expect.any(Date),
+        expect.any(Date)
       );
     });
 
@@ -308,7 +302,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'Network timeout',
-        expect.any(Date),
+        expect.any(Date)
       );
     });
 
@@ -322,7 +316,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'String error',
-        expect.any(Date),
+        expect.any(Date)
       );
     });
 
@@ -346,7 +340,7 @@ describe('SyncJobRunner', () => {
         job.id,
         job.jobType,
         job.connectionId,
-        cause,
+        cause
       );
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
@@ -365,7 +359,7 @@ describe('SyncJobRunner', () => {
         job.id,
         job.jobType,
         job.connectionId,
-        cause,
+        cause
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
@@ -374,7 +368,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date),
+        expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -388,14 +382,14 @@ describe('SyncJobRunner', () => {
       const job = createMockJob(1, 10);
       const cause = new AllegroNetworkException(
         'Token refresh network failure: fetch failed',
-        'https://allegro.pl/auth/oauth/token',
+        'https://allegro.pl/auth/oauth/token'
       );
       const error = new SyncJobExecutionError(
         'Marketplace orders poll failed: ' + cause.message,
         job.id,
         job.jobType,
         job.connectionId,
-        cause,
+        cause
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
@@ -404,7 +398,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date),
+        expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -418,7 +412,7 @@ describe('SyncJobRunner', () => {
         job.id,
         job.jobType,
         job.connectionId,
-        cause,
+        cause
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
@@ -427,7 +421,7 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date),
+        expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -494,7 +488,7 @@ describe('SyncJobRunner', () => {
         'Product not found',
         randomUUID(),
         'master.product.syncByExternalId',
-        randomUUID(),
+        randomUUID()
       );
       const message = (runner as any).extractErrorMessage(error);
       expect(message).toBe('Product not found');
@@ -563,12 +557,10 @@ describe('SyncJobRunner', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
-      jobRepository.findAndLockDueJobs
-        .mockResolvedValueOnce([job1])
-        .mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobs.mockResolvedValueOnce([job1]).mockResolvedValueOnce([]);
 
       mockHandler.execute.mockResolvedValueOnce({ outcome: 'ok' });
       handlerRegistry.getHandler.mockReturnValue(mockHandler);
@@ -643,9 +635,7 @@ describe('SyncJobRunner', () => {
 
     it('should handle errors gracefully and continue polling', async () => {
       const error = new Error('Database error');
-      jobRepository.findAndLockDueJobs
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobs.mockRejectedValueOnce(error).mockResolvedValueOnce([]);
 
       (runner as any).isRunning = true;
       const abortController = new AbortController();
@@ -777,7 +767,7 @@ describe('SyncJobRunner', () => {
 
       expect((runner as any).stopRunner).toHaveBeenCalled();
       expect((runner as any).stuckJobRecoveryInterval).toBeNull();
-      
+
       jest.clearAllTimers();
       jest.useRealTimers();
     });
@@ -792,7 +782,7 @@ describe('SyncJobRunner', () => {
       // Ensure no timers leak
       jest.clearAllTimers();
       jest.useRealTimers();
-      
+
       // Clean up any running intervals
       if (runner) {
         await runner.onModuleDestroy();
@@ -841,4 +831,3 @@ describe('SyncJobRunner', () => {
     });
   });
 });
-

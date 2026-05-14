@@ -6,10 +6,12 @@
  *
  * @module apps/worker/src/sync/handlers
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
-import { SyncJobHandler } from '@openlinker/core/sync';
-import { JobType, JobTypeValues } from '@openlinker/core/sync';
+import type { SyncJobHandler } from '@openlinker/core/sync';
+import type { JobType } from '@openlinker/core/sync';
+import { JobTypeValues } from '@openlinker/core/sync';
 
 describe('SyncJobHandlerRegistry', () => {
   let registry: SyncJobHandlerRegistry;
@@ -156,4 +158,3 @@ describe('SyncJobHandlerRegistry', () => {
     });
   });
 });
-

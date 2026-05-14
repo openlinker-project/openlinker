@@ -9,10 +9,14 @@
  */
 import { Injectable, Inject, Optional } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort, IntegrationCredentialRepositoryPort, INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '@openlinker/core/integrations';
-import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
-import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import {
+  IntegrationCredentialRepositoryPort,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+} from '@openlinker/core/integrations';
+import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
+import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroConfigException } from '../../domain/exceptions/allegro-config.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
@@ -55,7 +59,7 @@ export class AllegroTokenRefreshService {
     private readonly redisClient?: RedisClientType,
     @Optional()
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository?: IntegrationCredentialRepositoryPort,
+    private readonly credentialRepository?: IntegrationCredentialRepositoryPort
   ) {}
 
   /**
@@ -71,7 +75,7 @@ export class AllegroTokenRefreshService {
    */
   async refreshToken(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<TokenRefreshResponse> {
     const lockKey = `${this.LOCK_KEY_PREFIX}${connection.id}`;
 
@@ -80,11 +84,13 @@ export class AllegroTokenRefreshService {
     if (!lockAcquired) {
       // Another process is refreshing, wait a bit and retry getting credentials
       this.logger.debug(
-        `Token refresh already in progress for connection ${connection.id}, waiting...`,
+        `Token refresh already in progress for connection ${connection.id}, waiting...`
       );
       await this.sleep(1000); // Wait 1 second
       // Try to get updated credentials (another process may have refreshed them)
-      const updatedCredentials = await credentialsResolver.get<AllegroCredentials>(connection.credentialsRef);
+      const updatedCredentials = await credentialsResolver.get<AllegroCredentials>(
+        connection.credentialsRef
+      );
       return {
         accessToken: updatedCredentials.accessToken,
         refreshToken: updatedCredentials.refreshToken,
@@ -95,7 +101,7 @@ export class AllegroTokenRefreshService {
     try {
       // Get current credentials
       const credentials = await credentialsResolver.get<AllegroCredentialsWithClient>(
-        connection.credentialsRef,
+        connection.credentialsRef
       );
 
       // Validate refresh token exists
@@ -103,7 +109,7 @@ export class AllegroTokenRefreshService {
         throw new AllegroAuthenticationException(
           `No refresh token available for connection ${connection.id}. Re-authentication required. ` +
             'Please re-authenticate this connection through the OAuth flow.',
-          401,
+          401
         );
       }
 
@@ -115,14 +121,16 @@ export class AllegroTokenRefreshService {
           `Missing OAuth client credentials (clientId/clientSecret) for connection ${connection.id}. ` +
             'This connection was created before token refresh support was added. ' +
             'Please re-authenticate this connection through the OAuth flow to enable automatic token refresh.',
-          401,
+          401
         );
       }
 
       // Get connection config
       const config = connection.config as unknown as AllegroConnectionConfig;
       if (!config) {
-        throw new AllegroConfigException(`Missing connection config for connection ${connection.id}`);
+        throw new AllegroConfigException(
+          `Missing connection config for connection ${connection.id}`
+        );
       }
 
       const environment = config.environment || 'sandbox';
@@ -133,7 +141,7 @@ export class AllegroTokenRefreshService {
         credentials.refreshToken,
         credentials.clientId,
         credentials.clientSecret,
-        apiBaseUrl,
+        apiBaseUrl
       );
 
       // Prepare updated credentials
@@ -158,12 +166,12 @@ export class AllegroTokenRefreshService {
         });
 
         this.logger.log(
-          `Successfully refreshed and updated access token for connection ${connection.id}`,
+          `Successfully refreshed and updated access token for connection ${connection.id}`
         );
       } else {
         this.logger.warn(
           `Token refreshed but cannot update database (credentialRepository not available). ` +
-            `Connection ${connection.id} will need to be re-authenticated.`,
+            `Connection ${connection.id} will need to be re-authenticated.`
         );
       }
 
@@ -191,8 +199,13 @@ export class AllegroTokenRefreshService {
     refreshToken: string,
     clientId: string,
     clientSecret: string,
-    apiBaseUrl: string,
-  ): Promise<{ access_token: string; refresh_token?: string; expires_in?: number; token_type: string }> {
+    apiBaseUrl: string
+  ): Promise<{
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    token_type: string;
+  }> {
     const tokenUrl = new URL('/auth/oauth/token', apiBaseUrl);
 
     // Prepare token refresh request
@@ -225,18 +238,18 @@ export class AllegroTokenRefreshService {
       throw new AllegroNetworkException(
         `Token refresh network failure: ${(cause as Error).message}`,
         tokenUrl.toString(),
-        { cause },
+        { cause }
       );
     }
 
     if (!response.ok) {
       const errorText = await response.text();
       this.logger.error(
-        `Failed to refresh token: ${response.status} ${response.statusText} - ${errorText}`,
+        `Failed to refresh token: ${response.status} ${response.statusText} - ${errorText}`
       );
       throw new Error(
         `Failed to refresh access token: ${response.statusText}. ` +
-          `The refresh token may be invalid or expired. Response: ${errorText}`,
+          `The refresh token may be invalid or expired. Response: ${errorText}`
       );
     }
 

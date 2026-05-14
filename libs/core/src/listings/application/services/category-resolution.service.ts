@@ -12,11 +12,12 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { OfferManagerPort, isCategoryBarcodeMatcher } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { isCategoryBarcodeMatcher } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
-import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
-import {
+import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
+import type {
   CategoryResolutionInput,
   CategoryResolutionResult,
 } from '../types/category-resolution.types';
@@ -29,7 +30,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
-    private readonly mappingConfig: IMappingConfigService,
+    private readonly mappingConfig: IMappingConfigService
   ) {}
 
   async resolveCategory(input: CategoryResolutionInput): Promise<CategoryResolutionResult> {
@@ -40,7 +41,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       const autoDetected = await this.tryAutoDetect(connectionId, barcode);
       if (autoDetected) {
         this.logger.debug(
-          `Category resolved via auto_detect (connection=${connectionId}, barcode=${barcode}, categoryId=${autoDetected})`,
+          `Category resolved via auto_detect (connection=${connectionId}, barcode=${barcode}, categoryId=${autoDetected})`
         );
         return { allegroCategoryId: autoDetected, method: 'auto_detect' };
       }
@@ -51,16 +52,14 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       const mapped = await this.tryCategoryMapping(connectionId, sourceCategoryIds);
       if (mapped) {
         this.logger.debug(
-          `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`,
+          `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
         );
         return { allegroCategoryId: mapped, method: 'category_mapping' };
       }
     }
 
     // Step 3: Manual pick
-    this.logger.debug(
-      `Category unresolved, manual pick required (connection=${connectionId})`,
-    );
+    this.logger.debug(`Category unresolved, manual pick required (connection=${connectionId})`);
     return { allegroCategoryId: null, method: 'manual' };
   }
 
@@ -68,18 +67,18 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     try {
       const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
         connectionId,
-        'OfferManager',
+        'OfferManager'
       );
       if (!isCategoryBarcodeMatcher(marketplace)) {
         this.logger.debug(
-          `Marketplace adapter does not support matchCategoryByBarcode (connection=${connectionId})`,
+          `Marketplace adapter does not support matchCategoryByBarcode (connection=${connectionId})`
         );
         return null;
       }
       return await marketplace.matchCategoryByBarcode(barcode);
     } catch (error) {
       this.logger.warn(
-        `Auto-detect category failed (connection=${connectionId}): ${(error as Error).message}`,
+        `Auto-detect category failed (connection=${connectionId}): ${(error as Error).message}`
       );
       return null;
     }
@@ -87,7 +86,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
   private async tryCategoryMapping(
     connectionId: string,
-    sourceCategoryIds: string[],
+    sourceCategoryIds: string[]
   ): Promise<string | null> {
     for (const categoryId of sourceCategoryIds) {
       const resolved = await this.mappingConfig.resolveAllegroCategory(connectionId, categoryId);

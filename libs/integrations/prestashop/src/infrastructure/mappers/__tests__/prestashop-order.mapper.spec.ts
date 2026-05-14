@@ -7,8 +7,8 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
-import { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
-import { OrderCreate } from '@openlinker/core/orders';
+import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
+import type { OrderCreate } from '@openlinker/core/orders';
 
 describe('PrestashopOrderMapper', () => {
   let mapper: PrestashopOrderMapper;
@@ -302,9 +302,7 @@ describe('PrestashopOrderMapper', () => {
         ['ol_product_1', '10'],
         ['ol_product_2', '11'],
       ]);
-      const externalVariantIds = new Map<string, string | number>([
-        ['ol_variant_1', '5'],
-      ]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
 
       const result = mapper.mapOrderCreate(
         mockOrderCreate,
@@ -314,7 +312,7 @@ describe('PrestashopOrderMapper', () => {
         '200',
         '201',
         '1',
-        '1',
+        '1'
       );
 
       expect(result.id_customer).toBe('100');
@@ -355,7 +353,7 @@ describe('PrestashopOrderMapper', () => {
           externalProductIds,
           externalVariantIds,
           '200',
-          '201',
+          '201'
         );
       }).toThrow('No external product ID found for internal product ID: ol_product_2');
     });
@@ -373,7 +371,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200', // Only shipping
-        undefined, // No billing
+        undefined // No billing
       );
 
       expect(result.id_address_delivery).toBe('200');
@@ -393,7 +391,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         undefined, // No shipping
-        '201', // Only billing
+        '201' // Only billing
       );
 
       expect(result.id_address_delivery).toBe('201');
@@ -414,7 +412,7 @@ describe('PrestashopOrderMapper', () => {
           externalProductIds,
           externalVariantIds,
           undefined,
-          undefined,
+          undefined
         );
       }).toThrow('Both shipping and billing addresses are missing');
     });
@@ -434,7 +432,7 @@ describe('PrestashopOrderMapper', () => {
         '200',
         '201',
         undefined, // No currency
-        undefined, // No language
+        undefined // No language
       );
 
       expect(result.id_currency).toBe(1);
@@ -456,7 +454,7 @@ describe('PrestashopOrderMapper', () => {
         '200',
         '201',
         '1',
-        '1',
+        '1'
       );
 
       // Check all required fields are present
@@ -482,12 +480,8 @@ describe('PrestashopOrderMapper', () => {
     });
 
     it('should map variant ID correctly when present', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>([
-        ['ol_variant_1', '5'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
 
       const orderWithVariant: OrderCreate = {
         ...mockOrderCreate,
@@ -509,7 +503,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200',
-        '201',
+        '201'
       );
 
       const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
@@ -521,9 +515,7 @@ describe('PrestashopOrderMapper', () => {
     });
 
     it('should use 0 for variant ID when variant mapping is missing', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
       const externalVariantIds = new Map<string, string | number>(); // Empty - variant not found
 
       const orderWithVariant: OrderCreate = {
@@ -546,7 +538,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200',
-        '201',
+        '201'
       );
 
       const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
@@ -562,9 +554,7 @@ describe('PrestashopOrderMapper', () => {
         ['ol_product_1', '10'],
         ['ol_product_2', '11'],
       ]);
-      const externalVariantIds = new Map<string, string | number>([
-        ['ol_variant_1', '5'],
-      ]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
 
       it('should use externalCarrierId when explicitly provided', () => {
         const result = mapper.mapOrderCreate(
@@ -576,7 +566,7 @@ describe('PrestashopOrderMapper', () => {
           '201',
           '1',
           '1',
-          4, // externalCarrierId — mapped from CarrierMapping
+          4 // externalCarrierId — mapped from CarrierMapping
         );
 
         expect(result.id_carrier).toBe(4);
@@ -591,7 +581,7 @@ describe('PrestashopOrderMapper', () => {
           '200',
           '201',
           '1',
-          '1',
+          '1'
           // externalCarrierId omitted — adapter resolved nothing.
         );
 
@@ -633,12 +623,8 @@ describe('PrestashopOrderMapper', () => {
     };
 
     it('should map cart with all required fields', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>([
-        ['ol_variant_1', '5'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
 
       const result = mapper.mapCartCreate(
         mockOrderCreate,
@@ -648,7 +634,7 @@ describe('PrestashopOrderMapper', () => {
         '200',
         '201',
         '1',
-        '1',
+        '1'
       );
 
       expect(result.id_customer).toBe('100');
@@ -670,15 +656,13 @@ describe('PrestashopOrderMapper', () => {
           externalProductIds,
           externalVariantIds,
           '200',
-          '201',
+          '201'
         );
       }).toThrow('No external product ID found for internal product ID: ol_product_1');
     });
 
     it('should include currency and language IDs', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
       const externalVariantIds = new Map<string, string | number>();
 
       const result = mapper.mapCartCreate(
@@ -689,7 +673,7 @@ describe('PrestashopOrderMapper', () => {
         '200',
         '201',
         '2', // Currency ID 2
-        '3', // Language ID 3
+        '3' // Language ID 3
       );
 
       expect(result.id_currency).toBe('2');
@@ -697,9 +681,7 @@ describe('PrestashopOrderMapper', () => {
     });
 
     it('should use shipping address for invoice when only shipping provided', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
       const externalVariantIds = new Map<string, string | number>();
 
       const result = mapper.mapCartCreate(
@@ -708,7 +690,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200', // Only shipping
-        undefined, // No billing
+        undefined // No billing
       );
 
       expect(result.id_address_delivery).toBe('200');
@@ -716,12 +698,8 @@ describe('PrestashopOrderMapper', () => {
     });
 
     it('should map cart rows correctly', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>([
-        ['ol_variant_1', '5'],
-      ]);
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
 
       const result = mapper.mapCartCreate(
         mockOrderCreate,
@@ -729,7 +707,7 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200',
-        '201',
+        '201'
       );
 
       const cartRows = (result.associations as Record<string, unknown>).cart_rows as Record<
@@ -760,7 +738,7 @@ describe('PrestashopOrderMapper', () => {
           '201',
           '1',
           '1',
-          2, // resolved Allegro Paczkomat → PS "My carrier"
+          2 // resolved Allegro Paczkomat → PS "My carrier"
         );
 
         expect(result.id_carrier).toBe(2);
@@ -775,7 +753,7 @@ describe('PrestashopOrderMapper', () => {
           '200',
           '201',
           '1',
-          '1',
+          '1'
           // externalCarrierId intentionally omitted — mirrors a connection
           // with no carrier mapping AND no defaultCarrierId in config.
         );
@@ -785,4 +763,3 @@ describe('PrestashopOrderMapper', () => {
     });
   });
 });
-

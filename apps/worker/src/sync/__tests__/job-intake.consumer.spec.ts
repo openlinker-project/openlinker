@@ -7,13 +7,15 @@
  * @module apps/worker/src/sync
  */
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JobIntakeConsumer } from '../job-intake.consumer';
-import { RedisClientType } from 'redis';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import type { RedisClientType } from 'redis';
+import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
-import { SyncJobRequest, JobTypeValues } from '@openlinker/core/sync';
+import type { SyncJobRequest } from '@openlinker/core/sync';
+import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
@@ -83,7 +85,7 @@ describe('JobIntakeConsumer', () => {
     // (onModuleDestroy has a setTimeout that needs real timers)
     jest.clearAllTimers();
     jest.useRealTimers();
-    
+
     // Now safely call onModuleDestroy with real timers
     if (consumer) {
       try {
@@ -92,7 +94,7 @@ describe('JobIntakeConsumer', () => {
         // Ignore errors during cleanup
       }
     }
-    
+
     // Clear all mocks
     jest.clearAllMocks();
   });
@@ -129,7 +131,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -168,7 +170,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -180,7 +182,7 @@ describe('JobIntakeConsumer', () => {
       expect(jobRepository.createIfNotExistsByIdempotencyKey).toHaveBeenCalled();
       expect(jobRepository.markDead).toHaveBeenCalledWith(
         mockJob.id,
-        'Unknown job type: unknown.job.type',
+        'Unknown job type: unknown.job.type'
       );
       expect(redisClient.xAck).toHaveBeenCalledWith('jobs.sync', 'job-intake', messageId);
     });
@@ -206,7 +208,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -240,7 +242,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -262,7 +264,7 @@ describe('JobIntakeConsumer', () => {
       jobRepository.createIfNotExistsByIdempotencyKey.mockRejectedValueOnce(error);
 
       await expect((consumer as any).processMessage(messageId, fields)).rejects.toThrow(
-        'Database connection failed',
+        'Database connection failed'
       );
 
       expect(redisClient.xAck).not.toHaveBeenCalled();
@@ -290,7 +292,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -406,12 +408,7 @@ describe('JobIntakeConsumer', () => {
     });
 
     it('should return false for invalid job types', () => {
-      const invalidTypes = [
-        'unknown.job.type',
-        'prestashop.invalid.type',
-        '',
-        'not-a-job-type',
-      ];
+      const invalidTypes = ['unknown.job.type', 'prestashop.invalid.type', '', 'not-a-job-type'];
 
       for (const invalidType of invalidTypes) {
         expect((consumer as any).isValidJobType(invalidType)).toBe(false);
@@ -447,7 +444,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValueOnce(mockJob);
@@ -476,12 +473,9 @@ describe('JobIntakeConsumer', () => {
 
       await (consumer as any).initializeConsumerGroup();
 
-      expect(redisClient.xGroupCreate).toHaveBeenCalledWith(
-        'jobs.sync',
-        'job-intake',
-        '$',
-        { MKSTREAM: true },
-      );
+      expect(redisClient.xGroupCreate).toHaveBeenCalledWith('jobs.sync', 'job-intake', '$', {
+        MKSTREAM: true,
+      });
     });
 
     it('should ignore BUSYGROUP error (group already exists)', async () => {
@@ -499,7 +493,7 @@ describe('JobIntakeConsumer', () => {
       redisClient.xGroupCreate.mockRejectedValueOnce(otherError);
 
       await expect((consumer as any).initializeConsumerGroup()).rejects.toThrow(
-        'Redis connection failed',
+        'Redis connection failed'
       );
     });
   });
@@ -549,7 +543,7 @@ describe('JobIntakeConsumer', () => {
         null,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       redisClient.xReadGroup
@@ -716,4 +710,3 @@ describe('JobIntakeConsumer', () => {
     });
   });
 });
-

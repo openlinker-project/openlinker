@@ -7,8 +7,8 @@
  * @module libs/core/src/mappings/domain/ports
  */
 
-import { StatusMapping } from '../entities/status-mapping.entity';
-import { StatusMappingInput } from '../types/mapping.types';
+import type { StatusMapping } from '../entities/status-mapping.entity';
+import type { StatusMappingInput } from '../types/mapping.types';
 
 export interface StatusMappingRepositoryPort {
   findByConnectionId(connectionId: string): Promise<StatusMapping[]>;

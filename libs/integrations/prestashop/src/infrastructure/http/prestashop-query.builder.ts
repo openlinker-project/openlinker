@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/http
  */
-import { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
+import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
 /**
  * PrestaShop query filters
@@ -64,7 +64,7 @@ export class PrestashopQueryBuilder {
   static buildQuery(
     _resource: string,
     filters?: PrestashopQueryFilters,
-    config?: PrestashopConnectionConfig,
+    config?: PrestashopConnectionConfig
   ): string {
     const params: string[] = [];
 
@@ -150,7 +150,7 @@ export class PrestashopQueryBuilder {
     filters?: PrestashopQueryFilters,
     config?: PrestashopConnectionConfig,
     limit?: number,
-    offset?: number,
+    offset?: number
   ): string {
     const baseQuery = this.buildQuery(resource, filters, config);
     const params: string[] = [baseQuery];
@@ -200,4 +200,3 @@ export class PrestashopQueryBuilder {
     return `/api/${resource}`;
   }
 }
-

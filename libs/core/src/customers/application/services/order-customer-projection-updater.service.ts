@@ -21,7 +21,7 @@ import {
   ICustomerProjectionService,
   CUSTOMER_PROJECTION_SERVICE_TOKEN,
 } from '../interfaces/customer-projection.service.interface';
-import { IOrderCustomerProjectionUpdaterService } from '../interfaces/order-customer-projection-updater.service.interface';
+import type { IOrderCustomerProjectionUpdaterService } from '../interfaces/order-customer-projection-updater.service.interface';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { CustomerAddressProjection } from '../../domain/entities/customer-address-projection.entity';
 import { CustomerProjectionException } from '../../domain/exceptions/customer-projection.exception';
@@ -45,19 +45,19 @@ export class OrderCustomerProjectionUpdaterService
 
   constructor(
     @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
-    private readonly customerProjectionService: ICustomerProjectionService,
+    private readonly customerProjectionService: ICustomerProjectionService
   ) {}
 
   async updateProjectionsForOrder(
     order: Order,
     internalCustomerId: string,
-    sourceConnectionId: string,
+    sourceConnectionId: string
   ): Promise<void> {
     if (!internalCustomerId || internalCustomerId.trim() === '') {
       throw new CustomerProjectionException(
         'Internal customer ID is required for projection updates',
         internalCustomerId,
-        'internalCustomerId',
+        'internalCustomerId'
       );
     }
 
@@ -83,7 +83,7 @@ export class OrderCustomerProjectionUpdaterService
   private async backfillCustomerNames(
     order: Order,
     internalCustomerId: string,
-    sourceConnectionId: string,
+    sourceConnectionId: string
   ): Promise<void> {
     const incomingFirst =
       trimToNull(order.shippingAddress?.firstName) ?? trimToNull(order.billingAddress?.firstName);
@@ -93,7 +93,7 @@ export class OrderCustomerProjectionUpdaterService
     const existing = await this.customerProjectionService.getProjection(internalCustomerId);
     if (!existing) {
       this.logger.warn(
-        `No customer projection found for ${internalCustomerId} (connection: ${sourceConnectionId}); skipping name backfill`,
+        `No customer projection found for ${internalCustomerId} (connection: ${sourceConnectionId}); skipping name backfill`
       );
       return;
     }
@@ -118,8 +118,8 @@ export class OrderCustomerProjectionUpdaterService
         now,
         sourceConnectionId,
         existing.createdAt,
-        now,
-      ),
+        now
+      )
     );
   }
 
@@ -158,7 +158,7 @@ export class OrderCustomerProjectionUpdaterService
         piiConfig.storePii ? normalizedAddress.countryIso2 : null,
         now,
         now,
-        now,
+        now
       );
 
       await this.customerProjectionService.upsertAddressProjection(shippingAddressProjection);
@@ -187,7 +187,7 @@ export class OrderCustomerProjectionUpdaterService
           piiConfig.storePii ? normalizedAddress.countryIso2 : null,
           now,
           now,
-          now,
+          now
         );
 
         await this.customerProjectionService.upsertAddressProjection(billingAddressProjection);

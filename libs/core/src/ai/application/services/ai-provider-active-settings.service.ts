@@ -25,8 +25,8 @@ import {
   AI_PROVIDER_ACTIVE_SETTING_REPOSITORY_TOKEN,
   AI_PROVIDER_CREDENTIALS_PORT_TOKEN,
 } from '../../ai.tokens';
-import type { AiProviderActiveSettingRepositoryPort } from '../../domain/ports/ai-provider-active-setting-repository.port';
-import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
+import { AiProviderActiveSettingRepositoryPort } from '../../domain/ports/ai-provider-active-setting-repository.port';
+import { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
 import { AiProviderValues, type AiProvider } from '../../domain/types/ai-completion.types';
 import {
   ENV_VAR_BY_PROVIDER,
@@ -52,7 +52,7 @@ export class AiProviderActiveSettingsService implements IAiProviderActiveSetting
     private readonly repository: AiProviderActiveSettingRepositoryPort,
     @Inject(AI_PROVIDER_CREDENTIALS_PORT_TOKEN)
     private readonly credentials: AiProviderCredentialsPort,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async getActive(): Promise<AiProvider> {
@@ -78,10 +78,7 @@ export class AiProviderActiveSettingsService implements IAiProviderActiveSetting
     if (providerRequiresKey(provider)) {
       const view = await this.credentials.describe(provider);
       if (!view.configured) {
-        throw new AiProviderActivationError(
-          provider,
-          ENV_VAR_BY_PROVIDER[provider] ?? null,
-        );
+        throw new AiProviderActivationError(provider, ENV_VAR_BY_PROVIDER[provider] ?? null);
       }
     }
 
@@ -134,7 +131,7 @@ export class AiProviderActiveSettingsService implements IAiProviderActiveSetting
         this.logger.warn(
           `Active AI provider '${provider}' has no API key configured (DB or env). ` +
             `Subsequent AI requests will fail until a key is set via PUT /ai-provider-settings/keys/${provider} ` +
-            `or the provider is switched to one that has one.`,
+            `or the provider is switched to one that has one.`
         );
       }
     } catch {

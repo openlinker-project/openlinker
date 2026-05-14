@@ -8,8 +8,8 @@
  * @module libs/core/src/integrations/application/interfaces
  * @see {@link IntegrationsService} for the implementation
  */
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { AdapterMetadata } from '../../domain/types/adapter.types';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { AdapterMetadata } from '../../domain/types/adapter.types';
 
 export interface IIntegrationsService {
   /**
@@ -71,10 +71,7 @@ export interface IIntegrationsService {
     adapterKey?: string;
   }): Promise<AdapterMetadata>;
 
-  listCapabilityAdapters<T>(filters: {
-    capability: string;
-    platformType?: string;
-  }): Promise<
+  listCapabilityAdapters<T>(filters: { capability: string; platformType?: string }): Promise<
     Array<{
       connectionId: string;
       connection: Connection;
@@ -83,4 +80,3 @@ export interface IIntegrationsService {
     }>
   >;
 }
-

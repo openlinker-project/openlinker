@@ -7,10 +7,7 @@
  *
  * @module libs/core/src/integrations/application/util
  */
-import {
-  flattenValidationErrors,
-  type ValidationErrorLike,
-} from './flatten-validation-errors';
+import { flattenValidationErrors, type ValidationErrorLike } from './flatten-validation-errors';
 
 describe('flattenValidationErrors', () => {
   it('returns an empty list for no errors', () => {
@@ -75,9 +72,7 @@ describe('flattenValidationErrors', () => {
       {
         property: 'config',
         constraints: { isObject: 'config must be an object' },
-        children: [
-          { property: 'apiKey', constraints: { isString: 'apiKey must be a string' } },
-        ],
+        children: [{ property: 'apiKey', constraints: { isString: 'apiKey must be a string' } }],
       },
     ];
 

@@ -11,9 +11,9 @@
  *
  * @module libs/core/src/integrations/domain/ports
  */
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from './credentials-resolver.port';
-import { ConnectionTestResult } from '../types/connection-test.types';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from './credentials-resolver.port';
+import type { ConnectionTestResult } from '../types/connection-test.types';
 
 export interface ConnectionTesterPort {
   /**
@@ -24,6 +24,6 @@ export interface ConnectionTesterPort {
    */
   test(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<ConnectionTestResult>;
 }

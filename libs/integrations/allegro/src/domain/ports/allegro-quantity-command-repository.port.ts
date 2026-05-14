@@ -8,7 +8,10 @@
  * @module libs/integrations/allegro/src/domain/ports
  * @see {@link AllegroQuantityCommandRepository} for the implementation
  */
-import { AllegroQuantityCommand, AllegroQuantityCommandStatus } from '../entities/allegro-quantity-command.entity';
+import type {
+  AllegroQuantityCommand,
+  AllegroQuantityCommandStatus,
+} from '../entities/allegro-quantity-command.entity';
 
 /**
  * Command query filters
@@ -60,6 +63,9 @@ export interface AllegroQuantityCommandRepositoryPort {
    * @returns Updated command
    * @throws Error if command not found
    */
-  updateStatus(commandId: string, status: AllegroQuantityCommandStatus, error?: string | null): Promise<AllegroQuantityCommand>;
+  updateStatus(
+    commandId: string,
+    status: AllegroQuantityCommandStatus,
+    error?: string | null
+  ): Promise<AllegroQuantityCommand>;
 }
-

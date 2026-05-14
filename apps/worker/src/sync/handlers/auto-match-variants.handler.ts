@@ -7,16 +7,16 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
+import type { AutoMatchVariantsJobPayload } from '@openlinker/core/products';
 import {
   IAutoMatchVariantOffersService,
   AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
-  AutoMatchVariantsJobPayload,
 } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -28,14 +28,14 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
 
   constructor(
     @Inject(AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN)
-    private readonly autoMatchService: IAutoMatchVariantOffersService,
+    private readonly autoMatchService: IAutoMatchVariantOffersService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing master.variants.autoMatch job ${job.id} for connection ${job.connectionId} (dryRun=${payload.dryRun ?? false})`,
+      `Executing master.variants.autoMatch job ${job.id} for connection ${job.connectionId} (dryRun=${payload.dryRun ?? false})`
     );
 
     try {
@@ -44,7 +44,7 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `Auto-match complete (job=${job.id}): matched=${result.matched}, skippedAmbiguous=${result.skippedAmbiguous}, skippedNoMatch=${result.skippedNoMatch}, errors=${result.errors.length}`,
+        `Auto-match complete (job=${job.id}): matched=${result.matched}, skippedAmbiguous=${result.skippedAmbiguous}, skippedNoMatch=${result.skippedNoMatch}, errors=${result.errors.length}`
       );
 
       return { outcome: 'ok' };
@@ -55,7 +55,7 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -67,7 +67,7 @@ export class AutoMatchVariantsHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     return {

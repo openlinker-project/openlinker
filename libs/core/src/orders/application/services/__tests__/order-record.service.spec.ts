@@ -6,11 +6,13 @@
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
-import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
-import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
-import { Order } from '../../../domain/types/order.types';
+import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
+import { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../../orders.tokens';
 
@@ -73,8 +75,8 @@ describe('OrderRecordService', () => {
     ],
     totals: {
       subtotal: 21.98,
-      tax: 4.40,
-      shipping: 5.00,
+      tax: 4.4,
+      shipping: 5.0,
       total: 31.38,
       currency: 'USD',
     },
@@ -117,7 +119,7 @@ describe('OrderRecordService', () => {
         sku: 'SKU-001',
       },
     ],
-    totals: { subtotal: 21.98, tax: 4.40, shipping: 5.00, total: 31.38, currency: 'USD' },
+    totals: { subtotal: 21.98, tax: 4.4, shipping: 5.0, total: 31.38, currency: 'USD' },
     shippingAddress: {
       firstName: 'John',
       lastName: 'Doe',
@@ -155,7 +157,7 @@ describe('OrderRecordService', () => {
         [],
         'ready',
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
 
       repository.upsert.mockResolvedValue(expectedOrderRecord);
@@ -180,7 +182,8 @@ describe('OrderRecordService', () => {
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
       const callArg = repository.upsert.mock.calls[0][0];
-      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> }).items;
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
       expect(snapshotItems[0]).toMatchObject({
         id: 'item-1',
         name: 'Widget',
@@ -201,7 +204,8 @@ describe('OrderRecordService', () => {
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
       const callArg = repository.upsert.mock.calls[0][0];
-      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> }).items;
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
       expect(snapshotItems[0]).not.toHaveProperty('name');
       expect(snapshotItems[0]).not.toHaveProperty('imageUrl');
     });
@@ -230,7 +234,7 @@ describe('OrderRecordService', () => {
         [],
         'ready',
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
 
       repository.upsert.mockResolvedValue(expectedOrderRecord);
@@ -273,7 +277,7 @@ describe('OrderRecordService', () => {
         [],
         'ready',
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
 
       repository.upsert.mockResolvedValue(expectedOrderRecord);
@@ -309,7 +313,7 @@ describe('OrderRecordService', () => {
         [],
         'awaiting_mapping',
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
 
       repository.upsert.mockResolvedValue(expectedRecord);
@@ -319,7 +323,7 @@ describe('OrderRecordService', () => {
         internalOrderId,
         customerId,
         sourceConnectionId,
-        sourceEventId,
+        sourceEventId
       );
 
       expect(result).toBe(expectedRecord);
@@ -343,7 +347,7 @@ describe('OrderRecordService', () => {
         [],
         'awaiting_mapping',
         expect.any(Date),
-        expect.any(Date),
+        expect.any(Date)
       );
       repository.upsert.mockResolvedValue(expectedRecord);
 
@@ -397,7 +401,7 @@ describe('OrderRecordService', () => {
           error: undefined,
           externalOrderId: 'external-order-789',
           externalOrderNumber: 'EXT-001',
-        },
+        }
       );
     });
 
@@ -423,7 +427,7 @@ describe('OrderRecordService', () => {
           status: 'failed',
           attemptedAt: FROZEN_NOW,
           error: 'Sync failed: Connection timeout',
-        }),
+        })
       );
     });
   });
@@ -440,7 +444,7 @@ describe('OrderRecordService', () => {
         [],
         'ready',
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.findById.mockResolvedValue(expectedRecord);

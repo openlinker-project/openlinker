@@ -5,7 +5,7 @@
  *
  * @module apps/api/src/auth/guards
  */
-import { ExecutionContext } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -47,7 +47,7 @@ describe('JwtAuthGuard', () => {
     // short-circuit to true.
     const parentCanActivate = jest.spyOn(
       Object.getPrototypeOf(Object.getPrototypeOf(guard)),
-      'canActivate',
+      'canActivate'
     );
     parentCanActivate.mockReturnValue(true);
 
@@ -63,9 +63,6 @@ describe('JwtAuthGuard', () => {
 
     await guard.canActivate(context);
 
-    expect(spy).toHaveBeenCalledWith(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    expect(spy).toHaveBeenCalledWith(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()]);
   });
 });

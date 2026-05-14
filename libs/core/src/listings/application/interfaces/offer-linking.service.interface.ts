@@ -8,8 +8,8 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
-import { OfferFeedItem } from '../../domain/types/offer-feed.types';
-import { OfferLinkingLookups, OfferLinkingResult } from '../types/offer-linking.types';
+import type { OfferFeedItem } from '../../domain/types/offer-feed.types';
+import type { OfferLinkingLookups, OfferLinkingResult } from '../types/offer-linking.types';
 
 export interface IOfferLinkingService {
   /**

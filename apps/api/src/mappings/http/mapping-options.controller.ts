@@ -45,10 +45,7 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   CONNECTION_PORT_TOKEN,
   type Connection,
@@ -94,7 +91,7 @@ export class MappingOptionsController {
     @Inject(CATEGORIES_CACHE_SERVICE_TOKEN)
     private readonly categoriesCacheService: ICategoriesCacheService,
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort,
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   // ── Destination side (e.g. PrestaShop OrderProcessorManager) ────────────
@@ -106,7 +103,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No PrestaShop partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
   async getDestinationCarriers(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveDestinationOptions(connectionId, 'listCarriers');
   }
@@ -118,7 +115,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No PrestaShop partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
   async getDestinationOrderStatuses(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveDestinationOptions(connectionId, 'listOrderStatuses');
   }
@@ -130,7 +127,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No PrestaShop partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement DestinationOptionsReader' })
   async getDestinationPaymentMethods(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveDestinationOptions(connectionId, 'listPaymentMethods');
   }
@@ -144,7 +141,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No Allegro partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
   async getSourceOrderStatuses(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveSourceOptions(connectionId, 'listOrderStatuses');
   }
@@ -156,7 +153,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No Allegro partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
   async getSourceDeliveryMethods(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveSourceOptions(connectionId, 'listDeliveryMethods');
   }
@@ -168,7 +165,7 @@ export class MappingOptionsController {
   @ApiResponse({ status: 400, description: 'No Allegro partner is paired with this connection' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement SourceOptionsReader' })
   async getSourcePaymentMethods(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId') connectionId: string
   ): Promise<MappingOptionResponseDto[]> {
     return this.resolveSourceOptions(connectionId, 'listPaymentMethods');
   }
@@ -179,22 +176,28 @@ export class MappingOptionsController {
   @ApiOperation({ summary: 'List destination-platform categories (live, cached)' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, description: 'Array of platform categories' })
-  async getDestinationCategories(
-    @Param('connectionId') connectionId: string,
-  ): Promise<unknown[]> {
+  async getDestinationCategories(@Param('connectionId') connectionId: string): Promise<unknown[]> {
     return this.categoriesCacheService.getPrestashopCategories(connectionId);
   }
 
   @Get('source/categories')
   @ApiOperation({ summary: 'Browse source-platform category tree (cached, 24h TTL)' })
   @ApiParam({ name: 'connectionId', type: String })
-  @ApiQuery({ name: 'parentId', required: false, type: String, description: 'Parent category ID (omit for root)' })
+  @ApiQuery({
+    name: 'parentId',
+    required: false,
+    type: String,
+    description: 'Parent category ID (omit for root)',
+  })
   @ApiResponse({ status: 200, type: [AllegroCategoryResponseDto] })
   async getSourceCategories(
     @Param('connectionId') connectionId: string,
-    @Query('parentId') parentId?: string,
+    @Query('parentId') parentId?: string
   ): Promise<AllegroCategoryResponseDto[]> {
-    const categories = await this.categoriesCacheService.getAllegroCategories(connectionId, parentId);
+    const categories = await this.categoriesCacheService.getAllegroCategories(
+      connectionId,
+      parentId
+    );
     return categories.map((c) => AllegroCategoryResponseDto.fromDomain(c));
   }
 
@@ -212,16 +215,16 @@ export class MappingOptionsController {
    */
   private async resolveDestinationOptions<K extends keyof DestinationOptionsReader>(
     connectionId: string,
-    method: K,
+    method: K
   ): Promise<MappingOptionResponseDto[]> {
     const partnerConnectionId = await this.resolvePartnerConnectionId(connectionId, 'destination');
     const adapter = await this.integrationsService.getCapabilityAdapter<OrderProcessorManagerPort>(
       partnerConnectionId,
-      'OrderProcessorManager',
+      'OrderProcessorManager'
     );
     if (!isDestinationOptionsReader(adapter)) {
       throw new NotImplementedException(
-        `Adapter for connection ${partnerConnectionId} does not implement DestinationOptionsReader`,
+        `Adapter for connection ${partnerConnectionId} does not implement DestinationOptionsReader`
       );
     }
     return adapter[method]();
@@ -233,16 +236,16 @@ export class MappingOptionsController {
    */
   private async resolveSourceOptions<K extends keyof SourceOptionsReader>(
     connectionId: string,
-    method: K,
+    method: K
   ): Promise<MappingOptionResponseDto[]> {
     const partnerConnectionId = await this.resolvePartnerConnectionId(connectionId, 'source');
     const adapter = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
       partnerConnectionId,
-      'OrderSource',
+      'OrderSource'
     );
     if (!isSourceOptionsReader(adapter)) {
       throw new NotImplementedException(
-        `Adapter for connection ${partnerConnectionId} does not implement SourceOptionsReader`,
+        `Adapter for connection ${partnerConnectionId} does not implement SourceOptionsReader`
       );
     }
     return adapter[method]();
@@ -271,7 +274,7 @@ export class MappingOptionsController {
    */
   private async resolvePartnerConnectionId(
     urlConnectionId: string,
-    side: ResolvedSide,
+    side: ResolvedSide
   ): Promise<string> {
     // ConnectionPort.get throws ConnectionNotFoundException for unknown ids;
     // that propagates through Nest as a 404 — existing behaviour.
@@ -285,7 +288,7 @@ export class MappingOptionsController {
       if (!partnerId) {
         throw new BadRequestException(
           `Connection "${url.name}" (${shortId(url.id)}) has no destination paired. ` +
-            `Set the catalog connection on the connection-edit page and try again.`,
+            `Set the catalog connection on the connection-edit page and try again.`
         );
       }
       return partnerId;
@@ -307,20 +310,18 @@ export class MappingOptionsController {
         platformType: PLATFORM_ALLEGRO,
         status: 'active',
       });
-      const paired = candidates.filter(
-        (c) => readMasterCatalogConnectionId(c) === url.id,
-      );
+      const paired = candidates.filter((c) => readMasterCatalogConnectionId(c) === url.id);
       if (paired.length === 0) {
         throw new BadRequestException(
           `Connection "${url.name}" (${shortId(url.id)}) has no source paired. ` +
-            `Open the Allegro connection's edit page and set its catalog to this PrestaShop connection.`,
+            `Open the Allegro connection's edit page and set its catalog to this PrestaShop connection.`
         );
       }
       if (paired.length > 1) {
         const ids = paired.map((c) => c.id).join(', ');
         throw new BadRequestException(
           `Connection "${url.name}" (${shortId(url.id)}) has multiple paired Allegro connections (${ids}). ` +
-            `Multi-source mapping is not yet supported — disable the duplicates on the connection-edit page.`,
+            `Multi-source mapping is not yet supported — disable the duplicates on the connection-edit page.`
         );
       }
       const [only] = paired;
@@ -329,7 +330,7 @@ export class MappingOptionsController {
 
     throw new BadRequestException(
       `Connection "${url.name}" (${shortId(url.id)}) has unsupported platform "${url.platformType}" for the mappings page. ` +
-        `Today the mappings page is Allegro→PrestaShop only.`,
+        `Today the mappings page is Allegro→PrestaShop only.`
     );
   }
 }

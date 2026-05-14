@@ -12,12 +12,12 @@
  * @see {@link ProductVariantRepositoryPort} for variant persistence port
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { IProductsService } from './products.service.interface';
+import type { IProductsService } from './products.service.interface';
 import { ProductRepositoryPort } from '../../domain/ports/product-repository.port';
 import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
-import { Product } from '../../domain/entities/product.entity';
-import { ProductVariant } from '../../domain/entities/product-variant.entity';
-import {
+import type { Product } from '../../domain/entities/product.entity';
+import type { ProductVariant } from '../../domain/entities/product-variant.entity';
+import type {
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
@@ -35,7 +35,7 @@ export class ProductsService implements IProductsService {
     @Inject(PRODUCT_REPOSITORY_TOKEN)
     private readonly productRepository: ProductRepositoryPort,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
-    private readonly variantRepository: ProductVariantRepositoryPort,
+    private readonly variantRepository: ProductVariantRepositoryPort
   ) {}
 
   async upsertProduct(product: Product): Promise<Product> {
@@ -57,7 +57,7 @@ export class ProductsService implements IProductsService {
     const variantsWithProductId = variants.map((variant) => {
       if (variant.productId !== productId) {
         this.logger.warn(
-          `Variant ${variant.id} has productId ${variant.productId}, expected ${productId}. Updating.`,
+          `Variant ${variant.id} has productId ${variant.productId}, expected ${productId}. Updating.`
         );
         return { ...variant, productId };
       }
@@ -78,16 +78,15 @@ export class ProductsService implements IProductsService {
 
   async listProducts(
     filters: ProductListFilters,
-    pagination: ProductPagination,
+    pagination: ProductPagination
   ): Promise<PaginatedProducts> {
     return this.productRepository.findMany(filters, pagination);
   }
 
   async listVariants(
     filters: ProductVariantListFilters,
-    pagination: ProductPagination,
+    pagination: ProductPagination
   ): Promise<PaginatedProductVariants> {
     return this.variantRepository.findMany(filters, pagination);
   }
 }
-

@@ -20,11 +20,9 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class RewriteAllegroSafetyInformationShape1791000000000
-  implements MigrationInterface
-{
+export class RewriteAllegroSafetyInformationShape1791000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       UPDATE connections

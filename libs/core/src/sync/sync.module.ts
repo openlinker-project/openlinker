@@ -47,10 +47,7 @@ export {
 } from './sync.tokens';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([SyncJobOrmEntity, ConnectionCursorOrmEntity]),
-    EventsModule,
-  ],
+  imports: [TypeOrmModule.forFeature([SyncJobOrmEntity, ConnectionCursorOrmEntity]), EventsModule],
   providers: [
     // Job enqueue service
     RedisStreamsJobEnqueueService,
@@ -140,6 +137,3 @@ export {
   ],
 })
 export class SyncModule {}
-
-
-

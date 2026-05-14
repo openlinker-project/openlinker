@@ -22,14 +22,14 @@
  * identical on fresh DBs and on DBs that already applied the original
  * `up()` cleanly (TypeORM skips already-recorded migrations by name).
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOutcomeToSyncJobs1790000000003 implements MigrationInterface {
   name = 'AddOutcomeToSyncJobs1790000000003';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "sync_jobs" ADD COLUMN IF NOT EXISTS "outcome" character varying`,
+      `ALTER TABLE "sync_jobs" ADD COLUMN IF NOT EXISTS "outcome" character varying`
     );
   }
 

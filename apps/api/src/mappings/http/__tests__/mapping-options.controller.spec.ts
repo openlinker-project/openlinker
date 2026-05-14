@@ -14,7 +14,8 @@
  */
 
 import { BadRequestException, NotImplementedException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -47,14 +48,18 @@ describe('MappingOptionsController', () => {
     createOrder: jest.fn(),
     listCarriers: jest.fn().mockResolvedValue([{ value: '1', label: 'Click and collect' }]),
     listOrderStatuses: jest.fn().mockResolvedValue([{ value: '2', label: 'Payment accepted' }]),
-    listPaymentMethods: jest.fn().mockResolvedValue([{ value: 'ps_wirepayment', label: 'Wire transfer' }]),
+    listPaymentMethods: jest
+      .fn()
+      .mockResolvedValue([{ value: 'ps_wirepayment', label: 'Wire transfer' }]),
   };
 
   const fullSourceAdapter: OrderSourcePort & SourceOptionsReader = {
     listOrderFeed: jest.fn(),
     getOrder: jest.fn(),
     listOrderStatuses: jest.fn().mockResolvedValue([{ value: 'BOUGHT', label: 'Bought' }]),
-    listDeliveryMethods: jest.fn().mockResolvedValue([{ value: 'paczkomat-uuid', label: 'Paczkomat' }]),
+    listDeliveryMethods: jest
+      .fn()
+      .mockResolvedValue([{ value: 'paczkomat-uuid', label: 'Paczkomat' }]),
     listPaymentMethods: jest.fn().mockResolvedValue([{ value: 'ONLINE', label: 'Online' }]),
   };
 
@@ -68,7 +73,9 @@ describe('MappingOptionsController', () => {
   };
 
   /** Build a Connection fixture with sensible defaults for tests. */
-  function makeConnection(overrides: Partial<Connection> & Pick<Connection, 'id' | 'platformType'>): Connection {
+  function makeConnection(
+    overrides: Partial<Connection> & Pick<Connection, 'id' | 'platformType'>
+  ): Connection {
     return {
       id: overrides.id,
       platformType: overrides.platformType,
@@ -144,18 +151,18 @@ describe('MappingOptionsController', () => {
         // Resolved partner = paired PS connection (URL is Allegro, side = destination).
         expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
           PRESTASHOP_CONNECTION_ID,
-          'OrderProcessorManager',
+          'OrderProcessorManager'
         );
         expect(fullDestinationAdapter[methodName]).toHaveBeenCalledTimes(1);
         expect(result).toEqual(await fullDestinationAdapter[methodName]());
-      },
+      }
     );
 
     it('throws 501 when the adapter does not implement DestinationOptionsReader', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValueOnce(baseDestinationAdapter);
 
       await expect(controller.getDestinationCarriers(ALLEGRO_CONNECTION_ID)).rejects.toBeInstanceOf(
-        NotImplementedException,
+        NotImplementedException
       );
     });
 
@@ -184,19 +191,19 @@ describe('MappingOptionsController', () => {
         // Resolved partner = URL connection itself (URL is Allegro, side = source).
         expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
           ALLEGRO_CONNECTION_ID,
-          'OrderSource',
+          'OrderSource'
         );
         expect(fullSourceAdapter[methodName]).toHaveBeenCalledTimes(1);
         expect(result).toEqual(await fullSourceAdapter[methodName]());
-      },
+      }
     );
 
     it('throws 501 when the adapter does not implement SourceOptionsReader', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValueOnce(baseSourceAdapter);
 
-      await expect(controller.getSourceDeliveryMethods(ALLEGRO_CONNECTION_ID)).rejects.toBeInstanceOf(
-        NotImplementedException,
-      );
+      await expect(
+        controller.getSourceDeliveryMethods(ALLEGRO_CONNECTION_ID)
+      ).rejects.toBeInstanceOf(NotImplementedException);
     });
   });
 
@@ -209,7 +216,7 @@ describe('MappingOptionsController', () => {
 
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         PRESTASHOP_CONNECTION_ID,
-        'OrderProcessorManager',
+        'OrderProcessorManager'
       );
     });
 
@@ -227,7 +234,7 @@ describe('MappingOptionsController', () => {
       });
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         ALLEGRO_CONNECTION_ID,
-        'OrderSource',
+        'OrderSource'
       );
     });
 
@@ -272,7 +279,9 @@ describe('MappingOptionsController', () => {
 
       const promise = controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID);
       await expect(promise).rejects.toBeInstanceOf(BadRequestException);
-      await expect(promise).rejects.toThrow(/multiple paired Allegro connections \(allegro-a, allegro-b\)/);
+      await expect(promise).rejects.toThrow(
+        /multiple paired Allegro connections \(allegro-a, allegro-b\)/
+      );
     });
 
     it('URL connection has unsupported platform → 400', async () => {
@@ -294,17 +303,15 @@ describe('MappingOptionsController', () => {
       connectionPort.list.mockResolvedValueOnce([otherPaired]);
 
       // Same as zero-paired branch: 400 because no Allegro points at *this* PS.
-      await expect(controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        controller.getSourceOrderStatuses(PRESTASHOP_CONNECTION_ID)
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('categories', () => {
     it('getDestinationCategories delegates to categoriesCacheService.getPrestashopCategories', async () => {
-      const stubCategories = [
-        { id: '1', name: 'Cat', parentId: null, depth: 0, active: true },
-      ];
+      const stubCategories = [{ id: '1', name: 'Cat', parentId: null, depth: 0, active: true }];
       categoriesCache.getPrestashopCategories.mockResolvedValueOnce(stubCategories as never);
 
       const result = await controller.getDestinationCategories(ALLEGRO_CONNECTION_ID);
@@ -318,7 +325,10 @@ describe('MappingOptionsController', () => {
 
       await controller.getSourceCategories(ALLEGRO_CONNECTION_ID, 'parent-42');
 
-      expect(categoriesCache.getAllegroCategories).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, 'parent-42');
+      expect(categoriesCache.getAllegroCategories).toHaveBeenCalledWith(
+        ALLEGRO_CONNECTION_ID,
+        'parent-42'
+      );
     });
   });
 });

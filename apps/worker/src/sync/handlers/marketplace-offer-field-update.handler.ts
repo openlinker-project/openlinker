@@ -8,18 +8,19 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MarketplaceOfferFieldUpdatePayloadV1,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import { OfferManagerPort, isOfferFieldUpdater } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { isOfferFieldUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -33,14 +34,14 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrationsService: IIntegrationsService,
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.offer.updateFields job ${job.id} for connection ${job.connectionId} (offerId=${payload.offerId}, fields=${Object.keys(payload.fields).join(',')})`,
+      `Executing marketplace.offer.updateFields job ${job.id} for connection ${job.connectionId} (offerId=${payload.offerId}, fields=${Object.keys(payload.fields).join(',')})`
     );
 
     // Resolve internal offer ID → external (marketplace-native) offer ID
@@ -52,13 +53,13 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `No external offer mapping found for offerId=${payload.offerId} on connection ${job.connectionId}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       job.connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isOfferFieldUpdater(adapter)) {
@@ -66,7 +67,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `Adapter for connection ${job.connectionId} does not support updateOfferFields`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -85,7 +86,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -98,7 +99,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -107,7 +108,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `Missing or invalid offerId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -116,7 +117,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `Missing or invalid fields in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -126,7 +127,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         `At least one field (price, title, description) must be present in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 

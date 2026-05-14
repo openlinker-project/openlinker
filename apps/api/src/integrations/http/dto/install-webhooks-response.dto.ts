@@ -9,7 +9,7 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WebhookProvisioningResult } from '@openlinker/core/integrations';
+import type { WebhookProvisioningResult } from '@openlinker/core/integrations';
 
 export class InstallWebhooksResponseDto {
   /**

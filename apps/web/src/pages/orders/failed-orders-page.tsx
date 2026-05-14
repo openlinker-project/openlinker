@@ -7,7 +7,7 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';

@@ -6,8 +6,8 @@
  *
  * @module libs/core/src/integrations/domain/ports
  */
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { CredentialsResolverPort } from './credentials-resolver.port';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from './credentials-resolver.port';
 
 /**
  * Adapter Factory Port
@@ -29,13 +29,6 @@ export interface AdapterFactoryPort {
     connection: Connection,
     capability: string,
     identifierMapping: IdentifierMappingPort,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<T>;
 }
-
-
-
-
-
-
-

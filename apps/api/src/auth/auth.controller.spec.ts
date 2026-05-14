@@ -6,14 +6,16 @@
  *
  * @module apps/api/src/auth
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { User, InvalidPasswordResetTokenException } from '@openlinker/core/users';
-import { PASSWORD_RESET_SERVICE_TOKEN, IPasswordResetService } from './password-reset.service.interface';
+import type { IPasswordResetService } from './password-reset.service.interface';
+import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { BadRequestException } from '@nestjs/common';
@@ -108,7 +110,7 @@ describe('AuthController', () => {
 
     it('should convert InvalidPasswordResetTokenException to 400', async () => {
       passwordResetService.resetPassword.mockRejectedValue(
-        new InvalidPasswordResetTokenException(),
+        new InvalidPasswordResetTokenException()
       );
       await expect(controller.resetPassword(dto)).rejects.toThrow(BadRequestException);
     });

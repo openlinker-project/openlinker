@@ -9,14 +9,8 @@
  * @module libs/core/src/inventory/application/services
  * @see {@link InventoryQueryService} for the implementation
  */
-import type {
-  InventoryFilters,
-  InventoryPagination,
-} from '../../domain/types/inventory.types';
-import type {
-  InventoryItemView,
-  PaginatedInventoryView,
-} from '../types/inventory-view.types';
+import type { InventoryFilters, InventoryPagination } from '../../domain/types/inventory.types';
+import type { InventoryItemView, PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
   /**
@@ -26,7 +20,7 @@ export interface IInventoryQueryService {
    */
   listInventoryItems(
     filters: InventoryFilters,
-    pagination: InventoryPagination,
+    pagination: InventoryPagination
   ): Promise<PaginatedInventoryView>;
 
   /**

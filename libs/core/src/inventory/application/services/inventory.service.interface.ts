@@ -7,7 +7,7 @@
  * @module libs/core/src/inventory/application/services
  * @see {@link InventoryService} for the implementation
  */
-import { InventoryItem } from '../../domain/entities/inventory-item.entity';
+import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 
 /**
  * Inventory Service Interface
@@ -41,7 +41,6 @@ export interface IInventoryService {
   getInventory(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null,
+    locationId?: string | null
   ): Promise<InventoryItem | null>;
 }
-

@@ -21,7 +21,7 @@ import {
   type PasswordResetTokenRepositoryPort,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
-import { IPasswordResetService } from './password-reset.service.interface';
+import type { IPasswordResetService } from './password-reset.service.interface';
 
 const DEFAULT_TTL_MINUTES = 60;
 const MIN_PASSWORD_LENGTH = 8;
@@ -39,10 +39,10 @@ export class PasswordResetService implements IPasswordResetService {
     private readonly tokenRepository: PasswordResetTokenRepositoryPort,
     @Inject(PASSWORD_RESET_NOTIFIER_TOKEN)
     private readonly notifier: PasswordResetNotifierPort,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {
     this.ttlMinutes = Number(
-      this.configService.get<string | number>('PASSWORD_RESET_TTL_MINUTES', DEFAULT_TTL_MINUTES),
+      this.configService.get<string | number>('PASSWORD_RESET_TTL_MINUTES', DEFAULT_TTL_MINUTES)
     );
   }
 
@@ -70,7 +70,7 @@ export class PasswordResetService implements IPasswordResetService {
     }
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       throw new WeakPasswordException(
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
       );
     }
 

@@ -21,13 +21,13 @@ import {
   IOfferStatusPollService,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
-import {
+import type {
   MarketplaceOfferPollCreationStatusPayloadV1,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -38,14 +38,14 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
 
   constructor(
     @Inject(OFFER_STATUS_POLL_SERVICE_TOKEN)
-    private readonly offerStatusPoll: IOfferStatusPollService,
+    private readonly offerStatusPoll: IOfferStatusPollService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.offer.pollCreationStatus job ${job.id} record=${payload.offerCreationRecordId} attempt=${payload.pollAttempt}`,
+      `Executing marketplace.offer.pollCreationStatus job ${job.id} record=${payload.offerCreationRecordId} attempt=${payload.pollAttempt}`
     );
 
     try {
@@ -57,7 +57,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
       });
 
       this.logger.log(
-        `Poll iteration finished: job=${job.id} record=${payload.offerCreationRecordId} attempt=${payload.pollAttempt} outcome=${result.outcome}`,
+        `Poll iteration finished: job=${job.id} record=${payload.offerCreationRecordId} attempt=${payload.pollAttempt} outcome=${result.outcome}`
       );
 
       return result;
@@ -71,7 +71,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -84,7 +84,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -93,7 +93,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         `Unsupported schemaVersion (${String(payload.schemaVersion)}) in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -105,7 +105,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         `Missing or invalid offerCreationRecordId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -114,7 +114,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         `Missing or invalid externalOfferId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 
@@ -127,7 +127,7 @@ export class MarketplaceOfferPollCreationStatusHandler implements SyncJobHandler
         `Missing or invalid pollAttempt in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
 

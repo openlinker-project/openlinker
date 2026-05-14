@@ -6,7 +6,8 @@
  *
  * @module apps/worker/src/sync/handlers
  */
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import type { OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './orders-poll.handler';
@@ -38,7 +39,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
-    private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
+    private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler
   ) {}
 
   onModuleInit(): void {
@@ -46,17 +47,26 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register('marketplace.orders.poll', this.marketplaceOrdersPollHandler);
     this.handlerRegistry.register('marketplace.order.sync', this.marketplaceOrderSyncHandler);
     this.handlerRegistry.register('marketplace.offers.sync', this.marketplaceOffersSyncHandler);
-    this.handlerRegistry.register('marketplace.offerQuantity.update', this.marketplaceOfferQuantityUpdateHandler);
-    this.handlerRegistry.register('marketplace.offer.updateFields', this.marketplaceOfferFieldUpdateHandler);
+    this.handlerRegistry.register(
+      'marketplace.offerQuantity.update',
+      this.marketplaceOfferQuantityUpdateHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.updateFields',
+      this.marketplaceOfferFieldUpdateHandler
+    );
     this.handlerRegistry.register('marketplace.offer.create', this.marketplaceOfferCreateHandler);
     this.handlerRegistry.register(
       'marketplace.offer.pollCreationStatus',
-      this.marketplaceOfferPollCreationStatusHandler,
+      this.marketplaceOfferPollCreationStatusHandler
     );
 
     // Register generic master handlers (Option B)
     this.handlerRegistry.register('master.product.syncByExternalId', this.masterProductSyncHandler);
-    this.handlerRegistry.register('master.inventory.syncByExternalId', this.masterInventorySyncHandler);
+    this.handlerRegistry.register(
+      'master.inventory.syncByExternalId',
+      this.masterInventorySyncHandler
+    );
 
     // Register auto-match variants handler
     this.handlerRegistry.register('master.variants.autoMatch', this.autoMatchVariantsHandler);
@@ -68,7 +78,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register('master.product.syncAll', this.masterProductSyncAllHandler);
 
     // Register inventory propagate to marketplaces handler
-    this.handlerRegistry.register('inventory.propagateToMarketplaces', this.inventoryPropagateHandler);
+    this.handlerRegistry.register(
+      'inventory.propagateToMarketplaces',
+      this.inventoryPropagateHandler
+    );
   }
 }
-

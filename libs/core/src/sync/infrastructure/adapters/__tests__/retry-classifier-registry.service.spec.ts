@@ -10,14 +10,12 @@
  * @module libs/core/src/sync/infrastructure/adapters/__tests__
  */
 import { RetryClassifierRegistryService } from '../retry-classifier-registry.service';
-import { RetryClassifierPort } from '../../../domain/ports/retry-classifier.port';
+import type { RetryClassifierPort } from '../../../domain/ports/retry-classifier.port';
 
 describe('RetryClassifierRegistryService', () => {
   let registry: RetryClassifierRegistryService;
 
-  const makeClassifier = (
-    matches: (cause: unknown) => boolean,
-  ): RetryClassifierPort => ({
+  const makeClassifier = (matches: (cause: unknown) => boolean): RetryClassifierPort => ({
     isNonRetryable: jest.fn(matches),
   });
 
@@ -61,15 +59,27 @@ describe('RetryClassifierRegistryService', () => {
     });
 
     it('returns false when no classifier matches', () => {
-      registry.register('foo.v1', makeClassifier((cause) => cause instanceof FooError));
-      registry.register('bar.v1', makeClassifier((cause) => cause instanceof BarError));
+      registry.register(
+        'foo.v1',
+        makeClassifier((cause) => cause instanceof FooError)
+      );
+      registry.register(
+        'bar.v1',
+        makeClassifier((cause) => cause instanceof BarError)
+      );
 
       expect(registry.isNonRetryable(new Error('unknown'))).toBe(false);
     });
 
     it('returns true when any classifier matches', () => {
-      registry.register('foo.v1', makeClassifier((cause) => cause instanceof FooError));
-      registry.register('bar.v1', makeClassifier((cause) => cause instanceof BarError));
+      registry.register(
+        'foo.v1',
+        makeClassifier((cause) => cause instanceof FooError)
+      );
+      registry.register(
+        'bar.v1',
+        makeClassifier((cause) => cause instanceof BarError)
+      );
 
       expect(registry.isNonRetryable(new FooError())).toBe(true);
       expect(registry.isNonRetryable(new BarError())).toBe(true);

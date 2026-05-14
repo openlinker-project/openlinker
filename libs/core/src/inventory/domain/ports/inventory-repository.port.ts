@@ -9,8 +9,12 @@
  * @module libs/core/src/inventory/domain/ports
  * @see {@link InventoryRepository} for the TypeORM implementation
  */
-import { InventoryItem } from '../entities/inventory-item.entity';
-import type { InventoryFilters, InventoryPagination, PaginatedInventoryItems } from '../types/inventory.types';
+import type { InventoryItem } from '../entities/inventory-item.entity';
+import type {
+  InventoryFilters,
+  InventoryPagination,
+  PaginatedInventoryItems,
+} from '../types/inventory.types';
 
 /**
  * Inventory Repository Port
@@ -31,7 +35,7 @@ export interface InventoryRepositoryPort {
   findByProductAndVariant(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null,
+    locationId?: string | null
   ): Promise<InventoryItem | null>;
 
   /**
@@ -55,7 +59,6 @@ export interface InventoryRepositoryPort {
    */
   findMany(
     filters: InventoryFilters,
-    pagination: InventoryPagination,
+    pagination: InventoryPagination
   ): Promise<PaginatedInventoryItems>;
 }
-

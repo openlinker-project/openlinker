@@ -18,9 +18,9 @@ import type {
   IncomingOrderItem,
   IncomingOrderAddress,
 } from '@openlinker/core/orders';
-import { Connection } from '@openlinker/core/identifier-mapping';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import {
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type {
   IPrestashopOrderMapper,
   PrestashopOrder,
   PrestashopOrderRow,
@@ -45,12 +45,12 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly orderMapper: IPrestashopOrderMapper,
-    private readonly connection: Connection,
+    private readonly connection: Connection
   ) {}
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug(
-      `Listing PrestaShop order feed (connection: ${this.connection.id}, fromCursor: ${input.fromCursor ?? 'none'}, limit: ${input.limit})`,
+      `Listing PrestaShop order feed (connection: ${this.connection.id}, fromCursor: ${input.fromCursor ?? 'none'}, limit: ${input.limit})`
     );
 
     const filters: { updatedSince?: Date } = {};
@@ -65,7 +65,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       'orders',
       filters,
       input.limit,
-      0,
+      0
     );
 
     if (prestashopOrders.length === 0) {
@@ -96,7 +96,9 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     }, null);
 
     // Filter `items` by requested eventTypes only after cursor is computed.
-    const filtered = input.eventTypes ? items.filter((i) => input.eventTypes!.includes(i.eventType)) : items;
+    const filtered = input.eventTypes
+      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
+      : items;
 
     return {
       items: filtered,
@@ -107,12 +109,15 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
     const { externalOrderId } = input;
     this.logger.debug(
-      `Fetching PrestaShop order: ${externalOrderId} (connection: ${this.connection.id})`,
+      `Fetching PrestaShop order: ${externalOrderId} (connection: ${this.connection.id})`
     );
 
     let prestashopOrder: PrestashopOrder;
     try {
-      prestashopOrder = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
+      prestashopOrder = await this.httpClient.getResource<PrestashopOrder>(
+        'orders',
+        externalOrderId
+      );
     } catch (error) {
       // Only translate 404 to ResourceNotFound. Transport / auth / 5xx errors
       // propagate unchanged so upstream retry + incident handling can tell the
@@ -122,7 +127,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
           `Order not found: ${externalOrderId} on connection ${this.connection.id}`,
           'Order',
           externalOrderId,
-          this.connection.id,
+          this.connection.id
         );
       }
       throw error;
@@ -133,17 +138,18 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
       const row = orderRows[index];
-      const externalId = row?.product_attribute_id && String(row.product_attribute_id) !== '0'
-        ? String(row.product_attribute_id)
-        : row?.product_id
-        ? String(row.product_id)
-        : item.sku ?? item.productId ?? `${externalOrderId}-item-${index}`;
+      const externalId =
+        row?.product_attribute_id && String(row.product_attribute_id) !== '0'
+          ? String(row.product_attribute_id)
+          : row?.product_id
+            ? String(row.product_id)
+            : item.sku ?? item.productId ?? `${externalOrderId}-item-${index}`;
       const refType: 'variant' | 'product' | 'sku' =
         row?.product_attribute_id && String(row.product_attribute_id) !== '0'
           ? 'variant'
           : row?.product_id
-          ? 'product'
-          : 'sku';
+            ? 'product'
+            : 'sku';
       return {
         id: item.id,
         productRef: { type: refType, externalId },
@@ -184,7 +190,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       });
     } catch (error) {
       this.logger.warn(
-        `Failed to fetch order rows for order ${orderId}: ${(error as Error).message}`,
+        `Failed to fetch order rows for order ${orderId}: ${(error as Error).message}`
       );
       return [];
     }

@@ -8,7 +8,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class DropOfferMappingsAndFixIdentifierMappingsIndexes1772000000000
   implements MigrationInterface
@@ -78,4 +78,3 @@ export class DropOfferMappingsAndFixIdentifierMappingsIndexes1772000000000
     `);
   }
 }
-

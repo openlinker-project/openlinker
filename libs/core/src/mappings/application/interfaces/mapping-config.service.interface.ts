@@ -7,11 +7,11 @@
  * @module libs/core/src/mappings/application/interfaces
  */
 
-import { StatusMapping } from '../../domain/entities/status-mapping.entity';
-import { CarrierMapping } from '../../domain/entities/carrier-mapping.entity';
-import { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
-import { CategoryMapping } from '../../domain/entities/category-mapping.entity';
-import {
+import type { StatusMapping } from '../../domain/entities/status-mapping.entity';
+import type { CarrierMapping } from '../../domain/entities/carrier-mapping.entity';
+import type { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
+import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
+import type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
@@ -23,10 +23,16 @@ export interface IMappingConfigService {
   upsertStatusMappings(connectionId: string, items: StatusMappingInput[]): Promise<StatusMapping[]>;
 
   getCarrierMappings(connectionId: string): Promise<CarrierMapping[]>;
-  upsertCarrierMappings(connectionId: string, items: CarrierMappingInput[]): Promise<CarrierMapping[]>;
+  upsertCarrierMappings(
+    connectionId: string,
+    items: CarrierMappingInput[]
+  ): Promise<CarrierMapping[]>;
 
   getPaymentMappings(connectionId: string): Promise<PaymentMapping[]>;
-  upsertPaymentMappings(connectionId: string, items: PaymentMappingInput[]): Promise<PaymentMapping[]>;
+  upsertPaymentMappings(
+    connectionId: string,
+    items: PaymentMappingInput[]
+  ): Promise<PaymentMapping[]>;
 
   /**
    * Resolve configured PrestaShop status ID for a given Allegro status.
@@ -45,16 +51,22 @@ export interface IMappingConfigService {
    */
   resolveCarrierMapping(
     connectionId: string,
-    allegroDeliveryMethodId: string,
+    allegroDeliveryMethodId: string
   ): Promise<string | null>;
 
   getCategoryMappings(connectionId: string): Promise<CategoryMapping[]>;
-  upsertCategoryMapping(connectionId: string, input: CategoryMappingInput): Promise<CategoryMapping>;
+  upsertCategoryMapping(
+    connectionId: string,
+    input: CategoryMappingInput
+  ): Promise<CategoryMapping>;
   deleteCategoryMapping(connectionId: string, prestashopCategoryId: string): Promise<void>;
 
   /**
    * Resolve configured Allegro category ID for a given PrestaShop category.
    * Returns null if no mapping is configured for this connection + prestashopCategoryId pair.
    */
-  resolveAllegroCategory(connectionId: string, prestashopCategoryId: string): Promise<string | null>;
+  resolveAllegroCategory(
+    connectionId: string,
+    prestashopCategoryId: string
+  ): Promise<string | null>;
 }

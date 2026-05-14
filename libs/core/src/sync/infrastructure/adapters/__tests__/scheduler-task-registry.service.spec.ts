@@ -8,9 +8,12 @@
  * @module libs/core/src/sync/infrastructure/adapters/__tests__
  */
 import { SchedulerTaskRegistryService } from '../scheduler-task-registry.service';
-import { SchedulerTaskConfig } from '../../../domain/types/scheduler-task.types';
+import type { SchedulerTaskConfig } from '../../../domain/types/scheduler-task.types';
 
-const makeTask = (taskId: string, overrides: Partial<SchedulerTaskConfig> = {}): SchedulerTaskConfig => ({
+const makeTask = (
+  taskId: string,
+  overrides: Partial<SchedulerTaskConfig> = {}
+): SchedulerTaskConfig => ({
   taskId,
   platformType: 'test',
   jobType: 'marketplace.orders.poll',

@@ -11,12 +11,16 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
  */
-import { ConnectionTesterPort, ConnectionTestResult, CredentialsResolverPort } from '@openlinker/core/integrations';
-import { Connection } from '@openlinker/core/identifier-mapping';
+import type {
+  ConnectionTesterPort,
+  ConnectionTestResult,
+  CredentialsResolverPort,
+} from '@openlinker/core/integrations';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { AllegroHttpClient } from '../http/allegro-http-client';
 import { AllegroConnectionTokenState } from '../http/allegro-connection-token-state';
-import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
-import { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
+import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
+import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
 
 const DEFAULT_API_BASE_URLS: Record<string, string> = {
   sandbox: 'https://api.allegro.pl.allegrosandbox.pl',
@@ -26,7 +30,7 @@ const DEFAULT_API_BASE_URLS: Record<string, string> = {
 export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
   async test(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<ConnectionTestResult> {
     const startedAt = Date.now();
     try {
@@ -36,7 +40,7 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
         config.apiBaseUrl ?? DEFAULT_API_BASE_URLS[environment] ?? DEFAULT_API_BASE_URLS.sandbox;
 
       const credentials = await credentialsResolver.get<AllegroCredentials>(
-        connection.credentialsRef,
+        connection.credentialsRef
       );
 
       // Probe deliberately runs without a token-refresh callback: a stale or

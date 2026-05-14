@@ -15,6 +15,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
+import type { ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
 import {
   IsString,
   IsNotEmpty,
@@ -25,11 +26,10 @@ import {
   Matches,
   Validate,
   ValidatorConstraint,
-  ValidatorConstraintInterface,
-  ValidationArguments,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CoreCapability, CoreCapabilityValues } from '@openlinker/core/integrations';
+import type { CoreCapability } from '@openlinker/core/integrations';
+import { CoreCapabilityValues } from '@openlinker/core/integrations';
 
 @ValidatorConstraint({ name: 'CredentialsXor', async: false })
 class CredentialsXorConstraint implements ValidatorConstraintInterface {
@@ -97,8 +97,7 @@ export class CreateConnectionDto {
   credentialsRef?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Adapter key (optional, defaults from platformType in service)',
+    description: 'Adapter key (optional, defaults from platformType in service)',
     example: 'prestashop.webservice.v1',
   })
   @IsString()

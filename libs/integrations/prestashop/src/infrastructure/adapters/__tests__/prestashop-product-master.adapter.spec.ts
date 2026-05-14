@@ -16,9 +16,12 @@ import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
 } from '@openlinker/integrations-prestashop';
-import { PrestashopProduct, PrestashopCombination } from '../../mappers/prestashop.mapper.interface';
-import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type {
+  PrestashopProduct,
+  PrestashopCombination,
+} from '../../mappers/prestashop.mapper.interface';
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 describe('PrestashopProductMasterAdapter', () => {
   let adapter: PrestashopProductMasterAdapter;
@@ -37,7 +40,7 @@ describe('PrestashopProductMasterAdapter', () => {
       mockHttpClient,
       mockIdentifierMapping,
       productMapper,
-      connection,
+      connection
     );
   });
 
@@ -75,7 +78,7 @@ describe('PrestashopProductMasterAdapter', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getProduct(internalId)).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
     });
 
@@ -93,20 +96,22 @@ describe('PrestashopProductMasterAdapter', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getProduct(internalId)).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
     });
 
     it('should use connection langId from config', async () => {
       const internalId = 'internal-product-123';
       const externalId = '42';
-      const connectionWithLang = createTestConnection({ config: { ...connection.config, langId: 2 } });
+      const connectionWithLang = createTestConnection({
+        config: { ...connection.config, langId: 2 },
+      });
 
       const adapterWithLang = new PrestashopProductMasterAdapter(
         mockHttpClient,
         mockIdentifierMapping,
         productMapper,
-        connectionWithLang,
+        connectionWithLang
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -151,7 +156,12 @@ describe('PrestashopProductMasterAdapter', () => {
       const result = await adapter.getProducts();
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(mockHttpClient.listResources).toHaveBeenCalledWith('products', {}, undefined, undefined);
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'products',
+        {},
+        undefined,
+        undefined
+      );
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('internal-1');
       expect(result[1].id).toBe('internal-2');
@@ -190,7 +200,7 @@ describe('PrestashopProductMasterAdapter', () => {
           }),
         }),
         50,
-        100,
+        100
       );
     });
 
@@ -230,7 +240,7 @@ describe('PrestashopProductMasterAdapter', () => {
         'products',
         { display: '[id]' },
         100,
-        0,
+        0
       );
       // listExternalIds must NOT touch identifier mapping; creating mappings is the
       // downstream master.product.syncByExternalId handler's responsibility.
@@ -312,7 +322,7 @@ describe('PrestashopProductMasterAdapter', () => {
           custom: expect.objectContaining({
             id_product: externalProductId,
           }),
-        }),
+        })
       );
 
       expect(result).toHaveLength(2);
@@ -321,13 +331,13 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(mockIdentifierMapping.deleteMapping).toHaveBeenCalledWith(
         'ProductVariant',
         `product:${externalProductId}`,
-        connection.id,
+        connection.id
       );
       expect(mockIdentifierMapping.batchGetOrCreateInternalIds).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '101' }),
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '102' }),
-        ]),
+        ])
       );
     });
 
@@ -407,7 +417,7 @@ describe('PrestashopProductMasterAdapter', () => {
         connection.id,
         expect.objectContaining({
           metadata: expect.objectContaining({ synthetic: true }),
-        }),
+        })
       );
       // isVariant metadata shim is intentionally no longer written — entityType is authoritative.
       expect(mockIdentifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
@@ -416,7 +426,7 @@ describe('PrestashopProductMasterAdapter', () => {
         expect.anything(),
         expect.objectContaining({
           metadata: expect.objectContaining({ isVariant: expect.anything() }),
-        }),
+        })
       );
     });
 
@@ -428,7 +438,7 @@ describe('PrestashopProductMasterAdapter', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getProductVariants(productId)).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
     });
   });
@@ -437,42 +447,42 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should throw PrestashopNotSupportedException for createProduct', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
       await expect(adapter.createProduct({ name: 'New Product' } as any)).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for updateProduct', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
       await expect(adapter.updateProduct('product-id', { name: 'Updated' } as any)).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for deleteProduct', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.deleteProduct('product-id')).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for upsertProductVariant', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
       await expect(adapter.upsertProductVariant('product-id', {} as any)).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for assignCategories', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.assignCategories('product-id', ['cat-1'])).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
 
     it('should throw PrestashopNotSupportedException for getProductCategories', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(adapter.getProductCategories('product-id')).rejects.toThrow(
-        PrestashopNotSupportedException,
+        PrestashopNotSupportedException
       );
     });
   });
@@ -495,9 +505,8 @@ describe('PrestashopProductMasterAdapter', () => {
         'products',
         expect.any(Object),
         undefined,
-        undefined,
+        undefined
       );
     });
   });
 });
-

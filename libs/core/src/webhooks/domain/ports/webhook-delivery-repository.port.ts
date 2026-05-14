@@ -7,8 +7,8 @@
  *
  * @module libs/core/src/webhooks/domain/ports
  */
-import { WebhookDelivery } from '../entities/webhook-delivery.entity';
-import {
+import type { WebhookDelivery } from '../entities/webhook-delivery.entity';
+import type {
   PaginatedWebhookDeliveries,
   WebhookDeliveryFilters,
   WebhookDeliveryPagination,
@@ -40,6 +40,6 @@ export interface WebhookDeliveryRepositoryPort {
   findById(id: string): Promise<WebhookDelivery | null>;
   findMany(
     filters: WebhookDeliveryFilters,
-    pagination: WebhookDeliveryPagination,
+    pagination: WebhookDeliveryPagination
   ): Promise<PaginatedWebhookDeliveries>;
 }

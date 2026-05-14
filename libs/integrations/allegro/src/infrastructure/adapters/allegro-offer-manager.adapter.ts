@@ -57,11 +57,11 @@ import {
   type ResolveProductCardResult,
 } from '../util/resolve-allegro-product-card-by-ean';
 import { fetchAllegroProduct } from '../util/fetch-allegro-product';
-import { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CachePort } from '@openlinker/shared';
-import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { toNeutralCategoryParameter } from '../mappers/allegro-category-parameter.mapper';
-import {
+import type {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroQuantityChangeCommandStatusResponse,
   AllegroCategoryParametersResponse,
@@ -92,10 +92,8 @@ import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
-import {
-  AllegroQuantityCommandRepositoryPort,
-  AllegroQuantityCommand,
-} from '../../index';
+import type { AllegroQuantityCommandRepositoryPort } from '../../index';
+import { AllegroQuantityCommand } from '../../index';
 
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
@@ -120,7 +118,8 @@ function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroO
     if (!Array.isArray(c.values) || !c.values.every((v) => typeof v === 'string')) return false;
   }
   if (c.valuesIds !== undefined) {
-    if (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string')) return false;
+    if (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string'))
+      return false;
   }
   return true;
 }
@@ -136,7 +135,7 @@ function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroO
  * empty result means the blob is structurally complete.
  */
 function collectMissingSellerDefaultsFields(
-  defaults: AllegroSellerDefaultsConfig | undefined,
+  defaults: AllegroSellerDefaultsConfig | undefined
 ): string[] {
   if (!defaults) {
     return [
@@ -208,7 +207,8 @@ export class AllegroOfferManagerAdapter
     OfferReader,
     SellerPoliciesReader,
     ResponsibleProducerReader,
-    SafetyAttachmentUploader {
+    SafetyAttachmentUploader
+{
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
   private readonly quantityPollConfig: QuantityPollConfig;
@@ -252,7 +252,7 @@ export class AllegroOfferManagerAdapter
      * production: `https://allegro.pl`. The factory passes the right value;
      * when undefined, `getOffer` omits `marketplaceUrl` from its result.
      */
-    private readonly storefrontBaseUrl?: string,
+    private readonly storefrontBaseUrl?: string
   ) {
     this.quantityPollConfig = {
       maxAttempts: quantityPollConfig?.maxAttempts ?? 5,
@@ -271,7 +271,7 @@ export class AllegroOfferManagerAdapter
    */
   async listOfferEvents(input: OfferFeedInput): Promise<OfferFeedOutput> {
     this.logger.debug(
-      `Listing Allegro offer events (connection: ${this.connectionId}, fromCursor: ${input.cursor || 'none'}, limit: ${input.limit})`,
+      `Listing Allegro offer events (connection: ${this.connectionId}, fromCursor: ${input.cursor || 'none'}, limit: ${input.limit})`
     );
 
     try {
@@ -291,7 +291,7 @@ export class AllegroOfferManagerAdapter
         (events.length > 0 ? events[events.length - 1]?.id : input.cursor || null);
 
       this.logger.debug(
-        `Fetched ${events.length} offer events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`,
+        `Fetched ${events.length} offer events (connection: ${this.connectionId}, nextCursor: ${nextCursor || 'none'})`
       );
 
       const eventMap = new Map<string, (typeof events)[number]>();
@@ -311,7 +311,7 @@ export class AllegroOfferManagerAdapter
     } catch (error) {
       this.logger.error(
         `Failed to list Allegro offer events (connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -326,7 +326,7 @@ export class AllegroOfferManagerAdapter
     const offset = this.parseOffset(input.cursor);
 
     this.logger.debug(
-      `Listing Allegro offers (connection: ${this.connectionId}, offset: ${offset}, limit: ${input.limit})`,
+      `Listing Allegro offers (connection: ${this.connectionId}, offset: ${offset}, limit: ${input.limit})`
     );
 
     try {
@@ -339,7 +339,7 @@ export class AllegroOfferManagerAdapter
 
       const offers = response.data.offers ?? [];
       this.logger.debug(
-        `Received Allegro offers (connection: ${this.connectionId}, offers: ${offers.length}, total: ${response.data.totalCount})`,
+        `Received Allegro offers (connection: ${this.connectionId}, offers: ${offers.length}, total: ${response.data.totalCount})`
       );
       const nextOffset = offset + offers.length;
       const nextCursor = nextOffset < response.data.totalCount ? String(nextOffset) : null;
@@ -351,7 +351,7 @@ export class AllegroOfferManagerAdapter
     } catch (error) {
       this.logger.error(
         `Failed to list Allegro offers (connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -369,7 +369,7 @@ export class AllegroOfferManagerAdapter
     }
 
     this.logger.debug(
-      `Updating Allegro offer quantity: offerId=${cmd.offerId}, quantity=${cmd.quantity} (connection: ${this.connectionId}, idempotencyKey: ${cmd.idempotencyKey})`,
+      `Updating Allegro offer quantity: offerId=${cmd.offerId}, quantity=${cmd.quantity} (connection: ${this.connectionId}, idempotencyKey: ${cmd.idempotencyKey})`
     );
 
     try {
@@ -385,7 +385,7 @@ export class AllegroOfferManagerAdapter
 
       const response = await this.httpClient.put<AllegroOfferQuantityChangeCommandResponse>(
         `/sale/offer-quantity-change-commands/${commandId}`,
-        commandBody,
+        commandBody
       );
 
       try {
@@ -396,25 +396,25 @@ export class AllegroOfferManagerAdapter
             this.connectionId,
             cmd.offerId,
             cmd.quantity,
-            status,
+            status
           );
           await this.commandRepository.create(command);
         }
       } catch (persistError) {
         this.logger.warn(
-          `Failed to persist offer quantity command status (commandId: ${response.data.id}): ${(persistError as Error).message}`,
+          `Failed to persist offer quantity command status (commandId: ${response.data.id}): ${(persistError as Error).message}`
         );
       }
 
       this.logger.debug(
-        `Allegro offer quantity command submitted: commandId=${response.data.id} (connection: ${this.connectionId})`,
+        `Allegro offer quantity command submitted: commandId=${response.data.id} (connection: ${this.connectionId})`
       );
 
       await this.pollAndUpdateCommandStatus(response.data.id, cmd.offerId);
     } catch (error) {
       this.logger.error(
         `Failed to update Allegro offer quantity (offerId: ${cmd.offerId}, connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -440,14 +440,14 @@ export class AllegroOfferManagerAdapter
   }
 
   private async buildOfferFeedItems(
-    offers: AllegroOffersResponse['offers'],
+    offers: AllegroOffersResponse['offers']
   ): Promise<OfferFeedOutput['items']> {
     const items: OfferFeedOutput['items'] = [];
 
     for (const offer of offers) {
       if (await this.isOfferMapped(offer.id)) {
         this.logger.debug(
-          `Skipping Allegro offer ${offer.id} (connection: ${this.connectionId}) - already mapped`,
+          `Skipping Allegro offer ${offer.id} (connection: ${this.connectionId}) - already mapped`
         );
         continue;
       }
@@ -463,7 +463,7 @@ export class AllegroOfferManagerAdapter
         });
       } catch (error) {
         this.logger.warn(
-          `Failed to resolve identifiers for offer ${offer.id} (connection: ${this.connectionId}): ${(error as Error).message}`,
+          `Failed to resolve identifiers for offer ${offer.id} (connection: ${this.connectionId}): ${(error as Error).message}`
         );
         items.push({
           offerId: offer.id,
@@ -480,12 +480,12 @@ export class AllegroOfferManagerAdapter
       const internalId = await this.identifierMapping.getInternalId(
         'Offer',
         offerId,
-        this.connectionId,
+        this.connectionId
       );
       return internalId !== null;
     } catch (error) {
       this.logger.warn(
-        `Failed to check existing offer mapping for ${offerId} (connection: ${this.connectionId}): ${(error as Error).message}`,
+        `Failed to check existing offer mapping for ${offerId} (connection: ${this.connectionId}): ${(error as Error).message}`
       );
       return false;
     }
@@ -499,14 +499,14 @@ export class AllegroOfferManagerAdapter
    */
   private async fetchProductOfferById(offerId: string): Promise<AllegroProductOffer> {
     const response = await this.httpClient.get<AllegroProductOffer>(
-      `/sale/product-offers/${offerId}`,
+      `/sale/product-offers/${offerId}`
     );
     return response.data;
   }
 
   private async fetchOfferIdentifiers(
     offerId: string,
-    categoryId?: string,
+    categoryId?: string
   ): Promise<{ sku: string | null; ean: string | null; gtin: string | null }> {
     const offer = await this.fetchProductOfferById(offerId);
     const resolvedCategoryId = categoryId ?? offer.category?.id ?? null;
@@ -516,8 +516,9 @@ export class AllegroOfferManagerAdapter
 
     if (resolvedCategoryId) {
       const categoryParams = await this.fetchCategoryParametersRaw(resolvedCategoryId);
-      const { eanIds: resolvedEanIds, gtinIds: resolvedGtinIds } =
-        this.findIdentifierParameterIds(categoryParams.parameters);
+      const { eanIds: resolvedEanIds, gtinIds: resolvedGtinIds } = this.findIdentifierParameterIds(
+        categoryParams.parameters
+      );
       eanIds = resolvedEanIds;
       gtinIds = resolvedGtinIds;
     }
@@ -566,7 +567,7 @@ export class AllegroOfferManagerAdapter
       // the service maps `inactive + no errors` to `'draft'`, which matches
       // the practical "offer exists, isn't live yet" semantic.
       this.logger.warn(
-        `Allegro offer ${externalOfferId} returned without publication.status — treating as 'inactive'. connection=${this.connectionId}`,
+        `Allegro offer ${externalOfferId} returned without publication.status — treating as 'inactive'. connection=${this.connectionId}`
       );
     }
 
@@ -577,7 +578,7 @@ export class AllegroOfferManagerAdapter
   }
 
   private mapAllegroPublicationStatus(
-    raw: AllegroOfferPublicationStatus | undefined,
+    raw: AllegroOfferPublicationStatus | undefined
   ): OfferPublicationStatus {
     switch (raw) {
       case 'ACTIVE':
@@ -610,7 +611,7 @@ export class AllegroOfferManagerAdapter
   async getOffer(input: { externalId: string }): Promise<MarketplaceOffer> {
     const { externalId } = input;
     this.logger.debug(
-      `Fetching Allegro offer detail: connection=${this.connectionId} offerId=${externalId}`,
+      `Fetching Allegro offer detail: connection=${this.connectionId} offerId=${externalId}`
     );
 
     const offer = await this.fetchProductOfferById(externalId);
@@ -624,7 +625,7 @@ export class AllegroOfferManagerAdapter
       throw new AllegroApiException(
         `Allegro offer ${externalId} response missing sellingMode.price`,
         undefined,
-        formatBodyForLog(JSON.stringify(offer)),
+        formatBodyForLog(JSON.stringify(offer))
       );
     }
 
@@ -685,14 +686,12 @@ export class AllegroOfferManagerAdapter
    * `fetchOfferIdentifiers` and `fetchCategoryParameters` (cached + neutral)
    * both delegate here. Public so dev tooling can capture fixtures.
    */
-  async fetchCategoryParametersRaw(
-    categoryId: string,
-  ): Promise<AllegroCategoryParametersResponse> {
+  async fetchCategoryParametersRaw(categoryId: string): Promise<AllegroCategoryParametersResponse> {
     this.logger.debug(
-      `Fetching Allegro category parameters (raw): connection=${this.connectionId} categoryId=${categoryId}`,
+      `Fetching Allegro category parameters (raw): connection=${this.connectionId} categoryId=${categoryId}`
     );
     const response = await this.httpClient.get<AllegroCategoryParametersResponse>(
-      `/sale/categories/${categoryId}/parameters`,
+      `/sale/categories/${categoryId}/parameters`
     );
     return response.data;
   }
@@ -717,7 +716,7 @@ export class AllegroOfferManagerAdapter
       const cached = await this.cache.get<CategoryParameter[]>(cacheKey);
       if (cached) {
         this.logger.debug(
-          `Category parameters cache HIT: connection=${this.connectionId} categoryId=${input.categoryId}`,
+          `Category parameters cache HIT: connection=${this.connectionId} categoryId=${input.categoryId}`
         );
         return cached;
       }
@@ -744,16 +743,15 @@ export class AllegroOfferManagerAdapter
 
   async fetchCategories(parentId?: string): Promise<OfferCategory[]> {
     this.logger.debug(
-      `Fetching Allegro categories (connection: ${this.connectionId}, parentId: ${parentId ?? 'root'})`,
+      `Fetching Allegro categories (connection: ${this.connectionId}, parentId: ${parentId ?? 'root'})`
     );
     const queryParams: Record<string, string | number> = {};
     if (parentId) {
       queryParams['parent.id'] = parentId;
     }
-    const response = await this.httpClient.get<AllegroCategoriesResponse>(
-      '/sale/categories',
-      { queryParams },
-    );
+    const response = await this.httpClient.get<AllegroCategoriesResponse>('/sale/categories', {
+      queryParams,
+    });
     const categories = response.data.categories ?? [];
     return categories.map((cat) => ({
       id: cat.id,
@@ -765,30 +763,30 @@ export class AllegroOfferManagerAdapter
 
   async matchCategoryByBarcode(barcode: string): Promise<string | null> {
     this.logger.debug(
-      `Matching Allegro category by barcode (connection: ${this.connectionId}, barcode: ${barcode})`,
+      `Matching Allegro category by barcode (connection: ${this.connectionId}, barcode: ${barcode})`
     );
     try {
       const response = await this.httpClient.get<AllegroMatchingCategoriesResponse>(
         '/sale/matching-categories',
-        { queryParams: { ean: barcode } },
+        { queryParams: { ean: barcode } }
       );
       const matches = response.data.matchingCategories ?? [];
       if (matches.length === 1) {
         const categoryId = matches[0].category.id;
         this.logger.debug(
-          `Barcode auto-detect matched category ${categoryId} (connection: ${this.connectionId})`,
+          `Barcode auto-detect matched category ${categoryId} (connection: ${this.connectionId})`
         );
         return categoryId;
       }
       if (matches.length > 1) {
         this.logger.debug(
-          `Barcode auto-detect returned ${matches.length} categories, skipping (connection: ${this.connectionId})`,
+          `Barcode auto-detect returned ${matches.length} categories, skipping (connection: ${this.connectionId})`
         );
       }
       return null;
     } catch (error) {
       this.logger.warn(
-        `Failed to match category by barcode (connection: ${this.connectionId}): ${(error as Error).message}`,
+        `Failed to match category by barcode (connection: ${this.connectionId}): ${(error as Error).message}`
       );
       return null;
     }
@@ -813,10 +811,12 @@ export class AllegroOfferManagerAdapter
    *   available in Allegro's `/sale/products?phrase` summary response).
    * - `no_match` → identity mapping.
    */
-  async findProductsByBarcode(input: FindProductsByBarcodeInput): Promise<CatalogProductMatchResult> {
+  async findProductsByBarcode(
+    input: FindProductsByBarcodeInput
+  ): Promise<CatalogProductMatchResult> {
     if (!input.categoryId) {
       this.logger.debug(
-        `findProductsByBarcode: categoryId omitted, returning no_match (connection: ${this.connectionId}, barcode: ${input.barcode})`,
+        `findProductsByBarcode: categoryId omitted, returning no_match (connection: ${this.connectionId}, barcode: ${input.barcode})`
       );
       return { kind: 'no_match' };
     }
@@ -824,7 +824,7 @@ export class AllegroOfferManagerAdapter
     const result: ResolveProductCardResult = await resolveAllegroProductCardByEan(
       this.httpClient,
       this.cache,
-      { ean: input.barcode, categoryId: input.categoryId },
+      { ean: input.barcode, categoryId: input.categoryId }
     );
 
     if (result.kind === 'unique') {
@@ -858,9 +858,10 @@ export class AllegroOfferManagerAdapter
     return fetchAllegroProduct(this.httpClient, this.cache, input.productId);
   }
 
-  private findIdentifierParameterIds(
-    parameters: Array<{ id: string; name: string }>,
-  ): { eanIds: Set<string>; gtinIds: Set<string> } {
+  private findIdentifierParameterIds(parameters: Array<{ id: string; name: string }>): {
+    eanIds: Set<string>;
+    gtinIds: Set<string>;
+  } {
     const eanIds = new Set<string>();
     const gtinIds = new Set<string>();
 
@@ -880,7 +881,7 @@ export class AllegroOfferManagerAdapter
   private extractIdentifierValues(
     parameters: AllegroOfferParameter[],
     idFilter: Set<string>,
-    nameMatcher: RegExp,
+    nameMatcher: RegExp
   ): string[] {
     const values: string[] = [];
 
@@ -915,7 +916,7 @@ export class AllegroOfferManagerAdapter
    * Map Allegro command status to unified status.
    */
   private mapAllegroCommandStatus(
-    allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED',
+    allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED'
   ): 'queued' | 'accepted' | 'rejected' {
     switch (allegroStatus) {
       case 'QUEUED':
@@ -950,7 +951,7 @@ export class AllegroOfferManagerAdapter
    */
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
     this.logger.debug(
-      `Updating Allegro offer fields: offerId=${cmd.externalOfferId} (connection: ${this.connectionId}, fields=${Object.keys(cmd.fields).join(',')})`,
+      `Updating Allegro offer fields: offerId=${cmd.externalOfferId} (connection: ${this.connectionId}, fields=${Object.keys(cmd.fields).join(',')})`
     );
 
     const callerBody: AllegroOfferFieldsPatchBody = {};
@@ -972,7 +973,7 @@ export class AllegroOfferManagerAdapter
         this.logger.debug(
           `Allegro name sanitized on offer update: offerId=${cmd.externalOfferId} ` +
             `connection=${this.connectionId} ` +
-            `original=${JSON.stringify(cmd.fields.title)} sanitized=${JSON.stringify(sanitized)}`,
+            `original=${JSON.stringify(cmd.fields.title)} sanitized=${JSON.stringify(sanitized)}`
         );
       }
       callerBody.name = sanitized;
@@ -991,7 +992,7 @@ export class AllegroOfferManagerAdapter
 
     if (Object.keys(callerBody).length === 0) {
       this.logger.warn(
-        `updateOfferFields called with empty fields for offerId=${cmd.externalOfferId} — skipping`,
+        `updateOfferFields called with empty fields for offerId=${cmd.externalOfferId} — skipping`
       );
       return;
     }
@@ -1003,23 +1004,20 @@ export class AllegroOfferManagerAdapter
       this.logger.debug(
         `Allegro updateOfferFields backfilled from sellerDefaults: ` +
           `offerId=${cmd.externalOfferId} connection=${this.connectionId} ` +
-          `fields=[${backfilled.join(',')}]`,
+          `fields=[${backfilled.join(',')}]`
       );
     }
 
     try {
-      await this.httpClient.patch<void>(
-        `/sale/product-offers/${cmd.externalOfferId}`,
-        body,
-      );
+      await this.httpClient.patch<void>(`/sale/product-offers/${cmd.externalOfferId}`, body);
 
       this.logger.debug(
-        `Allegro offer fields updated: offerId=${cmd.externalOfferId} (connection: ${this.connectionId})`,
+        `Allegro offer fields updated: offerId=${cmd.externalOfferId} (connection: ${this.connectionId})`
       );
     } catch (error) {
       this.logger.error(
         `Failed to update Allegro offer fields (offerId: ${cmd.externalOfferId}, connection: ${this.connectionId}): ${(error as Error).message}`,
-        error,
+        error
       );
       throw error;
     }
@@ -1124,7 +1122,7 @@ export class AllegroOfferManagerAdapter
           field,
           code: 'SELLER_DEFAULTS_NOT_CONFIGURED',
           message: `Allegro connection ${this.connectionId} is missing required seller-defaults field "${field}". Complete the seller-defaults section on the connection edit page (ship-from location, Responsible Producer, GPSR safety information) before creating offers.`,
-        })),
+        }))
       );
     }
 
@@ -1147,20 +1145,20 @@ export class AllegroOfferManagerAdapter
     if (body.images && body.images.length > 0) {
       const originalCount = body.images.length;
       this.logger.debug(
-        `Allegro image upload starting: connection=${this.connectionId} count=${originalCount}`,
+        `Allegro image upload starting: connection=${this.connectionId} count=${originalCount}`
       );
       const uploadResult = await uploadImagesViaAllegro(this.uploadHttpClient, body.images);
       if (!uploadResult.ok) {
         const codes = Array.from(new Set(uploadResult.failures.map((f) => f.code))).join(',');
         this.logger.warn(
           `Allegro image upload rejected create: connection=${this.connectionId} ` +
-            `failed=${uploadResult.failures.length}/${originalCount} codes=${codes}`,
+            `failed=${uploadResult.failures.length}/${originalCount} codes=${codes}`
         );
         throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, uploadResult.failures);
       }
       body.images = uploadResult.locations;
       this.logger.debug(
-        `Allegro image upload complete: connection=${this.connectionId} count=${body.images.length}`,
+        `Allegro image upload complete: connection=${this.connectionId} count=${body.images.length}`
       );
     }
 
@@ -1188,14 +1186,14 @@ export class AllegroOfferManagerAdapter
     }
 
     this.logger.debug(
-      `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`,
+      `Creating Allegro offer: connection=${this.connectionId} externalRef=${body.external?.id ?? 'n/a'} publishImmediately=${cmd.publishImmediately}`
     );
 
     let response: AllegroProductOfferCreateResponse;
     try {
       const httpResponse = await this.httpClient.post<AllegroProductOfferCreateResponse>(
         '/sale/product-offers',
-        body as unknown as Record<string, unknown>,
+        body as unknown as Record<string, unknown>
       );
       response = httpResponse.data;
     } catch (error) {
@@ -1207,12 +1205,12 @@ export class AllegroOfferManagerAdapter
         const parsedErrors = error.allegroErrors ?? [];
         this.logger.error(
           `Allegro rejected offer creation: connection=${this.connectionId} status=${error.statusCode} errors=${parsedErrors.length}`,
-          error,
+          error
         );
         throw new OfferCreateRejectedException(
           ALLEGRO_ADAPTER_KEY,
           error.statusCode,
-          this.mapValidationErrors(parsedErrors),
+          this.mapValidationErrors(parsedErrors)
         );
       }
       throw error;
@@ -1222,11 +1220,11 @@ export class AllegroOfferManagerAdapter
     const status = this.resolveCreateOfferStatus(
       response.publication?.status,
       validationErrors.length > 0,
-      cmd.publishImmediately,
+      cmd.publishImmediately
     );
 
     this.logger.log(
-      `Allegro offer created: connection=${this.connectionId} offerId=${response.id} status=${status} validationErrors=${validationErrors.length}`,
+      `Allegro offer created: connection=${this.connectionId} offerId=${response.id} status=${status} validationErrors=${validationErrors.length}`
     );
 
     const result: CreateOfferResult = {
@@ -1250,15 +1248,17 @@ export class AllegroOfferManagerAdapter
    *   fetched from `/sale/shipping-rates` (not `/sale/delivery-settings`).
    */
   async fetchSellerPolicies(): Promise<SellerPolicies> {
-    this.logger.debug(
-      `Fetching Allegro seller policies (connection: ${this.connectionId})`,
-    );
+    this.logger.debug(`Fetching Allegro seller policies (connection: ${this.connectionId})`);
 
     const [shippingRatesResponse, returns, warranties, impliedWarranties] = await Promise.all([
       this.httpClient.get<AllegroShippingRatesResponse>('/sale/shipping-rates'),
-      this.httpClient.get<AllegroReturnPoliciesResponse>('/after-sales-service-conditions/return-policies'),
+      this.httpClient.get<AllegroReturnPoliciesResponse>(
+        '/after-sales-service-conditions/return-policies'
+      ),
       this.httpClient.get<AllegroWarrantiesResponse>('/after-sales-service-conditions/warranties'),
-      this.httpClient.get<AllegroImpliedWarrantiesResponse>('/after-sales-service-conditions/implied-warranties'),
+      this.httpClient.get<AllegroImpliedWarrantiesResponse>(
+        '/after-sales-service-conditions/implied-warranties'
+      ),
     ]);
 
     const mapEntry = (p: AllegroSellerPolicyEntry): { id: string; name: string } => ({
@@ -1282,11 +1282,9 @@ export class AllegroOfferManagerAdapter
    * over latency. (#430)
    */
   async fetchResponsibleProducers(): Promise<ResponsibleProducerEntry[]> {
-    this.logger.debug(
-      `Fetching Allegro responsible producers (connection: ${this.connectionId})`,
-    );
+    this.logger.debug(`Fetching Allegro responsible producers (connection: ${this.connectionId})`);
     const response = await this.httpClient.get<AllegroResponsibleProducersResponse>(
-      '/sale/responsible-producers',
+      '/sale/responsible-producers'
     );
     const entries = response.data.responsibleProducers ?? [];
     return entries.map(
@@ -1296,7 +1294,7 @@ export class AllegroOfferManagerAdapter
         // Allegro defaults unknown classifications to PRODUCER; mirror that
         // so the FE never has to handle `undefined` here.
         kind: e.type ?? 'PRODUCER',
-      }),
+      })
     );
   }
 
@@ -1311,10 +1309,10 @@ export class AllegroOfferManagerAdapter
    * (#449)
    */
   async uploadSafetyAttachment(
-    input: SafetyAttachmentUploadInput,
+    input: SafetyAttachmentUploadInput
   ): Promise<SafetyAttachmentUploadResult> {
     this.logger.debug(
-      `Uploading Allegro safety attachment (connection: ${this.connectionId}, fileName: ${input.fileName}, ${input.bytes.byteLength} bytes)`,
+      `Uploading Allegro safety attachment (connection: ${this.connectionId}, fileName: ${input.fileName}, ${input.bytes.byteLength} bytes)`
     );
     return uploadSafetyAttachmentViaAllegro(this.uploadHttpClient, input);
   }
@@ -1329,7 +1327,7 @@ export class AllegroOfferManagerAdapter
    * makes the smart-link skip-paths trivially traceable in tests.
    */
   private async maybeResolveProductCard(
-    cmd: CreateOfferCommand,
+    cmd: CreateOfferCommand
   ): Promise<ResolveProductCardResult> {
     const ean = cmd.variantBarcode;
     const categoryId = cmd.overrides?.categoryId;
@@ -1344,7 +1342,7 @@ export class AllegroOfferManagerAdapter
 
   private buildCreateOfferRequest(
     cmd: CreateOfferCommand,
-    cardLinkResult: ResolveProductCardResult,
+    cardLinkResult: ResolveProductCardResult
   ): AllegroProductOfferCreateRequest {
     const platformParams = cmd.overrides?.platformParams ?? {};
 
@@ -1360,19 +1358,25 @@ export class AllegroOfferManagerAdapter
     if (rawTitle !== undefined && name !== rawTitle) {
       this.logger.debug(
         `Allegro name sanitized on offer create: connection=${this.connectionId} ` +
-          `original=${JSON.stringify(rawTitle)} sanitized=${JSON.stringify(name)}`,
+          `original=${JSON.stringify(rawTitle)} sanitized=${JSON.stringify(name)}`
       );
     }
 
     const categoryId = cmd.overrides?.categoryId;
     if (!name || name.trim().length === 0) {
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
-        { code: 'PRECONDITION_TITLE_REQUIRED', message: 'overrides.title is required for Allegro offer creation' },
+        {
+          code: 'PRECONDITION_TITLE_REQUIRED',
+          message: 'overrides.title is required for Allegro offer creation',
+        },
       ]);
     }
     if (!categoryId || categoryId.trim().length === 0) {
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
-        { code: 'PRECONDITION_CATEGORY_REQUIRED', message: 'overrides.categoryId is required for Allegro offer creation' },
+        {
+          code: 'PRECONDITION_CATEGORY_REQUIRED',
+          message: 'overrides.categoryId is required for Allegro offer creation',
+        },
       ]);
     }
     const externalRef = cmd.idempotencyKey ?? cmd.internalVariantId;
@@ -1423,7 +1427,7 @@ export class AllegroOfferManagerAdapter
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
     cardLinkResult: ResolveProductCardResult,
-    stock: number,
+    stock: number
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -1482,7 +1486,7 @@ export class AllegroOfferManagerAdapter
       ];
       this.logger.log(
         `Allegro smart-link applied: connection=${this.connectionId} ` +
-          `productId=${cardLinkResult.productId} outcome=unique`,
+          `productId=${cardLinkResult.productId} outcome=unique`
       );
       return;
     }
@@ -1490,7 +1494,7 @@ export class AllegroOfferManagerAdapter
     if (cardLinkResult.kind === 'ambiguous') {
       this.logger.log(
         `Allegro smart-link skipped: connection=${this.connectionId} ` +
-          `outcome=ambiguous matchCount=${cardLinkResult.matches.length}`,
+          `outcome=ambiguous matchCount=${cardLinkResult.matches.length}`
       );
     }
     // `no_match` — not logged here; resolver path is the cheap default.
@@ -1560,7 +1564,7 @@ export class AllegroOfferManagerAdapter
   private resolveCreateOfferStatus(
     publicationStatus: string | undefined,
     hasValidationErrors: boolean,
-    publishImmediately: boolean,
+    publishImmediately: boolean
   ): CreateOfferResultStatus {
     if (hasValidationErrors) {
       return 'draft';
@@ -1592,7 +1596,7 @@ export class AllegroOfferManagerAdapter
    * Returns the final status response, or the last response if still pending after timeout.
    */
   private async pollQuantityCommandStatus(
-    commandId: string,
+    commandId: string
   ): Promise<AllegroQuantityChangeCommandStatusResponse | null> {
     const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = this.quantityPollConfig;
 
@@ -1603,7 +1607,7 @@ export class AllegroOfferManagerAdapter
 
       try {
         const response = await this.httpClient.get<AllegroQuantityChangeCommandStatusResponse>(
-          `/sale/offer-quantity-change-commands/${commandId}`,
+          `/sale/offer-quantity-change-commands/${commandId}`
         );
 
         const tasks = response.data.tasks ?? [];
@@ -1615,11 +1619,11 @@ export class AllegroOfferManagerAdapter
         }
 
         this.logger.debug(
-          `Allegro command ${commandId} still pending (attempt ${attempt}/${maxAttempts}, connection: ${this.connectionId})`,
+          `Allegro command ${commandId} still pending (attempt ${attempt}/${maxAttempts}, connection: ${this.connectionId})`
         );
       } catch (error) {
         this.logger.warn(
-          `Failed to poll Allegro command status (commandId: ${commandId}, attempt ${attempt}/${maxAttempts}): ${(error as Error).message}`,
+          `Failed to poll Allegro command status (commandId: ${commandId}, attempt ${attempt}/${maxAttempts}): ${(error as Error).message}`
         );
       }
 
@@ -1627,7 +1631,7 @@ export class AllegroOfferManagerAdapter
     }
 
     this.logger.warn(
-      `Allegro command ${commandId} did not reach terminal status after ${maxAttempts} polling attempts (connection: ${this.connectionId})`,
+      `Allegro command ${commandId} did not reach terminal status after ${maxAttempts} polling attempts (connection: ${this.connectionId})`
     );
     return null;
   }
@@ -1639,10 +1643,7 @@ export class AllegroOfferManagerAdapter
    * On FAIL: update to 'failed' with error details, then throw
    * On timeout: leave as 'queued', log warning
    */
-  private async pollAndUpdateCommandStatus(
-    commandId: string,
-    offerId: string,
-  ): Promise<void> {
+  private async pollAndUpdateCommandStatus(commandId: string, offerId: string): Promise<void> {
     const result = await this.pollQuantityCommandStatus(commandId);
 
     if (!result) {
@@ -1655,7 +1656,8 @@ export class AllegroOfferManagerAdapter
     if (failedTasks.length > 0) {
       const errorMessages = failedTasks
         .map((t) => {
-          const errDetails = t.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? t.message ?? 'unknown';
+          const errDetails =
+            t.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? t.message ?? 'unknown';
           return `offer ${t.offerId}: ${errDetails}`;
         })
         .join(', ');
@@ -1666,12 +1668,12 @@ export class AllegroOfferManagerAdapter
         }
       } catch (persistError) {
         this.logger.warn(
-          `Failed to persist command failure status (commandId: ${commandId}): ${(persistError as Error).message}`,
+          `Failed to persist command failure status (commandId: ${commandId}): ${(persistError as Error).message}`
         );
       }
 
       throw new Error(
-        `Allegro quantity command ${commandId} failed for offer ${offerId}: ${errorMessages}`,
+        `Allegro quantity command ${commandId} failed for offer ${offerId}: ${errorMessages}`
       );
     }
 
@@ -1681,12 +1683,12 @@ export class AllegroOfferManagerAdapter
       }
     } catch (persistError) {
       this.logger.warn(
-        `Failed to persist command success status (commandId: ${commandId}): ${(persistError as Error).message}`,
+        `Failed to persist command success status (commandId: ${commandId}): ${(persistError as Error).message}`
       );
     }
 
     this.logger.debug(
-      `Allegro quantity command ${commandId} confirmed SUCCESS (connection: ${this.connectionId})`,
+      `Allegro quantity command ${commandId} confirmed SUCCESS (connection: ${this.connectionId})`
     );
   }
 

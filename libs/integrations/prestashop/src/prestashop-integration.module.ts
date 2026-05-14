@@ -13,13 +13,15 @@
  *
  * @module libs/integrations/prestashop/src
  */
-import { Module, OnModuleInit, Inject } from '@nestjs/common';
+import type { OnModuleInit } from '@nestjs/common';
+import { Module, Inject } from '@nestjs/common';
 import {
   IdentifierMappingModule,
   IDENTIFIER_MAPPING_PORT_TOKEN,
   IdentifierMappingPort,
   type Connection,
 } from '@openlinker/core/identifier-mapping';
+import type { AdapterFactoryPort } from '@openlinker/core/integrations';
 import {
   IntegrationsModule,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
@@ -40,7 +42,6 @@ import {
   WebhookSecretProviderPort,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
-  AdapterFactoryPort,
 } from '@openlinker/core/integrations';
 import {
   SyncModule,
@@ -121,7 +122,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly webhookSecretProvider: WebhookSecretProviderPort,
     @Inject(CACHE_PORT_TOKEN)
-    private readonly cache?: CachePort,
+    private readonly cache?: CachePort
   ) {}
 
   onModuleInit(): void {
@@ -151,8 +152,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       schedulerTaskRegistry: this.schedulerTaskRegistry,
       webhookProvisioningRegistry: this.webhookProvisioningRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
-      connectionCredentialsShapeValidatorRegistry:
-        this.connectionCredentialsShapeValidatorRegistry,
+      connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
     };
 
     host.adapterRegistry.register(plugin.manifest);
@@ -161,7 +161,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
         conn: Connection,
         cap: string,
         idMap: IdentifierMappingPort,
-        credRes: CredentialsResolverPort,
+        credRes: CredentialsResolverPort
       ): Promise<T> =>
         plugin.createCapabilityAdapter<T>(conn, cap, {
           ...host,

@@ -8,12 +8,7 @@
  * @module apps/api/src/categories/persistence
  */
 
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  Index,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 @Entity('allegro_category_cache')
 @Index(['connectionId', 'allegroCategoryId'], { unique: true })

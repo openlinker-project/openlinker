@@ -8,9 +8,9 @@
  */
 
 import { InventoryService } from '../inventory.service';
-import { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
+import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
-import { SyncJobQueuePort } from '@openlinker/core/sync';
+import type { SyncJobQueuePort } from '@openlinker/core/sync';
 
 describe('InventoryService', () => {
   let service: InventoryService;
@@ -25,7 +25,7 @@ describe('InventoryService', () => {
       5,
       0,
       null,
-      new Date('2026-01-01T10:00:00.000Z'),
+      new Date('2026-01-01T10:00:00.000Z')
     );
 
     return new InventoryItem(
@@ -35,7 +35,7 @@ describe('InventoryService', () => {
       overrides?.availableQuantity ?? base.availableQuantity,
       overrides?.reservedQuantity ?? base.reservedQuantity,
       overrides?.locationId ?? base.locationId,
-      overrides?.updatedAt ?? base.updatedAt,
+      overrides?.updatedAt ?? base.updatedAt
     );
   };
 
@@ -125,7 +125,7 @@ describe('InventoryService', () => {
     jobQueue.enqueue.mockRejectedValue(new Error('queue unavailable'));
 
     await expect(service.setInventory(input)).rejects.toThrow(
-      'Failed to enqueue inventory propagation job: queue unavailable',
+      'Failed to enqueue inventory propagation job: queue unavailable'
     );
   });
 
@@ -154,9 +154,7 @@ describe('InventoryService', () => {
     inventoryRepository.findByProductAndVariant
       .mockResolvedValueOnce(createItem({ availableQuantity: 5 }))
       .mockResolvedValueOnce(createItem({ availableQuantity: 6 }));
-    inventoryRepository.upsert
-      .mockResolvedValueOnce(first)
-      .mockResolvedValueOnce(second);
+    inventoryRepository.upsert.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
 
     await service.setInventory(first);
     await service.setInventory(second);
@@ -168,7 +166,7 @@ describe('InventoryService', () => {
         options: {
           dedupeKey: 'inventory:propagate:product-id:base:2026-01-01T12:00:00.000Z',
         },
-      }),
+      })
     );
     expect(jobQueue.enqueue).toHaveBeenNthCalledWith(
       2,
@@ -176,7 +174,7 @@ describe('InventoryService', () => {
         options: {
           dedupeKey: 'inventory:propagate:product-id:base:2026-01-01T12:05:00.000Z',
         },
-      }),
+      })
     );
   });
 
@@ -203,8 +201,7 @@ describe('InventoryService', () => {
         options: expect.objectContaining({
           dedupeKey: 'inventory:propagate:product-id:base:2026-01-01T12:00:00.000Z',
         }),
-      }),
+      })
     );
   });
 });
-

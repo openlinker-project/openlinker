@@ -12,7 +12,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddProductContentFieldTable1789000000000 implements MigrationInterface {
   name = 'AddProductContentFieldTable1789000000000';

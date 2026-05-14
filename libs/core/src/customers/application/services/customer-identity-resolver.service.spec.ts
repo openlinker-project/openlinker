@@ -6,27 +6,28 @@
  *
  * @module libs/core/src/customers/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import type { Provider } from '@nestjs/common';
 import { CustomerIdentityResolverService } from './customer-identity-resolver.service';
-import {
-  ConnectionPort,
-  CONNECTION_PORT_TOKEN,
-  IdentifierMappingPort,
-} from '@openlinker/core/identifier-mapping';
+import type { ConnectionPort, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import {
   EmailNormalizerRegistryService,
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
-  IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
-import { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
-import { CustomerIdentityResolutionRequest } from '../../domain/types/customer-identity.types';
+import type { CustomerProjectionRepositoryPort } from '../../domain/ports/customer-projection-repository.port';
+import type { CustomerIdentityResolutionRequest } from '../../domain/types/customer-identity.types';
 import { CustomerProjection } from '../../domain/entities/customer-projection.entity';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN, CUSTOMER_PROJECTION_SERVICE_TOKEN } from '../../customers.tokens';
+import {
+  CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
+  CUSTOMER_PROJECTION_SERVICE_TOKEN,
+} from '../../customers.tokens';
 import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
-import { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
+import type { ICustomerProjectionService } from '../interfaces/customer-projection.service.interface';
 import { hashEmail } from '@openlinker/shared/config';
 
 describe('CustomerIdentityResolverService', () => {
@@ -105,7 +106,7 @@ describe('CustomerIdentityResolverService', () => {
           supportedCapabilities: [],
           displayName: 'Test Adapter',
           version: '1.0.0',
-        }),
+        })
       ),
     };
 
@@ -161,7 +162,7 @@ describe('CustomerIdentityResolverService', () => {
       expect(identifierMapping.getInternalId).toHaveBeenCalledWith(
         'Customer',
         'allegro-buyer-123',
-        'connection-123',
+        'connection-123'
       );
       expect(projectionRepository.findByEmailHash).not.toHaveBeenCalled();
     });
@@ -184,7 +185,7 @@ describe('CustomerIdentityResolverService', () => {
       expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         'Customer',
         'allegro-buyer-123',
-        'connection-123',
+        'connection-123'
       );
       expect(projectionRepository.findByEmailHash).not.toHaveBeenCalled();
     });
@@ -235,7 +236,7 @@ describe('CustomerIdentityResolverService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
       projectionRepository.findByEmailHash.mockResolvedValue([existingProjection]);
       identifierMapping.createMapping.mockResolvedValue(undefined);
@@ -251,7 +252,7 @@ describe('CustomerIdentityResolverService', () => {
         'Customer',
         'allegro-buyer-123',
         'connection-123',
-        'internal-customer-999',
+        'internal-customer-999'
       );
       expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
     });
@@ -274,14 +275,21 @@ describe('CustomerIdentityResolverService', () => {
         new Date(),
         'connection-456',
         new Date(),
-        new Date(),
+        new Date()
       );
       projectionRepository.findByEmailHash.mockResolvedValue([existingProjection]);
       // Simulate concurrent mapping creation - duplicate error
       identifierMapping.createMapping.mockRejectedValue(
-        new DuplicateIdentifierMappingError('Customer', 'allegro-buyer-123', 'allegro', 'connection-123'),
+        new DuplicateIdentifierMappingError(
+          'Customer',
+          'allegro-buyer-123',
+          'allegro',
+          'connection-123'
+        )
       );
-      identifierMapping.getInternalId.mockResolvedValueOnce(null).mockResolvedValueOnce('internal-customer-999');
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('internal-customer-999');
 
       const result = await service.resolveCustomerIdentity(request);
 
@@ -311,7 +319,7 @@ describe('CustomerIdentityResolverService', () => {
         new Date(),
         'connection-1',
         new Date(),
-        new Date(),
+        new Date()
       );
       const projection2 = new CustomerProjection(
         'internal-customer-2',
@@ -322,7 +330,7 @@ describe('CustomerIdentityResolverService', () => {
         new Date(),
         'connection-2',
         new Date(),
-        new Date(),
+        new Date()
       );
       projectionRepository.findByEmailHash.mockResolvedValue([projection1, projection2]);
       identifierMapping.getOrCreateInternalId.mockResolvedValue('internal-customer-new');

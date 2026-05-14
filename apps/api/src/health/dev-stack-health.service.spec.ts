@@ -7,10 +7,10 @@
  *
  * @module apps/api/src/health
  */
-import { DataSource } from 'typeorm';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
-import { RedisClientType } from 'redis';
+import type { DataSource } from 'typeorm';
+import type { HttpService } from '@nestjs/axios';
+import type { ConfigService } from '@nestjs/config';
+import type { RedisClientType } from 'redis';
 import { of, throwError } from 'rxjs';
 import { DevStackHealthService } from './dev-stack-health.service';
 
@@ -35,7 +35,7 @@ describe('DevStackHealthService', () => {
       dataSource as unknown as DataSource,
       redisClient as unknown as RedisClientType,
       httpService as unknown as HttpService,
-      configService as unknown as ConfigService,
+      configService as unknown as ConfigService
     );
   });
 

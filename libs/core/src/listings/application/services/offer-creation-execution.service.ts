@@ -30,23 +30,27 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
-import { OfferManagerPort, isOfferCreator } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { isOfferCreator } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { CreateOfferCommand, CreateOfferResult, CreateOfferValidationError, OfferCreateRejectedException } from '@openlinker/core/listings';
+import type {
+  CreateOfferCommand,
+  CreateOfferResult,
+  CreateOfferValidationError,
+} from '@openlinker/core/listings';
+import { OfferCreateRejectedException } from '@openlinker/core/listings';
 import type { JobOutcome } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
-import { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
+import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
-import {
-  OfferBuilderValidationException,
-  OfferBuilderValidationIssue,
-} from '../../domain/exceptions/offer-builder-validation.exception';
+import type { OfferBuilderValidationIssue } from '../../domain/exceptions/offer-builder-validation.exception';
+import { OfferBuilderValidationException } from '../../domain/exceptions/offer-builder-validation.exception';
 import { OfferCreationInvariantException } from '../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../domain/exceptions/offer-creation-record-not-found.exception';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
-import { OfferCreationError } from '../../domain/types/offer-creation-record.types';
-import {
+import type { OfferCreationError } from '../../domain/types/offer-creation-record.types';
+import type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
 } from '../types/offer-creation-execution.types';
@@ -56,7 +60,7 @@ import {
   OFFER_STATUS_POLL_SERVICE_TOKEN,
 } from '../../listings.tokens';
 import { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
-import { IOfferCreationExecutionService } from '../interfaces/offer-creation-execution.service.interface';
+import type { IOfferCreationExecutionService } from '../interfaces/offer-creation-execution.service.interface';
 import { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
 
 @Injectable()
@@ -73,7 +77,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(OFFER_STATUS_POLL_SERVICE_TOKEN)
-    private readonly offerStatusPoll: IOfferStatusPollService,
+    private readonly offerStatusPoll: IOfferStatusPollService
   ) {}
 
   async executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult> {
@@ -101,11 +105,11 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
 
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       input.connectionId,
-      'OfferManager',
+      'OfferManager'
     );
     if (!isOfferCreator(adapter)) {
       throw new Error(
-        `Adapter for connection ${input.connectionId} does not support Marketplace.createOffer`,
+        `Adapter for connection ${input.connectionId} does not support Marketplace.createOffer`
       );
     }
 
@@ -117,7 +121,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         const updated = await this.offerCreationRecords.updateStatus(
           record.id,
           'failed',
-          this.mapRejectionErrors(error),
+          this.mapRejectionErrors(error)
         );
         return this.buildResult(updated, input.connectionId);
       }
@@ -129,7 +133,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         'Offer',
         result.externalOfferId,
         input.connectionId,
-        input.internalVariantId,
+        input.internalVariantId
       );
     } catch (error) {
       if (!(error instanceof DuplicateIdentifierMappingError)) {
@@ -144,7 +148,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       record.id,
       result.externalOfferId,
       result.status,
-      persistedErrors,
+      persistedErrors
     );
 
     if (finalRecord.status === 'validating') {
@@ -159,7 +163,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         // already created on Allegro and the record is persisted. Log so an
         // operator can manually trigger a retry from the FE if needed.
         this.logger.warn(
-          `Offer created but failed to schedule poll iteration #1 — record will stay 'validating' until an operator retries. recordId=${finalRecord.id} externalOfferId=${result.externalOfferId} connectionId=${input.connectionId} error=${(err as Error).message}`,
+          `Offer created but failed to schedule poll iteration #1 — record will stay 'validating' until an operator retries. recordId=${finalRecord.id} externalOfferId=${result.externalOfferId} connectionId=${input.connectionId} error=${(err as Error).message}`
         );
       }
     }
@@ -195,20 +199,18 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
 
   private buildResult(
     record: OfferCreationRecord,
-    connectionId: string,
+    connectionId: string
   ): ExecuteOfferCreationResult {
     const outcome = this.recordToOutcome(record);
     if (outcome === 'business_failure') {
       this.logger.warn(
-        `Offer creation recorded business_failure. recordId=${record.id} connectionId=${connectionId} errorCount=${record.errors?.length ?? 0}`,
+        `Offer creation recorded business_failure. recordId=${record.id} connectionId=${connectionId} errorCount=${record.errors?.length ?? 0}`
       );
     }
     return { offerCreationRecord: record, outcome };
   }
 
-  private async loadOrCreateRecord(
-    input: ExecuteOfferCreationInput,
-  ): Promise<OfferCreationRecord> {
+  private async loadOrCreateRecord(input: ExecuteOfferCreationInput): Promise<OfferCreationRecord> {
     if (input.offerCreationRecordId) {
       const existing = await this.offerCreationRecords.findById(input.offerCreationRecordId);
       if (!existing) {
@@ -255,7 +257,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
   }
 
   private mapResultValidationErrors(
-    errors: CreateOfferValidationError[] | undefined,
+    errors: CreateOfferValidationError[] | undefined
   ): OfferCreationError[] | null {
     if (!errors || errors.length === 0) {
       return null;

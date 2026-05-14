@@ -49,13 +49,13 @@ import {
   AiProviderSettingsNotApplicableError,
   AiRateLimitError,
   AiTimeoutError,
-} from '@openlinker/core/ai';
+
+  AiProviderCredentialsPort} from '@openlinker/core/ai';
 import type {
   AiCompletionInput,
   AiCompletionPort,
   AiCompletionResult,
-  AiProvider,
-  AiProviderCredentialsPort,
+  AiProvider
 } from '@openlinker/core/ai';
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 2048;

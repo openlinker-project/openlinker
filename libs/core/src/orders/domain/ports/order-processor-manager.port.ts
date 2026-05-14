@@ -13,7 +13,7 @@
  * @module libs/core/src/orders/domain/ports
  * @see {@link OrderSourcePort} for read-only order operations
  */
-import { OrderCreate, OrderRef } from '../types/order-processor.types';
+import type { OrderCreate, OrderRef } from '../types/order-processor.types';
 
 /**
  * Order Processor Manager Port
@@ -35,5 +35,3 @@ export interface OrderProcessorManagerPort {
    */
   createOrder(order: OrderCreate): Promise<OrderRef>;
 }
-
-

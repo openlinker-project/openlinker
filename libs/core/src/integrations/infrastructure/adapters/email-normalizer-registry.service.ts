@@ -24,7 +24,7 @@
  * @see {@link EmailNormalizerPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { EmailNormalizerPort } from '../../domain/ports/email-normalizer.port';
+import type { EmailNormalizerPort } from '../../domain/ports/email-normalizer.port';
 import { DEFAULT_EMAIL_NORMALIZER } from './default-email-normalizer';
 
 @Injectable()

@@ -9,15 +9,13 @@
  * @module apps/api/src/sync/application/services/__tests__
  */
 import { SchedulerService } from '../scheduler.service';
-import { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
-import {
-  JobEnqueuePort,
-  SchedulerTaskConfig,
-  SchedulerTaskRegistryService,
-} from '@openlinker/core/sync';
-import { IIntegrationsService } from '@openlinker/core/integrations';
-import { SchedulerRegistry } from '@nestjs/schedule';
-import { ConfigService } from '@nestjs/config';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { Connection } from '@openlinker/core/identifier-mapping';
+import type { JobEnqueuePort, SchedulerTaskConfig } from '@openlinker/core/sync';
+import { SchedulerTaskRegistryService } from '@openlinker/core/sync';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { SchedulerRegistry } from '@nestjs/schedule';
+import type { ConfigService } from '@nestjs/config';
 
 describe('SchedulerService', () => {
   let service: SchedulerService;
@@ -39,12 +37,12 @@ describe('SchedulerService', () => {
       new Date(),
       new Date(),
       undefined,
-      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
     );
 
   const makeTask = (
     taskId: string,
-    overrides: Partial<SchedulerTaskConfig> = {},
+    overrides: Partial<SchedulerTaskConfig> = {}
   ): SchedulerTaskConfig => ({
     taskId,
     platformType: 'allegro',
@@ -89,7 +87,7 @@ describe('SchedulerService', () => {
       integrationsService,
       configService,
       schedulerRegistry,
-      schedulerTaskRegistry,
+      schedulerTaskRegistry
     );
   });
 
@@ -145,7 +143,9 @@ describe('SchedulerService', () => {
     it('should schedule plugin-contributed tasks drained from the registry', () => {
       configService.get.mockImplementation(defaultConfigGet);
       schedulerTaskRegistry.register(makeTask('plugin-orders-poll'));
-      schedulerTaskRegistry.register(makeTask('plugin-offers-sync', { cronExpression: '*/30 * * * *' }));
+      schedulerTaskRegistry.register(
+        makeTask('plugin-offers-sync', { cronExpression: '*/30 * * * *' })
+      );
 
       service.onApplicationBootstrap();
 
@@ -173,7 +173,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
       schedulerTaskRegistry.register(
-        makeTask('gated-plugin-task', { enabledEnvVar: 'OL_PLUGIN_TASK_ENABLED' }),
+        makeTask('gated-plugin-task', { enabledEnvVar: 'OL_PLUGIN_TASK_ENABLED' })
       );
 
       service.onApplicationBootstrap();
@@ -192,7 +192,7 @@ describe('SchedulerService', () => {
         ['master-inventory-sync', { stop: mockStopB }],
       ]);
       schedulerRegistry.getCronJobs.mockReturnValue(
-        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>,
+        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>
       );
 
       service.onModuleDestroy();
@@ -211,10 +211,17 @@ describe('SchedulerService', () => {
 
     it('should not throw when stopping a cron job fails', () => {
       const cronJobs = new Map([
-        ['bad-job', { stop: jest.fn().mockImplementation(() => { throw new Error('stop failed'); }) }],
+        [
+          'bad-job',
+          {
+            stop: jest.fn().mockImplementation(() => {
+              throw new Error('stop failed');
+            }),
+          },
+        ],
       ]);
       schedulerRegistry.getCronJobs.mockReturnValue(
-        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>,
+        cronJobs as unknown as ReturnType<SchedulerRegistry['getCronJobs']>
       );
 
       expect(() => service.onModuleDestroy()).not.toThrow();
@@ -264,7 +271,7 @@ describe('SchedulerService', () => {
       await expect(
         (
           service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
-        ).executeTask(task),
+        ).executeTask(task)
       ).resolves.not.toThrow();
 
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
@@ -284,7 +291,7 @@ describe('SchedulerService', () => {
       await expect(
         (
           service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
-        ).executeTask(task),
+        ).executeTask(task)
       ).resolves.not.toThrow();
 
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();

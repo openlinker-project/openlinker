@@ -7,14 +7,7 @@
  *
  * @module libs/core/src/orders/infrastructure/persistence/entities
  */
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 /**
  * Sync status JSONB structure

@@ -7,7 +7,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
 import { createTestConnection } from './helpers/test-connection.helper';
@@ -67,7 +72,7 @@ describe('Order Destination Retry Integration', () => {
         externalId: 'allegro-order-1',
         platformType: 'allegro',
         connectionId: sourceConnection.id,
-      }),
+      })
     );
 
     const response = await http
@@ -97,7 +102,7 @@ describe('Order Destination Retry Integration', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     const row = detail.body.syncStatus.find(
-      (s: { destinationConnectionId: string }) => s.destinationConnectionId === destConnection.id,
+      (s: { destinationConnectionId: string }) => s.destinationConnectionId === destConnection.id
     );
     expect(row?.status).toBe('pending');
   });
@@ -158,8 +163,6 @@ describe('Order Destination Retry Integration', () => {
     const http = harness.getHttp();
     const unknownConnectionId = '99999999-9999-4999-8999-999999999999';
 
-    await http
-      .post(`/orders/ol_order_x/destinations/${unknownConnectionId}/retry`)
-      .expect(401);
+    await http.post(`/orders/ol_order_x/destinations/${unknownConnectionId}/retry`).expect(401);
   });
 });

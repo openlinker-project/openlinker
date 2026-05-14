@@ -16,8 +16,8 @@
  */
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import type { ConnectionConfigShapeValidatorPort } from '@openlinker/core/integrations';
 import {
-  ConnectionConfigShapeValidatorPort,
   InvalidConnectionConfigException,
   flattenValidationErrors,
 } from '@openlinker/core/integrations';
@@ -36,10 +36,7 @@ export class PrestashopConnectionConfigShapeValidatorAdapter
     });
 
     if (errors.length > 0) {
-      throw new InvalidConnectionConfigException(
-        this.pluginName,
-        flattenValidationErrors(errors),
-      );
+      throw new InvalidConnectionConfigException(this.pluginName, flattenValidationErrors(errors));
     }
   }
 }

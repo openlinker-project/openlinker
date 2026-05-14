@@ -17,20 +17,18 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOfferCreationRecordRequestPayload1787000000000 implements MigrationInterface {
   name = 'AddOfferCreationRecordRequestPayload1787000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "offer_creation_records" ADD COLUMN IF NOT EXISTS "request" jsonb`,
+      `ALTER TABLE "offer_creation_records" ADD COLUMN IF NOT EXISTS "request" jsonb`
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "offer_creation_records" DROP COLUMN IF EXISTS "request"`,
-    );
+    await queryRunner.query(`ALTER TABLE "offer_creation_records" DROP COLUMN IF EXISTS "request"`);
   }
 }

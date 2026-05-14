@@ -18,7 +18,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOfferCreationRecordExternalOfferIndex1786000000000 implements MigrationInterface {
   name = 'AddOfferCreationRecordExternalOfferIndex1786000000000';
@@ -33,7 +33,7 @@ export class AddOfferCreationRecordExternalOfferIndex1786000000000 implements Mi
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_external_offer_connection"`,
+      `DROP INDEX IF EXISTS "public"."IDX_offer_creation_records_external_offer_connection"`
     );
   }
 }

@@ -36,9 +36,7 @@ import { Type } from 'class-transformer';
 // Sibling-context types in same package — relative path. The published
 // barrel re-exports them, but reaching for the self-package alias from
 // inside the package itself creates a cycle through the compiled `dist/`.
-import {
-  AllegroSafetyInformationTypeValues,
-} from '../../domain/types/allegro-seller-defaults.types';
+import { AllegroSafetyInformationTypeValues } from '../../domain/types/allegro-seller-defaults.types';
 import { PolishVoivodeshipValues } from '../../domain/types/allegro-location.types';
 import { AllegroEnvironmentValues } from '../../domain/types/allegro-config.types';
 
@@ -102,7 +100,8 @@ export class AllegroSafetyInformationDto {
   @ValidateIf((o: AllegroSafetyInformationDto) => o.type === 'ATTACHMENTS')
   @IsArray()
   @ArrayMinSize(1, {
-    message: 'safetyInformation.attachments must contain at least 1 attachment when type is ATTACHMENTS',
+    message:
+      'safetyInformation.attachments must contain at least 1 attachment when type is ATTACHMENTS',
   })
   @ArrayMaxSize(20, {
     message: 'safetyInformation.attachments cannot contain more than 20 attachments',

@@ -12,7 +12,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddPromptTemplatesTable1790000000000 implements MigrationInterface {
   name = 'AddPromptTemplatesTable1790000000000';

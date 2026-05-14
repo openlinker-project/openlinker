@@ -12,7 +12,7 @@
  *
  * @module libs/core/src/identifier-mapping/domain/entities
  */
-import { MappingContext } from '../types/identifier-mapping.types';
+import type { MappingContext } from '../types/identifier-mapping.types';
 
 export class IdentifierMapping {
   constructor(
@@ -24,7 +24,6 @@ export class IdentifierMapping {
     public readonly connectionId: string,
     public readonly context: MappingContext | null,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly updatedAt: Date
   ) {}
 }
-

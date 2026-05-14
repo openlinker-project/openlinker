@@ -6,14 +6,15 @@
  *
  * @module libs/core/src/identifier-mapping/infrastructure/persistence/repositories
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import type { Repository, SelectQueryBuilder } from 'typeorm';
 import { ConnectionRepository } from './connection.repository';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
-import {
+import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
@@ -46,7 +47,7 @@ describe('ConnectionRepository', () => {
     new Date('2025-01-01'),
     new Date('2025-01-01'),
     'prestashop.webservice.v1',
-    ['ProductMaster'],
+    ['ProductMaster']
   );
 
   beforeEach(async () => {
@@ -85,9 +86,7 @@ describe('ConnectionRepository', () => {
     it('should throw ConnectionNotFoundException when not found', async () => {
       ormRepository.findOne.mockResolvedValue(null);
 
-      await expect(repository.get('non-existent')).rejects.toThrow(
-        ConnectionNotFoundException,
-      );
+      await expect(repository.get('non-existent')).rejects.toThrow(ConnectionNotFoundException);
     });
   });
 
@@ -118,7 +117,7 @@ describe('ConnectionRepository', () => {
 
       expect(queryBuilder.andWhere).toHaveBeenCalledWith(
         'connection.platformType = :platformType',
-        { platformType: 'prestashop' },
+        { platformType: 'prestashop' }
       );
     });
 
@@ -132,10 +131,9 @@ describe('ConnectionRepository', () => {
       const filters: ConnectionFilters = { status: 'active' };
       await repository.list(filters);
 
-      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-        'connection.status = :status',
-        { status: 'active' },
-      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('connection.status = :status', {
+        status: 'active',
+      });
     });
 
     it('should filter by both platformType and status', async () => {
@@ -226,9 +224,9 @@ describe('ConnectionRepository', () => {
     it('should throw ConnectionNotFoundException when connection does not exist', async () => {
       ormRepository.findOne.mockResolvedValue(null);
 
-      await expect(
-        repository.update('non-existent', { name: 'Updated' }),
-      ).rejects.toThrow(ConnectionNotFoundException);
+      await expect(repository.update('non-existent', { name: 'Updated' })).rejects.toThrow(
+        ConnectionNotFoundException
+      );
     });
 
     it('should update only provided fields', async () => {
@@ -253,7 +251,7 @@ describe('ConnectionRepository', () => {
         expect.objectContaining({
           status: 'disabled',
           name: 'Test Connection',
-        }),
+        })
       );
     });
   });
@@ -273,4 +271,3 @@ describe('ConnectionRepository', () => {
     });
   });
 });
-

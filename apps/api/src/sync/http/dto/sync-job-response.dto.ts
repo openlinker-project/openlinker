@@ -7,8 +7,14 @@
  * @module apps/api/src/sync/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { JobOutcomeValues, JobStatusValues, JobTypeValues } from '@openlinker/core/sync';
-import type { JobOutcome, JobStatus, JobType } from '@openlinker/core/sync';
+import {
+  JobOutcomeValues,
+  JobStatusValues,
+  JobTypeValues,
+  JobStatus,
+  JobType,
+} from '@openlinker/core/sync';
+import type { JobOutcome } from '@openlinker/core/sync';
 
 export class SyncJobResponseDto {
   @ApiProperty({ description: 'Job UUID' })

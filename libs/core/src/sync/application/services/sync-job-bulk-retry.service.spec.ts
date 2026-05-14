@@ -6,13 +6,15 @@
  *
  * @module libs/core/src/sync/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { SyncJobBulkRetryService } from './sync-job-bulk-retry.service';
-import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
+import type { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
-import { EVENT_PUBLISHER_TOKEN, EventPublisherPort } from '@openlinker/core/events';
+import type { EventPublisherPort } from '@openlinker/core/events';
+import { EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
+import type { BulkRetryResult } from '../../domain/types/sync-job.types';
 import {
-  BulkRetryResult,
   BULK_RETRY_MAX_BATCH_SIZE,
   SYNC_JOBS_EVENT_STREAM,
 } from '../../domain/types/sync-job.types';
@@ -56,7 +58,7 @@ describe('SyncJobBulkRetryService', () => {
     expect(mockRepository.requeueDeadJobsInGroup).toHaveBeenCalledWith(
       connectionId,
       jobType,
-      BULK_RETRY_MAX_BATCH_SIZE,
+      BULK_RETRY_MAX_BATCH_SIZE
     );
   });
 

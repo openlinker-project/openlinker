@@ -9,7 +9,7 @@
  *
  * @module libs/core/src/customers/domain/entities
  */
-import { AddressType } from '../types/customer-projection.types';
+import type { AddressType } from '../types/customer-projection.types';
 
 export class CustomerAddressProjection {
   constructor(
@@ -23,6 +23,6 @@ export class CustomerAddressProjection {
     public readonly countryIso2: string | null,
     public readonly lastSeenAt: Date,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly updatedAt: Date
   ) {}
 }

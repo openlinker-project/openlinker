@@ -12,10 +12,10 @@
  * @module libs/core/src/customers/domain/ports
  * @see {@link CustomerProjectionRepository} for the implementation
  */
-import { CustomerProjection } from '../entities/customer-projection.entity';
-import { CustomerAddressProjection } from '../entities/customer-address-projection.entity';
-import { DestinationAddressMapping } from '../entities/destination-address-mapping.entity';
-import {
+import type { CustomerProjection } from '../entities/customer-projection.entity';
+import type { CustomerAddressProjection } from '../entities/customer-address-projection.entity';
+import type { DestinationAddressMapping } from '../entities/destination-address-mapping.entity';
+import type {
   AddressType,
   CustomerProjectionFilters,
   CustomerProjectionPagination,
@@ -40,7 +40,7 @@ export interface CustomerProjectionRepositoryPort {
    */
   findMany(
     filters: CustomerProjectionFilters,
-    pagination: CustomerProjectionPagination,
+    pagination: CustomerProjectionPagination
   ): Promise<PaginatedCustomerProjections>;
 
   /**
@@ -68,7 +68,7 @@ export interface CustomerProjectionRepositoryPort {
     internalCustomerId: string,
     destinationConnectionId: string,
     addressHash: string,
-    addressType: AddressType,
+    addressType: AddressType
   ): Promise<DestinationAddressMapping | null>;
 
   /**
@@ -76,6 +76,6 @@ export interface CustomerProjectionRepositoryPort {
    * Idempotent operation for address reuse tracking
    */
   upsertDestinationAddressMapping(
-    mapping: DestinationAddressMapping,
+    mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping>;
 }

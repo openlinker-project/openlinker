@@ -18,7 +18,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 const VARIABLES_JSON = JSON.stringify([
   { name: 'product.name', type: 'string', required: true },
@@ -78,14 +78,14 @@ export class SeedPromptTemplates1790000000001 implements MigrationInterface {
         VARIABLES_JSON,
         ALLEGRO_SYSTEM_PROMPT,
         ALLEGRO_USER_TEMPLATE,
-      ],
+      ]
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `DELETE FROM "prompt_templates" WHERE "key" = $1 AND "version" = 1 AND "channel" IN ('prestashop', 'allegro')`,
-      ['offer.description.suggest'],
+      ['offer.description.suggest']
     );
   }
 }

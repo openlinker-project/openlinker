@@ -7,10 +7,17 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {InventoryMasterPort}
  */
-import { InventoryMasterPort, Inventory } from '@openlinker/core/inventory';
-import { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
-import { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { IPrestashopInventoryMapper, PrestashopStockAvailable } from '../mappers/prestashop.mapper.interface';
+import type {
+  InventoryMasterPort,
+  Inventory,
+  InventoryAdjustment,
+} from '@openlinker/core/inventory';
+import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import type {
+  IPrestashopInventoryMapper,
+  PrestashopStockAvailable,
+} from '../mappers/prestashop.mapper.interface';
 import {
   PrestashopNotSupportedException,
   PrestashopResourceNotFoundException,
@@ -29,15 +36,19 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly inventoryMapper: IPrestashopInventoryMapper,
-    private readonly connection: Connection,
+    private readonly connection: Connection
   ) {}
 
   async getInventory(productId: string, _locationId?: string): Promise<Inventory> {
-    this.logger.debug(`Getting inventory for product: ${productId} (connection: ${this.connection.id})`);
+    this.logger.debug(
+      `Getting inventory for product: ${productId} (connection: ${this.connection.id})`
+    );
 
     // Resolve internal ID → external ID
     const externalIds = await this.identifierMapping.getExternalIds('Product', productId);
-    const prestashopProductId = externalIds.find((e: { connectionId: string }) => e.connectionId === this.connection.id);
+    const prestashopProductId = externalIds.find(
+      (e: { connectionId: string }) => e.connectionId === this.connection.id
+    );
 
     if (!prestashopProductId) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
@@ -45,7 +56,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         'Product',
         productId,
-        this.connection.id,
+        this.connection.id
       );
       throw error;
     }
@@ -69,7 +80,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
           id_product: psProductId,
           id_product_attribute: 0,
         },
-      },
+      }
     );
 
     if (stockRecords.length === 0) {
@@ -79,7 +90,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
           custom: {
             id_product_attribute: psProductId,
           },
-        },
+        }
       );
     }
 
@@ -89,7 +100,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
         `Inventory not found for product: ${productId}`,
         'Inventory',
         productId,
-        this.connection.id,
+        this.connection.id
       );
       throw error;
     }
@@ -108,7 +119,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       {
         parentEntityType: 'Product',
         parentInternalId: productId,
-      },
+      }
     );
 
     return {
@@ -123,12 +134,12 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
   }
 
   // Write operations - not supported in MVP
-  adjustInventory(_adjustment: import('@openlinker/core/inventory').InventoryAdjustment): Promise<Inventory> {
+  adjustInventory(_adjustment: InventoryAdjustment): Promise<Inventory> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const error = new PrestashopNotSupportedException(
       'Inventory adjustment is not supported in MVP. PrestaShop WebService API does not support stock updates in MVP scope.',
       'adjustInventory',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -138,7 +149,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     const error = new PrestashopNotSupportedException(
       'Inventory reservation is not supported in MVP. PrestaShop WebService API does not support reservation operations.',
       'reserveInventory',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
@@ -148,9 +159,8 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     const error = new PrestashopNotSupportedException(
       'Inventory release is not supported in MVP. PrestaShop WebService API does not support release operations.',
       'releaseInventory',
-      'PrestaShop admin interface',
+      'PrestaShop admin interface'
     );
     return Promise.reject(error);
   }
 }
-

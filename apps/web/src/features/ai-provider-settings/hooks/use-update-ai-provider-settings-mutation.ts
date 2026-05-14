@@ -10,10 +10,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { aiProviderSettingsQueryKeys } from '../api/ai-provider-settings.query-keys';
-import type {
-  AiProvider,
-  UpdateAiProviderKeyInput,
-} from '../api/ai-provider-settings.types';
+import type { AiProvider, UpdateAiProviderKeyInput } from '../api/ai-provider-settings.types';
 
 export interface UpdateAiProviderKeyVariables {
   provider: AiProvider;

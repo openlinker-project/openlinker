@@ -11,7 +11,7 @@
  * Generated: 2026-01-11
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class FixIdentifierMappingsUniqueConstraint1771000000000 implements MigrationInterface {
   name = 'FixIdentifierMappingsUniqueConstraint1771000000000';

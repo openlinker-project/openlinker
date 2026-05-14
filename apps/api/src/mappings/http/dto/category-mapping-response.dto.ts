@@ -7,7 +7,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CategoryMapping } from '@openlinker/core/mappings';
+import type { CategoryMapping } from '@openlinker/core/mappings';
 
 export class CategoryMappingResponseDto {
   @ApiProperty()

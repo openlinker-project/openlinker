@@ -8,7 +8,7 @@
  * @module apps/api/src/webhooks/application/interfaces
  * @see {@link WebhookService} for the implementation
  */
-import { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
+import type { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
 
 export interface IWebhookService {
   /**
@@ -36,6 +36,6 @@ export interface IWebhookService {
     connectionId: string,
     request: WebhookRequestDto,
     rawBody: Buffer,
-    headers: Record<string, string>,
+    headers: Record<string, string>
   ): Promise<void>;
 }

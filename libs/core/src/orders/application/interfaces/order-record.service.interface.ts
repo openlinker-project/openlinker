@@ -7,8 +7,8 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
-import { Order } from '../../domain/types/order.types';
-import { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
+import type { Order } from '../../domain/types/order.types';
+import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 
 export interface IOrderRecordService {
@@ -27,7 +27,7 @@ export interface IOrderRecordService {
   persistOrder(
     order: Order,
     sourceConnectionId: string,
-    sourceEventId: string | null,
+    sourceEventId: string | null
   ): Promise<OrderRecord>;
 
   /**
@@ -43,7 +43,7 @@ export interface IOrderRecordService {
   updateSyncStatus(
     internalOrderId: string,
     destinationConnectionId: string,
-    status: OrderSyncStatus,
+    status: OrderSyncStatus
   ): Promise<void>;
 
   /**
@@ -61,7 +61,7 @@ export interface IOrderRecordService {
     internalOrderId: string,
     customerId: string | null,
     sourceConnectionId: string,
-    sourceEventId: string | null,
+    sourceEventId: string | null
   ): Promise<OrderRecord>;
 
   /**

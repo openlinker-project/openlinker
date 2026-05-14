@@ -10,17 +10,14 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { JOB_ENQUEUE_TOKEN } from '../../sync.tokens';
 import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
-import { SyncJobRequest } from '../../domain/types/sync-job.types';
-import {
-  EnqueueJobRequest,
-  SyncJobQueuePort,
-} from '../ports/sync-job-queue.port';
+import type { SyncJobRequest } from '../../domain/types/sync-job.types';
+import type { EnqueueJobRequest, SyncJobQueuePort } from '../ports/sync-job-queue.port';
 
 @Injectable()
 export class SyncJobQueueService implements SyncJobQueuePort {
   constructor(
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async enqueue(request: EnqueueJobRequest): Promise<string> {
@@ -36,7 +33,7 @@ export class SyncJobQueueService implements SyncJobQueuePort {
         // The current Redis-stream enqueue pipeline does not support delayed jobs.
         // Fail fast rather than silently dropping delay semantics.
         throw new Error(
-          `Delayed enqueue not supported (delayMs=${req.options.delayMs}) for job type ${req.type}`,
+          `Delayed enqueue not supported (delayMs=${req.options.delayMs}) for job type ${req.type}`
         );
       }
 
@@ -54,4 +51,3 @@ export class SyncJobQueueService implements SyncJobQueuePort {
     return jobIds;
   }
 }
-

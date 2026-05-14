@@ -8,15 +8,9 @@
  * @module libs/core/src/listings/infrastructure/persistence/entities
  * @see {@link SellerPoliciesCacheRepositoryPort} for the domain port
  */
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  PrimaryColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
-import type { SellerPolicies } from '@openlinker/core/listings';
+import { SellerPolicies } from '@openlinker/core/listings';
 
 @Entity('seller_policies_cache')
 export class SellerPoliciesCacheOrmEntity {

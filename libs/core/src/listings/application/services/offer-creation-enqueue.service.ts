@@ -18,7 +18,8 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import { OfferManagerPort, isOfferCreator } from '@openlinker/core/listings';
+import type { OfferManagerPort } from '@openlinker/core/listings';
+import { isOfferCreator } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   JobEnqueuePort,
@@ -32,7 +33,7 @@ import {
   type OfferCreationRequestSnapshot,
 } from '../../domain/types/offer-creation-request-snapshot.types';
 import { OFFER_CREATION_RECORD_REPOSITORY_TOKEN } from '../../listings.tokens';
-import { IOfferCreationEnqueueService } from '../interfaces/offer-creation-enqueue.service.interface';
+import type { IOfferCreationEnqueueService } from '../interfaces/offer-creation-enqueue.service.interface';
 import type {
   EnqueueOfferCreationInput,
   EnqueueOfferCreationResult,
@@ -46,7 +47,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     @Inject(OFFER_CREATION_RECORD_REPOSITORY_TOKEN)
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async enqueueCreation(input: EnqueueOfferCreationInput): Promise<EnqueueOfferCreationResult> {
@@ -55,7 +56,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     //    exception for each failure mode.
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       input.connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     // 2. `Marketplace` is supported, but `createOffer` is an optional
@@ -63,7 +64,7 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     //    "unknown connection" from "this adapter reads but can't create".
     if (!isOfferCreator(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${input.connectionId} does not support offer creation`,
+        `Adapter for connection ${input.connectionId} does not support offer creation`
       );
     }
 

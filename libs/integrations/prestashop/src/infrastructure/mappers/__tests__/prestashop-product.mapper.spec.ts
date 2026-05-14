@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopProductMapper } from '../prestashop-product.mapper';
-import { PrestashopProduct, PrestashopCombination } from '../prestashop.mapper.interface';
+import type { PrestashopProduct, PrestashopCombination } from '../prestashop.mapper.interface';
 
 const STOREFRONT_BASE_URL = 'https://shop.test';
 
@@ -245,7 +245,8 @@ describe('PrestashopProductMapper', () => {
         description: {
           language: [
             {
-              '#text': '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>',
+              '#text':
+                '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>',
               '@_id': '1',
             },
           ],
@@ -255,7 +256,9 @@ describe('PrestashopProductMapper', () => {
       };
 
       const result = mapper.mapProduct(prestashopProduct, 1);
-      expect(result.description).toBe('<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>');
+      expect(result.description).toBe(
+        '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy.</p>'
+      );
     });
 
     it('should handle real PrestaShop XML structure (from API response)', () => {
@@ -279,7 +282,8 @@ describe('PrestashopProductMapper', () => {
         description: {
           language: [
             {
-              '#text': '<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy. Studio Design\' PolyFaune collection features classic products with colorful patterns, inspired by the traditional japanese origamis. To wear with a chino or jeans. The sublimation textile printing process provides an exceptional color rendering and a color, guaranteed overtime.</p>',
+              '#text':
+                "<p>Symbol of lightness and delicacy, the hummingbird evokes curiosity and joy. Studio Design' PolyFaune collection features classic products with colorful patterns, inspired by the traditional japanese origamis. To wear with a chino or jeans. The sublimation textile printing process provides an exceptional color rendering and a color, guaranteed overtime.</p>",
               '@_id': '1',
             },
           ],
@@ -339,10 +343,7 @@ describe('PrestashopProductMapper', () => {
         price: '19.99',
         associations: {
           categories: {
-            category: [
-              { id: '5' },
-              { id: '10' },
-            ],
+            category: [{ id: '5' }, { id: '10' }],
           },
         },
       };
@@ -601,10 +602,7 @@ describe('PrestashopProductMapper', () => {
         reference: 'TEST-001-RED',
         associations: {
           product_option_values: {
-            product_option_value: [
-              { id: '20' },
-              { id: '30' },
-            ],
+            product_option_value: [{ id: '20' }, { id: '30' }],
           },
         },
       };
@@ -687,6 +685,3 @@ describe('PrestashopProductMapper', () => {
     });
   });
 });
-
-
-

@@ -3,12 +3,11 @@
  *
  * @module apps/api/src/cursors/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CursorsController } from './cursors.controller';
-import {
-  CONNECTION_CURSOR_REPOSITORY_TOKEN,
-} from '@openlinker/core/sync';
+import { CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import type { ConnectionCursorRepositoryPort, ConnectionCursor } from '@openlinker/core/sync';
 
 describe('CursorsController', () => {
@@ -73,7 +72,7 @@ describe('CursorsController', () => {
 
       expect(repository.findMany).toHaveBeenCalledWith(
         { connectionId: 'conn-001' },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
 
@@ -102,9 +101,9 @@ describe('CursorsController', () => {
     it('should throw NotFoundException when cursor not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(
-        controller.getCursor('conn-999', 'nonexistent.key'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.getCursor('conn-999', 'nonexistent.key')).rejects.toThrow(
+        NotFoundException
+      );
     });
   });
 });

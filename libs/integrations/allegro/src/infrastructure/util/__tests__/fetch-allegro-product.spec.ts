@@ -10,12 +10,9 @@
  */
 import type { CachePort } from '@openlinker/shared';
 import { CatalogProductNotFoundException } from '@openlinker/core/listings';
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import {
-  fetchAllegroProduct,
-  mapAllegroProductDtoToNeutral,
-} from '../fetch-allegro-product';
+import { fetchAllegroProduct, mapAllegroProductDtoToNeutral } from '../fetch-allegro-product';
 
 describe('fetchAllegroProduct', () => {
   let httpClient: jest.Mocked<IAllegroHttpClient>;
@@ -99,7 +96,7 @@ describe('fetchAllegroProduct', () => {
     expect(cache.set).toHaveBeenCalledWith(
       'allegro:product-detail:p1',
       expect.objectContaining({ id: 'p1', name: 'iPhone 5s' }),
-      expect.any(Number),
+      expect.any(Number)
     );
   });
 
@@ -119,11 +116,11 @@ describe('fetchAllegroProduct', () => {
   it('translates Allegro 404 into CatalogProductNotFoundException; does NOT cache', async () => {
     cache.get.mockResolvedValue(null);
     httpClient.get.mockRejectedValue(
-      new AllegroApiException('Not found', 404, '{"errors":[]}', '/sale/products/missing'),
+      new AllegroApiException('Not found', 404, '{"errors":[]}', '/sale/products/missing')
     );
 
     await expect(fetchAllegroProduct(httpClient, cache, 'missing')).rejects.toBeInstanceOf(
-      CatalogProductNotFoundException,
+      CatalogProductNotFoundException
     );
     expect(cache.set).not.toHaveBeenCalled();
   });

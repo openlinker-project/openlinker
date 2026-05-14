@@ -7,17 +7,20 @@
  * @module libs/core/src/inventory/application/services
  */
 
-import { UpdateOfferQuantityCommand, UpdateOfferQuantitiesBatchCommand, UpdateOfferQuantitiesBatchResult } from '@openlinker/core/listings';
+import type {
+  UpdateOfferQuantityCommand,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+} from '@openlinker/core/listings';
 
 export interface IInventorySyncService {
   updateOfferQuantity(
     connectionId: string,
-    cmd: UpdateOfferQuantityCommand,
+    cmd: UpdateOfferQuantityCommand
   ): Promise<UpdateOfferQuantitiesBatchResult>;
 
   updateOfferQuantities(
     connectionId: string,
-    cmd: UpdateOfferQuantitiesBatchCommand,
+    cmd: UpdateOfferQuantitiesBatchCommand
   ): Promise<UpdateOfferQuantitiesBatchResult>;
 }
-

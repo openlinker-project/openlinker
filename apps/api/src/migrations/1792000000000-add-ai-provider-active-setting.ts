@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddAiProviderActiveSetting1792000000000 implements MigrationInterface {
   name = 'AddAiProviderActiveSetting1792000000000';

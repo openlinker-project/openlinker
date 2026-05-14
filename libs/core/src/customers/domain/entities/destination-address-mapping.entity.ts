@@ -10,7 +10,7 @@
  *
  * @module libs/core/src/customers/domain/entities
  */
-import { AddressType } from '../types/customer-projection.types';
+import type { AddressType } from '../types/customer-projection.types';
 
 export class DestinationAddressMapping {
   constructor(
@@ -20,6 +20,6 @@ export class DestinationAddressMapping {
     public readonly addressType: AddressType,
     public readonly destinationAddressId: string,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly updatedAt: Date
   ) {}
 }

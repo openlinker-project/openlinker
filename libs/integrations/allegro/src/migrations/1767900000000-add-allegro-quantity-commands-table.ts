@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddAllegroQuantityCommandsTable1767900000000 implements MigrationInterface {
   name = 'AddAllegroQuantityCommandsTable1767900000000';
@@ -59,5 +59,3 @@ export class AddAllegroQuantityCommandsTable1767900000000 implements MigrationIn
     await queryRunner.query(`DROP TABLE "allegro_quantity_commands"`);
   }
 }
-
-

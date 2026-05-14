@@ -6,9 +6,11 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/persistence/repositories/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, QueryFailedError, SelectQueryBuilder } from 'typeorm';
+import type { Repository, SelectQueryBuilder } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 import { AllegroQuantityCommandRepository } from '../allegro-quantity-command.repository';
 import { AllegroQuantityCommandOrmEntity } from '../../entities/allegro-quantity-command.orm-entity';
 import { AllegroQuantityCommand } from '../../../../domain/entities/allegro-quantity-command.entity';
@@ -20,7 +22,9 @@ describe('AllegroQuantityCommandRepository', () => {
   let repository: AllegroQuantityCommandRepository;
   let ormRepository: jest.Mocked<Repository<AllegroQuantityCommandOrmEntity>>;
 
-  const createOrmEntity = (overrides: Partial<AllegroQuantityCommandOrmEntity> = {}): AllegroQuantityCommandOrmEntity => {
+  const createOrmEntity = (
+    overrides: Partial<AllegroQuantityCommandOrmEntity> = {}
+  ): AllegroQuantityCommandOrmEntity => {
     const entity = new AllegroQuantityCommandOrmEntity();
     entity.id = overrides.id || randomUUID();
     entity.commandId = overrides.commandId || 'cmd-123';
@@ -34,14 +38,16 @@ describe('AllegroQuantityCommandRepository', () => {
     return entity;
   };
 
-  const createDomainEntity = (overrides: Partial<AllegroQuantityCommand> = {}): AllegroQuantityCommand => {
+  const createDomainEntity = (
+    overrides: Partial<AllegroQuantityCommand> = {}
+  ): AllegroQuantityCommand => {
     return AllegroQuantityCommand.create(
       overrides.commandId || 'cmd-123',
       overrides.connectionId || randomUUID(),
       overrides.offerId || 'offer-456',
       overrides.quantity ?? 10,
       overrides.status || 'queued',
-      overrides.error,
+      overrides.error
     );
   };
 
@@ -108,7 +114,9 @@ describe('AllegroQuantityCommandRepository', () => {
   describe('find', () => {
     it('should return all commands when no filters provided', async () => {
       const entities = [createOrmEntity(), createOrmEntity()];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       const result = await repository.find({});
@@ -120,29 +128,40 @@ describe('AllegroQuantityCommandRepository', () => {
     it('should filter by connectionId', async () => {
       const connectionId = randomUUID();
       const entities = [createOrmEntity({ connectionId })];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       const result = await repository.find({ connectionId });
 
       expect(result).toHaveLength(1);
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('command.connectionId = :connectionId', { connectionId });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'command.connectionId = :connectionId',
+        { connectionId }
+      );
     });
 
     it('should filter by status', async () => {
       const entities = [createOrmEntity({ status: 'accepted' })];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       const result = await repository.find({ status: 'accepted' });
 
       expect(result).toHaveLength(1);
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('command.status = :status', { status: 'accepted' });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('command.status = :status', {
+        status: 'accepted',
+      });
     });
 
     it('should apply limit', async () => {
       const entities = [createOrmEntity()];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       await repository.find({ limit: 10 });
@@ -152,7 +171,9 @@ describe('AllegroQuantityCommandRepository', () => {
 
     it('should apply offset', async () => {
       const entities = [createOrmEntity()];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       await repository.find({ offset: 20 });
@@ -163,7 +184,9 @@ describe('AllegroQuantityCommandRepository', () => {
     it('should combine multiple filters', async () => {
       const connectionId = randomUUID();
       const entities = [createOrmEntity({ connectionId, status: 'failed' })];
-      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<SelectQueryBuilder<AllegroQuantityCommandOrmEntity>>;
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
       mockQueryBuilder.getMany.mockResolvedValue(entities);
 
       const result = await repository.find({
@@ -211,11 +234,18 @@ describe('AllegroQuantityCommandRepository', () => {
 
     it('should throw DuplicateAllegroQuantityCommandError on unique constraint violation', async () => {
       const command = createDomainEntity({ commandId: 'cmd-123' });
-      const duplicateError = new QueryFailedError('INSERT', [], new Error('duplicate key value violates unique constraint'));
-      duplicateError.message = 'duplicate key value violates unique constraint "allegro_quantity_commands_commandId_key"';
+      const duplicateError = new QueryFailedError(
+        'INSERT',
+        [],
+        new Error('duplicate key value violates unique constraint')
+      );
+      duplicateError.message =
+        'duplicate key value violates unique constraint "allegro_quantity_commands_commandId_key"';
       ormRepository.save.mockRejectedValue(duplicateError);
 
-      await expect(repository.create(command)).rejects.toThrow(DuplicateAllegroQuantityCommandError);
+      await expect(repository.create(command)).rejects.toThrow(
+        DuplicateAllegroQuantityCommandError
+      );
       await expect(repository.create(command)).rejects.toThrow('cmd-123');
     });
 
@@ -225,7 +255,9 @@ describe('AllegroQuantityCommandRepository', () => {
       duplicateError.message = 'duplicate key value';
       ormRepository.save.mockRejectedValue(duplicateError);
 
-      await expect(repository.create(command)).rejects.toThrow(DuplicateAllegroQuantityCommandError);
+      await expect(repository.create(command)).rejects.toThrow(
+        DuplicateAllegroQuantityCommandError
+      );
     });
 
     it('should re-throw non-duplicate errors', async () => {
@@ -258,7 +290,11 @@ describe('AllegroQuantityCommandRepository', () => {
     it('should update status and error message', async () => {
       const commandId = 'cmd-123';
       const entity = createOrmEntity({ commandId, status: 'queued', error: null });
-      const updatedEntity = createOrmEntity({ commandId, status: 'failed', error: 'Invalid quantity' });
+      const updatedEntity = createOrmEntity({
+        commandId,
+        status: 'failed',
+        error: 'Invalid quantity',
+      });
       ormRepository.findOne.mockResolvedValue(entity);
       ormRepository.save.mockResolvedValue(updatedEntity);
 
@@ -289,10 +325,9 @@ describe('AllegroQuantityCommandRepository', () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(repository.updateStatus(commandId, 'accepted')).rejects.toThrow(
-        AllegroQuantityCommandNotFoundException,
+        AllegroQuantityCommandNotFoundException
       );
       await expect(repository.updateStatus(commandId, 'accepted')).rejects.toThrow(commandId);
     });
   });
 });
-

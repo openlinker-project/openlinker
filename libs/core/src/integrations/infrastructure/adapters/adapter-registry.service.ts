@@ -20,8 +20,8 @@
  */
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
-import { AdapterMetadata } from '../../domain/types/adapter.types';
+import type { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
+import type { AdapterMetadata } from '../../domain/types/adapter.types';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 import { DuplicatePlatformDefaultException } from '../../domain/exceptions/duplicate-platform-default.exception';
@@ -42,7 +42,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
         throw new DuplicatePlatformDefaultException(
           metadata.platformType,
           existing,
-          metadata.adapterKey,
+          metadata.adapterKey
         );
       }
       this.defaultsByPlatform.set(metadata.platformType, metadata.adapterKey);
@@ -50,7 +50,7 @@ export class AdapterRegistryService implements AdapterRegistryPort {
     this.registry.set(metadata.adapterKey, metadata);
     this.logger.log(
       `Registered adapter: ${metadata.adapterKey}` +
-        (metadata.isDefault === true ? ` (default for ${metadata.platformType})` : ''),
+        (metadata.isDefault === true ? ` (default for ${metadata.platformType})` : '')
     );
   }
 
@@ -76,8 +76,8 @@ export class AdapterRegistryService implements AdapterRegistryPort {
       return Promise.reject(
         new AdapterNotFoundException(
           `No default adapter registered for platformType: ${platformType}. ` +
-            `Available platforms: [${Array.from(this.defaultsByPlatform.keys()).join(', ')}]`,
-        ),
+            `Available platforms: [${Array.from(this.defaultsByPlatform.keys()).join(', ')}]`
+        )
       );
     }
     return Promise.resolve(adapterKey);

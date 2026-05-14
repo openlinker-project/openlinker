@@ -3,7 +3,8 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { CategoryResolutionService } from '../category-resolution.service';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
@@ -128,7 +129,10 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-fallback', method: 'category_mapping' });
+    expect(result).toEqual({
+      allegroCategoryId: 'allegro-cat-fallback',
+      method: 'category_mapping',
+    });
   });
 
   it('should handle adapter without matchCategoryByBarcode support', async () => {

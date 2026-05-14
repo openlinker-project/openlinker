@@ -3,11 +3,12 @@
  *
  * @module libs/core/src/integrations/application/services
  */
-import { CryptoService } from '@openlinker/shared';
-import { ConnectionPort, Connection } from '@openlinker/core/identifier-mapping';
+import type { CryptoService } from '@openlinker/shared';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { Connection } from '@openlinker/core/identifier-mapping';
 import { WebhookSecretService } from './webhook-secret.service';
-import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
-import { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
+import type { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
+import type { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import { IntegrationCredential } from '../../domain/entities/integration-credential.entity';
 
@@ -23,7 +24,7 @@ describe('WebhookSecretService', () => {
     new Date(),
     new Date(),
     'prestashop.webservice.v1',
-    [],
+    []
   );
 
   let connectionPort: jest.Mocked<ConnectionPort>;
@@ -39,7 +40,7 @@ describe('WebhookSecretService', () => {
     {},
     true,
     new Date(),
-    new Date(),
+    new Date()
   );
 
   beforeEach(() => {
@@ -57,7 +58,7 @@ describe('WebhookSecretService', () => {
       connectionPort,
       repository,
       crypto as unknown as CryptoService,
-      secretProvider,
+      secretProvider
     );
   });
 
@@ -66,10 +67,10 @@ describe('WebhookSecretService', () => {
 
     expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(crypto.encrypt).toHaveBeenCalledWith(result.secret);
-    expect(repository.update).toHaveBeenCalledWith(
-      `webhook-secret:${connectionId}`,
-      { credentialsJson: { ciphertext: 'cipher' }, encrypted: true },
-    );
+    expect(repository.update).toHaveBeenCalledWith(`webhook-secret:${connectionId}`, {
+      credentialsJson: { ciphertext: 'cipher' },
+      encrypted: true,
+    });
     expect(secretProvider.invalidate).toHaveBeenCalledWith('prestashop', connectionId);
   });
 

@@ -6,7 +6,7 @@
  *
  * @module libs/core/src/customers/domain/types
  */
-import { CustomerProjection } from '../entities/customer-projection.entity';
+import type { CustomerProjection } from '../entities/customer-projection.entity';
 
 /**
  * Address type values

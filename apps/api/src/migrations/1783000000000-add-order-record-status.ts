@@ -5,15 +5,15 @@
  * item refs have been fully resolved (`ready`) or are awaiting offer→variant
  * mapping (`awaiting_mapping`). Zero-downtime: existing rows default to `ready`.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOrderRecordStatus1783000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "order_records" ADD COLUMN "recordStatus" VARCHAR NOT NULL DEFAULT 'ready'`,
+      `ALTER TABLE "order_records" ADD COLUMN "recordStatus" VARCHAR NOT NULL DEFAULT 'ready'`
     );
     await queryRunner.query(
-      `CREATE INDEX "idx_order_records_record_status" ON "order_records" ("recordStatus")`,
+      `CREATE INDEX "idx_order_records_record_status" ON "order_records" ("recordStatus")`
     );
   }
 

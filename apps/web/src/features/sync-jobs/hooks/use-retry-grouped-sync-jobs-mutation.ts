@@ -10,10 +10,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { syncJobsQueryKeys } from '../api/sync.query-keys';
-import type {
-  RetryGroupedSyncJobsInput,
-  RetryGroupedSyncJobsResult,
-} from '../api/sync-jobs.types';
+import type { RetryGroupedSyncJobsInput, RetryGroupedSyncJobsResult } from '../api/sync-jobs.types';
 
 export function useRetryGroupedSyncJobsMutation(): UseMutationResult<
   RetryGroupedSyncJobsResult,

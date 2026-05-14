@@ -18,16 +18,8 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
-import {
-  InvalidPasswordResetTokenException,
-  WeakPasswordException,
-} from '@openlinker/core/users';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { InvalidPasswordResetTokenException, WeakPasswordException } from '@openlinker/core/users';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -49,7 +41,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     @Inject(PASSWORD_RESET_SERVICE_TOKEN)
-    private readonly passwordResetService: IPasswordResetService,
+    private readonly passwordResetService: IPasswordResetService
   ) {}
 
   @Public()

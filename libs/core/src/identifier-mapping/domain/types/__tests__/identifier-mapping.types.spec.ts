@@ -9,11 +9,8 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types/__tests__
  */
-import {
-  CoreEntityTypeValues,
-  ENTITY_TYPE_ID_PREFIX,
-  IdentifierMappingRequest,
-} from '../identifier-mapping.types';
+import type { IdentifierMappingRequest } from '../identifier-mapping.types';
+import { CoreEntityTypeValues, ENTITY_TYPE_ID_PREFIX } from '../identifier-mapping.types';
 
 describe('identifier-mapping.types', () => {
   describe('CoreEntityTypeValues', () => {

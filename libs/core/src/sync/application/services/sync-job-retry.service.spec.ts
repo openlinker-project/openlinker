@@ -3,9 +3,10 @@
  *
  * @module libs/core/src/sync/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { SyncJobRetryService } from './sync-job-retry.service';
-import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
+import type { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJob } from '../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../domain/exceptions/invalid-sync-job-state.error';
@@ -43,7 +44,7 @@ function makeSyncJob(overrides: SyncJobOverrides = {}): SyncJob {
     overrides.lockedBy ?? null,
     overrides.lastError ?? null,
     overrides.createdAt ?? new Date(),
-    overrides.updatedAt ?? new Date(),
+    overrides.updatedAt ?? new Date()
   );
 }
 
@@ -82,7 +83,7 @@ describe('SyncJobRetryService', () => {
 
   it('should propagate InvalidSyncJobStateError from repository', async () => {
     mockRepository.requeueDeadJob.mockRejectedValue(
-      new InvalidSyncJobStateError('status', 'queued', 'job-1'),
+      new InvalidSyncJobStateError('status', 'queued', 'job-1')
     );
 
     await expect(service.retryJob('job-1')).rejects.toThrow(InvalidSyncJobStateError);

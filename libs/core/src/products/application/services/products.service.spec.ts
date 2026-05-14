@@ -5,12 +5,13 @@
  *
  * @module libs/core/src/products/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ProductsService } from './products.service';
-import { ProductRepositoryPort } from '../../domain/ports/product-repository.port';
-import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
-import { Product } from '../../domain/entities/product.entity';
-import { ProductVariant } from '../../domain/entities/product-variant.entity';
+import type { ProductRepositoryPort } from '../../domain/ports/product-repository.port';
+import type { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
+import type { Product } from '../../domain/entities/product.entity';
+import type { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
@@ -118,7 +119,7 @@ describe('ProductsService', () => {
 
       expect(productRepo.findMany).toHaveBeenCalledWith(
         { search: 'shirt' },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
   });
@@ -130,14 +131,14 @@ describe('ProductsService', () => {
 
       const result = await service.listVariants(
         { productId: 'ol_product_1' },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(variantRepo.findMany).toHaveBeenCalledWith(
         { productId: 'ol_product_1' },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
     });
 
@@ -148,7 +149,7 @@ describe('ProductsService', () => {
 
       expect(variantRepo.findMany).toHaveBeenCalledWith(
         { search: '1234567890123' },
-        { limit: 20, offset: 0 },
+        { limit: 20, offset: 0 }
       );
     });
   });

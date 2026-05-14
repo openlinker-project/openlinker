@@ -19,8 +19,8 @@
  */
 import { Logger as NestLogger } from '@nestjs/common';
 
-import { LoggerPort } from '../logger.port';
-import { LogLevel } from '../logger.types';
+import type { LoggerPort } from '../logger.port';
+import type { LogLevel } from '../logger.types';
 
 const DEFAULT_CONTEXT = 'Application';
 

@@ -11,8 +11,8 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { EventPublisherPort } from '../../domain/ports/event-publisher.port';
-import { EventEnvelope } from '../../domain/types/event.types';
+import type { EventPublisherPort } from '../../domain/ports/event-publisher.port';
+import type { EventEnvelope } from '../../domain/types/event.types';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -21,7 +21,7 @@ export class RedisStreamsEventPublisher implements EventPublisherPort {
 
   constructor(
     @Inject('REDIS_CLIENT')
-    private readonly redisClient: RedisClientType,
+    private readonly redisClient: RedisClientType
   ) {}
 
   async publish(streamName: string, event: EventEnvelope): Promise<string> {
@@ -50,13 +50,15 @@ export class RedisStreamsEventPublisher implements EventPublisherPort {
         throw new Error(`Failed to publish event to stream: ${streamName}`);
       }
 
-      this.logger.debug(`Published event ${event.eventId} to stream ${streamName} with message ID ${messageId}`);
+      this.logger.debug(
+        `Published event ${event.eventId} to stream ${streamName} with message ID ${messageId}`
+      );
 
       return messageId;
     } catch (error) {
       this.logger.error(
         `Failed to publish event ${event.eventId} to stream ${streamName}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
 
       // Convert Redis errors to domain exceptions

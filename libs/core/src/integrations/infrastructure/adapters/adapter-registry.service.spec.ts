@@ -8,9 +8,10 @@
  *
  * @module libs/core/src/integrations/infrastructure/adapters
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { AdapterRegistryService } from './adapter-registry.service';
-import { AdapterMetadata } from '../../domain/types/adapter.types';
+import type { AdapterMetadata } from '../../domain/types/adapter.types';
 import { AdapterNotFoundException } from '../../domain/exceptions/adapter-not-found.exception';
 import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 import { DuplicatePlatformDefaultException } from '../../domain/exceptions/duplicate-platform-default.exception';
@@ -100,7 +101,7 @@ describe('AdapterRegistryService', () => {
       service.register(prestashopMetadata);
 
       await expect(service.getDefaultAdapterKey('shopify')).rejects.toThrow(
-        AdapterNotFoundException,
+        AdapterNotFoundException
       );
     });
 
@@ -108,7 +109,7 @@ describe('AdapterRegistryService', () => {
       service.register({ ...prestashopMetadata, isDefault: false });
 
       await expect(service.getDefaultAdapterKey('prestashop')).rejects.toThrow(
-        AdapterNotFoundException,
+        AdapterNotFoundException
       );
     });
   });

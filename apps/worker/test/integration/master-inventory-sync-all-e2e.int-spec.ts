@@ -12,7 +12,11 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
-import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN, SyncJobRequest } from '@openlinker/core/sync';
+import {
+  SYNC_JOB_REPOSITORY_TOKEN,
+  JOB_ENQUEUE_TOKEN,
+  SyncJobRequest,
+} from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
@@ -47,7 +51,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
   async function seedProductMappings(
     connectionId: string,
     platformType: string,
-    externalIds: string[],
+    externalIds: string[]
   ): Promise<void> {
     const repo = dataSource.getRepository(IdentifierMappingOrmEntity);
     for (const externalId of externalIds) {
@@ -59,7 +63,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
           platformType,
           connectionId,
           context: null,
-        }),
+        })
       );
     }
   }
@@ -92,17 +96,21 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
 
     const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
 
-    const { MasterInventorySyncAllHandler } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
+    const {
+      MasterInventorySyncAllHandler,
+    } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
     const handler = harness.get(MasterInventorySyncAllHandler);
 
     await handler.execute(outerJob);
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncByExternalId',
+      ([req]) => req.jobType === 'master.inventory.syncByExternalId'
     );
     expect(subJobCalls).toHaveLength(externalIds.length);
 
-    const enqueuedExternalIds = subJobCalls.map(([req]) => (req.payload as { externalId: string }).externalId).sort();
+    const enqueuedExternalIds = subJobCalls
+      .map(([req]) => (req.payload as { externalId: string }).externalId)
+      .sort();
     expect(enqueuedExternalIds).toEqual([...externalIds].sort());
 
     // Every sub-job idempotency key embeds the outer job id, so re-running the
@@ -131,13 +139,15 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
 
     const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
 
-    const { MasterInventorySyncAllHandler } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
+    const {
+      MasterInventorySyncAllHandler,
+    } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
     const handler = harness.get(MasterInventorySyncAllHandler);
 
     await expect(handler.execute(outerJob)).resolves.toBeUndefined();
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncByExternalId',
+      ([req]) => req.jobType === 'master.inventory.syncByExternalId'
     );
     expect(subJobCalls).toHaveLength(0);
   });

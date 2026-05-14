@@ -13,7 +13,7 @@
  */
 import { EmailNormalizerRegistryService } from '../email-normalizer-registry.service';
 import { DEFAULT_EMAIL_NORMALIZER } from '../default-email-normalizer';
-import { EmailNormalizerPort } from '../../../domain/ports/email-normalizer.port';
+import type { EmailNormalizerPort } from '../../../domain/ports/email-normalizer.port';
 
 describe('EmailNormalizerRegistryService', () => {
   let registry: EmailNormalizerRegistryService;

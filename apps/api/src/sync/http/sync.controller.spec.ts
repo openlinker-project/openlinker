@@ -5,20 +5,19 @@
  *
  * @module apps/api/src/sync/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SyncController } from './sync.controller';
+import type { JobEnqueuePort, SyncJobRequest, SyncJobRepositoryPort } from '@openlinker/core/sync';
 import {
-  JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
-  SyncJobRequest,
-  SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   SyncJobEntity,
 } from '@openlinker/core/sync';
-import { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
+import type { EnqueueSyncJobDto } from './dto/enqueue-sync-job.dto';
 
 function makeSyncJob(overrides: Partial<SyncJobEntity> = {}): SyncJobEntity {
   return new SyncJobEntity(
@@ -35,7 +34,7 @@ function makeSyncJob(overrides: Partial<SyncJobEntity> = {}): SyncJobEntity {
     overrides.lockedBy ?? null,
     overrides.lastError ?? null,
     overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
-    overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+    overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z')
   );
 }
 
@@ -143,7 +142,7 @@ describe('SyncController', () => {
 
       await expect(controller.enqueueJob(validDto)).rejects.toThrow(BadRequestException);
       await expect(controller.enqueueJob(validDto)).rejects.toThrow(
-        `Failed to enqueue job: ${errorMessage}`,
+        `Failed to enqueue job: ${errorMessage}`
       );
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
@@ -153,7 +152,9 @@ describe('SyncController', () => {
       jobEnqueue.enqueueJob.mockRejectedValue('Unknown error');
 
       await expect(controller.enqueueJob(validDto)).rejects.toThrow(BadRequestException);
-      await expect(controller.enqueueJob(validDto)).rejects.toThrow('Failed to enqueue job: Unknown error');
+      await expect(controller.enqueueJob(validDto)).rejects.toThrow(
+        'Failed to enqueue job: Unknown error'
+      );
     });
 
     it('should handle different job types', async () => {
@@ -176,9 +177,7 @@ describe('SyncController', () => {
         const result = await controller.enqueueJob(dto);
 
         expect(result.jobType).toBe(jobType);
-        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
-          expect.objectContaining({ jobType }),
-        );
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(expect.objectContaining({ jobType }));
       }
     });
   });
@@ -208,7 +207,7 @@ describe('SyncController', () => {
 
       expect(syncJobRepository.findMany).toHaveBeenCalledWith(
         { status: 'dead', connectionId: 'conn-abc', jobType: 'marketplace.offers.sync' },
-        { limit: 5, offset: 10 },
+        { limit: 5, offset: 10 }
       );
     });
 
@@ -240,4 +239,3 @@ describe('SyncController', () => {
     });
   });
 });
-

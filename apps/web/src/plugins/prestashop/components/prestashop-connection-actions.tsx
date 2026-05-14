@@ -8,7 +8,7 @@
  *
  * @module plugins/prestashop/components
  */
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useConfigureWebhooksMutation } from '../../../features/connections';

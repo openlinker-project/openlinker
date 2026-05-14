@@ -13,11 +13,7 @@
  * @module libs/integrations/ai/infrastructure/adapters
  */
 import { Injectable } from '@nestjs/common';
-import type {
-  AiCompletionInput,
-  AiCompletionPort,
-  AiCompletionResult,
-} from '@openlinker/core/ai';
+import type { AiCompletionInput, AiCompletionPort, AiCompletionResult } from '@openlinker/core/ai';
 
 const FAKE_MODEL = 'fake-model';
 const FAKE_PREFIX = 'fake:';

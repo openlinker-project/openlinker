@@ -6,7 +6,8 @@
  *
  * @module apps/api/src
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { AppService } from './app.service';
 
 describe('AppService', () => {
@@ -28,4 +29,3 @@ describe('AppService', () => {
     expect(service.getHello()).toBe('OpenLinker API');
   });
 });
-

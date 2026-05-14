@@ -6,17 +6,24 @@
  *
  * @module apps/api/src/webhooks/application/handlers/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { InboundWebhookEvent } from '@openlinker/core/events';
+import type { InboundWebhookEvent } from '@openlinker/core/events';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../../webhooks.tokens';
 
 describe('WebhookToJobHandler', () => {
   let handler: WebhookToJobHandler;
-  let mockRedisClient: { xGroupCreate: jest.Mock; xReadGroup: jest.Mock; xAck: jest.Mock; xAdd: jest.Mock; quit: jest.Mock };
+  let mockRedisClient: {
+    xGroupCreate: jest.Mock;
+    xReadGroup: jest.Mock;
+    xAck: jest.Mock;
+    xAdd: jest.Mock;
+    quit: jest.Mock;
+  };
 
   beforeEach(async () => {
     mockRedisClient = {
@@ -350,7 +357,9 @@ describe('WebhookToJobHandler', () => {
 
       // Verify idempotency key format
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      expect(job.idempotencyKey).toBe('prestashop:59f4129e-a827-4650-b69b-fc2302b9ecb7:prestashop-stock-123');
+      expect(job.idempotencyKey).toBe(
+        'prestashop:59f4129e-a827-4650-b69b-fc2302b9ecb7:prestashop-stock-123'
+      );
     });
 
     it('should correctly map PrestaShop product event (no mapping needed)', () => {
@@ -425,4 +434,3 @@ describe('WebhookToJobHandler', () => {
     });
   });
 });
-

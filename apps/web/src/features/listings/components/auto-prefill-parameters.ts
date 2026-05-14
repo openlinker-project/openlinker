@@ -14,7 +14,10 @@
  * @module apps/web/src/features/listings/components
  */
 import type { CatalogProduct, CategoryParameter } from '../api/listings.types';
-import type { CategoryParameterFormValues, FormParameterValue } from './category-parameter-form.types';
+import type {
+  CategoryParameterFormValues,
+  FormParameterValue,
+} from './category-parameter-form.types';
 
 /**
  * Known fragility — these matchers are case-insensitive *exact* string
@@ -82,7 +85,7 @@ export interface AutoPrefillVariantFields {
 
 export function autoPrefillParameters(
   parameters: CategoryParameter[],
-  variant: AutoPrefillVariantFields,
+  variant: AutoPrefillVariantFields
 ): CategoryParameterFormValues {
   const out: CategoryParameterFormValues = {};
 
@@ -112,7 +115,7 @@ export function autoPrefillParameters(
 export function collectUnmatchedBrandHints(
   parameters: CategoryParameter[],
   variant: AutoPrefillVariantFields,
-  filled: CategoryParameterFormValues,
+  filled: CategoryParameterFormValues
 ): Record<string, string> {
   if (!variant.brand) return {};
   const target = variant.brand.toLowerCase().trim();
@@ -125,14 +128,15 @@ export function collectUnmatchedBrandHints(
     if (!BRAND_NAME_PATTERNS.includes(nameLower)) continue;
     if (param.type !== 'dictionary') continue;
     if (param.restrictions.multipleChoices) continue;
-    hints[param.id] = `Variant brand "${variant.brand}" — no exact match in Allegro brand list; pick manually.`;
+    hints[param.id] =
+      `Variant brand "${variant.brand}" — no exact match in Allegro brand list; pick manually.`;
   }
   return hints;
 }
 
 function prefillOne(
   param: CategoryParameter,
-  variant: AutoPrefillVariantFields,
+  variant: AutoPrefillVariantFields
 ): FormParameterValue {
   const nameLower = param.name.toLowerCase().trim();
 
@@ -150,7 +154,7 @@ function prefillOne(
     !param.restrictions.multipleChoices
   ) {
     const newOption = param.dictionary?.find((entry) =>
-      NEW_VALUE_PATTERNS.includes(entry.value.toLowerCase().trim()),
+      NEW_VALUE_PATTERNS.includes(entry.value.toLowerCase().trim())
     );
     if (newOption) return newOption.id;
   }
@@ -167,7 +171,7 @@ function prefillOne(
     const target = variant.brand.toLowerCase().trim();
     if (target) {
       const matches = (param.dictionary ?? []).filter(
-        (entry) => entry.value.toLowerCase().trim() === target,
+        (entry) => entry.value.toLowerCase().trim() === target
       );
       if (matches.length === 1) return matches[0].id;
       // 0 or >1 matches → leave blank, hint surfaces elsewhere.
@@ -223,7 +227,7 @@ function prefillOne(
 export function prefillFromCatalogProduct(
   parameters: CategoryParameter[],
   catalogProduct: CatalogProduct,
-  dirtyFields: Record<string, boolean>,
+  dirtyFields: Record<string, boolean>
 ): { values: CategoryParameterFormValues; prefilledIds: Set<string> } {
   const paramById = new Map(parameters.map((p) => [p.id, p]));
   const values: CategoryParameterFormValues = {};
@@ -246,7 +250,7 @@ export function prefillFromCatalogProduct(
 
 function mapCatalogValueToFormValue(
   target: CategoryParameter,
-  catalogParam: { valueIds?: string[]; valueStrings?: string[] },
+  catalogParam: { valueIds?: string[]; valueStrings?: string[] }
 ): FormParameterValue {
   if (target.type === 'dictionary') {
     const ids = catalogParam.valueIds ?? [];

@@ -15,10 +15,7 @@ import { CATEGORIES_CACHE_SERVICE_TOKEN } from './categories.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([AllegroCategoryCacheOrmEntity]),
-    IntegrationsModule,
-  ],
+  imports: [TypeOrmModule.forFeature([AllegroCategoryCacheOrmEntity]), IntegrationsModule],
   providers: [
     CategoriesCacheService,
     {

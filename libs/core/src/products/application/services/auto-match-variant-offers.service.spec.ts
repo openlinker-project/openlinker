@@ -3,10 +3,14 @@
  *
  * @module libs/core/src/products/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { AutoMatchVariantOffersService } from './auto-match-variant-offers.service';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { IDENTIFIER_MAPPING_SERVICE_TOKEN, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
+import {
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  IdentifierMappingConflictException,
+} from '@openlinker/core/identifier-mapping';
 import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
 const createMockIntegrationsService = () => ({
@@ -75,7 +79,14 @@ describe('AutoMatchVariantOffersService', () => {
     service = module.get(AutoMatchVariantOffersService);
   });
 
-  function setupOffers(offers: Array<{ offerId: string; ean?: string | null; sku?: string | null; externalRef?: string | null }>) {
+  function setupOffers(
+    offers: Array<{
+      offerId: string;
+      ean?: string | null;
+      sku?: string | null;
+      externalRef?: string | null;
+    }>
+  ) {
     marketplace.listOffers.mockResolvedValueOnce({
       items: offers.map((o) => ({
         offerId: o.offerId,
@@ -87,7 +98,9 @@ describe('AutoMatchVariantOffersService', () => {
     });
   }
 
-  function setupVariants(variants: Array<{ id: string; ean?: string | null; sku?: string | null }>) {
+  function setupVariants(
+    variants: Array<{ id: string; ean?: string | null; sku?: string | null }>
+  ) {
     variantRepository.findMany.mockResolvedValue({
       items: variants.map((v) => ({
         id: v.id,
@@ -120,7 +133,7 @@ describe('AutoMatchVariantOffersService', () => {
       'conn-1',
       expect.objectContaining({
         metadata: expect.objectContaining({ linkMethod: 'ean' }),
-      }),
+      })
     );
   });
 
@@ -139,7 +152,7 @@ describe('AutoMatchVariantOffersService', () => {
       'conn-1',
       expect.objectContaining({
         metadata: expect.objectContaining({ linkMethod: 'sku' }),
-      }),
+      })
     );
   });
 
@@ -182,7 +195,13 @@ describe('AutoMatchVariantOffersService', () => {
     setupOffers([{ offerId: 'offer-1', ean: '5901234123457' }]);
     setupVariants([{ id: 'variant-1', ean: '5901234123457' }]);
     identifierMapping.getOrCreateExactMapping.mockRejectedValue(
-      new IdentifierMappingConflictException('Offer', 'offer-1', 'conn-1', 'existing-variant', 'variant-1'),
+      new IdentifierMappingConflictException(
+        'Offer',
+        'offer-1',
+        'conn-1',
+        'existing-variant',
+        'variant-1'
+      )
     );
 
     const result = await service.autoMatch('conn-1', {});
@@ -211,7 +230,7 @@ describe('AutoMatchVariantOffersService', () => {
       'conn-1',
       expect.objectContaining({
         metadata: expect.objectContaining({ linkMethod: 'ean' }),
-      }),
+      })
     );
   });
 
@@ -244,7 +263,7 @@ describe('AutoMatchVariantOffersService', () => {
       'conn-1',
       expect.objectContaining({
         metadata: expect.objectContaining({ linkMethod: 'sku' }),
-      }),
+      })
     );
   });
 });

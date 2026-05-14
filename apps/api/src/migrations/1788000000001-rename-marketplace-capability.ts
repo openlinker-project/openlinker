@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
  * Rename persisted capability token 'Marketplace' → 'OfferManager' as part of
@@ -30,7 +30,7 @@ export class RenameMarketplaceCapability1788000000001 implements MigrationInterf
     // class name; no-op on fresh DBs and on DBs that never applied the old
     // version.
     await queryRunner.query(
-      `DELETE FROM "migrations" WHERE "name" = 'RenameMarketplaceCapability1788000000000'`,
+      `DELETE FROM "migrations" WHERE "name" = 'RenameMarketplaceCapability1788000000000'`
     );
 
     // Allegro rows: promote to the new ['OrderSource', 'OfferManager'] set.
@@ -41,7 +41,7 @@ export class RenameMarketplaceCapability1788000000001 implements MigrationInterf
          SET "enabledCapabilities" = '["OrderSource","OfferManager"]'::jsonb
          WHERE (COALESCE("adapterKey", '') = 'allegro.publicapi.v1'
                 OR ("adapterKey" IS NULL AND "platformType" = 'allegro'))
-           AND "enabledCapabilities" @> '["Marketplace"]'::jsonb`,
+           AND "enabledCapabilities" @> '["Marketplace"]'::jsonb`
     );
 
     // Catch-all: any remaining 'Marketplace' token on other / unknown platforms
@@ -56,7 +56,7 @@ export class RenameMarketplaceCapability1788000000001 implements MigrationInterf
                  'OfferManager'
                )
              )
-         WHERE "enabledCapabilities" @> '["Marketplace"]'::jsonb`,
+         WHERE "enabledCapabilities" @> '["Marketplace"]'::jsonb`
     );
 
     // Visibility: flag any row we couldn't map so operators can audit it.
@@ -83,7 +83,7 @@ export class RenameMarketplaceCapability1788000000001 implements MigrationInterf
          SET "enabledCapabilities" = '["Marketplace"]'::jsonb
          WHERE (COALESCE("adapterKey", '') = 'allegro.publicapi.v1'
                 OR ("adapterKey" IS NULL AND "platformType" = 'allegro'))
-           AND "enabledCapabilities" @> '["OfferManager"]'::jsonb`,
+           AND "enabledCapabilities" @> '["OfferManager"]'::jsonb`
     );
 
     // Catch-all: rename any remaining 'OfferManager' token back to 'Marketplace'.
@@ -96,7 +96,7 @@ export class RenameMarketplaceCapability1788000000001 implements MigrationInterf
                  'Marketplace'
                )
              )
-         WHERE "enabledCapabilities" @> '["OfferManager"]'::jsonb`,
+         WHERE "enabledCapabilities" @> '["OfferManager"]'::jsonb`
     );
   }
 }

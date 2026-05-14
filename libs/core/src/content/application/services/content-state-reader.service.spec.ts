@@ -11,10 +11,7 @@ import { ContentStateReaderService } from './content-state-reader.service';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type {
-  OfferManagerPort,
-  OfferMappingRepositoryPort,
-} from '@openlinker/core/listings';
+import type { OfferManagerPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 
@@ -35,7 +32,9 @@ function makeRow(overrides: Partial<ProductContentField> = {}): ProductContentFi
   } as ProductContentField;
 }
 
-function buildRepoMock(rows: ProductContentField[] = []): jest.Mocked<ProductContentFieldRepositoryPort> {
+function buildRepoMock(
+  rows: ProductContentField[] = []
+): jest.Mocked<ProductContentFieldRepositoryPort> {
   return {
     findByKey: jest.fn(),
     findByProduct: jest.fn().mockResolvedValue(rows),
@@ -45,7 +44,7 @@ function buildRepoMock(rows: ProductContentField[] = []): jest.Mocked<ProductCon
 }
 
 function buildOfferMappingsMock(
-  counts: Map<string, number> = new Map(),
+  counts: Map<string, number> = new Map()
 ): jest.Mocked<OfferMappingRepositoryPort> {
   return {
     findById: jest.fn(),
@@ -74,9 +73,7 @@ describe('ContentStateReaderService', () => {
     const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
       getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
     };
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
         if (query.capability === 'ProductMaster') {
           return Promise.resolve([
@@ -109,7 +106,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     const state = await service.readState('ol_product_1');
 
@@ -122,9 +119,7 @@ describe('ContentStateReaderService', () => {
     const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
       getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
     };
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
         if (query.capability === 'ProductMaster') {
           return Promise.resolve([
@@ -150,7 +145,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     const state = await service.readState('ol_product_1');
 
@@ -164,9 +159,7 @@ describe('ContentStateReaderService', () => {
     const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
       getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
     };
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
         if (query.capability === 'ProductMaster') {
           return Promise.resolve([
@@ -192,7 +185,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     const state = await service.readState('ol_product_1');
 
@@ -208,16 +201,14 @@ describe('ContentStateReaderService', () => {
     });
     const repo = buildRepoMock([row]);
     const offerMappings = buildOfferMappingsMock();
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockResolvedValue([]),
     };
 
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     const state = await service.readState('ol_product_1');
 
@@ -236,9 +227,7 @@ describe('ContentStateReaderService', () => {
     const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
       getProductVariants: jest.fn().mockRejectedValue(new Error('upstream down')),
     };
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
         if (query.capability === 'ProductMaster') {
           return Promise.resolve([
@@ -257,7 +246,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     await expect(service.readState('ol_product_1')).rejects.toThrow('upstream down');
   });
@@ -268,9 +257,7 @@ describe('ContentStateReaderService', () => {
     const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
       getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
     };
-    const integrations: jest.Mocked<
-      Pick<IIntegrationsService, 'listCapabilityAdapters'>
-    > = {
+    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
       listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
         if (query.capability === 'ProductMaster') {
           return Promise.resolve([
@@ -302,7 +289,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings,
+      offerMappings
     );
     const state = await service.readState('ol_product_1');
 

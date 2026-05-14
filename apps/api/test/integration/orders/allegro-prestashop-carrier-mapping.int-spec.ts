@@ -35,14 +35,8 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
-import {
-  ORDER_INGESTION_SERVICE_TOKEN,
-  IOrderIngestionService,
-} from '@openlinker/core/orders';
-import {
-  ProductOrmEntity,
-  ProductVariantOrmEntity,
-} from '@openlinker/core/products/orm-entities';
+import { ORDER_INGESTION_SERVICE_TOKEN, IOrderIngestionService } from '@openlinker/core/orders';
+import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PRESTASHOP_IMAGE,
@@ -83,7 +77,7 @@ interface PsCartRow {
 async function fetchPsResource<T>(
   ps: PrestashopTestContainer,
   path: string,
-  envelopeKey: string,
+  envelopeKey: string
 ): Promise<T> {
   const auth = Buffer.from(`${ps.webserviceApiKey}:`).toString('base64');
   const response = await fetch(`${ps.baseUrl}${path}?output_format=JSON`, {
@@ -93,14 +87,14 @@ async function fetchPsResource<T>(
   if (!response.ok) {
     const body = await response.text();
     throw new Error(
-      `PS WS GET ${path} failed: ${response.status} ${response.statusText} — ${body.slice(0, 400)}`,
+      `PS WS GET ${path} failed: ${response.status} ${response.statusText} — ${body.slice(0, 400)}`
     );
   }
   const json = (await response.json()) as Record<string, T>;
   const data = json[envelopeKey];
   if (!data) {
     throw new Error(
-      `PS WS GET ${path} returned no '${envelopeKey}' envelope. Body keys: [${Object.keys(json).join(', ')}]`,
+      `PS WS GET ${path} returned no '${envelopeKey}' envelope. Body keys: [${Object.keys(json).join(', ')}]`
     );
   }
   return data;
@@ -123,7 +117,7 @@ const fetchPsCart = (ps: PrestashopTestContainer, idCart: number): Promise<PsCar
 async function resolveDestinationOrderId(
   harness: IntegrationTestHarness,
   internalOrderId: string,
-  destinationConnectionId: string,
+  destinationConnectionId: string
 ): Promise<number> {
   const identifierMapping = harness
     .getApp()
@@ -133,13 +127,13 @@ async function resolveDestinationOrderId(
   if (!match) {
     throw new Error(
       `No PS-side identifier mapping found for OL order ${internalOrderId} on connection ${destinationConnectionId}. ` +
-        `Found mappings: ${JSON.stringify(externals)}`,
+        `Found mappings: ${JSON.stringify(externals)}`
     );
   }
   const parsed = Number(match.externalId);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(
-      `PS-side order mapping is not a positive integer: '${match.externalId}' for OL order ${internalOrderId}`,
+      `PS-side order mapping is not a positive integer: '${match.externalId}' for OL order ${internalOrderId}`
     );
   }
   return parsed;
@@ -156,7 +150,7 @@ function dumpPrestashopErrorLogs(): void {
   try {
     const containers = execSync(
       `docker ps --filter ancestor=${PRESTASHOP_IMAGE} --format '{{.ID}}'`,
-      { encoding: 'utf8' },
+      { encoding: 'utf8' }
     )
       .trim()
       .split('\n')
@@ -167,7 +161,7 @@ function dumpPrestashopErrorLogs(): void {
         // in /var/www/html/var/logs/. Both surfaces matter for a 500.
         const out = execSync(
           `docker exec ${id} sh -c 'for f in /var/log/apache2/error.log /var/log/apache2/access.log /var/log/php*.log; do echo "=== $f ==="; tail -n 50 "$f" 2>/dev/null; done; echo "=== PS app logs (last 50 each) ==="; find /var/www/html/var/logs -name "*.log" -mmin -5 -exec sh -c "echo --- {} ---; tail -n 50 {}" \\;'`,
-          { encoding: 'utf8', timeout: 10_000 },
+          { encoding: 'utf8', timeout: 10_000 }
         );
         if (out.trim()) {
           // eslint-disable-next-line no-console
@@ -237,7 +231,7 @@ describe('Allegro → PrestaShop carrier mapping (#535)', () => {
       harness,
       allegroConnectionId,
       'paczkomat-s1',
-      String(defaultCarriers.myCarrier.idCarrier),
+      String(defaultCarriers.myCarrier.idCarrier)
     );
   }, 15 * 60_000);
 
@@ -256,16 +250,14 @@ describe('Allegro → PrestaShop carrier mapping (#535)', () => {
     });
     stub.setNextIncomingOrder(incoming);
 
-    const ingestion = harness
-      .getApp()
-      .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
     const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S1');
 
     expect(results).toHaveLength(1);
     if (results[0].status !== 'success') {
       dumpPrestashopErrorLogs();
       throw new Error(
-        `S-1 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`,
+        `S-1 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
       );
     }
     expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
@@ -273,7 +265,7 @@ describe('Allegro → PrestaShop carrier mapping (#535)', () => {
     const psOrderId = await resolveDestinationOrderId(
       harness,
       results[0].orderRef.orderId,
-      prestashopConnectionId,
+      prestashopConnectionId
     );
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
@@ -295,23 +287,21 @@ describe('Allegro → PrestaShop carrier mapping (#535)', () => {
     });
     stub.setNextIncomingOrder(incoming);
 
-    const ingestion = harness
-      .getApp()
-      .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
     const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S2');
 
     expect(results).toHaveLength(1);
     if (results[0].status !== 'success') {
       dumpPrestashopErrorLogs();
       throw new Error(
-        `S-2 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`,
+        `S-2 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
       );
     }
 
     const psOrderId = await resolveDestinationOrderId(
       harness,
       results[0].orderRef.orderId,
-      prestashopConnectionId,
+      prestashopConnectionId
     );
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
@@ -386,7 +376,7 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
   const internalProductId = await identifierMapping.getOrCreateInternalId(
     'Product',
     String(psProduct.idProduct),
-    opts.prestashopConnectionId,
+    opts.prestashopConnectionId
   );
 
   // The product has no PS combination row, so there's no destination-side
@@ -401,7 +391,7 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
     'Offer',
     opts.externalOfferId,
     opts.allegroConnectionId,
-    internalVariantId,
+    internalVariantId
   );
 
   // Write the OL canonical Product + ProductVariant rows. The variant must
@@ -415,7 +405,7 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
       sku: opts.psReference,
       price: 100.0,
       currency: 'PLN',
-    }),
+    })
   );
 
   const variantRepo = dataSource.getRepository(ProductVariantOrmEntity);
@@ -424,6 +414,6 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
       id: internalVariantId,
       productId: internalProductId,
       sku: opts.psReference,
-    }),
+    })
   );
 }

@@ -20,19 +20,21 @@
  * @module libs/integrations/allegro/src/infrastructure/util
  * @see {@link AllegroOfferManagerAdapter.uploadSafetyAttachment} — sole consumer
  */
-import { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import type {
+  SafetyAttachmentUploadInput,
+  SafetyAttachmentUploadResult,
+} from '../../domain/types/allegro-safety-attachments.types';
 import {
   ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
   ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES,
   ACCEPTED_SAFETY_ATTACHMENT_MIME_TYPES,
-  SafetyAttachmentUploadInput,
-  SafetyAttachmentUploadResult,
 } from '../../domain/types/allegro-safety-attachments.types';
 
 export async function uploadSafetyAttachmentViaAllegro(
   uploadHttpClient: IAllegroHttpClient,
-  input: SafetyAttachmentUploadInput,
+  input: SafetyAttachmentUploadInput
 ): Promise<SafetyAttachmentUploadResult> {
   validateInput(input);
 
@@ -47,7 +49,7 @@ export async function uploadSafetyAttachmentViaAllegro(
           contentType: input.mimeType,
           bytes: input.bytes,
         },
-      ],
+      ]
     );
   } catch (error) {
     // Surface AllegroApiException untouched so callers see the original
@@ -62,7 +64,7 @@ export async function uploadSafetyAttachmentViaAllegro(
       `Allegro safety-attachment upload failed: ${message}`,
       undefined,
       undefined,
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
 
@@ -72,7 +74,7 @@ export async function uploadSafetyAttachmentViaAllegro(
       `Allegro safety-attachment upload response missing 'id' field`,
       response.status,
       JSON.stringify(response.data),
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
 
@@ -87,7 +89,7 @@ function validateInput(input: SafetyAttachmentUploadInput): void {
       ].join(', ')}`,
       undefined,
       undefined,
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
   if (input.bytes.byteLength === 0) {
@@ -95,7 +97,7 @@ function validateInput(input: SafetyAttachmentUploadInput): void {
       'Safety-attachment payload is empty',
       undefined,
       undefined,
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
   if (input.bytes.byteLength > ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES) {
@@ -103,7 +105,7 @@ function validateInput(input: SafetyAttachmentUploadInput): void {
       `Safety-attachment exceeds max size: ${input.bytes.byteLength} > ${ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES} bytes`,
       undefined,
       undefined,
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
   if (!input.fileName || input.fileName.trim().length === 0) {
@@ -111,7 +113,7 @@ function validateInput(input: SafetyAttachmentUploadInput): void {
       'Safety-attachment fileName is required',
       undefined,
       undefined,
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
   }
 }

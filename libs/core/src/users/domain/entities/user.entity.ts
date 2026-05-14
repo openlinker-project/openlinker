@@ -8,7 +8,7 @@
  * @module libs/core/src/users/domain/entities
  */
 
-import { UserRole } from '../types/role.types';
+import type { UserRole } from '../types/role.types';
 
 export class User {
   constructor(
@@ -18,6 +18,6 @@ export class User {
     public readonly passwordHash: string,
     public readonly role: UserRole,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly updatedAt: Date
   ) {}
 }

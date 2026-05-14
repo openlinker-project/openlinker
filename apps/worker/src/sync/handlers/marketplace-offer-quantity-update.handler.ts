@@ -9,17 +9,14 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MarketplaceOfferQuantityUpdatePayloadV1,
 } from '@openlinker/core/sync';
-import {
-  IInventorySyncService,
-  INVENTORY_SYNC_SERVICE_TOKEN,
-} from '@openlinker/core/inventory';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { IInventorySyncService, INVENTORY_SYNC_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -30,14 +27,14 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
 
   constructor(
     @Inject(INVENTORY_SYNC_SERVICE_TOKEN)
-    private readonly inventorySync: IInventorySyncService,
+    private readonly inventorySync: IInventorySyncService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.offerQuantity.update job ${job.id} for connection ${job.connectionId} (offerId=${payload.offerId}, quantity=${payload.quantity})`,
+      `Executing marketplace.offerQuantity.update job ${job.id} for connection ${job.connectionId} (offerId=${payload.offerId}, quantity=${payload.quantity})`
     );
 
     try {
@@ -53,7 +50,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
           `Offer quantity update failed for offer ${failure.offerId}: ${failure.errorCode}${failure.message ? ` (${failure.message})` : ''}`,
           job.id,
           job.jobType,
-          job.connectionId,
+          job.connectionId
         );
       }
 
@@ -68,7 +65,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -80,7 +77,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     if (!payload.offerId || typeof payload.offerId !== 'string') {
@@ -88,15 +85,19 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         `Missing or invalid offerId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
-    if (payload.quantity === undefined || payload.quantity === null || typeof payload.quantity !== 'number') {
+    if (
+      payload.quantity === undefined ||
+      payload.quantity === null ||
+      typeof payload.quantity !== 'number'
+    ) {
       throw new SyncJobExecutionError(
         `Missing or invalid quantity in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     return {
@@ -107,4 +108,3 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
     };
   }
 }
-

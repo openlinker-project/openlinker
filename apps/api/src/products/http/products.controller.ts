@@ -22,19 +22,19 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { PRODUCTS_SERVICE_TOKEN, Product, ProductVariant } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, IProductsService } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
-import type { IProductsService } from '@openlinker/core/products';
-import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { Product, ProductVariant } from '@openlinker/core/products';
+import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
-import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
+import type { ProductVariantResponseDto } from './dto/product-variant-response.dto';
 import { ProductVariantSummaryResponseDto } from './dto/product-variant-summary-response.dto';
 import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
 import { PaginatedProductVariantsResponseDto } from './dto/paginated-product-variants-response.dto';
-import { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
+import type { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
 
@@ -71,7 +71,7 @@ export class ProductsController {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IdentifierMappingPort,
+    private readonly identifierMapping: IdentifierMappingPort
   ) {}
 
   @Get()
@@ -80,14 +80,15 @@ export class ProductsController {
     summary: 'List products',
     description: 'Returns a paginated list of products. Supports search by name or SKU.',
   })
-  @ApiResponse({ status: 200, description: 'Paginated product list', type: PaginatedProductsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated product list',
+    type: PaginatedProductsResponseDto,
+  })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
     const { search, limit = 20, offset = 0 } = query;
 
-    const { items, total } = await this.productsService.listProducts(
-      { search },
-      { limit, offset },
-    );
+    const { items, total } = await this.productsService.listProducts({ search }, { limit, offset });
 
     return {
       items: items.map((p) => this.toProductDto(p)),
@@ -109,10 +110,14 @@ export class ProductsController {
       'Lightweight projection of a product variant — id, parent product id, SKU, EAN, optional name. Used by the listing-detail page (#464) to surface the linked variant inline next to the Internal ID row without forcing the FE to know the parent product first.',
   })
   @ApiParam({ name: 'variantId', description: 'Internal variant ID (e.g. ol_variant_...)' })
-  @ApiResponse({ status: 200, description: 'Variant summary', type: ProductVariantSummaryResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Variant summary',
+    type: ProductVariantSummaryResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Variant not found' })
   async getVariantSummary(
-    @Param('variantId') variantId: string,
+    @Param('variantId') variantId: string
   ): Promise<ProductVariantSummaryResponseDto> {
     const variant = await this.productsService.getVariant(variantId);
     if (!variant) {
@@ -139,12 +144,12 @@ export class ProductsController {
     // Load variants
     const { items: variants, total: variantCount } = await this.productsService.listVariants(
       { productId: id },
-      { limit: MAX_VARIANTS_IN_DETAIL, offset: 0 },
+      { limit: MAX_VARIANTS_IN_DETAIL, offset: 0 }
     );
 
     if (variantCount > MAX_VARIANTS_IN_DETAIL) {
       this.logger.warn(
-        `Product ${id} has ${variantCount} variants but detail response is capped at ${MAX_VARIANTS_IN_DETAIL}`,
+        `Product ${id} has ${variantCount} variants but detail response is capped at ${MAX_VARIANTS_IN_DETAIL}`
       );
     }
 
@@ -173,16 +178,20 @@ export class ProductsController {
     description: 'Returns a paginated list of variants belonging to a specific product.',
   })
   @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
-  @ApiResponse({ status: 200, description: 'Paginated variant list', type: PaginatedProductVariantsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated variant list',
+    type: PaginatedProductVariantsResponseDto,
+  })
   async listVariantsByProduct(
     @Param('productId') productId: string,
-    @Query() query: ListProductVariantsQueryDto,
+    @Query() query: ListProductVariantsQueryDto
   ): Promise<PaginatedProductVariantsResponseDto> {
     const { search, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.productsService.listVariants(
       { productId, search },
-      { limit, offset },
+      { limit, offset }
     );
 
     return {
@@ -239,7 +248,11 @@ export class ProductsController {
     };
   }
 
-  private toExternalIdDto(mapping: { externalId: string; platformType: string; connectionId: string }): ExternalIdMappingDto {
+  private toExternalIdDto(mapping: {
+    externalId: string;
+    platformType: string;
+    connectionId: string;
+  }): ExternalIdMappingDto {
     return {
       externalId: mapping.externalId,
       platformType: mapping.platformType,
@@ -262,7 +275,7 @@ export class ProductsController {
 export class VariantsController {
   constructor(
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService,
+    private readonly productsService: IProductsService
   ) {}
 
   @Get('search')
@@ -271,14 +284,17 @@ export class VariantsController {
     summary: 'Search variants',
     description: 'Search variants across all products by SKU, EAN, or GTIN.',
   })
-  @ApiResponse({ status: 200, description: 'Paginated variant search results', type: PaginatedProductVariantsResponseDto })
-  async searchVariants(@Query() query: ListProductVariantsQueryDto): Promise<PaginatedProductVariantsResponseDto> {
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated variant search results',
+    type: PaginatedProductVariantsResponseDto,
+  })
+  async searchVariants(
+    @Query() query: ListProductVariantsQueryDto
+  ): Promise<PaginatedProductVariantsResponseDto> {
     const { search, limit = 20, offset = 0 } = query;
 
-    const { items, total } = await this.productsService.listVariants(
-      { search },
-      { limit, offset },
-    );
+    const { items, total } = await this.productsService.listVariants({ search }, { limit, offset });
 
     return {
       items: items.map((v) => this.toVariantDto(v)),

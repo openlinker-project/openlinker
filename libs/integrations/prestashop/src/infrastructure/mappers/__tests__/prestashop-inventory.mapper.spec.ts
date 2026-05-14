@@ -7,7 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopInventoryMapper } from '../prestashop-inventory.mapper';
-import { PrestashopStockAvailable } from '../prestashop.mapper.interface';
+import type { PrestashopStockAvailable } from '../prestashop.mapper.interface';
 
 describe('PrestashopInventoryMapper', () => {
   let mapper: PrestashopInventoryMapper;
@@ -127,4 +127,3 @@ describe('PrestashopInventoryMapper', () => {
     });
   });
 });
-

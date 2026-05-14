@@ -7,7 +7,8 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable } from '@nestjs/common';
-import { SyncJobHandler, JobType, JobTypeValues } from '@openlinker/core/sync';
+import type { SyncJobHandler, JobType } from '@openlinker/core/sync';
+import { JobTypeValues } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -59,4 +60,3 @@ export class SyncJobHandlerRegistry {
     return Array.from(this.handlers.keys());
   }
 }
-

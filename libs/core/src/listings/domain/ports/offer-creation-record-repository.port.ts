@@ -8,8 +8,8 @@
  * @module libs/core/src/listings/domain/ports
  */
 
-import { OfferCreationRecord } from '../entities/offer-creation-record.entity';
-import {
+import type { OfferCreationRecord } from '../entities/offer-creation-record.entity';
+import type {
   CreateOfferCreationRecordInput,
   OfferCreationError,
   OfferCreationStatus,
@@ -38,7 +38,7 @@ export interface OfferCreationRecordRepositoryPort {
    */
   findLatestByVariantAndConnection(
     variantId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<OfferCreationRecord | null>;
 
   /**
@@ -54,7 +54,7 @@ export interface OfferCreationRecordRepositoryPort {
    */
   findByExternalOfferIdAndConnectionId(
     externalOfferId: string,
-    connectionId: string,
+    connectionId: string
   ): Promise<OfferCreationRecord | null>;
 
   /**
@@ -70,7 +70,7 @@ export interface OfferCreationRecordRepositoryPort {
   updateStatus(
     id: string,
     status: OfferCreationStatus,
-    errors?: OfferCreationError[] | null,
+    errors?: OfferCreationError[] | null
   ): Promise<OfferCreationRecord>;
 
   /**
@@ -99,6 +99,6 @@ export interface OfferCreationRecordRepositoryPort {
     id: string,
     externalOfferId: string,
     status: OfferCreationStatus,
-    errors?: OfferCreationError[] | null,
+    errors?: OfferCreationError[] | null
   ): Promise<OfferCreationRecord>;
 }

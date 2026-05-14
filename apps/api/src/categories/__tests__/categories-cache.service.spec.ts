@@ -4,7 +4,8 @@
  * @module apps/api/src/categories/__tests__
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CategoriesCacheService } from '../categories-cache.service';
 import { AllegroCategoryCacheOrmEntity } from '../persistence/allegro-category-cache.orm-entity';
@@ -13,7 +14,9 @@ import type { OfferCategory } from '@openlinker/core/listings';
 
 const CONNECTION_ID = 'conn-uuid-1';
 
-function createMockCategory(overrides: Partial<AllegroCategoryCacheOrmEntity> = {}): AllegroCategoryCacheOrmEntity {
+function createMockCategory(
+  overrides: Partial<AllegroCategoryCacheOrmEntity> = {}
+): AllegroCategoryCacheOrmEntity {
   const entity = new AllegroCategoryCacheOrmEntity();
   entity.id = 'cache-id-1';
   entity.connectionId = CONNECTION_ID;
@@ -91,7 +94,10 @@ describe('CategoriesCacheService', () => {
 
       const result = await service.getAllegroCategories(CONNECTION_ID, '1');
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'OfferManager'
+      );
       expect(cacheRepo.upsert).toHaveBeenCalled();
       expect(result).toEqual(apiCategories);
     });
@@ -100,9 +106,7 @@ describe('CategoriesCacheService', () => {
       const staleDate = new Date();
       staleDate.setHours(staleDate.getHours() - 25);
 
-      cacheRepo.find.mockResolvedValue([
-        createMockCategory({ fetchedAt: staleDate }),
-      ]);
+      cacheRepo.find.mockResolvedValue([createMockCategory({ fetchedAt: staleDate })]);
 
       const freshCategories: OfferCategory[] = [
         { id: '100', name: 'Electronics (updated)', parentId: null, leaf: false },

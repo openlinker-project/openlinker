@@ -20,7 +20,7 @@
  * @see {@link WebhookProvisioningPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { WebhookProvisioningPort } from '../../domain/ports/webhook-provisioning.port';
+import type { WebhookProvisioningPort } from '../../domain/ports/webhook-provisioning.port';
 
 @Injectable()
 export class WebhookProvisioningRegistryService {

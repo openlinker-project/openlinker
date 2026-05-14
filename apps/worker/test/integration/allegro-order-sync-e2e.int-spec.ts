@@ -16,7 +16,11 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { createMockAllegroMarketplaceAdapter } from './helpers/mock-allegro-adapters.helper';
-import { SYNC_JOB_REPOSITORY_TOKEN, JOB_ENQUEUE_TOKEN, CONNECTION_CURSOR_REPOSITORY_TOKEN } from '@openlinker/core/sync';
+import {
+  SYNC_JOB_REPOSITORY_TOKEN,
+  JOB_ENQUEUE_TOKEN,
+  CONNECTION_CURSOR_REPOSITORY_TOKEN,
+} from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
@@ -24,7 +28,10 @@ import { SyncJobRequest } from '@openlinker/core/sync';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { OrderProcessorManagerPort } from '@openlinker/core/orders';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+} from '@openlinker/core/identifier-mapping';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -49,7 +56,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     identifierMapping = harness.get(IDENTIFIER_MAPPING_SERVICE_TOKEN);
 
     // Set credentials environment variable for test connection
-    process.env.CREDENTIALS_TEST_CREDENTIALS_REF = '{"accessToken":"test-token","refreshToken":"test-refresh"}';
+    process.env.CREDENTIALS_TEST_CREDENTIALS_REF =
+      '{"accessToken":"test-token","refreshToken":"test-refresh"}';
   });
 
   beforeEach(async () => {
@@ -58,7 +66,9 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     // Create mock adapters for each test
     mockMarketplaceAdapter = createMockAllegroMarketplaceAdapter();
     mockOrderProcessor = {
-      createOrder: jest.fn().mockResolvedValue({ orderId: randomUUID(), orderNumber: 'PS-ORDER-001' }),
+      createOrder: jest
+        .fn()
+        .mockResolvedValue({ orderId: randomUUID(), orderNumber: 'PS-ORDER-001' }),
       getOrder: jest.fn(),
       updateOrderStatus: jest.fn(),
       cancelOrder: jest.fn(),
@@ -67,17 +77,19 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     } as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
     // Mock IntegrationsService to return our mock adapters
-    jest.spyOn(integrationsService, 'getCapabilityAdapter').mockImplementation(async (_connectionId: string, capability: string) => {
-      // Post-#328: order ingestion resolves 'OrderSource'; offer-side resolves 'OfferManager'.
-      // The helper factory returns a combined mock so both capabilities share the same shape.
-      if (capability === 'OrderSource' || capability === 'OfferManager') {
-        return mockMarketplaceAdapter as any;
-      }
-      if (capability === 'OrderProcessorManager') {
-        return mockOrderProcessor as any;
-      }
-      throw new Error(`Unsupported capability: ${capability}`);
-    });
+    jest
+      .spyOn(integrationsService, 'getCapabilityAdapter')
+      .mockImplementation(async (_connectionId: string, capability: string) => {
+        // Post-#328: order ingestion resolves 'OrderSource'; offer-side resolves 'OfferManager'.
+        // The helper factory returns a combined mock so both capabilities share the same shape.
+        if (capability === 'OrderSource' || capability === 'OfferManager') {
+          return mockMarketplaceAdapter as any;
+        }
+        if (capability === 'OrderProcessorManager') {
+          return mockOrderProcessor as any;
+        }
+        throw new Error(`Unsupported capability: ${capability}`);
+      });
   });
 
   afterEach(async () => {
@@ -145,7 +157,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
           jobType: 'marketplace.order.sync',
           connectionId: connection.id,
           payload: expect.objectContaining({ schemaVersion: 1 }),
-        }),
+        })
       );
 
       // 6. Execute order sync handler for one order
@@ -161,7 +173,9 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         maxAttempts: 10,
       });
 
-      const { MarketplaceOrderSyncHandler } = require('../../src/sync/handlers/marketplace-order-sync.handler');
+      const {
+        MarketplaceOrderSyncHandler,
+      } = require('../../src/sync/handlers/marketplace-order-sync.handler');
       const orderSyncHandler = harness.get(MarketplaceOrderSyncHandler);
       await orderSyncHandler.execute(orderSyncPersisted);
 
@@ -247,5 +261,3 @@ describe('Allegro Order Sync End-to-End Integration', () => {
     });
   });
 });
-
-

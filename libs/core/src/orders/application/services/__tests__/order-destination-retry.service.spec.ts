@@ -7,11 +7,12 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 import { OrderDestinationRetryService } from '../order-destination-retry.service';
-import { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
-import { IOrderRecordService } from '../../interfaces/order-record.service.interface';
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
-import { OrderRecord, OrderSyncStatus } from '../../../domain/entities/order-record.entity';
+import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
+import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import { OrderDestinationNotFoundException } from '../../../domain/exceptions/order-destination-not-found.exception';
 import { OrderDestinationNotRetryableException } from '../../../domain/exceptions/order-destination-not-retryable.exception';
@@ -46,7 +47,7 @@ describe('OrderDestinationRetryService', () => {
       rows,
       'ready',
       new Date(),
-      new Date(),
+      new Date()
     );
 
   beforeEach(() => {
@@ -80,7 +81,7 @@ describe('OrderDestinationRetryService', () => {
       orderRepo,
       recordService,
       identifierMapping,
-      jobEnqueue,
+      jobEnqueue
     );
   });
 
@@ -106,11 +107,10 @@ describe('OrderDestinationRetryService', () => {
 
       // Slot was claimed before enqueue
       expect(recordService.updateSyncStatus).toHaveBeenCalledTimes(1);
-      expect(recordService.updateSyncStatus).toHaveBeenCalledWith(
-        INTERNAL_ORDER_ID,
-        DEST_CONN,
-        { destinationConnectionId: DEST_CONN, status: 'pending' },
-      );
+      expect(recordService.updateSyncStatus).toHaveBeenCalledWith(INTERNAL_ORDER_ID, DEST_CONN, {
+        destinationConnectionId: DEST_CONN,
+        status: 'pending',
+      });
 
       // Enqueued for the source connection (not the destination) with the right payload
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
@@ -123,7 +123,7 @@ describe('OrderDestinationRetryService', () => {
         sourceEventId: SOURCE_EVENT_ID,
       });
       expect(req.idempotencyKey).toMatch(
-        new RegExp(`^marketplace:${SOURCE_CONN}:order:${SOURCE_EVENT_ID}:retry:\\d+$`),
+        new RegExp(`^marketplace:${SOURCE_CONN}:order:${SOURCE_EVENT_ID}:retry:\\d+$`)
       );
     });
 
@@ -134,7 +134,7 @@ describe('OrderDestinationRetryService', () => {
         service.retry({
           internalOrderId: INTERNAL_ORDER_ID,
           destinationConnectionId: DEST_CONN,
-        }),
+        })
       ).rejects.toBeInstanceOf(OrderRecordNotFoundException);
 
       expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ describe('OrderDestinationRetryService', () => {
         service.retry({
           internalOrderId: INTERNAL_ORDER_ID,
           destinationConnectionId: DEST_CONN,
-        }),
+        })
       ).rejects.toBeInstanceOf(OrderDestinationNotFoundException);
 
       expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
@@ -159,19 +159,19 @@ describe('OrderDestinationRetryService', () => {
       'should throw OrderDestinationNotRetryableException when status is %s',
       async (status) => {
         orderRepo.findById.mockResolvedValue(
-          buildOrder([{ destinationConnectionId: DEST_CONN, status }]),
+          buildOrder([{ destinationConnectionId: DEST_CONN, status }])
         );
 
         await expect(
           service.retry({
             internalOrderId: INTERNAL_ORDER_ID,
             destinationConnectionId: DEST_CONN,
-          }),
+          })
         ).rejects.toBeInstanceOf(OrderDestinationNotRetryableException);
 
         expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
         expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
-      },
+      }
     );
 
     it('should throw MissingSourceExternalIdException when source mapping is absent', async () => {
@@ -190,7 +190,7 @@ describe('OrderDestinationRetryService', () => {
         service.retry({
           internalOrderId: INTERNAL_ORDER_ID,
           destinationConnectionId: DEST_CONN,
-        }),
+        })
       ).rejects.toBeInstanceOf(MissingSourceExternalIdException);
 
       expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
@@ -213,7 +213,7 @@ describe('OrderDestinationRetryService', () => {
         service.retry({
           internalOrderId: INTERNAL_ORDER_ID,
           destinationConnectionId: DEST_CONN,
-        }),
+        })
       ).rejects.toThrow('redis down');
 
       // First call: claim (failed → pending). Second call: revert (pending → failed with original error).
@@ -222,7 +222,7 @@ describe('OrderDestinationRetryService', () => {
         1,
         INTERNAL_ORDER_ID,
         DEST_CONN,
-        { destinationConnectionId: DEST_CONN, status: 'pending' },
+        { destinationConnectionId: DEST_CONN, status: 'pending' }
       );
       expect(recordService.updateSyncStatus).toHaveBeenNthCalledWith(
         2,
@@ -232,7 +232,7 @@ describe('OrderDestinationRetryService', () => {
           destinationConnectionId: DEST_CONN,
           status: 'failed',
           error: 'PrestaShop country PL not active',
-        },
+        }
       );
     });
 
@@ -256,7 +256,7 @@ describe('OrderDestinationRetryService', () => {
         service.retry({
           internalOrderId: INTERNAL_ORDER_ID,
           destinationConnectionId: DEST_CONN,
-        }),
+        })
       ).rejects.toThrow('redis down'); // original enqueue error, not the revert error
 
       expect(recordService.updateSyncStatus).toHaveBeenCalledTimes(2);

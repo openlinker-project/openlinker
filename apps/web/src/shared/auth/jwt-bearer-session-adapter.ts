@@ -1,5 +1,10 @@
 import type { SessionAdapter } from './session-adapter';
-import { ANONYMOUS_SESSION, type MeResponse, type Session, type SessionUser } from './session.types';
+import {
+  ANONYMOUS_SESSION,
+  type MeResponse,
+  type Session,
+  type SessionUser,
+} from './session.types';
 
 const STORAGE_KEY = 'ol_access_token';
 

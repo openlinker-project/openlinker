@@ -8,7 +8,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/util/__tests__
  */
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import {
   ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX,
@@ -52,8 +52,7 @@ describe('uploadImagesViaAllegro', () => {
   const okFetchResponse = (body: Uint8Array, contentType = 'image/jpeg'): Response =>
     new Response(body, { status: 200, headers: { 'content-type': contentType } });
 
-  const errFetchResponse = (status: number, body = ''): Response =>
-    new Response(body, { status });
+  const errFetchResponse = (status: number, body = ''): Response => new Response(body, { status });
 
   beforeEach(() => {
     uploadHttpClient = {
@@ -83,11 +82,9 @@ describe('uploadImagesViaAllegro', () => {
       headers: {},
     });
 
-    const result = await uploadImagesViaAllegro(
-      uploadHttpClient,
-      ['http://shop.local/img/1.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await uploadImagesViaAllegro(uploadHttpClient, ['http://shop.local/img/1.jpg'], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -97,7 +94,7 @@ describe('uploadImagesViaAllegro', () => {
     expect(uploadHttpClient.postBinary).toHaveBeenCalledWith(
       '/sale/images',
       'image/jpeg',
-      expect.any(Uint8Array),
+      expect.any(Uint8Array)
     );
   });
 
@@ -112,13 +109,13 @@ describe('uploadImagesViaAllegro', () => {
         data: { location: `https://images.allegrostatic.com/u-${++counter}.jpg` },
         status: 201,
         headers: {},
-      }),
+      })
     );
 
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://a/1.jpg', 'http://a/2.jpg', 'http://a/3.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(true);
@@ -136,7 +133,7 @@ describe('uploadImagesViaAllegro', () => {
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/locked.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(false);
@@ -157,11 +154,10 @@ describe('uploadImagesViaAllegro', () => {
       return Promise.reject(err);
     });
 
-    const result = await uploadImagesViaAllegro(
-      uploadHttpClient,
-      ['http://slow.local/x.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch, downloadTimeoutMs: 5_000 },
-    );
+    const result = await uploadImagesViaAllegro(uploadHttpClient, ['http://slow.local/x.jpg'], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      downloadTimeoutMs: 5_000,
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -173,19 +169,17 @@ describe('uploadImagesViaAllegro', () => {
   });
 
   it('IMAGE_DOWNLOAD_INVALID_TYPE when PrestaShop returns 200 + text/html (error page)', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(
-        new Response('<html>Not authorized</html>', {
-          status: 200,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
-        }),
-      );
+    const fetchImpl = jest.fn().mockResolvedValue(
+      new Response('<html>Not authorized</html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+    );
 
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/blocked.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(false);
@@ -203,7 +197,7 @@ describe('uploadImagesViaAllegro', () => {
       new Response(makeValidPng(600, 600), {
         status: 200,
         headers: { 'content-type': 'image/jpg' }, // non-standard but ubiquitous
-      }),
+      })
     );
     uploadHttpClient.postBinary.mockResolvedValue({
       data: { location: 'https://images.allegrostatic.com/n.jpg' },
@@ -214,14 +208,14 @@ describe('uploadImagesViaAllegro', () => {
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/jpg-mime.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(true);
     expect(uploadHttpClient.postBinary).toHaveBeenCalledWith(
       '/sale/images',
       'image/jpeg', // not 'image/jpg'
-      expect.any(Uint8Array),
+      expect.any(Uint8Array)
     );
   });
 
@@ -232,15 +226,13 @@ describe('uploadImagesViaAllegro', () => {
         'Unprocessable entity',
         422,
         '{"errors":[{"code":"INVALID_IMAGE"}]}',
-        'https://upload.allegro.pl/sale/images',
-      ),
+        'https://upload.allegro.pl/sale/images'
+      )
     );
 
-    const result = await uploadImagesViaAllegro(
-      uploadHttpClient,
-      ['http://shop.local/x.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await uploadImagesViaAllegro(uploadHttpClient, ['http://shop.local/x.jpg'], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -259,11 +251,9 @@ describe('uploadImagesViaAllegro', () => {
       headers: {},
     });
 
-    const result = await uploadImagesViaAllegro(
-      uploadHttpClient,
-      ['http://shop.local/x.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await uploadImagesViaAllegro(uploadHttpClient, ['http://shop.local/x.jpg'], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -290,7 +280,7 @@ describe('uploadImagesViaAllegro', () => {
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/good.jpg', 'http://shop.local/bad.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(false);
@@ -306,11 +296,9 @@ describe('uploadImagesViaAllegro', () => {
     // upload + a 422 at offer-creation time.
     const fetchImpl = jest.fn().mockResolvedValue(okFetchResponse(makeValidPng(200, 200)));
 
-    const result = await uploadImagesViaAllegro(
-      uploadHttpClient,
-      ['http://shop.local/tiny.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await uploadImagesViaAllegro(uploadHttpClient, ['http://shop.local/tiny.jpg'], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -319,9 +307,7 @@ describe('uploadImagesViaAllegro', () => {
       code: 'IMAGE_TOO_SMALL_FOR_PRODUCT',
       message: expect.stringMatching(/200×200px/),
     });
-    expect(result.failures[0].message).toContain(
-      `≥ ${ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX}px`,
-    );
+    expect(result.failures[0].message).toContain(`≥ ${ALLEGRO_PRODUCT_IMAGE_MIN_LONGER_SIDE_PX}px`);
     expect(uploadHttpClient.postBinary).not.toHaveBeenCalled();
   });
 
@@ -336,7 +322,7 @@ describe('uploadImagesViaAllegro', () => {
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/boundary.jpg'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result).toEqual({
@@ -353,13 +339,13 @@ describe('uploadImagesViaAllegro', () => {
       new Response(corrupt, {
         status: 200,
         headers: { 'content-type': 'image/png' },
-      }),
+      })
     );
 
     const result = await uploadImagesViaAllegro(
       uploadHttpClient,
       ['http://shop.local/corrupt.png'],
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
+      { fetchImpl: fetchImpl as unknown as typeof fetch }
     );
 
     expect(result.ok).toBe(false);

@@ -9,7 +9,8 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, RedisClientType } from 'redis';
+import type { RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -66,7 +67,7 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
           await client.connect();
         } catch (error) {
           throw new Error(
-            `WebhooksModule: Failed to connect REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`,
+            `WebhooksModule: Failed to connect REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`
           );
         }
         return client as RedisClientType;
@@ -76,4 +77,3 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
   ],
 })
 export class WebhooksModule {}
-

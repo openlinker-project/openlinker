@@ -9,11 +9,14 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners/__tests__
  */
 import { PrestashopAddressProvisioner } from '../prestashop-address-provisioner';
-import { PrestashopCountryResolver } from '../prestashop-country-resolver';
-import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import { CustomerProjectionRepositoryPort, DestinationAddressMapping } from '@openlinker/core/customers';
-import { Address, OrderPickupPoint } from '@openlinker/core/orders';
-import { PrestashopConnectionConfig } from '../../../domain/types/prestashop-config.types';
+import type { PrestashopCountryResolver } from '../prestashop-country-resolver';
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type {
+  CustomerProjectionRepositoryPort,
+  DestinationAddressMapping,
+} from '@openlinker/core/customers';
+import type { Address, OrderPickupPoint } from '@openlinker/core/orders';
+import type { PrestashopConnectionConfig } from '../../../domain/types/prestashop-config.types';
 
 describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -92,7 +95,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       webserviceClient,
       config,
       projectionRepo,
-      pickupPoint,
+      pickupPoint
     );
 
     expect(createCalls).toHaveLength(1);
@@ -117,7 +120,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       webserviceClient,
       config,
       projectionRepo,
-      pickupPoint,
+      pickupPoint
     );
     await provisioner.resolveOrCreateAddress(
       'ol_customer_2',
@@ -128,7 +131,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       webserviceClient,
       config,
       projectionRepo,
-      pickupPoint,
+      pickupPoint
     );
 
     expect(upsertedHashes).toHaveLength(2);
@@ -151,7 +154,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       webserviceClient,
       config,
       projectionRepo,
-      pickupA,
+      pickupA
     );
     await provisioner.resolveOrCreateAddress(
       'ol_customer_1',
@@ -162,7 +165,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       webserviceClient,
       config,
       projectionRepo,
-      pickupB,
+      pickupB
     );
 
     expect(upsertedHashes).toHaveLength(2);
@@ -180,7 +183,7 @@ describe('PrestashopAddressProvisioner — pickup-point (#458)', () => {
       'conn-ps-1',
       webserviceClient,
       config,
-      projectionRepo,
+      projectionRepo
       // pickupPoint omitted
     );
 

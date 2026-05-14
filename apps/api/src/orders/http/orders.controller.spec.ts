@@ -3,12 +3,9 @@
  *
  * @module apps/api/src/orders/http
  */
-import { Test, TestingModule } from '@nestjs/testing';
-import {
-  ConflictException,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import { ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
@@ -46,7 +43,7 @@ describe('OrdersController', () => {
     ],
     'ready',
     new Date('2026-04-01T00:00:00Z'),
-    new Date('2026-04-01T12:00:00Z'),
+    new Date('2026-04-01T12:00:00Z')
   );
 
   beforeEach(async () => {
@@ -117,7 +114,7 @@ describe('OrdersController', () => {
           createdFrom: new Date('2026-01-01T00:00:00Z'),
           createdTo: new Date('2026-12-31T23:59:59Z'),
         },
-        { limit: 10, offset: 5 },
+        { limit: 10, offset: 5 }
       );
     });
 
@@ -150,7 +147,7 @@ describe('OrdersController', () => {
         [{ destinationConnectionId: 'conn-dest-001', status: 'pending' }],
         'ready',
         new Date('2026-04-01T00:00:00Z'),
-        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z')
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMinimalSync], total: 1 });
 
@@ -185,7 +182,7 @@ describe('OrdersController', () => {
             attemptedAt: new Date('2026-04-01T01:00:00Z'),
             externalOrderId: 'PS-456',
           },
-        ],
+        ]
       );
       repository.findMany.mockResolvedValue({ items: [orderWithAttempts], total: 1 });
 
@@ -260,37 +257,37 @@ describe('OrdersController', () => {
       retryService.retry.mockRejectedValue(new OrderRecordNotFoundException(internalOrderId));
 
       await expect(
-        controller.retryDestination(internalOrderId, connectionId),
+        controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('should map OrderDestinationNotFoundException to NotFoundException (404)', async () => {
       retryService.retry.mockRejectedValue(
-        new OrderDestinationNotFoundException(internalOrderId, connectionId),
+        new OrderDestinationNotFoundException(internalOrderId, connectionId)
       );
 
       await expect(
-        controller.retryDestination(internalOrderId, connectionId),
+        controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('should map OrderDestinationNotRetryableException to ConflictException (409)', async () => {
       retryService.retry.mockRejectedValue(
-        new OrderDestinationNotRetryableException(internalOrderId, connectionId, 'synced'),
+        new OrderDestinationNotRetryableException(internalOrderId, connectionId, 'synced')
       );
 
       await expect(
-        controller.retryDestination(internalOrderId, connectionId),
+        controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('should map MissingSourceExternalIdException to InternalServerErrorException (500)', async () => {
       retryService.retry.mockRejectedValue(
-        new MissingSourceExternalIdException(internalOrderId, 'conn-source-001'),
+        new MissingSourceExternalIdException(internalOrderId, 'conn-source-001')
       );
 
       await expect(
-        controller.retryDestination(internalOrderId, connectionId),
+        controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(InternalServerErrorException);
     });
   });

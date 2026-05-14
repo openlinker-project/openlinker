@@ -16,9 +16,12 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
 import { IInventoryService } from './inventory.service.interface';
-import { InventoryMasterPort, Inventory as InventoryPortInterface } from '../../domain/ports/inventory-master.port';
+import type {
+  InventoryMasterPort,
+  Inventory as InventoryPortInterface,
+} from '../../domain/ports/inventory-master.port';
 import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entities/inventory-item.entity';
-import {
+import type {
   IMasterInventorySyncService,
   MasterInventorySyncResult,
 } from './master-inventory-sync.service.interface';
@@ -34,30 +37,31 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(INVENTORY_SERVICE_TOKEN)
-    private readonly inventoryService: IInventoryService,
+    private readonly inventoryService: IInventoryService
   ) {}
 
   async syncFromMasterByExternalId(
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       'Product',
       externalId,
-      connectionId,
+      connectionId
     );
 
-    const inventoryAdapter = await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
-      connectionId,
-      'InventoryMaster',
-    );
+    const inventoryAdapter =
+      await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
+        connectionId,
+        'InventoryMaster'
+      );
 
     const inventoryFromAdapter = await inventoryAdapter.getInventory(internalProductId, undefined);
     const inventoryItem = await this.toDomainInventoryItem(inventoryFromAdapter, internalProductId);
     await this.inventoryService.setInventory(inventoryItem);
 
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, available=${inventoryItem.availableQuantity}, reserved=${inventoryItem.reservedQuantity})`,
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, available=${inventoryItem.availableQuantity}, reserved=${inventoryItem.reservedQuantity})`
     );
 
     return {
@@ -69,19 +73,18 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
 
   private async toDomainInventoryItem(
     inventory: InventoryPortInterface,
-    productId: string,
+    productId: string
   ): Promise<InventoryItemDomainEntity> {
     const existing = await this.inventoryService.getInventory(
       productId,
       inventory.variantId ?? null,
-      inventory.locationId ?? null,
+      inventory.locationId ?? null
     );
 
     const inventoryItemId = existing?.id ?? randomUUID();
 
     const availableQuantity =
-      inventory.available ??
-      (inventory.quantity ?? 0) - (inventory.reserved ?? 0);
+      inventory.available ?? (inventory.quantity ?? 0) - (inventory.reserved ?? 0);
 
     return new InventoryItemDomainEntity(
       inventoryItemId,
@@ -90,8 +93,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       availableQuantity,
       inventory.reserved ?? 0,
       inventory.locationId ?? null,
-      inventory.updatedAt ?? new Date(),
+      inventory.updatedAt ?? new Date()
     );
   }
 }
-

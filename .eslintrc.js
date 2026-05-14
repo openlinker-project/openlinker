@@ -23,6 +23,21 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     '@typescript-eslint/explicit-module-boundary-types': 'off',
+    // #598: enforce `import type { Foo }` for type-only imports so workspace
+    // packages don't accidentally pull a value-import dependency into the
+    // module graph when only the type is needed. Mixed value/type imports
+    // contributed to the #337 runtime cycle the listings barrel split was
+    // meant to fix; this rule is the structural guard against re-introducing
+    // that class of bug as new bounded contexts land.
+    '@typescript-eslint/consistent-type-imports': [
+      'error',
+      {
+        prefer: 'type-imports',
+        fixStyle: 'separate-type-imports',
+        disallowTypeAnnotations: true,
+      },
+    ],
+    '@typescript-eslint/no-import-type-side-effects': 'error',
     // Discourage deep relative imports - prefer path aliases for cross-layer/cross-package imports
     // Note: Infrastructure/persistence layers use relative imports to avoid runtime ERR_PACKAGE_PATH_NOT_EXPORTED errors
     // These warnings are acceptable for now - consider path aliases when refactoring
@@ -31,8 +46,14 @@ module.exports = {
       {
         patterns: [
           {
-            group: ['../../domain/*', '../../infrastructure/*', '../../../domain/*', '../../../infrastructure/*'],
-            message: 'Use path aliases (@openlinker/*) for cross-layer imports instead of deep relative paths. Exception: infrastructure/persistence layers may use relative imports to avoid runtime errors.',
+            group: [
+              '../../domain/*',
+              '../../infrastructure/*',
+              '../../../domain/*',
+              '../../../infrastructure/*',
+            ],
+            message:
+              'Use path aliases (@openlinker/*) for cross-layer imports instead of deep relative paths. Exception: infrastructure/persistence layers may use relative imports to avoid runtime errors.',
           },
         ],
       },
@@ -164,15 +185,51 @@ module.exports = {
                 // Adding a new cross-imported feature: extend the slug list
                 // below and update docs/frontend-architecture.md.
                 group: [
-                  '**/adapters/api/**', '**/adapters/hooks/**', '**/adapters/components/**', '**/adapters/lib/**', '**/adapters/types/**',
-                  '**/allegro/api/**', '**/allegro/hooks/**', '**/allegro/components/**', '**/allegro/lib/**', '**/allegro/types/**',
-                  '**/connections/api/**', '**/connections/hooks/**', '**/connections/components/**', '**/connections/lib/**', '**/connections/types/**',
-                  '**/content/api/**', '**/content/hooks/**', '**/content/components/**', '**/content/lib/**', '**/content/types/**',
-                  '**/customers/api/**', '**/customers/hooks/**', '**/customers/components/**', '**/customers/lib/**', '**/customers/types/**',
-                  '**/listings/api/**', '**/listings/hooks/**', '**/listings/components/**', '**/listings/lib/**', '**/listings/types/**',
-                  '**/mappings/api/**', '**/mappings/hooks/**', '**/mappings/components/**', '**/mappings/lib/**', '**/mappings/types/**',
-                  '**/products/api/**', '**/products/hooks/**', '**/products/components/**', '**/products/lib/**', '**/products/types/**',
-                  '**/sync-jobs/api/**', '**/sync-jobs/hooks/**', '**/sync-jobs/components/**', '**/sync-jobs/lib/**', '**/sync-jobs/types/**',
+                  '**/adapters/api/**',
+                  '**/adapters/hooks/**',
+                  '**/adapters/components/**',
+                  '**/adapters/lib/**',
+                  '**/adapters/types/**',
+                  '**/allegro/api/**',
+                  '**/allegro/hooks/**',
+                  '**/allegro/components/**',
+                  '**/allegro/lib/**',
+                  '**/allegro/types/**',
+                  '**/connections/api/**',
+                  '**/connections/hooks/**',
+                  '**/connections/components/**',
+                  '**/connections/lib/**',
+                  '**/connections/types/**',
+                  '**/content/api/**',
+                  '**/content/hooks/**',
+                  '**/content/components/**',
+                  '**/content/lib/**',
+                  '**/content/types/**',
+                  '**/customers/api/**',
+                  '**/customers/hooks/**',
+                  '**/customers/components/**',
+                  '**/customers/lib/**',
+                  '**/customers/types/**',
+                  '**/listings/api/**',
+                  '**/listings/hooks/**',
+                  '**/listings/components/**',
+                  '**/listings/lib/**',
+                  '**/listings/types/**',
+                  '**/mappings/api/**',
+                  '**/mappings/hooks/**',
+                  '**/mappings/components/**',
+                  '**/mappings/lib/**',
+                  '**/mappings/types/**',
+                  '**/products/api/**',
+                  '**/products/hooks/**',
+                  '**/products/components/**',
+                  '**/products/lib/**',
+                  '**/products/types/**',
+                  '**/sync-jobs/api/**',
+                  '**/sync-jobs/hooks/**',
+                  '**/sync-jobs/components/**',
+                  '**/sync-jobs/lib/**',
+                  '**/sync-jobs/types/**',
                 ],
                 message:
                   "Cross-feature imports must target the feature's public barrel (`features/<name>`), not its internals. See docs/frontend-architecture.md § Feature public surface.",
@@ -297,18 +354,54 @@ module.exports = {
                 // features/ (#609). Brace-expansion is unsupported by the
                 // matcher; each slug/part is enumerated below.
                 group: [
-                  '**/adapters/api/**', '**/adapters/hooks/**', '**/adapters/components/**', '**/adapters/lib/**', '**/adapters/types/**',
-                  '**/allegro/api/**', '**/allegro/hooks/**', '**/allegro/components/**', '**/allegro/lib/**', '**/allegro/types/**',
-                  '**/connections/api/**', '**/connections/hooks/**', '**/connections/components/**', '**/connections/lib/**', '**/connections/types/**',
-                  '**/content/api/**', '**/content/hooks/**', '**/content/components/**', '**/content/lib/**', '**/content/types/**',
-                  '**/customers/api/**', '**/customers/hooks/**', '**/customers/components/**', '**/customers/lib/**', '**/customers/types/**',
-                  '**/listings/api/**', '**/listings/hooks/**', '**/listings/components/**', '**/listings/lib/**', '**/listings/types/**',
-                  '**/mappings/api/**', '**/mappings/hooks/**', '**/mappings/components/**', '**/mappings/lib/**', '**/mappings/types/**',
-                  '**/products/api/**', '**/products/hooks/**', '**/products/components/**', '**/products/lib/**', '**/products/types/**',
-                  '**/sync-jobs/api/**', '**/sync-jobs/hooks/**', '**/sync-jobs/components/**', '**/sync-jobs/lib/**', '**/sync-jobs/types/**',
+                  '**/adapters/api/**',
+                  '**/adapters/hooks/**',
+                  '**/adapters/components/**',
+                  '**/adapters/lib/**',
+                  '**/adapters/types/**',
+                  '**/allegro/api/**',
+                  '**/allegro/hooks/**',
+                  '**/allegro/components/**',
+                  '**/allegro/lib/**',
+                  '**/allegro/types/**',
+                  '**/connections/api/**',
+                  '**/connections/hooks/**',
+                  '**/connections/components/**',
+                  '**/connections/lib/**',
+                  '**/connections/types/**',
+                  '**/content/api/**',
+                  '**/content/hooks/**',
+                  '**/content/components/**',
+                  '**/content/lib/**',
+                  '**/content/types/**',
+                  '**/customers/api/**',
+                  '**/customers/hooks/**',
+                  '**/customers/components/**',
+                  '**/customers/lib/**',
+                  '**/customers/types/**',
+                  '**/listings/api/**',
+                  '**/listings/hooks/**',
+                  '**/listings/components/**',
+                  '**/listings/lib/**',
+                  '**/listings/types/**',
+                  '**/mappings/api/**',
+                  '**/mappings/hooks/**',
+                  '**/mappings/components/**',
+                  '**/mappings/lib/**',
+                  '**/mappings/types/**',
+                  '**/products/api/**',
+                  '**/products/hooks/**',
+                  '**/products/components/**',
+                  '**/products/lib/**',
+                  '**/products/types/**',
+                  '**/sync-jobs/api/**',
+                  '**/sync-jobs/hooks/**',
+                  '**/sync-jobs/components/**',
+                  '**/sync-jobs/lib/**',
+                  '**/sync-jobs/types/**',
                 ],
                 message:
-                  "Plugins must import features through the public barrel (`features/<name>`), not its internals. See docs/frontend-architecture.md § Feature public surface.",
+                  'Plugins must import features through the public barrel (`features/<name>`), not its internals. See docs/frontend-architecture.md § Feature public surface.',
               },
             ],
           },
@@ -371,10 +464,7 @@ module.exports = {
       // those helpers advertise their platform in the filename and fail safe
       // for non-matching inputs.
       files: ['apps/web/src/{features,pages,app}/**/*.{ts,tsx}'],
-      excludedFiles: [
-        'apps/web/src/**/*.test.{ts,tsx}',
-        'apps/web/src/**/*.spec.{ts,tsx}',
-      ],
+      excludedFiles: ['apps/web/src/**/*.test.{ts,tsx}', 'apps/web/src/**/*.spec.{ts,tsx}'],
       rules: {
         'no-restricted-syntax': [
           'error',
@@ -487,4 +577,3 @@ module.exports = {
     },
   ],
 };
-

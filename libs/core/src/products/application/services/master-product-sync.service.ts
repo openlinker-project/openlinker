@@ -15,11 +15,14 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
 import { IProductsService } from './products.service.interface';
-import { ProductMasterPort } from '../../domain/ports/product-master.port';
-import { Product } from '../../domain/entities/product.entity';
-import { ProductVariant } from '../../domain/entities/product-variant.entity';
+import type { ProductMasterPort } from '../../domain/ports/product-master.port';
+import type { Product } from '../../domain/entities/product.entity';
+import type { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
-import { IMasterProductSyncService, MasterProductSyncResult } from './master-product-sync.service.interface';
+import type {
+  IMasterProductSyncService,
+  MasterProductSyncResult,
+} from './master-product-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -32,24 +35,24 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService,
+    private readonly productsService: IProductsService
   ) {}
 
   async syncFromMasterByExternalId(
     connectionId: string,
-    externalId: string,
+    externalId: string
   ): Promise<MasterProductSyncResult> {
     // Resolve internal product ID
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       'Product',
       externalId,
-      connectionId,
+      connectionId
     );
 
     // Resolve ProductMaster adapter
     const productAdapter = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
       connectionId,
-      'ProductMaster',
+      'ProductMaster'
     );
 
     // Pull product and variants from adapter
@@ -67,7 +70,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     }
 
     this.logger.debug(
-      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, variants: ${variants.length})`,
+      `Master product sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, variants: ${variants.length})`
     );
 
     return {
@@ -111,4 +114,3 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     };
   }
 }
-

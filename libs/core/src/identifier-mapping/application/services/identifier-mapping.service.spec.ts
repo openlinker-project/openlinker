@@ -7,15 +7,19 @@
  *
  * @module libs/core/src/identifier-mapping/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { IdentifierMappingService } from './identifier-mapping.service';
-import { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
-import { ConnectionPort } from '../../domain/ports/connection.port';
+import type { IdentifierMappingRepositoryPort } from '../../domain/ports/identifier-mapping-repository.port';
+import type { ConnectionPort } from '../../domain/ports/connection.port';
 import { IdentifierMapping } from '../../domain/entities/identifier-mapping.entity';
 import { Connection } from '../../domain/entities/connection.entity';
 import { DuplicateIdentifierMappingError } from '../../domain/exceptions/duplicate-identifier-mapping.error';
 import { MappingAlreadyExistsError } from '../../domain/exceptions/mapping-already-exists.error';
-import { IDENTIFIER_MAPPING_REPOSITORY_TOKEN, CONNECTION_PORT_TOKEN } from '../../identifier-mapping.tokens';
+import {
+  IDENTIFIER_MAPPING_REPOSITORY_TOKEN,
+  CONNECTION_PORT_TOKEN,
+} from '../../identifier-mapping.tokens';
 
 describe('IdentifierMappingService', () => {
   let service: IdentifierMappingService;
@@ -66,8 +70,8 @@ describe('IdentifierMappingService', () => {
       'credentials-ref',
       new Date(),
       new Date(),
-        undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+      undefined,
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
     );
 
     beforeEach(() => {
@@ -84,7 +88,7 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       // Pure insert-then-recover: insert attempt fails on duplicate, SELECT returns the existing row.
@@ -92,16 +96,12 @@ describe('IdentifierMappingService', () => {
         'Product',
         'external-123',
         platformType,
-        connectionId,
+        connectionId
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(existingMapping);
 
-      const result = await service.getOrCreateInternalId(
-        'Product',
-        'external-123',
-        connectionId,
-      );
+      const result = await service.getOrCreateInternalId('Product', 'external-123', connectionId);
 
       expect(result).toBe('ol_product_abc123');
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
@@ -111,7 +111,7 @@ describe('IdentifierMappingService', () => {
         'Product',
         platformType,
         connectionId,
-        'external-123',
+        'external-123'
       );
     });
 
@@ -125,15 +125,11 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       repository.insertMapping.mockResolvedValue(newMapping);
 
-      const result = await service.getOrCreateInternalId(
-        'Product',
-        'external-123',
-        connectionId,
-      );
+      const result = await service.getOrCreateInternalId('Product', 'external-123', connectionId);
 
       expect(result).toMatch(/^ol_product_/);
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
@@ -152,14 +148,14 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       const duplicateError = new DuplicateIdentifierMappingError(
         'Product',
         'external-123',
         platformType,
-        connectionId,
+        connectionId
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(winnerMapping);
@@ -179,12 +175,12 @@ describe('IdentifierMappingService', () => {
         'Product',
         'external-123',
         platformType,
-        connectionId,
+        connectionId
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
 
       await expect(
-        service.getOrCreateInternalId('Product', 'external-123', connectionId),
+        service.getOrCreateInternalId('Product', 'external-123', connectionId)
       ).rejects.toThrow(DuplicateIdentifierMappingError);
 
       expect(repository.findByExternalKey).toHaveBeenCalledTimes(1);
@@ -201,8 +197,8 @@ describe('IdentifierMappingService', () => {
           connectionId,
           null,
           new Date(),
-          new Date(),
-        ),
+          new Date()
+        )
       );
 
       await service.getOrCreateInternalId('Product', 'external-123', connectionId);
@@ -215,7 +211,7 @@ describe('IdentifierMappingService', () => {
           externalId: 'external-123',
           platformType,
           connectionId,
-        }),
+        })
       );
     });
 
@@ -236,16 +232,16 @@ describe('IdentifierMappingService', () => {
             mapping.entityType,
             mapping.externalId,
             mapping.platformType,
-            mapping.connectionId,
-          ),
+            mapping.connectionId
+          )
         );
       });
       repository.findByExternalKey.mockImplementation(() => Promise.resolve(savedMapping));
 
       const results = await Promise.all(
         Array.from({ length: N }, () =>
-          service.getOrCreateInternalId('Product', 'external-race', connectionId),
-        ),
+          service.getOrCreateInternalId('Product', 'external-race', connectionId)
+        )
       );
 
       expect(new Set(results).size).toBe(1);
@@ -290,8 +286,8 @@ describe('IdentifierMappingService', () => {
       'credentials-ref',
       new Date(),
       new Date(),
-        undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+      undefined,
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
     );
 
     beforeEach(() => {
@@ -308,7 +304,7 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
 
       repository.findByExternalKey.mockResolvedValue(mapping);
@@ -340,7 +336,7 @@ describe('IdentifierMappingService', () => {
           'connection-1',
           null,
           new Date(),
-          new Date(),
+          new Date()
         ),
         new IdentifierMapping(
           'id-2',
@@ -351,7 +347,7 @@ describe('IdentifierMappingService', () => {
           'connection-2',
           null,
           new Date(),
-          new Date(),
+          new Date()
         ),
       ];
 
@@ -387,8 +383,8 @@ describe('IdentifierMappingService', () => {
       'credentials-ref',
       new Date(),
       new Date(),
-        undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+      undefined,
+      ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
     );
 
     beforeEach(() => {
@@ -405,16 +401,11 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       repository.insertMapping.mockResolvedValue(newMapping);
 
-      await service.createMapping(
-        'Product',
-        'external-123',
-        connectionId,
-        'ol_product_abc123',
-      );
+      await service.createMapping('Product', 'external-123', connectionId, 'ol_product_abc123');
 
       expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
       expect(repository.insertMapping).toHaveBeenCalled();
@@ -432,26 +423,26 @@ describe('IdentifierMappingService', () => {
         connectionId,
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       const duplicateError = new DuplicateIdentifierMappingError(
         'Product',
         'external-123',
         platformType,
-        connectionId,
+        connectionId
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(existingMapping);
 
       await expect(
-        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new'),
+        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new')
       ).rejects.toThrow(MappingAlreadyExistsError);
 
       expect(repository.findByExternalKey).toHaveBeenCalledWith(
         'Product',
         platformType,
         connectionId,
-        'external-123',
+        'external-123'
       );
     });
 
@@ -460,13 +451,13 @@ describe('IdentifierMappingService', () => {
         'Product',
         'external-123',
         platformType,
-        connectionId,
+        connectionId
       );
       repository.insertMapping.mockRejectedValue(duplicateError);
       repository.findByExternalKey.mockResolvedValue(null);
 
       await expect(
-        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new'),
+        service.createMapping('Product', 'external-123', connectionId, 'ol_product_new')
       ).rejects.toThrow(DuplicateIdentifierMappingError);
     });
   });
@@ -483,7 +474,7 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
       const connection2 = new Connection(
         'connection-2',
@@ -495,13 +486,11 @@ describe('IdentifierMappingService', () => {
         new Date(),
         new Date(),
         undefined,
-        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager'],
+        ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
       );
 
       // batchGetOrCreateInternalIds deduplicates connectionIds and calls get() once per unique ID
-      connectionPort.get
-        .mockResolvedValueOnce(connection1)
-        .mockResolvedValueOnce(connection2);
+      connectionPort.get.mockResolvedValueOnce(connection1).mockResolvedValueOnce(connection2);
 
       repository.findByExternalKey.mockResolvedValue(null);
       repository.insertMapping
@@ -515,8 +504,8 @@ describe('IdentifierMappingService', () => {
             'connection-1',
             null,
             new Date(),
-            new Date(),
-          ),
+            new Date()
+          )
         )
         .mockResolvedValueOnce(
           new IdentifierMapping(
@@ -528,8 +517,8 @@ describe('IdentifierMappingService', () => {
             'connection-2',
             null,
             new Date(),
-            new Date(),
-          ),
+            new Date()
+          )
         );
 
       const requests = [
@@ -562,8 +551,28 @@ describe('IdentifierMappingService', () => {
   describe('listExternalIdsByConnection', () => {
     it('should return external IDs from repository mappings', async () => {
       const mappings = [
-        new IdentifierMapping('m1', 'Product', 'ol_product_abc', 'ext-1', 'prestashop', 'conn-1', null, new Date(), new Date()),
-        new IdentifierMapping('m2', 'Product', 'ol_product_def', 'ext-2', 'prestashop', 'conn-1', null, new Date(), new Date()),
+        new IdentifierMapping(
+          'm1',
+          'Product',
+          'ol_product_abc',
+          'ext-1',
+          'prestashop',
+          'conn-1',
+          null,
+          new Date(),
+          new Date()
+        ),
+        new IdentifierMapping(
+          'm2',
+          'Product',
+          'ol_product_def',
+          'ext-2',
+          'prestashop',
+          'conn-1',
+          null,
+          new Date(),
+          new Date()
+        ),
       ];
       repository.findByEntityTypeAndConnection.mockResolvedValue(mappings);
 

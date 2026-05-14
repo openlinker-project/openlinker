@@ -20,8 +20,8 @@
  */
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import type { ConnectionConfigShapeValidatorPort } from '@openlinker/core/integrations';
 import {
-  ConnectionConfigShapeValidatorPort,
   InvalidConnectionConfigException,
   flattenValidationErrors,
 } from '@openlinker/core/integrations';

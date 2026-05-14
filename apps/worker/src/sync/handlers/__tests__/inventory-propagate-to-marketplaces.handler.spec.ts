@@ -7,10 +7,10 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
-import { IInventoryService } from '@openlinker/core/inventory';
-import { JobEnqueuePort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type { IInventoryService } from '@openlinker/core/inventory';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 
@@ -43,12 +43,16 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     handler = new InventoryPropagateToMarketplacesHandler(
       identifierMapping,
       inventoryService,
-      jobEnqueue,
+      jobEnqueue
     );
   });
 
   describe('execute', () => {
-    const createJob = (payload: { productId: string; variantId?: string | null; inventoryUpdatedAt?: string | null }): SyncJob => ({
+    const createJob = (payload: {
+      productId: string;
+      variantId?: string | null;
+      inventoryUpdatedAt?: string | null;
+    }): SyncJob => ({
       id: 'job-id',
       jobType: 'inventory.propagateToMarketplaces',
       connectionId: '', // Empty for inventory propagation jobs
@@ -74,7 +78,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -101,7 +105,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
             offerId: 'offer-id',
             quantity: 100,
           }),
-        }),
+        })
       );
     });
 
@@ -124,7 +128,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -144,7 +148,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
       inventoryService.getInventory.mockResolvedValue(inventory);
       identifierMapping.getExternalIds.mockResolvedValue([
@@ -172,13 +176,13 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         expect.objectContaining({
           connectionId: 'allegro-connection',
           payload: expect.objectContaining({ offerId: 'allegro-offer' }),
-        }),
+        })
       );
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
           connectionId: 'amazon-connection',
           payload: expect.objectContaining({ offerId: 'amazon-offer' }),
-        }),
+        })
       );
     });
 
@@ -191,7 +195,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         50,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -214,7 +218,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           payload: expect.objectContaining({
             quantity: 50,
           }),
-        }),
+        })
       );
     });
 
@@ -230,7 +234,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -248,9 +252,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey:
-            'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z',
-        }),
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z',
+        })
       );
     });
 
@@ -263,7 +266,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -282,7 +285,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
           idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy',
-        }),
+        })
       );
     });
 
@@ -309,7 +312,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         100,
         0,
         null,
-        new Date(),
+        new Date()
       );
 
       inventoryService.getInventory.mockResolvedValue(inventory);
@@ -338,6 +341,3 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     });
   });
 });
-
-
-

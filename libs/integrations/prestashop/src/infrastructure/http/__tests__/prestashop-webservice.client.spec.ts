@@ -7,9 +7,11 @@
  * @module libs/integrations/prestashop/src/infrastructure/http/__tests__
  */
 import { PrestashopWebserviceClient } from '../prestashop-webservice.client';
-import {
+import type {
   PrestashopConnectionConfig,
   PrestashopCredentials,
+} from '@openlinker/integrations-prestashop';
+import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
   PrestashopApiException,
@@ -51,7 +53,7 @@ describe('PrestashopWebserviceClient', () => {
       const clientWithSlash = new PrestashopWebserviceClient(
         'https://shop.example.com/',
         credentials,
-        config,
+        config
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       expect((clientWithSlash as any).baseUrl).toBe('https://shop.example.com');
@@ -64,7 +66,7 @@ describe('PrestashopWebserviceClient', () => {
       const clientWithDefaults = new PrestashopWebserviceClient(
         baseUrl,
         credentials,
-        minimalConfig,
+        minimalConfig
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       expect((clientWithDefaults as any).config.timeoutMs).toBe(30000);
@@ -119,7 +121,7 @@ describe('PrestashopWebserviceClient', () => {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             get: expect.any(Function),
           }),
-        }),
+        })
       );
 
       expect(result).toBeDefined();
@@ -158,7 +160,7 @@ describe('PrestashopWebserviceClient', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(client.getResource('products', '999')).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
     });
 
@@ -172,7 +174,7 @@ describe('PrestashopWebserviceClient', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(client.getResource('products', '1')).rejects.toThrow(
-        PrestashopAuthenticationException,
+        PrestashopAuthenticationException
       );
     });
 
@@ -190,7 +192,9 @@ describe('PrestashopWebserviceClient', () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      await expect(clientNoRetry.getResource('products', '1')).rejects.toThrow(PrestashopApiException);
+      await expect(clientNoRetry.getResource('products', '1')).rejects.toThrow(
+        PrestashopApiException
+      );
     });
   });
 
@@ -218,7 +222,7 @@ describe('PrestashopWebserviceClient', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('https://shop.example.com/api/products'),
-        expect.any(Object),
+        expect.any(Object)
       );
 
       expect(Array.isArray(result)).toBe(true);
@@ -385,7 +389,7 @@ describe('PrestashopWebserviceClient', () => {
 
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        clientNoRetry.updateResource('order_carriers', '5001', { id: '5001' }),
+        clientNoRetry.updateResource('order_carriers', '5001', { id: '5001' })
       ).rejects.toThrow(PrestashopApiException);
     });
   });
@@ -501,7 +505,7 @@ describe('PrestashopWebserviceClient', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(client.listResources('products')).rejects.toThrow(
-        PrestashopAuthenticationException,
+        PrestashopAuthenticationException
       );
 
       expect(global.fetch).toHaveBeenCalledTimes(1); // No retry
@@ -517,7 +521,7 @@ describe('PrestashopWebserviceClient', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(client.getResource('products', '999')).rejects.toThrow(
-        PrestashopResourceNotFoundException,
+        PrestashopResourceNotFoundException
       );
 
       expect(global.fetch).toHaveBeenCalledTimes(1); // No retry
@@ -577,22 +581,20 @@ describe('PrestashopWebserviceClient', () => {
         },
         {
           maxRetries: 0,
-        },
+        }
       );
 
       // Simulate timeout by immediately rejecting with AbortError
-      (global.fetch as jest.Mock).mockImplementationOnce(
-        (_url: string, _options?: unknown) => {
-          // Create an AbortError
-          const abortError = new Error('The operation was aborted');
-          abortError.name = 'AbortError';
-          return Promise.reject(abortError);
-        },
-      );
+      (global.fetch as jest.Mock).mockImplementationOnce((_url: string, _options?: unknown) => {
+        // Create an AbortError
+        const abortError = new Error('The operation was aborted');
+        abortError.name = 'AbortError';
+        return Promise.reject(abortError);
+      });
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       await expect(clientWithShortTimeout.listResources('products')).rejects.toThrow(
-        PrestashopApiException,
+        PrestashopApiException
       );
     });
   });
@@ -629,10 +631,10 @@ describe('PrestashopWebserviceClient', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(PrestashopApiException);
         if (error instanceof PrestashopApiException) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const apiError = error;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        expect(apiError.statusCode).toBe(503);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const apiError = error;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          expect(apiError.statusCode).toBe(503);
         }
       }
     });
@@ -716,4 +718,3 @@ describe('PrestashopWebserviceClient', () => {
     });
   });
 });
-

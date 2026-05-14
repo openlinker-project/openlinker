@@ -3,6 +3,7 @@
  */
 import { createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
+import type { ConfigService } from '@nestjs/config';
 import { PasswordResetService } from './password-reset.service';
 import {
   InvalidPasswordResetTokenException,
@@ -17,8 +18,7 @@ import {
 const makeUser = (): User =>
   new User('u-1', 'admin', 'admin@example.com', 'hash', 'admin', new Date(), new Date());
 
-const makeConfig = (ttl = 60) =>
-  ({ get: jest.fn(() => ttl) }) as unknown as import('@nestjs/config').ConfigService;
+const makeConfig = (ttl = 60) => ({ get: jest.fn(() => ttl) }) as unknown as ConfigService;
 
 function makeMocks() {
   const userRepo: jest.Mocked<UserRepositoryPort> = {
@@ -59,8 +59,8 @@ describe('PasswordResetService', () => {
       userRepo.findByEmail.mockResolvedValue(user);
       tokenRepo.save.mockImplementation((t) =>
         Promise.resolve(
-          new PasswordResetToken('t-1', t.userId, t.tokenHash, t.expiresAt, null, new Date()),
-        ),
+          new PasswordResetToken('t-1', t.userId, t.tokenHash, t.expiresAt, null, new Date())
+        )
       );
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig(60));
 
@@ -84,7 +84,7 @@ describe('PasswordResetService', () => {
       tokenRepo.findByTokenHash.mockResolvedValue(null);
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig());
       await expect(service.resetPassword('nope', 'longenough')).rejects.toThrow(
-        InvalidPasswordResetTokenException,
+        InvalidPasswordResetTokenException
       );
     });
 
@@ -92,11 +92,11 @@ describe('PasswordResetService', () => {
       const { userRepo, tokenRepo, notifier } = makeMocks();
       const past = new Date(Date.now() - 1000);
       tokenRepo.findByTokenHash.mockResolvedValue(
-        new PasswordResetToken('t-1', 'u-1', 'h', past, null, new Date()),
+        new PasswordResetToken('t-1', 'u-1', 'h', past, null, new Date())
       );
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig());
       await expect(service.resetPassword('raw', 'longenough')).rejects.toThrow(
-        InvalidPasswordResetTokenException,
+        InvalidPasswordResetTokenException
       );
     });
 
@@ -104,11 +104,11 @@ describe('PasswordResetService', () => {
       const { userRepo, tokenRepo, notifier } = makeMocks();
       const future = new Date(Date.now() + 60_000);
       tokenRepo.findByTokenHash.mockResolvedValue(
-        new PasswordResetToken('t-1', 'u-1', 'h', future, new Date(), new Date()),
+        new PasswordResetToken('t-1', 'u-1', 'h', future, new Date(), new Date())
       );
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig());
       await expect(service.resetPassword('raw', 'longenough')).rejects.toThrow(
-        InvalidPasswordResetTokenException,
+        InvalidPasswordResetTokenException
       );
     });
 
@@ -122,7 +122,7 @@ describe('PasswordResetService', () => {
       const { userRepo, tokenRepo, notifier } = makeMocks();
       const future = new Date(Date.now() + 60_000);
       tokenRepo.findByTokenHash.mockResolvedValue(
-        new PasswordResetToken('t-1', 'u-1', 'h', future, null, new Date()),
+        new PasswordResetToken('t-1', 'u-1', 'h', future, null, new Date())
       );
       const service = new PasswordResetService(userRepo, tokenRepo, notifier, makeConfig());
 

@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/util
  */
-import { CreateOfferValidationError } from '@openlinker/core/listings';
+import type { CreateOfferValidationError } from '@openlinker/core/listings';
 
 /**
  * Discriminated result of `uploadImagesViaAllegro`.

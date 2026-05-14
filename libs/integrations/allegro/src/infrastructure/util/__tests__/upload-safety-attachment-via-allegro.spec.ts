@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/util/__tests__
  */
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import {
   ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
@@ -54,7 +54,7 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
           contentType: 'application/pdf',
           bytes: validInput.bytes,
         },
-      ],
+      ]
     );
   });
 
@@ -63,7 +63,7 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
       uploadSafetyAttachmentViaAllegro(uploadHttpClient, {
         ...validInput,
         mimeType: 'image/jpeg',
-      }),
+      })
     ).rejects.toThrow(AllegroApiException);
     expect(uploadHttpClient.postMultipart).not.toHaveBeenCalled();
   });
@@ -73,7 +73,7 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
       uploadSafetyAttachmentViaAllegro(uploadHttpClient, {
         ...validInput,
         bytes: new Uint8Array(0),
-      }),
+      })
     ).rejects.toThrow(/empty/);
     expect(uploadHttpClient.postMultipart).not.toHaveBeenCalled();
   });
@@ -83,14 +83,14 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
       uploadSafetyAttachmentViaAllegro(uploadHttpClient, {
         ...validInput,
         bytes: new Uint8Array(ALLEGRO_SAFETY_ATTACHMENT_MAX_BYTES + 1),
-      }),
+      })
     ).rejects.toThrow(/exceeds max size/);
     expect(uploadHttpClient.postMultipart).not.toHaveBeenCalled();
   });
 
   it('should throw when fileName is empty or whitespace', async () => {
     await expect(
-      uploadSafetyAttachmentViaAllegro(uploadHttpClient, { ...validInput, fileName: '   ' }),
+      uploadSafetyAttachmentViaAllegro(uploadHttpClient, { ...validInput, fileName: '   ' })
     ).rejects.toThrow(/fileName is required/);
     expect(uploadHttpClient.postMultipart).not.toHaveBeenCalled();
   });
@@ -100,21 +100,21 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
       'Upload rejected',
       400,
       JSON.stringify({ errors: [{ message: 'invalid file' }] }),
-      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH,
+      ALLEGRO_SAFETY_ATTACHMENT_UPLOAD_PATH
     );
     uploadHttpClient.postMultipart.mockRejectedValue(apiError);
 
     await expect(uploadSafetyAttachmentViaAllegro(uploadHttpClient, validInput)).rejects.toBe(
-      apiError,
+      apiError
     );
   });
 
   it('should wrap non-Allegro errors as AllegroApiException', async () => {
     uploadHttpClient.postMultipart.mockRejectedValue(new Error('socket timeout'));
 
-    await expect(
-      uploadSafetyAttachmentViaAllegro(uploadHttpClient, validInput),
-    ).rejects.toThrow(AllegroApiException);
+    await expect(uploadSafetyAttachmentViaAllegro(uploadHttpClient, validInput)).rejects.toThrow(
+      AllegroApiException
+    );
   });
 
   it("should throw when response is missing the 'id' field", async () => {
@@ -125,7 +125,7 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
     });
 
     await expect(uploadSafetyAttachmentViaAllegro(uploadHttpClient, validInput)).rejects.toThrow(
-      /missing 'id'/,
+      /missing 'id'/
     );
   });
 
@@ -137,7 +137,7 @@ describe('uploadSafetyAttachmentViaAllegro', () => {
     });
 
     await expect(uploadSafetyAttachmentViaAllegro(uploadHttpClient, validInput)).rejects.toThrow(
-      /missing 'id'/,
+      /missing 'id'/
     );
   });
 });

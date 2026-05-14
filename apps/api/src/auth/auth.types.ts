@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/auth
  */
-import { UserRole } from '@openlinker/core/users';
+import type { UserRole } from '@openlinker/core/users';
 
 /**
  * Shape of the JWT token payload after signing/verification.

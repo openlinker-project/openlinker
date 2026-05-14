@@ -8,9 +8,10 @@
  *
  * @module libs/core/src/integrations/infrastructure/adapters
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { AdapterFactoryResolverService } from './adapter-factory-resolver.service';
-import { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
+import type { AdapterFactoryPort } from '../../domain/ports/adapter-factory.port';
 import { DuplicateAdapterKeyException } from '../../domain/exceptions/duplicate-adapter-key.exception';
 
 const buildFactoryStub = (): jest.Mocked<AdapterFactoryPort> => ({
@@ -38,9 +39,9 @@ describe('AdapterFactoryResolverService', () => {
     it('throws DuplicateAdapterKeyException when the same adapterKey is registered twice', () => {
       service.registerFactory('prestashop.webservice.v1', buildFactoryStub());
 
-      expect(() =>
-        service.registerFactory('prestashop.webservice.v1', buildFactoryStub()),
-      ).toThrow(DuplicateAdapterKeyException);
+      expect(() => service.registerFactory('prestashop.webservice.v1', buildFactoryStub())).toThrow(
+        DuplicateAdapterKeyException
+      );
     });
 
     it('allows different adapterKeys to coexist', () => {

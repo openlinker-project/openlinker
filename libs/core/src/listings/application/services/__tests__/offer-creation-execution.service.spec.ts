@@ -3,7 +3,8 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import {
   DuplicateIdentifierMappingError,
@@ -11,8 +12,12 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { CreateOfferCommand, CreateOfferResult, OfferCreateRejectedException } from '@openlinker/core/listings';
-import type { OfferManagerPort } from '@openlinker/core/listings';
+import { OfferCreateRejectedException } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  CreateOfferCommand,
+  CreateOfferResult,
+} from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -63,7 +68,7 @@ describe('OfferCreationExecutionService', () => {
       overrides.errors ?? null,
       overrides.publishImmediately ?? false,
       overrides.createdAt ?? now,
-      overrides.updatedAt ?? now,
+      overrides.updatedAt ?? now
     );
   };
 
@@ -79,17 +84,17 @@ describe('OfferCreationExecutionService', () => {
       updateStatus: jest
         .fn()
         .mockImplementation((id, status, errors) =>
-          Promise.resolve(buildRecord({ id, status, errors: errors ?? null })),
+          Promise.resolve(buildRecord({ id, status, errors: errors ?? null }))
         ),
-      updateExternalOfferId: jest.fn().mockImplementation((id, externalOfferId) =>
-        Promise.resolve(buildRecord({ id, externalOfferId })),
-      ),
+      updateExternalOfferId: jest
+        .fn()
+        .mockImplementation((id, externalOfferId) =>
+          Promise.resolve(buildRecord({ id, externalOfferId }))
+        ),
       updateExternalIdAndStatus: jest
         .fn()
         .mockImplementation((id, externalOfferId, status, errors) =>
-          Promise.resolve(
-            buildRecord({ id, externalOfferId, status, errors: errors ?? null }),
-          ),
+          Promise.resolve(buildRecord({ id, externalOfferId, status, errors: errors ?? null }))
         ),
     };
     identifierMapping = {
@@ -102,9 +107,7 @@ describe('OfferCreationExecutionService', () => {
       } satisfies CreateOfferResult),
     };
     integrationsService = {
-      getCapabilityAdapter: jest
-        .fn()
-        .mockResolvedValue(adapter as unknown as OfferManagerPort),
+      getCapabilityAdapter: jest.fn().mockResolvedValue(adapter as unknown as OfferManagerPort),
     };
     offerStatusPoll = {
       scheduleFirstPoll: jest.fn().mockResolvedValue(undefined),
@@ -144,24 +147,24 @@ describe('OfferCreationExecutionService', () => {
       errors: null,
     });
     expect(builder.buildCreateOfferCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ internalVariantId: VARIANT_ID, connectionId: CONNECTION_ID }),
+      expect.objectContaining({ internalVariantId: VARIANT_ID, connectionId: CONNECTION_ID })
     );
     expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
       CONNECTION_ID,
-      'OfferManager',
+      'OfferManager'
     );
     expect(adapter.createOffer).toHaveBeenCalledWith(builtCommand);
     expect(identifierMapping.createMapping).toHaveBeenCalledWith(
       'Offer',
       EXTERNAL_OFFER_ID,
       CONNECTION_ID,
-      VARIANT_ID,
+      VARIANT_ID
     );
     expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
       'rec-1',
       EXTERNAL_OFFER_ID,
       'draft',
-      null,
+      null
     );
     expect(records.updateExternalOfferId).not.toHaveBeenCalled();
     expect(records.updateStatus).not.toHaveBeenCalled();
@@ -180,7 +183,7 @@ describe('OfferCreationExecutionService', () => {
       'rec-1',
       EXTERNAL_OFFER_ID,
       'active',
-      null,
+      null
     );
     expect(offerCreationRecord.status).toBe('active');
   });
@@ -205,7 +208,7 @@ describe('OfferCreationExecutionService', () => {
       'rec-1',
       EXTERNAL_OFFER_ID,
       'draft',
-      [{ field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' }],
+      [{ field: 'parameters.EAN', code: 'VALIDATION_REQUIRED', message: 'Supply EAN' }]
     );
   });
 
@@ -213,7 +216,7 @@ describe('OfferCreationExecutionService', () => {
     builder.buildCreateOfferCommand.mockRejectedValueOnce(
       new OfferBuilderValidationException([
         { field: 'overrides.categoryId', code: 'REQUIRED', message: 'Category required' },
-      ]),
+      ])
     );
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
@@ -227,7 +230,7 @@ describe('OfferCreationExecutionService', () => {
 
   it('marks record failed with synthetic error when master catalog is not configured', async () => {
     builder.buildCreateOfferCommand.mockRejectedValueOnce(
-      new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID),
+      new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID)
     );
 
     await service.executeCreation(baseInput);
@@ -245,7 +248,7 @@ describe('OfferCreationExecutionService', () => {
     adapter.createOffer.mockRejectedValueOnce(
       new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
         { field: 'category.id', code: 'BAD_CATEGORY', message: 'Category does not exist' },
-      ]),
+      ])
     );
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
@@ -267,11 +270,11 @@ describe('OfferCreationExecutionService', () => {
 
   it('throws when the resolved adapter does not support createOffer', async () => {
     integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
-      {} as unknown as OfferManagerPort,
+      {} as unknown as OfferManagerPort
     );
 
     await expect(service.executeCreation(baseInput)).rejects.toThrow(
-      /does not support Marketplace.createOffer/,
+      /does not support Marketplace.createOffer/
     );
     expect(records.updateStatus).not.toHaveBeenCalled();
     expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
@@ -279,7 +282,7 @@ describe('OfferCreationExecutionService', () => {
 
   it('swallows DuplicateIdentifierMappingError as idempotent success', async () => {
     identifierMapping.createMapping.mockRejectedValueOnce(
-      new DuplicateIdentifierMappingError('Offer', EXTERNAL_OFFER_ID, 'allegro', CONNECTION_ID),
+      new DuplicateIdentifierMappingError('Offer', EXTERNAL_OFFER_ID, 'allegro', CONNECTION_ID)
     );
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
@@ -288,7 +291,7 @@ describe('OfferCreationExecutionService', () => {
       'rec-1',
       EXTERNAL_OFFER_ID,
       'draft',
-      null,
+      null
     );
     expect(offerCreationRecord.status).toBe('draft');
   });
@@ -305,7 +308,7 @@ describe('OfferCreationExecutionService', () => {
       'rec-pre',
       EXTERNAL_OFFER_ID,
       'draft',
-      null,
+      null
     );
   });
 
@@ -313,7 +316,7 @@ describe('OfferCreationExecutionService', () => {
     records.findById.mockResolvedValueOnce(null);
 
     await expect(
-      service.executeCreation({ ...baseInput, offerCreationRecordId: 'missing' }),
+      service.executeCreation({ ...baseInput, offerCreationRecordId: 'missing' })
     ).rejects.toBeInstanceOf(OfferCreationRecordNotFoundException);
     expect(records.create).not.toHaveBeenCalled();
   });
@@ -386,7 +389,7 @@ describe('OfferCreationExecutionService', () => {
       builder.buildCreateOfferCommand.mockRejectedValueOnce(
         new OfferBuilderValidationException([
           { field: 'price.amount', code: 'REQUIRED', message: 'Required' },
-        ]),
+        ])
       );
 
       const result = await service.executeCreation(baseInput);
@@ -397,7 +400,7 @@ describe('OfferCreationExecutionService', () => {
 
     it('returns outcome=business_failure when master catalog is misconfigured', async () => {
       builder.buildCreateOfferCommand.mockRejectedValueOnce(
-        new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID),
+        new MasterCatalogConnectionNotConfiguredException(CONNECTION_ID)
       );
 
       const result = await service.executeCreation(baseInput);
@@ -409,7 +412,7 @@ describe('OfferCreationExecutionService', () => {
       adapter.createOffer.mockRejectedValueOnce(
         new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
           { field: 'category', code: 'INVALID', message: 'Unknown category' },
-        ]),
+        ])
       );
 
       const result = await service.executeCreation(baseInput);
@@ -423,14 +426,12 @@ describe('OfferCreationExecutionService', () => {
       adapter.createOffer.mockRejectedValueOnce(
         new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
           { field: 'category', code: 'INVALID', message: 'Unknown category' },
-        ]),
+        ])
       );
 
       await service.executeCreation(baseInput);
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('business_failure'),
-      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('business_failure'));
       warnSpy.mockRestore();
     });
 
@@ -444,7 +445,7 @@ describe('OfferCreationExecutionService', () => {
       records.updateExternalIdAndStatus.mockResolvedValueOnce(buildRecord({ status: 'pending' }));
 
       await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
-        OfferCreationInvariantException,
+        OfferCreationInvariantException
       );
     });
   });
@@ -456,7 +457,7 @@ describe('OfferCreationExecutionService', () => {
         status: 'validating',
       } satisfies CreateOfferResult);
       records.updateExternalIdAndStatus.mockResolvedValueOnce(
-        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
+        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID })
       );
 
       await service.executeCreation(baseInput);
@@ -485,7 +486,7 @@ describe('OfferCreationExecutionService', () => {
         status: 'validating',
       } satisfies CreateOfferResult);
       records.updateExternalIdAndStatus.mockResolvedValueOnce(
-        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID }),
+        buildRecord({ id: 'rec-1', status: 'validating', externalOfferId: EXTERNAL_OFFER_ID })
       );
       offerStatusPoll.scheduleFirstPoll.mockRejectedValueOnce(new Error('redis down'));
       const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
@@ -494,9 +495,7 @@ describe('OfferCreationExecutionService', () => {
       const result = await service.executeCreation(baseInput);
 
       expect(result.outcome).toBe('ok');
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('failed to schedule poll'),
-      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('failed to schedule poll'));
       warnSpy.mockRestore();
     });
   });

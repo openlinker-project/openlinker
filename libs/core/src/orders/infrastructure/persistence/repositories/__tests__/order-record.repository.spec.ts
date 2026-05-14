@@ -6,13 +6,15 @@
  *
  * @module libs/core/src/orders/infrastructure/persistence/repositories/__tests__
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
-import { OrderRecordOrmEntity, OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
+import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
+import { OrderRecordOrmEntity } from '../../entities/order-record.orm-entity';
 import { OrderRecord } from '../../../../domain/entities/order-record.entity';
-import { OrderSyncStatus, SyncAttempt } from '../../../../domain/types/order-sync.types';
+import type { OrderSyncStatus, SyncAttempt } from '../../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../../domain/exceptions/order-record-not-found.exception';
 
 describe('OrderRecordRepository', () => {
@@ -88,7 +90,7 @@ describe('OrderRecordRepository', () => {
       [],
       'ready',
       new Date('2025-01-01T10:00:00Z'),
-      new Date('2025-01-01T10:00:00Z'),
+      new Date('2025-01-01T10:00:00Z')
     );
   };
 
@@ -189,7 +191,7 @@ describe('OrderRecordRepository', () => {
         syncStatus,
         'ready',
         new Date('2025-01-01T10:00:00Z'),
-        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z')
       );
       const savedEntity = createOrmEntity();
       ormRepository.save.mockResolvedValue(savedEntity);
@@ -213,7 +215,7 @@ describe('OrderRecordRepository', () => {
         [],
         'awaiting_mapping',
         new Date(),
-        new Date(),
+        new Date()
       );
       const savedEntity = createOrmEntity();
       ormRepository.save.mockResolvedValue(savedEntity);
@@ -257,10 +259,9 @@ describe('OrderRecordRepository', () => {
 
       await repository.findMany({ recordStatus: 'awaiting_mapping' }, { limit: 20, offset: 0 });
 
-      expect(andWhere).toHaveBeenCalledWith(
-        'rec.recordStatus = :recordStatus',
-        { recordStatus: 'awaiting_mapping' },
-      );
+      expect(andWhere).toHaveBeenCalledWith('rec.recordStatus = :recordStatus', {
+        recordStatus: 'awaiting_mapping',
+      });
     });
   });
 
@@ -299,8 +300,8 @@ describe('OrderRecordRepository', () => {
           'non-existent-order',
           'dest-connection-789',
           newStatus,
-          newAttempt,
-        ),
+          newAttempt
+        )
       ).rejects.toThrow(OrderRecordNotFoundException);
     });
   });

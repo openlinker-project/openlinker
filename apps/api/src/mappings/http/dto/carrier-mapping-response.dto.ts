@@ -5,7 +5,7 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import { CarrierMapping } from '@openlinker/core/mappings';
+import type { CarrierMapping } from '@openlinker/core/mappings';
 
 export class CarrierMappingResponseDto {
   @ApiProperty()

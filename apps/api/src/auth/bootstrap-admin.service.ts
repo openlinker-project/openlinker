@@ -20,7 +20,8 @@
  * @module apps/api/src/auth
  */
 import { randomBytes } from 'crypto';
-import { Inject, Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import type { OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
@@ -36,7 +37,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
   constructor(
     private readonly configService: ConfigService,
     @Inject(USER_REPOSITORY_TOKEN)
-    private readonly userRepository: UserRepositoryPort,
+    private readonly userRepository: UserRepositoryPort
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -52,7 +53,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
     const username = this.configService.get<string>('OL_BOOTSTRAP_ADMIN_USERNAME', 'admin');
     const email = this.configService.get<string>(
       'OL_BOOTSTRAP_ADMIN_EMAIL',
-      'admin@openlinker.local',
+      'admin@openlinker.local'
     );
     const providedPassword = this.configService.get<string>('OL_BOOTSTRAP_ADMIN_PASSWORD');
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
@@ -85,7 +86,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
       // Concurrent boot peer won the insert — username unique constraint fired.
       if (this.isUniqueViolation(error)) {
         this.logger.log(
-          `Default admin user '${username}' already created by another instance — skipping seed`,
+          `Default admin user '${username}' already created by another instance — skipping seed`
         );
         return;
       }
@@ -106,7 +107,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
   private logBootstrapBanner(
     username: string,
     password: string,
-    source: 'default-admin' | 'generated',
+    source: 'default-admin' | 'generated'
   ): void {
     const line = '='.repeat(72);
     const preamble =
@@ -126,7 +127,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
         postamble,
         'OL_BOOTSTRAP_ADMIN_ENABLED=false in production environments.',
         line,
-      ].join('\n'),
+      ].join('\n')
     );
   }
 

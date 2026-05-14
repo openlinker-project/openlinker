@@ -7,19 +7,24 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MarketplaceOffersSyncPayloadV1,
+  SyncJobRequest,
+} from '@openlinker/core/sync';
+import {
+  SyncJobExecutionError,
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
-  SyncJobRequest,
   ConnectionCursorRepositoryPort,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
 } from '@openlinker/core/sync';
-import { IOfferMappingSyncService, OFFER_MAPPING_SYNC_SERVICE_TOKEN } from '@openlinker/core/listings';
+import {
+  IOfferMappingSyncService,
+  OFFER_MAPPING_SYNC_SERVICE_TOKEN,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -34,7 +39,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
-    private readonly cursorRepository: ConnectionCursorRepositoryPort,
+    private readonly cursorRepository: ConnectionCursorRepositoryPort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -46,7 +51,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         `Missing or invalid cursorKey for events feed: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     const storedCursor = payload.cursorKey
@@ -55,7 +60,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
     const effectiveCursor = payload.cursor ?? storedCursor ?? null;
 
     this.logger.log(
-      `Executing marketplace.offers.sync job ${job.id} for connection ${job.connectionId} (limit=${payload.limit}, feedType=${feedType}, cursor=${effectiveCursor ?? 'none'})`,
+      `Executing marketplace.offers.sync job ${job.id} for connection ${job.connectionId} (limit=${payload.limit}, feedType=${feedType}, cursor=${effectiveCursor ?? 'none'})`
     );
 
     try {
@@ -67,12 +72,11 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `marketplace.offers.sync completed (connection=${job.connectionId}): scanned=${result.scanned}, linked=${result.linked}, skipped=${result.skipped}`,
+        `marketplace.offers.sync completed (connection=${job.connectionId}): scanned=${result.scanned}, linked=${result.linked}, skipped=${result.skipped}`
       );
 
       const nextCursor = result.nextCursor;
-      const cursorAdvanced =
-        typeof nextCursor === 'string' && nextCursor !== effectiveCursor;
+      const cursorAdvanced = typeof nextCursor === 'string' && nextCursor !== effectiveCursor;
 
       if (payload.cursorKey && cursorAdvanced) {
         await this.cursorRepository.set(job.connectionId, payload.cursorKey, nextCursor);
@@ -100,7 +104,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         await this.jobEnqueue.enqueueJob(followUpRequest);
 
         this.logger.debug(
-          `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${nextCursor})`,
+          `Enqueued follow-up marketplace.offers.sync job (connection=${job.connectionId}, cursor=${nextCursor})`
         );
       }
 
@@ -112,7 +116,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -124,7 +128,7 @@ export class MarketplaceOffersSyncHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     const limit = typeof payload.limit === 'number' ? payload.limit : 100;

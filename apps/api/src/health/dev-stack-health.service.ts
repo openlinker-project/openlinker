@@ -16,9 +16,9 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, timeout } from 'rxjs';
 import { RedisClientType } from 'redis';
-import { IDevStackHealthService } from './dev-stack-health.service.interface';
+import type { IDevStackHealthService } from './dev-stack-health.service.interface';
 import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
-import {
+import type {
   InternalHealthResponse,
   DevStackHealthResponse,
   ServiceHealth,
@@ -39,7 +39,7 @@ export class DevStackHealthService implements IDevStackHealthService {
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async checkInternalHealth(): Promise<InternalHealthResponse> {
@@ -49,8 +49,7 @@ export class DevStackHealthService implements IDevStackHealthService {
     };
 
     // Determine overall status - internal services only
-    const hasError =
-      services.postgres.status === 'error' || services.redis.status === 'error';
+    const hasError = services.postgres.status === 'error' || services.redis.status === 'error';
 
     const status: 'ok' | 'error' = hasError ? 'error' : 'ok';
 
@@ -102,14 +101,10 @@ export class DevStackHealthService implements IDevStackHealthService {
 
   private async checkPostgres(): Promise<ServiceHealth> {
     try {
-      await this.withTimeout(
-        this.dataSource.query('SELECT 1'),
-        'PostgreSQL health check timeout',
-      );
+      await this.withTimeout(this.dataSource.query('SELECT 1'), 'PostgreSQL health check timeout');
       return { status: 'ok' as ServiceStatus };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`PostgreSQL health check failed: ${errorMessage}`, error);
       return {
         status: 'error' as ServiceStatus,
@@ -121,10 +116,7 @@ export class DevStackHealthService implements IDevStackHealthService {
   private async withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
     let timeoutId: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error(message)),
-        this.CHECK_TIMEOUT_MS,
-      );
+      timeoutId = setTimeout(() => reject(new Error(message)), this.CHECK_TIMEOUT_MS);
     });
     try {
       return await Promise.race([promise, timeoutPromise]);
@@ -140,10 +132,7 @@ export class DevStackHealthService implements IDevStackHealthService {
       const streamKey = this.HEALTHCHECK_STREAM;
       const timestamp = Date.now().toString();
 
-      await this.withTimeout(
-        this.redisClient.ping(),
-        'Redis ping timeout',
-      );
+      await this.withTimeout(this.redisClient.ping(), 'Redis ping timeout');
 
       // Exercise Redis Streams with a non-blocking write. XADD succeeds iff
       // the server supports Streams and accepts writes; no read-back needed,
@@ -160,15 +149,14 @@ export class DevStackHealthService implements IDevStackHealthService {
               strategyModifier: '~',
               threshold: 1,
             },
-          },
+          }
         ),
-        'Redis xAdd timeout',
+        'Redis xAdd timeout'
       );
 
       return { status: 'ok' as ServiceStatus };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Redis health check failed: ${errorMessage}`, error);
       return {
         status: 'error' as ServiceStatus,
@@ -181,13 +169,14 @@ export class DevStackHealthService implements IDevStackHealthService {
     try {
       const baseUrl = this.configService.get<string>(
         'PRESTASHOP_BASE_URL',
-        'http://localhost:8080',
+        'http://localhost:8080'
       );
 
       if (!baseUrl || (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://'))) {
         return {
           status: 'error' as ServiceStatus,
-          message: 'Invalid PRESTASHOP_BASE_URL configuration (must start with http:// or https://)',
+          message:
+            'Invalid PRESTASHOP_BASE_URL configuration (must start with http:// or https://)',
         };
       }
 
@@ -199,7 +188,7 @@ export class DevStackHealthService implements IDevStackHealthService {
             validateStatus: (status) => status === 200 || status === 302,
             maxRedirects: 5,
           })
-          .pipe(timeout(this.CHECK_TIMEOUT_MS)),
+          .pipe(timeout(this.CHECK_TIMEOUT_MS))
       );
 
       if (response.status === 200 || response.status === 302) {
@@ -212,11 +201,8 @@ export class DevStackHealthService implements IDevStackHealthService {
       };
     } catch (error) {
       // PrestaShop is external - log but don't treat as critical error
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn(
-        `PrestaShop health check failed (external dependency): ${errorMessage}`,
-      );
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`PrestaShop health check failed (external dependency): ${errorMessage}`);
       return {
         status: 'error' as ServiceStatus,
         message: 'PrestaShop is unreachable',
@@ -228,7 +214,7 @@ export class DevStackHealthService implements IDevStackHealthService {
     try {
       const heartbeat = await this.withTimeout(
         this.redisClient.get(WORKER_HEARTBEAT_REDIS_KEY),
-        'Worker heartbeat check timeout',
+        'Worker heartbeat check timeout'
       );
 
       if (!heartbeat) {
@@ -256,8 +242,7 @@ export class DevStackHealthService implements IDevStackHealthService {
         message: `Worker last seen ${Math.round(age / 1000)}s ago`,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Worker health check failed: ${errorMessage}`, error);
       return {
         status: 'error' as ServiceStatus,
@@ -266,4 +251,3 @@ export class DevStackHealthService implements IDevStackHealthService {
     }
   }
 }
-

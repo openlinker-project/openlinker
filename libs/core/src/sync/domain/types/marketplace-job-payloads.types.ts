@@ -6,7 +6,7 @@
  * @module libs/core/src/sync/domain/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferFieldUpdate } from '@openlinker/core/listings';
 import type { OrderFeedEventType } from '@openlinker/core/orders';
 
 export interface MarketplaceOrdersPollPayloadV1 {
@@ -42,7 +42,7 @@ export interface MarketplaceOfferFieldUpdatePayloadV1 {
   schemaVersion: 1;
   /** Internal OpenLinker offer ID (resolved to external ID by the handler). */
   offerId: string;
-  fields: import('@openlinker/core/listings').OfferFieldUpdate;
+  fields: OfferFieldUpdate;
   idempotencyKey?: string;
 }
 

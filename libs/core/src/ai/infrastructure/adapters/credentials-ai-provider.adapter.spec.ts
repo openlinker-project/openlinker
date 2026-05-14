@@ -10,13 +10,11 @@
  *
  * @module libs/core/src/ai/infrastructure/adapters
  */
-import { ConfigService } from '@nestjs/config';
-import { CryptoService } from '@openlinker/shared';
+import type { ConfigService } from '@nestjs/config';
+import type { CryptoService } from '@openlinker/shared';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
-import {
-  IntegrationCredentialRepositoryPort,
-  CredentialNotFoundException,
-} from '@openlinker/core/integrations';
+import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import { CredentialNotFoundException } from '@openlinker/core/integrations';
 import { IntegrationCredential } from '@openlinker/core/integrations';
 import { AiProviderKeyMissingError } from '../../domain/exceptions/ai-provider-key-missing.exception';
 import { AiProviderSettingsNotApplicableError } from '../../domain/exceptions/ai-provider-settings-not-applicable.exception';
@@ -38,7 +36,7 @@ const dbCredential = (ref: string, ciphertext: string, encrypted = true): Integr
     { ciphertext },
     encrypted,
     new Date(),
-    new Date(),
+    new Date()
   );
 
 describe('CredentialsAiProviderAdapter', () => {
@@ -66,12 +64,12 @@ describe('CredentialsAiProviderAdapter', () => {
   });
 
   const buildAdapter = (
-    config: Record<string, string | undefined> = {},
+    config: Record<string, string | undefined> = {}
   ): CredentialsAiProviderAdapter =>
     new CredentialsAiProviderAdapter(
       repository,
       crypto as unknown as CryptoService,
-      buildConfigService(config),
+      buildConfigService(config)
     );
 
   describe('getApiKey', () => {
@@ -115,7 +113,9 @@ describe('CredentialsAiProviderAdapter', () => {
       repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
       const adapter = buildAdapter();
 
-      await expect(adapter.getApiKey('anthropic')).rejects.toBeInstanceOf(AiProviderKeyMissingError);
+      await expect(adapter.getApiKey('anthropic')).rejects.toBeInstanceOf(
+        AiProviderKeyMissingError
+      );
     });
 
     it('caches the resolved key per provider and avoids re-reading the DB on the next call', async () => {
@@ -142,7 +142,7 @@ describe('CredentialsAiProviderAdapter', () => {
       expect(repository.getByRef).toHaveBeenCalledTimes(2);
     });
 
-    it('keeps each provider\'s cache slot independent — invalidating openai does not bust anthropic', async () => {
+    it("keeps each provider's cache slot independent — invalidating openai does not bust anthropic", async () => {
       repository.getByRef.mockImplementation((ref: string) => {
         if (ref === 'ai-provider:anthropic') {
           return Promise.resolve(dbCredential('ai-provider:anthropic', 'a-cipher'));
@@ -165,14 +165,14 @@ describe('CredentialsAiProviderAdapter', () => {
       const adapter = buildAdapter();
 
       await expect(adapter.getApiKey('fake')).rejects.toBeInstanceOf(
-        AiProviderSettingsNotApplicableError,
+        AiProviderSettingsNotApplicableError
       );
       expect(repository.getByRef).not.toHaveBeenCalled();
     });
 
     it('treats a stored unencrypted credential as raw plaintext (does not call decrypt)', async () => {
       repository.getByRef.mockResolvedValue(
-        dbCredential('ai-provider:anthropic', 'plaintext-stored', false),
+        dbCredential('ai-provider:anthropic', 'plaintext-stored', false)
       );
 
       const result = await buildAdapter().getApiKey('anthropic');
@@ -246,7 +246,7 @@ describe('CredentialsAiProviderAdapter', () => {
       const adapter = new CredentialsAiProviderAdapter(
         repository,
         crypto as unknown as CryptoService,
-        config,
+        config
       );
 
       await adapter.getApiKey('anthropic');

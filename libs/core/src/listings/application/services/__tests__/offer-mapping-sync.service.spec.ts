@@ -5,11 +5,12 @@
  */
 import { OfferMappingSyncService } from '../offer-mapping-sync.service';
 import { OfferLinkingService } from '../offer-linking.service';
-import { OfferManagerPort, OfferLister, OfferEventReader } from '@openlinker/core/listings';
-import { IIntegrationsService } from '@openlinker/core/integrations';
-import { IIdentifierMappingService, IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products';
-import { ProductVariant } from '@openlinker/core/products';
+import type { OfferManagerPort, OfferLister, OfferEventReader } from '@openlinker/core/listings';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import { IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
+import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
+import type { ProductVariant } from '@openlinker/core/products';
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
   return {
@@ -87,7 +88,7 @@ describe('OfferMappingSyncService', () => {
       integrationsService,
       identifierMapping,
       variantRepository,
-      new OfferLinkingService(),
+      new OfferLinkingService()
     );
   });
 
@@ -125,7 +126,7 @@ describe('OfferMappingSyncService', () => {
     variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
 
     identifierMapping.getOrCreateExactMapping.mockRejectedValue(
-      new IdentifierMappingConflictException('Offer', 'offer-1', 'connection-1', 'old', 'new'),
+      new IdentifierMappingConflictException('Offer', 'offer-1', 'connection-1', 'old', 'new')
     );
 
     const result = await service.sync('connection-1', { limit: 50, cursor: null });
@@ -190,7 +191,7 @@ describe('OfferMappingSyncService', () => {
     expect(variantRepository.findByEanOrGtinIn).toHaveBeenCalledWith(
       'master-1',
       ['5901234123457'],
-      'ean',
+      'ean'
     );
   });
 });

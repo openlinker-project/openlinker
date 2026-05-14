@@ -6,10 +6,11 @@
  *
  * @module libs/core/src/sync/infrastructure/adapters
  */
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { RedisStreamsJobEnqueueService } from '../redis-streams-job-enqueue.service';
-import { RedisClientType } from 'redis';
-import { SyncJobRequest } from '@openlinker/core/sync';
+import type { RedisClientType } from 'redis';
+import type { SyncJobRequest } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
 
 describe('RedisStreamsJobEnqueueService', () => {
@@ -62,14 +63,10 @@ describe('RedisStreamsJobEnqueueService', () => {
       const result = await service.enqueueJob(jobRequest);
 
       expect(result).toEqual({ jobId: messageId, isExisting: false });
-      expect(redisClient.set).toHaveBeenCalledWith(
-        idempotencyKey,
-        'enqueued',
-        {
-          NX: true,
-          EX: 7 * 24 * 60 * 60, // 7 days
-        },
-      );
+      expect(redisClient.set).toHaveBeenCalledWith(idempotencyKey, 'enqueued', {
+        NX: true,
+        EX: 7 * 24 * 60 * 60, // 7 days
+      });
       expect(redisClient.xAdd).toHaveBeenCalledWith(
         'jobs.sync',
         '*',
@@ -80,16 +77,12 @@ describe('RedisStreamsJobEnqueueService', () => {
           idempotencyKey: jobRequest.idempotencyKey,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           createdAt: expect.any(String),
-        }),
+        })
       );
-      expect(redisClient.set).toHaveBeenCalledWith(
-        idempotencyKey,
-        messageId,
-        {
-          XX: true,
-          EX: 7 * 24 * 60 * 60,
-        },
-      );
+      expect(redisClient.set).toHaveBeenCalledWith(idempotencyKey, messageId, {
+        XX: true,
+        EX: 7 * 24 * 60 * 60,
+      });
     });
 
     it('should return existing job ID when idempotency key already exists', async () => {
@@ -101,14 +94,10 @@ describe('RedisStreamsJobEnqueueService', () => {
       const result = await service.enqueueJob(jobRequest);
 
       expect(result).toEqual({ jobId: jobRequest.idempotencyKey, isExisting: true });
-      expect(redisClient.set).toHaveBeenCalledWith(
-        idempotencyKey,
-        'enqueued',
-        {
-          NX: true,
-          EX: 7 * 24 * 60 * 60,
-        },
-      );
+      expect(redisClient.set).toHaveBeenCalledWith(idempotencyKey, 'enqueued', {
+        NX: true,
+        EX: 7 * 24 * 60 * 60,
+      });
       expect(redisClient.xAdd).not.toHaveBeenCalled();
     });
 
@@ -136,7 +125,7 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: JSON.stringify(jobRequest.payload),
-        }),
+        })
       );
     });
 
@@ -165,7 +154,7 @@ describe('RedisStreamsJobEnqueueService', () => {
       redisClient.del.mockResolvedValueOnce(1);
 
       await expect(service.enqueueJob(jobRequest)).rejects.toThrow(
-        'Failed to enqueue job to stream: jobs.sync',
+        'Failed to enqueue job to stream: jobs.sync'
       );
 
       expect(redisClient.del).toHaveBeenCalledWith(idempotencyKey);
@@ -178,7 +167,7 @@ describe('RedisStreamsJobEnqueueService', () => {
       redisClient.set.mockRejectedValueOnce(error);
 
       await expect(service.enqueueJob(jobRequest)).rejects.toThrow(
-        'Job enqueue failed: Connection to Redis failed',
+        'Job enqueue failed: Connection to Redis failed'
       );
     });
 
@@ -192,7 +181,7 @@ describe('RedisStreamsJobEnqueueService', () => {
       redisClient.del.mockResolvedValueOnce(1);
 
       await expect(service.enqueueJob(jobRequest)).rejects.toThrow(
-        'Failed to enqueue job to stream: jobs.sync',
+        'Failed to enqueue job to stream: jobs.sync'
       );
 
       expect(redisClient.del).toHaveBeenCalledWith(idempotencyKey);
@@ -204,7 +193,7 @@ describe('RedisStreamsJobEnqueueService', () => {
       redisClient.set.mockRejectedValueOnce('String error');
 
       await expect(service.enqueueJob(jobRequest)).rejects.toThrow(
-        'Job enqueue failed: Unknown error',
+        'Job enqueue failed: Unknown error'
       );
     });
 
@@ -254,7 +243,7 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: JSON.stringify(complexPayload),
-        }),
+        })
       );
     });
 
@@ -273,9 +262,8 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: '{}',
-        }),
+        })
       );
     });
   });
 });
-

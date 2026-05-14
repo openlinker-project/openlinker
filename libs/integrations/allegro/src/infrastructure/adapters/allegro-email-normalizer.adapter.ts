@@ -17,7 +17,7 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  * @see {@link EmailNormalizerPort} for the port interface
  */
-import { EmailNormalizerPort } from '@openlinker/core/integrations';
+import type { EmailNormalizerPort } from '@openlinker/core/integrations';
 import { normalizeEmail } from '@openlinker/shared/config';
 
 export class AllegroEmailNormalizerAdapter implements EmailNormalizerPort {

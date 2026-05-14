@@ -9,11 +9,11 @@
  *
  * @module libs/core/src/ai/application/services
  */
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import { AiProviderActiveSetting } from '../../domain/entities/ai-provider-active-setting.entity';
-import { AiProviderActiveSettingRepositoryPort } from '../../domain/ports/ai-provider-active-setting-repository.port';
-import { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
+import type { AiProviderActiveSettingRepositoryPort } from '../../domain/ports/ai-provider-active-setting-repository.port';
+import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
 import { AiProviderActivationError } from '../../domain/exceptions/ai-provider-activation.exception';
 import { AiProviderActiveSettingsService } from './ai-provider-active-settings.service';
 
@@ -28,7 +28,7 @@ describe('AiProviderActiveSettingsService', () => {
   let logSpy: jest.SpyInstance;
 
   const buildService = (
-    config: ConfigService = buildConfigService(),
+    config: ConfigService = buildConfigService()
   ): AiProviderActiveSettingsService =>
     new AiProviderActiveSettingsService(repository, credentials, config);
 
@@ -53,7 +53,7 @@ describe('AiProviderActiveSettingsService', () => {
   describe('getActive', () => {
     it('returns the persisted row when present', async () => {
       repository.findActive.mockResolvedValue(
-        new AiProviderActiveSetting('openai', new Date(), 'admin'),
+        new AiProviderActiveSetting('openai', new Date(), 'admin')
       );
       expect(await buildService().getActive()).toBe('openai');
     });
@@ -86,14 +86,14 @@ describe('AiProviderActiveSettingsService', () => {
       });
 
       await expect(buildService().setActive('openai', 'admin')).rejects.toBeInstanceOf(
-        AiProviderActivationError,
+        AiProviderActivationError
       );
       expect(repository.upsertActive).not.toHaveBeenCalled();
     });
 
     it('persists the new active provider and logs the transition', async () => {
       repository.findActive.mockResolvedValue(
-        new AiProviderActiveSetting('anthropic', new Date(), 'admin'),
+        new AiProviderActiveSetting('anthropic', new Date(), 'admin')
       );
       credentials.describe.mockResolvedValue({
         provider: 'openai',
@@ -101,14 +101,14 @@ describe('AiProviderActiveSettingsService', () => {
         source: 'db',
       });
       repository.upsertActive.mockResolvedValue(
-        new AiProviderActiveSetting('openai', new Date(), 'admin'),
+        new AiProviderActiveSetting('openai', new Date(), 'admin')
       );
 
       await buildService().setActive('openai', 'admin');
 
       expect(repository.upsertActive).toHaveBeenCalledWith('openai', 'admin');
       const audit = logSpy.mock.calls.find(
-        (call) => (call as unknown[])[0] === 'ai_provider.set_active',
+        (call) => (call as unknown[])[0] === 'ai_provider.set_active'
       );
       expect(audit).toBeDefined();
       expect((audit as unknown as [string, Record<string, unknown>])[1]).toEqual({
@@ -121,7 +121,7 @@ describe('AiProviderActiveSettingsService', () => {
     it('allows activating providers that do not require a key (fake)', async () => {
       repository.findActive.mockResolvedValue(null);
       repository.upsertActive.mockResolvedValue(
-        new AiProviderActiveSetting('fake', new Date(), null),
+        new AiProviderActiveSetting('fake', new Date(), null)
       );
 
       await buildService().setActive('fake');
@@ -135,7 +135,7 @@ describe('AiProviderActiveSettingsService', () => {
     it('combines the active row with the per-provider status list', async () => {
       const updatedAt = new Date('2026-04-29T12:00:00Z');
       repository.findActive.mockResolvedValue(
-        new AiProviderActiveSetting('openai', updatedAt, 'alice'),
+        new AiProviderActiveSetting('openai', updatedAt, 'alice')
       );
       credentials.describeAll.mockResolvedValue([
         { provider: 'anthropic', configured: true, source: 'db' },

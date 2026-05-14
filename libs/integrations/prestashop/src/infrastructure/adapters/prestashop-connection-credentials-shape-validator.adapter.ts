@@ -21,10 +21,8 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {ConnectionCredentialsShapeValidatorPort}
  */
-import {
-  ConnectionCredentialsShapeValidatorPort,
-  InvalidCredentialsShapeException,
-} from '@openlinker/core/integrations';
+import type { ConnectionCredentialsShapeValidatorPort } from '@openlinker/core/integrations';
+import { InvalidCredentialsShapeException } from '@openlinker/core/integrations';
 
 export class PrestashopConnectionCredentialsShapeValidatorAdapter
   implements ConnectionCredentialsShapeValidatorPort
@@ -37,8 +35,8 @@ export class PrestashopConnectionCredentialsShapeValidatorAdapter
       return Promise.reject(
         new InvalidCredentialsShapeException(
           this.pluginName,
-          'must include a non-empty `webserviceApiKey` string',
-        ),
+          'must include a non-empty `webserviceApiKey` string'
+        )
       );
     }
     return Promise.resolve();

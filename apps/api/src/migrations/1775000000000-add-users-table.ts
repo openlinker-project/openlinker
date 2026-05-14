@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddUsersTable1775000000000 implements MigrationInterface {
   name = 'AddUsersTable1775000000000';

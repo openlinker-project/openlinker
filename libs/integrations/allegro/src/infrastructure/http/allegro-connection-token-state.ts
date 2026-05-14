@@ -28,10 +28,10 @@
  *   connection, both instances sharing one `AllegroConnectionTokenState`)
  * @see {@link AllegroAdapterFactory} — constructs the shared token state
  */
-import { Logger } from '@openlinker/shared/logging';
-import { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
+import type { Logger } from '@openlinker/shared/logging';
+import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
-import {
+import type {
   RefreshOnUnauthorizedOutcome,
   TokenRefreshCallback,
   TokenRefreshResult,
@@ -62,7 +62,7 @@ export class AllegroConnectionTokenState {
   constructor(
     private readonly connectionId: string,
     initial: AllegroCredentials,
-    private readonly tokenRefreshCallback?: TokenRefreshCallback,
+    private readonly tokenRefreshCallback?: TokenRefreshCallback
   ) {
     this.accessToken = initial.accessToken;
     this.tokenExpiresAt = AllegroConnectionTokenState.normalizeExpiresAt(initial.expiresAt);
@@ -125,19 +125,19 @@ export class AllegroConnectionTokenState {
    */
   async refreshOnUnauthorized(
     traceId: string,
-    logger: Logger,
+    logger: Logger
   ): Promise<RefreshOnUnauthorizedOutcome> {
     if (!this.tokenRefreshCallback) {
       return { ok: false, reason: 'no-callback' };
     }
     try {
       logger.warn(
-        `[${traceId}] Access token expired, attempting refresh (connection: ${this.connectionId})`,
+        `[${traceId}] Access token expired, attempting refresh (connection: ${this.connectionId})`
       );
       const refreshResult = await this.tokenRefreshCallback(this.connectionId);
       this.applyRefreshResult(refreshResult);
       logger.log(
-        `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`,
+        `[${traceId}] Access token refreshed successfully (connection: ${this.connectionId})`
       );
       return { ok: true };
     } catch (error) {
@@ -146,12 +146,12 @@ export class AllegroConnectionTokenState {
         // Transient — log as warn, not error, so on-call doesn't see noise
         // for failures the runner is going to retry anyway.
         logger.warn(
-          `[${traceId}] Token refresh network failure (transient): ${cause.message} (connection: ${this.connectionId})`,
+          `[${traceId}] Token refresh network failure (transient): ${cause.message} (connection: ${this.connectionId})`
         );
         return { ok: false, reason: 'network-failure', cause };
       }
       logger.error(
-        `[${traceId}] Token refresh failed: ${cause.message} (connection: ${this.connectionId})`,
+        `[${traceId}] Token refresh failed: ${cause.message} (connection: ${this.connectionId})`
       );
       return { ok: false, reason: 'credential-rejected', cause };
     }
@@ -167,18 +167,16 @@ export class AllegroConnectionTokenState {
       return;
     }
     try {
-      logger.debug(
-        `[${traceId}] Proactive token refresh (connection: ${this.connectionId})`,
-      );
+      logger.debug(`[${traceId}] Proactive token refresh (connection: ${this.connectionId})`);
       const refreshResult = await this.tokenRefreshCallback(this.connectionId);
       this.applyRefreshResult(refreshResult);
       logger.log(
-        `[${traceId}] Proactive token refresh succeeded (connection: ${this.connectionId})`,
+        `[${traceId}] Proactive token refresh succeeded (connection: ${this.connectionId})`
       );
     } catch (error) {
       this.proactiveRefreshCooldownUntil = Date.now() + PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS;
       logger.warn(
-        `[${traceId}] Proactive token refresh failed, falling back to reactive 401 path: ${(error as Error).message} (connection: ${this.connectionId})`,
+        `[${traceId}] Proactive token refresh failed, falling back to reactive 401 path: ${(error as Error).message} (connection: ${this.connectionId})`
       );
     }
   }

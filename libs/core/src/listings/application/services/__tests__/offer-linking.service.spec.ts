@@ -4,7 +4,7 @@
  * @module libs/core/src/listings/application/services/__tests__
  */
 import { OfferLinkingService } from '../offer-linking.service';
-import { OfferLinkingLookups } from '../../types/offer-linking.types';
+import type { OfferLinkingLookups } from '../../types/offer-linking.types';
 
 describe('OfferLinkingService', () => {
   let service: OfferLinkingService;

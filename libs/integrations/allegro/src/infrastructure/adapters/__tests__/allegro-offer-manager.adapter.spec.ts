@@ -7,11 +7,11 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters/__tests__
  */
 import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
-import { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports/allegro-quantity-command-repository.port';
+import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports/allegro-quantity-command-repository.port';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import {
+import type {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroProductOfferCreateResponse,
 } from '../../../domain/types/allegro-api.types';
@@ -119,9 +119,9 @@ describe('AllegroOfferManagerAdapter', () => {
       'credentials-ref',
       new Date(),
       new Date(),
-    
+
       undefined,
-      ['OfferManager', 'OrderSource'],
+      ['OfferManager', 'OrderSource']
     );
 
     adapter = new AllegroOfferManagerAdapter(
@@ -134,7 +134,7 @@ describe('AllegroOfferManagerAdapter', () => {
       undefined,
       undefined,
       undefined,
-      DEFAULT_SELLER_DEFAULTS,
+      DEFAULT_SELLER_DEFAULTS
     );
   });
 
@@ -179,7 +179,7 @@ describe('AllegroOfferManagerAdapter', () => {
             changeType: 'FIXED',
             value: 10,
           },
-        }),
+        })
       );
     });
 
@@ -267,7 +267,7 @@ describe('AllegroOfferManagerAdapter', () => {
           offerId: 'offer-1',
           quantity: 10,
           idempotencyKey: 'idempotency-key-123',
-        }),
+        })
       ).rejects.toThrow('Network error');
     });
 
@@ -287,11 +287,13 @@ describe('AllegroOfferManagerAdapter', () => {
         data: {
           id: 'command-fail',
           taskCount: 1,
-          tasks: [{
-            offerId: 'offer-1',
-            status: 'FAIL',
-            errors: [{ code: 'INVALID', message: 'bad quantity' }],
-          }],
+          tasks: [
+            {
+              offerId: 'offer-1',
+              status: 'FAIL',
+              errors: [{ code: 'INVALID', message: 'bad quantity' }],
+            },
+          ],
         },
         status: 200,
         headers: {},
@@ -302,7 +304,7 @@ describe('AllegroOfferManagerAdapter', () => {
           offerId: 'offer-1',
           quantity: 10,
           idempotencyKey: 'fail-key',
-        }),
+        })
       ).rejects.toThrow('Allegro quantity command command-fail failed');
     });
 
@@ -363,7 +365,7 @@ describe('AllegroOfferManagerAdapter', () => {
         uploadHttpClient,
         identifierMapping,
         connection,
-        commandRepository,
+        commandRepository
       );
 
       httpClient.put.mockResolvedValueOnce({
@@ -399,7 +401,7 @@ describe('AllegroOfferManagerAdapter', () => {
         '/sale/product-offers/allegro-offer-1',
         expect.objectContaining({
           sellingMode: { price: { amount: '99.99', currency: 'PLN' } },
-        }),
+        })
       );
       const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
       expect(body).not.toHaveProperty('name');
@@ -414,7 +416,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(httpClient.patch).toHaveBeenCalledWith(
         '/sale/product-offers/allegro-offer-1',
-        expect.objectContaining({ name: 'My new title' }),
+        expect.objectContaining({ name: 'My new title' })
       );
       const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
       expect(body).not.toHaveProperty('sellingMode');
@@ -440,7 +442,7 @@ describe('AllegroOfferManagerAdapter', () => {
           description: {
             sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
           },
-        }),
+        })
       );
       const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
       expect(body).not.toHaveProperty('name');
@@ -457,7 +459,9 @@ describe('AllegroOfferManagerAdapter', () => {
         },
       });
 
-      const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>, unknown])[1];
+      const body = (
+        httpClient.patch.mock.calls[0] as [string, Record<string, unknown>, unknown]
+      )[1];
       expect(body).toHaveProperty('sellingMode');
       expect(body).toHaveProperty('name', 'Updated title');
       expect(body).toHaveProperty('description');
@@ -473,8 +477,7 @@ describe('AllegroOfferManagerAdapter', () => {
                 items: [
                   {
                     type: 'TEXT',
-                    content:
-                      '<p style="color:#000;">Hello <span class="x">world</span></p>',
+                    content: '<p style="color:#000;">Hello <span class="x">world</span></p>',
                   },
                 ],
               },
@@ -505,7 +508,7 @@ describe('AllegroOfferManagerAdapter', () => {
         adapter.updateOfferFields({
           externalOfferId: 'allegro-offer-1',
           fields: { title: 'New title' },
-        }),
+        })
       ).rejects.toThrow('Allegro API error');
     });
 
@@ -519,7 +522,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(httpClient.patch).toHaveBeenCalledWith(
         '/sale/product-offers/allegro-offer-edit',
-        expect.objectContaining({ name: 'Updated - model "Pro"' }),
+        expect.objectContaining({ name: 'Updated - model "Pro"' })
       );
     });
 
@@ -534,10 +537,7 @@ describe('AllegroOfferManagerAdapter', () => {
           },
         });
 
-        const [, body] = httpClient.patch.mock.calls[0] as [
-          string,
-          Record<string, unknown>,
-        ];
+        const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
         // Caller field still present and sanitized as before.
         expect(body.description).toEqual({
           sections: [{ items: [{ type: 'TEXT', content: '<p>Updated copy</p>' }] }],
@@ -570,7 +570,7 @@ describe('AllegroOfferManagerAdapter', () => {
           undefined,
           undefined,
           undefined,
-          undefined, // no sellerDefaults
+          undefined // no sellerDefaults
         );
 
         await adapterWithoutDefaults.updateOfferFields({
@@ -582,10 +582,7 @@ describe('AllegroOfferManagerAdapter', () => {
           },
         });
 
-        const [, body] = httpClient.patch.mock.calls[0] as [
-          string,
-          Record<string, unknown>,
-        ];
+        const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
         expect(body).toEqual({
           description: {
             sections: [{ items: [{ type: 'TEXT', content: '<p>Plain</p>' }] }],
@@ -607,10 +604,7 @@ describe('AllegroOfferManagerAdapter', () => {
           },
         });
 
-        const [, body] = httpClient.patch.mock.calls[0] as [
-          string,
-          Record<string, unknown>,
-        ];
+        const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
         // All three caller-documented fields land unchanged. The backfill
         // never collides with them because the defaults patch only touches
         // `location` / `productSet`.
@@ -627,17 +621,15 @@ describe('AllegroOfferManagerAdapter', () => {
       });
 
       it('emits a structured debug log naming the backfilled fields', async () => {
-        const debugSpy = jest
-          .spyOn(adapter['logger'], 'debug')
-          .mockImplementation(() => undefined);
+        const debugSpy = jest.spyOn(adapter['logger'], 'debug').mockImplementation(() => undefined);
 
         await adapter.updateOfferFields({
           externalOfferId: 'allegro-offer-log',
           fields: { title: 'Anything' },
         });
 
-        const backfillLog = debugSpy.mock.calls.find(([msg]) =>
-          typeof msg === 'string' && msg.includes('backfilled from sellerDefaults'),
+        const backfillLog = debugSpy.mock.calls.find(
+          ([msg]) => typeof msg === 'string' && msg.includes('backfilled from sellerDefaults')
         );
         expect(backfillLog).toBeDefined();
         const message = backfillLog![0] as string;
@@ -649,9 +641,7 @@ describe('AllegroOfferManagerAdapter', () => {
       });
 
       it('does not call HTTP and does not emit the backfill log when fields are empty', async () => {
-        const debugSpy = jest
-          .spyOn(adapter['logger'], 'debug')
-          .mockImplementation(() => undefined);
+        const debugSpy = jest.spyOn(adapter['logger'], 'debug').mockImplementation(() => undefined);
 
         await adapter.updateOfferFields({
           externalOfferId: 'allegro-offer-empty',
@@ -659,8 +649,8 @@ describe('AllegroOfferManagerAdapter', () => {
         });
 
         expect(httpClient.patch).not.toHaveBeenCalled();
-        const backfillLog = debugSpy.mock.calls.find(([msg]) =>
-          typeof msg === 'string' && msg.includes('backfilled from sellerDefaults'),
+        const backfillLog = debugSpy.mock.calls.find(
+          ([msg]) => typeof msg === 'string' && msg.includes('backfilled from sellerDefaults')
         );
         expect(backfillLog).toBeUndefined();
       });
@@ -692,9 +682,7 @@ describe('AllegroOfferManagerAdapter', () => {
     it('should fetch child categories when parentId provided', async () => {
       httpClient.get.mockResolvedValueOnce({
         data: {
-          categories: [
-            { id: '10', name: 'Smartphones', parent: { id: '1' }, leaf: true },
-          ],
+          categories: [{ id: '10', name: 'Smartphones', parent: { id: '1' }, leaf: true }],
         },
         status: 200,
         headers: {},
@@ -702,9 +690,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       const result = await adapter.fetchCategories('1');
 
-      expect(result).toEqual([
-        { id: '10', name: 'Smartphones', parentId: '1', leaf: true },
-      ]);
+      expect(result).toEqual([{ id: '10', name: 'Smartphones', parentId: '1', leaf: true }]);
       expect(httpClient.get).toHaveBeenCalledWith('/sale/categories', {
         queryParams: { 'parent.id': '1' },
       });
@@ -727,9 +713,7 @@ describe('AllegroOfferManagerAdapter', () => {
     it('should return category ID when exactly one match is found', async () => {
       httpClient.get.mockResolvedValue({
         data: {
-          matchingCategories: [
-            { category: { id: 'cat-100', name: 'Electronics' } },
-          ],
+          matchingCategories: [{ category: { id: 'cat-100', name: 'Electronics' } }],
         },
         status: 200,
         headers: {},
@@ -758,10 +742,7 @@ describe('AllegroOfferManagerAdapter', () => {
     it('should return null when multiple matches are found', async () => {
       httpClient.get.mockResolvedValue({
         data: {
-          matchingCategories: [
-            { category: { id: 'cat-1' } },
-            { category: { id: 'cat-2' } },
-          ],
+          matchingCategories: [{ category: { id: 'cat-1' } }, { category: { id: 'cat-2' } }],
         },
         status: 200,
         headers: {},
@@ -794,7 +775,7 @@ describe('AllegroOfferManagerAdapter', () => {
         undefined,
         undefined,
         DEFAULT_SELLER_DEFAULTS,
-        storefrontBaseUrl,
+        storefrontBaseUrl
       );
     }
 
@@ -900,7 +881,7 @@ describe('AllegroOfferManagerAdapter', () => {
       });
 
       await expect(adapter.getOffer({ externalId: 'offer-malformed' })).rejects.toThrow(
-        /sellingMode\.price/,
+        /sellingMode\.price/
       );
     });
 
@@ -940,16 +921,14 @@ describe('AllegroOfferManagerAdapter', () => {
       // declared content-type, and 800×800 clears Allegro's 400px-longer-side
       // gate (#424). Keeps existing specs that don't care about the upload
       // step green.
-      fetchSpy = jest
-        .spyOn(globalThis, 'fetch')
-        .mockImplementation(() =>
-          Promise.resolve(
-            new Response(makeValidPng(800, 800), {
-              status: 200,
-              headers: { 'content-type': 'image/jpeg' },
-            }),
-          ),
-        );
+      fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve(
+          new Response(makeValidPng(800, 800), {
+            status: 200,
+            headers: { 'content-type': 'image/jpeg' },
+          })
+        )
+      );
 
       // Default upload: returns deterministic Allegro CDN URLs per call so
       // multi-image specs can pin order.
@@ -959,7 +938,7 @@ describe('AllegroOfferManagerAdapter', () => {
           data: { location: `https://images.allegrostatic.com/test/uploaded-${++i}.jpg` },
           status: 201,
           headers: {},
-        }),
+        })
       );
     });
 
@@ -972,7 +951,7 @@ describe('AllegroOfferManagerAdapter', () => {
         mockHttpResponse({
           id: 'allegro-offer-1',
           publication: { status: 'INACTIVE' },
-        }),
+        })
       );
 
       const result = await adapter.createOffer(baseCmd);
@@ -997,7 +976,7 @@ describe('AllegroOfferManagerAdapter', () => {
         mockHttpResponse({
           id: 'allegro-offer-2',
           publication: { status: 'ACTIVE' },
-        }),
+        })
       );
 
       const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
@@ -1012,7 +991,7 @@ describe('AllegroOfferManagerAdapter', () => {
         mockHttpResponse({
           id: 'allegro-offer-3',
           publication: { status: 'INACTIVE' },
-        }),
+        })
       );
 
       const result = await adapter.createOffer({ ...baseCmd, publishImmediately: true });
@@ -1035,7 +1014,7 @@ describe('AllegroOfferManagerAdapter', () => {
               },
             ],
           },
-        }),
+        })
       );
 
       const result = await adapter.createOffer(baseCmd);
@@ -1057,16 +1036,14 @@ describe('AllegroOfferManagerAdapter', () => {
           'Unprocessable entity',
           422,
           JSON.stringify({
-            errors: [
-              { code: 'BAD_CATEGORY', message: 'Category does not exist' },
-            ],
+            errors: [{ code: 'BAD_CATEGORY', message: 'Category does not exist' }],
           }),
-          'https://api.allegro.pl/sale/product-offers',
-        ),
+          'https://api.allegro.pl/sale/product-offers'
+        )
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
-        OfferCreateRejectedException,
+        OfferCreateRejectedException
       );
     });
 
@@ -1089,8 +1066,8 @@ describe('AllegroOfferManagerAdapter', () => {
               code: 'ConstraintViolationException.MissingRequiredParameters',
               message: 'Missing required parameters',
             },
-          ],
-        ),
+          ]
+        )
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1113,8 +1090,8 @@ describe('AllegroOfferManagerAdapter', () => {
           502,
           '<html>upstream proxy error</html>',
           'https://api.allegro.pl/sale/product-offers',
-          undefined,
-        ),
+          undefined
+        )
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1125,7 +1102,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('maps platformParams to delivery/return/warranty/invoice/parameters', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-5', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-5', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1162,7 +1139,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('omits afterSalesServices entirely when impliedWarrantyId is set but warrantyId, returnPolicyId are not (#406)', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-iwar-only', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-iwar-only', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1179,7 +1156,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('omits impliedWarranty when impliedWarrantyId is set with returnPolicy but no warranty (#406)', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-ret-iwar', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-ret-iwar', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1200,15 +1177,13 @@ describe('AllegroOfferManagerAdapter', () => {
         overrides: { ...baseCmd.overrides, title: undefined },
       };
 
-      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(
-        OfferCreateRejectedException,
-      );
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(OfferCreateRejectedException);
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
     it('omits description and images from the body when overrides values are null', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-null', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-null', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1227,7 +1202,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('emits images as a flat string[] of Allegro CDN locations (after upload step)', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-img', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-img', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer(baseCmd);
@@ -1238,7 +1213,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('preserves image order through the upload step when multiple images are supplied', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-img-multi', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-img-multi', publication: { status: 'INACTIVE' } })
       );
 
       const imageUrls = [
@@ -1262,7 +1237,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('omits images from the body when overrides.imageUrls is an empty array', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-img-empty', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-img-empty', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1276,7 +1251,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('sanitizes attribute-laden HTML in description before wrapping (#392 fix)', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-desc', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-desc', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1296,7 +1271,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('omits description when sanitization yields whitespace-only content', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-desc-empty', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-desc-empty', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1314,15 +1289,13 @@ describe('AllegroOfferManagerAdapter', () => {
         overrides: { ...baseCmd.overrides, categoryId: undefined },
       };
 
-      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(
-        OfferCreateRejectedException,
-      );
+      await expect(adapter.createOffer(cmd)).rejects.toBeInstanceOf(OfferCreateRejectedException);
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
     it('drops malformed parameter entries from platformParams.parameters', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-params', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-params', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
@@ -1352,7 +1325,7 @@ describe('AllegroOfferManagerAdapter', () => {
     describe('product-section parameters (#415 / #419)', () => {
       it('routes platformParams.productParameters to body.productSet[0].product.parameters', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-product', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-product', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1421,7 +1394,7 @@ describe('AllegroOfferManagerAdapter', () => {
       // `product.parameters` stays absent when the operator supplied none.
       it('emits productSet[0] with GPSR + product.name when productParameters is missing or empty', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-no-product', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1461,7 +1434,7 @@ describe('AllegroOfferManagerAdapter', () => {
       // `TEXT`/`description` per developer.allegro.pl.
       it('passes TEXT discriminator with description through to productSet[0].safetyInformation (#445)', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-safety-text', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-safety-text', publication: { status: 'INACTIVE' } })
         );
 
         const adapterWithSafetyText = new AllegroOfferManagerAdapter(
@@ -1480,7 +1453,7 @@ describe('AllegroOfferManagerAdapter', () => {
               type: 'TEXT',
               description: 'Keep dry. Not for children under 3.',
             },
-          },
+          }
         );
 
         await adapterWithSafetyText.createOffer(baseCmd);
@@ -1502,7 +1475,7 @@ describe('AllegroOfferManagerAdapter', () => {
           mockHttpResponse({
             id: 'allegro-offer-safety-att',
             publication: { status: 'INACTIVE' },
-          }),
+          })
         );
 
         const adapterWithAttachments = new AllegroOfferManagerAdapter(
@@ -1521,7 +1494,7 @@ describe('AllegroOfferManagerAdapter', () => {
               type: 'ATTACHMENTS',
               attachments: [{ id: 'att-1' }, { id: 'att-2' }],
             },
-          },
+          }
         );
 
         await adapterWithAttachments.createOffer(baseCmd);
@@ -1542,7 +1515,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       it('drops malformed product-parameter entries through the same shape validator', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-product-mal', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-product-mal', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1585,7 +1558,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       it('omits productSet[0].product.images when offer-level images are empty', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-no-img', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-no-img', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1611,7 +1584,7 @@ describe('AllegroOfferManagerAdapter', () => {
     describe('name sanitization (#420)', () => {
       it('sanitizes em-dash + curly quotes in body.name on offer create', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-sanitize', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-sanitize', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1630,7 +1603,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       it('mirrors the already-sanitized body.name onto productSet[0].product.name without re-sanitization', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-mirror', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-mirror', publication: { status: 'INACTIVE' } })
         );
 
         await adapter.createOffer({
@@ -1657,7 +1630,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       it('round-trips a clean ASCII title unchanged through both name fields', async () => {
         httpClient.post.mockResolvedValue(
-          mockHttpResponse({ id: 'allegro-offer-clean', publication: { status: 'INACTIVE' } }),
+          mockHttpResponse({ id: 'allegro-offer-clean', publication: { status: 'INACTIVE' } })
         );
 
         const cleanTitle = 'Aparat cyfrowy CANON PowerShot SX740 Lite Edition - srebrny';
@@ -1683,7 +1656,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('uses cmd.idempotencyKey for external.id when provided', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-6', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-6', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({ ...baseCmd, idempotencyKey: 'idem-xyz' });
@@ -1694,7 +1667,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('falls back to cmd.internalVariantId for external.id when no idempotencyKey', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-7', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-7', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer(baseCmd);
@@ -1725,7 +1698,7 @@ describe('AllegroOfferManagerAdapter', () => {
         new Response('<html>Blocked</html>', {
           status: 200,
           headers: { 'content-type': 'text/html' },
-        }),
+        })
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1748,8 +1721,8 @@ describe('AllegroOfferManagerAdapter', () => {
           'Unprocessable entity',
           422,
           '{"errors":[{"code":"INVALID_IMAGE"}]}',
-          'https://upload.allegro.pl/sale/images',
-        ),
+          'https://upload.allegro.pl/sale/images'
+        )
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1774,7 +1747,7 @@ describe('AllegroOfferManagerAdapter', () => {
         new Response(makeValidPng(200, 200), {
           status: 200,
           headers: { 'content-type': 'image/jpeg' },
-        }),
+        })
       );
 
       await expect(adapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1799,7 +1772,7 @@ describe('AllegroOfferManagerAdapter', () => {
       fetchSpy.mockResolvedValue(new Response('Forbidden', { status: 403 }));
 
       await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
-        OfferCreateRejectedException,
+        OfferCreateRejectedException
       );
 
       expect(httpClient.post).not.toHaveBeenCalled();
@@ -1808,7 +1781,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('calls upload host /sale/images with the normalized image content-type', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-ct', publication: { status: 'INACTIVE' } }),
+        mockHttpResponse({ id: 'allegro-offer-ct', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer(baseCmd);
@@ -1817,7 +1790,7 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(uploadHttpClient.postBinary).toHaveBeenCalledWith(
         '/sale/images',
         'image/jpeg',
-        expect.any(Uint8Array),
+        expect.any(Uint8Array)
       );
     });
 
@@ -1829,7 +1802,7 @@ describe('AllegroOfferManagerAdapter', () => {
           httpClient,
           uploadHttpClient,
           identifierMapping,
-          connection,
+          connection
         );
 
         await expect(adapterWithoutDefaults.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1873,7 +1846,7 @@ describe('AllegroOfferManagerAdapter', () => {
           undefined,
           undefined,
           undefined,
-          partial,
+          partial
         );
 
         await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1903,7 +1876,7 @@ describe('AllegroOfferManagerAdapter', () => {
           undefined,
           undefined,
           undefined,
-          partial,
+          partial
         );
 
         await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1921,7 +1894,9 @@ describe('AllegroOfferManagerAdapter', () => {
       it('reports sellerDefaults.safetyInformation.description when type=TEXT but description is missing (#445)', async () => {
         const partial = {
           ...DEFAULT_SELLER_DEFAULTS,
-          safetyInformation: { type: 'TEXT' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
+          safetyInformation: {
+            type: 'TEXT',
+          } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
         };
         const partialAdapter = new AllegroOfferManagerAdapter(
           connectionId,
@@ -1933,7 +1908,7 @@ describe('AllegroOfferManagerAdapter', () => {
           undefined,
           undefined,
           undefined,
-          partial,
+          partial
         );
 
         await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1951,7 +1926,9 @@ describe('AllegroOfferManagerAdapter', () => {
       it('reports sellerDefaults.safetyInformation.attachments when type=ATTACHMENTS but attachments is missing/empty (#445)', async () => {
         const partial = {
           ...DEFAULT_SELLER_DEFAULTS,
-          safetyInformation: { type: 'ATTACHMENTS' } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
+          safetyInformation: {
+            type: 'ATTACHMENTS',
+          } as unknown as AllegroSellerDefaultsConfig['safetyInformation'],
         };
         const partialAdapter = new AllegroOfferManagerAdapter(
           connectionId,
@@ -1963,7 +1940,7 @@ describe('AllegroOfferManagerAdapter', () => {
           undefined,
           undefined,
           undefined,
-          partial,
+          partial
         );
 
         await expect(partialAdapter.createOffer(baseCmd)).rejects.toMatchObject({
@@ -1983,7 +1960,7 @@ describe('AllegroOfferManagerAdapter', () => {
           mockHttpResponse({
             id: 'allegro-offer-loc',
             publication: { status: 'INACTIVE' },
-          }),
+          })
         );
 
         await adapter.createOffer(baseCmd);
@@ -2004,7 +1981,7 @@ describe('AllegroOfferManagerAdapter', () => {
           mockHttpResponse({
             id: 'allegro-offer-linked',
             publication: { status: 'INACTIVE' },
-          }),
+          })
         );
         // Mock the smart-link resolver path: one exact-EAN match.
         httpClient.get.mockResolvedValueOnce({
@@ -2041,7 +2018,7 @@ describe('AllegroOfferManagerAdapter', () => {
         // Card-linked offers inherit GPSR from the card — adapter must NOT
         // write `responsibleProducer` / `safetyInformation` on the entry.
         expect(body.productSet).not.toContainEqual(
-          expect.objectContaining({ responsibleProducer: expect.anything() }),
+          expect.objectContaining({ responsibleProducer: expect.anything() })
         );
       });
 
@@ -2050,7 +2027,7 @@ describe('AllegroOfferManagerAdapter', () => {
           mockHttpResponse({
             id: 'allegro-offer-inline',
             publication: { status: 'INACTIVE' },
-          }),
+          })
         );
 
         await adapter.createOffer({
@@ -2065,10 +2042,7 @@ describe('AllegroOfferManagerAdapter', () => {
         });
 
         // Resolver was never called because variantBarcode was missing.
-        expect(httpClient.get).not.toHaveBeenCalledWith(
-          '/sale/products',
-          expect.anything(),
-        );
+        expect(httpClient.get).not.toHaveBeenCalledWith('/sale/products', expect.anything());
         const body = httpClient.post.mock.calls[0][1] as {
           productSet?: Array<{
             product?: { id?: string; name?: string };
@@ -2118,7 +2092,11 @@ describe('AllegroOfferManagerAdapter', () => {
   });
 
   describe('fetchSellerPolicies', () => {
-    function makeResponse<T>(data: T): { data: T; status: number; headers: Record<string, string> } {
+    function makeResponse<T>(data: T): {
+      data: T;
+      status: number;
+      headers: Record<string, string>;
+    } {
       return { data, status: 200, headers: {} };
     }
 
@@ -2130,22 +2108,22 @@ describe('AllegroOfferManagerAdapter', () => {
               { id: 'd1', name: 'Standard' },
               { id: 'd2', name: 'Express' },
             ],
-          }),
+          })
         )
         .mockResolvedValueOnce(
           makeResponse({
             returnPolicies: [{ id: 'r1', name: '14-day returns' }],
-          }),
+          })
         )
         .mockResolvedValueOnce(
           makeResponse({
             warranties: [{ id: 'w1', name: '1-year manufacturer' }],
-          }),
+          })
         )
         .mockResolvedValueOnce(
           makeResponse({
             impliedWarranties: [{ id: 'iw1', name: 'Consumer rights' }],
-          }),
+          })
         );
 
       const result = await adapter.fetchSellerPolicies();
@@ -2168,7 +2146,7 @@ describe('AllegroOfferManagerAdapter', () => {
           '/after-sales-service-conditions/return-policies',
           '/after-sales-service-conditions/warranties',
           '/sale/shipping-rates',
-        ].sort(),
+        ].sort()
       );
       // `/sale/delivery-settings` is a different Allegro resource (account-level
       // free-delivery config, not a list). Pinning its absence here keeps a
@@ -2205,7 +2183,11 @@ describe('AllegroOfferManagerAdapter', () => {
   });
 
   describe('fetchCategoryParameters (cached + neutral)', () => {
-    function makeResponse<T>(data: T): { data: T; status: number; headers: Record<string, string> } {
+    function makeResponse<T>(data: T): {
+      data: T;
+      status: number;
+      headers: Record<string, string>;
+    } {
       return { data, status: 200, headers: {} };
     }
 
@@ -2217,7 +2199,10 @@ describe('AllegroOfferManagerAdapter', () => {
       };
     }
 
-    function buildAdapter(cache: jest.Mocked<CachePort>, ttlSec?: number): AllegroOfferManagerAdapter {
+    function buildAdapter(
+      cache: jest.Mocked<CachePort>,
+      ttlSec?: number
+    ): AllegroOfferManagerAdapter {
       return new AllegroOfferManagerAdapter(
         connectionId,
         httpClient,
@@ -2227,7 +2212,7 @@ describe('AllegroOfferManagerAdapter', () => {
         undefined,
         undefined,
         cache,
-        ttlSec,
+        ttlSec
       );
     }
 
@@ -2239,9 +2224,7 @@ describe('AllegroOfferManagerAdapter', () => {
           type: 'dictionary' as const,
           required: true,
           options: { dependsOnParameterId: null, customValuesEnabled: false },
-          dictionary: [
-            { id: '11323_1', value: 'Nowy', dependsOnValueIds: [] },
-          ],
+          dictionary: [{ id: '11323_1', value: 'Nowy', dependsOnValueIds: [] }],
           restrictions: { multipleChoices: false },
         },
       ],
@@ -2300,7 +2283,7 @@ describe('AllegroOfferManagerAdapter', () => {
       httpClient.get.mockRejectedValueOnce(new AllegroApiException('not found', 404));
 
       await expect(
-        adapterWithCache.fetchCategoryParameters({ categoryId: 'unknown' }),
+        adapterWithCache.fetchCategoryParameters({ categoryId: 'unknown' })
       ).rejects.toBeInstanceOf(CategoryNotFoundException);
       expect(cache.set).not.toHaveBeenCalled();
     });
@@ -2312,7 +2295,7 @@ describe('AllegroOfferManagerAdapter', () => {
       httpClient.get.mockRejectedValueOnce(new AllegroApiException('upstream', 503));
 
       await expect(
-        adapterWithCache.fetchCategoryParameters({ categoryId: '257933' }),
+        adapterWithCache.fetchCategoryParameters({ categoryId: '257933' })
       ).rejects.toMatchObject({ name: 'AllegroApiException', statusCode: 503 });
       expect(cache.set).not.toHaveBeenCalled();
     });
@@ -2329,7 +2312,7 @@ describe('AllegroOfferManagerAdapter', () => {
   describe('getOfferStatus (#447)', () => {
     function offerResponse(
       publicationStatus: string | undefined,
-      validationErrors: Array<{ code: string; message: string; path?: string }> = [],
+      validationErrors: Array<{ code: string; message: string; path?: string }> = []
     ): { data: unknown; status: number } {
       return {
         data: {
@@ -2362,7 +2345,7 @@ describe('AllegroOfferManagerAdapter', () => {
         expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
         expect(result.publicationStatus).toBe(neutralStatus);
         expect(result.validationErrors).toEqual([]);
-      },
+      }
     );
 
     it('flows validation.errors through to the result', async () => {
@@ -2370,7 +2353,7 @@ describe('AllegroOfferManagerAdapter', () => {
         offerResponse('INACTIVE', [
           { code: 'TOO_LONG', message: 'fallback msg', path: 'name' },
           { code: 'MISSING', message: 'm2' },
-        ]) as never,
+        ]) as never
       );
 
       const result = await adapter.getOfferStatus('7781562863');
@@ -2396,9 +2379,7 @@ describe('AllegroOfferManagerAdapter', () => {
     it('throws OfferNotFoundOnMarketplaceException on 404 (not the raw Allegro exception)', async () => {
       httpClient.get.mockRejectedValueOnce(new AllegroApiException('not found', 404));
 
-      const err: unknown = await adapter
-        .getOfferStatus('does-not-exist')
-        .catch((e: unknown) => e);
+      const err: unknown = await adapter.getOfferStatus('does-not-exist').catch((e: unknown) => e);
       expect(err).toBeInstanceOf(OfferNotFoundOnMarketplaceException);
       expect(err).toMatchObject({
         externalOfferId: 'does-not-exist',
@@ -2419,12 +2400,10 @@ describe('AllegroOfferManagerAdapter', () => {
       // Both calls hit the same `/sale/product-offers/{id}` endpoint via the
       // private `fetchProductOfferById` helper. Verify the helper extraction
       // didn't accidentally break the older identifiers code path.
-      httpClient.get
-        .mockResolvedValueOnce(offerResponse('ACTIVE') as never)
-        .mockResolvedValueOnce({
-          data: { id: 'offer-7781562863', category: undefined, parameters: [], productSet: [] },
-          status: 200,
-        } as never);
+      httpClient.get.mockResolvedValueOnce(offerResponse('ACTIVE') as never).mockResolvedValueOnce({
+        data: { id: 'offer-7781562863', category: undefined, parameters: [], productSet: [] },
+        status: 200,
+      } as never);
 
       const status = await adapter.getOfferStatus('7781562863');
       expect(status.publicationStatus).toBe('active');
@@ -2485,7 +2464,7 @@ describe('AllegroOfferManagerAdapter', () => {
         undefined,
         cache,
         undefined,
-        DEFAULT_SELLER_DEFAULTS,
+        DEFAULT_SELLER_DEFAULTS
       );
     });
 
@@ -2507,9 +2486,7 @@ describe('AllegroOfferManagerAdapter', () => {
           .mockResolvedValueOnce({
             // resolveAllegroProductCardByEan: /sale/products?phrase=…
             data: {
-              products: [
-                { id: 'p1', name: 'Canon SX740', ean: '5901234123457' },
-              ],
+              products: [{ id: 'p1', name: 'Canon SX740', ean: '5901234123457' }],
             },
             status: 200,
             headers: {},
@@ -2520,9 +2497,7 @@ describe('AllegroOfferManagerAdapter', () => {
               id: 'p1',
               name: 'Canon SX740 HS',
               images: [{ url: 'https://img/a.jpg' }],
-              parameters: [
-                { id: '224017', name: 'Brand', values: ['Canon'] },
-              ],
+              parameters: [{ id: '224017', name: 'Brand', values: ['Canon'] }],
             },
             status: 200,
             headers: {},
@@ -2618,14 +2593,13 @@ describe('AllegroOfferManagerAdapter', () => {
       it('translates Allegro 404 into CatalogProductNotFoundException', async () => {
         cache.get.mockResolvedValue(null);
         httpClient.get.mockRejectedValueOnce(
-          new AllegroApiException('Not found', 404, '{}', '/sale/products/missing'),
+          new AllegroApiException('Not found', 404, '{}', '/sale/products/missing')
         );
 
         await expect(adapterWithCache.getProduct({ productId: 'missing' })).rejects.toBeInstanceOf(
-          CatalogProductNotFoundException,
+          CatalogProductNotFoundException
         );
       });
     });
   });
 });
-

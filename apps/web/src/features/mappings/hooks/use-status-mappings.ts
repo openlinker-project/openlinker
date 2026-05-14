@@ -6,7 +6,13 @@
  * @module apps/web/src/features/mappings/hooks
  */
 
-import { useQuery, useMutation, useQueryClient, type UseQueryResult, type UseMutationResult } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseQueryResult,
+  type UseMutationResult,
+} from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { StatusMapping, UpsertStatusMappingsPayload } from '../api/mappings.types';
@@ -19,7 +25,9 @@ export function useStatusMappingsQuery(connectionId: string): UseQueryResult<Sta
   });
 }
 
-export function useUpsertStatusMappings(connectionId: string): UseMutationResult<StatusMapping[], Error, UpsertStatusMappingsPayload> {
+export function useUpsertStatusMappings(
+  connectionId: string
+): UseMutationResult<StatusMapping[], Error, UpsertStatusMappingsPayload> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({

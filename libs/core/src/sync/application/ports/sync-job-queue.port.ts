@@ -8,7 +8,7 @@
  * @module libs/core/src/sync/application/ports
  */
 
-import { JobType } from '../../domain/types/sync-job.types';
+import type { JobType } from '../../domain/types/sync-job.types';
 
 export interface EnqueueJobOptions {
   /**
@@ -42,4 +42,3 @@ export interface SyncJobQueuePort {
    */
   enqueueBulk(requests: EnqueueJobRequest[]): Promise<string[]>;
 }
-

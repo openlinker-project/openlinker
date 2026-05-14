@@ -13,11 +13,7 @@
  *
  * @module apps/api/test/integration
  */
-import {
-  getTestHarness,
-  IntegrationTestHarness,
-  teardownTestHarness,
-} from './setup';
+import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
 describe('Bootstrap admin disabled in integration harness (#278)', () => {
   let harness: IntegrationTestHarness;

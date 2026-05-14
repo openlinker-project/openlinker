@@ -10,21 +10,18 @@
  *
  * @module apps/api/src/ai/http
  */
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import type { IPromptTemplateService } from '@openlinker/core/ai';
 import {
   CannotArchivePublishedTemplateException,
-  IPromptTemplateService,
   PROMPT_TEMPLATE_SERVICE_TOKEN,
   PromptTemplate,
   PromptTemplateNotFoundException,
   PromptTemplateStateException,
 } from '@openlinker/core/ai';
-import { AuthenticatedUser } from '../../auth/auth.types';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 import { PromptTemplatesController } from './prompt-templates.controller';
 
 const adminUser: AuthenticatedUser = {
@@ -46,7 +43,7 @@ function makeTemplate(overrides: Partial<PromptTemplate> = {}): PromptTemplate {
     overrides.publishedAt ?? null,
     overrides.createdBy ?? 'admin',
     overrides.createdAt ?? new Date('2026-04-22T10:00:00Z'),
-    overrides.updatedAt ?? new Date('2026-04-22T10:00:00Z'),
+    overrides.updatedAt ?? new Date('2026-04-22T10:00:00Z')
   );
 }
 
@@ -111,22 +108,22 @@ describe('PromptTemplatesController', () => {
           templateId: 'tmpl-1',
           key: 'offer.description.suggest',
           channel: 'allegro',
-        }),
+        })
       );
 
-      await expect(
-        controller.archive('tmpl-1', {}, adminUser),
-      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(controller.archive('tmpl-1', {}, adminUser)).rejects.toBeInstanceOf(
+        ConflictException
+      );
     });
 
     it('should map PromptTemplateNotFoundException to NotFoundException (404)', async () => {
       service.archive.mockRejectedValue(
-        new PromptTemplateNotFoundException({ templateId: 'tmpl-1' }),
+        new PromptTemplateNotFoundException({ templateId: 'tmpl-1' })
       );
 
-      await expect(
-        controller.archive('tmpl-1', {}, adminUser),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.archive('tmpl-1', {}, adminUser)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
 
     it('should map PromptTemplateStateException to BadRequestException (400) for concurrent-modification', async () => {
@@ -136,12 +133,12 @@ describe('PromptTemplatesController', () => {
           actualState: 'published',
           requiredState: 'draft',
           operation: 'be archived (concurrent modification — refresh and retry)',
-        }),
+        })
       );
 
-      await expect(
-        controller.archive('tmpl-1', {}, adminUser),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.archive('tmpl-1', {}, adminUser)).rejects.toBeInstanceOf(
+        BadRequestException
+      );
     });
   });
 

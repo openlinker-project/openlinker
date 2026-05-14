@@ -16,7 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IntegrationCredentialOrmEntity } from '../entities/integration-credential.orm-entity';
 import { IntegrationCredential } from '../../../domain/entities/integration-credential.entity';
-import {
+import type {
   IntegrationCredentialRepositoryPort,
   CredentialCreate,
   CredentialUpdate,
@@ -30,7 +30,7 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
 
   constructor(
     @InjectRepository(IntegrationCredentialOrmEntity)
-    private readonly repository: Repository<IntegrationCredentialOrmEntity>,
+    private readonly repository: Repository<IntegrationCredentialOrmEntity>
   ) {}
 
   async getByRef(ref: string): Promise<IntegrationCredential> {
@@ -98,7 +98,7 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
       entity.credentialsJson,
       entity.encrypted,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 
@@ -114,4 +114,3 @@ export class IntegrationCredentialRepository implements IntegrationCredentialRep
     return entity;
   }
 }
-

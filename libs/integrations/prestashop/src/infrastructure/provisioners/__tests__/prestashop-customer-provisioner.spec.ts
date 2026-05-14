@@ -14,9 +14,9 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners/__tests__
  */
 import { PrestashopCustomerProvisioner } from '../prestashop-customer-provisioner';
-import { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { PrestashopConnectionConfig } from '../../../domain/types/prestashop-config.types';
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { PrestashopConnectionConfig } from '../../../domain/types/prestashop-config.types';
 
 describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)', () => {
   let provisioner: PrestashopCustomerProvisioner;
@@ -66,7 +66,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
       'connection-1',
       webserviceClient,
       config,
-      identifierMapping,
+      identifierMapping
     );
 
     const body = captureCustomerCreateBody();
@@ -79,7 +79,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
         associations: {
           groups: { group: [{ id: 2 }] },
         },
-      }),
+      })
     );
   });
 
@@ -98,7 +98,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
       'connection-2',
       webserviceClient,
       config,
-      identifierMapping,
+      identifierMapping
     );
 
     const body = captureCustomerCreateBody();
@@ -109,7 +109,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
         associations: {
           groups: { group: [{ id: 5 }] },
         },
-      }),
+      })
     );
   });
 
@@ -124,10 +124,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
     'falls back to 2 with a warn when guestCustomerGroupId is invalid (%s)',
     async (label, badValue) => {
       const warnSpy = jest
-        .spyOn(
-          (provisioner as unknown as { logger: { warn: (m: string) => void } }).logger,
-          'warn',
-        )
+        .spyOn((provisioner as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
         .mockImplementation(() => {});
 
       const config: PrestashopConnectionConfig = {
@@ -144,7 +141,7 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
         `connection-${label}`,
         webserviceClient,
         config,
-        identifierMapping,
+        identifierMapping
       );
 
       const body = captureCustomerCreateBody();
@@ -155,10 +152,10 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
           associations: {
             groups: { group: [{ id: 2 }] },
           },
-        }),
+        })
       );
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/invalid guestCustomerGroupId=.*falling back/i),
+        expect.stringMatching(/invalid guestCustomerGroupId=.*falling back/i)
       );
 
       warnSpy.mockRestore();
@@ -168,6 +165,6 @@ describe('PrestashopCustomerProvisioner — resolveOrCreateGuestCustomer (#505)'
       createCalls.length = 0;
       webserviceClient.createResource.mockClear();
       identifierMapping.getOrCreateExactMapping.mockClear();
-    },
+    }
   );
 });

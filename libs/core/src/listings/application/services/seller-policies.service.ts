@@ -14,16 +14,14 @@
 
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 
-import { OfferManagerPort, isSellerPoliciesReader } from '@openlinker/core/listings';
+import { isSellerPoliciesReader } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { SellerPolicies } from '@openlinker/core/listings';
+import type { SellerPolicies, OfferManagerPort } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
-import type { SellerPoliciesCacheRepositoryPort } from '../../domain/ports/seller-policies-cache-repository.port';
-import {
-  SELLER_POLICIES_CACHE_TOKEN,
-} from '../../listings.tokens';
-import { ISellerPoliciesService } from '../interfaces/seller-policies.service.interface';
+import { SellerPoliciesCacheRepositoryPort } from '../../domain/ports/seller-policies-cache-repository.port';
+import { SELLER_POLICIES_CACHE_TOKEN } from '../../listings.tokens';
+import type { ISellerPoliciesService } from '../interfaces/seller-policies.service.interface';
 
 const SELLER_POLICIES_TTL_MS = 10 * 60 * 1000;
 
@@ -35,7 +33,7 @@ export class SellerPoliciesService implements ISellerPoliciesService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(SELLER_POLICIES_CACHE_TOKEN)
-    private readonly cache: SellerPoliciesCacheRepositoryPort,
+    private readonly cache: SellerPoliciesCacheRepositoryPort
   ) {}
 
   async getSellerPolicies(connectionId: string): Promise<SellerPolicies> {
@@ -48,12 +46,12 @@ export class SellerPoliciesService implements ISellerPoliciesService {
     // CapabilityNotSupportedException (422) for upstream connection-level issues.
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
-      'OfferManager',
+      'OfferManager'
     );
 
     if (!isSellerPoliciesReader(adapter)) {
       throw new UnprocessableEntityException(
-        `Adapter for connection ${connectionId} does not support seller-policy listing`,
+        `Adapter for connection ${connectionId} does not support seller-policy listing`
       );
     }
 
@@ -69,7 +67,7 @@ export class SellerPoliciesService implements ISellerPoliciesService {
       // a successful adapter fetch. Log and return the fresh value.
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `seller_policies_cache_upsert_failed connectionId=${connectionId} reason=${message}`,
+        `seller_policies_cache_upsert_failed connectionId=${connectionId} reason=${message}`
       );
     }
 

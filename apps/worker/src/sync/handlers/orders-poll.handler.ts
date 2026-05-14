@@ -8,17 +8,14 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MarketplaceOrdersPollPayloadV1,
 } from '@openlinker/core/sync';
-import {
-  IOrderIngestionService,
-  ORDER_INGESTION_SERVICE_TOKEN,
-} from '@openlinker/core/orders';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { IOrderIngestionService, ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -29,14 +26,14 @@ export class OrdersPollHandler implements SyncJobHandler {
 
   constructor(
     @Inject(ORDER_INGESTION_SERVICE_TOKEN)
-    private readonly orderIngestion: IOrderIngestionService,
+    private readonly orderIngestion: IOrderIngestionService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.orders.poll job ${job.id} for connection ${job.connectionId} (cursorKey=${payload.cursorKey})`,
+      `Executing marketplace.orders.poll job ${job.id} for connection ${job.connectionId} (cursorKey=${payload.cursorKey})`
     );
 
     try {
@@ -48,13 +45,13 @@ export class OrdersPollHandler implements SyncJobHandler {
 
       if (result.skippedDueToLock) {
         this.logger.debug(
-          `Skipped ingestion due to lock (connection: ${job.connectionId}). Treating job as succeeded.`,
+          `Skipped ingestion due to lock (connection: ${job.connectionId}). Treating job as succeeded.`
         );
         return { outcome: 'ok' };
       }
 
       this.logger.log(
-        `Ingestion completed (connection: ${job.connectionId}): fetched=${result.fetched}, enqueued=${result.enqueued}, committed=${result.committed}`,
+        `Ingestion completed (connection: ${job.connectionId}): fetched=${result.fetched}, enqueued=${result.enqueued}, committed=${result.committed}`
       );
 
       return { outcome: 'ok' };
@@ -65,7 +62,7 @@ export class OrdersPollHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -77,7 +74,7 @@ export class OrdersPollHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     const cursorKey =
@@ -93,4 +90,3 @@ export class OrdersPollHandler implements SyncJobHandler {
     };
   }
 }
-

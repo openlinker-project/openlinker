@@ -7,7 +7,6 @@
  * @module libs/core/src/identifier-mapping/application/services
  * @extends {IdentifierMappingPort}
  */
-import { IdentifierMappingPort } from '../../domain/ports/identifier-mapping.port';
+import type { IdentifierMappingPort } from '../../domain/ports/identifier-mapping.port';
 
 export interface IIdentifierMappingService extends IdentifierMappingPort {}
-

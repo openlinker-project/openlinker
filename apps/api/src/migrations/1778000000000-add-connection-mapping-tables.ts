@@ -11,7 +11,7 @@
  *
  * @module apps/api/src/migrations
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddConnectionMappingTables1778000000000 implements MigrationInterface {
   name = 'AddConnectionMappingTables1778000000000';

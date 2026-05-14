@@ -3,8 +3,9 @@
  *
  * @module apps/api/src/webhooks/application/services
  */
-import { Test, TestingModule } from '@nestjs/testing';
-import { RedisClientType } from 'redis';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import type { RedisClientType } from 'redis';
 import { WebhookDedupService } from './webhook-dedup.service';
 
 describe('WebhookDedupService', () => {
@@ -42,7 +43,7 @@ describe('WebhookDedupService', () => {
       expect(redisClient.set).toHaveBeenCalledWith(
         'webhook:prestashop:conn-123:event-456',
         'processing',
-        { NX: true, EX: 60 },
+        { NX: true, EX: 60 }
       );
     });
 
@@ -74,7 +75,7 @@ describe('WebhookDedupService', () => {
       expect(redisClient.set).toHaveBeenCalledWith(
         'webhook:prestashop:conn-123:event-456',
         'done',
-        { XX: true, EX: 604800 },
+        { XX: true, EX: 604800 }
       );
     });
 
@@ -99,9 +100,3 @@ describe('WebhookDedupService', () => {
     });
   });
 });
-
-
-
-
-
-

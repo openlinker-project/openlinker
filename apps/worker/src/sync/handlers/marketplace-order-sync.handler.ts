@@ -8,17 +8,14 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
-  SyncJobExecutionError,
   MarketplaceOrderSyncPayloadV1,
 } from '@openlinker/core/sync';
-import {
-  IOrderIngestionService,
-  ORDER_INGESTION_SERVICE_TOKEN,
-} from '@openlinker/core/orders';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { IOrderIngestionService, ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -29,21 +26,21 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
 
   constructor(
     @Inject(ORDER_INGESTION_SERVICE_TOKEN)
-    private readonly orderIngestion: IOrderIngestionService,
+    private readonly orderIngestion: IOrderIngestionService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
 
     this.logger.log(
-      `Executing marketplace.order.sync job ${job.id} for connection ${job.connectionId} (externalOrderId=${payload.externalOrderId})`,
+      `Executing marketplace.order.sync job ${job.id} for connection ${job.connectionId} (externalOrderId=${payload.externalOrderId})`
     );
 
     try {
       await this.orderIngestion.syncOrderFromSource(
         job.connectionId,
         payload.externalOrderId,
-        payload.sourceEventId,
+        payload.sourceEventId
       );
 
       return { outcome: 'ok' };
@@ -54,7 +51,7 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
         job.id,
         job.jobType,
         job.connectionId,
-        error instanceof Error ? error : undefined,
+        error instanceof Error ? error : undefined
       );
     }
   }
@@ -66,7 +63,7 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
         `Missing payload for job: ${job.id}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     if (!payload.externalOrderId || typeof payload.externalOrderId !== 'string') {
@@ -74,7 +71,7 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
         `Missing or invalid externalOrderId in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
-        job.connectionId,
+        job.connectionId
       );
     }
     return {
@@ -87,4 +84,3 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
     };
   }
 }
-

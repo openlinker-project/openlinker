@@ -9,7 +9,12 @@
  *
  * @module apps/api/test/integration
  */
-import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import {
+  getTestHarness,
+  IntegrationTestHarness,
+  resetTestHarness,
+  teardownTestHarness,
+} from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { createTestInventoryItem } from './fixtures/inventory.fixtures';
 
@@ -146,16 +151,12 @@ describe('Inventory Read API Integration', () => {
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
 
-      const item = await createTestInventoryItem(
-        dataSource,
-        undefined,
-        {
-          images: [
-            'https://shop.test/img/p/1/1-home_default.jpg',
-            'https://shop.test/img/p/1/1-medium_default.jpg',
-          ],
-        },
-      );
+      const item = await createTestInventoryItem(dataSource, undefined, {
+        images: [
+          'https://shop.test/img/p/1/1-home_default.jpg',
+          'https://shop.test/img/p/1/1-medium_default.jpg',
+        ],
+      });
 
       const response = await http
         .get('/inventory')

@@ -6,9 +6,10 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { MarketplaceOffersSyncHandler } from '../marketplace-offers-sync.handler';
-import { SyncJobExecutionError, ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
-import { JobEnqueuePort } from '@openlinker/core/sync';
+import type { ConnectionCursorRepositoryPort } from '@openlinker/core/sync';
+import { SyncJobExecutionError } from '@openlinker/core/sync';
+import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
 
 describe('MarketplaceOffersSyncHandler', () => {
   let handler: MarketplaceOffersSyncHandler;
@@ -32,11 +33,7 @@ describe('MarketplaceOffersSyncHandler', () => {
       delete: jest.fn(),
     } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
 
-    handler = new MarketplaceOffersSyncHandler(
-      offerMappingSync,
-      jobEnqueue,
-      cursorRepository,
-    );
+    handler = new MarketplaceOffersSyncHandler(offerMappingSync, jobEnqueue, cursorRepository);
   });
 
   const createJob = (payload: Record<string, unknown>): SyncJob => ({
@@ -86,7 +83,7 @@ describe('MarketplaceOffersSyncHandler', () => {
           feedType: 'offers',
           masterConnectionId: null,
         }),
-      }),
+      })
     );
   });
 
@@ -132,13 +129,12 @@ describe('MarketplaceOffersSyncHandler', () => {
     expect(cursorRepository.set).toHaveBeenCalledWith(
       'connection-1',
       'allegro.offers.lastEventId',
-      'event-11',
+      'event-11'
     );
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey:
-          'marketplace.offers.sync:events:connection-1:event-11',
-      }),
+        idempotencyKey: 'marketplace.offers.sync:events:connection-1:event-11',
+      })
     );
   });
 

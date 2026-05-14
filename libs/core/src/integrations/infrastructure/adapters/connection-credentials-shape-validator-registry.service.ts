@@ -10,7 +10,7 @@
  * @see {@link ConnectionCredentialsShapeValidatorPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
-import { ConnectionCredentialsShapeValidatorPort } from '../../domain/ports/connection-credentials-shape-validator.port';
+import type { ConnectionCredentialsShapeValidatorPort } from '../../domain/ports/connection-credentials-shape-validator.port';
 
 @Injectable()
 export class ConnectionCredentialsShapeValidatorRegistryService {

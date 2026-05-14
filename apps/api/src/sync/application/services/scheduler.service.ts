@@ -12,16 +12,17 @@
  *
  * @module apps/api/src/sync/application/services
  */
-import { Injectable, Inject, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
-import { ConnectionPort, CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type { SyncJobRequest, SchedulerTaskConfig } from '@openlinker/core/sync';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
-  SyncJobRequest,
-  SchedulerTaskConfig,
   SchedulerTaskRegistryService,
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
@@ -43,7 +44,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
     @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
-    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService
   ) {}
 
   onApplicationBootstrap(): void {
@@ -111,7 +112,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     cronJob.start();
 
     this.logger.log(
-      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : (task.platformType ?? 'unknown')}, jobType: ${task.jobType}, cron: ${task.cronExpression})`,
+      `Registered scheduler task: ${task.taskId} (scope: ${task.connectionFilter ? 'capability' : task.platformType ?? 'unknown'}, jobType: ${task.jobType}, cron: ${task.cronExpression})`
     );
   }
 
@@ -132,7 +133,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
 
     this.logger.debug(`Executing scheduler task: ${task.taskId}`);
 
-    const scope = task.connectionFilter ? 'capability' : (task.platformType ?? 'unknown');
+    const scope = task.connectionFilter ? 'capability' : task.platformType ?? 'unknown';
 
     try {
       // Get connections: use custom filter if provided, otherwise filter by platformType
@@ -141,7 +142,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
         const result = await task.connectionFilter();
         if (result == null) {
           this.logger.warn(
-            `Scheduler task ${task.taskId}: connectionFilter returned nullish — coercing to []. Upstream port contract violation.`,
+            `Scheduler task ${task.taskId}: connectionFilter returned nullish — coercing to []. Upstream port contract violation.`
           );
         }
         connections = result ?? [];
@@ -152,31 +153,29 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
         });
         if (result == null) {
           this.logger.warn(
-            `Scheduler task ${task.taskId}: connectionPort.list returned nullish — coercing to []. Upstream port contract violation.`,
+            `Scheduler task ${task.taskId}: connectionPort.list returned nullish — coercing to []. Upstream port contract violation.`
           );
         }
         connections = result ?? [];
       } else {
         this.logger.error(
-          `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`,
+          `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`
         );
         return;
       }
 
       if (connections.length === 0) {
-        this.logger.debug(
-          `No active ${scope} connections found for task ${task.taskId}, skipping`,
-        );
+        this.logger.debug(`No active ${scope} connections found for task ${task.taskId}, skipping`);
         return;
       }
 
       this.logger.log(
-        `Found ${connections.length} active ${scope} connection(s) for task ${task.taskId}, enqueuing jobs`,
+        `Found ${connections.length} active ${scope} connection(s) for task ${task.taskId}, enqueuing jobs`
       );
 
       // Enqueue job for each connection
       const enqueuePromises = connections.map((connection) =>
-        this.enqueueJobForConnection(task, connection),
+        this.enqueueJobForConnection(task, connection)
       );
 
       const results = await Promise.allSettled(enqueuePromises);
@@ -187,25 +186,25 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
 
       if (failed > 0) {
         this.logger.warn(
-          `Scheduler task ${task.taskId} completed with errors: ${succeeded} succeeded, ${failed} failed`,
+          `Scheduler task ${task.taskId} completed with errors: ${succeeded} succeeded, ${failed} failed`
         );
         // Log individual failures
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
             this.logger.error(
-              `Failed to enqueue job for connection ${connections[index].id} in task ${task.taskId}: ${result.reason}`,
+              `Failed to enqueue job for connection ${connections[index].id} in task ${task.taskId}: ${result.reason}`
             );
           }
         });
       } else {
         this.logger.log(
-          `Scheduler task ${task.taskId} completed successfully: ${succeeded} job(s) enqueued`,
+          `Scheduler task ${task.taskId} completed successfully: ${succeeded} job(s) enqueued`
         );
       }
     } catch (error) {
       this.logger.error(
         `Scheduler task ${task.taskId} failed`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : String(error)
       );
     }
   }
@@ -217,7 +216,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
    */
   private async enqueueJobForConnection(
     task: SchedulerTaskConfig,
-    connection: Connection,
+    connection: Connection
   ): Promise<string> {
     // Generate timestamp for idempotency key (rounded to the minute)
     const now = new Date();
@@ -241,7 +240,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
 
     this.logger.debug(
-      `Enqueued job for connection ${connection.id} (${connection.name}) in task ${task.taskId}: ${jobId} (existing: ${String(isExisting)})`,
+      `Enqueued job for connection ${connection.id} (${connection.name}) in task ${task.taskId}: ${jobId} (existing: ${String(isExisting)})`
     );
 
     return jobId;
@@ -256,16 +255,13 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
   private registerInventorySyncTask(): void {
     const inventorySyncEnabled = this.configService.get<string>(
       'OL_INVENTORY_SYNC_ENABLED',
-      'true',
+      'true'
     );
     if (inventorySyncEnabled === 'false') {
       return;
     }
 
-    const inventoryCron = this.configService.get<string>(
-      'OL_INVENTORY_SYNC_CRON',
-      '*/15 * * * *',
-    );
+    const inventoryCron = this.configService.get<string>('OL_INVENTORY_SYNC_CRON', '*/15 * * * *');
 
     this.tasks.push({
       taskId: 'master-inventory-sync',
@@ -295,18 +291,12 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
    * path that populates identifier mappings on a fresh connection.
    */
   private registerProductSyncTask(): void {
-    const productSyncEnabled = this.configService.get<string>(
-      'OL_PRODUCT_SYNC_ENABLED',
-      'true',
-    );
+    const productSyncEnabled = this.configService.get<string>('OL_PRODUCT_SYNC_ENABLED', 'true');
     if (productSyncEnabled === 'false') {
       return;
     }
 
-    const productCron = this.configService.get<string>(
-      'OL_PRODUCT_SYNC_CRON',
-      '*/20 * * * *',
-    );
+    const productCron = this.configService.get<string>('OL_PRODUCT_SYNC_CRON', '*/20 * * * *');
 
     this.tasks.push({
       taskId: 'master-product-sync',

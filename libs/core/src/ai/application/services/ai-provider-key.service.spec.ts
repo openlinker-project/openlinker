@@ -8,14 +8,12 @@
  *
  * @module libs/core/src/ai/application/services
  */
-import { CryptoService } from '@openlinker/shared';
+import type { CryptoService } from '@openlinker/shared';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
-import {
-  IntegrationCredentialRepositoryPort,
-  CredentialNotFoundException,
-} from '@openlinker/core/integrations';
+import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import { CredentialNotFoundException } from '@openlinker/core/integrations';
 import { IntegrationCredential } from '@openlinker/core/integrations';
-import { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
+import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
 import { AiProviderSettingsNotApplicableError } from '../../domain/exceptions/ai-provider-settings-not-applicable.exception';
 import { AiProviderKeyService } from './ai-provider-key.service';
 
@@ -27,7 +25,7 @@ const sampleCredential = (ref: string): IntegrationCredential =>
     { ciphertext: 'cipher' },
     true,
     new Date(),
-    new Date(),
+    new Date()
   );
 
 describe('AiProviderKeyService', () => {
@@ -92,7 +90,7 @@ describe('AiProviderKeyService', () => {
 
     it('rejects providers that do not require a key (e.g. fake)', async () => {
       await expect(buildService().setKey('fake', 'k')).rejects.toBeInstanceOf(
-        AiProviderSettingsNotApplicableError,
+        AiProviderSettingsNotApplicableError
       );
       expect(repository.update).not.toHaveBeenCalled();
       expect(repository.create).not.toHaveBeenCalled();
@@ -102,7 +100,7 @@ describe('AiProviderKeyService', () => {
       await buildService().setKey('anthropic', 'plain-key', 'admin-1');
 
       const audit = logSpy.mock.calls.find(
-        (call) => (call as unknown[])[0] === 'ai_provider.set_key',
+        (call) => (call as unknown[])[0] === 'ai_provider.set_key'
       );
       expect(audit).toBeDefined();
       expect((audit as unknown as [string, Record<string, unknown>])[1]).toEqual({
@@ -122,7 +120,7 @@ describe('AiProviderKeyService', () => {
 
     it('rejects providers that do not require a key', async () => {
       await expect(buildService().clearKey('fake')).rejects.toBeInstanceOf(
-        AiProviderSettingsNotApplicableError,
+        AiProviderSettingsNotApplicableError
       );
     });
   });

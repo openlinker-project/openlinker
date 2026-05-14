@@ -10,10 +10,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { IdentifierMapping, CoreEntityType } from '@openlinker/core/identifier-mapping';
+import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
+import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
-import { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
-import {
+import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
+import type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
@@ -25,7 +26,7 @@ const OFFER_ENTITY_TYPE: CoreEntityType = 'Offer';
 export class OfferMappingRepository implements OfferMappingRepositoryPort {
   constructor(
     @InjectRepository(IdentifierMappingOrmEntity)
-    private readonly repository: Repository<IdentifierMappingOrmEntity>,
+    private readonly repository: Repository<IdentifierMappingOrmEntity>
   ) {}
 
   async findById(id: string): Promise<IdentifierMapping | null> {
@@ -38,7 +39,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
   async findMany(
     filters: OfferMappingFilters,
-    pagination: OfferMappingPagination,
+    pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings> {
     const qb = this.repository.createQueryBuilder('mapping');
 
@@ -69,9 +70,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       });
     }
 
-    qb.orderBy('mapping.createdAt', 'DESC')
-      .skip(pagination.offset)
-      .take(pagination.limit);
+    qb.orderBy('mapping.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
 
     const [entities, total] = await qb.getManyAndCount();
     return { items: entities.map((e) => this.toDomain(e)), total };
@@ -79,7 +78,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
 
   async countByConnectionAndVariants(
     connectionId: string,
-    internalIds: ReadonlyArray<string>,
+    internalIds: ReadonlyArray<string>
   ): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     if (internalIds.length === 0) return result;
@@ -111,7 +110,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       entity.connectionId,
       entity.context ?? null,
       entity.createdAt,
-      entity.updatedAt,
+      entity.updatedAt
     );
   }
 }

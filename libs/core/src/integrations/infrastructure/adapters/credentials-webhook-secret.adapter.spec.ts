@@ -3,10 +3,10 @@
  *
  * @module libs/core/src/integrations/infrastructure/adapters
  */
-import { ConfigService } from '@nestjs/config';
-import { CryptoService } from '@openlinker/shared';
+import type { ConfigService } from '@nestjs/config';
+import type { CryptoService } from '@openlinker/shared';
 import { CredentialsWebhookSecretAdapter } from './credentials-webhook-secret.adapter';
-import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
+import type { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import { IntegrationCredential } from '../../domain/entities/integration-credential.entity';
 
@@ -30,7 +30,7 @@ describe('CredentialsWebhookSecretAdapter', () => {
     subject = new CredentialsWebhookSecretAdapter(
       repository,
       crypto as unknown as CryptoService,
-      config as unknown as ConfigService,
+      config as unknown as ConfigService
     );
   });
 
@@ -42,7 +42,7 @@ describe('CredentialsWebhookSecretAdapter', () => {
       { ciphertext },
       encrypted,
       new Date(),
-      new Date(),
+      new Date()
     );
 
   it('returns decrypted secret from DB', async () => {
@@ -70,7 +70,7 @@ describe('CredentialsWebhookSecretAdapter', () => {
     config.get.mockImplementation((k: string) =>
       k === `OPENLINKER_WEBHOOK_SECRET__${provider.toUpperCase()}__${connectionId.toUpperCase()}`
         ? 'env-secret'
-        : undefined,
+        : undefined
     );
 
     const secret = await subject.getSecret(provider, connectionId);
@@ -100,7 +100,7 @@ describe('CredentialsWebhookSecretAdapter', () => {
 
   it('resolves distinct secrets per connection', async () => {
     repository.getByRef.mockImplementation((ref: string) =>
-      Promise.resolve(credential(`cipher-${ref}`)),
+      Promise.resolve(credential(`cipher-${ref}`))
     );
     crypto.decrypt.mockImplementation((c: string) => `plain-${c}`);
 
