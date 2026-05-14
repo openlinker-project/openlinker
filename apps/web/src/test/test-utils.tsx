@@ -3,7 +3,7 @@ import { render, screen, type RenderOptions, type RenderResult } from '@testing-
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import type { ApiClient } from '../app/api/api-client';
+import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
 import { ApiError } from '../shared/api/api-error';
 import type { Connection } from '../features/connections/api/connections.types';
@@ -16,6 +16,10 @@ import { LocaleProvider } from '../shared/i18n';
 import type { PlatformPlugin } from '../shared/plugins';
 import { PluginRegistryProvider } from '../shared/plugins';
 import { IN_TREE_PLUGINS } from '../plugins';
+import {
+  IN_TREE_MOCK_API_NAMESPACES,
+  type PluginMockApiNamespacesFactory,
+} from './plugin-mocks';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   apiClient?: ApiClient;
@@ -50,19 +54,26 @@ export const sampleConnection: Connection = {
  * stay as-is; object namespaces become `Partial<...>` so tests can override
  * a subset of methods. The mapped form auto-tracks `PluginApiNamespaces` —
  * when a plugin extends `ApiClient` via declaration merging, the new key is
- * automatically a valid override slot here.
+ * automatically a valid override slot here (#603).
  *
- * Merge order in `createMockApiClient`: hardcoded vi.fn defaults → caller
- * overrides. Caller overrides always win. (See `plugin-registry.test.ts`
- * "caller overrides win over plugin contributions" — pinned.)
+ * Merge order in `createMockApiClient`:
+ *   1. core namespace defaults (built inline below)
+ *   2. plugin mock-namespace defaults (folded from `IN_TREE_MOCK_API_NAMESPACES`
+ *      — see `./plugin-mocks.ts` for the in-tree registry; each plugin owns
+ *      its mock factory in `plugins/<name>/<name>.mocks.ts` so `vitest`'s
+ *      `vi` never reaches the prod import graph). If two factories contribute
+ *      the same namespace key, the later one wins — same fold order as the
+ *      production `createApiClient` (api-client.ts).
+ *   3. caller overrides (always win — pinned by `plugin-registry.test.ts`
+ *      "caller overrides win over plugin contributions")
  *
- * Note on divergence from runtime composition: `createApiClient` iterates
- * the real plugin registry and merges `plugin.apiNamespaces(request)`. The
- * mock factory deliberately does NOT — invoking real plugin factories with
+ * Note on divergence from runtime composition: `createApiClient` iterates the
+ * real `plugins` registry and calls `plugin.apiNamespaces(request)` to get the
+ * production factories. The test factory uses a parallel test-only registry
+ * (`IN_TREE_MOCK_API_NAMESPACES`) because invoking real plugin factories with
  * a stubbed `request` would call through to feature-side fetchers in tests
- * that don't override. Instead, the factory hardcodes plugin-namespace
- * defaults inline (e.g. the `allegro` block below) with vi.fn defaults.
- * Keep that block in sync with the runtime contributions of `apps/web/src/plugins/`.
+ * that don't override. Plugin authors register vi-backed mocks in their
+ * `*.mocks.ts` file and the aggregator in `./plugin-mocks.ts`.
  */
 type DeepPartialApiClient = {
   [K in keyof ApiClient]?: ApiClient[K] extends (...args: never[]) => unknown
@@ -70,8 +81,11 @@ type DeepPartialApiClient = {
     : Partial<ApiClient[K]>;
 };
 
-export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiClient {
-  return {
+export function createMockApiClient(
+  overrides: DeepPartialApiClient = {},
+  mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES,
+): ApiClient {
+  const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
@@ -93,19 +107,6 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       setActive: vi.fn().mockResolvedValue(undefined),
       ...overrides.aiProviderSettings,
     } as ApiClient['aiProviderSettings'],
-    allegro: {
-      startOAuth: vi.fn().mockResolvedValue({
-        authorizationUrl: 'https://example.com/oauth',
-        state: 'state',
-      }),
-      handleCallback: vi.fn().mockResolvedValue({
-        message: 'OAuth callback processed successfully. Connection created.',
-        connectionId: 'conn_allegro_1',
-        connectionName: 'Allegro sandbox',
-      }),
-      listResponsibleProducers: vi.fn().mockResolvedValue([]),
-      ...overrides.allegro,
-    } as ApiClient['allegro'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
@@ -348,6 +349,32 @@ export function createMockApiClient(overrides: DeepPartialApiClient = {}): ApiCl
       ...overrides.webhookDeliveries,
     } as ApiClient['webhookDeliveries'],
   };
+
+  // Fold plugin mock defaults, layering caller overrides per namespace. Caller
+  // overrides always win (pinned in `plugin-registry.test.ts`). A caller may
+  // also pass an override for a plugin namespace that no in-tree mock factory
+  // contributes — applied verbatim below.
+  const pluginDefaults: Partial<PluginApiNamespaces> = {};
+  for (const factory of mockApiNamespaces) {
+    Object.assign(pluginDefaults, factory());
+  }
+
+  const pluginNamespaces: Record<string, unknown> = {};
+  const overridesRecord = overrides as Record<string, unknown>;
+  const seen = new Set<string>();
+  for (const [key, value] of Object.entries(pluginDefaults)) {
+    seen.add(key);
+    pluginNamespaces[key] = {
+      ...(value as object),
+      ...((overridesRecord[key] as object | undefined) ?? {}),
+    };
+  }
+  for (const [key, value] of Object.entries(overridesRecord)) {
+    if (seen.has(key) || key in core) continue;
+    pluginNamespaces[key] = value;
+  }
+
+  return { ...core, ...pluginNamespaces } as ApiClient;
 }
 
 const DEFAULT_TEST_USER: SessionUser = {
