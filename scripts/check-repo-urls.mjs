@@ -31,10 +31,9 @@
  *
  * @module scripts
  */
-import { execSync } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -55,26 +54,71 @@ const ALLOWLIST = new Set([
   'scripts/check-repo-urls.mjs',
 ]);
 
-function trackedFiles() {
-  const out = execSync('git ls-files', { cwd: ROOT, encoding: 'utf8' });
-  return out.split('\n').filter(Boolean);
+// Directories to skip during the walk. The walk is filesystem-based
+// rather than git-based because the CI runner that invokes
+// `pnpm lint` does not have `git` on its PATH (the workflow checks
+// the tree out and then runs lint in a context where the binary
+// isn't required for anything else). A pure-fs walk keeps the
+// invariant working in both local and CI environments.
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.vite',
+  '.turbo',
+  '.cache',
+  '.pnpm-store',
+  '.husky',
+]);
+
+// File extensions that are almost certainly binary and not worth
+// scanning. Keeping this list small — the readFile + UTF-8 decode
+// catches the rest cheaply, and including a text file by accident
+// only costs one extra millisecond.
+const SKIP_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.pdf', '.zip', '.tar', '.gz', '.tgz',
+  '.lock',
+]);
+
+function shouldSkipDir(name) {
+  return SKIP_DIRS.has(name);
 }
 
-async function isReadableTextFile(absPath) {
+function shouldSkipFile(name) {
+  const dotIdx = name.lastIndexOf('.');
+  if (dotIdx === -1) return false;
+  return SKIP_EXTENSIONS.has(name.slice(dotIdx).toLowerCase());
+}
+
+async function* walk(dir) {
+  let entries;
   try {
-    const s = await stat(absPath);
-    return s.isFile();
+    entries = await readdir(dir, { withFileTypes: true });
   } catch {
-    return false;
+    return;
+  }
+  for (const entry of entries) {
+    const abs = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (shouldSkipDir(entry.name)) continue;
+      yield* walk(abs);
+    } else if (entry.isFile()) {
+      if (shouldSkipFile(entry.name)) continue;
+      yield abs;
+    }
   }
 }
 
 const violations = [];
 
-for (const rel of trackedFiles()) {
+for await (const abs of walk(ROOT)) {
+  const rel = relative(ROOT, abs);
   if (ALLOWLIST.has(rel)) continue;
-  const abs = resolve(ROOT, rel);
-  if (!(await isReadableTextFile(abs))) continue;
 
   let content;
   try {
