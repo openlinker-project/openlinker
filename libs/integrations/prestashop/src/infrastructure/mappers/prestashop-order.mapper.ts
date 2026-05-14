@@ -319,8 +319,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    *
    * #503: `externalCarrierId` MUST be set on the cart, not just the order
    * body. PS resolves the order's `id_carrier` from the cart at `POST /orders`
-   * time and ignores the order body's `id_carrier` field. Consequences of
-   * skipping this are documented at the call site in the adapter.
+   * time and ignores the order body's `id_carrier` field.
    */
   mapCartCreate(
     orderCreate: OrderCreate,
