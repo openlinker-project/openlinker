@@ -253,6 +253,8 @@ For schema changes, also run `pnpm --filter @openlinker/api migration:show` to c
 - [Testing Guide](./docs/testing-guide.md) — Testcontainers + harness usage
 - [Plugin Author Guide](./docs/plugin-author-guide.md) — adding a new integration
 - [Connections & Adapter Resolution](./docs/connections-and-adapter-resolution.md) — per-connection runtime model
+- [Public API Contract](./PUBLIC_API.md) — what's stable for plugin authors and downstream consumers; versioning policy.
+
 
 ---
 
