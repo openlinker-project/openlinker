@@ -241,32 +241,37 @@ class IntegrationTestHarnessImpl implements IntegrationTestHarness {
 export function createIntegrationTestHarness(
   config: IntegrationTestHarnessConfig,
 ): TestHarnessHandle {
-  let instance: IntegrationTestHarnessImpl | null = null;
+  // Cache the in-flight setup *promise*, not the instance — guarantees concurrent
+  // first-callers share one boot, and a failed setup clears the slot so the next
+  // call retries from scratch (no half-initialized instance latches).
+  let instancePromise: Promise<IntegrationTestHarnessImpl> | null = null;
 
   async function getTestHarness(): Promise<IntegrationTestHarness> {
-    if (!instance) {
+    if (!instancePromise) {
       const fresh = new IntegrationTestHarnessImpl(config);
-      try {
-        await fresh.setup();
-      } catch (error) {
-        // Don't latch a half-initialized instance — let the next call retry.
-        throw error;
-      }
-      instance = fresh;
+      instancePromise = fresh
+        .setup()
+        .then(() => fresh)
+        .catch((err: unknown) => {
+          instancePromise = null;
+          throw err;
+        });
     }
-    return instance;
+    return instancePromise;
   }
 
   async function resetTestHarness(): Promise<void> {
-    if (instance) {
+    if (instancePromise) {
+      const instance = await instancePromise;
       await instance.reset();
     }
   }
 
   async function teardownTestHarness(): Promise<void> {
-    if (instance) {
+    if (instancePromise) {
+      const instance = await instancePromise;
       await instance.teardown();
-      instance = null;
+      instancePromise = null;
     }
   }
 

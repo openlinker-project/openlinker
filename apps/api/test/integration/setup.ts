@@ -13,7 +13,7 @@
  *
  * @module apps/api/test/integration
  */
-import * as express from 'express';
+import express from 'express';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
 
