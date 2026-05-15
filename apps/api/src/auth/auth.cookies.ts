@@ -16,7 +16,18 @@ import { REFRESH_TOKEN_TTL_SECONDS } from './refresh-token.types';
 export const REFRESH_COOKIE_NAME = 'ol_refresh';
 export const CSRF_COOKIE_NAME = 'ol_csrf';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
-export const AUTH_COOKIE_PATH = '/auth';
+
+// Refresh cookie is HttpOnly and only consumed by /auth/refresh + /auth/logout,
+// so scoping it to /auth keeps it out of every unrelated request.
+const REFRESH_COOKIE_PATH = '/auth';
+
+// CSRF cookie is non-HttpOnly so the SPA can read it via document.cookie and
+// mirror it into X-CSRF-Token. document.cookie only exposes cookies whose
+// Path prefixes the current document URL, so this MUST stay at '/' — otherwise
+// readCsrfCookie() returns null on every route outside /auth/* and silent
+// refresh breaks after a full-page reload (e.g. OAuth bounce back from
+// allegro.pl). See #748.
+const CSRF_COOKIE_PATH = '/';
 
 const isProd = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -39,7 +50,7 @@ function refreshCookieOptions(): CookieOptions {
     httpOnly: true,
     secure: isProd(),
     sameSite: resolveSameSite(),
-    path: AUTH_COOKIE_PATH,
+    path: REFRESH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
   };
 }
@@ -50,7 +61,7 @@ function csrfCookieOptions(): CookieOptions {
     httpOnly: false,
     secure: isProd(),
     sameSite: resolveSameSite(),
-    path: AUTH_COOKIE_PATH,
+    path: CSRF_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
   };
 }
@@ -66,6 +77,9 @@ export function setCsrfCookie(res: Response): string {
 }
 
 export function clearAuthCookies(res: Response): void {
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: AUTH_COOKIE_PATH });
-  res.clearCookie(CSRF_COOKIE_NAME, { path: AUTH_COOKIE_PATH });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+  res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH });
+  // Migration cleanup: ol_csrf was previously set at /auth (#748). Clear that
+  // copy too so stale cookies from the buggy window don't shadow the new one.
+  res.clearCookie(CSRF_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
 }

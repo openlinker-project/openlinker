@@ -173,7 +173,8 @@ describe('AuthController', () => {
           res as unknown as Response,
         ),
       ).rejects.toThrow(UnauthorizedException);
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      // 3 = ol_refresh @ /auth, ol_csrf @ /, ol_csrf @ /auth migration cleanup (#748).
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 
     it('revokes the orphan + clears cookies when getMe fails after a successful rotation', async () => {
@@ -195,7 +196,7 @@ describe('AuthController', () => {
       ).rejects.toThrow(UnauthorizedException);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('orphan-successor');
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
       // Cookies must NOT be set when the user is gone — the browser would
       // otherwise store a refresh cookie pointing at a useless DB row.
       expect(res.cookie).not.toHaveBeenCalled();
@@ -212,7 +213,7 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('token-to-revoke');
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 
     it('does not invoke revoke when no cookie is present, still clears cookies', async () => {
@@ -224,7 +225,7 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).not.toHaveBeenCalled();
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
   });
 
