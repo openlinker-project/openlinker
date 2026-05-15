@@ -9,7 +9,9 @@
  *
  * Imports `IntegrationsModule` so the publisher can resolve the
  * `ProductMaster` / `OfferManager` capability adapters at runtime, and
- * `ListingsModule` for `OfferMappingRepositoryPort` used by channel publishing.
+ * `ListingsModule` for `IOfferMappingsService` (the cross-context read seam
+ * over `OfferMappingRepositoryPort`, #718) used by channel publishing and
+ * the editor read endpoint.
  *
  * `CONTENT_SUGGESTION_SERVICE_TOKEN` is declared in `content.tokens.ts` but
  * bound to its concrete class in `apps/api/src/content/content.module.ts`

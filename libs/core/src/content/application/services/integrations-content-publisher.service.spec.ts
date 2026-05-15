@@ -6,7 +6,7 @@
  *
  * Channel path: resolves an OfferManager adapter for the target connection,
  * type-guards `isOfferFieldUpdater`, walks the product's variants →
- * `OfferMappingRepository.findMany` → distinct `externalOfferId`s, and
+ * `IOfferMappingsService.findForVariant` → distinct `externalOfferId`s, and
  * issues one `updateOfferFields` call per distinct offer wrapping the value
  * in the Allegro-shaped TEXT section payload.
  *
@@ -22,16 +22,14 @@ import type { ProductMasterPort } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 import type {
+  IOfferMappingsService,
   OfferManagerPort,
-  OfferMappingRepositoryPort,
   UpdateOfferFieldsCommand,
 } from '@openlinker/core/listings';
 
-function buildOfferMappingsMock(): jest.Mocked<OfferMappingRepositoryPort> {
+function buildOfferMappingsMock(): jest.Mocked<Pick<IOfferMappingsService, 'findForVariant'>> {
   return {
-    findById: jest.fn(),
-    findMany: jest.fn(),
-    countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
+    findForVariant: jest.fn(),
   };
 }
 
@@ -67,7 +65,7 @@ describe('IntegrationsContentPublisher', () => {
       };
       const publisher = new IntegrationsContentPublisher(
         integrationsService as unknown as IIntegrationsService,
-        buildOfferMappingsMock(),
+        buildOfferMappingsMock() as unknown as IOfferMappingsService,
       );
 
       const result = await publisher.publish({
@@ -93,7 +91,7 @@ describe('IntegrationsContentPublisher', () => {
       } as unknown as IIntegrationsService;
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        buildOfferMappingsMock(),
+        buildOfferMappingsMock() as unknown as IOfferMappingsService,
       );
 
       await expect(
@@ -131,7 +129,7 @@ describe('IntegrationsContentPublisher', () => {
       } as unknown as IIntegrationsService;
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        buildOfferMappingsMock(),
+        buildOfferMappingsMock() as unknown as IOfferMappingsService,
       );
 
       await expect(
@@ -172,23 +170,21 @@ describe('IntegrationsContentPublisher', () => {
         ]),
       } as unknown as IIntegrationsService;
       const offerMappings = buildOfferMappingsMock();
-      offerMappings.findMany.mockImplementation((filters) => {
-        const ids = opts.offerMappingsByVariant[filters.internalId ?? ''] ?? [];
+      offerMappings.findForVariant.mockImplementation((connectionId, variantId) => {
+        const ids = opts.offerMappingsByVariant[variantId] ?? [];
         return Promise.resolve({
           items: ids.map((id) => ({
             id: `map-${id}`,
             entityType: 'Offer',
-            internalId: filters.internalId ?? '',
+            internalId: variantId,
             externalId: id,
             platformType: 'allegro',
-            connectionId: filters.connectionId ?? '',
+            connectionId,
             context: null,
             createdAt: new Date(),
             updatedAt: new Date(),
           })),
           total: ids.length,
-          limit: 100,
-          offset: 0,
         });
       });
       return { updateOfferFields, integrationsService, offerMappings };
@@ -206,7 +202,10 @@ describe('IntegrationsContentPublisher', () => {
           ol_variant_b: ['offer-2'],
         },
       });
-      const publisher = new IntegrationsContentPublisher(integrationsService, offerMappings);
+      const publisher = new IntegrationsContentPublisher(
+        integrationsService,
+        offerMappings as unknown as IOfferMappingsService
+      );
 
       const result = await publisher.publish({
         productId: 'ol_product_abc',
@@ -245,7 +244,10 @@ describe('IntegrationsContentPublisher', () => {
           ol_variant_b: ['offer-same'],
         },
       });
-      const publisher = new IntegrationsContentPublisher(integrationsService, offerMappings);
+      const publisher = new IntegrationsContentPublisher(
+        integrationsService,
+        offerMappings as unknown as IOfferMappingsService
+      );
 
       await publisher.publish({
         productId: 'ol_product_abc',
@@ -263,7 +265,10 @@ describe('IntegrationsContentPublisher', () => {
         variants: [{ id: 'ol_variant_a' } as ProductVariant],
         offerMappingsByVariant: {},
       });
-      const publisher = new IntegrationsContentPublisher(integrationsService, offerMappings);
+      const publisher = new IntegrationsContentPublisher(
+        integrationsService,
+        offerMappings as unknown as IOfferMappingsService
+      );
 
       await expect(
         publisher.publish({
@@ -281,7 +286,10 @@ describe('IntegrationsContentPublisher', () => {
         variants: [{ id: 'ol_variant_a' } as ProductVariant],
         offerMappingsByVariant: { ol_variant_a: ['offer-1'] },
       });
-      const publisher = new IntegrationsContentPublisher(integrationsService, offerMappings);
+      const publisher = new IntegrationsContentPublisher(
+        integrationsService,
+        offerMappings as unknown as IOfferMappingsService
+      );
 
       await expect(
         publisher.publish({

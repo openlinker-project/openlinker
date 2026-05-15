@@ -2,8 +2,9 @@
  * Listings Barrel Purity — regression guard
  *
  * Pins the #359 architectural invariant: the main `@openlinker/core/listings`
- * barrel MUST NOT re-export `ListingsModule` or any of the 7 `@Injectable`
- * service classes. Those live on the companion subpath
+ * barrel MUST NOT re-export `ListingsModule` or any of the 8 `@Injectable`
+ * service classes. (Service count grew from 7 → 8 in #718 with the addition of
+ * `OfferMappingsService`; same architectural rule still applies.) Those live on the companion subpath
  * `@openlinker/core/listings/services` so sibling packages (e.g.
  * `@openlinker/core/products`) can value-import from the main barrel without
  * triggering the runtime circular require that #337 originally hit.
@@ -21,6 +22,7 @@ const FORBIDDEN_EXPORTS = [
   'ListingsModule',
   'OfferLinkingService',
   'OfferMappingSyncService',
+  'OfferMappingsService',
   'CategoryResolutionService',
   'OfferBuilderService',
   'OfferCreationExecutionService',

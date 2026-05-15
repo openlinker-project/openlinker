@@ -8,7 +8,7 @@
  * value-import from any `@openlinker/core/*` module.
  *
  * Runtime wiring lives on the companion subpath `@openlinker/core/listings/services`
- * (`ListingsModule` + the 7 `@Injectable` service classes). Keeping them split
+ * (`ListingsModule` + the 8 `@Injectable` service classes). Keeping them split
  * prevents the runtime circular require that #337 exposed and #359 fixed:
  * `products → listings → services → products` would resolve one side of the
  * cycle to a partial module and surface as `Symbol(?)` DI failures in Nest.
@@ -45,6 +45,7 @@ export type {
   OfferMappingSyncOptions,
   OfferMappingSyncResult,
 } from './application/services/offer-mapping-sync.service.interface';
+export type { IOfferMappingsService } from './application/services/offer-mappings.service.interface';
 export type { OfferMappingRepositoryPort } from './domain/ports/offer-mapping-repository.port';
 export type {
   OfferMappingFilters,

@@ -149,23 +149,8 @@ const ALLOW_LIST = new Map([
     new Set(['SyncJobRepositoryPort']),
   ],
 
-  // content → listings.OfferMappingRepositoryPort — rewire via IListingsService
-  [
-    'libs/core/src/content/application/services/content-state-reader.service.ts',
-    new Set(['OfferMappingRepositoryPort']),
-  ],
-  [
-    'libs/core/src/content/application/services/content-state-reader.service.spec.ts',
-    new Set(['OfferMappingRepositoryPort']),
-  ],
-  [
-    'libs/core/src/content/application/services/integrations-content-publisher.service.ts',
-    new Set(['OfferMappingRepositoryPort']),
-  ],
-  [
-    'libs/core/src/content/application/services/integrations-content-publisher.service.spec.ts',
-    new Set(['OfferMappingRepositoryPort']),
-  ],
+  // (Slice 3 of #718 — content → listings.OfferMappingRepositoryPort —
+  // rewired via IOfferMappingsService and dropped from this list.)
 
   // ai → integrations.IntegrationCredentialRepositoryPort — rewire via ICredentialsService
   [

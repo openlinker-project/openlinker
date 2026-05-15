@@ -15,6 +15,7 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';
 import { OfferLinkingService } from './application/services/offer-linking.service';
 import { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
+import { OfferMappingsService } from './application/services/offer-mappings.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
@@ -29,6 +30,7 @@ import { OfferStatusPollService } from './application/services/offer-status-poll
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
+  OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -44,6 +46,7 @@ import {
 export {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
+  OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -71,6 +74,7 @@ export {
   providers: [
     OfferLinkingService,
     OfferMappingSyncService,
+    OfferMappingsService,
     CategoryResolutionService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
@@ -87,6 +91,10 @@ export {
     {
       provide: OFFER_MAPPING_SYNC_SERVICE_TOKEN,
       useExisting: OfferMappingSyncService,
+    },
+    {
+      provide: OFFER_MAPPINGS_SERVICE_TOKEN,
+      useExisting: OfferMappingsService,
     },
     {
       provide: OFFER_MAPPING_REPOSITORY_TOKEN,
@@ -128,6 +136,7 @@ export {
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
     OFFER_MAPPING_SYNC_SERVICE_TOKEN,
+    OFFER_MAPPINGS_SERVICE_TOKEN,
     OFFER_MAPPING_REPOSITORY_TOKEN,
     OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
