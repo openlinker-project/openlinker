@@ -44,6 +44,18 @@ Closes #
       [`docs/migrations.md`](../docs/migrations.md). Tick this box for
       PRs that don't touch schemas too — it's trivially satisfied.
 
+## ADR
+
+- [ ] If this PR makes a non-trivial architectural decision (affects
+      multiple contexts, the plugin contract, or has alternatives worth
+      documenting), an ADR should be included under
+      `docs/architecture/adrs/` or referenced in the PR description.
+      ADRs are a recommendation, not a hard gate — see
+      [`docs/architecture/adrs/README.md`](../docs/architecture/adrs/README.md)
+      § "When to write an ADR" for the decision criteria. Tick this box
+      for PRs that don't make architectural decisions too — it's
+      trivially satisfied.
+
 ## DCO sign-off
 
 > Sign off every commit with `git commit -s`. OpenLinker uses the

@@ -1463,6 +1463,22 @@ Fixes #456
 
 ---
 
+## Architecture Decision Records (ADRs)
+
+Non-trivial architectural decisions are captured in [`docs/architecture/adrs/`](./architecture/adrs/). ADRs document the *why* of a decision — what we chose, what we rejected, and the trade-offs — complementing [`docs/plans/`](./plans/) (the *what* of implementation) and [`docs/architecture-overview.md`](./architecture-overview.md) (the current state).
+
+Write an ADR when:
+- A choice affects multiple bounded contexts or the plugin contract.
+- The decision has non-trivial trade-offs and at least one alternative was seriously considered.
+- Future maintainers might ask "why didn't we just do X instead?"
+- A future change would require coordinated migration across packages.
+
+Don't write one for local refactors, bug fixes, routine feature additions without architectural impact, or routine dependency upgrades.
+
+See [`docs/architecture/adrs/README.md`](./architecture/adrs/README.md) for the full practice — numbering convention, status taxonomy, supersession protocol, and authoring template.
+
+---
+
 ## ESLint & Prettier Configuration
 
 ### ESLint Config
