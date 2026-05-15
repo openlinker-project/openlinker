@@ -1,7 +1,7 @@
 # ADR-001: Hexagonal architecture and bounded contexts
 
 - **Status**: Accepted
-- **Date**: 2024-10-01
+- **Date**: 2024-10 (approx — predates current git history)
 - **Authors**: OpenLinker maintainers (retrospective documentation)
 
 ## Context

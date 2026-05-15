@@ -54,3 +54,14 @@ Be honest about what was on the table. If only one option was seriously consider
 - Related issues: #NNN
 - Related ADRs: [ADR-NNN](./NNN-related.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
+
+<!--
+If this ADR supersedes an existing one, add the section below and
+update the old ADR's Status line to `Superseded by ADR-NNN`. Do not
+edit the old ADR's body — supersession is append-only on this end too.
+
+## Supersedes
+
+- [ADR-NNN](./NNN-old.md) — superseded because [one-line reason].
+-->
+

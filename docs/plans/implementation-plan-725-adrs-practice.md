@@ -27,12 +27,12 @@ The proposal in #725 explicitly positions ADRs as the missing piece: a small app
 
 Standard "lightweight ADR" format is Michael Nygard's original — Status / Context / Decision / Consequences. The issue body's template extends this with "Alternatives considered" (already implicit in Consequences, but worth making explicit so future readers see the rejected options without reverse-engineering them). I'll use the issue's template verbatim.
 
-Common numbering: `NNNN-kebab-case-title.md` with 4-digit zero-padded prefix. Append-only — superseded ADRs stay in place, status updated to `Superseded by ADR-XXXX`. New decisions get the next number.
+Common numbering: `NNN-kebab-case-title.md` with 3-digit zero-padded prefix (per review feedback — the issue body's template uses 3-digit, and 999 ADRs is far more than this project will ever have). Append-only — superseded ADRs stay in place, status updated to `Superseded by ADR-NNN`. New decisions get the next number.
 
 Status taxonomy I'll use (matches industry practice + issue's template):
 - `Proposed` — under discussion, not yet adopted
 - `Accepted` — adopted; current direction
-- `Superseded by ADR-XXXX` — replaced; kept for history
+- `Superseded by ADR-NNN` — replaced; kept for history
 - `Deprecated` — decision no longer applies; no replacement (e.g., feature was removed)
 
 ### 2c. Retrospective ADRs to write
@@ -41,13 +41,13 @@ The issue lists 7. Source material for each:
 
 | ADR | Topic | Primary source |
 |---|---|---|
-| 0001 | Hexagonal architecture + bounded contexts | `docs/architecture-overview.md § High-Level Architecture` + `§ Hexagonal Architecture Structure` |
-| 0002 | Capability ports with sub-capability composition | `docs/architecture-overview.md § OfferManagerPort`; `docs/engineering-standards.md § Port sub-capabilities`; PRs #337, #359 |
-| 0003 | Plugin SDK trust model | `docs/architecture-overview.md § Plugin Manager / Integrations`; PR #593 (`@openlinker/plugin-sdk`); `docs/plugin-author-guide.md` |
-| 0004 | Identifier mapping as core service | `docs/architecture-overview.md § Identifier Mapping Service` |
-| 0005 | Postgres-authoritative job dedup with Redis Streams as transport | #711 issue body + PR; `docs/architecture-overview.md § Webhook Ingestion Flow` |
-| 0006 | AES-256-GCM credentials encryption with prod-gate | #709 issue body + PR |
-| 0007 | SyncJob status-vs-outcome split | #391, #400 issue bodies + PRs; `docs/architecture-overview.md § Sync Manager` |
+| 001 | Hexagonal architecture + bounded contexts | `docs/architecture-overview.md § High-Level Architecture` + `§ Hexagonal Architecture Structure` |
+| 002 | Capability ports with sub-capability composition | `docs/architecture-overview.md § OfferManagerPort`; `docs/engineering-standards.md § Port sub-capabilities`; PRs #337, #359 |
+| 003 | Plugin SDK trust model | `docs/architecture-overview.md § Plugin Manager / Integrations`; PR #593 (`@openlinker/plugin-sdk`); `docs/plugin-author-guide.md` |
+| 004 | Identifier mapping as core service | `docs/architecture-overview.md § Identifier Mapping Service` |
+| 005 | Postgres-authoritative job dedup with Redis Streams as transport | #711 issue body + PR; `docs/architecture-overview.md § Webhook Ingestion Flow` |
+| 006 | AES-256-GCM credentials encryption with prod-gate | #709 issue body + PR |
+| 007 | SyncJob status-vs-outcome split | #391, #400 issue bodies + PRs; `docs/architecture-overview.md § Sync Manager` |
 
 Each ADR ~150-300 words. Total ~1500-2000 words across 7 ADRs.
 
@@ -59,7 +59,7 @@ Three integration points the issue calls out:
 2. **`CONTRIBUTING.md`** — short paragraph in `## Architecture` referring contributors to the ADR practice for non-trivial changes.
 3. **`.github/PULL_REQUEST_TEMPLATE.md`** — optional checkbox: "ADR written/referenced if this PR makes an architectural decision." Place in the existing checkboxes section, not as a hidden detail.
 
-Optional per the AC: cross-link from `docs/architecture-overview.md` to relevant ADRs. I'll add a one-line "See ADR-0NNN" pointer in each affected section (capability ports, identifier mapping, sync manager, plugin manager).
+Optional per the AC: cross-link from `docs/architecture-overview.md` to relevant ADRs. I'll add a one-line "See ADR-NNN" pointer in each affected section (capability ports, identifier mapping, sync manager, plugin manager).
 
 ## 3. Design
 
@@ -71,13 +71,13 @@ docs/
     └── adrs/
         ├── README.md                                       # practice, when-to-write, status taxonomy, index
         ├── template.md                                      # copy-paste template
-        ├── 0001-hexagonal-architecture-and-bounded-contexts.md
-        ├── 0002-capability-ports-with-sub-capabilities.md
-        ├── 0003-plugin-sdk-trust-model.md
-        ├── 0004-identifier-mapping-service.md
-        ├── 0005-postgres-authoritative-job-dedup.md
-        ├── 0006-credentials-encryption-at-rest.md
-        └── 0007-syncjob-status-vs-outcome-split.md
+        ├── 001-hexagonal-architecture-and-bounded-contexts.md
+        ├── 002-capability-ports-with-sub-capabilities.md
+        ├── 003-plugin-sdk-trust-model.md
+        ├── 004-identifier-mapping-service.md
+        ├── 005-postgres-authoritative-job-dedup.md
+        ├── 006-credentials-encryption-at-rest.md
+        └── 007-syncjob-status-vs-outcome-split.md
 ```
 
 `docs/architecture/` is a new directory. Today everything lives flat in `docs/`. Nesting under `architecture/` gives room for future siblings (e.g., `docs/architecture/diagrams/`, `docs/architecture/glossary.md`) without polluting the top level.
@@ -89,7 +89,7 @@ docs/
 - "When NOT to write an ADR" anti-checklist — also from the issue body.
 - Status taxonomy + supersession protocol.
 - Numbering convention.
-- Index table: ADR-NNNN → title → status. Updated on every new ADR.
+- Index table: ADR-NNN → title → status. Updated on every new ADR.
 - Pointer to `template.md`.
 
 ### 3c. Template content outline
@@ -153,26 +153,26 @@ and are a useful read before proposing changes that touch them.
 
 ### 3f. Cross-links from `docs/architecture-overview.md`
 
-Light-touch — one `*See [ADR-NNNN](./architecture/adrs/NNNN-...md) for the decision rationale.*` line under each affected section. Avoid rewriting the section. The four sections that map to retrospective ADRs:
-- `## Capability Abstractions` → ADR-0002
-- `## Identifier Mapping Service` → ADR-0004
-- `## Plugin Manager / Integrations` → ADR-0003
-- `## Sync Manager` → ADR-0007
-- `## Webhook Ingestion Flow` → ADR-0005
+Light-touch — one `*See [ADR-NNN](./architecture/adrs/NNN-...md) for the decision rationale.*` line under each affected section. Avoid rewriting the section. The four sections that map to retrospective ADRs:
+- `## Capability Abstractions` → ADR-002
+- `## Identifier Mapping Service` → ADR-004
+- `## Plugin Manager / Integrations` → ADR-003
+- `## Sync Manager` → ADR-007
+- `## Webhook Ingestion Flow` → ADR-005
 
-ADR-0001 (hexagonal) and ADR-0006 (encryption) don't have a single dedicated section in `architecture-overview.md`; they're cross-cutting. I'll add ADR-0001 to the top-level `## High-Level Architecture` header and ADR-0006 to the section that mentions credentials.
+ADR-001 (hexagonal) and ADR-006 (encryption) don't have a single dedicated section in `architecture-overview.md`; they're cross-cutting. I'll add ADR-001 to the top-level `## High-Level Architecture` header and ADR-006 to the section that mentions credentials.
 
 ## 4. Step-by-step plan
 
 1. **`docs/architecture/adrs/README.md`** — write practice doc + index table.
 2. **`docs/architecture/adrs/template.md`** — write template.
-3. **`docs/architecture/adrs/0001-hexagonal-architecture-and-bounded-contexts.md`** — retrospective ADR.
-4. **`docs/architecture/adrs/0002-capability-ports-with-sub-capabilities.md`** — retrospective ADR.
-5. **`docs/architecture/adrs/0003-plugin-sdk-trust-model.md`** — retrospective ADR.
-6. **`docs/architecture/adrs/0004-identifier-mapping-service.md`** — retrospective ADR.
-7. **`docs/architecture/adrs/0005-postgres-authoritative-job-dedup.md`** — retrospective ADR.
-8. **`docs/architecture/adrs/0006-credentials-encryption-at-rest.md`** — retrospective ADR.
-9. **`docs/architecture/adrs/0007-syncjob-status-vs-outcome-split.md`** — retrospective ADR.
+3. **`docs/architecture/adrs/001-hexagonal-architecture-and-bounded-contexts.md`** — retrospective ADR.
+4. **`docs/architecture/adrs/002-capability-ports-with-sub-capabilities.md`** — retrospective ADR.
+5. **`docs/architecture/adrs/003-plugin-sdk-trust-model.md`** — retrospective ADR.
+6. **`docs/architecture/adrs/004-identifier-mapping-service.md`** — retrospective ADR.
+7. **`docs/architecture/adrs/005-postgres-authoritative-job-dedup.md`** — retrospective ADR.
+8. **`docs/architecture/adrs/006-credentials-encryption-at-rest.md`** — retrospective ADR.
+9. **`docs/architecture/adrs/007-syncjob-status-vs-outcome-split.md`** — retrospective ADR.
 10. **`docs/engineering-standards.md`** — add ADR section.
 11. **`CONTRIBUTING.md`** — append ADR paragraph.
 12. **`.github/PULL_REQUEST_TEMPLATE.md`** — add ADR checkbox.
@@ -183,7 +183,7 @@ ADR-0001 (hexagonal) and ADR-0006 (encryption) don't have a single dedicated sec
 ## 5. Validation
 
 - **Architecture compliance**: docs only; no code touched. No architectural impact.
-- **Naming**: ADR files match `NNNN-kebab-case.md`. README + template follow established docs/ conventions.
+- **Naming**: ADR files match `NNN-kebab-case.md`. README + template follow established docs/ conventions.
 - **Testing**: docs change; no tests needed. Lint must still pass.
 - **Security**: no security surface.
 - **Quality gate**: `pnpm lint` runs `check:invariants`; markdown changes shouldn't affect any of them.
@@ -192,10 +192,10 @@ ADR-0001 (hexagonal) and ADR-0006 (encryption) don't have a single dedicated sec
 
 - **Dating ADRs**: I'm using the underlying decision's ship date (extracted from `git log` for the merge commit), not today's date. Preserves historical accuracy and helps future readers correlate ADRs with code state. The issue's template says `Date: YYYY-MM-DD` without specifying; I'll annotate the README that retrospective ADRs use the original decision date.
 - **Authors**: For retrospective ADRs the "author" is ambiguous — the PR author wrote the code; the ADR is being written by me retrospectively. I'll list the original PR author and add `(retrospective: @ai/claude-code, this PR)` to make the dual provenance explicit.
-- **Scope of retrospective ADR-0001**: "Hexagonal architecture + bounded contexts" is the broadest decision in the codebase and could easily balloon to 1000+ words. I'll keep it disciplined at ~400 words, mostly pointing at `architecture-overview.md` for detailed structure and using the ADR space for *why we picked hexagonal* and *what we rejected* (e.g., layered/MVC, vertical slices, event-driven-only). The README will note that ADR length is a feature, not a bug — short ADRs encourage authors to make sharp decisions.
+- **Scope of retrospective ADR-001**: "Hexagonal architecture + bounded contexts" is the broadest decision in the codebase and could easily balloon to 1000+ words. I'll keep it disciplined at ~400 words, mostly pointing at `architecture-overview.md` for detailed structure and using the ADR space for *why we picked hexagonal* and *what we rejected* (e.g., layered/MVC, vertical slices, event-driven-only). The README will note that ADR length is a feature, not a bug — short ADRs encourage authors to make sharp decisions.
 
 ## Risks
 
 - **Author attribution drift.** Listing past PR authors in retrospective ADRs could feel like attribution theatre. Mitigation: keep author lines short and factual; cite the merge PR for evidence. If a past author objects, ADRs are append-only — supersede with a corrected version.
-- **Cross-link rot.** Adding `*See ADR-0NNN*` pointers in `architecture-overview.md` creates drift risk if an ADR is later superseded. Mitigation: ADRs are append-only, so the pointer-target file never disappears. Status changes on the ADR itself, not the doc that links to it.
+- **Cross-link rot.** Adding `*See ADR-NNN*` pointers in `architecture-overview.md` creates drift risk if an ADR is later superseded. Mitigation: ADRs are append-only, so the pointer-target file never disappears. Status changes on the ADR itself, not the doc that links to it.
 - **PR template fatigue.** Adding another optional checkbox to the PR template risks "tick everything" noise. Mitigation: the checkbox text explicitly says "Tick this box for PRs that don't make architectural decisions too — it's trivially satisfied" (mirrors the migration-checkbox pattern already in the template). Keeps the checkbox useful as a prompt without forcing real engagement when not relevant.

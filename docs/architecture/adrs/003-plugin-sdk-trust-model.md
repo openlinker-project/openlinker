@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-04-30
-- **Authors**: OpenLinker maintainers (retrospective documentation of decisions made across PRs #570, #572, #593)
+- **Authors**: OpenLinker maintainers (retrospective documentation of decisions made across PRs #570, #571, #572, #593)
 
 ## Context
 
@@ -44,4 +44,4 @@ Third-party community plugins are deferred. When that pressure arrives, the SDK 
 - Primary doc: [docs/architecture-overview.md](../../architecture-overview.md) § Plugin Manager / Integrations.
 - Plugin author guide: [docs/plugin-author-guide.md](../../plugin-author-guide.md).
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (the capability contract plugins implement).
-- Related PRs: #570/#571 (adapter registry), #572 (plugin registry composition), #593 (`@openlinker/plugin-sdk` package).
+- Related PRs: #570, #571 (adapter registry), #572 (plugin registry composition), #593 (`@openlinker/plugin-sdk` package).

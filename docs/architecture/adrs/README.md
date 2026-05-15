@@ -48,6 +48,7 @@ ADRs are **append-only**. Never edit an accepted ADR's body to change the decisi
 
 - **Forward-looking ADRs**: list the primary author and any co-authors (`@handle`).
 - **Retrospective ADRs**: use `Authors: OpenLinker maintainers (retrospective documentation of decisions made across PRs #NNN, #MMM)`. Avoids speaking-for-someone-else on multi-author decisions and makes the multi-source nature of the record explicit.
+- **Retrospective ADRs predating the audit trail** (e.g., foundational decisions made at project inception, before there are PRs to cite): drop the "across PRs" tail — `Authors: OpenLinker maintainers (retrospective documentation)` is the right form.
 
 ### Length
 
@@ -69,7 +70,7 @@ When an ADR documents a section of `docs/architecture-overview.md`, add a single
 ```markdown
 ## Capability Abstractions (Business Roles)
 
-*See [ADR-002](./architecture/adrs/002-capability-ports-with-sub-capabilities.md) for the decision rationale and rejected alternatives.*
+*See [ADR-002](./architecture/adrs/002-capability-ports-with-sub-capabilities.md) for the decision rationale.*
 
 Instead of coding directly against specific systems …
 ```
@@ -81,17 +82,20 @@ One pointer per section, identical format every time.
 1. Copy [`template.md`](./template.md) to `NNN-kebab-case-title.md` where `NNN` is the next free 3-digit number (check the index below).
 2. Fill in each section. Keep it short — the goal is "future maintainer can answer 'why?' in 90 seconds."
 3. List 1–3 seriously-considered alternatives with one-line rationale for rejection each.
-4. Open the PR. Reviewers focus on whether the decision is well-stated and the alternatives section is honest, not on prose polish.
-5. If an existing ADR is superseded by your new one, update the old ADR's Status line to `Superseded by ADR-NNN` and add a `## Superseded by` section pointing at the new ADR. Do not edit the old ADR's body.
+4. **For retrospective ADRs only**: verify specifics against the actual implementation (env-var names, column shapes, service names, default values), not just against other docs. Docs can be incomplete or out-of-date; the code is the source of truth. An ADR that confidently states incorrect specifics is worse than no ADR — it corrupts the audit trail.
+5. Open the PR. Reviewers focus on whether the decision is well-stated, the alternatives section is honest, and specifics are accurate. Prose polish is not the bar.
+6. If an existing ADR is superseded by your new one, update the old ADR's Status line to `Superseded by ADR-NNN` and add a `## Supersedes` section to the new ADR pointing at the old one. Do not edit the old ADR's body.
 
 ## Index
 
 | ADR | Title | Status | Date |
 |---|---|---|---|
-| [ADR-001](./001-hexagonal-architecture-and-bounded-contexts.md) | Hexagonal architecture and bounded contexts | Accepted | 2024-10-01 |
+| [ADR-001](./001-hexagonal-architecture-and-bounded-contexts.md) | Hexagonal architecture and bounded contexts | Accepted | 2024-10 (approx) |
 | [ADR-002](./002-capability-ports-with-sub-capabilities.md) | Capability ports with sub-capability composition | Accepted | 2026-01-15 |
 | [ADR-003](./003-plugin-sdk-trust-model.md) | Plugin SDK trust model | Accepted | 2026-04-30 |
-| [ADR-004](./004-identifier-mapping-service.md) | Identifier mapping as core service with single seed | Accepted | 2024-11-15 |
+| [ADR-004](./004-identifier-mapping-service.md) | Identifier mapping as core service with single seed | Accepted | 2024-11 (approx) |
 | [ADR-005](./005-postgres-authoritative-job-dedup.md) | Postgres-authoritative job dedup with Redis Streams as transport | Accepted | 2026-05-13 |
 | [ADR-006](./006-credentials-encryption-at-rest.md) | AES-256-GCM credentials encryption with prod-gate | Accepted | 2026-05-15 |
 | [ADR-007](./007-syncjob-status-vs-outcome-split.md) | SyncJob status-vs-outcome split | Accepted | 2026-04-15 |
+
+> *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

@@ -48,11 +48,13 @@ Closes #
 
 - [ ] If this PR makes a non-trivial architectural decision (affects
       multiple contexts, the plugin contract, or has alternatives worth
-      documenting), an ADR is included under
+      documenting), an ADR should be included under
       `docs/architecture/adrs/` or referenced in the PR description.
-      See [`docs/architecture/adrs/README.md`](../docs/architecture/adrs/README.md)
-      for when to write one. Tick this box for PRs that don't make
-      architectural decisions too — it's trivially satisfied.
+      ADRs are a recommendation, not a hard gate — see
+      [`docs/architecture/adrs/README.md`](../docs/architecture/adrs/README.md)
+      § "When to write an ADR" for the decision criteria. Tick this box
+      for PRs that don't make architectural decisions too — it's
+      trivially satisfied.
 
 ## DCO sign-off
 

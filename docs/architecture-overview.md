@@ -15,7 +15,7 @@
 
 ## High-Level Architecture
 
-*See [ADR-001](./architecture/adrs/001-hexagonal-architecture-and-bounded-contexts.md) for the decision rationale and rejected alternatives.*
+*See [ADR-001](./architecture/adrs/001-hexagonal-architecture-and-bounded-contexts.md) for the decision rationale.*
 
 OpenLinker follows a **Hexagonal Architecture** (Ports and Adapters) pattern, organized as a modular monorepo. The system is designed to be:
 
@@ -187,7 +187,7 @@ The system is organized into the following core bounded contexts:
 - **Public surface**: `@openlinker/core/listings` exposes pure contracts (ports, types, capability guards, entities, exceptions, service interfaces, Symbol tokens) safe to value-import from any sibling package. Runtime wiring (`ListingsModule` + the 7 `@Injectable` service classes) lives on the `@openlinker/core/listings/services` subpath — kept separate to prevent runtime circular requires when sibling packages value-import from the main barrel (#337/#359). Cross-context ORM-entity access (host-only) is routed through `@openlinker/core/<ctx>/orm-entities` sub-barrels (#594) — see `docs/engineering-standards.md § Import Aliases` for the general rule.
 
 ### 7. Sync Manager
-*See [ADR-007](./architecture/adrs/007-syncjob-status-vs-outcome-split.md) for the decision rationale and rejected alternatives.*
+*See [ADR-007](./architecture/adrs/007-syncjob-status-vs-outcome-split.md) for the decision rationale.*
 
 - **Responsibility**: Job scheduling and retry logic; workers execute jobs. **Sync orchestration policies live in core application services** (e.g., order ingestion, inventory propagation), not in worker handlers.
 - **Key Services**: SyncJobService, RetryService, SchedulerService
@@ -200,7 +200,7 @@ The system is organized into the following core bounded contexts:
 - **Location**: `libs/core/src/events/`
 
 ### 9. Identifier Mapping Service
-*See [ADR-004](./architecture/adrs/004-identifier-mapping-service.md) for the decision rationale and rejected alternatives.*
+*See [ADR-004](./architecture/adrs/004-identifier-mapping-service.md) for the decision rationale.*
 
 - **Responsibility**: Centralized identifier mapping between external platform IDs and internal OpenLinker IDs
 - **Key Services**: IdentifierMappingService
@@ -213,7 +213,7 @@ The system is organized into the following core bounded contexts:
 - **Architecture**: Core infrastructure service used by all adapters
 
 ### 10. Plugin Manager / Integrations
-*See [ADR-003](./architecture/adrs/003-plugin-sdk-trust-model.md) for the decision rationale and rejected alternatives.*
+*See [ADR-003](./architecture/adrs/003-plugin-sdk-trust-model.md) for the decision rationale.*
 
 - **Responsibility**: Adapter registry, per-connection adapter resolution, capability validation, registries for cross-cutting per-adapter capabilities (connection-test, webhook provisioning, connection-config + credentials shape validation).
 - **Key Services**: IntegrationsService, AdapterRegistryService, ConnectionService, ConnectionTesterRegistryService, WebhookProvisioningRegistryService, ConnectionConfigShapeValidatorRegistryService, ConnectionCredentialsShapeValidatorRegistryService.
@@ -256,7 +256,7 @@ The system is organized into the following core bounded contexts:
 
 ## Capability Abstractions (Business Roles)
 
-*See [ADR-002](./architecture/adrs/002-capability-ports-with-sub-capabilities.md) for the decision rationale and rejected alternatives.*
+*See [ADR-002](./architecture/adrs/002-capability-ports-with-sub-capabilities.md) for the decision rationale.*
 
 Instead of coding directly against specific systems (e.g., PrestaShop, Allegro), the core domain depends on **business capability abstractions** (ports). This allows:
 
@@ -1566,7 +1566,7 @@ Event Handlers
 
 ### 4. Webhook Ingestion Flow (Inbound → Event Bus → Sync Trigger)
 
-*See [ADR-005](./architecture/adrs/005-postgres-authoritative-job-dedup.md) for the decision rationale and rejected alternatives.*
+*See [ADR-005](./architecture/adrs/005-postgres-authoritative-job-dedup.md) for the decision rationale.*
 
 ```
 External System (PrestaShop)

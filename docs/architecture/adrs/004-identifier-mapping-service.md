@@ -1,7 +1,7 @@
 # ADR-004: Identifier mapping as core service with single internal-ID seed
 
 - **Status**: Accepted
-- **Date**: 2024-11-15
+- **Date**: 2024-11 (approx — predates current git history)
 - **Authors**: OpenLinker maintainers (retrospective documentation)
 
 ## Context
