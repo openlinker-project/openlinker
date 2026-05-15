@@ -8,6 +8,7 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { CacheModule } from '@openlinker/shared/cache';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -30,6 +31,7 @@ import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
     }),
     DatabaseModule,
     RedisConfigModule,
+    CacheModule,
     IdentifierMappingModule,
     CoreIntegrationsModule,
     PluginRegistryModule.forRoot({ plugins: workerPlugins }),
