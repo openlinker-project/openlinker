@@ -48,7 +48,7 @@ Unique deny-pattern symbols visible in the line-based grep:
 | `CustomerProjectionRepositoryPort` | `customers` | prestashop plugin + factory + adapters + provisioner (+ specs), plus apps/api customers controller spec |
 | `ProductVariantRepositoryPort` | `products` | listings controller (+ spec) |
 
-Real `(file, symbol)` pair count is determined by running the broadened script in step 2 of the implementation plan. The pre-implementation grep is a lower bound — multi-line `import { ... }` blocks would be missed here but caught by the script.
+Real `(file, symbol)` pair count is determined by running the broadened script in step 2 of the implementation plan. The pre-implementation grep is a lower bound — multi-line `import { ... }` blocks would be missed here but caught by the script. **For accurate post-implementation counts**, see the grouped allow-list comments in `scripts/check-cross-context-imports.mjs` and the production-file table in the **[#722](https://github.com/SilkSoftwareHouse/openlinker/issues/722)** follow-up issue body.
 
 **Escalation note**: if the broadened-script audit surfaces a deny-pattern hit that ISN'T `*RepositoryPort` (e.g. an unanticipated `*Dto`, `*OrmEntity`, or `*Adapter`), do NOT silently allow-list it. Those typically indicate a real architecture gap that's worth surfacing in the PR description so reviewers can decide if it's allow-list material or a separate fix-before-merge.
 
@@ -70,9 +70,9 @@ If a future contributor introduces core imports into any of the not-walked trees
 
 ### 2d. Same-context skip
 
-In the core-only scope, the script skipped `@openlinker/core/<ctx>` imports when the importer file was also under `libs/core/src/<ctx>/`. Plugins and apps have no "context" they could match against — every `@openlinker/core/<ctx>` import is by definition cross-context for them. So the same-context skip applies **only when the importer is core**.
+In the core-only scope, the script's `importerContext()` returned a bare context string and the main loop skipped `@openlinker/core/<ctx>` imports when the importer's bare-string matched. Plugins and apps have no "context" they could match against — every `@openlinker/core/<ctx>` import is by definition cross-context for them. So the same-context skip applies **only when the importer is core**.
 
-`importerContext()` therefore needs to return a tagged scope, not a bare context string:
+The function is renamed `importerContext()` → `importerScope()` and returns a tagged scope:
 
 ```js
 function importerScope(repoRelPath) {

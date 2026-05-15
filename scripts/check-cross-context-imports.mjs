@@ -36,9 +36,9 @@
  * scope here.
  *
  * Scope. The walker descends into:
- *   - `libs/core/src/<ctx>/**`                  (#713/#721)
- *   - `libs/integrations/<plugin>/**`           (#719)
- *   - `apps/{api,worker}/**` (src + test)       (#719)
+ *   - `libs/core/src/<ctx>/**`                          (#713/#721)
+ *   - `libs/integrations/<plugin>/**`                   (#719)
+ *   - `apps/{api,worker}/**` (covers src + integration tests)  (#719)
  *
  * Same-context skip applies ONLY when the importer is under
  * `libs/core/src/<ctx>/` — plugins and host apps have no "context" they
