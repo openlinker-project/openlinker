@@ -6,9 +6,10 @@
 2. [Core Bounded Contexts](#core-bounded-contexts)
 3. [Capability Abstractions (Business Roles)](#capability-abstractions-business-roles)
 4. [Hexagonal Architecture Structure](#hexagonal-architecture-structure)
-5. [Module Organization](#module-organization)
-6. [Data Flow](#data-flow)
-7. [Technology Stack](#technology-stack)
+5. [Cross-context dependencies in core](#cross-context-dependencies-in-core)
+6. [Module Organization](#module-organization)
+7. [Data Flow](#data-flow)
+8. [Technology Stack](#technology-stack)
 
 ---
 
@@ -1075,6 +1076,100 @@ catch (error) {
   }
 }
 ```
+
+---
+
+## Cross-context dependencies in core
+
+Each bounded context in `libs/core/src/<ctx>` is an independently testable hexagonal cell, but contexts legitimately depend on each other — `orders` needs `customers` and `identifier-mapping` for identity resolution, `content` needs `ai` for suggestions, `listings` needs `products` to walk variant catalogs. The architecture supports those dependencies via a **single, narrow contract surface** between contexts. This section names that contract.
+
+### The rule
+
+A file in `libs/core/src/<ctx-A>/**` may import from `@openlinker/core/<ctx-B>` (the top-level barrel of any sibling context) **only** the following kinds of symbols:
+
+| Allowed | Pattern | Example |
+|---|---|---|
+| Service interfaces | `I*Service` | `IIntegrationsService`, `IIdentifierMappingService` |
+| DI tokens (Symbol) | `*_TOKEN` | `INTEGRATIONS_SERVICE_TOKEN`, `EVENT_PUBLISHER_TOKEN` |
+| Capability ports | `*Port` (single `Port` suffix) | `OfferManagerPort`, `OrderSourcePort`, `EventPublisherPort` |
+| Capability type-guards | `is*` | `isOfferCreator`, `isCategoryBarcodeMatcher` |
+| Domain entities, value objects, type aliases | published in the barrel | `Connection`, `Product`, `Order`, `MarketplaceCursor` |
+| Domain exceptions | `*Exception`, `*Error` | `ConnectionNotFoundException`, `DuplicateIdentifierMappingError` |
+| Other `as const` value constants | `UPPER_SNAKE_CASE` | `CORE_ENTITY_TYPE`, `OFFER_CREATION_STATUS` |
+| NestJS module classes | `*Module` — **for `imports: [...]` only, never injected into services** | `CustomersModule` in `orders.module.ts` |
+
+The cross-context contract is **explicitly forbidden** for these symbol shapes:
+
+| Forbidden | Pattern | Why |
+|---|---|---|
+| Repository ports | `*RepositoryPort` | Intra-context contract — exposes persistence concerns the source context controls. Cross-context callers go through `I*Service`. |
+| ORM entities | `*OrmEntity` | TypeORM-decorated infrastructure detail (and ESLint-guarded under `@openlinker/core/<ctx>/orm-entities` separately). |
+| Adapter classes | `*Adapter` | Concrete infrastructure; sibling contexts see behaviour through `I*Service` or capability ports, never the adapter directly. |
+| Application DTOs | `*Dto` | Owned by the source context's interface layer. |
+| Default imports | `import X from '@openlinker/core/<ctx>'` | Barrels have no default export. |
+| Namespace imports | `import * as X from '@openlinker/core/<ctx>'` | Reserved for barrel-purity tests; cross-context callers use named imports so the surface they touch is explicit. |
+
+The rule applies only to imports from the bare top-level barrel `@openlinker/core/<ctx>`. The three documented sub-barrel exceptions (`/services`, `/orm-entities`, `/testing`) are governed by their own ESLint rules — see `docs/engineering-standards.md § Import Aliases`.
+
+### Why each rule exists
+
+- **Service interfaces are the seam.** A context's `I*Service` shape is the *only* thing sibling contexts can rely on staying stable. When `products` reorganises its repository layout, the consumers in `orders` / `listings` / `inventory` don't break — they kept asking `IProductsService` for what they needed, and `products` is free to change how it answers internally.
+- **Capability ports are part of the published contract.** `OfferManagerPort`, `ProductMasterPort`, `OrderSourcePort` — these are the abstractions adapters implement. They cross context boundaries because they're how the marketplace integrations express themselves to the rest of core. Repository ports, by contrast, are persistence concerns that no sibling has business reaching into.
+- **Domain entities cross by value.** When `orders` imports `Product` from `@openlinker/core/products`, it binds to the published shape — `products` can evolve internals freely, and any breaking shape change surfaces at type-check time. Value imports of entities are intentionally allowed (services construct, return, and pattern-match on them); the contract surface is what's published from the barrel, not the import kind.
+- **NestJS module classes cross only at the module-graph layer.** `orders.module.ts` imports `CustomersModule` to compose providers. A service constructor must never type-hint `CustomersModule` directly — that's the wrong layer.
+
+### Current dependency map
+
+Audited 2026-05-15 from `libs/core/src/**`:
+
+```mermaid
+graph LR
+  orders --> customers
+  orders --> identifier-mapping
+  orders --> integrations
+  orders --> mappings
+  orders --> products
+  orders --> sync
+  customers --> identifier-mapping
+  customers --> integrations
+  customers --> orders
+  content --> ai
+  content --> integrations
+  content --> listings
+  content --> products
+  listings --> identifier-mapping
+  listings --> integrations
+  listings --> mappings
+  listings --> products
+  listings --> sync
+  inventory --> identifier-mapping
+  inventory --> integrations
+  inventory --> listings
+  inventory --> products
+  inventory --> sync
+  products --> identifier-mapping
+  products --> integrations
+  products --> listings
+  sync --> events
+  sync --> listings
+  sync --> orders
+  ai --> integrations
+  integrations --> identifier-mapping
+```
+
+`identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
+
+The `orders ↔ customers` pair shows up as a cycle at the barrel level. It's safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
+
+### Enforcement
+
+`scripts/check-cross-context-imports.mjs` runs under `pnpm check:invariants` (chained into `pnpm lint`). On any cross-context import that doesn't match the allow shapes — or that matches a deny shape — it fails the build with a file:line and the rule that fired.
+
+Pre-existing cross-context repository-port couplings (10 production files + 10 spec mocks, 20 `(file, symbol)` entries total) are tracked in **[#718](https://github.com/SilkSoftwareHouse/openlinker/issues/718)** and allow-listed in the script's `ALLOW_LIST` map by `(file, symbol)` pair until they're rewired through service interfaces. The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside.
+
+### Scope
+
+Today the rule applies to `libs/core/src/<ctx>/**` only — that matches the boundary the policy was audited against. Extending the same shape to `libs/integrations/<plugin>/src/**` and `apps/{api,worker}/src/**` is tracked in **[#719](https://github.com/SilkSoftwareHouse/openlinker/issues/719)** — the symmetry would mirror the existing Symbol-DI-token convention's reach, and the same script's matcher works against either tree with a small scope change.
 
 ---
 
