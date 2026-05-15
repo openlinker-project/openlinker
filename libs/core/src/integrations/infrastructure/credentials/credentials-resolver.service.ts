@@ -79,9 +79,17 @@ export class CredentialsResolverService implements CredentialsResolverPort {
   /**
    * Get credentials from environment variable
    *
-   * MVP implementation for development and testing.
+   * Dev/test only. Fail-closed under NODE_ENV=production so a deploy that
+   * accidentally relies on plaintext env credentials is caught at boot (#709).
    */
   private async getFromEnvironment<T = unknown>(credentialsRef: string): Promise<T> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        `Plaintext env-var credentials backend is disabled in production. ` +
+          `Reference: ${credentialsRef}. Store credentials encrypted via 'db:{ref}'.`
+      );
+    }
+
     // Pattern: CREDENTIALS_{credentialsRef}
     // Example: credentialsRef='prestashop_123' → env var 'CREDENTIALS_prestashop_123'
     const envKey = `CREDENTIALS_${credentialsRef.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;

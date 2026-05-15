@@ -9,6 +9,10 @@
  * @module apps/api/test/integration
  */
 import { DataSource } from 'typeorm';
+import {
+  IntegrationCredentialRepositoryPort,
+  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+} from '@openlinker/core/integrations';
 import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/orm-entities';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
@@ -19,7 +23,7 @@ import {
 import { getConnectionById } from './helpers/test-database.helper';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 
-async function findCredentialByRef(
+async function findRawCredentialByRef(
   dataSource: DataSource,
   ref: string,
 ): Promise<IntegrationCredentialOrmEntity | null> {
@@ -59,10 +63,20 @@ describe('Connection Credentials Integration', () => {
       expect(connection?.credentialsRef.startsWith('db:')).toBe(true);
 
       const ref = connection!.credentialsRef.slice('db:'.length);
-      const credential = await findCredentialByRef(dataSource, ref);
-      expect(credential).toBeDefined();
-      expect(credential?.platformType).toBe('prestashop');
-      expect(credential?.credentialsJson).toEqual({ webserviceApiKey: 'WS_KEY_TEST' });
+
+      // The raw row stores the AES-256-GCM envelope, not plaintext (#709).
+      const raw = await findRawCredentialByRef(dataSource, ref);
+      expect(raw).toBeDefined();
+      expect(raw?.platformType).toBe('prestashop');
+      expect(raw?.credentialsCiphertext).not.toContain('WS_KEY_TEST');
+      expect(raw?.credentialsCiphertext.length).toBeGreaterThan(20);
+
+      // The domain repository decrypts transparently.
+      const repository = harness
+        .getApp()
+        .get<IntegrationCredentialRepositoryPort>(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN);
+      const decrypted = await repository.getByRef(ref);
+      expect(decrypted.credentialsJson).toEqual({ webserviceApiKey: 'WS_KEY_TEST' });
     });
 
     it('rejects raw-key credentialsRef without db: prefix', async () => {
@@ -139,8 +153,15 @@ describe('Connection Credentials Integration', () => {
       expect(after!.credentialsRef).toBe(refBefore);
 
       const ref = refBefore.slice('db:'.length);
-      const credential = await findCredentialByRef(dataSource, ref);
-      expect(credential?.credentialsJson).toEqual({ webserviceApiKey: 'ROTATED_KEY' });
+      const repository = harness
+        .getApp()
+        .get<IntegrationCredentialRepositoryPort>(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN);
+      const credential = await repository.getByRef(ref);
+      expect(credential.credentialsJson).toEqual({ webserviceApiKey: 'ROTATED_KEY' });
+
+      // Ciphertext does not leak the rotated plaintext into raw bytes.
+      const raw = await findRawCredentialByRef(dataSource, ref);
+      expect(raw?.credentialsCiphertext).not.toContain('ROTATED_KEY');
     });
 
     it('returns 400 when the connection has a non-db credentials reference', async () => {

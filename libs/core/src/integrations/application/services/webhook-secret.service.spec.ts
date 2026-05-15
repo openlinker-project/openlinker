@@ -3,7 +3,6 @@
  *
  * @module libs/core/src/integrations/application/services
  */
-import type { CryptoService } from '@openlinker/shared';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { WebhookSecretService } from './webhook-secret.service';
@@ -29,7 +28,6 @@ describe('WebhookSecretService', () => {
 
   let connectionPort: jest.Mocked<ConnectionPort>;
   let repository: jest.Mocked<IntegrationCredentialRepositoryPort>;
-  let crypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
   let secretProvider: jest.Mocked<WebhookSecretProviderPort>;
   let subject: WebhookSecretService;
 
@@ -38,7 +36,6 @@ describe('WebhookSecretService', () => {
     `webhook-secret:${connectionId}`,
     'prestashop',
     {},
-    true,
     new Date(),
     new Date()
   );
@@ -51,25 +48,17 @@ describe('WebhookSecretService', () => {
       update: jest.fn().mockResolvedValue(sampleCredential),
       delete: jest.fn(),
     };
-    crypto = { encrypt: jest.fn().mockReturnValue('cipher'), decrypt: jest.fn() } as never;
     secretProvider = { getSecret: jest.fn(), invalidate: jest.fn() } as never;
 
-    subject = new WebhookSecretService(
-      connectionPort,
-      repository,
-      crypto as unknown as CryptoService,
-      secretProvider
-    );
+    subject = new WebhookSecretService(connectionPort, repository, secretProvider);
   });
 
-  it('updates existing credential when present and returns plaintext once', async () => {
+  it('updates existing credential with plaintext secret and returns it once', async () => {
     const result = await subject.rotate('prestashop', connectionId, 'user-1');
 
     expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
-    expect(crypto.encrypt).toHaveBeenCalledWith(result.secret);
     expect(repository.update).toHaveBeenCalledWith(`webhook-secret:${connectionId}`, {
-      credentialsJson: { ciphertext: 'cipher' },
-      encrypted: true,
+      credentialsJson: { webhookSecret: result.secret },
     });
     expect(secretProvider.invalidate).toHaveBeenCalledWith('prestashop', connectionId);
   });
@@ -77,13 +66,12 @@ describe('WebhookSecretService', () => {
   it('creates the credential when missing', async () => {
     repository.update.mockRejectedValueOnce(new CredentialNotFoundException('x'));
 
-    await subject.rotate('prestashop', connectionId);
+    const result = await subject.rotate('prestashop', connectionId);
 
     expect(repository.create).toHaveBeenCalledWith({
       ref: `webhook-secret:${connectionId}`,
       platformType: 'prestashop',
-      credentialsJson: { ciphertext: 'cipher' },
-      encrypted: true,
+      credentialsJson: { webhookSecret: result.secret },
     });
   });
 

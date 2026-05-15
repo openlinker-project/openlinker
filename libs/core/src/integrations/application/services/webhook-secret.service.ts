@@ -10,7 +10,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { Logger, CryptoService } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import {
   WebhookSecretProviderPort,
@@ -38,7 +38,6 @@ export class WebhookSecretService implements IWebhookSecretService {
     private readonly connectionPort: ConnectionPort,
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
-    private readonly crypto: CryptoService,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly secretProvider: WebhookSecretProviderPort
   ) {}
@@ -51,21 +50,19 @@ export class WebhookSecretService implements IWebhookSecretService {
     const connection = await this.connectionPort.get(connectionId);
 
     const secret = randomBytes(SECRET_BYTES).toString('hex');
-    const ciphertext = this.crypto.encrypt(secret);
     const ref = webhookSecretRef(connectionId);
 
+    // Plaintext at this layer — the repository encrypts on write (#709).
     try {
       await this.credentialRepository.update(ref, {
-        credentialsJson: { ciphertext },
-        encrypted: true,
+        credentialsJson: { webhookSecret: secret },
       });
     } catch (error) {
       if (error instanceof CredentialNotFoundException) {
         await this.credentialRepository.create({
           ref,
           platformType: connection.platformType,
-          credentialsJson: { ciphertext },
-          encrypted: true,
+          credentialsJson: { webhookSecret: secret },
         });
       } else {
         throw error;

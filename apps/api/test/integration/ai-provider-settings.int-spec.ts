@@ -25,7 +25,6 @@ import {
   IntegrationCredentialRepositoryPort,
 } from '@openlinker/core/integrations';
 import { aiProviderCredentialsRef } from '@openlinker/core/ai';
-import { CryptoService } from '@openlinker/shared';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
@@ -284,35 +283,38 @@ describe('AI Provider Settings Integration', () => {
   });
 
   describe('storage round-trip against real Postgres', () => {
-    it('encrypts → stores → retrieves → decrypts to the original key (provider-agnostic)', async () => {
+    it('writes plaintext via the repo; raw column stores ciphertext; getByRef round-trips (#709)', async () => {
       const app = harness.getApp();
       const repository = app.get<IntegrationCredentialRepositoryPort>(
         INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
       );
-      const crypto = app.get(CryptoService);
+      const dataSource = harness.getDataSource();
 
       const ref = aiProviderCredentialsRef('openai');
       const plaintext = 'sk-openai-real-shape-but-fake-value-abc123';
-      const ciphertext = crypto.encrypt(plaintext);
-
-      expect(ciphertext).not.toBe(plaintext);
-      expect(ciphertext.length).toBeGreaterThan(plaintext.length);
 
       const created = await repository.create({
         ref,
         platformType: 'openai',
-        credentialsJson: { ciphertext },
-        encrypted: true,
+        credentialsJson: { apiKey: plaintext },
       });
 
       expect(created.ref).toBe(ref);
-      expect(created.encrypted).toBe(true);
+      expect(created.credentialsJson).toEqual({ apiKey: plaintext });
 
+      // Raw column must not contain the plaintext (TypeORM keeps the camelCase
+      // column name when no `name:` is set on the @Column decorator).
+      const rawRows = await dataSource.query<Array<{ credentialsCiphertext: string }>>(
+        `SELECT "credentialsCiphertext" FROM integration_credentials WHERE ref = $1`,
+        [ref],
+      );
+      expect(rawRows).toHaveLength(1);
+      expect(rawRows[0].credentialsCiphertext).not.toContain(plaintext);
+      expect(rawRows[0].credentialsCiphertext.length).toBeGreaterThan(plaintext.length);
+
+      // getByRef decrypts transparently.
       const retrieved = await repository.getByRef(ref);
-      const retrievedCipher = retrieved.credentialsJson?.ciphertext;
-      expect(typeof retrievedCipher).toBe('string');
-      const decrypted = crypto.decrypt(retrievedCipher as string);
-      expect(decrypted).toBe(plaintext);
+      expect(retrieved.credentialsJson).toEqual({ apiKey: plaintext });
 
       await repository.delete(ref);
       await expect(repository.getByRef(ref)).rejects.toBeInstanceOf(CredentialNotFoundException);

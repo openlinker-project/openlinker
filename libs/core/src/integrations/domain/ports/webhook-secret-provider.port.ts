@@ -44,11 +44,23 @@ export interface WebhookSecretProviderPort {
 }
 
 /**
+ * Canonical credential ref prefix for per-connection webhook secrets.
+ *
+ * Exported separately from `webhookSecretRef` (#709) so the credentials-
+ * encryption migration can dispatch on `row.ref.startsWith(prefix)` against
+ * a typed constant rather than a hardcoded string literal — the migration
+ * has to identify inner-envelope writers when unwrapping them into the
+ * new outer-envelope shape, and a future helper rename must not silently
+ * skip that branch.
+ */
+export const WEBHOOK_SECRET_REF_PREFIX = 'webhook-secret:';
+
+/**
  * Canonical credential ref key for a per-connection webhook secret.
  * Defined here so both the adapter and application layer share one source of truth.
  */
 export const webhookSecretRef = (connectionId: string): string =>
-  `webhook-secret:${connectionId}`;
+  `${WEBHOOK_SECRET_REF_PREFIX}${connectionId}`;
 
 
 

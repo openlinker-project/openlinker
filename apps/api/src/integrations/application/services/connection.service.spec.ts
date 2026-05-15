@@ -124,7 +124,6 @@ describe('ConnectionService', () => {
               ref: payload.ref,
               platformType: payload.platformType,
               credentialsJson: payload.credentialsJson,
-              encrypted: false,
               createdAt: new Date(),
               updatedAt: new Date(),
             })

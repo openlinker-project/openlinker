@@ -1,14 +1,13 @@
 /**
  * AI Provider Key Service — Unit Tests
  *
- * Mocks the credentials port + credential repo + crypto. Asserts: per-provider
- * upsert+create paths encrypt and persist; clear deletes; both invalidate the
- * port for that provider only; rejecting writes for providers that don't
- * require a key.
+ * Mocks the credentials port + credential repo. Asserts: per-provider
+ * upsert+create paths persist plaintext (the repo encrypts); clear deletes;
+ * both invalidate the port for that provider only; rejecting writes for
+ * providers that don't require a key.
  *
  * @module libs/core/src/ai/application/services
  */
-import type { CryptoService } from '@openlinker/shared';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
 import { CredentialNotFoundException } from '@openlinker/core/integrations';
@@ -18,24 +17,15 @@ import { AiProviderSettingsNotApplicableError } from '../../domain/exceptions/ai
 import { AiProviderKeyService } from './ai-provider-key.service';
 
 const sampleCredential = (ref: string): IntegrationCredential =>
-  new IntegrationCredential(
-    'cred-id',
-    ref,
-    'anthropic',
-    { ciphertext: 'cipher' },
-    true,
-    new Date(),
-    new Date()
-  );
+  new IntegrationCredential('cred-id', ref, 'anthropic', { apiKey: 'plain-key' }, new Date(), new Date());
 
 describe('AiProviderKeyService', () => {
   let credentialsPort: jest.Mocked<AiProviderCredentialsPort>;
   let repository: jest.Mocked<IntegrationCredentialRepositoryPort>;
-  let crypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
   let logSpy: jest.SpyInstance;
 
   const buildService = (): AiProviderKeyService =>
-    new AiProviderKeyService(credentialsPort, repository, crypto as unknown as CryptoService);
+    new AiProviderKeyService(credentialsPort, repository);
 
   beforeEach(() => {
     credentialsPort = {
@@ -50,10 +40,6 @@ describe('AiProviderKeyService', () => {
       update: jest.fn().mockResolvedValue(sampleCredential('ai-provider:anthropic')),
       delete: jest.fn().mockResolvedValue(true),
     };
-    crypto = {
-      encrypt: jest.fn().mockReturnValue('cipher'),
-      decrypt: jest.fn(),
-    };
     logSpy = jest.spyOn(SharedLogger.prototype, 'log').mockImplementation(() => undefined);
   });
 
@@ -62,13 +48,11 @@ describe('AiProviderKeyService', () => {
   });
 
   describe('setKey', () => {
-    it('encrypts the key and updates the existing credential row when present', async () => {
+    it('updates the existing credential row with plaintext apiKey', async () => {
       await buildService().setKey('anthropic', 'plain-key', 'admin-1');
 
-      expect(crypto.encrypt).toHaveBeenCalledWith('plain-key');
       expect(repository.update).toHaveBeenCalledWith('ai-provider:anthropic', {
-        credentialsJson: { ciphertext: 'cipher' },
-        encrypted: true,
+        credentialsJson: { apiKey: 'plain-key' },
       });
       expect(repository.create).not.toHaveBeenCalled();
       expect(credentialsPort.invalidate).toHaveBeenCalledWith('anthropic');
@@ -82,8 +66,7 @@ describe('AiProviderKeyService', () => {
       expect(repository.create).toHaveBeenCalledWith({
         ref: 'ai-provider:openai',
         platformType: 'openai',
-        credentialsJson: { ciphertext: 'cipher' },
-        encrypted: true,
+        credentialsJson: { apiKey: 'plain-key' },
       });
       expect(credentialsPort.invalidate).toHaveBeenCalledWith('openai');
     });
