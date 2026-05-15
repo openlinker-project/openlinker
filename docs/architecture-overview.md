@@ -1456,10 +1456,15 @@ External System (PrestaShop)
     ▼
 WebhookController
     │
-    │ 1. Validates signature (HMAC SHA256)
-    │ 2. Checks replay protection (timestamp window)
-    │ 3. Performs deduplication (two-phase: processing → done)
-    │ 4. Publishes to event bus
+    │ 1. Validates timestamp (replay window, default 120 s — see below)
+    │ 2. Validates signature (HMAC SHA256)
+    │ 3. Postgres dedup gate: INSERT ... ON CONFLICT DO NOTHING on
+    │    webhook_deliveries (provider, connectionId, eventId) — authoritative
+    │ 4. Redis dedup (inner gate, fast-path safety net): markProcessing
+    │ 5. Publishes to event bus
+    │ 6. UPDATE webhook_deliveries row to status='published', markDone in Redis
+    │ On publish failure: DELETE the row + clearProcessing in Redis
+    │   (allows source-side retry to re-enter the gate cleanly)
     ▼
 Redis Streams: events.inbound.webhooks
     │
@@ -1483,15 +1488,17 @@ Future: Worker processes jobs
 ```
 
 **Key Design Principles**:
-- **Fast webhook processing**: Validate → enqueue → ACK (target: <100ms)
-- **At-least-once delivery**: Two-phase deduplication prevents lost events
-- **Idempotent job enqueue**: Job-level deduplication prevents duplicate sync jobs
-- **Webhook payload is not source of truth**: Triggers "pull" jobs that fetch full data via adapters
+- **Fast webhook processing**: Validate → enqueue → ACK (target: <100ms).
+- **At-least-once delivery**: Postgres-authoritative dedup (#711) prevents lost events; Redis inner gate is a fast-path safety net.
+- **Idempotent job enqueue**: Job-level deduplication prevents duplicate sync jobs.
+- **Webhook payload is not source of truth**: Triggers "pull" jobs that fetch full data via adapters.
+- **Failure-recovery (#711)**: A row inserted by the Postgres gate is DELETED if downstream publishing fails, so the source's retry can re-enter the gate. The unique constraint never permanently blocks a legitimate retry.
 
 **Security**:
-- HMAC SHA256 signature verification using raw body bytes
-- Replay protection via timestamp validation (±5 minute window)
-- Connection validation (exists, active, provider match)
+- HMAC SHA256 signature verification using raw body bytes.
+- **Replay protection** via timestamp validation (#711): default ±120 s window, env-configurable via `OL_WEBHOOK_SKEW_WINDOW_MS`, clamped to `[1 s, 300 s]`. Tighter is more secure; too tight breaks legitimate webhooks under NTP drift or load-balancer latency. Operators with stable clock-sync can tighten to 60 s; cloud-hosted deployments with cross-region NTP drift can loosen up to 300 s.
+- **Replay protection** via durable Postgres dedup (#711): the `uq_webhook_deliveries_event_key` unique constraint on `(provider, connection_id, event_id)` rejects same-event replays even if Redis is wiped or restarted between the original delivery and the replay. Failed-validation webhooks (bad signature, stale timestamp) do NOT insert a row — they're logged-only — so the unique constraint never blocks a legitimate retry of a previously-rejected event.
+- Connection validation (exists, active, provider match).
 
 **Location**: `apps/api/src/webhooks/` (Infrastructure / Inbound Adapters)
 

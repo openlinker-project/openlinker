@@ -35,8 +35,32 @@ export interface WebhookDeliveryUpsertInput {
   payload?: Record<string, unknown> | null;
 }
 
+export type WebhookDeliveryInsertResult =
+  | { isNew: true; delivery: WebhookDelivery }
+  | { isNew: false; existing: WebhookDelivery };
+
 export interface WebhookDeliveryRepositoryPort {
   upsert(input: WebhookDeliveryUpsertInput): Promise<WebhookDelivery>;
+
+  /**
+   * Authoritative dedup gate (#711). Attempts to insert a new webhook-delivery
+   * row keyed on `(provider, connectionId, eventId)`. Returns `{ isNew: false }`
+   * if the row already exists — the caller treats this as a replay and
+   * short-circuits to a 202 idempotent ack. Backed by the `uq_webhook_deliveries_event_key`
+   * unique constraint on `webhook_deliveries`.
+   */
+  insertIfNew(input: WebhookDeliveryUpsertInput): Promise<WebhookDeliveryInsertResult>;
+
+  /**
+   * Deletes a webhook-delivery row by event-key (#711). Called when downstream
+   * publishing fails after `insertIfNew` succeeded — the deletion allows the
+   * source's retry to re-enter the dedup gate cleanly. Mirrors the
+   * `clearProcessing` semantics of the Redis-side dedup service.
+   *
+   * No-op if the row doesn't exist.
+   */
+  deleteByEventKey(provider: string, connectionId: string, eventId: string): Promise<void>;
+
   findById(id: string): Promise<WebhookDelivery | null>;
   findMany(
     filters: WebhookDeliveryFilters,

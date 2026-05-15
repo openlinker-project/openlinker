@@ -313,6 +313,105 @@ describe('Webhook Ingestion Integration', () => {
         expect(ourJobs.length).toBeLessThanOrEqual(1);
       }
     });
+
+    // #711: Postgres-authoritative replay protection. Three identical signed
+    // requests within 5 s should all return 202 (idempotent ack), but only
+    // ONE row should land in `webhook_deliveries` and only ONE message should
+    // be published.
+    it('should reject replay attacks via the Postgres unique constraint (#711)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+      });
+
+      const payload = {
+        schemaVersion: 1,
+        eventId: 'replay-attack-test',
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '99999' },
+      };
+      const rawBody = Buffer.from(JSON.stringify(payload));
+      const timestamp = Date.now().toString();
+      const signature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(timestamp + '.' + rawBody.toString())
+        .digest('hex');
+
+      // Three identical replays.
+      for (let i = 0; i < 3; i++) {
+        await harness
+          .getHttp()
+          .post(`/webhooks/prestashop/${connection.id}`)
+          .set('X-OpenLinker-Timestamp', timestamp)
+          .set('X-OpenLinker-Signature', `sha256=${signature}`)
+          .send(payload)
+          .expect(202);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Assert: exactly one row in webhook_deliveries.
+      const rows = (await harness.getDataSource().query(
+        `SELECT id, status FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+        ['prestashop', connection.id, 'replay-attack-test']
+      )) as Array<{ id: string; status: string }>;
+      expect(rows).toHaveLength(1);
+      expect(['received', 'published']).toContain(rows[0].status);
+
+      // Assert: exactly one inbound webhook event in the Redis stream.
+      const redisClient = harness.getRedisClient();
+      if (!redisClient) throw new Error('Redis client not available');
+      const events = await redisClient.xRead(
+        [{ key: 'events.inbound.webhooks', id: '0' }],
+        { COUNT: 100 }
+      );
+      const publishedReplays = events?.[0]?.messages.filter(
+        (msg) => msg.message.eventId === 'replay-attack-test'
+      );
+      expect(publishedReplays?.length ?? 0).toBe(1);
+    });
+
+    // #711: tightened replay window. A 5-minute-old timestamp would have been
+    // accepted under the old 5-min default; under the new 120 s default it
+    // is rejected before any row is inserted.
+    it('should reject a stale timestamp without inserting a row (#711)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+      });
+
+      const payload = {
+        schemaVersion: 1,
+        eventId: 'stale-timestamp-test',
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '11111' },
+      };
+      const rawBody = Buffer.from(JSON.stringify(payload));
+      // 5 minutes ago — well outside the new 120s window.
+      const staleTimestamp = (Date.now() - 5 * 60 * 1000).toString();
+      const signature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(staleTimestamp + '.' + rawBody.toString())
+        .digest('hex');
+
+      await harness
+        .getHttp()
+        .post(`/webhooks/prestashop/${connection.id}`)
+        .set('X-OpenLinker-Timestamp', staleTimestamp)
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(payload)
+        .expect(401);
+
+      // Assert: no row was inserted (per plan §4.4 — failed-validation paths
+      // skip the row insert to keep the unique constraint clean for retries).
+      const rows = (await harness.getDataSource().query(
+        `SELECT id FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+        ['prestashop', connection.id, 'stale-timestamp-test']
+      )) as Array<{ id: string }>;
+      expect(rows).toHaveLength(0);
+    });
   });
 });
 
