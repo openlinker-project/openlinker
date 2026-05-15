@@ -62,6 +62,7 @@ const ALLOWLIST = new Set([
 // invariant working in both local and CI environments.
 const SKIP_DIRS = new Set([
   '.git',
+  '.claude',
   'node_modules',
   'dist',
   'build',
