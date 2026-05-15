@@ -1,8 +1,9 @@
 /**
  * Credentials AI Provider Adapter — Unit Tests
  *
- * Mocks the credential repo and ConfigService. The adapter sees plaintext
- * domain entities (encryption-at-rest lives in the repository layer, #709).
+ * Mocks `ICredentialsService` (the cross-context CRUD seam over the credential
+ * repository, #718) and `ConfigService`. The adapter sees plaintext domain
+ * entities (encryption-at-rest lives in the repository layer, #709).
  * Asserts: per-provider DB hit (returns plaintext apiKey), DB miss → env
  * fallback (warns once per provider), both missing → AiProviderKeyMissingError,
  * per-provider cache hit, invalidate(provider) clears that provider's slot,
@@ -14,7 +15,7 @@
  */
 import type { ConfigService } from '@nestjs/config';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
-import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import type { ICredentialsService } from '@openlinker/core/integrations';
 import { CredentialNotFoundException } from '@openlinker/core/integrations';
 import { IntegrationCredential } from '@openlinker/core/integrations';
 import { AiProviderKeyMissingError } from '../../domain/exceptions/ai-provider-key-missing.exception';
@@ -33,15 +34,12 @@ const dbCredential = (ref: string, apiKey: string): IntegrationCredential =>
   new IntegrationCredential('cred-id', ref, 'anthropic', { apiKey }, new Date(), new Date());
 
 describe('CredentialsAiProviderAdapter', () => {
-  let repository: jest.Mocked<IntegrationCredentialRepositoryPort>;
+  let credentials: jest.Mocked<Pick<ICredentialsService, 'getByRef'>>;
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    repository = {
+    credentials = {
       getByRef: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
     };
     warnSpy = jest.spyOn(SharedLogger.prototype, 'warn').mockImplementation(() => undefined);
   });
@@ -54,22 +52,25 @@ describe('CredentialsAiProviderAdapter', () => {
   const buildAdapter = (
     config: Record<string, string | undefined> = {}
   ): CredentialsAiProviderAdapter =>
-    new CredentialsAiProviderAdapter(repository, buildConfigService(config));
+    new CredentialsAiProviderAdapter(
+      credentials as unknown as ICredentialsService,
+      buildConfigService(config)
+    );
 
   describe('getApiKey', () => {
     it('returns the plaintext DB apiKey when present for the given provider', async () => {
-      repository.getByRef.mockResolvedValue(
+      credentials.getByRef.mockResolvedValue(
         dbCredential('ai-provider:anthropic', 'plaintext-key')
       );
 
       const result = await buildAdapter().getApiKey('anthropic');
 
       expect(result).toBe('plaintext-key');
-      expect(repository.getByRef).toHaveBeenCalledWith('ai-provider:anthropic');
+      expect(credentials.getByRef).toHaveBeenCalledWith('ai-provider:anthropic');
     });
 
     it('falls back to ConfigService env (with one-shot warning per provider) when no DB row', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
       const adapter = buildAdapter({
         ANTHROPIC_API_KEY: 'anthropic-env-key',
         OPENAI_API_KEY: 'openai-env-key',
@@ -92,7 +93,7 @@ describe('CredentialsAiProviderAdapter', () => {
     });
 
     it('throws AiProviderKeyMissingError when neither DB nor env has a key for that provider', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
       const adapter = buildAdapter();
 
       await expect(adapter.getApiKey('anthropic')).rejects.toBeInstanceOf(
@@ -101,7 +102,7 @@ describe('CredentialsAiProviderAdapter', () => {
     });
 
     it('caches the resolved key per provider and avoids re-reading the DB on the next call', async () => {
-      repository.getByRef.mockResolvedValue(
+      credentials.getByRef.mockResolvedValue(
         dbCredential('ai-provider:anthropic', 'plaintext-key')
       );
       const adapter = buildAdapter();
@@ -109,11 +110,11 @@ describe('CredentialsAiProviderAdapter', () => {
       await adapter.getApiKey('anthropic');
       await adapter.getApiKey('anthropic');
 
-      expect(repository.getByRef).toHaveBeenCalledTimes(1);
+      expect(credentials.getByRef).toHaveBeenCalledTimes(1);
     });
 
     it('re-reads the DB for that provider after invalidate(provider)', async () => {
-      repository.getByRef.mockResolvedValue(
+      credentials.getByRef.mockResolvedValue(
         dbCredential('ai-provider:anthropic', 'plaintext-key')
       );
       const adapter = buildAdapter();
@@ -122,11 +123,11 @@ describe('CredentialsAiProviderAdapter', () => {
       adapter.invalidate('anthropic');
       await adapter.getApiKey('anthropic');
 
-      expect(repository.getByRef).toHaveBeenCalledTimes(2);
+      expect(credentials.getByRef).toHaveBeenCalledTimes(2);
     });
 
     it("keeps each provider's cache slot independent — invalidating openai does not bust anthropic", async () => {
-      repository.getByRef.mockImplementation((ref: string) => {
+      credentials.getByRef.mockImplementation((ref: string) => {
         if (ref === 'ai-provider:anthropic') {
           return Promise.resolve(dbCredential('ai-provider:anthropic', 'a-plain'));
         }
@@ -140,7 +141,7 @@ describe('CredentialsAiProviderAdapter', () => {
       await adapter.getApiKey('anthropic'); // still cached
       await adapter.getApiKey('openai'); // re-read
 
-      expect(repository.getByRef).toHaveBeenCalledTimes(3);
+      expect(credentials.getByRef).toHaveBeenCalledTimes(3);
     });
 
     it('throws AiProviderSettingsNotApplicableError immediately for provider=fake', async () => {
@@ -149,13 +150,13 @@ describe('CredentialsAiProviderAdapter', () => {
       await expect(adapter.getApiKey('fake')).rejects.toBeInstanceOf(
         AiProviderSettingsNotApplicableError
       );
-      expect(repository.getByRef).not.toHaveBeenCalled();
+      expect(credentials.getByRef).not.toHaveBeenCalled();
     });
   });
 
   describe('describe', () => {
     it('reports source=db when a DB row exists', async () => {
-      repository.getByRef.mockResolvedValue(
+      credentials.getByRef.mockResolvedValue(
         dbCredential('ai-provider:anthropic', 'plaintext-key')
       );
 
@@ -167,7 +168,7 @@ describe('CredentialsAiProviderAdapter', () => {
     });
 
     it('reports source=env when DB is empty and env is set', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
 
       const view = await buildAdapter({ ANTHROPIC_API_KEY: 'env-key' }).describe('anthropic');
 
@@ -176,7 +177,7 @@ describe('CredentialsAiProviderAdapter', () => {
     });
 
     it('reports source=none when neither DB nor env is set', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
 
       expect(await buildAdapter().describe('anthropic')).toEqual({
         provider: 'anthropic',
@@ -191,13 +192,13 @@ describe('CredentialsAiProviderAdapter', () => {
       const view = await adapter.describe('fake');
 
       expect(view).toEqual({ provider: 'fake', configured: false, source: 'none' });
-      expect(repository.getByRef).not.toHaveBeenCalled();
+      expect(credentials.getByRef).not.toHaveBeenCalled();
     });
   });
 
   describe('describeAll', () => {
     it('returns a row per value in AiProviderValues', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
 
       const views = await buildAdapter().describeAll();
 
@@ -212,9 +213,12 @@ describe('CredentialsAiProviderAdapter', () => {
 
   describe('env reads use ConfigService, not process.env', () => {
     it('routes the env lookup through ConfigService.get', async () => {
-      repository.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
+      credentials.getByRef.mockRejectedValue(new CredentialNotFoundException('x'));
       const config = buildConfigService({ ANTHROPIC_API_KEY: 'env-key' });
-      const adapter = new CredentialsAiProviderAdapter(repository, config);
+      const adapter = new CredentialsAiProviderAdapter(
+        credentials as unknown as ICredentialsService,
+        config
+      );
 
       await adapter.getApiKey('anthropic');
 

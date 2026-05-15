@@ -146,23 +146,9 @@ const ALLOW_LIST = new Map([
   // (Slice 3 of #718 — content → listings.OfferMappingRepositoryPort —
   // rewired via IOfferMappingsService and dropped from this list.)
 
-  // ai → integrations.IntegrationCredentialRepositoryPort — rewire via ICredentialsService
-  [
-    'libs/core/src/ai/application/services/ai-provider-key.service.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'libs/core/src/ai/application/services/ai-provider-key.service.spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'libs/core/src/ai/infrastructure/adapters/credentials-ai-provider.adapter.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'libs/core/src/ai/infrastructure/adapters/credentials-ai-provider.adapter.spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
+  // (Slice 4 of #718 — ai → integrations.IntegrationCredentialRepositoryPort —
+  // rewired via ICredentialsService and dropped from this list. With this
+  // slice merged, the core-scope half of #718 is fully cleared.)
 
   // ─── Plugins + apps (#719) — tracked in #722 ────────────────────────
 

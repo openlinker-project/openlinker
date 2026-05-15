@@ -26,8 +26,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@openlinker/shared';
 import {
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ICredentialsService,
+  CREDENTIALS_SERVICE_TOKEN,
   CredentialNotFoundException,
 } from '@openlinker/core/integrations';
 import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
@@ -55,8 +55,8 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
   private readonly envFallbackWarned: Set<AiProvider> = new Set();
 
   constructor(
-    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository: IntegrationCredentialRepositoryPort,
+    @Inject(CREDENTIALS_SERVICE_TOKEN)
+    private readonly credentials: ICredentialsService,
     private readonly configService: ConfigService
   ) {}
 
@@ -126,7 +126,7 @@ export class CredentialsAiProviderAdapter implements AiProviderCredentialsPort {
   private async tryLoadFromDb(provider: AiProvider): Promise<string | null> {
     const ref = aiProviderCredentialsRef(provider);
     try {
-      const credential = await this.credentialRepository.getByRef(ref);
+      const credential = await this.credentials.getByRef(ref);
       const apiKey = credential.credentialsJson?.apiKey;
       if (typeof apiKey !== 'string') {
         this.logger.error(`AI provider credential ${ref} is missing an apiKey field`);

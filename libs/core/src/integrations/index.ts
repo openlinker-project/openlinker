@@ -10,6 +10,7 @@
 // Services
 export { IntegrationsService } from './application/services/integrations.service';
 export { IIntegrationsService } from './application/interfaces/integrations.service.interface';
+export { ICredentialsService } from './application/interfaces/credentials.service.interface';
 export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
