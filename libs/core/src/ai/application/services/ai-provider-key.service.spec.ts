@@ -1,7 +1,8 @@
 /**
  * AI Provider Key Service — Unit Tests
  *
- * Mocks the credentials port + credential repo. Asserts: per-provider
+ * Mocks the credentials port + `ICredentialsService` (the cross-context
+ * CRUD seam over the credential repository, #718). Asserts: per-provider
  * upsert+create paths persist plaintext (the repo encrypts); clear deletes;
  * both invalidate the port for that provider only; rejecting writes for
  * providers that don't require a key.
@@ -9,7 +10,7 @@
  * @module libs/core/src/ai/application/services
  */
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
-import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
+import type { ICredentialsService } from '@openlinker/core/integrations';
 import { CredentialNotFoundException } from '@openlinker/core/integrations';
 import { IntegrationCredential } from '@openlinker/core/integrations';
 import type { AiProviderCredentialsPort } from '../../domain/ports/ai-provider-credentials.port';
@@ -21,11 +22,11 @@ const sampleCredential = (ref: string): IntegrationCredential =>
 
 describe('AiProviderKeyService', () => {
   let credentialsPort: jest.Mocked<AiProviderCredentialsPort>;
-  let repository: jest.Mocked<IntegrationCredentialRepositoryPort>;
+  let credentials: jest.Mocked<Pick<ICredentialsService, 'create' | 'update' | 'delete'>>;
   let logSpy: jest.SpyInstance;
 
   const buildService = (): AiProviderKeyService =>
-    new AiProviderKeyService(credentialsPort, repository);
+    new AiProviderKeyService(credentialsPort, credentials as unknown as ICredentialsService);
 
   beforeEach(() => {
     credentialsPort = {
@@ -34,8 +35,7 @@ describe('AiProviderKeyService', () => {
       describeAll: jest.fn(),
       invalidate: jest.fn(),
     };
-    repository = {
-      getByRef: jest.fn(),
+    credentials = {
       create: jest.fn().mockResolvedValue(sampleCredential('ai-provider:anthropic')),
       update: jest.fn().mockResolvedValue(sampleCredential('ai-provider:anthropic')),
       delete: jest.fn().mockResolvedValue(true),
@@ -51,19 +51,19 @@ describe('AiProviderKeyService', () => {
     it('updates the existing credential row with plaintext apiKey', async () => {
       await buildService().setKey('anthropic', 'plain-key', 'admin-1');
 
-      expect(repository.update).toHaveBeenCalledWith('ai-provider:anthropic', {
+      expect(credentials.update).toHaveBeenCalledWith('ai-provider:anthropic', {
         credentialsJson: { apiKey: 'plain-key' },
       });
-      expect(repository.create).not.toHaveBeenCalled();
+      expect(credentials.create).not.toHaveBeenCalled();
       expect(credentialsPort.invalidate).toHaveBeenCalledWith('anthropic');
     });
 
     it('creates the credential row when the update path reports not-found', async () => {
-      repository.update.mockRejectedValueOnce(new CredentialNotFoundException('x'));
+      credentials.update.mockRejectedValueOnce(new CredentialNotFoundException('x'));
 
       await buildService().setKey('openai', 'plain-key', 'admin-1');
 
-      expect(repository.create).toHaveBeenCalledWith({
+      expect(credentials.create).toHaveBeenCalledWith({
         ref: 'ai-provider:openai',
         platformType: 'openai',
         credentialsJson: { apiKey: 'plain-key' },
@@ -75,8 +75,8 @@ describe('AiProviderKeyService', () => {
       await expect(buildService().setKey('fake', 'k')).rejects.toBeInstanceOf(
         AiProviderSettingsNotApplicableError
       );
-      expect(repository.update).not.toHaveBeenCalled();
-      expect(repository.create).not.toHaveBeenCalled();
+      expect(credentials.update).not.toHaveBeenCalled();
+      expect(credentials.create).not.toHaveBeenCalled();
     });
 
     it('logs a per-provider audit entry on success', async () => {
@@ -97,7 +97,7 @@ describe('AiProviderKeyService', () => {
     it('deletes the credential row and invalidates the per-provider cache', async () => {
       await buildService().clearKey('anthropic', 'admin-1');
 
-      expect(repository.delete).toHaveBeenCalledWith('ai-provider:anthropic');
+      expect(credentials.delete).toHaveBeenCalledWith('ai-provider:anthropic');
       expect(credentialsPort.invalidate).toHaveBeenCalledWith('anthropic');
     });
 

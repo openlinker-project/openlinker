@@ -13,6 +13,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '../identifier-mapping/identifier-mapping.module';
 import { AdapterRegistryService } from './infrastructure/adapters/adapter-registry.service';
 import { IntegrationsService } from './application/services/integrations.service';
+import { CredentialsService } from './application/services/credentials.service';
 import { CredentialsResolverService } from './infrastructure/credentials/credentials-resolver.service';
 import { AdapterFactoryResolverService } from './infrastructure/adapters/adapter-factory-resolver.service';
 import { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
@@ -29,6 +30,7 @@ import {
   ADAPTER_REGISTRY_TOKEN,
   INTEGRATIONS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
+  CREDENTIALS_SERVICE_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -45,6 +47,7 @@ export {
   ADAPTER_REGISTRY_TOKEN,
   INTEGRATIONS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
+  CREDENTIALS_SERVICE_TOKEN,
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -76,6 +79,7 @@ export {
     WebhookSecretService,
     CryptoService,
     IntegrationCredentialRepository,
+    CredentialsService,
     {
       provide: ADAPTER_REGISTRY_TOKEN,
       useExisting: AdapterRegistryService,
@@ -124,6 +128,10 @@ export {
       provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
       useExisting: IntegrationCredentialRepository,
     },
+    {
+      provide: CREDENTIALS_SERVICE_TOKEN,
+      useExisting: CredentialsService,
+    },
   ],
   exports: [
     ADAPTER_REGISTRY_TOKEN,
@@ -138,6 +146,7 @@ export {
     WEBHOOK_SECRET_PROVIDER_TOKEN,
     WEBHOOK_SECRET_SERVICE_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+    CREDENTIALS_SERVICE_TOKEN,
     IntegrationsService,
     CredentialsResolverService,
     AdapterFactoryResolverService,

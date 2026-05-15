@@ -16,8 +16,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared';
 import {
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ICredentialsService,
+  CREDENTIALS_SERVICE_TOKEN,
   CredentialNotFoundException,
 } from '@openlinker/core/integrations';
 import { AI_PROVIDER_CREDENTIALS_PORT_TOKEN } from '../../ai.tokens';
@@ -40,8 +40,8 @@ export class AiProviderKeyService implements IAiProviderKeyService {
   constructor(
     @Inject(AI_PROVIDER_CREDENTIALS_PORT_TOKEN)
     private readonly credentialsPort: AiProviderCredentialsPort,
-    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository: IntegrationCredentialRepositoryPort,
+    @Inject(CREDENTIALS_SERVICE_TOKEN)
+    private readonly credentials: ICredentialsService,
   ) {}
 
   describe(provider: AiProvider): Promise<AiProviderSettingsView> {
@@ -59,12 +59,12 @@ export class AiProviderKeyService implements IAiProviderKeyService {
 
     // Plaintext at this layer — the repository encrypts on write (#709).
     try {
-      await this.credentialRepository.update(ref, {
+      await this.credentials.update(ref, {
         credentialsJson: { apiKey },
       });
     } catch (error) {
       if (error instanceof CredentialNotFoundException) {
-        await this.credentialRepository.create({
+        await this.credentials.create({
           ref,
           platformType: provider,
           credentialsJson: { apiKey },
@@ -85,7 +85,7 @@ export class AiProviderKeyService implements IAiProviderKeyService {
   async clearKey(provider: AiProvider, actorUserId?: string): Promise<void> {
     this.assertProviderRequiresKey(provider);
 
-    await this.credentialRepository.delete(aiProviderCredentialsRef(provider));
+    await this.credentials.delete(aiProviderCredentialsRef(provider));
     this.credentialsPort.invalidate(provider);
 
     this.logger.log('ai_provider.clear_key', {
