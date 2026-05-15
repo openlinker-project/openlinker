@@ -107,6 +107,13 @@ before making significant changes. OpenLinker follows Hexagonal
 Architecture (Ports and Adapters); CORE and Integration packages have
 strict boundaries that contributions must respect.
 
+For non-trivial architectural changes, consider writing an Architecture
+Decision Record. See [`docs/architecture/adrs/README.md`](./docs/architecture/adrs/README.md)
+for when and how. Existing ADRs document load-bearing decisions
+(hexagonal architecture, capability ports, plugin trust model,
+identifier mapping, …) and are a useful read before proposing changes
+that touch them.
+
 ## Building a New Integration
 
 Adding a platform integration (e.g., Shopify, WooCommerce,
