@@ -16,7 +16,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RefreshToken } from '../../../domain/entities/refresh-token.entity';
 import type { RefreshTokenRepositoryPort } from '../../../domain/ports/refresh-token-repository.port';
-import type { RefreshTokenRevocationReason } from '../../../domain/types/refresh-token.types';
+import {
+  parseRefreshTokenRevocationReason,
+  type RefreshTokenRevocationReason,
+} from '../../../domain/types/refresh-token.types';
 import { RefreshTokenOrmEntity } from '../entities/refresh-token.orm-entity';
 
 @Injectable()
@@ -96,7 +99,7 @@ export class RefreshTokenRepository implements RefreshTokenRepositoryPort {
       entity.expiresAt,
       entity.rotatedFromId,
       entity.revokedAt,
-      entity.revokedReason as RefreshToken['revokedReason'],
+      parseRefreshTokenRevocationReason(entity.revokedReason),
     );
   }
 }

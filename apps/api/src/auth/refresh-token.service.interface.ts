@@ -8,17 +8,7 @@
  *
  * @module apps/api/src/auth
  */
-
-export interface IssuedRefreshToken {
-  rawToken: string;
-  expiresAt: Date;
-}
-
-export interface RotatedRefreshToken {
-  userId: string;
-  rawToken: string;
-  expiresAt: Date;
-}
+import type { IssuedRefreshToken, RotatedRefreshToken } from './refresh-token.types';
 
 export interface IRefreshTokenService {
   /**

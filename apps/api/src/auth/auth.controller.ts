@@ -49,7 +49,8 @@ import {
   PASSWORD_RESET_SERVICE_TOKEN,
 } from './password-reset.service.interface';
 import { IRefreshTokenService } from './refresh-token.service.interface';
-import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.types';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import type { RotatedRefreshToken } from './refresh-token.types';
 import {
   REFRESH_COOKIE_NAME,
   clearAuthCookies,
@@ -116,16 +117,30 @@ export class AuthController {
       throw new UnauthorizedException('Missing refresh cookie');
     }
 
+    let rotated: RotatedRefreshToken;
     try {
-      const rotated = await this.refreshTokenService.rotate(raw);
-      setRefreshCookie(res, rotated.rawToken);
-      setCsrfCookie(res);
-      const user = await this.authService.getMe(rotated.userId);
-      return this.authService.login(user);
+      rotated = await this.refreshTokenService.rotate(raw);
     } catch (error) {
       if (error instanceof RefreshTokenReuseDetectedException) {
         clearAuthCookies(res);
         throw new UnauthorizedException(error.message);
+      }
+      throw error;
+    }
+
+    // Rotation succeeded server-side. If the user was deleted between the
+    // previous token issuance and now, `getMe` throws UnauthorizedException —
+    // we must revoke the just-issued successor (DB orphan + no browser cookie
+    // ever set) and clear cookies so the SPA lands on /login.
+    try {
+      const user = await this.authService.getMe(rotated.userId);
+      setRefreshCookie(res, rotated.rawToken);
+      setCsrfCookie(res);
+      return this.authService.login(user);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.refreshTokenService.revoke(rotated.rawToken);
+        clearAuthCookies(res);
       }
       throw error;
     }

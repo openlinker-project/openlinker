@@ -29,8 +29,8 @@ broader path widens the exfiltration surface only marginally — see
 
 ## SameSite policy
 
-- **Production (`NODE_ENV=production`)** — `SameSite=Strict; Secure`.
-  Blocks cookies on any cross-origin navigation.
+- **Production (`NODE_ENV=production`)** — `SameSite=Strict; Secure`
+  by default. Blocks cookies on any cross-origin navigation.
 - **Dev / test (`NODE_ENV !== 'production'`)** — `SameSite=Lax`,
   `Secure` off. Required because the SPA at `http://localhost:5173`
   makes cross-origin requests to the API at `http://localhost:3000`.
@@ -41,6 +41,24 @@ The CSRF guard contract (`ol_csrf` cookie value equals
 `X-CSRF-Token` header) is identical under both modes, so the
 int-spec under `NODE_ENV=test` covers the same code path that ships
 to production.
+
+### Cross-origin prod deployments — `OL_COOKIE_SAMESITE`
+
+`SameSite=Strict` is incompatible with deployments where the FE and
+API live on different origins (e.g. `app.example.com` →
+`api.example.com`): the browser drops the cookie on every
+cross-origin fetch, so `/auth/refresh` never receives `ol_refresh`
+and silently fails. If your prod deploy is cross-origin, set
+`OL_COOKIE_SAMESITE=lax` explicitly. Defense-in-depth in that
+configuration leans on the CSRF double-submit guard and the
+`OL_CORS_ORIGIN` allow-list — both still enforced.
+
+| `OL_COOKIE_SAMESITE` | Effect |
+|---|---|
+| unset (default)      | `strict` in prod, `lax` everywhere else. |
+| `strict`             | Force strict in every env. Use only when FE + API share the registrable domain. |
+| `lax`                | Force lax in every env. Required for cross-origin prod deployments. |
+| `none`               | Allow cross-site cookie sends. **Requires `Secure`** — the API does not auto-add `Secure`, so you must run behind TLS, otherwise the browser drops the cookie. |
 
 ## CORS
 
@@ -123,6 +141,7 @@ returns 401 + the SPA redirects to login.
 | `JWT_SECRET`           | (required)               | HS256 signing key for access tokens.                           |
 | `JWT_EXPIRES_IN`       | `15m`                    | Access-token TTL. Override only with a clear threat-model PR.  |
 | `OL_CORS_ORIGIN`       | `http://localhost:5173`  | Comma-separated allow-list. Production must set explicitly.    |
+| `OL_COOKIE_SAMESITE`   | unset                    | Force `strict` / `lax` / `none`. Defaults to strict-in-prod, lax-elsewhere. Set to `lax` for cross-origin prod (FE host ≠ API host). |
 
 Refresh-token TTL is hard-coded at 14 days in
 `apps/api/src/auth/refresh-token.types.ts` (`REFRESH_TOKEN_TTL_MS`)

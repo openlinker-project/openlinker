@@ -20,11 +20,25 @@ export const AUTH_COOKIE_PATH = '/auth';
 
 const isProd = (): boolean => process.env.NODE_ENV === 'production';
 
+// Read the SameSite policy from env so cross-origin prod deploys
+// (FE on app.example.com, API on api.example.com) can opt down to
+// 'lax' explicitly without code changes — the cookie would otherwise
+// be silently dropped on every /auth/refresh from a different origin.
+// Defaults: 'strict' in prod, 'lax' in dev/test. 'none' requires
+// `Secure` per the CORS spec; we don't auto-add it because operators
+// running 'none' deserve to see the explicit error if their TLS chain
+// is missing.
+function resolveSameSite(): 'strict' | 'lax' | 'none' {
+  const raw = process.env.OL_COOKIE_SAMESITE?.toLowerCase();
+  if (raw === 'strict' || raw === 'lax' || raw === 'none') return raw;
+  return isProd() ? 'strict' : 'lax';
+}
+
 function refreshCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     secure: isProd(),
-    sameSite: isProd() ? 'strict' : 'lax',
+    sameSite: resolveSameSite(),
     path: AUTH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
   };
@@ -35,7 +49,7 @@ function csrfCookieOptions(): CookieOptions {
   return {
     httpOnly: false,
     secure: isProd(),
-    sameSite: isProd() ? 'strict' : 'lax',
+    sameSite: resolveSameSite(),
     path: AUTH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
   };

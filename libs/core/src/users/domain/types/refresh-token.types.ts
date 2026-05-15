@@ -17,3 +17,21 @@ export const RefreshTokenRevocationReasonValues = [
 
 export type RefreshTokenRevocationReason =
   (typeof RefreshTokenRevocationReasonValues)[number];
+
+/**
+ * Narrow a raw `revoked_reason` column value into the domain union.
+ * Repositories call this on the persistence boundary so the domain
+ * entity never holds a stringly-typed reason. Throws if the DB row
+ * has a value outside the documented set — that signals data
+ * corruption (manual edit / unrecognised migration) and should fail
+ * loud rather than silently shape an invalid domain object.
+ */
+export function parseRefreshTokenRevocationReason(
+  value: string | null,
+): RefreshTokenRevocationReason | null {
+  if (value === null) return null;
+  if ((RefreshTokenRevocationReasonValues as readonly string[]).includes(value)) {
+    return value as RefreshTokenRevocationReason;
+  }
+  throw new Error(`Invalid refresh_tokens.revoked_reason: ${value}`);
+}

@@ -24,7 +24,7 @@ import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
 import { RefreshTokenService } from './refresh-token.service';
-import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.types';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 
 @Module({
   imports: [

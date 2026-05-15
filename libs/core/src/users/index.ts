@@ -27,6 +27,7 @@ export {
 export type { UserRole, Permission } from './domain/types/role.types';
 export {
   RefreshTokenRevocationReasonValues,
+  parseRefreshTokenRevocationReason,
 } from './domain/types/refresh-token.types';
 export type { RefreshTokenRevocationReason } from './domain/types/refresh-token.types';
 

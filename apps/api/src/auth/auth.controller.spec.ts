@@ -26,7 +26,7 @@ import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
-import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.types';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { REFRESH_COOKIE_NAME } from './auth.cookies';
 
 const makeUser = (): User =>
@@ -174,6 +174,31 @@ describe('AuthController', () => {
         ),
       ).rejects.toThrow(UnauthorizedException);
       expect(res.clearCookie).toHaveBeenCalledTimes(2);
+    });
+
+    it('revokes the orphan + clears cookies when getMe fails after a successful rotation', async () => {
+      const res = makeMockResponse();
+      refreshTokenService.rotate.mockResolvedValue({
+        userId: 'user-uuid-123',
+        rawToken: 'orphan-successor',
+        expiresAt: new Date(),
+      });
+      authService.getMe.mockRejectedValue(new UnauthorizedException('User no longer exists'));
+
+      await expect(
+        controller.refresh(
+          makeReq('presented-token') as unknown as Request & {
+            cookies?: Record<string, string | undefined>;
+          },
+          res as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(refreshTokenService.revoke).toHaveBeenCalledWith('orphan-successor');
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      // Cookies must NOT be set when the user is gone — the browser would
+      // otherwise store a refresh cookie pointing at a useless DB row.
+      expect(res.cookie).not.toHaveBeenCalled();
     });
   });
 

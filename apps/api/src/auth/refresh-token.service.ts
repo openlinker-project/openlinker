@@ -25,12 +25,12 @@ import {
   REFRESH_TOKEN_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import { RefreshTokenRepositoryPort } from '@openlinker/core/users';
-import type {
-  IRefreshTokenService,
-  IssuedRefreshToken,
-  RotatedRefreshToken,
-} from './refresh-token.service.interface';
-import { REFRESH_TOKEN_TTL_MS } from './refresh-token.types';
+import type { IRefreshTokenService } from './refresh-token.service.interface';
+import {
+  REFRESH_TOKEN_TTL_MS,
+  type IssuedRefreshToken,
+  type RotatedRefreshToken,
+} from './refresh-token.types';
 
 function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
