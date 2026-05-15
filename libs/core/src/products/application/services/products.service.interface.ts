@@ -48,10 +48,37 @@ export interface IProductsService {
   getProduct(id: string): Promise<Product | null>;
 
   /**
+   * Batch product lookup by internal id. Missing ids are silently dropped
+   * (no null fillers) — caller maps results by `product.id` if presence
+   * matters. Empty input returns `[]` without a DB round-trip; consumers
+   * don't need a length guard before calling.
+   */
+  getProductsByIds(ids: string[]): Promise<Product[]>;
+
+  /**
    * Get a single product variant by internal ID. Returns null when no row
    * matches; the caller decides between 404 and a soft fallback.
    */
   getVariant(id: string): Promise<ProductVariant | null>;
+
+  /**
+   * Variant lookup by SKU list. Used by offer-mapping reconciliation flows
+   * to resolve marketplace external-refs / SKUs back to internal variants.
+   * Empty input returns `[]` without a DB round-trip.
+   */
+  getVariantsBySkus(skus: string[]): Promise<ProductVariant[]>;
+
+  /**
+   * Variant lookup by EAN or GTIN list, scoped to a master-catalog
+   * connection. The connection scope ensures variants on a different
+   * master tenant don't collide on the same barcode. Empty input returns
+   * `[]` without a DB round-trip.
+   */
+  getVariantsByBarcodes(
+    connectionId: string,
+    values: string[],
+    field: 'ean' | 'gtin'
+  ): Promise<ProductVariant[]>;
 
   /**
    * List products with optional filters and pagination

@@ -11,12 +11,16 @@
 import { InventoryQueryService } from '../inventory-query.service';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
-import type { Product, ProductRepositoryPort } from '@openlinker/core/products';
+import type { IProductsService, Product } from '@openlinker/core/products';
+
+// Only the two products-service methods the SUT actually calls — keeps the
+// mock surface tight per #718 review.
+type ProductsServiceMock = Pick<IProductsService, 'getProduct' | 'getProductsByIds'>;
 
 describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
   let inventoryRepository: jest.Mocked<InventoryRepositoryPort>;
-  let productRepository: jest.Mocked<ProductRepositoryPort>;
+  let productsService: jest.Mocked<ProductsServiceMock>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -73,17 +77,21 @@ describe('InventoryQueryService', () => {
       findMany: jest.fn(),
     };
 
-    productRepository = {
-      findById: jest.fn(),
-    } as unknown as jest.Mocked<ProductRepositoryPort>;
+    productsService = {
+      getProduct: jest.fn(),
+      getProductsByIds: jest.fn(),
+    };
 
-    service = new InventoryQueryService(inventoryRepository, productRepository);
+    service = new InventoryQueryService(
+      inventoryRepository,
+      productsService as unknown as IProductsService,
+    );
   });
 
   describe('listInventoryItems', () => {
     it('composes product details onto each item', async () => {
       inventoryRepository.findMany.mockResolvedValue({ items: [itemA], total: 1 });
-      productRepository.findById.mockResolvedValue(product1);
+      productsService.getProductsByIds.mockResolvedValue([product1]);
 
       const result = await service.listInventoryItems({}, { limit: 20, offset: 0 });
 
@@ -97,19 +105,19 @@ describe('InventoryQueryService', () => {
       });
     });
 
-    it('deduplicates product lookups when items share a productId', async () => {
+    it('deduplicates product lookups via getProductsByIds when items share a productId', async () => {
       inventoryRepository.findMany.mockResolvedValue({ items: [itemA, itemB], total: 2 });
-      productRepository.findById.mockResolvedValue(product1);
+      productsService.getProductsByIds.mockResolvedValue([product1]);
 
       await service.listInventoryItems({}, { limit: 20, offset: 0 });
 
-      expect(productRepository.findById).toHaveBeenCalledTimes(1);
-      expect(productRepository.findById).toHaveBeenCalledWith('prod-1');
+      expect(productsService.getProductsByIds).toHaveBeenCalledTimes(1);
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['prod-1']);
     });
 
-    it('returns product: null on each view when the product lookup returns null', async () => {
+    it('returns product: null on each view when the product lookup returns []', async () => {
       inventoryRepository.findMany.mockResolvedValue({ items: [itemA, itemB], total: 2 });
-      productRepository.findById.mockResolvedValue(null);
+      productsService.getProductsByIds.mockResolvedValue([]);
 
       const result = await service.listInventoryItems({}, { limit: 20, offset: 0 });
 
@@ -120,6 +128,7 @@ describe('InventoryQueryService', () => {
 
     it('passes filters and pagination through to the repository unchanged', async () => {
       inventoryRepository.findMany.mockResolvedValue({ items: [], total: 0 });
+      productsService.getProductsByIds.mockResolvedValue([]);
 
       await service.listInventoryItems(
         { productId: 'prod-1', productVariantId: 'var-a', locationId: 'loc-1' },
@@ -134,12 +143,13 @@ describe('InventoryQueryService', () => {
 
     it('returns an empty view when the repository returns no items', async () => {
       inventoryRepository.findMany.mockResolvedValue({ items: [], total: 0 });
+      productsService.getProductsByIds.mockResolvedValue([]);
 
       const result = await service.listInventoryItems({}, { limit: 20, offset: 0 });
 
       expect(result.items).toEqual([]);
       expect(result.total).toBe(0);
-      expect(productRepository.findById).not.toHaveBeenCalled();
+      // getProductsByIds short-circuits internally on [], but the call is fine either way.
     });
 
     it('preserves repository.findMany ordering after composition', async () => {
@@ -149,11 +159,7 @@ describe('InventoryQueryService', () => {
         items: [itemC, itemA, itemB],
         total: 3,
       });
-      productRepository.findById.mockImplementation((id: string) => {
-        if (id === 'prod-1') return Promise.resolve(product1);
-        if (id === 'prod-2') return Promise.resolve(product2);
-        return Promise.resolve(null);
-      });
+      productsService.getProductsByIds.mockResolvedValue([product1, product2]);
 
       const result = await service.listInventoryItems({}, { limit: 20, offset: 0 });
 
@@ -164,7 +170,7 @@ describe('InventoryQueryService', () => {
   describe('getInventoryItem', () => {
     it('composes product details when both item and product exist', async () => {
       inventoryRepository.findById.mockResolvedValue(itemA);
-      productRepository.findById.mockResolvedValue(product1);
+      productsService.getProduct.mockResolvedValue(product1);
 
       const result = await service.getInventoryItem('inv-a');
 
@@ -175,6 +181,7 @@ describe('InventoryQueryService', () => {
         sku: 'SKU-1',
         coverImageUrl: 'https://shop.test/img/1/cover.jpg',
       });
+      expect(productsService.getProduct).toHaveBeenCalledWith('prod-1');
     });
 
     it('returns null when the inventory item does not exist and skips the product lookup', async () => {
@@ -183,12 +190,12 @@ describe('InventoryQueryService', () => {
       const result = await service.getInventoryItem('missing');
 
       expect(result).toBeNull();
-      expect(productRepository.findById).not.toHaveBeenCalled();
+      expect(productsService.getProduct).not.toHaveBeenCalled();
     });
 
     it('returns a view with product: null when the item exists but the product lookup returns null', async () => {
       inventoryRepository.findById.mockResolvedValue(itemA);
-      productRepository.findById.mockResolvedValue(null);
+      productsService.getProduct.mockResolvedValue(null);
 
       const result = await service.getInventoryItem('inv-a');
 

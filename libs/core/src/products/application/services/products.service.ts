@@ -72,8 +72,27 @@ export class ProductsService implements IProductsService {
     return this.productRepository.findById(id);
   }
 
+  async getProductsByIds(ids: string[]): Promise<Product[]> {
+    if (ids.length === 0) return [];
+    return this.productRepository.findByIds(ids);
+  }
+
   async getVariant(id: string): Promise<ProductVariant | null> {
     return this.variantRepository.findById(id);
+  }
+
+  async getVariantsBySkus(skus: string[]): Promise<ProductVariant[]> {
+    if (skus.length === 0) return [];
+    return this.variantRepository.findBySkuIn(skus);
+  }
+
+  async getVariantsByBarcodes(
+    connectionId: string,
+    values: string[],
+    field: 'ean' | 'gtin'
+  ): Promise<ProductVariant[]> {
+    if (values.length === 0) return [];
+    return this.variantRepository.findByEanOrGtinIn(connectionId, values, field);
   }
 
   async listProducts(

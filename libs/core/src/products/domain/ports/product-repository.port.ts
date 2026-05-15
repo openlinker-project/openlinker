@@ -33,6 +33,19 @@ export interface ProductRepositoryPort {
   findById(id: string): Promise<Product | null>;
 
   /**
+   * Batch product lookup by internal-id list. Missing ids are silently
+   * dropped (no null fillers) — caller maps results by `product.id` if
+   * presence matters.
+   *
+   * Implementations MUST short-circuit on `ids.length === 0` and return
+   * `[]` without a storage round-trip. Consumers (incl. the in-memory
+   * fake adapter at `@openlinker/core/products/testing`, when added)
+   * rely on this contract; calling repositories with empty arrays is a
+   * legitimate code path through `IProductsService.getProductsByIds`.
+   */
+  findByIds(ids: string[]): Promise<Product[]>;
+
+  /**
    * Find products matching filters with offset pagination.
    * Results are ordered by createdAt DESC.
    */

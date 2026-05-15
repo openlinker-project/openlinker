@@ -73,43 +73,8 @@ const VALID_EXTS = new Set(['.ts', '.tsx']);
  * together when #718 lands its corresponding PR.
  */
 const ALLOW_LIST = new Map([
-  // inventory → products.ProductRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/inventory/application/services/inventory-query.service.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-  [
-    'libs/core/src/inventory/application/services/__tests__/inventory-query.service.spec.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-
-  // orders → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/orders/application/services/order-item-ref-resolver.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/orders/application/services/__tests__/order-item-ref-resolver.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-
-  // listings → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/listings/application/services/offer-mapping-sync.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-mapping-sync.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/offer-builder.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-builder.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
+  // (Slice 1 of #718 — products repository-port callers — rewired via
+  // IProductsService and dropped from this list. See PR for #718.)
 
   // listings → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
   [

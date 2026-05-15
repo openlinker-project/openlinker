@@ -11,8 +11,8 @@ import type { ConnectionPort, Connection } from '@openlinker/core/identifier-map
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
-import type { ProductVariant, ProductVariantRepositoryPort } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
 import { OfferBuilderService } from '../offer-builder.service';
 import { CATEGORY_RESOLUTION_SERVICE_TOKEN } from '../../../listings.tokens';
@@ -22,7 +22,7 @@ import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/e
 
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
-  let variantRepo: jest.Mocked<Pick<ProductVariantRepositoryPort, 'findById'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
@@ -49,7 +49,7 @@ describe('OfferBuilderService', () => {
   };
 
   beforeEach(async () => {
-    variantRepo = { findById: jest.fn().mockResolvedValue(defaultVariant) };
+    productsService = { getVariant: jest.fn().mockResolvedValue(defaultVariant) };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
     };
@@ -78,7 +78,7 @@ describe('OfferBuilderService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OfferBuilderService,
-        { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: variantRepo },
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -97,7 +97,7 @@ describe('OfferBuilderService', () => {
         publishImmediately: true,
       });
 
-      expect(variantRepo.findById).toHaveBeenCalledWith(VARIANT_ID);
+      expect(productsService.getVariant).toHaveBeenCalledWith(VARIANT_ID);
       expect(connectionPort.get).toHaveBeenCalledWith(MARKETPLACE_CONN_ID);
       expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
         MASTER_CONN_ID,
@@ -141,7 +141,7 @@ describe('OfferBuilderService', () => {
     });
 
     it('throws OfferBuilderValidationException when no barcode and no override', async () => {
-      variantRepo.findById.mockResolvedValue({
+      productsService.getVariant.mockResolvedValue({
         ...(defaultVariant as unknown as Record<string, unknown>),
         ean: undefined,
         gtin: undefined,
@@ -175,7 +175,7 @@ describe('OfferBuilderService', () => {
 
   describe('variant and connection lookup', () => {
     it('throws OfferBuilderValidationException when variant is missing', async () => {
-      variantRepo.findById.mockResolvedValue(null);
+      productsService.getVariant.mockResolvedValue(null);
 
       await expect(
         service.buildCreateOfferCommand({
