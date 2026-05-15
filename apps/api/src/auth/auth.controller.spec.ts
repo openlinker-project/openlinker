@@ -108,6 +108,10 @@ describe('AuthController', () => {
       const cookieNames = res.cookie.mock.calls.map((call) => call[0]);
       expect(cookieNames).toContain(REFRESH_COOKIE_NAME);
       expect(cookieNames).toContain('ol_csrf');
+      // setCsrfCookie proactively clears the stale /auth-scoped ol_csrf (#748)
+      // before re-issuing the /-scoped one, so users from the buggy window
+      // recover on their next login without needing to clear cookies manually.
+      expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
     });
 
     it('throws UnauthorizedException when credentials are invalid and skips cookie set', async () => {
@@ -148,6 +152,8 @@ describe('AuthController', () => {
       expect(refreshTokenService.rotate).toHaveBeenCalledWith('presented-token');
       expect(result.access_token).toBe('test-jwt-token');
       expect(res.cookie).toHaveBeenCalledTimes(2);
+      // Migration cleanup also fires on every successful refresh (#748).
+      expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
     });
 
     it('throws 401 when the cookie is missing', async () => {

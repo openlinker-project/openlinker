@@ -72,6 +72,15 @@ export function setRefreshCookie(res: Response, rawToken: string): void {
 
 export function setCsrfCookie(res: Response): string {
   const csrf = randomBytes(32).toString('hex');
+  // Migration cleanup: drop any stale ol_csrf left over at /auth from the
+  // pre-#748 window before re-issuing the new /-scoped one. Without this,
+  // /auth/refresh receives Cookie: ol_csrf=<stale>; ol_csrf=<new> (longer
+  // path first per RFC 6265 §5.4), cookie-parser keeps the first value, and
+  // CsrfGuard compares <stale> against the SPA's mirrored <new> → 403. Has
+  // to run on every successful login/refresh — clearAuthCookies (logout
+  // only) isn't enough because affected users never reach logout while
+  // they're being silently bounced to /auth/login.
+  res.clearCookie(CSRF_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   res.cookie(CSRF_COOKIE_NAME, csrf, csrfCookieOptions());
   return csrf;
 }
