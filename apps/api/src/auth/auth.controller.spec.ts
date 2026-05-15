@@ -108,6 +108,10 @@ describe('AuthController', () => {
       const cookieNames = res.cookie.mock.calls.map((call) => call[0]);
       expect(cookieNames).toContain(REFRESH_COOKIE_NAME);
       expect(cookieNames).toContain('ol_csrf');
+      // setCsrfCookie proactively clears the stale /auth-scoped ol_csrf (#748)
+      // before re-issuing the /-scoped one, so users from the buggy window
+      // recover on their next login without needing to clear cookies manually.
+      expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
     });
 
     it('throws UnauthorizedException when credentials are invalid and skips cookie set', async () => {
@@ -148,6 +152,8 @@ describe('AuthController', () => {
       expect(refreshTokenService.rotate).toHaveBeenCalledWith('presented-token');
       expect(result.access_token).toBe('test-jwt-token');
       expect(res.cookie).toHaveBeenCalledTimes(2);
+      // Migration cleanup also fires on every successful refresh (#748).
+      expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
     });
 
     it('throws 401 when the cookie is missing', async () => {
@@ -173,7 +179,8 @@ describe('AuthController', () => {
           res as unknown as Response,
         ),
       ).rejects.toThrow(UnauthorizedException);
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      // 3 = ol_refresh @ /auth, ol_csrf @ /, ol_csrf @ /auth migration cleanup (#748).
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 
     it('revokes the orphan + clears cookies when getMe fails after a successful rotation', async () => {
@@ -195,7 +202,7 @@ describe('AuthController', () => {
       ).rejects.toThrow(UnauthorizedException);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('orphan-successor');
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
       // Cookies must NOT be set when the user is gone — the browser would
       // otherwise store a refresh cookie pointing at a useless DB row.
       expect(res.cookie).not.toHaveBeenCalled();
@@ -212,7 +219,7 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('token-to-revoke');
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 
     it('does not invoke revoke when no cookie is present, still clears cookies', async () => {
@@ -224,7 +231,7 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).not.toHaveBeenCalled();
-      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
   });
 

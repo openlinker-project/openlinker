@@ -115,6 +115,12 @@ describe('Auth Refresh Integration (#710)', () => {
       expect(refreshLine).toMatch(/Path=\/auth/);
       expect(csrfLine).toBeDefined();
       expect(csrfLine).not.toMatch(/HttpOnly/i); // SPA must read this
+      // ol_csrf MUST be at Path=/ — document.cookie only exposes cookies whose
+      // Path prefixes the current document URL, so scoping ol_csrf to /auth
+      // would make readCsrfCookie() return null on every SPA route outside
+      // /auth/* and break silent refresh on full-page reload. See #748.
+      expect(csrfLine).toMatch(/Path=\/(;|$)/);
+      expect(csrfLine).not.toMatch(/Path=\/auth/);
     });
   });
 
