@@ -5,9 +5,10 @@
  * Lint-time invariant for the cross-context coupling policy documented at
  * docs/architecture-overview.md § Cross-context dependencies in core.
  *
- * Rule. Inside `libs/core/src/<ctx>/**`, when a file imports from
- * `@openlinker/core/<other-ctx>` (i.e. across a context boundary), the
- * imported symbols MUST be on the published-contract surface:
+ * Rule. When a file imports from `@openlinker/core/<ctx>` and the file
+ * is in a scope this script walks (`libs/core/src/<ctx>/**`,
+ * `libs/integrations/**`, `apps/{api,worker}/**`), the imported symbols
+ * MUST be on the published-contract surface:
  *
  *   - `I*Service` service interfaces                  (e.g. IIntegrationsService)
  *   - `is*` capability type-guards                    (e.g. isOfferCreator)
@@ -34,17 +35,28 @@
  * governed by separate ESLint rules in `.eslintrc.js` and are out of
  * scope here.
  *
- * Scope. Today the rule applies to `libs/core/src/<ctx>/**` only — that
- * matches the audit. Extending the same gate to `libs/integrations/**`
- * and `apps/{api,worker}/src/**` is tracked in #719.
+ * Scope. The walker descends into:
+ *   - `libs/core/src/<ctx>/**`                  (#713/#721)
+ *   - `libs/integrations/<plugin>/**`           (#719)
+ *   - `apps/{api,worker}/**` (src + test)       (#719)
  *
- * Allow-list. Pre-existing cross-context repository-port couplings
- * (10 production files + 10 spec mocks = 20 (file, symbol) entries) are
+ * Same-context skip applies ONLY when the importer is under
+ * `libs/core/src/<ctx>/` — plugins and host apps have no "context" they
+ * could match against, so every `@openlinker/core/<ctx>` import from
+ * those scopes is by definition cross-context and is always checked.
+ *
+ * `libs/plugin-sdk/src/**` is out of scope today (no current violations);
+ * extending the walker if a violation surfaces is a one-line change.
+ *
+ * Allow-list. Pre-existing cross-context repository-port couplings are
  * allow-listed here BY (file, symbol) pair until they're rewired through
- * the proper service-interface seam. Tracked in #718. Allow-listing a
- * path only silences the specific repository-port name listed against
- * it — any new deny-pattern import added to the same file still fails
- * the build. When a rewire ships, drop its entries together.
+ * the proper service-interface seam:
+ *   - Core-to-core entries → tracked in #718.
+ *   - Plugin + app entries → tracked in #722 (filed alongside #719).
+ * Allow-listing a path only silences the specific repository-port name
+ * listed against it — any new deny-pattern import added to the same
+ * file still fails the build. When a rewire ships, drop its entries
+ * together.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
@@ -53,7 +65,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = join(__dirname, '..');
-const coreSrc = join(repoRoot, 'libs', 'core', 'src');
+
+/**
+ * Directory roots the walker descends into. Each entry is a path-segment
+ * tuple resolved against `repoRoot`. Same-context skip applies only to
+ * files under `libs/core/src/` (see `importerScope` below).
+ */
+const WALKER_ROOTS = [
+  ['libs', 'core', 'src'],
+  ['libs', 'integrations'],
+  ['apps', 'api'],
+  ['apps', 'worker'],
+];
 
 const SKIP_DIRS = new Set([
   'node_modules',
@@ -70,9 +93,12 @@ const VALID_EXTS = new Set(['.ts', '.tsx']);
  * port name on a single file. New deny-pattern imports added to one of
  * these files still fail the build — the gate is the specific name, not
  * the path. Grouped by rewire target so each rewire's entries drop
- * together when #718 lands its corresponding PR.
+ * together when its corresponding PR lands (core-scope: #718; plugin +
+ * app scope: #722).
  */
 const ALLOW_LIST = new Map([
+  // ─── Core-scope (#713/#721) — tracked in #718 ───────────────────────
+
   // inventory → products.ProductRepositoryPort — rewire via IProductsService
   [
     'libs/core/src/inventory/application/services/inventory-query.service.ts',
@@ -165,6 +191,226 @@ const ALLOW_LIST = new Map([
   [
     'libs/core/src/orders/application/services/__tests__/order-ingestion.service.spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
+  ],
+
+  // ─── Plugins + apps (#719) — tracked in #722 ────────────────────────
+
+  // apps → users.UserRepositoryPort — rewire via IUsersService
+  ['apps/api/src/auth/auth.service.ts', new Set(['UserRepositoryPort'])],
+  ['apps/api/src/auth/auth.service.spec.ts', new Set(['UserRepositoryPort'])],
+  ['apps/api/src/auth/bootstrap-admin.service.ts', new Set(['UserRepositoryPort'])],
+  ['apps/api/src/auth/bootstrap-admin.service.spec.ts', new Set(['UserRepositoryPort'])],
+
+  // apps → users.PasswordResetTokenRepositoryPort + UserRepositoryPort — rewire via IUsersService
+  [
+    'apps/api/src/auth/password-reset.service.ts',
+    new Set(['PasswordResetTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/password-reset.service.spec.ts',
+    new Set(['PasswordResetTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+
+  // apps → users.RefreshTokenRepositoryPort — rewire via IUsersService
+  ['apps/api/src/auth/refresh-token.service.ts', new Set(['RefreshTokenRepositoryPort'])],
+  ['apps/api/src/auth/refresh-token.service.spec.ts', new Set(['RefreshTokenRepositoryPort'])],
+
+  // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
+  ['apps/api/src/integrations/http/connection.controller.ts', new Set(['SyncJobRepositoryPort'])],
+  [
+    'apps/api/src/integrations/http/connection.controller.spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  ['apps/api/src/sync/http/sync.controller.ts', new Set(['SyncJobRepositoryPort'])],
+  ['apps/api/src/sync/http/sync.controller.spec.ts', new Set(['SyncJobRepositoryPort'])],
+  ['apps/worker/src/sync/job-intake.consumer.ts', new Set(['SyncJobRepositoryPort'])],
+  [
+    'apps/worker/src/sync/__tests__/job-intake.consumer.spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  ['apps/worker/src/sync/sync-job.runner.ts', new Set(['SyncJobRepositoryPort'])],
+  ['apps/worker/src/sync/__tests__/sync-job.runner.spec.ts', new Set(['SyncJobRepositoryPort'])],
+  [
+    'apps/worker/test/integration/allegro-offer-quantity-update-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/job-intake-execution.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/marketplace-offers-sync-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/master-inventory-sync-all-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/product-sync-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+
+  // apps + worker → sync.ConnectionCursorRepositoryPort — rewire via ISyncCursorsService
+  ['apps/api/src/cursors/http/cursors.controller.ts', new Set(['ConnectionCursorRepositoryPort'])],
+  [
+    'apps/api/src/cursors/http/cursors.controller.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  ['apps/api/src/integrations/http/allegro.controller.ts', new Set(['ConnectionCursorRepositoryPort'])],
+  [
+    'apps/api/src/integrations/http/allegro.controller.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/src/sync/handlers/marketplace-offers-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/src/sync/handlers/__tests__/marketplace-offers-sync.handler.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+
+  // worker → sync.{SyncJobRepositoryPort + ConnectionCursorRepositoryPort} — rewire via ISyncJobsService + ISyncCursorsService
+  [
+    'apps/worker/test/integration/allegro-cursor-persistence.int-spec.ts',
+    new Set(['SyncJobRepositoryPort', 'ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-order-sync-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort', 'ConnectionCursorRepositoryPort']),
+  ],
+
+  // apps → webhooks.WebhookDeliveryRepositoryPort — rewire via IWebhooksService
+  [
+    'apps/api/src/webhooks/application/handlers/webhook-to-job.handler.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+  [
+    'apps/api/src/webhooks/application/services/webhook-delivery-query.service.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+  [
+    'apps/api/src/webhooks/application/services/__tests__/webhook-delivery-query.service.spec.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+  [
+    'apps/api/src/webhooks/application/services/webhook.service.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+  [
+    'apps/api/src/webhooks/application/services/webhook.service.spec.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+
+  // apps + plugin → integrations.IntegrationCredentialRepositoryPort — rewire via ICredentialsService
+  [
+    'apps/api/src/integrations/application/services/allegro-oauth.service.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/allegro-oauth.service.spec.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/connection.service.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/connection.service.spec.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/ai-provider-settings.int-spec.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/connection-credentials.int-spec.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'libs/integrations/allegro/src/allegro-integration.module.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+  [
+    'libs/integrations/allegro/src/infrastructure/token-refresh/allegro-token-refresh.service.ts',
+    new Set(['IntegrationCredentialRepositoryPort']),
+  ],
+
+  // apps + plugin → customers.CustomerProjectionRepositoryPort — rewire via ICustomersService
+  [
+    'apps/api/src/customers/http/customers.controller.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'apps/api/src/customers/http/customers.controller.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-masked-email-identity.int-spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/prestashop-plugin.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/__tests__/prestashop-plugin.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/application/prestashop-adapter.factory.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/prestashop-integration.module.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/infrastructure/adapters/__tests__/prestashop-order-processor-manager.adapter.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/infrastructure/provisioners/prestashop-address-provisioner.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/prestashop/src/infrastructure/provisioners/__tests__/prestashop-address-provisioner.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+
+  // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService
+  ['apps/api/src/orders/http/orders.controller.ts', new Set(['OrderRecordRepositoryPort'])],
+  ['apps/api/src/orders/http/orders.controller.spec.ts', new Set(['OrderRecordRepositoryPort'])],
+  [
+    'apps/api/test/integration/order-record-attempts.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+
+  // apps → products.{ProductRepositoryPort, ProductVariantRepositoryPort} — rewire via IProductsService
+  ['apps/api/test/integration/products-read.int-spec.ts', new Set(['ProductRepositoryPort'])],
+
+  // apps → listings.{OfferMappingRepositoryPort, OfferCreationRecordRepositoryPort} +
+  //        products.ProductVariantRepositoryPort — rewire via IListingsService + IProductsService
+  [
+    'apps/api/src/listings/http/listings.controller.ts',
+    new Set([
+      'OfferCreationRecordRepositoryPort',
+      'OfferMappingRepositoryPort',
+      'ProductVariantRepositoryPort',
+    ]),
+  ],
+  [
+    'apps/api/src/listings/http/listings.controller.spec.ts',
+    new Set([
+      'OfferCreationRecordRepositoryPort',
+      'OfferMappingRepositoryPort',
+      'ProductVariantRepositoryPort',
+    ]),
   ],
 ]);
 
@@ -267,11 +513,27 @@ async function walk(dir) {
   return files;
 }
 
-function importerContext(repoRelPath) {
-  // libs/core/src/<ctx>/...
+/**
+ * Classify the importer's scope. Returns:
+ *   - `{ kind: 'core', ctx }`         — `libs/core/src/<ctx>/...`
+ *   - `{ kind: 'integration', plugin }` — `libs/integrations/<plugin>/...`
+ *   - `{ kind: 'app', app }`          — `apps/api/...` or `apps/worker/...`
+ *   - `null`                          — file is outside any walked scope
+ *
+ * Same-context skip is gated on `kind === 'core'` in main().
+ */
+function importerScope(repoRelPath) {
   const parts = repoRelPath.split(sep);
-  if (parts.length < 4 || parts[0] !== 'libs' || parts[1] !== 'core' || parts[2] !== 'src') return null;
-  return parts[3];
+  if (parts.length >= 4 && parts[0] === 'libs' && parts[1] === 'core' && parts[2] === 'src') {
+    return { kind: 'core', ctx: parts[3] };
+  }
+  if (parts.length >= 3 && parts[0] === 'libs' && parts[1] === 'integrations') {
+    return { kind: 'integration', plugin: parts[2] };
+  }
+  if (parts.length >= 2 && parts[0] === 'apps' && (parts[1] === 'api' || parts[1] === 'worker')) {
+    return { kind: 'app', app: parts[1] };
+  }
+  return null;
 }
 
 function targetContext(source) {
@@ -279,15 +541,18 @@ function targetContext(source) {
 }
 
 async function main() {
-  const files = await walk(coreSrc);
+  const files = [];
+  for (const root of WALKER_ROOTS) {
+    files.push(...(await walk(join(repoRoot, ...root))));
+  }
   let totalImports = 0;
   let checkedFiles = 0;
   const violations = [];
 
   for (const file of files) {
     const repoRel = relative(repoRoot, file);
-    const myCtx = importerContext(repoRel);
-    if (!myCtx) continue;
+    const myScope = importerScope(repoRel);
+    if (!myScope) continue;
     checkedFiles += 1;
 
     const content = await readFile(file, 'utf8');
@@ -295,11 +560,13 @@ async function main() {
 
     for (const imp of imports) {
       const tgtCtx = targetContext(imp.source);
-      if (tgtCtx === myCtx) continue; // same-context, not a cross-context import
+      // Same-context skip applies only when the importer is core — plugins
+      // and apps have no counterpart context to match against.
+      if (myScope.kind === 'core' && tgtCtx === myScope.ctx) continue;
       totalImports += 1;
 
       // Default / namespace imports are denied outright (no allow-list
-      // exception today — barrel-purity tests live outside libs/core/src).
+      // exception today — barrel-purity tests live outside the walked scopes).
       if (imp.kind === 'default') {
         violations.push({
           file: repoRel,
@@ -325,7 +592,7 @@ async function main() {
       for (const name of imp.names) {
         const cls = classifyName(name);
         if (!cls.allowed) {
-          if (allowedForFile?.has(name)) continue; // pre-existing, tracked in #718
+          if (allowedForFile?.has(name)) continue; // pre-existing, tracked in #718 (core) or #722 (plugins/apps)
           violations.push({
             file: repoRel,
             line: imp.line,
@@ -349,7 +616,7 @@ async function main() {
     );
     if (allowListEntryCount > 0) {
       console.log(
-        `  (${allowListEntryCount} pre-existing (file, symbol) entries allow-listed across ${ALLOW_LIST.size} file(s); see script header and #718.)`,
+        `  (${allowListEntryCount} pre-existing (file, symbol) entries allow-listed across ${ALLOW_LIST.size} file(s); see script header, #718, and #722.)`,
       );
     }
     process.exit(0);
