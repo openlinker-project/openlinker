@@ -14,6 +14,7 @@
  * @module apps/api/test/integration
  */
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
 
@@ -36,6 +37,11 @@ const harness = createIntegrationTestHarness({
     // 2) Everything else: plain JSON parser, no raw capture needed.
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ extended: true }));
+
+    // 3) cookie-parser: required for refresh-token rotation (#710) so the
+    //    /auth/refresh + /auth/logout handlers and CsrfGuard can read
+    //    ol_refresh / ol_csrf off req.cookies. Mirrors main.ts.
+    app.use(cookieParser());
   },
   tablesToTruncate: [
     // Order matters — child tables first, then parents (FK CASCADE handles
@@ -55,6 +61,9 @@ const harness = createIntegrationTestHarness({
     // truncate it broadly rather than scope to a particular ref prefix.
     'ai_provider_active_setting',
     'integration_credentials',
+    // refresh_tokens has FKs into users (#710). Truncate before users
+    // so the FK CASCADE doesn't fight the explicit order.
+    'refresh_tokens',
     'product_variants',
     'products',
     'connections',

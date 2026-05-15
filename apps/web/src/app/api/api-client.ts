@@ -123,12 +123,9 @@ export function createApiClient({
   requestTimeoutMs = DEFAULT_TIMEOUT_MS,
   sessionAdapter,
 }: ApiClientConfig): ApiClient {
-  const request: ApiRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-    const accessToken = await sessionAdapter.getAccessToken();
+  function buildHeaders(init: RequestInit, accessToken: string | null): Headers {
     const headers = new Headers(init.headers);
-
     headers.set('Accept', 'application/json');
-
     if (
       init.body !== undefined &&
       !(init.body instanceof FormData) &&
@@ -136,26 +133,50 @@ export function createApiClient({
     ) {
       headers.set('Content-Type', 'application/json');
     }
-
     if (accessToken !== null) {
       headers.set('Authorization', `Bearer ${accessToken}`);
     }
+    return headers;
+  }
+
+  async function fetchWith(
+    path: string,
+    init: RequestInit,
+    accessToken: string | null,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    return fetchFn(buildUrl(baseUrl, path), {
+      ...init,
+      credentials: 'include',
+      headers: buildHeaders(init, accessToken),
+      signal,
+    });
+  }
+
+  const request: ApiRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+    const accessToken = await sessionAdapter.getAccessToken();
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
     }, requestTimeoutMs);
-    // Combine the timeout signal with any caller-supplied signal so both can abort the request
     const signal = init.signal
       ? AbortSignal.any([controller.signal, init.signal])
       : controller.signal;
 
     try {
-      const response = await fetchFn(buildUrl(baseUrl, path), {
-        ...init,
-        headers,
-        signal,
-      });
+      let response = await fetchWith(path, init, accessToken, signal);
+
+      // 401 → refresh (#710) → retry once. The refresh path itself uses
+      // the cookie + CSRF header but no Authorization header, so it
+      // can't trigger its own retry loop. Adapters without
+      // `refresh()` (e.g. NoopSessionAdapter) skip the retry.
+      if (response.status === 401 && sessionAdapter.refresh) {
+        const fresh = await sessionAdapter.refresh();
+        if (fresh) {
+          response = await fetchWith(path, init, fresh, signal);
+        }
+      }
 
       clearTimeout(timeoutId);
 

@@ -23,6 +23,8 @@ import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
+import { RefreshTokenService } from './refresh-token.service';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 
 @Module({
   imports: [
@@ -33,7 +35,10 @@ import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '1d'),
+          // 15m default — short access-token TTL is the security trade
+          // that makes refresh-token rotation (#710) worthwhile. Sites
+          // overriding via env should understand the threat model first.
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
         },
       }),
       inject: [ConfigService],
@@ -48,6 +53,8 @@ import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password
     { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
     ConsolePasswordResetNotifierAdapter,
     { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
+    RefreshTokenService,
+    { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

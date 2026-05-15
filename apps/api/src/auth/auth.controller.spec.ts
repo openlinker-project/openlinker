@@ -1,24 +1,33 @@
 /**
  * AuthController Unit Tests
  *
- * Tests the HTTP layer for authentication endpoints. Mocks AuthService
- * to verify controller wiring, error propagation, and response shaping.
+ * Tests the HTTP layer for authentication endpoints. Mocks AuthService,
+ * the password-reset service, and the refresh-token service to verify
+ * controller wiring, cookie set/clear behavior, error propagation, and
+ * response shaping.
  *
  * @module apps/api/src/auth
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
-import { User, InvalidPasswordResetTokenException } from '@openlinker/core/users';
+import {
+  InvalidPasswordResetTokenException,
+  RefreshTokenReuseDetectedException,
+  User,
+} from '@openlinker/core/users';
 import type { IPasswordResetService } from './password-reset.service.interface';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { BadRequestException } from '@nestjs/common';
+import type { IRefreshTokenService } from './refresh-token.service.interface';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import { REFRESH_COOKIE_NAME } from './auth.cookies';
 
 const makeUser = (): User =>
   new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', new Date(), new Date());
@@ -29,10 +38,16 @@ const makeLoginResponse = (): LoginResponseDto => {
   return dto;
 };
 
+const makeMockResponse = (): jest.Mocked<Pick<Response, 'cookie' | 'clearCookie'>> => ({
+  cookie: jest.fn().mockReturnThis() as unknown as jest.Mocked<Response>['cookie'],
+  clearCookie: jest.fn().mockReturnThis() as unknown as jest.Mocked<Response>['clearCookie'],
+});
+
 describe('AuthController', () => {
   let controller: AuthController;
   let authService: jest.Mocked<AuthService>;
   let passwordResetService: jest.Mocked<IPasswordResetService>;
+  let refreshTokenService: jest.Mocked<IRefreshTokenService>;
 
   beforeEach(async () => {
     const mockAuthService = {
@@ -44,18 +59,25 @@ describe('AuthController', () => {
       requestReset: jest.fn(),
       resetPassword: jest.fn(),
     };
+    const mockRefreshTokenService: jest.Mocked<IRefreshTokenService> = {
+      issue: jest.fn(),
+      rotate: jest.fn(),
+      revoke: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
+        { provide: REFRESH_TOKEN_SERVICE_TOKEN, useValue: mockRefreshTokenService },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
     authService = module.get(AuthService);
     passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
+    refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
   });
 
   describe('POST /auth/login', () => {
@@ -64,29 +86,150 @@ describe('AuthController', () => {
       password: 'secret',
     });
 
-    it('should return LoginResponseDto when credentials are valid', async () => {
+    it('returns LoginResponseDto and sets refresh + csrf cookies on valid credentials', async () => {
       const user = makeUser();
       const response = makeLoginResponse();
       authService.validateUser.mockResolvedValue(user);
       authService.login.mockReturnValue(response);
+      refreshTokenService.issue.mockResolvedValue({
+        rawToken: 'raw-refresh-token',
+        expiresAt: new Date(),
+      });
+      const res = makeMockResponse();
 
-      const result = await controller.login(dto);
+      const result = await controller.login(dto, res as unknown as Response);
 
       expect(authService.validateUser).toHaveBeenCalledWith('admin', 'secret');
       expect(authService.login).toHaveBeenCalledWith(user);
+      expect(refreshTokenService.issue).toHaveBeenCalledWith(user.id);
       expect(result.access_token).toBe('test-jwt-token');
+      // Both cookies (refresh + csrf) are set.
+      expect(res.cookie).toHaveBeenCalledTimes(2);
+      const cookieNames = res.cookie.mock.calls.map((call) => call[0]);
+      expect(cookieNames).toContain(REFRESH_COOKIE_NAME);
+      expect(cookieNames).toContain('ol_csrf');
     });
 
-    it('should throw UnauthorizedException when credentials are invalid', async () => {
+    it('throws UnauthorizedException when credentials are invalid and skips cookie set', async () => {
       authService.validateUser.mockResolvedValue(null);
+      const res = makeMockResponse();
 
-      await expect(controller.login(dto)).rejects.toThrow(UnauthorizedException);
+      await expect(controller.login(dto, res as unknown as Response)).rejects.toThrow(
+        UnauthorizedException,
+      );
       expect(authService.login).not.toHaveBeenCalled();
+      expect(refreshTokenService.issue).not.toHaveBeenCalled();
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/refresh', () => {
+    const makeReq = (refresh?: string): Pick<Request, 'cookies'> => ({
+      cookies: refresh ? { [REFRESH_COOKIE_NAME]: refresh } : {},
+    });
+
+    it('rotates and returns new access token + new cookies on success', async () => {
+      const res = makeMockResponse();
+      refreshTokenService.rotate.mockResolvedValue({
+        userId: 'user-uuid-123',
+        rawToken: 'rotated-token',
+        expiresAt: new Date(),
+      });
+      authService.getMe.mockResolvedValue(makeUser());
+      authService.login.mockReturnValue(makeLoginResponse());
+
+      const result = await controller.refresh(
+        makeReq('presented-token') as unknown as Request & {
+          cookies?: Record<string, string | undefined>;
+        },
+        res as unknown as Response,
+      );
+
+      expect(refreshTokenService.rotate).toHaveBeenCalledWith('presented-token');
+      expect(result.access_token).toBe('test-jwt-token');
+      expect(res.cookie).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws 401 when the cookie is missing', async () => {
+      const res = makeMockResponse();
+      await expect(
+        controller.refresh(
+          makeReq() as unknown as Request & { cookies?: Record<string, string | undefined> },
+          res as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(refreshTokenService.rotate).not.toHaveBeenCalled();
+    });
+
+    it('clears cookies and rethrows as 401 when reuse is detected', async () => {
+      const res = makeMockResponse();
+      refreshTokenService.rotate.mockRejectedValue(new RefreshTokenReuseDetectedException());
+
+      await expect(
+        controller.refresh(
+          makeReq('stolen-token') as unknown as Request & {
+            cookies?: Record<string, string | undefined>;
+          },
+          res as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+    });
+
+    it('revokes the orphan + clears cookies when getMe fails after a successful rotation', async () => {
+      const res = makeMockResponse();
+      refreshTokenService.rotate.mockResolvedValue({
+        userId: 'user-uuid-123',
+        rawToken: 'orphan-successor',
+        expiresAt: new Date(),
+      });
+      authService.getMe.mockRejectedValue(new UnauthorizedException('User no longer exists'));
+
+      await expect(
+        controller.refresh(
+          makeReq('presented-token') as unknown as Request & {
+            cookies?: Record<string, string | undefined>;
+          },
+          res as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(refreshTokenService.revoke).toHaveBeenCalledWith('orphan-successor');
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      // Cookies must NOT be set when the user is gone — the browser would
+      // otherwise store a refresh cookie pointing at a useless DB row.
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('revokes the presented token and clears both cookies', async () => {
+      const res = makeMockResponse();
+      const req = {
+        cookies: { [REFRESH_COOKIE_NAME]: 'token-to-revoke' },
+      } as unknown as Request & { cookies?: Record<string, string | undefined> };
+
+      await controller.logout(req, res as unknown as Response);
+
+      expect(refreshTokenService.revoke).toHaveBeenCalledWith('token-to-revoke');
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not invoke revoke when no cookie is present, still clears cookies', async () => {
+      const res = makeMockResponse();
+      const req = { cookies: {} } as unknown as Request & {
+        cookies?: Record<string, string | undefined>;
+      };
+
+      await controller.logout(req, res as unknown as Response);
+
+      expect(refreshTokenService.revoke).not.toHaveBeenCalled();
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('POST /auth/forgot-password', () => {
-    it('should always return 200 and delegate to service', async () => {
+    it('always returns 200 and delegates to service', async () => {
       passwordResetService.requestReset.mockResolvedValue();
       const dto: ForgotPasswordDto = Object.assign(new ForgotPasswordDto(), {
         email: 'a@b.com',
@@ -103,21 +246,21 @@ describe('AuthController', () => {
       newPassword: 'longenough',
     });
 
-    it('should return ok on success', async () => {
+    it('returns ok on success', async () => {
       passwordResetService.resetPassword.mockResolvedValue();
       await expect(controller.resetPassword(dto)).resolves.toEqual({ ok: true });
     });
 
-    it('should convert InvalidPasswordResetTokenException to 400', async () => {
+    it('converts InvalidPasswordResetTokenException to 400', async () => {
       passwordResetService.resetPassword.mockRejectedValue(
-        new InvalidPasswordResetTokenException()
+        new InvalidPasswordResetTokenException(),
       );
       await expect(controller.resetPassword(dto)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('GET /auth/me', () => {
-    it('should return UserResponseDto with role and permissions for the authenticated user', async () => {
+    it('returns UserResponseDto with role and permissions for the authenticated user', async () => {
       const user = makeUser();
       authService.getMe.mockResolvedValue(user);
 

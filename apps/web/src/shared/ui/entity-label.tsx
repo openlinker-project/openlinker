@@ -1,4 +1,11 @@
-import { forwardRef, useCallback, useState, type ComponentPropsWithoutRef } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> {
@@ -14,11 +21,30 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   ref,
 ) {
   const [copied, setCopied] = useState(false);
+  // Track the "Copied" badge timer so we can cancel it on unmount — otherwise
+  // the 1.5 s setState fires after the JSDOM env is torn down in unit tests
+  // and crashes the run with `ReferenceError: window is not defined`.
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (resetTimerRef.current !== null) {
+        clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard?.writeText(id).then(() => {
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      if (resetTimerRef.current !== null) {
+        clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1500);
     });
   }, [id]);
 
