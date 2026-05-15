@@ -56,7 +56,7 @@ async function bootstrap(): Promise<void> {
   // setups, prod deploys must set it.
   const configService = app.get(ConfigService);
   const allowedOrigins = configService
-    .get<string>('OL_CORS_ORIGIN', 'http://localhost:5173')
+    .get<string>('OL_CORS_ORIGIN', 'http://localhost:4173')
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
