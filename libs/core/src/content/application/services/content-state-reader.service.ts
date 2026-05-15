@@ -20,9 +20,9 @@ import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import {
   isOfferFieldUpdater,
-  OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_MAPPINGS_SERVICE_TOKEN,
+  type IOfferMappingsService,
   type OfferManagerPort,
-  type OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN } from '../../content.tokens';
@@ -45,8 +45,8 @@ export class ContentStateReaderService implements IContentStateReaderService {
     private readonly repository: ProductContentFieldRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
-    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
-    private readonly offerMappings: OfferMappingRepositoryPort
+    @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
+    private readonly offerMappings: IOfferMappingsService
   ) {}
 
   async readState(productId: string): Promise<ContentState> {
@@ -69,10 +69,7 @@ export class ContentStateReaderService implements IContentStateReaderService {
 
       let linkedOfferCount = 0;
       if (variants.length > 0) {
-        const counts = await this.offerMappings.countByConnectionAndVariants(
-          entry.connectionId,
-          variants
-        );
+        const counts = await this.offerMappings.countForVariants(entry.connectionId, variants);
         for (const count of counts.values()) {
           linkedOfferCount += count;
         }

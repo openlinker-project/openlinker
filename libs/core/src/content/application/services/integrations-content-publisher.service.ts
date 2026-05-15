@@ -35,9 +35,9 @@ import { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   isOfferFieldUpdater,
-  OFFER_MAPPING_REPOSITORY_TOKEN,
+  OFFER_MAPPINGS_SERVICE_TOKEN,
+  type IOfferMappingsService,
   type OfferManagerPort,
-  type OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
 import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exceptions/channel-adapter-lacks-field-updater.exception';
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
@@ -66,8 +66,8 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
-    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
-    private readonly offerMappings: OfferMappingRepositoryPort
+    @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
+    private readonly offerMappings: IOfferMappingsService
   ) {}
 
   async publish(request: ContentPublishRequest): Promise<ContentPublishResult> {
@@ -139,10 +139,7 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const externalOfferIds = new Set<string>();
     for (const variant of variants) {
-      const page = await this.offerMappings.findMany(
-        { connectionId, internalId: variant.id },
-        { limit: 100, offset: 0 }
-      );
+      const page = await this.offerMappings.findForVariant(connectionId, variant.id);
       for (const mapping of page.items) {
         externalOfferIds.add(mapping.externalId);
       }

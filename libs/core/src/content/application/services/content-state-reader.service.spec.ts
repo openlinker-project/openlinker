@@ -11,7 +11,7 @@ import { ContentStateReaderService } from './content-state-reader.service';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { OfferManagerPort, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import type { IOfferMappingsService, OfferManagerPort } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 
@@ -45,11 +45,9 @@ function buildRepoMock(
 
 function buildOfferMappingsMock(
   counts: Map<string, number> = new Map()
-): jest.Mocked<OfferMappingRepositoryPort> {
+): jest.Mocked<Pick<IOfferMappingsService, 'countForVariants'>> {
   return {
-    findById: jest.fn(),
-    findMany: jest.fn(),
-    countByConnectionAndVariants: jest.fn().mockResolvedValue(counts),
+    countForVariants: jest.fn().mockResolvedValue(counts),
   };
 }
 
@@ -106,7 +104,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     const state = await service.readState('ol_product_1');
 
@@ -145,7 +143,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     const state = await service.readState('ol_product_1');
 
@@ -185,7 +183,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     const state = await service.readState('ol_product_1');
 
@@ -208,7 +206,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     const state = await service.readState('ol_product_1');
 
@@ -246,7 +244,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     await expect(service.readState('ol_product_1')).rejects.toThrow('upstream down');
   });
@@ -289,7 +287,7 @@ describe('ContentStateReaderService', () => {
     const service = new ContentStateReaderService(
       repo,
       integrations as unknown as IIntegrationsService,
-      offerMappings
+      offerMappings as unknown as IOfferMappingsService
     );
     const state = await service.readState('ol_product_1');
 
