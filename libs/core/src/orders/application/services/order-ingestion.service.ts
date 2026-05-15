@@ -10,14 +10,15 @@
  * - Hydration of full order via OrderSourcePort and routing via OrderSyncService
  *
  * @module libs/core/src/orders/application/services
+ * @see {@link ISyncCursorsService} for the cross-context cursor seam (#718)
  */
 
 import { Injectable, Inject } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import {
-  ConnectionCursorRepositoryPort,
-  CONNECTION_CURSOR_REPOSITORY_TOKEN,
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
   SyncJobQueuePort,
   SYNC_JOB_QUEUE_TOKEN,
   SyncLockPort,
@@ -54,8 +55,8 @@ export class OrderIngestionService implements IOrderIngestionService {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
-    @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
-    private readonly cursorRepository: ConnectionCursorRepositoryPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService,
     @Inject(SYNC_JOB_QUEUE_TOKEN)
     private readonly jobQueue: SyncJobQueuePort,
     @Inject(SYNC_LOCK_TOKEN)
@@ -92,7 +93,7 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     try {
       const { cursorKey, limit, eventTypes } = options;
-      const fromCursor = await this.cursorRepository.get(connectionId, cursorKey);
+      const fromCursor = await this.syncCursors.getCursor(connectionId, cursorKey);
 
       const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
         connectionId,
@@ -142,7 +143,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             skippedDueToLock: false,
           };
         }
-        await this.cursorRepository.set(connectionId, cursorKey, nextCursor);
+        await this.syncCursors.advanceCursor(connectionId, cursorKey, nextCursor);
         committed = true;
       }
 

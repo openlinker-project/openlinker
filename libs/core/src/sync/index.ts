@@ -89,6 +89,9 @@ export type { SchedulerTaskConfig } from './domain/types/scheduler-task.types';
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
 export type { ISyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service.interface';
+export type { ISyncJobsService } from './application/services/sync-jobs.service.interface';
+export type { ScheduleJobInput } from './application/services/sync-jobs.types';
+export type { ISyncCursorsService } from './application/services/sync-cursors.service.interface';
 
 // Module and tokens
 export { SyncModule } from './sync.module';

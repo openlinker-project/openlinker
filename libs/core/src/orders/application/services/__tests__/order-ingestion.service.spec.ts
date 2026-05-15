@@ -10,7 +10,7 @@ import { OrderIngestionService } from '../order-ingestion.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import type {
-  ConnectionCursorRepositoryPort,
+  ISyncCursorsService,
   SyncJobQueuePort,
   SyncLockPort,
 } from '@openlinker/core/sync';
@@ -28,7 +28,9 @@ describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
 
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
+  // Only the two methods the SUT actually calls — tight Pick<> mock surface
+  // per #718 review.
+  let syncCursors: jest.Mocked<Pick<ISyncCursorsService, 'getCursor' | 'advanceCursor'>>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let lock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
@@ -55,11 +57,10 @@ describe('OrderIngestionService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    cursorRepository = {
-      get: jest.fn(),
-      set: jest.fn(),
-      delete: jest.fn(),
-    } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
+    syncCursors = {
+      getCursor: jest.fn(),
+      advanceCursor: jest.fn(),
+    };
 
     jobQueue = {
       enqueue: jest.fn(),
@@ -110,7 +111,7 @@ describe('OrderIngestionService', () => {
 
     service = new OrderIngestionService(
       integrationsService,
-      cursorRepository,
+      syncCursors as unknown as ISyncCursorsService,
       jobQueue,
       lock,
       identifierMapping,
@@ -129,16 +130,16 @@ describe('OrderIngestionService', () => {
       const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.skippedDueToLock).toBe(true);
-      expect(cursorRepository.get).not.toHaveBeenCalled();
+      expect(syncCursors.getCursor).not.toHaveBeenCalled();
       expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
-      expect(cursorRepository.set).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
 
     it('commits cursor only after enqueueBulk succeeds', async () => {
       lock.acquire.mockResolvedValueOnce('token-1');
       lock.release.mockResolvedValueOnce(true);
 
-      cursorRepository.get.mockResolvedValueOnce('event-100');
+      syncCursors.getCursor.mockResolvedValueOnce('event-100');
       orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
@@ -156,7 +157,7 @@ describe('OrderIngestionService', () => {
       const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.committed).toBe(true);
-      expect(cursorRepository.set).toHaveBeenCalledWith(connectionId, cursorKey, 'event-101');
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, 'event-101');
       expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
         expect.objectContaining({
           type: 'marketplace.order.sync',
@@ -174,7 +175,7 @@ describe('OrderIngestionService', () => {
       lock.acquire.mockResolvedValueOnce('token-1');
       lock.release.mockResolvedValueOnce(true);
 
-      cursorRepository.get.mockResolvedValueOnce('event-100');
+      syncCursors.getCursor.mockResolvedValueOnce('event-100');
       orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
@@ -193,14 +194,14 @@ describe('OrderIngestionService', () => {
         'enqueue failed'
       );
 
-      expect(cursorRepository.set).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
 
     it('does not commit cursor when adapter returns a regressing cursor', async () => {
       lock.acquire.mockResolvedValueOnce('token-1');
       lock.release.mockResolvedValueOnce(true);
 
-      cursorRepository.get.mockResolvedValueOnce('200');
+      syncCursors.getCursor.mockResolvedValueOnce('200');
       orderSource.listOrderFeed.mockResolvedValueOnce({
         items: [
           {
@@ -218,7 +219,7 @@ describe('OrderIngestionService', () => {
       const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
       expect(result.committed).toBe(false);
-      expect(cursorRepository.set).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
   });
 

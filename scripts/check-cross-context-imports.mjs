@@ -139,15 +139,9 @@ const ALLOW_LIST = new Map([
     new Set(['ProductVariantRepositoryPort']),
   ],
 
-  // listings → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
-  [
-    'libs/core/src/listings/application/services/offer-status-poll.service.ts',
-    new Set(['SyncJobRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-status-poll.service.spec.ts',
-    new Set(['SyncJobRepositoryPort']),
-  ],
+  // (Slice 2 of #718 — sync repository-port callers — rewired via
+  // ISyncJobsService + ISyncCursorsService and dropped from this list.
+  // See PR for #718 slice 2.)
 
   // content → listings.OfferMappingRepositoryPort — rewire via IListingsService
   [
@@ -183,16 +177,6 @@ const ALLOW_LIST = new Map([
   [
     'libs/core/src/ai/infrastructure/adapters/credentials-ai-provider.adapter.spec.ts',
     new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-
-  // orders → sync.ConnectionCursorRepositoryPort — rewire via ISyncCursorsService
-  [
-    'libs/core/src/orders/application/services/order-ingestion.service.ts',
-    new Set(['ConnectionCursorRepositoryPort']),
-  ],
-  [
-    'libs/core/src/orders/application/services/__tests__/order-ingestion.service.spec.ts',
-    new Set(['ConnectionCursorRepositoryPort']),
   ],
 
   // ─── Plugins + apps (#719) — tracked in #722 ────────────────────────
