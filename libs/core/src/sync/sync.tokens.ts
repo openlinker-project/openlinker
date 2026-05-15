@@ -18,6 +18,8 @@ export const SYNC_JOB_RETRY_SERVICE_TOKEN = Symbol('SyncJobRetryServicePort');
 export const SYNC_JOB_BULK_RETRY_SERVICE_TOKEN = Symbol('SyncJobBulkRetryServicePort');
 export const RETRY_CLASSIFIER_REGISTRY_TOKEN = Symbol('RetryClassifierRegistryService');
 export const SCHEDULER_TASK_REGISTRY_TOKEN = Symbol('SchedulerTaskRegistryService');
+export const SYNC_JOBS_SERVICE_TOKEN = Symbol('ISyncJobsService');
+export const SYNC_CURSORS_SERVICE_TOKEN = Symbol('ISyncCursorsService');
 
 
 

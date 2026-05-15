@@ -14,7 +14,7 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OfferManagerPort, OfferStatusReadResult } from '@openlinker/core/listings';
 import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
 import type { PollOnceInput } from '../../types/offer-status-poll.types';
-import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import type { ISyncJobsService } from '@openlinker/core/sync';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
@@ -52,7 +52,9 @@ describe('OfferStatusPollService', () => {
   let service: OfferStatusPollService;
   let integrations: jest.Mocked<IIntegrationsService>;
   let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
-  let syncJobs: jest.Mocked<SyncJobRepositoryPort>;
+  // Only the products-of-sync method the SUT actually calls — tight Pick<>
+  // mock surface per #718 review.
+  let syncJobs: jest.Mocked<Pick<ISyncJobsService, 'schedule'>>;
   let configService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
@@ -74,8 +76,8 @@ describe('OfferStatusPollService', () => {
     };
 
     syncJobs = {
-      createIfNotExistsByIdempotencyKey: jest.fn().mockResolvedValue({}),
-    } as unknown as jest.Mocked<SyncJobRepositoryPort>;
+      schedule: jest.fn().mockResolvedValue({}),
+    };
 
     configService = {
       get: jest.fn().mockImplementation((key: string) => {
@@ -94,7 +96,12 @@ describe('OfferStatusPollService', () => {
       }),
     } as unknown as jest.Mocked<ConfigService>;
 
-    service = new OfferStatusPollService(integrations, records, syncJobs, configService);
+    service = new OfferStatusPollService(
+      integrations,
+      records,
+      syncJobs as unknown as ISyncJobsService,
+      configService
+    );
   });
 
   describe('scheduleFirstPoll', () => {
@@ -107,22 +114,21 @@ describe('OfferStatusPollService', () => {
         connectionId: CONNECTION_ID,
       });
 
-      const call = syncJobs.createIfNotExistsByIdempotencyKey.mock.calls[0];
-      const [job, options] = call;
-      expect(job).toMatchObject({
+      const [input] = syncJobs.schedule.mock.calls[0];
+      expect(input).toMatchObject({
         jobType: 'marketplace.offer.pollCreationStatus',
         connectionId: CONNECTION_ID,
         idempotencyKey: `pollCreationStatus:${RECORD_ID}:1`,
         maxAttempts: 3,
       });
-      expect(job.payload).toEqual({
+      expect(input.payload).toEqual({
         schemaVersion: 1,
         offerCreationRecordId: RECORD_ID,
         externalOfferId: EXTERNAL_OFFER_ID,
         pollAttempt: 1,
       });
-      expect(options?.runAfter).toBeInstanceOf(Date);
-      const delayMs = (options!.runAfter as Date).getTime() - before;
+      expect(input.runAfter).toBeInstanceOf(Date);
+      const delayMs = input.runAfter.getTime() - before;
       // Initial delay = 5s; allow some slack for test scheduling.
       expect(delayMs).toBeGreaterThanOrEqual(4_900);
       expect(delayMs).toBeLessThanOrEqual(5_500);
@@ -148,7 +154,7 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'active', null);
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('ACTIVATING → no record write, re-enqueues iteration 2 with backoff', async () => {
@@ -161,11 +167,11 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).not.toHaveBeenCalled();
-      const [job, options] = syncJobs.createIfNotExistsByIdempotencyKey.mock.calls[0];
-      expect(job.idempotencyKey).toBe(`pollCreationStatus:${RECORD_ID}:2`);
-      expect((job.payload as { pollAttempt: number }).pollAttempt).toBe(2);
+      const [input] = syncJobs.schedule.mock.calls[0];
+      expect(input.idempotencyKey).toBe(`pollCreationStatus:${RECORD_ID}:2`);
+      expect((input.payload as { pollAttempt: number }).pollAttempt).toBe(2);
       // Iteration 2 delay = 5 * 2 = 10s
-      const delayMs = (options!.runAfter as Date).getTime() - before;
+      const delayMs = input.runAfter.getTime() - before;
       expect(delayMs).toBeGreaterThanOrEqual(9_500);
       expect(delayMs).toBeLessThanOrEqual(10_500);
     });
@@ -179,7 +185,7 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).not.toHaveBeenCalled();
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
     });
 
     it('INACTIVE without errors → record.status=draft, outcome=ok', async () => {
@@ -191,7 +197,7 @@ describe('OfferStatusPollService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'draft', null);
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('INACTIVE with errors → record.status=failed (with errors), outcome=business_failure', async () => {
@@ -215,7 +221,7 @@ describe('OfferStatusPollService', () => {
         { code: 'TOO_LONG', message: 'name is too long', field: 'name' },
         { code: 'MISSING', message: 'EAN required', field: undefined },
       ]);
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('ENDED → record.status=draft, outcome=ok', async () => {
@@ -302,7 +308,7 @@ describe('OfferStatusPollService', () => {
       expect(result.outcome).toBe('ok');
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
       expect(records.updateStatus).not.toHaveBeenCalled();
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('record vanished → drops gracefully + outcome=ok', async () => {
@@ -328,7 +334,7 @@ describe('OfferStatusPollService', () => {
       expect(recordId).toBe(RECORD_ID);
       expect(status).toBe('failed');
       expect(errors?.[0]).toMatchObject({ code: 'POLL_TIMEOUT' });
-      expect(syncJobs.createIfNotExistsByIdempotencyKey).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('pollAttempt > maxAttempts on entry (forward guard) → POLL_TIMEOUT, no marketplace call', async () => {
@@ -354,8 +360,8 @@ describe('OfferStatusPollService', () => {
 
       await service.pollOnce(pollInput(5));
 
-      const [, options] = syncJobs.createIfNotExistsByIdempotencyKey.mock.calls[0];
-      const delayMs = (options!.runAfter as Date).getTime() - before;
+      const [input] = syncJobs.schedule.mock.calls[0];
+      const delayMs = input.runAfter.getTime() - before;
       // Iteration 6 delay = min(5 * 2^5, 60) = min(160, 60) = 60s
       expect(delayMs).toBeGreaterThanOrEqual(59_500);
       expect(delayMs).toBeLessThanOrEqual(60_500);

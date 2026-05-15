@@ -21,6 +21,8 @@ import { SyncJobQueueService } from './application/services/sync-job-queue.servi
 import { RedisSyncLockService } from './application/services/redis-sync-lock.service';
 import { SyncJobRetryService } from './application/services/sync-job-retry.service';
 import { SyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service';
+import { SyncJobsService } from './application/services/sync-jobs.service';
+import { SyncCursorsService } from './application/services/sync-cursors.service';
 import {
   JOB_ENQUEUE_TOKEN,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -31,6 +33,8 @@ import {
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
+  SYNC_JOBS_SERVICE_TOKEN,
+  SYNC_CURSORS_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -44,6 +48,8 @@ export {
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
+  SYNC_JOBS_SERVICE_TOKEN,
+  SYNC_CURSORS_SERVICE_TOKEN,
 } from './sync.tokens';
 
 @Module({
@@ -114,6 +120,20 @@ export {
       provide: SCHEDULER_TASK_REGISTRY_TOKEN,
       useExisting: SchedulerTaskRegistryService,
     },
+
+    // Cross-context service seams (#718 slice 2): jobs scheduling +
+    // cursors. Wrap the repository ports so consumers in other contexts
+    // don't reach across the boundary to a `*RepositoryPort`.
+    SyncJobsService,
+    {
+      provide: SYNC_JOBS_SERVICE_TOKEN,
+      useExisting: SyncJobsService,
+    },
+    SyncCursorsService,
+    {
+      provide: SYNC_CURSORS_SERVICE_TOKEN,
+      useExisting: SyncCursorsService,
+    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -134,6 +154,8 @@ export {
     RetryClassifierRegistryService,
     SCHEDULER_TASK_REGISTRY_TOKEN,
     SchedulerTaskRegistryService,
+    SYNC_JOBS_SERVICE_TOKEN,
+    SYNC_CURSORS_SERVICE_TOKEN,
   ],
 })
 export class SyncModule {}

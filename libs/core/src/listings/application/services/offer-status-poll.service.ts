@@ -10,12 +10,13 @@
  *   - `sync_jobs.attempts` (runner-owned): transient HTTP retry per iteration,
  *     capped at `RUNNER_RETRY_BUDGET` per row (=3 — absorbs 1–2 blips).
  *
- * Bypasses Redis Streams: enqueues directly via `SyncJobRepositoryPort` so we
- * can set a future `nextRunAt`. The poll job is internal-orchestration only;
- * fan-out semantics aren't needed.
+ * Schedules via `ISyncJobsService` (#718) — see its docblock for the
+ * Redis-stream bypass rationale (queue path doesn't support delayed
+ * delivery, so the poll job goes through the DB-backed `nextRunAt`).
  *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferStatusPollService}
+ * @see {@link ISyncJobsService} for the cross-context scheduling seam (#718)
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -31,9 +32,9 @@ import {
   type OfferStatusReadResult,
 } from '@openlinker/core/listings';
 import {
+  ISyncJobsService,
   type MarketplaceOfferPollCreationStatusPayloadV1,
-  SYNC_JOB_REPOSITORY_TOKEN,
-  type SyncJobRepositoryPort,
+  SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -70,8 +71,8 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(OFFER_CREATION_RECORD_REPOSITORY_TOKEN)
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
-    @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
+    @Inject(SYNC_JOBS_SERVICE_TOKEN)
+    private readonly syncJobs: ISyncJobsService,
     configService: ConfigService
   ) {
     this.cadence = {
@@ -244,16 +245,14 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     };
     const idempotencyKey = `pollCreationStatus:${input.offerCreationRecordId}:${input.pollAttempt}`;
 
-    await this.syncJobRepository.createIfNotExistsByIdempotencyKey(
-      {
-        jobType: POLL_JOB_TYPE,
-        connectionId: input.connectionId,
-        payload: payload as unknown as Record<string, unknown>,
-        idempotencyKey,
-        maxAttempts: RUNNER_RETRY_BUDGET,
-      },
-      { runAfter }
-    );
+    await this.syncJobs.schedule({
+      jobType: POLL_JOB_TYPE,
+      connectionId: input.connectionId,
+      payload: payload as unknown as Record<string, unknown>,
+      idempotencyKey,
+      maxAttempts: RUNNER_RETRY_BUDGET,
+      runAfter,
+    });
 
     this.logger.debug(
       `Scheduled poll iteration ${input.pollAttempt} for record ${input.offerCreationRecordId} ` +
