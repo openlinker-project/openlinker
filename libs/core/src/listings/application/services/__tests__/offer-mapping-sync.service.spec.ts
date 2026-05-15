@@ -9,7 +9,7 @@ import type { OfferManagerPort, OfferLister, OfferEventReader } from '@openlinke
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingConflictException } from '@openlinker/core/identifier-mapping';
-import type { ProductVariantRepositoryPort } from '@openlinker/core/products';
+import type { IProductsService } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
@@ -29,7 +29,9 @@ describe('OfferMappingSyncService', () => {
   let service: OfferMappingSyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
-  let variantRepository: jest.Mocked<ProductVariantRepositoryPort>;
+  // Only the two products-service methods the SUT actually calls — keeps the
+  // mock surface tight per #718 review.
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariantsBySkus' | 'getVariantsByBarcodes'>>;
   let marketplace: jest.Mocked<OfferManagerPort & OfferLister & OfferEventReader>;
 
   beforeEach(() => {
@@ -74,20 +76,15 @@ describe('OfferMappingSyncService', () => {
       deleteMapping: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
-    variantRepository = {
-      findById: jest.fn(),
-      findByProductId: jest.fn(),
-      findBySku: jest.fn(),
-      findBySkuIn: jest.fn(),
-      findByEanOrGtinIn: jest.fn(),
-      upsert: jest.fn(),
-      upsertMany: jest.fn(),
-    } as unknown as jest.Mocked<ProductVariantRepositoryPort>;
+    productsService = {
+      getVariantsBySkus: jest.fn(),
+      getVariantsByBarcodes: jest.fn(),
+    };
 
     service = new OfferMappingSyncService(
       integrationsService,
       identifierMapping,
-      variantRepository,
+      productsService as unknown as IProductsService,
       new OfferLinkingService()
     );
   });
@@ -101,12 +98,12 @@ describe('OfferMappingSyncService', () => {
       nextCursor: null,
     });
 
-    variantRepository.findBySkuIn.mockResolvedValue([
+    productsService.getVariantsBySkus.mockResolvedValue([
       makeVariant({ id: 'variant-1', productId: 'product-1', sku: 'SKU-1' }),
       makeVariant({ id: 'variant-2', productId: 'product-2', sku: 'SKU-2' }),
     ]);
 
-    variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
+    productsService.getVariantsByBarcodes.mockResolvedValue([]);
 
     const result = await service.sync('connection-1', { limit: 50, cursor: null });
 
@@ -120,10 +117,10 @@ describe('OfferMappingSyncService', () => {
       nextCursor: null,
     });
 
-    variantRepository.findBySkuIn.mockResolvedValue([
+    productsService.getVariantsBySkus.mockResolvedValue([
       makeVariant({ id: 'variant-1', productId: 'product-1', sku: 'SKU-1' }),
     ]);
-    variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
+    productsService.getVariantsByBarcodes.mockResolvedValue([]);
 
     identifierMapping.getOrCreateExactMapping.mockRejectedValue(
       new IdentifierMappingConflictException('Offer', 'offer-1', 'connection-1', 'old', 'new')
@@ -160,13 +157,13 @@ describe('OfferMappingSyncService', () => {
       nextCursor: null,
     });
 
-    variantRepository.findBySkuIn.mockResolvedValue([]);
-    variantRepository.findByEanOrGtinIn.mockResolvedValue([]);
+    productsService.getVariantsBySkus.mockResolvedValue([]);
+    productsService.getVariantsByBarcodes.mockResolvedValue([]);
 
     const result = await service.sync('connection-1', { limit: 50, cursor: null });
 
     expect(result).toEqual({ scanned: 1, linked: 0, skipped: 1, nextCursor: null });
-    expect(variantRepository.findByEanOrGtinIn).not.toHaveBeenCalled();
+    expect(productsService.getVariantsByBarcodes).not.toHaveBeenCalled();
   });
 
   it('uses masterCatalogConnectionId for barcode lookup', async () => {
@@ -175,8 +172,8 @@ describe('OfferMappingSyncService', () => {
       nextCursor: null,
     });
 
-    variantRepository.findBySkuIn.mockResolvedValue([]);
-    variantRepository.findByEanOrGtinIn.mockResolvedValue([
+    productsService.getVariantsBySkus.mockResolvedValue([]);
+    productsService.getVariantsByBarcodes.mockResolvedValue([
       makeVariant({
         id: 'variant-1',
         productId: 'product-1',
@@ -188,7 +185,7 @@ describe('OfferMappingSyncService', () => {
     const result = await service.sync('connection-1', { limit: 50, cursor: null });
 
     expect(result).toEqual({ scanned: 1, linked: 1, skipped: 0, nextCursor: null });
-    expect(variantRepository.findByEanOrGtinIn).toHaveBeenCalledWith(
+    expect(productsService.getVariantsByBarcodes).toHaveBeenCalledWith(
       'master-1',
       ['5901234123457'],
       'ean'

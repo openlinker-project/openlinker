@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ProductOrmEntity } from '../entities/product.orm-entity';
 import type { ProductRepositoryPort } from '../../../domain/ports/product-repository.port';
 import type { Product } from '../../../domain/entities/product.entity';
@@ -42,6 +42,14 @@ export class ProductRepository implements ProductRepositoryPort {
     }
 
     return this.toDomain(entity);
+  }
+
+  async findByIds(ids: string[]): Promise<Product[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const entities = await this.repository.find({ where: { id: In(ids) } });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findMany(

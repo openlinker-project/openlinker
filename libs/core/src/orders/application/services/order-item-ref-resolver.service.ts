@@ -4,11 +4,11 @@
  * Resolves external-only IncomingOrder item references to internal OpenLinker IDs.
  *
  * @module libs/core/src/orders/application/services
+ * @see {@link IProductsService} for cross-context variant reads (#718)
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import { PRODUCT_VARIANT_REPOSITORY_TOKEN } from '@openlinker/core/products';
-import { ProductVariantRepositoryPort } from '@openlinker/core/products';
+import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 import type {
@@ -23,8 +23,8 @@ export class OrderItemRefResolverService {
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
-    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
-    private readonly variantRepository: ProductVariantRepositoryPort
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService
   ) {}
 
   async tryResolve(
@@ -60,7 +60,7 @@ export class OrderItemRefResolverService {
             'identifier_mappings:Offer'
           );
         }
-        const variant = await this.variantRepository.findById(internalVariantId);
+        const variant = await this.productsService.getVariant(internalVariantId);
         if (!variant) {
           throw new MissingOrderItemMappingError(
             connectionId,
@@ -98,7 +98,7 @@ export class OrderItemRefResolverService {
             'identifier_mappings:ProductVariant'
           );
         }
-        const variant = await this.variantRepository.findById(internalVariantId);
+        const variant = await this.productsService.getVariant(internalVariantId);
         if (!variant) {
           throw new MissingOrderItemMappingError(
             connectionId,
@@ -121,7 +121,7 @@ export class OrderItemRefResolverService {
             'identifier_mappings:Sku'
           );
         }
-        const variant = await this.variantRepository.findById(internalId);
+        const variant = await this.productsService.getVariant(internalId);
         if (variant) {
           return { internalProductId: variant.productId, internalVariantId: variant.id };
         }

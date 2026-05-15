@@ -49,6 +49,7 @@ describe('ProductsService', () => {
 
   const mockProductRepo: jest.Mocked<ProductRepositoryPort> = {
     findById: jest.fn(),
+    findByIds: jest.fn(),
     findMany: jest.fn(),
     upsert: jest.fn(),
   };
@@ -97,6 +98,67 @@ describe('ProductsService', () => {
       const result = await service.getProduct('nonexistent');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getProductsByIds', () => {
+    it('returns [] without hitting the repository for an empty input', async () => {
+      const result = await service.getProductsByIds([]);
+
+      expect(result).toEqual([]);
+      expect(productRepo.findByIds).not.toHaveBeenCalled();
+    });
+
+    it('forwards the id list to the repository and returns the result', async () => {
+      const products = [makeProduct(), makeProduct({ id: 'ol_product_2', name: 'Second' })];
+      productRepo.findByIds.mockResolvedValue(products);
+
+      const result = await service.getProductsByIds(['ol_product_1', 'ol_product_2']);
+
+      expect(result).toBe(products);
+      expect(productRepo.findByIds).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
+    });
+  });
+
+  describe('getVariantsBySkus', () => {
+    it('returns [] without hitting the repository for an empty input', async () => {
+      const result = await service.getVariantsBySkus([]);
+
+      expect(result).toEqual([]);
+      expect(variantRepo.findBySkuIn).not.toHaveBeenCalled();
+    });
+
+    it('forwards the sku list to the repository and returns the result', async () => {
+      const variants = [makeVariant()];
+      variantRepo.findBySkuIn.mockResolvedValue(variants);
+
+      const result = await service.getVariantsBySkus(['SKU-A', 'SKU-B']);
+
+      expect(result).toBe(variants);
+      expect(variantRepo.findBySkuIn).toHaveBeenCalledWith(['SKU-A', 'SKU-B']);
+    });
+  });
+
+  describe('getVariantsByBarcodes', () => {
+    it('returns [] without hitting the repository for an empty values input', async () => {
+      const result = await service.getVariantsByBarcodes('conn-1', [], 'ean');
+
+      expect(result).toEqual([]);
+      expect(variantRepo.findByEanOrGtinIn).not.toHaveBeenCalled();
+    });
+
+    it('forwards the (connectionId, values, field) triple to the repository', async () => {
+      const variants = [makeVariant()];
+      variantRepo.findByEanOrGtinIn.mockResolvedValue(variants);
+
+      const result = await service.getVariantsByBarcodes('conn-1', ['5901234567890'], 'ean');
+
+      expect(result).toBe(variants);
+      expect(variantRepo.findByEanOrGtinIn).toHaveBeenCalledWith(
+        'conn-1',
+        ['5901234567890'],
+        'ean'
+      );
     });
   });
 

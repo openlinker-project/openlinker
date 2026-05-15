@@ -10,13 +10,13 @@
  * @implements {IInventoryQueryService}
  * @see {@link IInventoryQueryService} for the service interface
  * @see {@link InventoryRepositoryPort} for inventory persistence
- * @see {@link ProductRepositoryPort} for product persistence
+ * @see {@link IProductsService} for cross-context product reads (#718)
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
   coverImageUrl,
-  PRODUCT_REPOSITORY_TOKEN,
-  ProductRepositoryPort,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
@@ -35,8 +35,8 @@ export class InventoryQueryService implements IInventoryQueryService {
   constructor(
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
-    @Inject(PRODUCT_REPOSITORY_TOKEN)
-    private readonly productRepository: ProductRepositoryPort
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService
   ) {}
 
   async listInventoryItems(
@@ -56,23 +56,17 @@ export class InventoryQueryService implements IInventoryQueryService {
     if (!item) {
       return null;
     }
-    const product = await this.productRepository.findById(item.productId);
+    const product = await this.productsService.getProduct(item.productId);
     return this.compose(item, product);
   }
 
-  // TODO: Replace with a single findByIds(ids) call once ProductRepositoryPort supports batch lookup.
-  // Current implementation issues N individual findById calls (one per unique productId).
-  // For typical page sizes (≤20 items) this is acceptable, but a batch method would be more efficient.
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
     const uniqueIds = [...new Set(productIds)];
-    const products = await Promise.all(uniqueIds.map((id) => this.productRepository.findById(id)));
+    const products = await this.productsService.getProductsByIds(uniqueIds);
     const map = new Map<string, Product>();
-    uniqueIds.forEach((id, idx) => {
-      const product = products[idx];
-      if (product) {
-        map.set(id, product);
-      }
-    });
+    for (const product of products) {
+      map.set(product.id, product);
+    }
     return map;
   }
 

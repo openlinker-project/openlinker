@@ -2,7 +2,7 @@
  * Offer Builder Service
  *
  * Assembles a platform-neutral `CreateOfferCommand` from an OL internal variant
- * id. Fetches variant metadata from the local repository, resolves the parent
+ * id. Fetches variant metadata via `IProductsService`, resolves the parent
  * master product via `ProductMasterPort` (for name/description/images/price),
  * resolves the marketplace category via `ICategoryResolutionService`, and
  * validates required fields. Throws `OfferBuilderValidationException` with a
@@ -21,8 +21,8 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type { CreateOfferCommand } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {
-  PRODUCT_VARIANT_REPOSITORY_TOKEN,
-  ProductVariantRepositoryPort,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -38,8 +38,8 @@ export class OfferBuilderService implements IOfferBuilderService {
   private readonly logger = new Logger(OfferBuilderService.name);
 
   constructor(
-    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
-    private readonly variantRepository: ProductVariantRepositoryPort,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -51,7 +51,7 @@ export class OfferBuilderService implements IOfferBuilderService {
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
     const issues: OfferBuilderValidationIssue[] = [];
 
-    const variant = await this.variantRepository.findById(input.internalVariantId);
+    const variant = await this.productsService.getVariant(input.internalVariantId);
     if (!variant) {
       throw new OfferBuilderValidationException([
         {

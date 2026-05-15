@@ -97,6 +97,8 @@ const VALID_EXTS = new Set(['.ts', '.tsx']);
  * app scope: #722).
  */
 const ALLOW_LIST = new Map([
+  // (Slice 1 of #718 — products repository-port callers — rewired via
+  // IProductsService and dropped from this list. See PR for #718.)
   // ─── Core-scope (#713/#721) — tracked in #718 ───────────────────────
 
   // inventory → products.ProductRepositoryPort — rewire via IProductsService

@@ -4,6 +4,7 @@
  * Orchestrates marketplace offer discovery and deterministic linking to internal variants.
  *
  * @module libs/core/src/listings/application/services
+ * @see {@link IProductsService} for cross-context variant reads (#718)
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { OfferManagerPort } from '@openlinker/core/listings';
@@ -12,8 +13,8 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type { OfferFeedItem } from '@openlinker/core/listings';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, IdentifierMappingConflictException, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
-  PRODUCT_VARIANT_REPOSITORY_TOKEN,
-  ProductVariantRepositoryPort,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
   normalizeBarcode,
 } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
@@ -34,8 +35,8 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
-    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
-    private readonly variantRepository: ProductVariantRepositoryPort,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
     private readonly offerLinking: OfferLinkingService
   ) {}
 
@@ -141,21 +142,22 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
     );
 
     const skuCandidates = this.uniqueValues([...externalRefs, ...skus]);
-    const skuVariants =
-      skuCandidates.length > 0 ? await this.variantRepository.findBySkuIn(skuCandidates) : [];
+    // IProductsService.getVariantsBySkus short-circuits on []; consumer drops
+    // the length guard.
+    const skuVariants = await this.productsService.getVariantsBySkus(skuCandidates);
 
     const skuMap = this.buildUniqueMap(skuVariants, (variant) => variant.sku ?? null);
     const externalRefMap = this.selectLookup(externalRefs, skuMap);
     const directSkuMap = this.selectLookup(skus, skuMap);
 
-    const eanVariants =
-      masterConnectionId && eans.length > 0
-        ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, eans, 'ean')
-        : [];
-    const gtinVariants =
-      masterConnectionId && gtins.length > 0
-        ? await this.variantRepository.findByEanOrGtinIn(masterConnectionId, gtins, 'gtin')
-        : [];
+    // masterConnectionId guard remains because the service requires it; the
+    // values-length guard is internal to getVariantsByBarcodes.
+    const eanVariants = masterConnectionId
+      ? await this.productsService.getVariantsByBarcodes(masterConnectionId, eans, 'ean')
+      : [];
+    const gtinVariants = masterConnectionId
+      ? await this.productsService.getVariantsByBarcodes(masterConnectionId, gtins, 'gtin')
+      : [];
     this.logger.debug(
       `Barcode lookup results (eans: [${eans.join(',')}] → ${eanVariants.length} hit(s), gtins: [${gtins.join(',')}] → ${gtinVariants.length} hit(s))`
     );
