@@ -2,8 +2,13 @@
  * Authentication Controller
  *
  * HTTP REST API endpoints for authentication. Provides login, current-user,
- * and password reset endpoints. Login and password-reset endpoints are public;
- * /auth/me requires a valid JWT bearer token (enforced by global guard).
+ * refresh, logout, and password reset endpoints. Login, refresh, logout,
+ * and password-reset endpoints are public; /auth/me requires a valid JWT
+ * bearer token (enforced by global guard).
+ *
+ * The refresh / logout endpoints are public from the JWT auth standpoint
+ * (no bearer required) but gated by CsrfGuard so cookie credentials
+ * can't be exploited cross-origin.
  *
  * @module apps/api/src/auth
  */
@@ -16,13 +21,22 @@ import {
   HttpStatus,
   Inject,
   Post,
+  Req,
+  Res,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { InvalidPasswordResetTokenException, WeakPasswordException } from '@openlinker/core/users';
+import { Request, Response } from 'express';
+import {
+  InvalidPasswordResetTokenException,
+  RefreshTokenReuseDetectedException,
+  WeakPasswordException,
+} from '@openlinker/core/users';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { CsrfGuard } from './guards/csrf.guard';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -34,6 +48,19 @@ import {
   IPasswordResetService,
   PASSWORD_RESET_SERVICE_TOKEN,
 } from './password-reset.service.interface';
+import { IRefreshTokenService } from './refresh-token.service.interface';
+import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.types';
+import {
+  REFRESH_COOKIE_NAME,
+  clearAuthCookies,
+  setCsrfCookie,
+  setRefreshCookie,
+} from './auth.cookies';
+
+function readCookie(req: Request, name: string): string | null {
+  const raw: unknown = req.cookies?.[name];
+  return typeof raw === 'string' && raw.length > 0 ? raw : null;
+}
 
 @ApiTags('auth')
 @Controller('auth')
@@ -41,22 +68,85 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     @Inject(PASSWORD_RESET_SERVICE_TOKEN)
-    private readonly passwordResetService: IPasswordResetService
+    private readonly passwordResetService: IPasswordResetService,
+    @Inject(REFRESH_TOKEN_SERVICE_TOKEN)
+    private readonly refreshTokenService: IRefreshTokenService,
   ) {}
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with username and password, returns JWT' })
+  @ApiOperation({
+    summary: 'Login with username and password. Returns access token + sets refresh cookie.',
+  })
   @ApiResponse({ status: 200, description: 'Login successful', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (missing or invalid fields)' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponseDto> {
     const user = await this.authService.validateUser(dto.username, dto.password);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return this.authService.login(user);
+    const accessTokenDto = this.authService.login(user);
+    const refresh = await this.refreshTokenService.issue(user.id);
+    setRefreshCookie(res, refresh.rawToken);
+    setCsrfCookie(res);
+    return accessTokenDto;
+  }
+
+  @Public()
+  @Post('refresh')
+  @UseGuards(CsrfGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Rotate the refresh cookie and return a new access token. CSRF-guarded.',
+  })
+  @ApiResponse({ status: 200, description: 'Refresh successful', type: LoginResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing, invalid, or revoked refresh token' })
+  @ApiResponse({ status: 403, description: 'CSRF token missing or mismatched' })
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponseDto> {
+    const raw = readCookie(req, REFRESH_COOKIE_NAME);
+    if (!raw) {
+      throw new UnauthorizedException('Missing refresh cookie');
+    }
+
+    try {
+      const rotated = await this.refreshTokenService.rotate(raw);
+      setRefreshCookie(res, rotated.rawToken);
+      setCsrfCookie(res);
+      const user = await this.authService.getMe(rotated.userId);
+      return this.authService.login(user);
+    } catch (error) {
+      if (error instanceof RefreshTokenReuseDetectedException) {
+        clearAuthCookies(res);
+        throw new UnauthorizedException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('logout')
+  @UseGuards(CsrfGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revoke the refresh cookie. CSRF-guarded. Always returns 204.' })
+  @ApiResponse({ status: 204, description: 'Logout successful (idempotent)' })
+  @ApiResponse({ status: 403, description: 'CSRF token missing or mismatched' })
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const raw = readCookie(req, REFRESH_COOKIE_NAME);
+    if (raw) {
+      await this.refreshTokenService.revoke(raw);
+    }
+    clearAuthCookies(res);
   }
 
   @Get('me')
