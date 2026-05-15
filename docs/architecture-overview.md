@@ -1165,11 +1165,24 @@ The `orders ↔ customers` pair shows up as a cycle at the barrel level. It's sa
 
 `scripts/check-cross-context-imports.mjs` runs under `pnpm check:invariants` (chained into `pnpm lint`). On any cross-context import that doesn't match the allow shapes — or that matches a deny shape — it fails the build with a file:line and the rule that fired.
 
-Pre-existing cross-context repository-port couplings (10 production files + 10 spec mocks, 20 `(file, symbol)` entries total) are tracked in **[#718](https://github.com/SilkSoftwareHouse/openlinker/issues/718)** and allow-listed in the script's `ALLOW_LIST` map by `(file, symbol)` pair until they're rewired through service interfaces. The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside.
+Pre-existing cross-context repository-port couplings are allow-listed in the script's `ALLOW_LIST` map by `(file, symbol)` pair until they're rewired through service interfaces:
+
+- **Core-to-core** (20 entries) — tracked in **[#718](https://github.com/SilkSoftwareHouse/openlinker/issues/718)**.
+- **Plugins + apps** (64 entries) — tracked in **[#722](https://github.com/SilkSoftwareHouse/openlinker/issues/722)**.
+
+The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside.
 
 ### Scope
 
-Today the rule applies to `libs/core/src/<ctx>/**` only — that matches the boundary the policy was audited against. Extending the same shape to `libs/integrations/<plugin>/src/**` and `apps/{api,worker}/src/**` is tracked in **[#719](https://github.com/SilkSoftwareHouse/openlinker/issues/719)** — the symmetry would mirror the existing Symbol-DI-token convention's reach, and the same script's matcher works against either tree with a small scope change.
+The rule applies to every consumer of `@openlinker/core/<ctx>` barrels under the walked scopes:
+
+- `libs/core/src/<ctx>/**` — core-to-core seam (#713/#721).
+- `libs/integrations/<plugin>/**` — every plugin's runtime, fixtures, and `__tests__/` (#719).
+- `apps/{api,worker}/**` — host apps, including `src/**` and `test/integration/**` (#719).
+
+`libs/plugin-sdk/src/**` is currently out of scope (no deny-pattern violations) but follows the same contract; if a violation surfaces a one-line walker addition closes the gap. `apps/web/**`, `libs/shared/**`, and `libs/test-kit/**` don't import from `@openlinker/core/*` and stay outside the walker.
+
+Same-context skip applies only when the importer is under `libs/core/src/<ctx>/` — plugins and apps have no counterpart context, so every `@openlinker/core/<ctx>` import from those scopes is by definition cross-context.
 
 ---
 
