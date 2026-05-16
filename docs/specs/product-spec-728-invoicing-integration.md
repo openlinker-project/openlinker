@@ -1,6 +1,6 @@
 # Product Spec — #728 Invoicing integration (Subiekt as first adapter)
 
-**Status:** phase A complete; phase B complete; phase C complete; phase D complete; Gate D = YES (build); phase E complete; ready for implementation
+**Status:** phase A-E complete; Gate D = YES (build); refinement closed 2026-05-16; ready for implementation (impl tracked via #751-#760)
 **Parent issue:** [#728](https://github.com/SilkSoftwareHouse/openlinker/issues/728)
 **Started:** 2026-05-16
 **Last updated:** 2026-05-16

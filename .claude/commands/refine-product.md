@@ -161,12 +161,14 @@ Wait for explicit choice. If user picks a hybrid, write up the merged shape.
 2. Use `.github/ISSUE_TEMPLATE/implementation.md` as the body template.
 3. Create issues via `mcp__github__issue_write` with label `implementation` and a reference to the parent product-design issue (`Part of #N`).
 4. Update parent product-design issue body with links to children.
-5. Commit spec doc + any updates on the current branch.
+5. **Close the Product Design issue** via `mcp__github__issue_write` with `state: closed`, `state_reason: completed`. The PD issue's lifecycle ends at Phase E complete — its purpose was to track the refinement *process*; that process is done. Impl children track impl progress on their own (link back to the closed parent via "Part of #N"). See workflow doc § "Why close on Phase E" for rationale.
+6. Commit spec doc + any updates on the current branch.
 
 ⏸ **Final pause — present to user:**
 - List of implementation issues created (with URLs)
+- Confirmation that Product Design issue is closed (refinement done)
 - Reminder: for each implementation issue, use `/plan <N>` (if architecture is non-trivial) or `/work <N>` (if trivial) to proceed.
-- Ask: "Anything else to add to the spec or issue list before closing this refinement?"
+- Ask: "Anything else to add to the spec or issue list before closing this refinement session?"
 
 ---
 

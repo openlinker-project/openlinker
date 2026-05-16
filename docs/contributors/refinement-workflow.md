@@ -62,8 +62,19 @@ OpenLinker uses two **maintainer-only** issue types alongside the existing contr
 
 - **Created by:** maintainers, often by converting a community feature request
 - **Template:** `.github/ISSUE_TEMPLATE/product-design.md`
-- **Lifecycle:** stays open as an epic until all child implementation issues are closed and post-launch validation confirms the spec
-- **Output:** product spec at `docs/specs/product-spec-{N}-{slug}.md` + N implementation children
+- **Lifecycle:** **closes when Phase E completes** — i.e., when the product spec is merged, Gate D decision is recorded, and (on Gate D = YES) implementation children are spawned and linked. The Product Design issue tracks the **refinement process**, not the implementation that follows.
+- **Output:** product spec at `docs/specs/product-spec-{N}-{slug}.md` (lives forever; the canonical record) + N implementation children (track impl progress on their own)
+
+**Why close on Phase E (not when impl ships):**
+
+The Product Design issue is the *process container* for the refinement workflow. Once the spec is locked and impl issues are spawned, the refinement *process* is done. Leaving the issue open through implementation creates three problems:
+1. **Ambiguous signal** — "is this issue OPEN because refinement is in progress, or because impl is in progress, or because the maintainer forgot to close it?"
+2. **Stale-issue accumulation** — Product Design issues live 3-6 months mixing semantics
+3. **Mental load** — to know the actual state, you must open the spec doc or read the body banner
+
+Closing on Phase E keeps semantics crisp: issue OPEN = refinement is active; issue CLOSED = refinement complete (whatever happens to impl afterwards). Impl children link back to the closed parent for traceability; GitHub's sub-issue / linked-issues view still works across closed parents.
+
+**Post-launch validation** (does the spec's definition-of-done hold?) is tracked separately — typically in release notes, a brief retrospective, or a new Product Design issue if the original spec proves wrong. Do **not** reopen the closed Product Design for validation outcomes; cross-link instead.
 
 ### Implementation issues (`implementation` label)
 
