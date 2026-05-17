@@ -108,7 +108,14 @@ describe('Auth Refresh Integration (#710)', () => {
           : [];
       expect(rawCookies.length).toBeGreaterThan(0);
       const refreshLine = rawCookies.find((c) => c.startsWith(`${COOKIE_REFRESH}=`));
-      const csrfLine = rawCookies.find((c) => c.startsWith(`${COOKIE_CSRF}=`));
+      // Skip the migration-cleanup Set-Cookie that `setCsrfCookie` emits at
+      // `Path=/auth` to drop the pre-#748 stale copy. That header looks like
+      // `ol_csrf=; Path=/auth; Expires=Thu, 01 Jan 1970 …` — it precedes the
+      // real issuance so a plain `.find()` would match the clearing line
+      // first and the `Path=/` assertions below would all fail.
+      const csrfLine = rawCookies.find(
+        (c) => c.startsWith(`${COOKIE_CSRF}=`) && !/Expires=Thu, 01 Jan 1970/.test(c),
+      );
 
       expect(refreshLine).toMatch(/HttpOnly/i);
       expect(refreshLine).toMatch(/SameSite=Lax/i); // dev/test mode
