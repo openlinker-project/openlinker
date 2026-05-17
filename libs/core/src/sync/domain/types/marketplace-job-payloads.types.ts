@@ -95,6 +95,64 @@ export interface MarketplaceOfferCreatePayloadV1 {
 }
 
 /**
+ * Bulk-aware payload for `marketplace.offer.create` jobs (#736).
+ *
+ * Extends V1 with bulk-batch attribution + the AI-description toggles the
+ * bulk wizard surfaces. The worker handler change that consumes
+ * `bulkBatchId` (incrementing batch counters on terminal status) lands in
+ * **#737**; this PR defines the wire shape and emits V2 from the bulk
+ * submission service. Single-offer flows keep emitting V1.
+ *
+ * Connection id still comes from `job.connectionId`, not the payload.
+ */
+export interface MarketplaceOfferCreatePayloadV2 {
+  schemaVersion: 2;
+  /** OL internal variant id being listed. */
+  internalVariantId: string;
+  /** Offered stock quantity. */
+  stock: number;
+  /** Publish immediately after creation. */
+  publishImmediately: boolean;
+  /** Optional explicit price; when omitted the builder falls back to master product. */
+  price?: { amount: number; currency: string };
+  /** Optional overrides — same shape as V1. */
+  overrides?: CreateOfferOverrides;
+  /** Optional idempotency key forwarded to the adapter. */
+  idempotencyKey?: string;
+  /** Pre-created OfferCreationRecord id — always set for V2 (bulk pre-creates). */
+  offerCreationRecordId: string;
+  /**
+   * Parent BulkOfferCreationBatch id. The worker handler (#737) uses this
+   * to call `BulkOfferCreationBatchRepositoryPort.incrementCounters` after
+   * terminal status, and the bulk service uses it as part of the
+   * idempotency key (`bulk:{batchId}:variant:{variantId}`).
+   */
+  bulkBatchId: string;
+  /**
+   * Operator opted into AI description generation for this batch. The
+   * worker handler (#737) routes a generated description into `overrides`
+   * when true.
+   */
+  generateDescription: boolean;
+  /**
+   * Optional tone hint forwarded to the AI prompt template. Ignored when
+   * `generateDescription` is false.
+   */
+  descriptionTone?: OfferDescriptionTone;
+}
+
+/**
+ * AI-description tone hint surfaced by the bulk wizard (#736 / #737).
+ *
+ * `as const` + union per engineering standards. Adding a new tone requires
+ * editing both the values array and the prompt-template register on the
+ * worker side (#737).
+ */
+export const OfferDescriptionToneValues = ['concise', 'detailed'] as const;
+
+export type OfferDescriptionTone = (typeof OfferDescriptionToneValues)[number];
+
+/**
  * Payload for `marketplace.offer.pollCreationStatus` jobs (#447).
  *
  * Self-rescheduling poll: each iteration writes the next iteration's payload

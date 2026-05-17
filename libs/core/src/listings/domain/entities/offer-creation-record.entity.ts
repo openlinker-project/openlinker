@@ -31,6 +31,11 @@ export class OfferCreationRecord {
      * not pass the snapshot. Surfaced on the status response for retry
      * pre-fill on the wizard.
      */
-    public readonly request: OfferCreationRequestSnapshot | null = null
+    public readonly request: OfferCreationRequestSnapshot | null = null,
+    /**
+     * Parent BulkOfferCreationBatch id. Null for single-offer attempts; set
+     * when the record was created as part of a bulk submission (#736).
+     */
+    public readonly bulkBatchId: string | null = null
   ) {}
 }

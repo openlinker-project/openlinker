@@ -12,6 +12,7 @@ import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/
 import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { ListingsController } from './http/listings.controller';
+import { BulkOfferCreationController } from './http/bulk-offer-creation.controller';
 
 @Module({
   // CoreIntegrationsModule supplies INTEGRATIONS_SERVICE_TOKEN, which the
@@ -20,6 +21,6 @@ import { ListingsController } from './http/listings.controller';
   // CoreProductsModule supplies PRODUCT_VARIANT_REPOSITORY_TOKEN, used by
   // GET /listings/:id to resolve the linked variant's productId (#485).
   imports: [CoreListingsModule, CoreSyncModule, CoreIntegrationsModule, CoreProductsModule],
-  controllers: [ListingsController],
+  controllers: [ListingsController, BulkOfferCreationController],
 })
 export class ListingsApiModule {}

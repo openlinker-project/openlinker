@@ -108,6 +108,14 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return this.toDomain(saved);
   }
 
+  async findByBulkBatchId(bulkBatchId: string): Promise<OfferCreationRecord[]> {
+    const entities = await this.repository.find({
+      where: { bulkBatchId },
+      order: { createdAt: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   private buildOrmEntity(input: CreateOfferCreationRecordInput): OfferCreationRecordOrmEntity {
     const entity = new OfferCreationRecordOrmEntity();
     entity.internalVariantId = input.internalVariantId;
@@ -117,6 +125,7 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     entity.externalOfferId = input.externalOfferId ?? null;
     entity.errors = input.errors ?? null;
     entity.request = input.request ?? null;
+    entity.bulkBatchId = input.bulkBatchId ?? null;
     return entity;
   }
 
@@ -131,7 +140,8 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
       entity.publishImmediately,
       entity.createdAt,
       entity.updatedAt,
-      entity.request
+      entity.request,
+      entity.bulkBatchId
     );
   }
 }

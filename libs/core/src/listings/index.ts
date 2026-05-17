@@ -87,6 +87,15 @@ export type {
 } from './domain/types/bulk-offer-creation-batch.types';
 export type { BulkOfferCreationBatchRepositoryPort } from './domain/ports/bulk-offer-creation-batch-repository.port';
 export { BulkOfferCreationBatchNotFoundException } from './domain/exceptions/bulk-offer-creation-batch-not-found.exception';
+export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export type { IBulkOfferCreationSubmitService } from './application/interfaces/bulk-offer-creation-submit.service.interface';
+export type {
+  BulkSharedConfig,
+  PerProductOverride,
+  BulkOfferCreationSubmitInput,
+  BulkOfferCreationSubmitResult,
+  BulkBatchSummary,
+} from './application/types/bulk-offer-creation-submit.types';
 export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';

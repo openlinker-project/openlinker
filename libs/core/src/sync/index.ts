@@ -64,8 +64,11 @@ export {
   MarketplaceOfferFieldUpdatePayloadV1,
   MarketplaceOffersSyncPayloadV1,
   MarketplaceOfferCreatePayloadV1,
+  MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
+  OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
+export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';
 export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,

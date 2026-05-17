@@ -15,6 +15,7 @@
  */
 
 import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { OfferDescriptionTone } from '@openlinker/core/sync';
 
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 
@@ -33,6 +34,26 @@ export interface EnqueueOfferCreationInput {
   overrides?: CreateOfferOverrides;
   /** Caller-supplied idempotency key; defaults to `offer-create:{record.id}` (per-call-unique). */
   idempotencyKey?: string;
+  /**
+   * Parent BulkOfferCreationBatch id when this enqueue is part of a bulk
+   * submission (#736). When set the emitted job payload is
+   * `MarketplaceOfferCreatePayloadV2` (carries `bulkBatchId` +
+   * `generateDescription` + optional `descriptionTone`); when omitted, V1
+   * is emitted unchanged so the single-offer flow is byte-identical to
+   * pre-#736 behavior.
+   */
+  bulkBatchId?: string;
+  /**
+   * Bulk flag: operator wants the worker handler (#737) to generate the
+   * offer description via the AI prompt template. Ignored when
+   * `bulkBatchId` is unset (single-offer flow has no AI integration in v1).
+   */
+  generateDescription?: boolean;
+  /**
+   * Optional tone hint forwarded to the AI prompt template. Ignored when
+   * `generateDescription` is false or `bulkBatchId` is unset.
+   */
+  descriptionTone?: OfferDescriptionTone;
 }
 
 export interface EnqueueOfferCreationResult {
