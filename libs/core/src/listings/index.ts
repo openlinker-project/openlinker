@@ -76,6 +76,17 @@ export type {
 } from './domain/types/offer-creation-request-snapshot.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
+export { BulkOfferCreationBatch } from './domain/entities/bulk-offer-creation-batch.entity';
+export {
+  BulkBatchStatusValues,
+  BULK_BATCH_STATUS,
+} from './domain/types/bulk-offer-creation-batch.types';
+export type {
+  BulkBatchStatus,
+  CreateBulkOfferCreationBatchInput,
+} from './domain/types/bulk-offer-creation-batch.types';
+export type { BulkOfferCreationBatchRepositoryPort } from './domain/ports/bulk-offer-creation-batch-repository.port';
+export { BulkOfferCreationBatchNotFoundException } from './domain/exceptions/bulk-offer-creation-batch-not-found.exception';
 export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
