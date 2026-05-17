@@ -20,6 +20,8 @@ import { CategoryResolutionService } from './application/services/category-resol
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
+import { BulkOfferCreationBatchOrmEntity } from './infrastructure/persistence/entities/bulk-offer-creation-batch.orm-entity';
+import { BulkOfferCreationBatchRepository } from './infrastructure/persistence/repositories/bulk-offer-creation-batch.repository';
 import { OfferBuilderService } from './application/services/offer-builder.service';
 import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
@@ -33,6 +35,7 @@ import {
   OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
@@ -49,6 +52,7 @@ export {
   OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
@@ -63,6 +67,7 @@ export {
     TypeOrmModule.forFeature([
       IdentifierMappingOrmEntity,
       OfferCreationRecordOrmEntity,
+      BulkOfferCreationBatchOrmEntity,
       SellerPoliciesCacheOrmEntity,
     ]),
     IntegrationsModule,
@@ -78,6 +83,7 @@ export {
     CategoryResolutionService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
+    BulkOfferCreationBatchRepository,
     OfferBuilderService,
     OfferCreationExecutionService,
     OfferCreationEnqueueService,
@@ -103,6 +109,10 @@ export {
     {
       provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
       useExisting: OfferCreationRecordRepository,
+    },
+    {
+      provide: BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+      useExisting: BulkOfferCreationBatchRepository,
     },
     {
       provide: CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -139,6 +149,7 @@ export {
     OFFER_MAPPINGS_SERVICE_TOKEN,
     OFFER_MAPPING_REPOSITORY_TOKEN,
     OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+    BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,

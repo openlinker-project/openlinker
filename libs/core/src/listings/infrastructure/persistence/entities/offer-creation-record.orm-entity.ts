@@ -65,6 +65,16 @@ export class OfferCreationRecordOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   request!: OfferCreationRequestSnapshot | null;
 
+  /**
+   * Optional reference to the parent bulk-batch this record belongs to.
+   * Null for single (non-bulk) offer-creation attempts. No FK enforced at
+   * the schema level (matches the `connectionId` precedent); application
+   * code maintains referential integrity.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  @Index('IDX_offer_creation_records_bulkBatchId')
+  bulkBatchId!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
