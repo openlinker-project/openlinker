@@ -77,18 +77,25 @@ Every spec follows this skeleton. Sections are filled out incrementally by the f
 ## Lifecycle
 
 ```
-docs/specs/product-spec-N-slug.md
-   ↓ (refinement complete, Gate D = YES)
-remains in docs/specs/ — referenced by impl plans in ../plans/
-   ↓ (all impl children merged)
+docs/specs/product-spec-N-slug.md            Product Design issue #N
+   ↓ (refinement complete,                       ↓
+      Gate D = YES, Phase E done)                CLOSED with state_reason: completed
+remains in docs/specs/ —                         (refinement process done)
+referenced by impl plans in ../plans/            impl children track impl
+   ↓ (all impl children merged)                  on their own (open until PRs merge)
 remains in docs/specs/ — historical record
 
 OR
 
-docs/specs/product-spec-N-slug.md
-   ↓ (Gate D = NO, "don't build")
-moved to docs/specs/archive/
+docs/specs/product-spec-N-slug.md            Product Design issue #N
+   ↓ (Gate D = NO, "don't build")                ↓
+moved to docs/specs/archive/                     CLOSED with state_reason: not_planned
+                                                 (reasoning recorded in closing comment)
 ```
+
+**The Product Design issue tracks the refinement process; the spec doc is the canonical record.** When refinement completes (Phase E done), the issue closes — leaving the spec doc in place as the lasting artifact. Impl children track impl progress independently; closing the PD issue does NOT depend on or block impl work.
+
+See [refinement workflow § "Why close on Phase E"](../contributors/refinement-workflow.md#product-design-issues-product-design-label) for full rationale.
 
 ## See also
 

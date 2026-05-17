@@ -53,4 +53,8 @@ assignees: ''
 - [ ] Product spec at `docs/specs/product-spec-{N}-{slug}.md` merged
 - [ ] Build/no-build decision recorded (Gate D output)
 - [ ] If "build": implementation issues spawned and linked here
-- [ ] If "no build": this issue closed with `state_reason: not_planned` and reasoning recorded
+- [ ] **This Product Design issue is closed** when all of the above are done:
+  - On Gate D = YES → `state_reason: completed`
+  - On Gate D = NO → `state_reason: not_planned` with reasoning recorded
+  - On DEFER → leave open with status note in body until defer condition changes
+- [ ] Impl children track impl progress independently; **closing this PD does NOT depend on impl shipping**

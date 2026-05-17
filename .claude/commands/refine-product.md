@@ -15,6 +15,39 @@ The full workflow doc is at `docs/contributors/refinement-workflow.md`. This ski
 
 ---
 
+## Setup — Worktree & branch (run once at the start)
+
+Refinements produce committed artifacts (spec doc + sub-issues). Always run in an isolated worktree to keep `main` clean and to enable a self-contained PR at the end.
+
+**Skip this section** if the session is already in a worktree for this issue (check: `git rev-parse --show-toplevel` includes `.claude/worktrees/`). Otherwise:
+
+1. **Sync local main with origin** (so the worktree starts from latest code):
+   ```bash
+   git fetch origin main
+   git checkout main
+   git merge origin/main --ff-only
+   ```
+
+2. **Create the worktree** via the `EnterWorktree` tool. Name format: `{issue-number}-{kebab-slug}-refinement` (e.g., `727-inpost-integration-refinement` for issue #727 — the slug should come from the issue title's domain noun).
+   - If `EnterWorktree` is not loaded, fetch it first via `ToolSearch` with query `select:EnterWorktree`.
+
+3. **Inside the new worktree, reset to latest origin/main and rename the branch:**
+   ```bash
+   git reset --hard origin/main
+   git branch -m {issue-number}-{kebab-slug}-refinement
+   ```
+
+4. **Install dependencies:**
+   ```bash
+   pnpm install --prefer-offline
+   ```
+
+5. Confirm the worktree is ready before proceeding to Pre-flight. The same branch will carry every phase's artifacts and become the eventual PR.
+
+**At Phase E completion** (or on DEFER/NO closure): commit changes, push branch, open PR with `mcp__github__create_pull_request`, then `ExitWorktree` (`action: remove`, `discard_changes: true` once the PR is open since the work is preserved on remote).
+
+---
+
 ## Pre-flight
 
 1. Fetch the issue via `mcp__github__issue_read` for `SilkSoftwareHouse/openlinker`. Read body + comments.
@@ -161,12 +194,14 @@ Wait for explicit choice. If user picks a hybrid, write up the merged shape.
 2. Use `.github/ISSUE_TEMPLATE/implementation.md` as the body template.
 3. Create issues via `mcp__github__issue_write` with label `implementation` and a reference to the parent product-design issue (`Part of #N`).
 4. Update parent product-design issue body with links to children.
-5. Commit spec doc + any updates on the current branch.
+5. **Close the Product Design issue** via `mcp__github__issue_write` with `state: closed`, `state_reason: completed`. The PD issue's lifecycle ends at Phase E complete — its purpose was to track the refinement *process*; that process is done. Impl children track impl progress on their own (link back to the closed parent via "Part of #N"). See workflow doc § "Why close on Phase E" for rationale.
+6. Commit spec doc + any updates on the current branch.
 
 ⏸ **Final pause — present to user:**
 - List of implementation issues created (with URLs)
+- Confirmation that Product Design issue is closed (refinement done)
 - Reminder: for each implementation issue, use `/plan <N>` (if architecture is non-trivial) or `/work <N>` (if trivial) to proceed.
-- Ask: "Anything else to add to the spec or issue list before closing this refinement?"
+- Ask: "Anything else to add to the spec or issue list before closing this refinement session?"
 
 ---
 
