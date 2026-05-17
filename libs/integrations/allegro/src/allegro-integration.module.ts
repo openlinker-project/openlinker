@@ -16,7 +16,7 @@ import { Module, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type {
-  IntegrationCredentialRepositoryPort,
+  ICredentialsService,
   AdapterFactoryPort,
 } from '@openlinker/core/integrations';
 import {
@@ -35,7 +35,7 @@ import {
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  CREDENTIALS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
@@ -86,15 +86,15 @@ import { createAllegroPlugin } from './allegro-plugin';
       provide: 'AllegroQuantityCommandRepositoryPort',
       useExisting: ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN,
     },
-    // Token refresh service — optional Redis/credential deps tolerated by the service.
+    // Token refresh service — optional Redis/credentials deps tolerated by the service.
     {
       provide: AllegroTokenRefreshService,
       useFactory: (
         redisClient?: RedisClientType,
-        credentialRepository?: IntegrationCredentialRepositoryPort
+        credentials?: ICredentialsService
       ): AllegroTokenRefreshService =>
-        new AllegroTokenRefreshService(redisClient, credentialRepository),
-      inject: ['REDIS_CLIENT', INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN],
+        new AllegroTokenRefreshService(redisClient, credentials),
+      inject: ['REDIS_CLIENT', CREDENTIALS_SERVICE_TOKEN],
     },
   ],
   exports: [ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN, 'AllegroQuantityCommandRepositoryPort'],

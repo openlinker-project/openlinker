@@ -260,40 +260,6 @@ const ALLOW_LIST = new Map([
     new Set(['WebhookDeliveryRepositoryPort']),
   ],
 
-  // apps + plugin → integrations.IntegrationCredentialRepositoryPort — rewire via ICredentialsService
-  [
-    'apps/api/src/integrations/application/services/allegro-oauth.service.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'apps/api/src/integrations/application/services/allegro-oauth.service.spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'apps/api/src/integrations/application/services/connection.service.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'apps/api/src/integrations/application/services/connection.service.spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'apps/api/test/integration/ai-provider-settings.int-spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'apps/api/test/integration/connection-credentials.int-spec.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'libs/integrations/allegro/src/allegro-integration.module.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-  [
-    'libs/integrations/allegro/src/infrastructure/token-refresh/allegro-token-refresh.service.ts',
-    new Set(['IntegrationCredentialRepositoryPort']),
-  ],
-
   // apps + plugin → customers.CustomerProjectionRepositoryPort — rewire via ICustomersService
   [
     'apps/api/src/customers/http/customers.controller.ts',

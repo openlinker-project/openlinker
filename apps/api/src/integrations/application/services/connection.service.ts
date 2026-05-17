@@ -31,8 +31,8 @@ import type {
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ICredentialsService,
+  CREDENTIALS_SERVICE_TOKEN,
   ConnectionTesterRegistryService,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
@@ -62,8 +62,8 @@ export class ConnectionService implements IConnectionService {
     private readonly integrationsService: IIntegrationsService,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
-    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository: IntegrationCredentialRepositoryPort,
+    @Inject(CREDENTIALS_SERVICE_TOKEN)
+    private readonly credentials: ICredentialsService,
     @Inject(CONNECTION_TESTER_REGISTRY_TOKEN)
     private readonly connectionTesterRegistry: ConnectionTesterRegistryService,
     @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
@@ -219,7 +219,7 @@ export class ConnectionService implements IConnectionService {
       if (credentials) {
         await this.validateCredentialsShape(metadata.adapterKey, credentials);
         const ref = randomUUID();
-        await this.credentialRepository.create({
+        await this.credentials.create({
           ref,
           platformType: rest.platformType,
           credentialsJson: credentials,
@@ -241,7 +241,7 @@ export class ConnectionService implements IConnectionService {
       } catch (error) {
         if (createdCredentialRef) {
           try {
-            await this.credentialRepository.delete(createdCredentialRef);
+            await this.credentials.delete(createdCredentialRef);
             this.logger.warn(
               `Rolled back orphaned credential ${createdCredentialRef} after connection create failure`
             );
@@ -418,7 +418,7 @@ export class ConnectionService implements IConnectionService {
     });
     await this.validateCredentialsShape(metadata.adapterKey, credentials);
     const ref = connection.credentialsRef.slice('db:'.length);
-    await this.credentialRepository.update(ref, { credentialsJson: credentials });
+    await this.credentials.update(ref, { credentialsJson: credentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
   }
 

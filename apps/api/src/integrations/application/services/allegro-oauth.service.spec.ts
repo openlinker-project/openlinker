@@ -11,8 +11,8 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { AllegroOAuthService } from './allegro-oauth.service';
 import { ConnectionService } from './connection.service';
-import type { IntegrationCredentialRepositoryPort } from '@openlinker/core/integrations';
-import { INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN } from '@openlinker/core/integrations';
+import type { ICredentialsService } from '@openlinker/core/integrations';
+import { CREDENTIALS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
 describe('AllegroOAuthService', () => {
   let service: AllegroOAuthService;
@@ -21,7 +21,7 @@ describe('AllegroOAuthService', () => {
     setEx: jest.Mock;
     del: jest.Mock;
   };
-  let credentialRepository: jest.Mocked<IntegrationCredentialRepositoryPort>;
+  let credentials: jest.Mocked<ICredentialsService>;
   let connectionService: jest.Mocked<Pick<ConnectionService, 'get' | 'create'>>;
 
   beforeEach(async () => {
@@ -31,12 +31,9 @@ describe('AllegroOAuthService', () => {
       del: jest.fn().mockResolvedValue(1),
     };
 
-    credentialRepository = {
+    credentials = {
       create: jest.fn(),
-      findByRef: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-    } as unknown as jest.Mocked<IntegrationCredentialRepositoryPort>;
+    } as unknown as jest.Mocked<ICredentialsService>;
 
     connectionService = {
       get: jest.fn(),
@@ -48,7 +45,7 @@ describe('AllegroOAuthService', () => {
         AllegroOAuthService,
         { provide: ConnectionService, useValue: connectionService },
         { provide: 'REDIS_CLIENT', useValue: redisClient },
-        { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: credentialRepository },
+        { provide: CREDENTIALS_SERVICE_TOKEN, useValue: credentials },
       ],
     }).compile();
 
@@ -201,7 +198,7 @@ describe('AllegroOAuthService', () => {
   describe('storeCredentialsAndCreateConnection', () => {
     it('should set masterCatalogConnectionId in connection config when present in stateData', async () => {
       const masterCatalogConnectionId = '123e4567-e89b-12d3-a456-426614174000';
-      credentialRepository.create.mockResolvedValue(undefined as never);
+      credentials.create.mockResolvedValue(undefined as never);
       connectionService.create.mockResolvedValue({ id: 'conn-1', name: 'Test' } as never);
 
       await service.storeCredentialsAndCreateConnection(
@@ -223,7 +220,7 @@ describe('AllegroOAuthService', () => {
     });
 
     it('should not include masterCatalogConnectionId in config when absent from stateData', async () => {
-      credentialRepository.create.mockResolvedValue(undefined as never);
+      credentials.create.mockResolvedValue(undefined as never);
       connectionService.create.mockResolvedValue({ id: 'conn-1', name: 'Test' } as never);
 
       await service.storeCredentialsAndCreateConnection(
