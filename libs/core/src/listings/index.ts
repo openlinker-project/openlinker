@@ -88,6 +88,9 @@ export type {
 export type { BulkOfferCreationBatchRepositoryPort } from './domain/ports/bulk-offer-creation-batch-repository.port';
 export { BulkOfferCreationBatchNotFoundException } from './domain/exceptions/bulk-offer-creation-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
+export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
+export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
+export type { IBulkOfferCreationProgressService } from './application/services/bulk-offer-creation-progress.service.interface';
 export type { IBulkOfferCreationSubmitService } from './application/interfaces/bulk-offer-creation-submit.service.interface';
 export type {
   BulkSharedConfig,
@@ -166,6 +169,12 @@ export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/categor
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
 export { isEanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
+export type { OfferSmartClassificationReader } from './domain/ports/capabilities/offer-smart-classification-reader.capability';
+export { isOfferSmartClassificationReader } from './domain/ports/capabilities/offer-smart-classification-reader.capability';
+export type {
+  SmartClassificationReport,
+  SmartClassificationCondition,
+} from './domain/types/smart-classification.types';
 export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
 export type {
   EanMatchResultKind,

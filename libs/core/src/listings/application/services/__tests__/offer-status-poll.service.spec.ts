@@ -48,6 +48,24 @@ function statusReader(result: OfferStatusReadResult | (() => never)): OfferManag
   } as unknown as OfferManagerPort;
 }
 
+/**
+ * Variant of `statusReader` whose adapter also implements
+ * `OfferSmartClassificationReader`. Used by the Smart-readback hook tests.
+ */
+function statusAndSmartReader(
+  status: OfferStatusReadResult,
+  smart: { result: unknown } | { error: Error }
+): OfferManagerPort {
+  return {
+    updateOfferQuantity: jest.fn(),
+    getOfferStatus: jest.fn().mockResolvedValue(status),
+    getOfferSmartClassification:
+      'error' in smart
+        ? jest.fn().mockRejectedValue(smart.error)
+        : jest.fn().mockResolvedValue(smart.result),
+  } as unknown as OfferManagerPort;
+}
+
 describe('OfferStatusPollService', () => {
   let service: OfferStatusPollService;
   let integrations: jest.Mocked<IIntegrationsService>;
@@ -74,6 +92,7 @@ describe('OfferStatusPollService', () => {
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
       findByBulkBatchId: jest.fn(),
+      updateClassificationReport: jest.fn(),
     };
 
     syncJobs = {
@@ -351,6 +370,88 @@ describe('OfferStatusPollService', () => {
         [{ code: 'POLL_TIMEOUT', message: expect.stringContaining('POLL_TIMEOUT') }],
       );
     });
+
+  });
+
+  describe('pollOnce — Smart classification readback hook (#737)', () => {
+    function pollInput(pollAttempt = 1): PollOnceInput {
+      return {
+        offerCreationRecordId: RECORD_ID,
+        externalOfferId: EXTERNAL_OFFER_ID,
+        connectionId: CONNECTION_ID,
+        pollAttempt,
+      };
+    }
+
+    it('reads and persists Smart report on validating→active transition', async () => {
+      const report = { fulfilled: true, conditions: [] };
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusAndSmartReader(
+          { publicationStatus: 'active', validationErrors: [] },
+          { result: report }
+        )
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(records.updateClassificationReport).toHaveBeenCalledWith(RECORD_ID, report);
+    });
+
+    it('persists null when Smart readback fails (best-effort, AC-7)', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusAndSmartReader(
+          { publicationStatus: 'active', validationErrors: [] },
+          { error: new Error('Allegro 500') }
+        )
+      );
+
+      const result = await service.pollOnce(pollInput());
+
+      // Poll iteration MUST still succeed
+      expect(result.outcome).toBe('ok');
+      expect(records.updateClassificationReport).toHaveBeenCalledWith(RECORD_ID, null);
+    });
+
+    it('does NOT call Smart readback on non-active terminal transitions', async () => {
+      // INACTIVE+errors → failed; Smart is meaningless here
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusAndSmartReader(
+          {
+            publicationStatus: 'inactive',
+            validationErrors: [{ code: 'X', message: 'y', field: 'z' }],
+          },
+          { result: { fulfilled: true, conditions: [] } }
+        )
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(records.updateClassificationReport).not.toHaveBeenCalled();
+    });
+
+    it('skips Smart readback when adapter lacks the capability', async () => {
+      // status-only adapter — no getOfferSmartClassification method
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'active', validationErrors: [] })
+      );
+
+      const result = await service.pollOnce(pollInput());
+
+      expect(result.outcome).toBe('ok');
+      expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'active', null);
+      expect(records.updateClassificationReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pollOnce — cadence cap (final)', () => {
+    function pollInput(pollAttempt = 1): PollOnceInput {
+      return {
+        offerCreationRecordId: RECORD_ID,
+        externalOfferId: EXTERNAL_OFFER_ID,
+        connectionId: CONNECTION_ID,
+        pollAttempt,
+      };
+    }
 
     it('cadence caps at maxDelaySeconds for high pollAttempts', async () => {
       // Iteration 5: 5 * 2^4 = 80s, capped to 60s.

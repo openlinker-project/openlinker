@@ -13,6 +13,7 @@
 
 import type { OfferCreationError, OfferCreationStatus } from '../types/offer-creation-record.types';
 import type { OfferCreationRequestSnapshot } from '../types/offer-creation-request-snapshot.types';
+import type { SmartClassificationReport } from '../types/smart-classification.types';
 
 export class OfferCreationRecord {
   constructor(
@@ -36,6 +37,13 @@ export class OfferCreationRecord {
      * Parent BulkOfferCreationBatch id. Null for single-offer attempts; set
      * when the record was created as part of a bulk submission (#736).
      */
-    public readonly bulkBatchId: string | null = null
+    public readonly bulkBatchId: string | null = null,
+    /**
+     * Marketplace classification report (#737). Today only Allegro populates
+     * this — via `GET /sale/offers/{id}/smart` after create-success and on
+     * the `validating → active` transition. Null when never read, not yet
+     * classified, or readback failed.
+     */
+    public readonly classificationReport: SmartClassificationReport | null = null
   ) {}
 }

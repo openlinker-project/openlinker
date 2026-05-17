@@ -21,6 +21,7 @@ import type {
   OfferCreationError,
   OfferCreationStatus,
 } from '../../../domain/types/offer-creation-record.types';
+import type { SmartClassificationReport } from '../../../domain/types/smart-classification.types';
 import { OfferCreationRecordOrmEntity } from '../entities/offer-creation-record.orm-entity';
 
 @Injectable()
@@ -116,6 +117,19 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async updateClassificationReport(
+    id: string,
+    report: SmartClassificationReport | null
+  ): Promise<OfferCreationRecord> {
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new OfferCreationRecordNotFoundException(id);
+    }
+    entity.classificationReport = report;
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
+  }
+
   private buildOrmEntity(input: CreateOfferCreationRecordInput): OfferCreationRecordOrmEntity {
     const entity = new OfferCreationRecordOrmEntity();
     entity.internalVariantId = input.internalVariantId;
@@ -141,7 +155,8 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
       entity.createdAt,
       entity.updatedAt,
       entity.request,
-      entity.bulkBatchId
+      entity.bulkBatchId,
+      entity.classificationReport
     );
   }
 }

@@ -22,6 +22,9 @@ import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entit
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
 import { BulkOfferCreationBatchOrmEntity } from './infrastructure/persistence/entities/bulk-offer-creation-batch.orm-entity';
 import { BulkOfferCreationBatchRepository } from './infrastructure/persistence/repositories/bulk-offer-creation-batch.repository';
+import { BulkBatchAdvancementOrmEntity } from './infrastructure/persistence/entities/bulk-batch-advancement.orm-entity';
+import { BulkBatchAdvancementRepository } from './infrastructure/persistence/repositories/bulk-batch-advancement.repository';
+import { BulkOfferCreationProgressService } from './application/services/bulk-offer-creation-progress.service';
 import { OfferBuilderService } from './application/services/offer-builder.service';
 import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
@@ -37,6 +40,8 @@ import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
+  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
@@ -55,6 +60,8 @@ export {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
+  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
@@ -71,6 +78,7 @@ export {
       IdentifierMappingOrmEntity,
       OfferCreationRecordOrmEntity,
       BulkOfferCreationBatchOrmEntity,
+      BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
     ]),
     IntegrationsModule,
@@ -87,6 +95,8 @@ export {
     OfferMappingRepository,
     OfferCreationRecordRepository,
     BulkOfferCreationBatchRepository,
+    BulkBatchAdvancementRepository,
+    BulkOfferCreationProgressService,
     OfferBuilderService,
     OfferCreationExecutionService,
     OfferCreationEnqueueService,
@@ -117,6 +127,14 @@ export {
     {
       provide: BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
       useExisting: BulkOfferCreationBatchRepository,
+    },
+    {
+      provide: BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
+      useExisting: BulkBatchAdvancementRepository,
+    },
+    {
+      provide: BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+      useExisting: BulkOfferCreationProgressService,
     },
     {
       provide: CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -158,6 +176,8 @@ export {
     OFFER_MAPPING_REPOSITORY_TOKEN,
     OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
     BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+    BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
+    BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,

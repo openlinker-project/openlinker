@@ -14,6 +14,7 @@ import type {
   OfferCreationError,
   OfferCreationStatus,
 } from '../types/offer-creation-record.types';
+import type { SmartClassificationReport } from '../types/smart-classification.types';
 
 export interface OfferCreationRecordRepositoryPort {
   /**
@@ -112,4 +113,16 @@ export interface OfferCreationRecordRepositoryPort {
    * Backed by `IDX_offer_creation_records_bulkBatchId` (#734).
    */
   findByBulkBatchId(bulkBatchId: string): Promise<OfferCreationRecord[]>;
+
+  /**
+   * Persist the marketplace classification report for an existing record (#737).
+   * `null` is a valid value meaning "readback yielded no report" (e.g. 404 from
+   * Allegro for not-yet-classified offers) — distinguishes from "never read".
+   *
+   * Throws `OfferCreationRecordNotFoundException` if the record does not exist.
+   */
+  updateClassificationReport(
+    id: string,
+    report: SmartClassificationReport | null
+  ): Promise<OfferCreationRecord>;
 }

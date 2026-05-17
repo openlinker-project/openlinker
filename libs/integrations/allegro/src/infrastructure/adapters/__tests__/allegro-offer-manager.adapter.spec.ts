@@ -23,6 +23,7 @@ import {
   OfferNotFoundOnMarketplaceException,
   isCatalogProductReader,
   isEanCategoryMatcher,
+  isOfferSmartClassificationReader,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
   type CreateOfferCommand,
@@ -2459,6 +2460,92 @@ describe('AllegroOfferManagerAdapter', () => {
       // private-helper coverage is implicit: if the helper signature drifts,
       // both call sites fail TypeScript before the test runs.
       expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
+    });
+  });
+
+  describe('getOfferSmartClassification (#737)', () => {
+    it('declares the OfferSmartClassificationReader sub-capability', () => {
+      expect(isOfferSmartClassificationReader(adapter)).toBe(true);
+    });
+
+    it('maps a fulfilled Allegro response to the neutral SmartClassificationReport', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          classification: { fulfilled: true },
+          conditions: [
+            {
+              code: 'FAST_SHIPPING',
+              name: 'Fast shipping',
+              description: 'Ships within 24h',
+              fulfilled: true,
+            },
+            {
+              code: 'GOOD_PRICE',
+              name: 'Good price',
+              description: 'Competitive price',
+              fulfilled: false,
+            },
+          ],
+          scheduledForReclassification: false,
+        },
+        status: 200,
+      } as never);
+
+      const result = await adapter.getOfferSmartClassification('7781562863');
+
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/offers/7781562863/smart');
+      expect(result).toEqual({
+        fulfilled: true,
+        conditions: [
+          {
+            code: 'FAST_SHIPPING',
+            name: 'Fast shipping',
+            description: 'Ships within 24h',
+            fulfilled: true,
+          },
+          {
+            code: 'GOOD_PRICE',
+            name: 'Good price',
+            description: 'Competitive price',
+            fulfilled: false,
+          },
+        ],
+        scheduledForReclassification: false,
+      });
+    });
+
+    it('returns null on Allegro 404 (offer not yet classified)', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('not classified', 404));
+
+      const result = await adapter.getOfferSmartClassification('fresh-offer-1');
+
+      expect(result).toBeNull();
+    });
+
+    it('propagates non-404 AllegroApiException unchanged', async () => {
+      httpClient.get.mockRejectedValueOnce(new AllegroApiException('upstream', 503));
+
+      await expect(adapter.getOfferSmartClassification('7781562863')).rejects.toMatchObject({
+        name: 'AllegroApiException',
+        statusCode: 503,
+      });
+    });
+
+    it('handles missing classification block (fulfilled defaults to null)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          conditions: [],
+        },
+        status: 200,
+      } as never);
+
+      const result = await adapter.getOfferSmartClassification('7781562863');
+
+      expect(result).toEqual({
+        fulfilled: null,
+        conditions: [],
+        scheduledForReclassification: undefined,
+      });
     });
   });
 

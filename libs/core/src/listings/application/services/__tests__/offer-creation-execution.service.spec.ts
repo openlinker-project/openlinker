@@ -97,6 +97,7 @@ describe('OfferCreationExecutionService', () => {
           Promise.resolve(buildRecord({ id, externalOfferId, status, errors: errors ?? null }))
         ),
       findByBulkBatchId: jest.fn(),
+      updateClassificationReport: jest.fn(),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),
@@ -498,6 +499,106 @@ describe('OfferCreationExecutionService', () => {
       expect(result.outcome).toBe('ok');
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('failed to schedule poll'));
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('Smart classification readback (#737)', () => {
+    it('reads and persists Smart report when adapter implements the capability and status=active', async () => {
+      const report = { fulfilled: true, conditions: [] };
+      const smartAdapter = {
+        createOffer: jest.fn().mockResolvedValue({
+          externalOfferId: EXTERNAL_OFFER_ID,
+          status: 'active',
+        } satisfies CreateOfferResult),
+        getOfferSmartClassification: jest.fn().mockResolvedValue(report),
+      };
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
+        smartAdapter as unknown as OfferManagerPort
+      );
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ status: 'active', externalOfferId: EXTERNAL_OFFER_ID })
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(smartAdapter.getOfferSmartClassification).toHaveBeenCalledWith(EXTERNAL_OFFER_ID);
+      expect(records.updateClassificationReport).toHaveBeenCalledWith('rec-1', report);
+    });
+
+    it('persists null when Smart readback throws (best-effort, AC-7)', async () => {
+      const smartAdapter = {
+        createOffer: jest.fn().mockResolvedValue({
+          externalOfferId: EXTERNAL_OFFER_ID,
+          status: 'active',
+        } satisfies CreateOfferResult),
+        getOfferSmartClassification: jest.fn().mockRejectedValue(new Error('Allegro 500')),
+      };
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
+        smartAdapter as unknown as OfferManagerPort
+      );
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ status: 'active', externalOfferId: EXTERNAL_OFFER_ID })
+      );
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(records.updateClassificationReport).toHaveBeenCalledWith('rec-1', null);
+    });
+
+    it('skips Smart readback when status=validating (poll-service handles it)', async () => {
+      const smartAdapter = {
+        createOffer: jest.fn().mockResolvedValue({
+          externalOfferId: EXTERNAL_OFFER_ID,
+          status: 'validating',
+        } satisfies CreateOfferResult),
+        getOfferSmartClassification: jest.fn(),
+      };
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
+        smartAdapter as unknown as OfferManagerPort
+      );
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ status: 'validating', externalOfferId: EXTERNAL_OFFER_ID })
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(smartAdapter.getOfferSmartClassification).not.toHaveBeenCalled();
+      expect(records.updateClassificationReport).not.toHaveBeenCalled();
+    });
+
+    it('skips Smart readback when status=draft', async () => {
+      const smartAdapter = {
+        createOffer: jest.fn().mockResolvedValue({
+          externalOfferId: EXTERNAL_OFFER_ID,
+          status: 'draft',
+        } satisfies CreateOfferResult),
+        getOfferSmartClassification: jest.fn(),
+      };
+      integrationsService.getCapabilityAdapter.mockResolvedValueOnce(
+        smartAdapter as unknown as OfferManagerPort
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(smartAdapter.getOfferSmartClassification).not.toHaveBeenCalled();
+      expect(records.updateClassificationReport).not.toHaveBeenCalled();
+    });
+
+    it('skips Smart readback when adapter does not implement the capability', async () => {
+      // The default `adapter` fixture has only `createOffer` — no
+      // getOfferSmartClassification — so isOfferSmartClassificationReader is false.
+      adapter.createOffer.mockResolvedValueOnce({
+        externalOfferId: EXTERNAL_OFFER_ID,
+        status: 'active',
+      });
+      records.updateExternalIdAndStatus.mockResolvedValueOnce(
+        buildRecord({ status: 'active', externalOfferId: EXTERNAL_OFFER_ID })
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(records.updateClassificationReport).not.toHaveBeenCalled();
     });
   });
 });

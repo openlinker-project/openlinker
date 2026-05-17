@@ -250,7 +250,7 @@ The system is organized into the following core bounded contexts:
 - **Admin surface**: `PromptTemplatesController` at `apps/api/src/ai/http/prompt-templates.controller.ts`; `AiProviderSettingsController` at `apps/api/src/ai/http/ai-provider-settings.controller.ts` exposes `GET /ai-provider-settings`, `PUT /keys/:provider`, `DELETE /keys/:provider`, `PUT /active` (all `@Roles('admin')`). FE admin UI at `/ai/prompt-templates` and `/ai/provider-settings`.
 - **Storage**: `prompt_templates` table with four partial unique indexes honouring `NULL`-distinct semantics on the nullable `channel` column (version uniqueness + "at most one published per `(key, channel)`").
 - **Telemetry**: per-completion structured log `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`; publish / revert actions log `{ templateId, key, channel, version, actor }`.
-- **Worker registration**: not required for #342. The suggestion flow is handled synchronously in-process by the API (`ContentSuggestionService`), so `AiCompletionPort` has no `apps/worker/` consumer yet — wiring will be added if / when a long-running AI job type is introduced.
+- **Worker registration (#737)**: `AiIntegrationModule.register()` is registered in `apps/worker/src/plugins.ts` so the bulk-flow `marketplace.offer.create` handler can call `ContentSuggestionService.suggestDescription()` per-job for AI-generated offer descriptions. `AI_COMPLETION_PORT_TOKEN` resolves through `PluginRegistryModule.forRoot({ plugins: workerPlugins })` in the worker's `AppModule`. The suggestion binding lives at `apps/worker/src/content/worker-content.module.ts` (mirrors `apps/api/src/content/content.module.ts`) — it cannot live in `libs/core/src/content/content.module.ts` because that would force core to value-import `@openlinker/integrations-ai`, reversing the core → integration dependency direction.
 
 ---
 
@@ -484,6 +484,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `CategoryBarcodeMatcher` | `matchCategoryByBarcode(barcode)` |
 | `OfferCreator` | `createOffer(cmd)` |
 | `OfferStatusReader` | `getOfferStatus(externalOfferId)` |
+| `OfferSmartClassificationReader` | `getOfferSmartClassification(externalOfferId)` |
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
 | `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
