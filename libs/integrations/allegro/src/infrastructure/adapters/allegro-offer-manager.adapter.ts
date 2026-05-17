@@ -16,6 +16,9 @@ import type {
   OfferFieldUpdater,
   CategoryBrowser,
   CategoryBarcodeMatcher,
+  EanCategoryMatcher,
+  BatchCategoryByEanInput,
+  EanMatchResult,
   CategoryParametersReader,
   CatalogProductReader,
   CatalogProduct,
@@ -57,6 +60,7 @@ import {
   resolveAllegroProductCardByEan,
   type ResolveProductCardResult,
 } from '../util/resolve-allegro-product-card-by-ean';
+import { resolveCategoriesForBatchByEan } from '../util/resolve-categories-for-batch-by-ean';
 import { fetchAllegroProduct } from '../util/fetch-allegro-product';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CachePort } from '@openlinker/shared';
@@ -201,6 +205,7 @@ export class AllegroOfferManagerAdapter
     OfferFieldUpdater,
     CategoryBrowser,
     CategoryBarcodeMatcher,
+    EanCategoryMatcher,
     CategoryParametersReader,
     CatalogProductReader,
     OfferCreator,
@@ -791,6 +796,21 @@ export class AllegroOfferManagerAdapter
       );
       return null;
     }
+  }
+
+  /**
+   * EanCategoryMatcher.resolveCategoriesForBatchByEan (#735).
+   *
+   * Thin delegate to the `resolveCategoriesForBatchByEan` util — keeps stateful
+   * HTTP + cache logic in the util layer (mirrors the #431 pattern). The util
+   * is no-throw: HTTP failures collapse to `{ kind: 'no-match' }`, cache
+   * outages are logged-and-bypassed, the batch never aborts on per-item
+   * failure.
+   */
+  async resolveCategoriesForBatchByEan(
+    input: BatchCategoryByEanInput,
+  ): Promise<Map<string, EanMatchResult>> {
+    return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
   }
 
   /**

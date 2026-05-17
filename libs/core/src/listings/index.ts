@@ -155,6 +155,15 @@ export type { CategoryBrowser } from './domain/ports/capabilities/category-brows
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
+export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
+export { isEanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
+export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
+export type {
+  EanMatchResultKind,
+  EanMatchResult,
+  EanMatchCandidate,
+  BatchCategoryByEanInput,
+} from './domain/types/ean-category-match.types';
 export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export type { CatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';

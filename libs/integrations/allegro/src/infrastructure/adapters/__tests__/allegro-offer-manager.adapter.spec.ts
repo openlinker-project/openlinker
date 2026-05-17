@@ -22,6 +22,7 @@ import {
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
   isCatalogProductReader,
+  isEanCategoryMatcher,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
   type CreateOfferCommand,
@@ -759,6 +760,51 @@ describe('AllegroOfferManagerAdapter', () => {
       const result = await adapter.matchCategoryByBarcode('5901234123457');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('resolveCategoriesForBatchByEan (#735)', () => {
+    it('declares the EanCategoryMatcher capability via the runtime guard', () => {
+      // Lock the capability-guard contract: future #736 application service
+      // narrows on isEanCategoryMatcher(adapter) to discover this method.
+      expect(isEanCategoryMatcher(adapter)).toBe(true);
+    });
+
+    it('forwards batch input through to the util via the adapter cache + http client', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          products: [
+            {
+              id: 'prod-1',
+              name: 'Card',
+              category: { id: 'cat-A' },
+              parameters: [
+                {
+                  id: 'gtin',
+                  name: 'EAN',
+                  values: ['5901234123457'],
+                  options: { isGTIN: true },
+                },
+              ],
+            },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.resolveCategoriesForBatchByEan({
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-A',
+        productCardId: 'prod-1',
+      });
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/products', {
+        queryParams: { phrase: '5901234123457', mode: 'GTIN', limit: 10 },
+      });
     });
   });
 
