@@ -585,17 +585,34 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
 }
 
 /**
- * One entry in `GET /sale/products?phrase=…&category.id=…` (#431). Allegro's
- * matcher is fuzzy on `phrase`, so the smart-link resolver post-filters by
- * exact `ean` match. `name` is informational (used in logs and the
- * `ambiguous` diagnostic payload). The summary response intentionally does
- * NOT carry image URLs — only the detail endpoint
- * (`GET /sale/products/{productId}`) does.
+ * One entry in `GET /sale/products?phrase=…&category.id=…` (#431) and
+ * `GET /sale/products?phrase={ean}&mode=GTIN` (#735). Allegro's matcher is
+ * fuzzy on `phrase`, so callers post-filter by exact-EAN match. `name` is
+ * informational (used in logs and the `ambiguous` diagnostic payload). The
+ * summary response intentionally does NOT carry image URLs — only the detail
+ * endpoint (`GET /sale/products/{productId}`) does.
+ *
+ * Swagger reference: `BaseSaleProductResponseDto` lists `id`, `name`, `category`
+ * as required + `parameters` (and others) as optional. The `category.path`
+ * sub-field is intentionally omitted from the typed shape until a reader
+ * needs it.
  */
 export interface AllegroProductCardSummary {
   id: string;
   name?: string;
   ean?: string;
+  /**
+   * Category the card lives under in Allegro's catalogue. Used by
+   * `resolveCategoriesForBatchByEan` (#735) to pre-fill bulk-listing
+   * review-table rows.
+   */
+  category?: { id: string };
+  /**
+   * Product parameters as returned by the catalogue search endpoint. The
+   * GTIN-bearing entry (`options.isGTIN === true`) is the canonical place
+   * Allegro reports the EAN; see `AllegroProductDtoParameter`.
+   */
+  parameters?: AllegroProductDtoParameter[];
 }
 
 export interface AllegroProductsSearchResponse {
