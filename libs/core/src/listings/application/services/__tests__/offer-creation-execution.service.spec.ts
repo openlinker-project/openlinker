@@ -96,6 +96,7 @@ describe('OfferCreationExecutionService', () => {
         .mockImplementation((id, externalOfferId, status, errors) =>
           Promise.resolve(buildRecord({ id, externalOfferId, status, errors: errors ?? null }))
         ),
+      findByBulkBatchId: jest.fn(),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),

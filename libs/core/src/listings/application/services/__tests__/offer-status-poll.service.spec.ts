@@ -73,6 +73,7 @@ describe('OfferStatusPollService', () => {
       updateStatus: jest.fn().mockImplementation(() => Promise.resolve(makeRecord('active'))),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      findByBulkBatchId: jest.fn(),
     };
 
     syncJobs = {

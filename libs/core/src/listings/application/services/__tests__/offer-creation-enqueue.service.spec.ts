@@ -60,6 +60,7 @@ describe('OfferCreationEnqueueService', () => {
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      findByBulkBatchId: jest.fn(),
     };
 
     jobEnqueue = {
@@ -242,5 +243,57 @@ describe('OfferCreationEnqueueService', () => {
     });
     expect(createdWith.request).not.toHaveProperty('price');
     expect(createdWith.request).not.toHaveProperty('overrides');
+  });
+
+  describe('bulk path (#736)', () => {
+    it('emits a V2 payload with bulkBatchId and stamps the bulk idempotency key', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+      await service.enqueueCreation({
+        internalVariantId: variantId,
+        connectionId,
+        stock: 3,
+        publishImmediately: false,
+        bulkBatchId: 'batch-1',
+        generateDescription: true,
+        descriptionTone: 'concise',
+      });
+
+      // bulkBatchId is forwarded to the persisted record so the GET
+      // endpoint's findByBulkBatchId read finds the row.
+      expect(records.create).toHaveBeenCalledWith(
+        expect.objectContaining({ bulkBatchId: 'batch-1' })
+      );
+
+      const enqueuedWith = jobEnqueue.enqueueJob.mock.calls[0][0];
+      expect(enqueuedWith).toEqual({
+        jobType: 'marketplace.offer.create',
+        connectionId,
+        idempotencyKey: `bulk:batch-1:variant:${variantId}`,
+        payload: expect.objectContaining({
+          schemaVersion: 2,
+          bulkBatchId: 'batch-1',
+          generateDescription: true,
+          descriptionTone: 'concise',
+          offerCreationRecordId: 'record-1',
+        }),
+      });
+    });
+
+    it('defaults generateDescription to false and omits descriptionTone when unset', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(adapterWith(jest.fn()));
+
+      await service.enqueueCreation({
+        internalVariantId: variantId,
+        connectionId,
+        stock: 3,
+        publishImmediately: false,
+        bulkBatchId: 'batch-1',
+      });
+
+      const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
+      expect(payload.generateDescription).toBe(false);
+      expect(payload).not.toHaveProperty('descriptionTone');
+    });
   });
 });

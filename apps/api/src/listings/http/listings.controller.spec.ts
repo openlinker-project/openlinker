@@ -96,6 +96,7 @@ describe('ListingsController', () => {
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      findByBulkBatchId: jest.fn(),
     };
     offerCreationEnqueue = {
       enqueueCreation: jest.fn(),

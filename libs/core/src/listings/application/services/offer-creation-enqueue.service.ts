@@ -25,6 +25,7 @@ import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
   type MarketplaceOfferCreatePayloadV1,
+  type MarketplaceOfferCreatePayloadV2,
 } from '@openlinker/core/sync';
 
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
@@ -82,7 +83,9 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
     };
 
     // 4. Pre-create the record so the HTTP response carries an id clients
-    //    can poll immediately.
+    //    can poll immediately. `bulkBatchId` is forwarded straight through
+    //    so per-batch summary reads via `findByBulkBatchId` see the row
+    //    even before the worker terminates.
     const record = await this.offerCreationRecords.create({
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -91,25 +94,59 @@ export class OfferCreationEnqueueService implements IOfferCreationEnqueueService
       errors: null,
       publishImmediately: input.publishImmediately,
       request: requestSnapshot,
+      ...(input.bulkBatchId !== undefined && { bulkBatchId: input.bulkBatchId }),
     });
 
-    // 5. Enqueue. Default idempotency key is per-call-unique (the fresh
-    //    record id) — a client that wants cross-retry dedupe passes
-    //    `input.idempotencyKey`.
-    const payload = {
-      schemaVersion: 1 as const,
-      internalVariantId: input.internalVariantId,
-      stock: input.stock,
-      publishImmediately: input.publishImmediately,
-      offerCreationRecordId: record.id,
-      ...(input.price !== undefined && { price: input.price }),
-      ...(input.overrides !== undefined && { overrides: input.overrides }),
-    } satisfies MarketplaceOfferCreatePayloadV1;
+    // 5. Enqueue. Bulk submissions emit V2 with `bulkBatchId` +
+    //    `generateDescription` + optional `descriptionTone` so the worker
+    //    handler (#737) can route AI description generation and increment
+    //    batch counters on terminal status. Single-offer flows keep
+    //    emitting V1 unchanged.
+    //
+    //    Each branch builds an object literal validated with `satisfies`
+    //    against the version-specific interface — keeps the literal type
+    //    structurally assignable to `SyncJobRequest.payload`'s
+    //    `Record<string, unknown>` shape. (Naming the union explicitly on
+    //    the variable would widen to nominal interfaces and break the
+    //    structural assignment at the enqueue call site.)
+    const payload =
+      input.bulkBatchId !== undefined
+        ? ({
+            schemaVersion: 2 as const,
+            internalVariantId: input.internalVariantId,
+            stock: input.stock,
+            publishImmediately: input.publishImmediately,
+            offerCreationRecordId: record.id,
+            bulkBatchId: input.bulkBatchId,
+            generateDescription: input.generateDescription ?? false,
+            ...(input.price !== undefined && { price: input.price }),
+            ...(input.overrides !== undefined && { overrides: input.overrides }),
+            ...(input.descriptionTone !== undefined && {
+              descriptionTone: input.descriptionTone,
+            }),
+          } satisfies MarketplaceOfferCreatePayloadV2)
+        : ({
+            schemaVersion: 1 as const,
+            internalVariantId: input.internalVariantId,
+            stock: input.stock,
+            publishImmediately: input.publishImmediately,
+            offerCreationRecordId: record.id,
+            ...(input.price !== undefined && { price: input.price }),
+            ...(input.overrides !== undefined && { overrides: input.overrides }),
+          } satisfies MarketplaceOfferCreatePayloadV1);
+
+    // Bulk default idempotency key includes the batchId so the same
+    // variant re-included in a later batch isn't silently dropped by the
+    // job-dedup gate (single-offer default keeps the per-record key).
+    const defaultIdempotencyKey =
+      input.bulkBatchId !== undefined
+        ? `bulk:${input.bulkBatchId}:variant:${input.internalVariantId}`
+        : `offer-create:${record.id}`;
 
     const { jobId } = await this.jobEnqueue.enqueueJob({
       jobType: 'marketplace.offer.create',
       connectionId: input.connectionId,
-      idempotencyKey: input.idempotencyKey ?? `offer-create:${record.id}`,
+      idempotencyKey: input.idempotencyKey ?? defaultIdempotencyKey,
       payload,
     });
 
