@@ -42,7 +42,7 @@ export { FormErrorSummary } from './form-error-summary';
 // ── Layout / navigation ────────────────────────────────────────────
 export { PageLayout } from './page-layout';
 export { BackLink } from './back-link';
-export { Tabs } from './tabs';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
 export { SetupStepper } from './setup-stepper';
 
 // ── Overlays / popovers (Radix-wrapped) ────────────────────────────
@@ -54,6 +54,7 @@ export { Tooltip } from './tooltip';
 
 // ── Data surfaces ──────────────────────────────────────────────────
 export { DataTable } from './data-table';
+export type { DataTableColumn, DataTableCardView, DataTableHideBreakpoint } from './data-table';
 export { KeyValueList } from './key-value-list';
 export { RawPayloadPanel } from './raw-payload-panel';
 export { TimeDisplay } from './time-display';

@@ -189,110 +189,123 @@
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     'Liberation Mono', monospace;
 
-  /* ── Surfaces ─────────────────────────────────────────────────────── */
-  --bg-canvas: #f5f7fa;
-  --bg-shell: #ffffff;
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
   --bg-surface: #ffffff;
-  --bg-surface-elevated: #f8fafc;
-  --bg-muted: #eef2f6; /* pre-refactor — sunset after Phase 3 */
-  --bg-surface-muted: #eef2f6; /* FE-002 canonical — alias of --bg-muted */
-  --bg-surface-hover: #e3e8ef; /* FE-002 canonical — one step darker than --bg-surface-muted */
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
 
   /* ── Borders ──────────────────────────────────────────────────────── */
-  --border-subtle: #e5eaf0;
-  --border-default: #d7dee8;
-  --border-strong: #c2ccd8;
-  --border-focus: var(--accent-focus); /* FE-002 canonical — alias of --accent-focus */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
 
   /* ── Text ─────────────────────────────────────────────────────────── */
-  --text-primary: #16202b;
-  --text-secondary: #4f5f73;
-  --text-muted: #728197;
-  --text-disabled: #9aa6b5;
-  --text-on-primary: #eff6ff; /* pre-refactor — button text on --accent-primary */
-  --text-inverse: #eff6ff; /* FE-002 canonical — alias of --text-on-primary */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
 
   /* ── Accent ───────────────────────────────────────────────────────
-   * Monochrome by design — `--accent-primary` is an alias of
-   * `--text-primary`, so links, focus rings, and the active-nav inset
-   * indicator all read as page foreground. The alias is expressed via
-   * `var()` so it holds across theme flips automatically. Do not
-   * reintroduce a brand hue here; chroma is reserved for `--status-*`
-   * tokens. (#371)
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
    */
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #000000;
-  --accent-primary-soft: rgba(22, 32, 43, 0.06);
-  --accent-primary-border: rgba(22, 32, 43, 0.18);
-  --accent-focus: var(--text-primary);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
 
   /* ── Status: success ──────────────────────────────────────────────── */
-  --status-success: #1f9d63;
-  --status-success-soft: #eaf8f1;
-  --status-success-border: #b9e5cd;
-  --status-success-fg: #166643; /* pre-refactor — sunset after Phase 3 */
-  --status-success-strong: #166643; /* FE-002 canonical — alias of -fg */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
 
   /* ── Status: warning ──────────────────────────────────────────────── */
-  --status-warning: #b7791f;
-  --status-warning-soft: #fff6e5;
-  --status-warning-border: #f1d39a;
-  --status-warning-fg: #8a5b15; /* pre-refactor */
-  --status-warning-strong: #8a5b15; /* FE-002 canonical — alias of -fg */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
 
   /* ── Status: error ────────────────────────────────────────────────── */
-  --status-error: #c24141;
-  --status-error-soft: #fdecec;
-  --status-error-border: #efb7b7;
-  --status-error-fg: #9f3030; /* pre-refactor */
-  --status-error-strong: #9f3030; /* FE-002 canonical — alias of -fg */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
 
-  /* ── Status: info ───────────────────────────────────────────────
-   * Neutral slate, not blue — split from `--accent-primary` to keep
-   * informational alerts from competing with primary actions. (#371)
-   */
-  --status-info: #5a6b85;
-  --status-info-soft: #eef1f5;
-  --status-info-border: #c9d0db;
-  --status-info-fg: #3e4a60; /* pre-refactor */
-  --status-info-strong: #3e4a60; /* FE-002 canonical — alias of -fg */
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
 
   /* ── Status: review / manual ──────────────────────────────────────── */
-  --status-review: #7c5cc4;
-  --status-review-soft: #f2edfb;
-  --status-review-border: #d4c5f2;
-  --status-review-fg: #6445ad; /* pre-refactor */
-  --status-review-strong: #6445ad; /* FE-002 canonical — alias of -fg */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
 
   /* ── Status: conflict ─────────────────────────────────────────────── */
-  --status-conflict: #cf6d2f;
-  --status-conflict-soft: #fdf0e8;
-  --status-conflict-border: #efc7ad;
-  --status-conflict-strong: #a05019; /* net-new — no pre-refactor equivalent */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
 
   /* ── Status: disabled ─────────────────────────────────────────────── */
-  --status-disabled: #7b8695;
-  --status-disabled-soft: #f1f4f7;
-  --status-disabled-border: #d5dde6;
-  --status-disabled-fg: #5f6977; /* pre-refactor */
-  --status-disabled-strong: #5f6977; /* FE-002 canonical — alias of -fg */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
 
   /* ── Elevation ────────────────────────────────────────────────────── */
-  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
-  --shadow-soft-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.08);
-  --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
-  --overlay-scrim: rgba(16, 24, 40, 0.45);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.40);
 
-  /* FE-002 canonical shadow triplet (aliases onto --shadow-soft family). */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
 
-  /* Primary button hover — near-black in light mode. Overridden to
-     near-white in html[data-theme='dark'] so the primary button
-     auto-inverts alongside --text-primary / --text-inverse. */
-  --button-primary-bg-hover: #0b1520;
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
   --space-1: 0.25rem; /* 4px */
@@ -305,18 +318,26 @@
   --space-8: 4rem; /* 64px */
 
   /* ── Radius scale ─────────────────────────────────────────────────── */
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-pill: 9999px;
 
   /* ── Motion ───────────────────────────────────────────────────────── */
   --duration-fast: 120ms;
   --duration-normal: 180ms;
+  --duration-slow: 280ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
 
   color-scheme: light;
   font-family: var(--font-sans);
@@ -328,6 +349,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 /* ── Dark mode ──────────────────────────────────────────────────────
@@ -340,97 +362,106 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Primary button hover — keep contrast against the inverted --text-primary */
-  --button-primary-bg-hover: #f5fafd;
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
 
-  /* Surfaces — graphite ramp (#371). Replaces the prior navy bias;
-     elevation step sizes are matched so existing components carry over. */
-  --bg-canvas: #0e1014;
-  --bg-shell: #131519;
-  --bg-surface: #16181d;
-  --bg-surface-elevated: #1b1e24;
-  --bg-muted: #1f2229;
-  --bg-surface-muted: #1f2229;
-  --bg-surface-hover: #272b33;
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.24);
-  --border-focus: var(--accent-focus);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
 
   /* Text */
-  --text-primary: #e9eef5;
-  --text-secondary: #b5c1d1;
-  --text-muted: #8998ac;
-  --text-disabled: #596776;
-  --text-on-primary: #0e1014; /* tracks --bg-canvas (#371) */
-  --text-inverse: #0e1014;
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
 
-  /* Accent — see :root for the design rationale. (#371) */
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #ffffff;
-  --accent-primary-soft: rgba(233, 238, 245, 0.08);
-  --accent-primary-border: rgba(233, 238, 245, 0.24);
-  --accent-focus: var(--text-primary);
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
 
   /* Status — success */
-  --status-success: #3fbb82;
-  --status-success-soft: rgba(63, 187, 130, 0.16);
-  --status-success-border: rgba(63, 187, 130, 0.35);
-  --status-success-fg: #7ed6ab;
-  --status-success-strong: #7ed6ab;
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
 
   /* Status — warning */
-  --status-warning: #d8a347;
-  --status-warning-soft: rgba(216, 163, 71, 0.16);
-  --status-warning-border: rgba(216, 163, 71, 0.35);
-  --status-warning-fg: #efc685;
-  --status-warning-strong: #efc685;
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
 
   /* Status — error */
-  --status-error: #e06a6a;
-  --status-error-soft: rgba(224, 106, 106, 0.16);
-  --status-error-border: rgba(224, 106, 106, 0.35);
-  --status-error-fg: #f2a5a5;
-  --status-error-strong: #f2a5a5;
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
 
-  /* Status — info — neutral slate (#371) */
-  --status-info: #8a95a8;
-  --status-info-soft: rgba(138, 149, 168, 0.14);
-  --status-info-border: rgba(138, 149, 168, 0.32);
-  --status-info-fg: #c5cbd6;
-  --status-info-strong: #c5cbd6;
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
 
   /* Status — review */
-  --status-review: #9d82d8;
-  --status-review-soft: rgba(157, 130, 216, 0.16);
-  --status-review-border: rgba(157, 130, 216, 0.35);
-  --status-review-fg: #c5b1ea;
-  --status-review-strong: #c5b1ea;
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
 
   /* Status — conflict */
-  --status-conflict: #e08a4f;
-  --status-conflict-soft: rgba(224, 138, 79, 0.16);
-  --status-conflict-border: rgba(224, 138, 79, 0.35);
-  --status-conflict-strong: #f2b88a;
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
 
   /* Status — disabled */
-  --status-disabled: #8998ac;
-  --status-disabled-soft: rgba(137, 152, 172, 0.14);
-  --status-disabled-border: rgba(137, 152, 172, 0.32);
-  --status-disabled-fg: #b5c1d1;
-  --status-disabled-strong: #b5c1d1;
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
 
   /* Elevation */
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-soft-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.55);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.45);
-  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
-  --overlay-scrim: rgba(0, 0, 0, 0.6);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.60);
 }
 
 * {
@@ -462,26 +493,32 @@ textarea {
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────
- * Primary is near-black (`--text-primary`) per the Variant A concept,
- * auto-inverting in dark mode via the same token. `--accent-primary`
- * (blue) is reserved for links and focus affordances only.
+ * Primary is signal orange (`--accent-primary`) per #775, paired with
+ * `--text-on-primary` for legible text. Tone variants: primary (default),
+ * secondary (surface + border), ghost (transparent), danger (status-error).
+ * Sizes: --xs, --sm, --md (default), --lg.
  */
 button,
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  border: 1px solid var(--text-primary);
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
   border-radius: var(--radius-md);
-  padding: 0 0.875rem;
+  padding: 0 var(--space-4);
   height: 2rem;
-  background: var(--text-primary);
-  color: var(--text-inverse);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -493,7 +530,13 @@ button:hover,
 .button:hover {
   background: var(--button-primary-bg-hover);
   border-color: var(--button-primary-bg-hover);
-  color: var(--text-inverse);
+  color: var(--text-on-primary);
+}
+
+button:active,
+.button:active {
+  background: var(--accent-primary-active);
+  border-color: var(--accent-primary-active);
 }
 
 button:focus-visible,
@@ -501,22 +544,23 @@ button:focus-visible,
 .nav-link:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 button:focus-visible,
 .button:focus-visible,
 .control:focus-visible,
 .nav-link:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .button--secondary {
   border-color: var(--border-default);
   background: var(--bg-surface);
   color: var(--text-primary);
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
 }
 
 .button--secondary:hover {
@@ -525,22 +569,28 @@ button:focus-visible,
   color: var(--text-primary);
 }
 
+.button--secondary:active {
+  background: var(--bg-surface-hover);
+}
+
 .button--danger {
-  border-color: var(--status-error);
+  border-color: color-mix(in oklab, var(--status-error) 80%, black);
   background: var(--status-error);
-  color: var(--text-inverse);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
 }
 
 .button--danger:hover {
-  background: var(--status-error-strong);
-  border-color: var(--status-error-strong);
-  color: var(--text-inverse);
+  background: color-mix(in oklab, var(--status-error) 90%, black);
+  border-color: color-mix(in oklab, var(--status-error) 70%, black);
+  color: #ffffff;
 }
 
 .button--ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+  box-shadow: none;
 }
 
 .button--ghost:hover {
@@ -552,53 +602,153 @@ button:focus-visible,
 button:disabled,
 .button:disabled {
   cursor: not-allowed;
-  border-color: var(--status-disabled-border);
-  background: var(--status-disabled-soft);
-  color: var(--text-disabled);
+  opacity: 0.55;
+  box-shadow: none;
 }
 
+/* ── Button sizes (#775) ─────────────────────────────────────────── */
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+}
+.button--md {
+  /* default — matches base .button */
+}
+.button--lg {
+  height: 2.375rem;
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+}
+
+/* ── Icon-only button (#775) ─────────────────────────────────────── */
+.button--icon {
+  padding: 0;
+  width: 2rem;
+}
+.button--icon.button--xs { width: 1.5rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button--icon.button--lg { width: 2.375rem; }
+
+/* ── Keyboard shortcut affordance inside a button (#775) ─────────── */
+.button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut,
+.button--ghost .button__shortcut {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+
+/* ── Form controls (#775) ───────────────────────────────────────────
+ * Single-line controls (input/select) are 32px tall to align with the
+ * default button size. Textarea grows from a 5rem min. Padding is
+ * tightened to 8/12; radius lands on --radius-md to match buttons.
+ * Focus is communicated by a 3px accent ring, not by changing border
+ * thickness (no layout shift). Invalid mirrors the same idea with the
+ * danger tone.
+ */
 .control,
 input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.625rem;
-  padding: 0.75rem 0.85rem;
-  background: var(--bg-surface-elevated);
+  height: 2rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
   color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.control:hover:not(:disabled),
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.control:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--bg-surface-muted);
+  color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
 .control {
   appearance: none;
 }
 
-.control--select {
-  /* Closes #325 — extra right padding + chevron anchored closer to the edge
-     so the selected option text never clips against the caret at narrow widths. */
-  padding-right: 3rem;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+.control--select,
+select {
+  /* Closes #325 — chevron anchored to the edge so the selected option
+     never clips against the caret at narrow widths. */
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
   background-position:
     calc(100% - 14px) calc(50% - 2px),
     calc(100% - 8px) calc(50% - 2px);
   background-size:
-    6px 6px,
-    6px 6px;
+    5px 5px,
+    5px 5px;
   background-repeat: no-repeat;
 }
 
-.control--invalid {
-  border-color: var(--status-error-border);
+.control--invalid,
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--status-error);
+}
+
+.control--invalid:focus-visible,
+input[aria-invalid='true']:focus-visible,
+textarea[aria-invalid='true']:focus-visible,
+select[aria-invalid='true']:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 30%, transparent);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--text-disabled);
 }
 
 textarea {
+  height: auto;
+  min-height: 5rem;
+  padding: var(--space-2) var(--space-3);
   resize: vertical;
+  line-height: 1.45;
 }
 
 /* FileUpload primitive (#449) — vanilla-CSS dropzone over a native
@@ -1919,29 +2069,43 @@ textarea {
   text-align: left;
 }
 
+/* ── Status badge (#775) ────────────────────────────────────────────
+ * Mono + caps treatment so status communication reads as a label rather
+ * than a generic pill. Status colour is paired with a leading dot so
+ * colour is never the only signal. `--pulse` animates the dot for
+ * live/syncing states; `--solid` is the high-emphasis variant (Draft,
+ * Outbox, …) — currentColor-on-text-primary for inverted contrast.
+ */
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  border-radius: 999px;
-  padding: 0.22rem 0.6rem;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .status-badge--compact {
-  padding: 0.18rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
 }
 
 .status-badge__dot {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 999px;
   background: currentColor;
   flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .status-badge--success {
@@ -1978,6 +2142,32 @@ textarea {
   border-color: var(--status-disabled-border);
   background: var(--status-disabled-soft);
   color: var(--status-disabled-fg);
+}
+
+.status-badge--solid {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  border-color: var(--text-primary);
+}
+
+.status-badge--pulse .status-badge__dot {
+  position: relative;
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes status-badge-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.95;
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+    opacity: 0.55;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.95;
+  }
 }
 
 .state-card {
@@ -6722,4 +6912,238 @@ a.kpi-card:focus-visible {
   height: 28px;
   padding: 0 0.625rem;
   font-size: 0.8125rem;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ *
+ *   #775 — UI primitives overhaul · design-system page extras
+ *
+ *   New classes used by the /dev/ui design-system page (brandbook +
+ *   primitives gallery + composed patterns). Production primitives
+ *   inherit from the existing classes earlier in this file; the rules
+ *   below are net-new and only used by the dev page.
+ *
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* ── Layout helpers ──────────────────────────────────────────────── */
+.ds-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.ds-row--end { justify-content: flex-end; }
+.ds-row--baseline { align-items: baseline; }
+.ds-grid { display: grid; gap: var(--space-4); }
+.ds-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ds-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ds-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ds-grid--6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 960px) {
+  .ds-grid--3, .ds-grid--4, .ds-grid--6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Surface card used for grouping demos ────────────────────────── */
+.ds-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Section header inside a dev-ui tab panel ────────────────────── */
+.ds-section { display: flex; flex-direction: column; gap: var(--space-3); }
+.ds-section + .ds-section { margin-top: var(--space-6); }
+.ds-section__title {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.ds-section__title::before {
+  content: '';
+  width: 8px; height: 8px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  display: inline-block;
+}
+.ds-section__sub {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  max-width: 70ch;
+}
+
+/* ── Eyebrow / caps label ────────────────────────────────────────── */
+.ds-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Brandbook: color swatches ───────────────────────────────────── */
+.ds-swatch {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.ds-swatch__chip {
+  height: 56px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.ds-swatch__name {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+.ds-swatch__token {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-wide);
+  word-break: break-all;
+}
+
+/* ── Brandbook: type ramp ────────────────────────────────────────── */
+.ds-type-ramp { display: grid; gap: var(--space-4); }
+.ds-type-ramp__row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-type-ramp__row:first-child { border-top: 0; padding-top: 0; }
+.ds-type-ramp__label { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.ds-type-ramp__value { color: var(--text-primary); }
+
+/* ── Brandbook: spacing scale visualiser ─────────────────────────── */
+.ds-scale-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 5rem;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-scale-row:first-child { border-top: 0; }
+.ds-scale-row__name { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.ds-scale-row__bar { height: 12px; background: var(--accent-primary-soft); border-radius: 2px; }
+.ds-scale-row__value { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); text-align: right; }
+
+/* ── Brandbook: radius scale visualiser ──────────────────────────── */
+.ds-radius-row {
+  display: grid; grid-template-columns: 5rem 4rem 1fr; gap: var(--space-3); align-items: center;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-radius-row:first-child { border-top: 0; }
+.ds-radius-row__sample {
+  width: 48px; height: 32px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+}
+.ds-radius-row__name { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.ds-radius-row__value { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+
+/* ── Brandbook: shadow scale visualiser ──────────────────────────── */
+.ds-shadow-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+}
+.ds-shadow-card__name { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+
+/* ── Brand mark (for the brandbook tab) ──────────────────────────── */
+.ds-brand-mark {
+  width: 48px; height: 48px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 120% at 0% 0%, var(--accent-primary) 0%, transparent 60%),
+    linear-gradient(135deg, var(--text-primary), color-mix(in oklab, var(--text-primary) 70%, var(--accent-primary)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.15);
+}
+
+/* ── Theme scope helper — render a stripe in the opposite theme ─── */
+.ds-theme-scope {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
+}
+.ds-theme-scope[data-theme] { color: var(--text-primary); }
+
+/* ── Patterns: channel pill (used by the orders-cockpit demo) ────── */
+.channel-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.channel-pill::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.channel-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
+.channel-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.channel-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
+.channel-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+
+/* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
+.entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
+.entity-label__thumb {
+  width: 28px; height: 28px; flex: none;
+  background:
+    radial-gradient(80% 80% at 30% 20%, color-mix(in oklab, var(--accent-primary) 50%, var(--bg-surface-muted)), var(--bg-strong));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.entity-label__text { display: flex; flex-direction: column; gap: 1px; }
+.entity-label__name { font-weight: 500; color: var(--text-primary); font-size: 0.8125rem; }
+.entity-label__sub { font-family: var(--font-mono); font-size: 0.625rem; color: var(--text-muted); letter-spacing: var(--tracking-wide); }
+
+/* ── Patterns: KPI accent rule on top edge ───────────────────────── */
+.kpi-card { position: relative; }
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-primary) 60%, transparent), transparent);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Code snippet block (component-author copy-paste) ────────────── */
+.ds-code {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre;
 }
