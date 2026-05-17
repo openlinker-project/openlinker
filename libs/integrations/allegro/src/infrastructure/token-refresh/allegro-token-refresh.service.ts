@@ -12,8 +12,8 @@ import { Logger } from '@openlinker/shared/logging';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import {
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ICredentialsService,
+  CREDENTIALS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
 import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
@@ -58,8 +58,8 @@ export class AllegroTokenRefreshService {
     @Inject('REDIS_CLIENT')
     private readonly redisClient?: RedisClientType,
     @Optional()
-    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository?: IntegrationCredentialRepositoryPort
+    @Inject(CREDENTIALS_SERVICE_TOKEN)
+    private readonly credentials?: ICredentialsService
   ) {}
 
   /**
@@ -156,12 +156,12 @@ export class AllegroTokenRefreshService {
       };
 
       // Update credentials in database
-      if (this.credentialRepository && connection.credentialsRef) {
+      if (this.credentials && connection.credentialsRef) {
         const credentialRef = connection.credentialsRef.startsWith('db:')
           ? connection.credentialsRef.substring(3)
           : connection.credentialsRef;
 
-        await this.credentialRepository.update(credentialRef, {
+        await this.credentials.update(credentialRef, {
           credentialsJson: updatedCredentials as unknown as Record<string, unknown>,
         });
 
@@ -170,7 +170,7 @@ export class AllegroTokenRefreshService {
         );
       } else {
         this.logger.warn(
-          `Token refreshed but cannot update database (credentialRepository not available). ` +
+          `Token refreshed but cannot update database (credentials service not available). ` +
             `Connection ${connection.id} will need to be re-authenticated.`
         );
       }

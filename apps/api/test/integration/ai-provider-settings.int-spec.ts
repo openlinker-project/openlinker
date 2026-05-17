@@ -21,8 +21,8 @@
 import * as bcrypt from 'bcryptjs';
 import {
   CredentialNotFoundException,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
+  CREDENTIALS_SERVICE_TOKEN,
+  ICredentialsService,
 } from '@openlinker/core/integrations';
 import { aiProviderCredentialsRef } from '@openlinker/core/ai';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
@@ -283,17 +283,15 @@ describe('AI Provider Settings Integration', () => {
   });
 
   describe('storage round-trip against real Postgres', () => {
-    it('writes plaintext via the repo; raw column stores ciphertext; getByRef round-trips (#709)', async () => {
+    it('writes plaintext via the service; raw column stores ciphertext; getByRef round-trips (#709)', async () => {
       const app = harness.getApp();
-      const repository = app.get<IntegrationCredentialRepositoryPort>(
-        INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-      );
+      const credentials = app.get<ICredentialsService>(CREDENTIALS_SERVICE_TOKEN);
       const dataSource = harness.getDataSource();
 
       const ref = aiProviderCredentialsRef('openai');
       const plaintext = 'sk-openai-real-shape-but-fake-value-abc123';
 
-      const created = await repository.create({
+      const created = await credentials.create({
         ref,
         platformType: 'openai',
         credentialsJson: { apiKey: plaintext },
@@ -313,11 +311,11 @@ describe('AI Provider Settings Integration', () => {
       expect(rawRows[0].credentialsCiphertext.length).toBeGreaterThan(plaintext.length);
 
       // getByRef decrypts transparently.
-      const retrieved = await repository.getByRef(ref);
+      const retrieved = await credentials.getByRef(ref);
       expect(retrieved.credentialsJson).toEqual({ apiKey: plaintext });
 
-      await repository.delete(ref);
-      await expect(repository.getByRef(ref)).rejects.toBeInstanceOf(CredentialNotFoundException);
+      await credentials.delete(ref);
+      await expect(credentials.getByRef(ref)).rejects.toBeInstanceOf(CredentialNotFoundException);
     });
 
     it('persists at ref = ai-provider:{provider} (matches the service contract)', () => {

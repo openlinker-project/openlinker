@@ -23,8 +23,8 @@ import { AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
 import type { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
 import {
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
-  IntegrationCredentialRepositoryPort,
+  CREDENTIALS_SERVICE_TOKEN,
+  ICredentialsService,
 } from '@openlinker/core/integrations';
 import type { IAllegroOAuthService } from '../interfaces/allegro-oauth.service.interface';
 import type {
@@ -46,8 +46,8 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     private readonly connectionService: ConnectionService,
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
-    @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
-    private readonly credentialRepository: IntegrationCredentialRepositoryPort
+    @Inject(CREDENTIALS_SERVICE_TOKEN)
+    private readonly credentials: ICredentialsService
   ) {}
 
   /**
@@ -327,9 +327,9 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       clientSecret: stateData.clientSecret,
     };
 
-    // Store credentials in database — repository handles encryption-at-rest (#709).
+    // Store credentials in database — service delegates to the encrypted-at-rest repository (#709).
     try {
-      await this.credentialRepository.create({
+      await this.credentials.create({
         ref: credentialRef,
         platformType: 'allegro',
         credentialsJson: credentials as unknown as Record<string, unknown>,

@@ -10,8 +10,8 @@
  */
 import { DataSource } from 'typeorm';
 import {
-  IntegrationCredentialRepositoryPort,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  ICredentialsService,
+  CREDENTIALS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/orm-entities';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
@@ -71,11 +71,11 @@ describe('Connection Credentials Integration', () => {
       expect(raw?.credentialsCiphertext).not.toContain('WS_KEY_TEST');
       expect(raw?.credentialsCiphertext.length).toBeGreaterThan(20);
 
-      // The domain repository decrypts transparently.
-      const repository = harness
+      // The credentials service decrypts transparently.
+      const credentials = harness
         .getApp()
-        .get<IntegrationCredentialRepositoryPort>(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN);
-      const decrypted = await repository.getByRef(ref);
+        .get<ICredentialsService>(CREDENTIALS_SERVICE_TOKEN);
+      const decrypted = await credentials.getByRef(ref);
       expect(decrypted.credentialsJson).toEqual({ webserviceApiKey: 'WS_KEY_TEST' });
     });
 
@@ -153,10 +153,10 @@ describe('Connection Credentials Integration', () => {
       expect(after!.credentialsRef).toBe(refBefore);
 
       const ref = refBefore.slice('db:'.length);
-      const repository = harness
+      const credentials = harness
         .getApp()
-        .get<IntegrationCredentialRepositoryPort>(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN);
-      const credential = await repository.getByRef(ref);
+        .get<ICredentialsService>(CREDENTIALS_SERVICE_TOKEN);
+      const credential = await credentials.getByRef(ref);
       expect(credential.credentialsJson).toEqual({ webserviceApiKey: 'ROTATED_KEY' });
 
       // Ciphertext does not leak the rotated plaintext into raw bytes.

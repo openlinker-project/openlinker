@@ -22,14 +22,14 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import type {
   IIntegrationsService,
-  IntegrationCredentialRepositoryPort,
+  ICredentialsService,
   CredentialsResolverPort,
   ConnectionTesterPort,
   WebhookProvisioningPort,
 } from '@openlinker/core/integrations';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
-  INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
+  CREDENTIALS_SERVICE_TOKEN,
   ConnectionTesterRegistryService,
   CONNECTION_TESTER_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
@@ -54,7 +54,7 @@ describe('ConnectionService', () => {
   let connectionPort: jest.Mocked<ConnectionPort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
-  let credentialRepository: jest.Mocked<IntegrationCredentialRepositoryPort>;
+  let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
   let webhookProvisioningRegistry: WebhookProvisioningRegistryService;
@@ -109,8 +109,7 @@ describe('ConnectionService', () => {
       enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
     } as unknown as jest.Mocked<JobEnqueuePort>;
 
-    const mockCredentialRepository = {
-      getByRef: jest.fn(),
+    const mockCredentials = {
       create: jest
         .fn()
         .mockImplementation(
@@ -130,7 +129,7 @@ describe('ConnectionService', () => {
         ),
       update: jest.fn(),
       delete: jest.fn().mockResolvedValue(true),
-    } as unknown as jest.Mocked<IntegrationCredentialRepositoryPort>;
+    } as unknown as jest.Mocked<ICredentialsService>;
 
     testerRegistry = new ConnectionTesterRegistryService();
     mockTester = { test: jest.fn() } as jest.Mocked<ConnectionTesterPort>;
@@ -174,7 +173,7 @@ describe('ConnectionService', () => {
         { provide: CONNECTION_PORT_TOKEN, useValue: mockConnectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrationsService },
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
-        { provide: INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN, useValue: mockCredentialRepository },
+        { provide: CREDENTIALS_SERVICE_TOKEN, useValue: mockCredentials },
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
         { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: webhookProvisioningRegistry },
         {
@@ -193,7 +192,7 @@ describe('ConnectionService', () => {
     connectionPort = module.get(CONNECTION_PORT_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
     jobEnqueue = module.get(JOB_ENQUEUE_TOKEN);
-    credentialRepository = module.get(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN);
+    credentials = module.get(CREDENTIALS_SERVICE_TOKEN);
   });
 
   describe('create', () => {
@@ -216,7 +215,7 @@ describe('ConnectionService', () => {
           enabledCapabilities: expect.any(Array),
         })
       );
-      expect(credentialRepository.create).not.toHaveBeenCalled();
+      expect(credentials.create).not.toHaveBeenCalled();
     });
 
     it('should reject raw-key credentialsRef without db: prefix', async () => {
@@ -251,14 +250,14 @@ describe('ConnectionService', () => {
         credentials: { webserviceApiKey: 'SECRET123' },
       });
 
-      expect(credentialRepository.create).toHaveBeenCalledWith(
+      expect(credentials.create).toHaveBeenCalledWith(
         expect.objectContaining({
           platformType: 'prestashop',
           credentialsJson: { webserviceApiKey: 'SECRET123' },
           ref: expect.any(String),
         })
       );
-      const credentialCall = credentialRepository.create.mock.calls[0][0];
+      const credentialCall = credentials.create.mock.calls[0][0];
       expect(connectionPort.create).toHaveBeenCalledWith(
         expect.objectContaining({
           credentialsRef: `db:${credentialCall.ref}`,
@@ -275,7 +274,7 @@ describe('ConnectionService', () => {
           credentials: { someOtherField: 'X' },
         })
       ).rejects.toThrow(/webserviceApiKey/);
-      expect(credentialRepository.create).not.toHaveBeenCalled();
+      expect(credentials.create).not.toHaveBeenCalled();
     });
 
     it('should roll back the credential row if connection creation fails', async () => {
@@ -290,9 +289,9 @@ describe('ConnectionService', () => {
         })
       ).rejects.toThrow(/boom/);
 
-      expect(credentialRepository.create).toHaveBeenCalledTimes(1);
-      const createdRef = credentialRepository.create.mock.calls[0][0].ref;
-      expect(credentialRepository.delete).toHaveBeenCalledWith(createdRef);
+      expect(credentials.create).toHaveBeenCalledTimes(1);
+      const createdRef = credentials.create.mock.calls[0][0].ref;
+      expect(credentials.delete).toHaveBeenCalledWith(createdRef);
     });
 
     it('should enqueue master.product.syncAll when adapter supports ProductMaster', async () => {
@@ -811,7 +810,7 @@ describe('ConnectionService', () => {
 
       await service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' });
 
-      expect(credentialRepository.update).toHaveBeenCalledWith('cred-ref-1', {
+      expect(credentials.update).toHaveBeenCalledWith('cred-ref-1', {
         credentialsJson: { webserviceApiKey: 'NEW' },
       });
     });
@@ -834,7 +833,7 @@ describe('ConnectionService', () => {
       await expect(
         service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
       ).rejects.toThrow(/does not have a db-backed/);
-      expect(credentialRepository.update).not.toHaveBeenCalled();
+      expect(credentials.update).not.toHaveBeenCalled();
     });
   });
 
