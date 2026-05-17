@@ -1,10 +1,10 @@
 /**
  * Bulk Offer Creation Progress Service Interface (#737)
  *
- * The worker-side state-machine owner for `BulkOfferCreationBatch`. Called
- * by the `marketplace.offer.create` handler after each child job completes,
- * to increment the batch's counters and (when total reached) derive the
- * terminal status — `completed | partially-failed | failed`.
+ * Core state-machine owner for `BulkOfferCreationBatch`. Called by the
+ * worker's `marketplace.offer.create` handler after each child job
+ * terminates, to increment the batch's counters and (when total reached)
+ * derive the terminal status — `completed | partially-failed | failed`.
  *
  * Split from `BulkOfferCreationSubmitService` (which owns the HTTP-side
  * intake half — submit + transition to `running`) to keep the per-phase
@@ -15,6 +15,7 @@
  * @module libs/core/src/listings/application/services
  */
 import type { BulkOfferCreationBatch } from '../../domain/entities/bulk-offer-creation-batch.entity';
+import type { BulkChildOutcome } from '../../domain/types/bulk-child-outcome.types';
 
 export interface IBulkOfferCreationProgressService {
   /**
@@ -36,6 +37,6 @@ export interface IBulkOfferCreationProgressService {
   advanceBatchStatus(
     batchId: string,
     offerCreationRecordId: string,
-    outcome: 'succeeded' | 'failed',
+    outcome: BulkChildOutcome,
   ): Promise<BulkOfferCreationBatch | null>;
 }

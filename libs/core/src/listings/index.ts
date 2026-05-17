@@ -90,6 +90,8 @@ export { BulkOfferCreationBatchNotFoundException } from './domain/exceptions/bul
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
+export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';
+export type { BulkChildOutcome } from './domain/types/bulk-child-outcome.types';
 export type { IBulkOfferCreationProgressService } from './application/services/bulk-offer-creation-progress.service.interface';
 export type { IBulkOfferCreationSubmitService } from './application/interfaces/bulk-offer-creation-submit.service.interface';
 export type {

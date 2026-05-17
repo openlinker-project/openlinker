@@ -22,6 +22,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { BulkOfferCreationBatch } from '../../domain/entities/bulk-offer-creation-batch.entity';
 import { BulkBatchAdvancementRepositoryPort } from '../../domain/ports/bulk-batch-advancement-repository.port';
 import { BulkOfferCreationBatchRepositoryPort } from '../../domain/ports/bulk-offer-creation-batch-repository.port';
+import type { BulkChildOutcome } from '../../domain/types/bulk-child-outcome.types';
 import {
   BULK_BATCH_STATUS,
   type BulkBatchStatus,
@@ -46,7 +47,7 @@ export class BulkOfferCreationProgressService implements IBulkOfferCreationProgr
   async advanceBatchStatus(
     batchId: string,
     offerCreationRecordId: string,
-    outcome: 'succeeded' | 'failed'
+    outcome: BulkChildOutcome
   ): Promise<BulkOfferCreationBatch | null> {
     const { created } = await this.advancementRepository.markAdvancedIfNotExists(
       batchId,

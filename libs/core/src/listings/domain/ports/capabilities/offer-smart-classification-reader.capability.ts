@@ -6,8 +6,8 @@
  * `implements OfferManagerPort, OfferSmartClassificationReader`.
  *
  * Today only the Allegro adapter implements this (reading `/sale/offers/{id}/smart`).
- * The bulk-offer-creation flow (#737) uses it twice per offer:
- *   1. At create-success in the worker handler.
+ * The offer-creation flow (#737) uses it twice per offer:
+ *   1. At create-success in `OfferCreationExecutionService` (active-on-create branch).
  *   2. On the `validating → active` transition in `OfferStatusPollService`.
  *
  * See `offer-lister.capability.ts` for the shared naming convention.

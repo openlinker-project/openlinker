@@ -34,6 +34,7 @@ import {
 } from '@openlinker/core/content';
 import {
   BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+  type BulkChildOutcome,
   type CreateOfferOverrides,
   type IBulkOfferCreationProgressService,
   type IOfferCreationExecutionService,
@@ -100,7 +101,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
       if (this.isV2(payload)) {
         // Counter advancement — gated at-most-once by
         // `bulk_batch_advancements` inside the progress service.
-        const batchOutcome = outcome === 'ok' ? 'succeeded' : 'failed';
+        const batchOutcome: BulkChildOutcome = outcome === 'ok' ? 'succeeded' : 'failed';
         await this.bulkProgress.advanceBatchStatus(
           payload.bulkBatchId,
           offerCreationRecord.id,
