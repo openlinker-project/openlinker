@@ -1561,9 +1561,9 @@ textarea {
 }
 
 .chip--active {
-  background: var(--bg-shell);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+  background: var(--accent-primary-soft);
+  border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+  color: var(--accent-primary-soft-strong);
   font-weight: 600;
 }
 
@@ -2013,33 +2013,37 @@ textarea {
   gap: 0.45rem;
 }
 
+/* ── FormField (#775) ───────────────────────────────────────────────
+ * Label + control + (optional) description + (optional) error rows on
+ * a tight 8px stack. Label weight stops at 500 so it reads as UI text,
+ * not a heading.
+ */
 .form-field {
   display: grid;
-  gap: 0.45rem;
+  gap: var(--space-2);
 }
 
 .form-field__label {
   color: var(--text-primary);
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 .form-field__description {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 
-/* #632 — success-tinted variant for "matched from EAN / mapping" hints under
-   form fields. Inherits the description's spacing and size; only the colour
-   token changes. */
+/* #632 — success-tinted variant for "matched from EAN / mapping" hints. */
 .form-field__description--match {
   color: var(--status-success-strong);
 }
 
 .form-field__error {
   margin: 0;
-  color: var(--status-error);
-  font-size: 0.875rem;
+  color: var(--status-error-strong);
+  font-size: 0.75rem;
 }
 
 .form-error-summary__list {
@@ -2274,36 +2278,53 @@ textarea {
   letter-spacing: -0.01em;
 }
 
+/* ── DataTable (#775) ───────────────────────────────────────────────
+ * Operator-cockpit table. Sticky thead with mono caps treatment so
+ * column headers read as eyebrows; tabular figures on numeric cells;
+ * subtle hover via color-mix so it survives both themes without
+ * tone-specific overrides. Wrap in `.table-shell` for the bordered
+ * surface look.
+ */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
+  font-size: 0.8125rem;
 }
 
 .data-table__container {
   overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
 }
 
-/* Virtualized mode: the inner scroller owns both axes. Drop the outer
-   container's horizontal overflow to avoid nested scroll containers. */
+/* Virtualized mode: the inner scroller owns both axes. */
 .data-table__container--virtual {
   overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 .data-table__virtual-scroller {
   overflow: auto;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
   contain: layout paint;
 }
 
 .data-table__virtual-scroller:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .data-table__cell--right {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table__cell--center {
@@ -2311,71 +2332,83 @@ textarea {
 }
 
 .data-table__empty-cell {
-  padding: 1.25rem 0.65rem;
+  padding: var(--space-5) var(--space-3);
+  color: var(--text-muted);
 }
 
 .data-table__stack {
   display: grid;
-  gap: 0.2rem;
+  gap: 2px;
 }
 
 .data-table__action {
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+.data-table__action:hover {
   color: var(--accent-primary-hover);
-  font-weight: 600;
 }
 
 .data-table th,
 .data-table td {
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
 .data-table thead th {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
   border-top: 0;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  background: var(--bg-surface-elevated);
+  background: var(--bg-shell);
   position: sticky;
   top: 0;
   z-index: 1;
+  user-select: none;
 }
 
 .data-table tbody td {
-  color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .data-table__row--linked {
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .data-table__row--linked:hover {
-  background: var(--bg-surface-muted);
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
 }
 
 .data-table__row--linked:hover .data-table__row-link {
-  color: var(--accent-primary-hover);
+  color: var(--accent-primary);
 }
 
 .data-table__row-link {
   color: var(--text-primary);
   text-decoration: none;
   font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .data-table__row-link:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
 .data-table__header--sortable {
@@ -2770,32 +2803,41 @@ textarea {
   z-index: 40;
 }
 
+/* ── Toast (#775) ───────────────────────────────────────────────────
+ * Transient status surface. Mirrors Alert's left-accent rule so toasts
+ * and alerts share visual vocabulary across the cockpit.
+ */
 .toast {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.75rem;
-  padding: 0.875rem 1rem;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
+  gap: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-disabled-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-md);
 }
 
 .toast--success {
   border-color: var(--status-success-border);
+  border-left-color: var(--status-success);
 }
 
 .toast--info {
   border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
 }
 
 .toast--warning {
   border-color: var(--status-warning-border);
+  border-left-color: var(--status-warning);
 }
 
 .toast--error {
   border-color: var(--status-error-border);
+  border-left-color: var(--status-error);
 }
 
 .toast__dismiss {
@@ -3498,15 +3540,20 @@ textarea {
 
 /* MetricCard -------------------------------------------------------- */
 
+/* ── MetricCard (#775) ──────────────────────────────────────────────
+ * Compact metric tile. Mono+caps label, tabular display value, optional
+ * tone tinting (success/warning/error/info) for high-emphasis dashboard
+ * cards. For the severity-aware variant with sparkline, prefer KpiCard.
+ */
 .metric-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-xs);
   text-decoration: none;
   color: inherit;
 }
@@ -3514,10 +3561,11 @@ textarea {
 .metric-card__label {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -3533,20 +3581,22 @@ textarea {
 }
 
 .metric-card__value {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .metric-card__trend {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
 .metric-card__description {
-  font-size: 12.5px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
@@ -3603,21 +3653,23 @@ textarea {
   color: var(--status-info-strong);
 }
 
-/* KpiCard + Sparkline ----------------------------------------------
- * KpiCard is the severity-aware KPI primitive consumed by the Dashboard
- * per the Variant A concept. Keeps `.metric-card` alive for non-severity
- * KPIs elsewhere.
+/* ── KpiCard + Sparkline (#775) ─────────────────────────────────────
+ * Severity-aware KPI primitive used on the Dashboard. Top accent rule
+ * (`.kpi-card::before`) is shipped in the design-system extras block at
+ * the end of this file. The mono+caps label sits across from the
+ * sparkline; the value below is large and tabular.
  */
 .kpi-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-5);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
   text-decoration: none;
+  box-shadow: var(--shadow-xs);
   transition:
     border-color var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
@@ -3629,25 +3681,27 @@ a.kpi-card:hover {
 }
 
 a.kpi-card:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .kpi-card__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .kpi-card__label-text {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 11.5px;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
 }
 
 .kpi-card__icon {
@@ -3658,27 +3712,28 @@ a.kpi-card:focus-visible {
 }
 
 .kpi-card__value {
-  font-size: 26px;
-  line-height: 32px;
+  font-size: 2rem;
+  line-height: 1;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--tracking-tight);
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: baseline;
-  gap: 0.375rem;
+  gap: var(--space-2);
   color: var(--text-primary);
 }
 
 .kpi-card__value-suffix {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .kpi-card__description {
-  font-size: 11.5px;
-  line-height: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
@@ -3746,39 +3801,60 @@ a.kpi-card:focus-visible {
 
 /* KeyValueList ------------------------------------------------------ */
 
+/* ── KeyValueList (#775) ────────────────────────────────────────────
+ * Detail-view rows on a 2-col grid (label on shell bg, value on
+ * surface). Mono+caps label so the rows scan as an audit log; the
+ * value column flexes to whatever the consumer hands us.
+ */
 .key-value-list {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 0;
   margin: 0;
   padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 @media (min-width: 768px) {
   .key-value-list {
     grid-template-columns: minmax(160px, max-content) 1fr;
-    column-gap: 24px;
-    row-gap: 10px;
   }
 }
 
+.key-value-list__label,
+.key-value-list__value {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
 .key-value-list__label {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
 }
 
 .key-value-list__value {
-  margin: 0;
-  font-size: 13.5px;
   color: var(--text-primary);
+  font-size: 0.8125rem;
   word-break: break-word;
 }
 
 .key-value-list__value--mono {
-  font-size: 12.5px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+.key-value-list__label:first-of-type,
+.key-value-list > :nth-child(-n + 2) {
+  border-top: 0;
 }
 
 /* RawPayloadPanel --------------------------------------------------- */
@@ -3896,11 +3972,15 @@ a.kpi-card:focus-visible {
 
 /* Radix Dialog wrapper --------------------------------------------- */
 
+/* ── Radix Dialog wrapper (#775) ────────────────────────────────────
+ * Overlay scrim + centered surface card with title/description/footer
+ * slots. Shell-bg footer separates actions from body content.
+ */
 .dialog__overlay {
   position: fixed;
   inset: 0;
   background: var(--overlay-scrim);
-  animation: dialog-fade-in 120ms ease-out;
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
   z-index: 40;
 }
 
@@ -3912,67 +3992,72 @@ a.kpi-card:focus-visible {
   width: min(520px, 92vw);
   max-height: min(90vh, 720px);
   overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-overlay);
-  padding: 20px;
+  padding: var(--space-5) var(--space-6);
   z-index: 50;
-  animation: dialog-fade-in 120ms ease-out;
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
 }
 
 .dialog__title {
-  margin: 0 0 6px;
-  font-size: 16px;
+  margin: 0 0 var(--space-1);
+  font-size: 1.0625rem;
   font-weight: 600;
+  letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
 }
 
 .dialog__description {
-  margin: 0 0 16px;
-  font-size: 13px;
+  margin: 0 0 var(--space-4);
+  font-size: 0.8125rem;
   color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .dialog__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
+  gap: var(--space-2);
+  margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-shell);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 
 @keyframes dialog-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 
-/* Radix DropdownMenu wrapper --------------------------------------- */
-
+/* ── Radix DropdownMenu wrapper (#775) ──────────────────────────────
+ * Grouped item list with optional shortcut hints (mono caps glyphs).
+ * Subtle highlight on hover/keyboard navigation; tone-aware danger item.
+ */
 .dropdown-menu__content {
-  min-width: 180px;
-  padding: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  box-shadow: var(--shadow-overlay);
+  min-width: 220px;
+  padding: var(--space-1);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   z-index: 50;
 }
 
 .dropdown-menu__item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font-size: 13px;
+  gap: var(--space-3);
+  padding: 6px var(--space-3);
+  font-size: 0.8125rem;
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   outline: none;
   user-select: none;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .dropdown-menu__item[data-highlighted] {
@@ -3985,10 +4070,11 @@ a.kpi-card:focus-visible {
 }
 
 .dropdown-menu__label {
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  padding: 6px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -3996,20 +4082,28 @@ a.kpi-card:focus-visible {
 .dropdown-menu__separator {
   height: 1px;
   background: var(--border-subtle);
-  margin: 4px -4px;
+  margin: var(--space-1) calc(var(--space-1) * -1);
 }
 
-/* Radix Tooltip wrapper -------------------------------------------- */
+.dropdown-menu__shortcut {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
 
+/* ── Radix Tooltip wrapper (#775) ───────────────────────────────────
+ * Solid inverted surface for terse inline labels.
+ */
 .tooltip__content {
   max-width: 280px;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 4px var(--space-2);
+  font-size: 0.75rem;
   line-height: 1.4;
   color: var(--text-inverse);
   background: var(--text-primary);
-  border-radius: 6px;
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
   z-index: 60;
 }
 
@@ -4017,15 +4111,17 @@ a.kpi-card:focus-visible {
   fill: var(--text-primary);
 }
 
-/* Radix Popover wrapper -------------------------------------------- */
-
+/* ── Radix Popover wrapper (#775) ───────────────────────────────────
+ * Elevated surface with subtle border + larger radius. Larger min-width
+ * than tooltips because they typically host interactive content.
+ */
 .popover__content {
   min-width: 240px;
-  padding: 14px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  box-shadow: var(--shadow-overlay);
+  padding: var(--space-4);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   z-index: 50;
 }
 
@@ -4492,9 +4588,13 @@ a.kpi-card:focus-visible {
 }
 
 .tabs__trigger {
-  padding: 0.5rem 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   margin-bottom: -1px;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-secondary);
   background: transparent;
@@ -4505,6 +4605,28 @@ a.kpi-card:focus-visible {
   transition:
     color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);
+}
+
+/* Optional count badge inside a tab trigger. The page renders it as
+ * `<span className="tabs__count">…</span>` next to the label.
+ */
+.tabs__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+}
+
+.tabs__trigger[data-state='active'] .tabs__count {
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
 }
 
 .tabs__trigger:hover {
@@ -4649,8 +4771,9 @@ a.kpi-card:focus-visible {
 
   .setup-stepper__step--current .setup-stepper__indicator {
     border-color: var(--accent-primary);
-    background: var(--accent-primary);
-    color: var(--text-inverse, #fff);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-focus);
   }
 
   .setup-stepper__step--current .setup-stepper__label {
@@ -4659,9 +4782,9 @@ a.kpi-card:focus-visible {
   }
 
   .setup-stepper__step--done .setup-stepper__indicator {
-    border-color: var(--accent-primary);
-    background: var(--accent-primary-soft);
-    color: var(--accent-primary);
+    border-color: transparent;
+    background: var(--accent-primary);
+    color: var(--text-on-primary);
   }
 
   .setup-stepper__step--done .setup-stepper__label {
