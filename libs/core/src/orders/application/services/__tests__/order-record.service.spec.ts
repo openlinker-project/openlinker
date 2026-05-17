@@ -209,6 +209,33 @@ describe('OrderRecordService', () => {
       expect(snapshotItems[0]).not.toHaveProperty('name');
       expect(snapshotItems[0]).not.toHaveProperty('imageUrl');
     });
+
+    it('should serialise Order.deliverySmart into the snapshot when present (#738)', async () => {
+      const order = createMockOrder();
+      order.deliverySmart = true;
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
+    });
+
+    it('should omit deliverySmart from the snapshot when the Order does not carry it (#738)', async () => {
+      const order = createMockOrder();
+      // createMockOrder() leaves deliverySmart unset — assert conditional
+      // serialisation keeps the key absent rather than emitting `undefined`,
+      // so consumers can distinguish "Smart not reported" from "Smart false".
+      expect(order.deliverySmart).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
+    });
   });
 
   describe('persistOrder - PII disabled', () => {
@@ -360,6 +387,30 @@ describe('OrderRecordService', () => {
         postalCode: '[REDACTED]',
         country: 'US',
       });
+    });
+
+    it('should serialise IncomingOrder.deliverySmart into the snapshot when present (#738)', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.deliverySmart = false;
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['deliverySmart']).toBe(false);
+    });
+
+    it('should omit deliverySmart from the snapshot when IncomingOrder does not carry it (#738)', async () => {
+      const incoming = createMockIncomingOrder();
+      expect(incoming.deliverySmart).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
   });
 

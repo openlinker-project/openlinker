@@ -65,6 +65,15 @@ export interface IncomingOrder {
   pickupPoint?: OrderPickupPoint;
 
   /**
+   * Allegro Smart! free-delivery flag (`delivery.smart` on the checkout-form
+   * response). Informational only — no business logic depends on it in v1;
+   * future surfaces (filtering, analytics, badges) read this signal. Absent
+   * (`undefined`) for non-Allegro sources and for Allegro orders predating
+   * the Smart! program.
+   */
+  deliverySmart?: boolean;
+
+  /**
    * ISO timestamps (strings) to keep DTO stable across runtimes.
    */
   createdAt: string;
