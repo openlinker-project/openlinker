@@ -348,6 +348,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       billingAddress: incoming.billingAddress,
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
+      deliverySmart: incoming.deliverySmart,
       createdAt: new Date(incoming.createdAt),
       updatedAt: new Date(incoming.updatedAt),
     };

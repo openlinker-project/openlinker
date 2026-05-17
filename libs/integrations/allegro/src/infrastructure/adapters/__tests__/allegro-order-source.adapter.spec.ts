@@ -669,13 +669,21 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(incoming.deliverySmart).toBe(false);
       });
 
-      // Single "missing" case covers both branches of the `?.smart` optional
-      // chain: (a) the `delivery` block is absent entirely, and (b) the
-      // `delivery` block is present but the `smart` key is not — both
-      // surface as `undefined` on the returned IncomingOrder.
       it('should leave deliverySmart undefined when delivery block is absent', async () => {
         const form = baseForm();
-        // No `delivery` block at all.
+        // No `delivery` block at all — covers `delivery === undefined`.
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.deliverySmart).toBeUndefined();
+      });
+
+      it('should leave deliverySmart undefined when delivery block is present but smart key is missing', async () => {
+        const form = baseForm();
+        // `delivery` present but no `smart` — guards the `?.smart` optional
+        // chain's "present-but-missing-key" branch explicitly.
+        form.delivery = {};
         httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
 
         const incoming = await adapter.getOrder({ externalOrderId: 'cf' });

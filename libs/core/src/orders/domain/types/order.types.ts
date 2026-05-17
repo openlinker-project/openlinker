@@ -103,6 +103,14 @@ export interface Order {
    * and is greppable for downstream features.
    */
   pickupPoint?: OrderPickupPoint;
+  /**
+   * Allegro Smart! free-delivery eligibility flag, carried through from the
+   * source `IncomingOrder`. Informational only — no business logic depends on
+   * it in v1; future surfaces (filtering, analytics, badges) read this signal.
+   * Absent (`undefined`) for non-Allegro sources and for Allegro orders
+   * predating the Smart! program.
+   */
+  deliverySmart?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

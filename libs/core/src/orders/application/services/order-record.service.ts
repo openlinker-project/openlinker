@@ -71,6 +71,11 @@ export class OrderRecordService implements IOrderRecordService {
       billingAddress: piiConfig.storePii
         ? order.billingAddress
         : this.sanitizeAddress(order.billingAddress),
+      // Conditional spread matches the items-level precedent above: keep the
+      // snapshot key absent (not `undefined` and not `false`) when the source
+      // did not supply the flag, so consumers can distinguish "Smart not
+      // reported" from "Smart explicitly false".
+      ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
@@ -124,6 +129,8 @@ export class OrderRecordService implements IOrderRecordService {
       createdAt: incoming.createdAt,
       updatedAt: incoming.updatedAt,
       metadata: incoming.metadata,
+      // See `persistOrder` above for the absent-vs-false rationale.
+      ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
     };
 
     const orderRecord = new OrderRecord(

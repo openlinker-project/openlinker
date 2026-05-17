@@ -26,17 +26,20 @@ Allegro's `GET /order/checkout-forms/{id}` returns `delivery.smart: boolean` ind
 | `AllegroCheckoutForm.delivery.smart?: boolean` | `libs/integrations/allegro/src/domain/types/allegro-api.types.ts:100` | Already typed; needs to be **consumed** |
 | `AllegroOrderSourceAdapter.getOrder` | `libs/integrations/allegro/src/infrastructure/adapters/allegro-order-source.adapter.ts:146–220` | Maps response → `IncomingOrder`; new field added at the construction site |
 | `IncomingOrder` type | `libs/core/src/orders/domain/types/incoming-order.types.ts:15–77` | Add `deliverySmart?: boolean` as a new optional |
-| `OrderRecord` entity + ORM + repo | `libs/core/src/orders/...` | **No flat column** — order data persisted as `orderSnapshot: jsonb`; the new field rides the JSONB free |
-| Allegro adapter spec | `libs/integrations/allegro/src/infrastructure/adapters/__tests__/allegro-order-source.adapter.spec.ts` | Extend with `delivery.smart=true / =false / missing` fixtures |
+| `OrderRecord` entity + ORM + repo | `libs/core/src/orders/...` | **No flat column** — order data persisted as `orderSnapshot: jsonb`. **Correction (post-tech-review)**: the snapshot is built field-by-field in `OrderRecordService.persistOrder` and `persistIncomingSnapshot` — adding a field to `IncomingOrder` is NOT sufficient; the new field must be threaded through `Order` → `buildUnifiedOrder` → both snapshot projections. |
+| Allegro adapter spec | `libs/integrations/allegro/src/infrastructure/adapters/__tests__/allegro-order-source.adapter.spec.ts` | Extend with `delivery.smart=true / =false / missing-delivery / present-but-no-smart-key` fixtures |
+| `OrderRecordService` snapshot builders | `libs/core/src/orders/application/services/order-record.service.ts` | Add `deliverySmart` via conditional spread to both `persistOrder` and `persistIncomingSnapshot` (match the existing absent-vs-`undefined` precedent on `OrderItem.name` / `imageUrl`) |
+| `Order` domain type | `libs/core/src/orders/domain/types/order.types.ts` | Add `deliverySmart?: boolean` next to `shipping` / `pickupPoint` |
+| `OrderIngestionService.buildUnifiedOrder` | `libs/core/src/orders/application/services/order-ingestion.service.ts` | Forward `incoming.deliverySmart` into the constructed `Order` |
 
 ## 3. Spec deviations (call out)
 
 The issue body asks for two things the persistence model doesn't actually require:
 
-- **"Persist via a small migration (add `delivery_smart` column, nullable)"** — `OrderRecord` stores `orderSnapshot: jsonb` (not flat columns per field). The new field is automatically carried by the JSONB column once it appears on `IncomingOrder` (the type that backs `orderSnapshot`). Adding a dedicated column would mean either (a) duplicate storage (column shadowing the JSONB key) or (b) extracting the value at write time only — neither pays off for an "informational only" flag. **Skip the migration.**
+- **"Persist via a small migration (add `delivery_smart` column, nullable)"** — `OrderRecord` stores `orderSnapshot: jsonb` (not flat columns per field). The field rides inside the JSONB snapshot — no DDL migration needed. The snapshot itself is built field-by-field in two `OrderRecordService` methods, so the field still needs to be added to both projections (it does NOT "ride free" — that was an earlier mistake in this plan, caught by tech-review). **Skip the migration, expand the in-code propagation.**
 - **"Surface in OrderRecord domain entity"** — `OrderRecord`'s constructor takes `orderSnapshot` as an opaque blob. Callers already access nested fields via `record.orderSnapshot.x`. Adding a flat `deliverySmart` getter would be redundant with `record.orderSnapshot.deliverySmart`. **Skip the entity change.**
 
-Net effect: this issue ships as a **2-file change + 1 spec extension** (vs the issue body's 4-file change + migration). The acceptance criteria from the issue body re-map cleanly:
+Net effect: this issue ships as a **5-file change + 2 spec extensions** (vs the issue body's 4-file change + migration). The acceptance criteria from the issue body re-map cleanly:
 
 | Issue AC | How this plan satisfies it |
 |---|---|
