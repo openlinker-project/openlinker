@@ -11,8 +11,10 @@
  *   2. Import its module here.
  *   3. Add it to the `workerPlugins` array below.
  *
- * The worker does not need `AiIntegrationModule` because the AI suggestion
- * flow is handled synchronously in-process by the API.
+ * `AiIntegrationModule` is registered here (#737) because the bulk-flow
+ * `marketplace.offer.create` handler calls `ContentSuggestionService` for
+ * per-job AI description generation. Without this, `AI_COMPLETION_PORT_TOKEN`
+ * is unresolved in the worker's DI scope.
  *
  * See `docs/architecture-overview.md` § *Adapter Registry (Code-Level)* for
  * the conceptual model.
@@ -22,8 +24,10 @@
 import type { PluginEntry } from '@openlinker/core/integrations';
 import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
+import { AiIntegrationModule } from '@openlinker/integrations-ai';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
   AllegroIntegrationModule,
+  AiIntegrationModule.register(),
 ];

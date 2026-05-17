@@ -26,8 +26,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { DuplicateIdentifierMappingError, IDENTIFIER_MAPPING_SERVICE_TOKEN, IIdentifierMappingService, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import type { OfferManagerPort } from '@openlinker/core/listings';
-import { isOfferCreator, OFFER_CREATION_STATUS } from '@openlinker/core/listings';
+import type { OfferManagerPort, SmartClassificationReport } from '@openlinker/core/listings';
+import {
+  isOfferCreator,
+  isOfferSmartClassificationReader,
+  OFFER_CREATION_STATUS,
+} from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   CreateOfferCommand,
@@ -164,7 +168,41 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       }
     }
 
+    // Smart classification readback (#737). Only meaningful when the offer
+    // landed at `active` directly (no validation hop). For `validating`,
+    // the poll service does the readback on the `validating → active`
+    // transition. Best-effort: failures persist null (AC-7).
+    if (finalRecord.status === OFFER_CREATION_STATUS.Active) {
+      await this.readAndPersistSmartClassification(adapter, result.externalOfferId, finalRecord.id);
+    }
+
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Best-effort Smart classification readback after a successful offer
+   * creation (#737). Mirrors the poll-service's readback shape — capability
+   * gate, swallow errors, persist `null` on failure so the next read can
+   * recover. Never throws — Smart readback failure must not fail the
+   * offer-creation operation (AC-7).
+   */
+  private async readAndPersistSmartClassification(
+    adapter: OfferManagerPort,
+    externalOfferId: string,
+    offerCreationRecordId: string
+  ): Promise<void> {
+    if (!isOfferSmartClassificationReader(adapter)) {
+      return;
+    }
+    let report: SmartClassificationReport | null = null;
+    try {
+      report = await adapter.getOfferSmartClassification(externalOfferId);
+    } catch (err) {
+      this.logger.warn(
+        `Smart classification readback failed for offer ${externalOfferId}: ${(err as Error).message}`
+      );
+    }
+    await this.offerCreationRecords.updateClassificationReport(offerCreationRecordId, report);
   }
 
   /**

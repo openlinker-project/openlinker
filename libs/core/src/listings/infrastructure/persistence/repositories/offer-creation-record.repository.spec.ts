@@ -38,6 +38,7 @@ describe('OfferCreationRecordRepository', () => {
     publishImmediately: false,
     request: null,
     bulkBatchId: null,
+    classificationReport: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

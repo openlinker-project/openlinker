@@ -30,6 +30,8 @@ import type {
   OfferStatusReadResult,
   OfferPublicationStatus,
   OfferReader,
+  OfferSmartClassificationReader,
+  SmartClassificationReport,
   SellerPoliciesReader,
   ResponsibleProducerReader,
   ResponsibleProducerEntry,
@@ -89,6 +91,7 @@ import type {
   AllegroSellerPolicyEntry,
   AllegroResponsibleProducerEntry,
   AllegroResponsibleProducersResponse,
+  AllegroSmartOfferClassificationReport,
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
@@ -210,6 +213,7 @@ export class AllegroOfferManagerAdapter
     CatalogProductReader,
     OfferCreator,
     OfferStatusReader,
+    OfferSmartClassificationReader,
     OfferReader,
     SellerPoliciesReader,
     ResponsibleProducerReader,
@@ -581,6 +585,47 @@ export class AllegroOfferManagerAdapter
     const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
 
     return { publicationStatus, validationErrors };
+  }
+
+  /**
+   * `OfferSmartClassificationReader.getOfferSmartClassification` (#737) —
+   * fetch the Allegro Smart! classification for a single offer.
+   *
+   * 404 collapses to `null` (Allegro hasn't yet classified the offer — most
+   * commonly because the offer is fresh from create-offer and pre-validation).
+   * Every other error propagates so the caller can decide how to degrade —
+   * the bulk-flow handler + poll-service hook catch + log + persist null
+   * per AC-7 (Smart readback must not fail the offer-creation job).
+   */
+  async getOfferSmartClassification(
+    externalOfferId: string
+  ): Promise<SmartClassificationReport | null> {
+    try {
+      const response = await this.httpClient.get<AllegroSmartOfferClassificationReport>(
+        `/sale/offers/${externalOfferId}/smart`
+      );
+      return this.mapSmartClassificationReport(response.data);
+    } catch (err) {
+      if (err instanceof AllegroApiException && err.statusCode === 404) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  private mapSmartClassificationReport(
+    raw: AllegroSmartOfferClassificationReport
+  ): SmartClassificationReport {
+    return {
+      fulfilled: raw.classification?.fulfilled ?? null,
+      conditions: (raw.conditions ?? []).map((c) => ({
+        code: c.code,
+        name: c.name,
+        description: c.description,
+        fulfilled: c.fulfilled,
+      })),
+      scheduledForReclassification: raw.scheduledForReclassification,
+    };
   }
 
   private mapAllegroPublicationStatus(

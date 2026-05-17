@@ -195,37 +195,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
 }
 
 /*
- * Worker-handler seam for #737:
- *
- * Once #737 lands, the `marketplace.offer.create` handler will call this
- * service after each terminal child status to derive the batch's
- * terminal status. The future public method shape is:
- *
- *   advanceBatchStatus(batchId, outcome: 'succeeded' | 'failed')
- *     → Promise<BulkOfferCreationBatch | null>
- *
- * Algorithm (verified against `BulkBatchStatus` semantics):
- *
- *   1. `bulkBatchRepository.incrementCounters(batchId, { succeeded?, failed? })`
- *      with `succeeded: 1` xor `failed: 1` depending on `outcome`.
- *      The returned entity is the post-update read so terminal-status
- *      derivation runs against the freshest counters.
- *   2. `finished = succeededCount + failedCount === totalCount`.
- *      Return `null` when not finished — the batch stays `'running'`.
- *   3. When finished, derive terminal:
- *      - `failedCount === 0`                       → `'completed'`
- *      - `succeededCount === 0 && failedCount > 0` → `'failed'`
- *      - otherwise                                 → `'partially-failed'`
- *      Then `bulkBatchRepository.updateStatus(batchId, terminal)` and
- *      return the post-update entity.
- *
- * Both repository methods already throw
- * `BulkOfferCreationBatchNotFoundException` (→ HTTP 404) on missing
- * rows, so handler error mapping mirrors the existing single-offer
- * execution path.
- *
- * Kept as a comment in #736 (not a private method) so TypeScript's
- * `noUnusedLocals` invariant doesn't have to be silenced for an
- * intentionally-unused method. Promote to a class method + the
- * `IBulkOfferCreationSubmitService` interface in #737.
+ * Worker-handler seam: shipped as `BulkOfferCreationProgressService.advanceBatchStatus`
+ * in #737. The terminal-state derivation rule lives there. See
+ * `bulk-offer-creation-progress.service.ts`.
  */

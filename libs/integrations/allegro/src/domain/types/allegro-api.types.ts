@@ -779,3 +779,30 @@ export interface AllegroImpliedWarrantiesResponse {
   impliedWarranties: AllegroSellerPolicyEntry[];
 }
 
+
+/**
+ * Response from `GET /sale/offers/{offerId}/smart` (#737) — Allegro Smart!
+ * classification report. The neutral `SmartClassificationReport` type in
+ * core (`libs/core/src/listings/domain/types/smart-classification.types.ts`)
+ * is the consumer surface; this raw shape is mapped onto it by
+ * `AllegroOfferManagerAdapter.getOfferSmartClassification`.
+ *
+ * Deprecated fields documented in the swagger (`smartDeliveryMethods`,
+ * `passedDeliveryMethods`, `failedDeliveryMethods`) are intentionally
+ * omitted — slated for removal 2026-07-28 per Allegro changelog.
+ *
+ * Reference: developer.allegro.pl/swagger.yaml SmartOfferClassificationReport.
+ */
+export interface AllegroSmartOfferClassificationReport {
+  classification?: {
+    fulfilled: boolean;
+    lastChanged?: string;
+  };
+  scheduledForReclassification?: boolean;
+  conditions?: Array<{
+    code: string;
+    name: string;
+    description: string;
+    fulfilled: boolean;
+  }>;
+}

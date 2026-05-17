@@ -19,6 +19,7 @@ import {
 import { OfferCreationStatus } from '../../../domain/types/offer-creation-record.types';
 import type { OfferCreationError } from '../../../domain/types/offer-creation-record.types';
 import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-creation-request-snapshot.types';
+import type { SmartClassificationReport } from '../../../domain/types/smart-classification.types';
 
 @Entity('offer_creation_records')
 @Index(['internalVariantId', 'connectionId'])
@@ -74,6 +75,15 @@ export class OfferCreationRecordOrmEntity {
   @Column({ type: 'uuid', nullable: true })
   @Index('IDX_offer_creation_records_bulkBatchId')
   bulkBatchId!: string | null;
+
+  /**
+   * Marketplace classification report (#737). Populated by the bulk-flow
+   * worker handler at create-success and again on the `validating → active`
+   * transition (via `OfferStatusPollService`). Null when never read, not
+   * yet classified by the marketplace, or readback failed.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  classificationReport!: SmartClassificationReport | null;
 
   @CreateDateColumn()
   createdAt!: Date;

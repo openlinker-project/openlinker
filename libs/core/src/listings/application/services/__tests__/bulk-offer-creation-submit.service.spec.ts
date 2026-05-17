@@ -68,6 +68,7 @@ describe('BulkOfferCreationSubmitService', () => {
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
       findByBulkBatchId: jest.fn().mockResolvedValue([]),
+      updateClassificationReport: jest.fn(),
     };
     enqueueService = {
       enqueueCreation: jest
