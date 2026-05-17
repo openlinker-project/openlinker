@@ -10,11 +10,14 @@
 import type { ReactElement, ReactNode } from 'react';
 import {
   Alert,
+  BackLink,
   Button,
+  CopyableId,
   DataTable,
   EntityLabel,
   KpiCard,
   MetricCard,
+  SetupStepper,
   StatusBadge,
   type DataTableColumn,
 } from '../../../shared/ui';
@@ -172,6 +175,77 @@ export function PatternsSection(): ReactElement {
         <div className="ds-row" style={{ justifyContent: 'flex-end' }}>
           <Button tone="ghost">Cancel</Button>
           <Button tone="primary">Save changes</Button>
+        </div>
+      </Pattern>
+
+      <Pattern
+        title="Detail page header"
+        description="Breadcrumb hint + entity title + identifier + status + secondary actions. Use for /orders/:id, /connections/:id, /listings/:id, etc."
+      >
+        <BackLink to="#" label="Back to orders" />
+        <div className="ds-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div className="ds-stack" style={{ gap: 'var(--space-2)' }}>
+            <span className="ds-eyebrow">Order · Allegro · Main store</span>
+            <div className="ds-row" style={{ gap: 'var(--space-3)' }}>
+              <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 600, letterSpacing: 'var(--tracking-tight)' }}>
+                ALG-2026-05-17-882414
+              </h2>
+              <StatusBadge tone="success" withDot>Paid</StatusBadge>
+            </div>
+            <CopyableId id="ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9" />
+          </div>
+          <div className="ds-row">
+            <Button tone="ghost" className="button--sm">View raw payload</Button>
+            <Button tone="secondary" className="button--sm">Resend webhook</Button>
+            <Button tone="primary" className="button--sm">Mark fulfilled</Button>
+          </div>
+        </div>
+      </Pattern>
+
+      <Pattern
+        title="Setup wizard"
+        description="SetupStepper + body + back/next footer. Used by Allegro / PrestaShop / new-integration flows."
+      >
+        <SetupStepper
+          steps={['Create connection', 'Verify credentials', 'Install webhooks', 'Map products', 'Go live']}
+          currentStep={2}
+          completedSteps={new Set([0, 1])}
+        />
+        <div className="ds-stack" style={{ gap: 'var(--space-2)' }}>
+          <span className="ds-eyebrow">Step 3 of 5</span>
+          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, letterSpacing: 'var(--tracking-tight)' }}>
+            Install webhooks
+          </h3>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8125rem', maxWidth: '60ch' }}>
+            We'll register inbound webhook URLs on your store so order events arrive in seconds, not minutes. You can
+            skip this and rely on polling — the catalog still syncs hourly.
+          </p>
+        </div>
+        <div className="ds-row" style={{ justifyContent: 'space-between' }}>
+          <Button tone="ghost">← Back</Button>
+          <div className="ds-row">
+            <Button tone="secondary">Skip, use polling</Button>
+            <Button tone="primary">Install webhooks</Button>
+          </div>
+        </div>
+      </Pattern>
+
+      <Pattern
+        title="Structured error list"
+        description="Replaces the heavy red-pill treatment for repeated error rows. Compact timestamp + collapsed message + tone strip. Click a row to expand."
+      >
+        <div className="error-list">
+          {([
+            { id: 'e1', when: '15 May 14:48', tone: 'error', code: 'marketplace.order.sync.failed', msg: 'Missing mapping for order item productRef [connectionId=d80526bf-a859-4ec7-a424-3d12150bf912, typeoffer, externalId=7781451462]' },
+            { id: 'e2', when: '15 May 14:46', tone: 'error', code: 'marketplace.order.sync.failed', msg: 'Missing mapping for order item productRef [connectionId=d80526bf-a859-4ec7-a424-3d12150bf912, typeoffer, externalId=7781451462]' },
+            { id: 'e3', when: '15 May 14:45', tone: 'warning', code: 'marketplace.offer.sync.retry', msg: 'HTTP 429 from api.allegro.pl — backing off 4s' },
+          ] as const).map((e) => (
+            <div key={e.id} className={`error-list__row error-list__row--${e.tone}`}>
+              <span className="error-list__when mono-text">{e.when}</span>
+              <span className="error-list__code mono-text">{e.code}</span>
+              <span className="error-list__msg">{e.msg}</span>
+            </div>
+          ))}
         </div>
       </Pattern>
     </div>

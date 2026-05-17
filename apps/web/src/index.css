@@ -1495,6 +1495,19 @@ textarea {
   flex: 1;
   padding: 20px 16px 32px;
   overflow-x: hidden;
+  /* Cross-fade + tiny upward translate on route change (#775). Keyed
+     by location.pathname on the <main> element. Respects
+     prefers-reduced-motion. */
+  animation: shell-content-enter 180ms var(--ease-out);
+}
+
+@keyframes shell-content-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-content { animation: none; }
 }
 
 @media (min-width: 768px) {
@@ -1995,14 +2008,33 @@ textarea {
 
 .toolbar {
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   background: var(--bg-shell);
 }
 
 .toolbar--compact {
-  gap: 0.5rem;
+  gap: var(--space-2);
+}
+
+/* Filter selects inside a `.toolbar` cap their width so the table
+   stays the visual focus and doesn't fight a 1200 px-wide select. */
+.toolbar select,
+.toolbar .control--select,
+.toolbar .control {
+  max-width: 17.5rem;
+  width: 17.5rem;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .toolbar select,
+  .toolbar .control--select,
+  .toolbar .control {
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .pagination {
@@ -2501,20 +2533,35 @@ textarea {
 }
 
 .data-table__header-button:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
-  border-radius: 3px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
+/* Sort indicator (#775) — mono glyph, accent on active column.
+ * Reserve the slot via empty content so columns don't shift when the
+ * indicator turns on. */
 .data-table__sort-indicator {
-  font-size: 9px;
+  display: inline-block;
+  min-width: 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
   color: var(--text-muted);
   line-height: 1;
+  opacity: 0.4;
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.data-table__header-button:hover .data-table__sort-indicator {
+  opacity: 0.75;
+  color: var(--text-secondary);
 }
 
 .data-table__header--sortable[aria-sort='ascending'] .data-table__sort-indicator,
 .data-table__header--sortable[aria-sort='descending'] .data-table__sort-indicator {
   color: var(--accent-primary);
+  opacity: 1;
 }
 
 .data-table__cell--hide-below-480,
@@ -3611,6 +3658,9 @@ textarea {
  * Compact metric tile. Mono+caps label, tabular display value, optional
  * tone tinting (success/warning/error/info) for high-emphasis dashboard
  * cards. For the severity-aware variant with sparkline, prefer KpiCard.
+ *
+ * `height: 100%` so cards in a grid line up vertically even when some
+ * carry a description and others don't (no jagged bottom edge).
  */
 .metric-card {
   display: flex;
@@ -3623,6 +3673,8 @@ textarea {
   box-shadow: var(--shadow-xs);
   text-decoration: none;
   color: inherit;
+  height: 100%;
+  min-height: 5.5rem;
 }
 
 .metric-card__label {
@@ -3737,6 +3789,8 @@ textarea {
   color: var(--text-primary);
   text-decoration: none;
   box-shadow: var(--shadow-xs);
+  height: 100%;
+  min-height: 7rem;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
@@ -7336,4 +7390,261 @@ a.kpi-card:focus-visible {
   color: var(--text-secondary);
   overflow-x: auto;
   white-space: pre;
+}
+
+/* ── CopyableId (#775) ──────────────────────────────────────────────
+ * Mono identifier + copy button that hides until row-hover. Pairs with
+ * .data-table tbody tr:hover so dense tables stay clean.
+ */
+.copyable-id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.copyable-id__value {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyable-id__copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.copyable-id__copy:hover {
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.copyable-id__copy:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.data-table tbody tr:hover .copyable-id__copy,
+.copyable-id:hover .copyable-id__copy,
+.copyable-id:focus-within .copyable-id__copy {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── Structured error list (#775) ───────────────────────────────────
+ * Compact tone-tinted rows that replace the "wall of red pills"
+ * treatment for repeated errors on connection-detail health tabs.
+ * Tone is communicated by a 3 px left rule + monospace code prefix.
+ */
+.error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.error-list__row {
+  display: grid;
+  grid-template-columns: 7rem 16rem 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border-left: 3px solid var(--status-disabled-border);
+  font-size: 0.75rem;
+  align-items: baseline;
+  cursor: default;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.error-list__row:hover {
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+
+.error-list__row--error { border-left-color: var(--status-error); }
+.error-list__row--warning { border-left-color: var(--status-warning); }
+.error-list__row--info { border-left-color: var(--status-info); }
+.error-list__row--review { border-left-color: var(--status-review); }
+
+.error-list__when {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+}
+
+.error-list__code {
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-list__msg {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-list__row:hover .error-list__msg {
+  white-space: normal;
+}
+
+@media (max-width: 768px) {
+  .error-list__row {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}
+
+/* ── DataTable density modifiers (#775) ─────────────────────────────
+ * Operator-cockpit pages benefit from a compact mode that fits more
+ * rows on screen. `<html data-density="compact">` toggles it globally
+ * — every `.data-table` inherits without per-page wiring. Cozy is the
+ * default and matches the .data-table rules above.
+ */
+html[data-density='compact'] .data-table th,
+html[data-density='compact'] .data-table td {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+html[data-density='compact'] .data-table thead th {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  font-size: 0.625rem;
+}
+
+html[data-density='compact'] .entity-label__thumb,
+html[data-density='compact'] .product-thumbnail {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+html[data-density='compact'] .status-badge {
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+
+/* Topbar density toggle — 2-option segmented control */
+.density-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.density-toggle__option {
+  width: 1.75rem;
+  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.density-toggle__option:hover {
+  color: var(--text-primary);
+}
+
+.density-toggle__option.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.density-toggle__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.density-toggle__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* ── Mobile / touch tweaks for #775 new primitives ─────────────────
+ * On touch devices there is no hover, so `.copyable-id__copy` and any
+ * other hover-revealed affordance has to stay visible. We also collapse
+ * the dev-ui patterns at the smallest viewport.
+ */
+@media (hover: none) {
+  .copyable-id__copy {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .ds-grid--2,
+  .ds-grid--3,
+  .ds-grid--4,
+  .ds-grid--6 {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog__footer {
+    /* On the smallest viewports the rounded-bottom footer's negative
+       margin can clip oddly. Keep the actions stacked but flush. */
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .dialog__footer .button {
+    width: 100%;
+  }
+
+  .dropdown-menu__content,
+  .popover__content {
+    /* Constrain to viewport so portals don't trigger horizontal scroll
+       on narrow phones. The Radix portal already collision-shifts but
+       this caps the worst-case width. */
+    max-width: calc(100vw - 1rem);
+  }
+
+  /* Density toggle hides on the smallest viewports — density only
+     matters when you can see >5 rows at once, which a phone can't. */
+  .shell-user-chip__menu .density-toggle {
+    display: none;
+  }
 }

@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
 import { ThemeToggle } from '../shared/ui/theme-toggle';
+import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 
 interface SidebarNavProps {
@@ -196,6 +197,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <div className="shell-user-chip__menu-section-label">Theme</div>
           <ThemeToggle />
         </div>
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">Density</div>
+          <DensityToggle />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>Sign out</DropdownMenuItem>
       </DropdownMenuContent>
@@ -208,6 +213,11 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { showToast } = useToast();
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
+  // Initialize density at boot so <html data-density="..."> is set before
+  // any .data-table renders (avoids a flash of cozy-density rows for
+  // users who selected compact). useDensity is a no-op hook for the
+  // shell itself — we only call it to drive its useEffect.
+  useDensity();
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const counts = useNavCounts();
@@ -311,7 +321,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           ) : null}
         </header>
 
-        <main className="shell-content">{children}</main>
+        {/* `key={location.pathname}` retriggers the .shell-content
+            cross-fade animation on every route change (#775). */}
+        <main key={location.pathname} className="shell-content">{children}</main>
       </div>
     </div>
   );
