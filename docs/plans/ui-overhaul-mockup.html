@@ -1,0 +1,1801 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenLinker · UI primitives overhaul (#775)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    /* ──────────────────────────────────────────────────────────────────
+       Design tokens — light + dark, OKLCH-driven, sRGB fallbacks
+       ────────────────────────────────────────────────────────────────── */
+
+    :root,
+    [data-theme="light"] {
+      color-scheme: light;
+
+      /* Surfaces */
+      --bg-canvas:           oklch(99% 0.003 80);
+      --bg-shell:            oklch(97.5% 0.004 80);
+      --bg-surface:          #ffffff;
+      --bg-surface-elevated: oklch(99% 0.003 80);
+      --bg-muted:            oklch(96% 0.005 80);
+      --bg-strong:           oklch(93% 0.006 80);
+      --bg-inverse:          oklch(20% 0.012 80);
+
+      /* Borders */
+      --border-subtle:  oklch(93% 0.006 80);
+      --border-default: oklch(88% 0.008 80);
+      --border-strong:  oklch(78% 0.010 80);
+      --border-focus:   oklch(68% 0.18 50);
+
+      /* Text */
+      --text-primary:    oklch(20% 0.012 80);
+      --text-secondary:  oklch(38% 0.010 80);
+      --text-muted:      oklch(52% 0.008 80);
+      --text-disabled:   oklch(70% 0.005 80);
+      --text-on-accent:  oklch(18% 0.012 50);
+      --text-on-inverse: oklch(96% 0.005 80);
+      --text-link:       oklch(50% 0.14 250);
+
+      /* Accent — signal orange */
+      --accent:           oklch(68% 0.18 50);
+      --accent-hover:     oklch(62% 0.19 50);
+      --accent-active:    oklch(56% 0.20 50);
+      --accent-soft:      oklch(96% 0.04 60);
+      --accent-soft-fg:   oklch(40% 0.16 50);
+      --accent-ring:      oklch(68% 0.18 50 / 0.30);
+
+      /* Status — hues spaced for distinction */
+      --status-success:        oklch(54% 0.14 150);
+      --status-success-soft:   oklch(96% 0.04 150);
+      --status-success-border: oklch(85% 0.08 150);
+      --status-success-fg:     oklch(36% 0.12 150);
+
+      --status-warning:        oklch(72% 0.16 85);
+      --status-warning-soft:   oklch(96% 0.05 85);
+      --status-warning-border: oklch(85% 0.10 85);
+      --status-warning-fg:     oklch(42% 0.12 80);
+
+      --status-danger:         oklch(58% 0.20 25);
+      --status-danger-soft:    oklch(96% 0.04 25);
+      --status-danger-border:  oklch(85% 0.10 25);
+      --status-danger-fg:      oklch(42% 0.16 25);
+
+      --status-info:           oklch(56% 0.14 245);
+      --status-info-soft:      oklch(96% 0.03 245);
+      --status-info-border:    oklch(85% 0.08 245);
+      --status-info-fg:        oklch(40% 0.12 245);
+
+      --status-review:         oklch(58% 0.16 290);
+      --status-review-soft:    oklch(96% 0.04 290);
+      --status-review-border:  oklch(85% 0.08 290);
+      --status-review-fg:      oklch(42% 0.14 290);
+
+      --status-neutral:        oklch(55% 0.008 80);
+      --status-neutral-soft:   oklch(95% 0.005 80);
+      --status-neutral-border: oklch(85% 0.008 80);
+      --status-neutral-fg:     oklch(38% 0.010 80);
+
+      /* Shadows */
+      --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+      --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+      --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+      --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+      --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+      --shadow-ring: 0 0 0 3px var(--accent-ring);
+      --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    }
+
+    [data-theme="dark"] {
+      color-scheme: dark;
+
+      --bg-canvas:           oklch(14% 0.005 270);
+      --bg-shell:            oklch(16% 0.006 270);
+      --bg-surface:          oklch(19% 0.007 270);
+      --bg-surface-elevated: oklch(22% 0.008 270);
+      --bg-muted:            oklch(24% 0.009 270);
+      --bg-strong:           oklch(28% 0.010 270);
+      --bg-inverse:          oklch(96% 0.005 80);
+
+      --border-subtle:  oklch(24% 0.010 270);
+      --border-default: oklch(30% 0.012 270);
+      --border-strong:  oklch(42% 0.014 270);
+      --border-focus:   oklch(72% 0.18 50);
+
+      --text-primary:    oklch(96% 0.006 270);
+      --text-secondary:  oklch(78% 0.010 270);
+      --text-muted:      oklch(60% 0.012 270);
+      --text-disabled:   oklch(42% 0.012 270);
+      --text-on-accent:  oklch(16% 0.012 50);
+      --text-on-inverse: oklch(20% 0.012 80);
+      --text-link:       oklch(76% 0.14 245);
+
+      --accent:           oklch(72% 0.18 50);
+      --accent-hover:     oklch(78% 0.18 50);
+      --accent-active:    oklch(84% 0.16 50);
+      --accent-soft:      oklch(28% 0.08 50);
+      --accent-soft-fg:   oklch(86% 0.14 60);
+      --accent-ring:      oklch(72% 0.18 50 / 0.40);
+
+      --status-success:        oklch(68% 0.16 150);
+      --status-success-soft:   oklch(26% 0.06 150);
+      --status-success-border: oklch(36% 0.10 150);
+      --status-success-fg:     oklch(86% 0.14 150);
+
+      --status-warning:        oklch(78% 0.16 85);
+      --status-warning-soft:   oklch(28% 0.07 85);
+      --status-warning-border: oklch(38% 0.10 85);
+      --status-warning-fg:     oklch(88% 0.14 85);
+
+      --status-danger:         oklch(70% 0.18 25);
+      --status-danger-soft:    oklch(28% 0.10 25);
+      --status-danger-border:  oklch(40% 0.14 25);
+      --status-danger-fg:      oklch(86% 0.14 25);
+
+      --status-info:           oklch(72% 0.14 245);
+      --status-info-soft:      oklch(26% 0.06 245);
+      --status-info-border:    oklch(36% 0.10 245);
+      --status-info-fg:        oklch(86% 0.12 245);
+
+      --status-review:         oklch(74% 0.14 290);
+      --status-review-soft:    oklch(28% 0.06 290);
+      --status-review-border:  oklch(38% 0.10 290);
+      --status-review-fg:      oklch(88% 0.12 290);
+
+      --status-neutral:        oklch(65% 0.010 270);
+      --status-neutral-soft:   oklch(24% 0.010 270);
+      --status-neutral-border: oklch(34% 0.012 270);
+      --status-neutral-fg:     oklch(82% 0.010 270);
+
+      --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+      --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+      --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+      --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+      --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+      --shadow-ring: 0 0 0 3px var(--accent-ring);
+      --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+    }
+
+    /* Type scale */
+    :root {
+      --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+      --text-xs:   11px;
+      --text-sm:   12px;
+      --text-base: 13px;
+      --text-md:   14px;
+      --text-lg:   15px;
+      --text-xl:   17px;
+      --text-2xl:  20px;
+      --text-3xl:  26px;
+      --text-4xl:  34px;
+      --text-5xl:  48px;
+
+      --leading-tight:   1.15;
+      --leading-snug:    1.30;
+      --leading-normal:  1.45;
+      --leading-relaxed: 1.60;
+
+      --weight-regular:  400;
+      --weight-medium:   500;
+      --weight-semibold: 600;
+      --weight-bold:     700;
+
+      --tracking-tight:   -0.012em;
+      --tracking-normal:   0;
+      --tracking-wide:     0.02em;
+      --tracking-caps:     0.08em;
+
+      /* Spacing — 4px grid */
+      --space-0:  0;
+      --space-1:  0.25rem;
+      --space-2:  0.5rem;
+      --space-3:  0.75rem;
+      --space-4:  1rem;
+      --space-5:  1.25rem;
+      --space-6:  1.5rem;
+      --space-8:  2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+
+      /* Radii */
+      --radius-xs:   4px;
+      --radius-sm:   6px;
+      --radius-md:   8px;
+      --radius-lg:   10px;
+      --radius-xl:   14px;
+      --radius-2xl:  18px;
+      --radius-full: 9999px;
+
+      /* Motion */
+      --ease-out:    cubic-bezier(0.16, 1, 0.30, 1);
+      --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+      --dur-fast:    120ms;
+      --dur-base:    180ms;
+      --dur-slow:    280ms;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Reset + base
+       ────────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html { font-feature-settings: 'cv11', 'ss01', 'ss03'; }
+    body {
+      font-family: var(--font-sans);
+      font-size: var(--text-base);
+      line-height: var(--leading-normal);
+      color: var(--text-primary);
+      background: var(--bg-canvas);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-feature-settings: 'cv11', 'ss01';
+    }
+    .mono, code, kbd { font-family: var(--font-mono); font-feature-settings: 'zero', 'ss02'; }
+    .tabular { font-variant-numeric: tabular-nums; }
+    a { color: var(--text-link); text-decoration: none; }
+    a:hover { text-decoration: underline; text-underline-offset: 2px; }
+    hr { border: 0; border-top: 1px solid var(--border-subtle); margin: var(--space-6) 0; }
+
+    *:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-ring);
+      border-radius: var(--radius-sm);
+    }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Page chrome — topbar + sidebar shell
+       ────────────────────────────────────────────────────────────────── */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-6);
+      background: color-mix(in oklab, var(--bg-canvas) 90%, transparent);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .topbar__brand {
+      display: flex; align-items: center; gap: var(--space-2);
+      font-weight: var(--weight-semibold);
+      letter-spacing: var(--tracking-tight);
+    }
+    .topbar__brand-mark {
+      width: 22px; height: 22px;
+      border-radius: var(--radius-sm);
+      background:
+        radial-gradient(120% 120% at 0% 0%, var(--accent) 0%, transparent 60%),
+        linear-gradient(135deg, var(--bg-inverse), color-mix(in oklab, var(--bg-inverse) 70%, var(--accent)));
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.15);
+    }
+    .topbar__nav { display: flex; gap: var(--space-1); margin-left: var(--space-4); }
+    .topbar__nav a {
+      padding: var(--space-1) var(--space-3);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-base);
+      font-weight: var(--weight-medium);
+    }
+    .topbar__nav a:hover { color: var(--text-primary); background: var(--bg-muted); text-decoration: none; }
+    .topbar__nav a.is-active { color: var(--text-primary); background: var(--bg-muted); }
+    .topbar__spacer { flex: 1; }
+    .topbar__commandbar {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+      min-width: 280px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      color: var(--text-muted);
+      font-size: var(--text-base);
+    }
+    .topbar__commandbar kbd {
+      margin-left: auto;
+      padding: 1px 6px;
+      font-size: 10px;
+      background: var(--bg-muted);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xs);
+      color: var(--text-secondary);
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Section primitives
+       ────────────────────────────────────────────────────────────────── */
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: var(--space-10) var(--space-6) var(--space-16);
+    }
+    .page__header {
+      display: flex; align-items: end; justify-content: space-between;
+      margin-bottom: var(--space-8);
+      padding-bottom: var(--space-6);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .page__eyebrow {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: var(--space-2);
+    }
+    .page__title {
+      margin: 0;
+      font-size: var(--text-4xl);
+      letter-spacing: var(--tracking-tight);
+      font-weight: var(--weight-semibold);
+      line-height: var(--leading-tight);
+    }
+    .page__subtitle {
+      margin: var(--space-2) 0 0;
+      color: var(--text-secondary);
+      font-size: var(--text-md);
+      max-width: 60ch;
+    }
+
+    .section { margin-top: var(--space-12); }
+    .section__title {
+      display: flex; align-items: baseline; gap: var(--space-3);
+      margin: 0 0 var(--space-5);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-semibold);
+      letter-spacing: var(--tracking-tight);
+    }
+    .section__title::before {
+      content: '';
+      width: 10px; height: 10px;
+      background: var(--accent);
+      border-radius: 2px;
+      display: inline-block;
+      transform: translateY(-1px);
+    }
+    .section__subtitle {
+      margin: 0 0 var(--space-6);
+      color: var(--text-secondary);
+      font-size: var(--text-md);
+      max-width: 70ch;
+    }
+    .section__hint {
+      margin-top: var(--space-3);
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+      font-family: var(--font-mono);
+    }
+
+    .surface {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .grid { display: grid; gap: var(--space-4); }
+    .grid--2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid--3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid--4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .grid--6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
+    @media (max-width: 900px) {
+      .grid--3, .grid--4, .grid--6 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+
+    .row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+    .stack { display: flex; flex-direction: column; gap: var(--space-3); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Foundations: palette, type ramp
+       ────────────────────────────────────────────────────────────────── */
+    .swatch {
+      display: flex; flex-direction: column; gap: var(--space-1);
+      padding: var(--space-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+    .swatch__chip {
+      height: 56px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+    .swatch__name {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+    }
+    .swatch__hex {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: var(--tracking-wide);
+    }
+
+    .type-ramp { display: grid; gap: var(--space-4); }
+    .type-ramp dt {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .type-ramp dd { margin: 0; }
+    .type-ramp .row { align-items: baseline; gap: var(--space-4); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Buttons
+       ────────────────────────────────────────────────────────────────── */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding: 0 var(--space-4);
+      height: 32px;
+      font-family: inherit;
+      font-size: var(--text-base);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-normal);
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out),
+                  border-color var(--dur-fast) var(--ease-out),
+                  color var(--dur-fast) var(--ease-out),
+                  box-shadow var(--dur-fast) var(--ease-out);
+      box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+      white-space: nowrap;
+      user-select: none;
+    }
+    .button:hover { background: var(--bg-muted); border-color: var(--border-strong); }
+    .button:active { background: var(--bg-strong); }
+    .button:disabled, .button[aria-disabled="true"] {
+      cursor: not-allowed; opacity: 0.55; box-shadow: none;
+    }
+
+    .button--xs { height: 24px; padding: 0 var(--space-2); font-size: var(--text-xs); border-radius: var(--radius-sm); }
+    .button--sm { height: 28px; padding: 0 var(--space-3); font-size: var(--text-sm); }
+    .button--md { height: 32px; }
+    .button--lg { height: 38px; padding: 0 var(--space-5); font-size: var(--text-md); border-radius: var(--radius-md); }
+
+    .button--primary {
+      color: var(--text-on-accent);
+      background: var(--accent);
+      border-color: color-mix(in oklab, var(--accent) 85%, black);
+      box-shadow: var(--shadow-sm), inset 0 1px 0 rgb(255 255 255 / 0.20);
+    }
+    .button--primary:hover { background: var(--accent-hover); border-color: color-mix(in oklab, var(--accent-hover) 80%, black); }
+    .button--primary:active { background: var(--accent-active); }
+
+    .button--secondary { /* default */ }
+
+    .button--ghost {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      color: var(--text-secondary);
+    }
+    .button--ghost:hover { background: var(--bg-muted); color: var(--text-primary); }
+
+    .button--danger {
+      color: #fff;
+      background: var(--status-danger);
+      border-color: color-mix(in oklab, var(--status-danger) 80%, black);
+      box-shadow: var(--shadow-sm), inset 0 1px 0 rgb(255 255 255 / 0.18);
+    }
+    .button--danger:hover { background: color-mix(in oklab, var(--status-danger) 90%, black); }
+
+    .button--icon { padding: 0; width: 32px; }
+    .button--xs.button--icon { width: 24px; }
+    .button--sm.button--icon { width: 28px; }
+    .button--lg.button--icon { width: 38px; }
+
+    .button__shortcut {
+      margin-left: var(--space-2);
+      padding: 1px 5px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: rgb(255 255 255 / 0.18);
+      border-radius: 3px;
+      color: inherit;
+      opacity: 0.85;
+    }
+    .button--secondary .button__shortcut, .button--ghost .button__shortcut {
+      background: var(--bg-muted);
+      color: var(--text-muted);
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Form controls
+       ────────────────────────────────────────────────────────────────── */
+    .control {
+      display: block;
+      width: 100%;
+      height: 32px;
+      padding: 0 var(--space-3);
+      font-family: inherit;
+      font-size: var(--text-base);
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+      box-shadow: var(--shadow-xs);
+    }
+    .control::placeholder { color: var(--text-disabled); }
+    .control:hover:not(:disabled) { border-color: var(--border-strong); }
+    .control:focus-visible { border-color: var(--border-focus); box-shadow: var(--shadow-ring); outline: none; }
+    .control:disabled { background: var(--bg-muted); color: var(--text-disabled); cursor: not-allowed; }
+    .control--invalid { border-color: var(--status-danger); }
+    .control--invalid:focus-visible { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-danger) 30%, transparent); }
+    textarea.control { height: auto; padding: var(--space-2) var(--space-3); resize: vertical; min-height: 80px; line-height: var(--leading-snug); }
+    select.control {
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+        linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+      background-position: calc(100% - 16px) 14px, calc(100% - 11px) 14px;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      padding-right: var(--space-8);
+    }
+
+    /* Input + leading icon group */
+    .input-group { position: relative; }
+    .input-group .control { padding-left: var(--space-8); }
+    .input-group__icon {
+      position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%);
+      color: var(--text-muted); pointer-events: none;
+    }
+
+    /* Chip */
+    .chip {
+      display: inline-flex; align-items: center; gap: var(--space-1);
+      padding: 2px var(--space-2);
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      background: var(--bg-muted);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      line-height: 1.4;
+    }
+    .chip--accent { background: var(--accent-soft); border-color: color-mix(in oklab, var(--accent) 30%, transparent); color: var(--accent-soft-fg); }
+    .chip__close {
+      width: 14px; height: 14px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: transparent; border: 0; cursor: pointer; color: inherit;
+      border-radius: var(--radius-full);
+    }
+    .chip__close:hover { background: rgb(0 0 0 / 0.06); }
+
+    /* Form field */
+    .field { display: flex; flex-direction: column; gap: var(--space-2); }
+    .field__label {
+      display: flex; align-items: center; gap: var(--space-2);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--text-primary);
+    }
+    .field__label-required { color: var(--status-danger); }
+    .field__hint { font-size: var(--text-xs); color: var(--text-muted); }
+    .field__error { font-size: var(--text-xs); color: var(--status-danger); display: flex; align-items: center; gap: var(--space-1); }
+    .field__error svg { flex: none; }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Status & badges
+       ────────────────────────────────────────────────────────────────── */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: 2px var(--space-2) 2px var(--space-2);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      background: var(--status-neutral-soft);
+      color: var(--status-neutral-fg);
+      border: 1px solid var(--status-neutral-border);
+      border-radius: var(--radius-sm);
+      line-height: 1.5;
+    }
+    .status-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: currentColor;
+      border-radius: var(--radius-full);
+      opacity: 0.75;
+    }
+    .status-badge--success { background: var(--status-success-soft); color: var(--status-success-fg); border-color: var(--status-success-border); }
+    .status-badge--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); border-color: var(--status-warning-border); }
+    .status-badge--danger  { background: var(--status-danger-soft);  color: var(--status-danger-fg);  border-color: var(--status-danger-border); }
+    .status-badge--info    { background: var(--status-info-soft);    color: var(--status-info-fg);    border-color: var(--status-info-border); }
+    .status-badge--review  { background: var(--status-review-soft);  color: var(--status-review-fg);  border-color: var(--status-review-border); }
+    .status-badge--solid { background: var(--bg-inverse); color: var(--text-on-inverse); border-color: var(--bg-inverse); }
+    .status-badge--pulse::before {
+      animation: pulse 1.6s var(--ease-out) infinite;
+      box-shadow: 0 0 0 0 currentColor;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 currentColor; }
+      70%  { box-shadow: 0 0 0 6px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+
+    /* Alert */
+    .alert {
+      display: flex; gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--status-neutral);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+    }
+    .alert__icon { flex: none; margin-top: 2px; color: var(--status-neutral-fg); }
+    .alert__body { display: flex; flex-direction: column; gap: var(--space-1); }
+    .alert__title { font-weight: var(--weight-semibold); font-size: var(--text-md); }
+    .alert__desc  { font-size: var(--text-base); color: var(--text-secondary); }
+    .alert--success { border-left-color: var(--status-success); } .alert--success .alert__icon { color: var(--status-success-fg); }
+    .alert--warning { border-left-color: var(--status-warning); } .alert--warning .alert__icon { color: var(--status-warning-fg); }
+    .alert--danger  { border-left-color: var(--status-danger);  } .alert--danger  .alert__icon { color: var(--status-danger-fg); }
+    .alert--info    { border-left-color: var(--status-info);    } .alert--info    .alert__icon { color: var(--status-info-fg); }
+
+    /* Feedback state */
+    .feedback-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: var(--space-3);
+      padding: var(--space-10);
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-default);
+      border-radius: var(--radius-lg);
+      text-align: center;
+      color: var(--text-secondary);
+    }
+    .feedback-state__icon {
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-muted);
+      border-radius: var(--radius-full);
+      color: var(--text-muted);
+    }
+    .feedback-state__title { color: var(--text-primary); font-weight: var(--weight-semibold); font-size: var(--text-lg); }
+    .feedback-state__desc  { font-size: var(--text-base); max-width: 44ch; }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Data surfaces — KPI / Metric cards
+       ────────────────────────────────────────────────────────────────── */
+    .kpi {
+      display: flex; flex-direction: column; gap: var(--space-3);
+      padding: var(--space-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xs);
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi::before {
+      content: '';
+      position: absolute; inset: 0 auto auto 0;
+      width: 100%; height: 1px;
+      background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 60%, transparent), transparent);
+      opacity: 0.4;
+    }
+    .kpi__label {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .kpi__value {
+      font-size: var(--text-4xl);
+      font-weight: var(--weight-semibold);
+      letter-spacing: var(--tracking-tight);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi__delta {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+    .kpi__delta--up   { color: var(--status-success-fg); }
+    .kpi__delta--down { color: var(--status-danger-fg); }
+    .kpi__foot {
+      display: flex; justify-content: space-between; align-items: end;
+      font-size: var(--text-sm); color: var(--text-secondary);
+    }
+    .kpi__sparkline {
+      height: 36px; width: 100%;
+      color: var(--accent);
+    }
+
+    .metric {
+      display: flex; gap: var(--space-3);
+      padding: var(--space-4);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+    .metric__icon {
+      flex: none;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-muted);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+    }
+    .metric__label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--tracking-caps); font-family: var(--font-mono); }
+    .metric__value { font-size: var(--text-2xl); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-tight); }
+
+    /* Key/value list */
+    .kv {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .kv__row {
+      display: contents;
+    }
+    .kv__row > dt,
+    .kv__row > dd {
+      padding: var(--space-3) var(--space-4);
+      border-top: 1px solid var(--border-subtle);
+      margin: 0;
+    }
+    .kv__row:first-child > dt,
+    .kv__row:first-child > dd { border-top: 0; }
+    .kv dt {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: var(--bg-shell);
+    }
+    .kv dd {
+      color: var(--text-primary);
+      font-size: var(--text-base);
+    }
+
+    /* Raw payload panel */
+    .payload {
+      background: var(--bg-shell);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      color: var(--text-secondary);
+      overflow: auto;
+      max-height: 280px;
+    }
+    .payload .k { color: var(--text-link); }
+    .payload .s { color: var(--status-success-fg); }
+    .payload .n { color: var(--status-warning-fg); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       DataTable
+       ────────────────────────────────────────────────────────────────── */
+    .table-shell {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-xs);
+    }
+    .table-toolbar {
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-shell);
+    }
+    .table-toolbar__title { font-weight: var(--weight-semibold); font-size: var(--text-md); }
+    .table-toolbar__count {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      padding: 2px 6px;
+      background: var(--bg-muted);
+      border-radius: var(--radius-sm);
+    }
+    .table-toolbar__spacer { flex: 1; }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-base);
+    }
+    .data-table thead th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-shell);
+      position: sticky; top: 0;
+      user-select: none;
+    }
+    .data-table thead th[aria-sort="ascending"]::after  { content: ' ↑'; color: var(--accent); }
+    .data-table thead th[aria-sort="descending"]::after { content: ' ↓'; color: var(--accent); }
+    .data-table tbody td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    .data-table tbody tr:hover td { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+    .data-table tbody tr:last-child td { border-bottom: 0; }
+    .data-table td.is-numeric { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+    .data-table td.is-id      { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); }
+    .data-table .cell-actions { display: flex; gap: var(--space-1); justify-content: end; }
+
+    .entity-label { display: flex; align-items: center; gap: var(--space-2); }
+    .entity-label__thumb {
+      width: 28px; height: 28px;
+      background:
+        radial-gradient(80% 80% at 30% 20%, color-mix(in oklab, var(--accent) 50%, var(--bg-shell)), var(--bg-strong));
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+    .entity-label__text { display: flex; flex-direction: column; gap: 1px; }
+    .entity-label__name { font-weight: var(--weight-medium); color: var(--text-primary); font-size: var(--text-base); }
+    .entity-label__sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); letter-spacing: var(--tracking-wide); }
+
+    .channel-pill {
+      display: inline-flex; align-items: center; gap: var(--space-1);
+      padding: 2px 8px;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      background: var(--bg-shell);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+    }
+    .channel-pill::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .channel-pill[data-channel="allegro"]::before    { background: oklch(70% 0.18 35); }
+    .channel-pill[data-channel="prestashop"]::before { background: oklch(60% 0.18 250); }
+    .channel-pill[data-channel="amazon"]::before     { background: oklch(72% 0.16 75); }
+    .channel-pill[data-channel="shopify"]::before    { background: oklch(64% 0.16 150); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Tabs
+       ────────────────────────────────────────────────────────────────── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); }
+    .tab {
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-base);
+      font-weight: var(--weight-medium);
+      color: var(--text-secondary);
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+      margin-bottom: -1px;
+      font-family: inherit;
+      display: inline-flex; align-items: center; gap: var(--space-2);
+    }
+    .tab:hover { color: var(--text-primary); }
+    .tab.is-active { color: var(--text-primary); border-bottom-color: var(--accent); }
+    .tab__count {
+      font-family: var(--font-mono); font-size: 10px;
+      padding: 1px 6px;
+      background: var(--bg-muted);
+      color: var(--text-muted);
+      border-radius: var(--radius-full);
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Dialog
+       ────────────────────────────────────────────────────────────────── */
+    .dialog-demo {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-overlay);
+      overflow: hidden;
+    }
+    .dialog-demo__head {
+      padding: var(--space-5) var(--space-6) var(--space-3);
+    }
+    .dialog-demo__eyebrow {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .dialog-demo__title { font-size: var(--text-xl); font-weight: var(--weight-semibold); margin: var(--space-1) 0 0; letter-spacing: var(--tracking-tight); }
+    .dialog-demo__desc { color: var(--text-secondary); font-size: var(--text-md); margin-top: var(--space-2); }
+    .dialog-demo__body { padding: 0 var(--space-6) var(--space-5); }
+    .dialog-demo__foot {
+      display: flex; justify-content: end; gap: var(--space-2);
+      padding: var(--space-4) var(--space-6);
+      background: var(--bg-shell);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .menu {
+      display: inline-block;
+      min-width: 220px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: var(--space-1);
+    }
+    .menu__group + .menu__group { border-top: 1px solid var(--border-subtle); margin-top: var(--space-1); padding-top: var(--space-1); }
+    .menu__item {
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: 6px var(--space-3);
+      font-size: var(--text-base);
+      color: var(--text-primary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .menu__item:hover { background: var(--bg-muted); }
+    .menu__item--danger { color: var(--status-danger-fg); }
+    .menu__shortcut { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+
+    .tooltip {
+      display: inline-block;
+      padding: 4px 8px;
+      background: var(--bg-inverse);
+      color: var(--text-on-inverse);
+      font-size: var(--text-sm);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md);
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Setup stepper
+       ────────────────────────────────────────────────────────────────── */
+    .stepper { display: flex; align-items: center; gap: var(--space-2); }
+    .stepper__step { display: flex; align-items: center; gap: var(--space-2); }
+    .stepper__index {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      border-radius: var(--radius-full);
+      background: var(--bg-muted);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+    .stepper__step--done .stepper__index { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
+    .stepper__step--active .stepper__index { background: var(--bg-surface); color: var(--text-primary); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+    .stepper__label { font-size: var(--text-sm); color: var(--text-secondary); }
+    .stepper__step--active .stepper__label, .stepper__step--done .stepper__label { color: var(--text-primary); font-weight: var(--weight-medium); }
+    .stepper__line { flex: 1; height: 1px; background: var(--border-default); min-width: 24px; max-width: 64px; }
+    .stepper__step--done + .stepper__line { background: var(--accent); }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Real-screen example — Orders list
+       ────────────────────────────────────────────────────────────────── */
+    .screen {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      background: var(--bg-shell);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      min-height: 640px;
+    }
+    .screen__sidebar {
+      padding: var(--space-4);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      display: flex; flex-direction: column; gap: var(--space-4);
+    }
+    .screen__sidebar h4 {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: var(--space-3) 0 var(--space-1);
+    }
+    .screen__nav { display: flex; flex-direction: column; gap: 2px; }
+    .screen__nav a {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: 6px var(--space-2);
+      color: var(--text-secondary);
+      font-size: var(--text-base);
+      border-radius: var(--radius-sm);
+    }
+    .screen__nav a:hover { background: var(--bg-muted); color: var(--text-primary); text-decoration: none; }
+    .screen__nav a.is-active { background: var(--accent-soft); color: var(--accent-soft-fg); font-weight: var(--weight-medium); }
+    .screen__nav .ico { width: 16px; height: 16px; flex: none; opacity: 0.7; }
+
+    .screen__main { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+    .screen__head {
+      display: flex; align-items: end; justify-content: space-between; gap: var(--space-4);
+    }
+    .screen__title { font-size: var(--text-3xl); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); margin: 0; }
+    .screen__filters {
+      display: flex; gap: var(--space-2); flex-wrap: wrap;
+      padding: var(--space-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+
+    .kbd {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 5px;
+      background: var(--bg-muted);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xs);
+      color: var(--text-secondary);
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      display: inline-flex; align-items: center;
+      background: var(--bg-muted);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 2px;
+    }
+    .theme-toggle button {
+      width: 28px; height: 22px;
+      border: 0; background: transparent; cursor: pointer;
+      border-radius: var(--radius-full);
+      color: var(--text-muted);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .theme-toggle button.is-active { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-xs); }
+
+    /* Misc utilities */
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+    @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .accent-text { color: var(--accent); }
+    .muted-text  { color: var(--text-muted); }
+    .secondary-text { color: var(--text-secondary); }
+
+    .legend { display: flex; gap: var(--space-4); align-items: center; font-size: var(--text-sm); color: var(--text-muted); }
+    .legend__item { display: inline-flex; align-items: center; gap: var(--space-1); }
+    .legend__swatch { width: 10px; height: 10px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <!-- ───────────────────────── Topbar ───────────────────────── -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__brand-mark" aria-hidden="true"></span>
+      OpenLinker
+      <span class="status-badge status-badge--info" style="margin-left:8px">#775 · UI overhaul preview</span>
+    </div>
+    <nav class="topbar__nav" aria-label="Primary">
+      <a href="#" class="is-active">Overview</a>
+      <a href="#">Orders</a>
+      <a href="#">Inventory</a>
+      <a href="#">Listings</a>
+      <a href="#">Connections</a>
+    </nav>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__commandbar" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+      Search anything…
+      <kbd>⌘K</kbd>
+    </div>
+    <div class="theme-toggle" role="group" aria-label="Theme">
+      <button type="button" id="theme-light" class="is-active" aria-label="Light theme">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <button type="button" id="theme-dark" aria-label="Dark theme">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- ───────────────────────── Header ───────────────────────── -->
+    <header class="page__header">
+      <div>
+        <div class="page__eyebrow">Issue #775 · Visual system v2</div>
+        <h1 class="page__title">UI primitives overhaul</h1>
+        <p class="page__subtitle">
+          Foundation refresh + per-component review. shadcn-style structural conventions,
+          Linear-grade polish, signal-orange accent, IBM Plex stack. Both themes first-class.
+        </p>
+      </div>
+      <div class="row">
+        <button class="button button--ghost button--sm">View tokens</button>
+        <button class="button button--primary button--sm">Approve direction</button>
+      </div>
+    </header>
+
+    <!-- ───────────────────────── Foundations ───────────────────────── -->
+    <section class="section" id="foundations">
+      <h2 class="section__title">Foundations</h2>
+      <p class="section__subtitle">
+        Colors are OKLCH-driven, so light and dark themes share a single perceptual model. Neutrals carry a warm cast
+        in light, a cool cast in dark — both stay legible at small sizes. The accent is the only saturated colour
+        in the chrome; status colours are reserved for status meaning.
+      </p>
+
+      <div class="grid grid--6" style="margin-bottom:24px">
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-canvas)"></div><span class="swatch__name">canvas</span><span class="swatch__hex">--bg-canvas</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-shell)"></div><span class="swatch__name">shell</span><span class="swatch__hex">--bg-shell</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-surface)"></div><span class="swatch__name">surface</span><span class="swatch__hex">--bg-surface</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-muted)"></div><span class="swatch__name">muted</span><span class="swatch__hex">--bg-muted</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-strong)"></div><span class="swatch__name">strong</span><span class="swatch__hex">--bg-strong</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg-inverse)"></div><span class="swatch__name">inverse</span><span class="swatch__hex">--bg-inverse</span></div>
+      </div>
+
+      <div class="grid grid--6">
+        <div class="swatch"><div class="swatch__chip" style="background:var(--accent)"></div><span class="swatch__name">accent</span><span class="swatch__hex">signal orange</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--status-success)"></div><span class="swatch__name">success</span><span class="swatch__hex">--status-success</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--status-warning)"></div><span class="swatch__name">warning</span><span class="swatch__hex">--status-warning</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--status-danger)"></div><span class="swatch__name">danger</span><span class="swatch__hex">--status-danger</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--status-info)"></div><span class="swatch__name">info</span><span class="swatch__hex">--status-info</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--status-review)"></div><span class="swatch__name">review</span><span class="swatch__hex">--status-review</span></div>
+      </div>
+
+      <div class="surface" style="margin-top:32px">
+        <dl class="type-ramp">
+          <div class="row">
+            <dt style="min-width:120px">Display 4xl</dt>
+            <dd style="font-size:var(--text-4xl); font-weight:var(--weight-semibold); letter-spacing:var(--tracking-tight); line-height:1.05">12,847 · €184k MTD</dd>
+          </div>
+          <div class="row">
+            <dt style="min-width:120px">Title 2xl</dt>
+            <dd style="font-size:var(--text-2xl); font-weight:var(--weight-semibold); letter-spacing:var(--tracking-tight)">Order ol_order_a4f3 · Allegro</dd>
+          </div>
+          <div class="row">
+            <dt style="min-width:120px">Body md</dt>
+            <dd style="font-size:var(--text-md); color:var(--text-secondary)">Body copy reads at thirteen-to-fifteen pixels with IBM Plex Sans for clean technical operations text.</dd>
+          </div>
+          <div class="row">
+            <dt style="min-width:120px">Code sm</dt>
+            <dd class="mono" style="font-size:var(--text-sm); color:var(--text-secondary)">ol_offer_8d72fa3c · allegro.publicapi.v1 · status=published</dd>
+          </div>
+          <div class="row">
+            <dt style="min-width:120px">Eyebrow xs</dt>
+            <dd class="mono" style="font-size:var(--text-xs); letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted)">Last 7 days · Live · UTC+02:00</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Buttons ───────────────────────── -->
+    <section class="section" id="buttons">
+      <h2 class="section__title">Buttons</h2>
+      <p class="section__subtitle">Four tones (primary / secondary / ghost / danger), four sizes (xs / sm / md / lg). Icon-only variant for toolbars. Keyboard shortcut affordance built in.</p>
+
+      <div class="surface">
+        <div class="stack">
+          <div class="row">
+            <button class="button button--primary">Save changes</button>
+            <button class="button button--secondary">Cancel</button>
+            <button class="button button--ghost">View history</button>
+            <button class="button button--danger">Delete connection</button>
+            <button class="button" disabled>Disabled</button>
+          </div>
+          <div class="row">
+            <button class="button button--primary button--xs">Approve <span class="button__shortcut">A</span></button>
+            <button class="button button--primary button--sm">Approve <span class="button__shortcut">A</span></button>
+            <button class="button button--primary button--md">Approve <span class="button__shortcut">A</span></button>
+            <button class="button button--primary button--lg">Approve <span class="button__shortcut">A</span></button>
+          </div>
+          <div class="row">
+            <button class="button button--secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add connection</button>
+            <button class="button button--ghost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg> Sync</button>
+            <button class="button button--secondary button--icon" aria-label="More options">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Form controls ───────────────────────── -->
+    <section class="section" id="controls">
+      <h2 class="section__title">Form controls</h2>
+      <p class="section__subtitle">Inputs, selects, textareas, comboboxes, chips. 32px default height keeps forms dense without crowding labels.</p>
+
+      <div class="grid grid--2">
+        <div class="surface">
+          <div class="stack">
+            <div class="field">
+              <label class="field__label" for="d1">Connection name <span class="field__label-required" aria-hidden="true">*</span></label>
+              <input id="d1" class="control" value="Main Allegro store" />
+              <span class="field__hint">Operator-facing label used in the connections list and audit log.</span>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="d2">Adapter</label>
+              <select class="control" id="d2">
+                <option>allegro.publicapi.v1</option>
+                <option>prestashop.webservice.v1</option>
+                <option>shopify.admin.v2</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="d3">Webhook endpoint <span class="muted-text" style="margin-left:auto;font-size:var(--text-xs)">Read-only</span></label>
+              <div class="input-group">
+                <svg class="input-group__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <input class="control mono" value="https://api.openlinker.com/webhooks/allegro/c_4f8a" disabled />
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="d4">Notes</label>
+              <textarea class="control" id="d4" rows="3" placeholder="Operational notes for the team…"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="surface">
+          <div class="stack">
+            <div class="field">
+              <label class="field__label" for="d5">Search SKU / barcode</label>
+              <div class="input-group">
+                <svg class="input-group__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+                <input class="control" id="d5" placeholder="e.g. 5901234123457" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="d6">Buyer email</label>
+              <input class="control control--invalid" id="d6" value="not-an-email" aria-invalid="true" aria-describedby="d6err" />
+              <span class="field__error" id="d6err">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Enter a valid email address.
+              </span>
+            </div>
+
+            <div class="field">
+              <span class="field__label">Active channels</span>
+              <div class="row" style="gap:6px">
+                <span class="chip chip--accent">Allegro <button class="chip__close" aria-label="Remove"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
+                <span class="chip chip--accent">PrestaShop <button class="chip__close" aria-label="Remove"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
+                <span class="chip">Amazon</span>
+                <span class="chip">Shopify</span>
+                <button class="button button--ghost button--xs">+ Add</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="d7">Status filter</label>
+              <select class="control" id="d7" disabled>
+                <option>All statuses</option>
+              </select>
+              <span class="field__hint">Filter disabled until a connection is selected.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Status & feedback ───────────────────────── -->
+    <section class="section" id="status">
+      <h2 class="section__title">Status & feedback</h2>
+      <p class="section__subtitle">Status colour is paired with shape (dot + capitalised mono text) so colour is never the only signal.</p>
+
+      <div class="surface">
+        <div class="stack">
+          <div class="row">
+            <span class="status-badge">Idle</span>
+            <span class="status-badge status-badge--info status-badge--pulse">Syncing</span>
+            <span class="status-badge status-badge--success">Live</span>
+            <span class="status-badge status-badge--warning">Stale 14m</span>
+            <span class="status-badge status-badge--danger">Failed</span>
+            <span class="status-badge status-badge--review">Needs review</span>
+            <span class="status-badge status-badge--solid">Draft</span>
+          </div>
+          <hr />
+          <div class="grid grid--2">
+            <div class="alert alert--success">
+              <span class="alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div class="alert__body">
+                <span class="alert__title">Connection verified</span>
+                <span class="alert__desc">Reached <span class="mono">allegro.publicapi.v1</span> in 312 ms.</span>
+              </div>
+            </div>
+            <div class="alert alert--warning">
+              <span class="alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+              <div class="alert__body">
+                <span class="alert__title">Token expires in 6 days</span>
+                <span class="alert__desc">Refresh credentials before <span class="mono">2026-05-23</span> to avoid sync failures.</span>
+              </div>
+            </div>
+            <div class="alert alert--danger">
+              <span class="alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>
+              <div class="alert__body">
+                <span class="alert__title">Offer rejected by Allegro</span>
+                <span class="alert__desc">Category 257 requires brand parameter. <a href="#">View 3 affected offers →</a></span>
+              </div>
+            </div>
+            <div class="alert alert--info">
+              <span class="alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+              <div class="alert__body">
+                <span class="alert__title">Webhook signature rotated</span>
+                <span class="alert__desc">All inbound webhooks will use the new HMAC key starting next sync.</span>
+              </div>
+            </div>
+          </div>
+
+          <hr />
+          <div class="grid grid--3">
+            <div class="feedback-state">
+              <span class="feedback-state__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+              <div class="feedback-state__title">No connections yet</div>
+              <div class="feedback-state__desc">Connect a marketplace or shop to start syncing orders.</div>
+              <button class="button button--primary button--sm" style="margin-top:8px">Add connection</button>
+            </div>
+
+            <div class="feedback-state">
+              <span class="feedback-state__icon" style="color:var(--accent)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; transform-origin: center">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              </span>
+              <div class="feedback-state__title">Resolving 1,284 mappings</div>
+              <div class="feedback-state__desc">Building the offer↔product link table. This usually takes 30–60 seconds.</div>
+            </div>
+
+            <div class="feedback-state" style="border-color: var(--status-danger-border); background: var(--status-danger-soft); color: var(--status-danger-fg)">
+              <span class="feedback-state__icon" style="background: rgba(255,255,255,0.45); color: var(--status-danger)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+              <div class="feedback-state__title" style="color:inherit">We couldn't reach Allegro</div>
+              <div class="feedback-state__desc" style="color:inherit">HTTP 503 from <span class="mono">api.allegro.pl</span>. Retry usually clears this.</div>
+              <button class="button button--sm" style="margin-top:8px">Retry</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── KPI / metric cards ───────────────────────── -->
+    <section class="section" id="metrics">
+      <h2 class="section__title">Data surfaces — KPI & metric cards</h2>
+      <p class="section__subtitle">Numbers come first; everything else recedes. Tabular figures, large display sizes, subtle accent rule across the top.</p>
+
+      <div class="stat-grid">
+        <div class="kpi">
+          <div class="kpi__label">Orders · 7d <span class="status-badge status-badge--success status-badge--pulse">Live</span></div>
+          <div class="kpi__value tabular">2,847</div>
+          <svg class="kpi__sparkline" viewBox="0 0 200 36" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="sg1" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="currentColor" stop-opacity="0.30"/>
+                <stop offset="100%" stop-color="currentColor" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0 24 L14 22 L28 26 L42 18 L56 20 L70 12 L84 16 L98 10 L112 14 L126 8 L140 12 L154 6 L168 10 L182 4 L200 8 L200 36 L0 36 Z" fill="url(#sg1)"/>
+            <path d="M0 24 L14 22 L28 26 L42 18 L56 20 L70 12 L84 16 L98 10 L112 14 L126 8 L140 12 L154 6 L168 10 L182 4 L200 8" fill="none" stroke="currentColor" stroke-width="1.5" />
+          </svg>
+          <div class="kpi__foot">
+            <span class="kpi__delta kpi__delta--up">▲ 12.4% vs previous 7d</span>
+            <span class="muted-text mono">UTC+02</span>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Revenue · MTD</div>
+          <div class="kpi__value tabular">€184,902</div>
+          <svg class="kpi__sparkline" viewBox="0 0 200 36" preserveAspectRatio="none" aria-hidden="true" style="color: var(--status-success)">
+            <path d="M0 30 L20 28 L40 22 L60 24 L80 16 L100 12 L120 14 L140 8 L160 10 L180 6 L200 4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <div class="kpi__foot"><span class="kpi__delta kpi__delta--up">▲ 8.1%</span><span class="muted-text mono">vs Apr</span></div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Sync failures · 24h</div>
+          <div class="kpi__value tabular" style="color: var(--status-danger-fg)">14</div>
+          <svg class="kpi__sparkline" viewBox="0 0 200 36" preserveAspectRatio="none" aria-hidden="true" style="color: var(--status-danger)">
+            <path d="M0 30 L20 28 L40 26 L60 22 L80 24 L100 18 L120 22 L140 14 L160 18 L180 8 L200 12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <div class="kpi__foot"><span class="kpi__delta kpi__delta--down">▲ 3 since 02:00</span><span class="muted-text mono">last 24h</span></div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Active offers</div>
+          <div class="kpi__value tabular">8,412</div>
+          <div class="row" style="margin-top:auto">
+            <span class="channel-pill" data-channel="allegro">Allegro · 4,902</span>
+            <span class="channel-pill" data-channel="prestashop">PrestaShop · 3,510</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid--4" style="margin-top:24px">
+        <div class="metric">
+          <span class="metric__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4H3zM5 7v14h14V7"/></svg></span>
+          <div><div class="metric__label">Open orders</div><div class="metric__value tabular">142</div></div>
+        </div>
+        <div class="metric">
+          <span class="metric__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <div><div class="metric__label">Avg ingest lag</div><div class="metric__value tabular">42<span class="muted-text" style="font-size:0.6em">s</span></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></span>
+          <div><div class="metric__label">Webhook QPS</div><div class="metric__value tabular">3.8</div></div>
+        </div>
+        <div class="metric">
+          <span class="metric__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></span>
+          <div><div class="metric__label">Channels live</div><div class="metric__value tabular">4 / 6</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── KeyValueList + Payload ───────────────────────── -->
+    <section class="section" id="data-surfaces">
+      <h2 class="section__title">KeyValueList & raw payload</h2>
+      <p class="section__subtitle">For detail views and debug inspectors — operator audit needs both human-readable summaries and raw bytes side by side.</p>
+      <div class="grid grid--2">
+        <dl class="kv">
+          <div class="kv__row"><dt>Internal id</dt><dd class="mono">ol_order_a4f3b9c</dd></div>
+          <div class="kv__row"><dt>External id</dt><dd class="mono">ALG-2026-05-17-882414</dd></div>
+          <div class="kv__row"><dt>Connection</dt><dd><span class="channel-pill" data-channel="allegro">Allegro · Main store</span></dd></div>
+          <div class="kv__row"><dt>Buyer</dt><dd>Jan Kowalski <span class="muted-text">· j****@allegromail.pl</span></dd></div>
+          <div class="kv__row"><dt>Total</dt><dd class="mono tabular">€84.20</dd></div>
+          <div class="kv__row"><dt>Status</dt><dd><span class="status-badge status-badge--success">Paid</span></dd></div>
+          <div class="kv__row"><dt>Created</dt><dd class="mono">2026-05-17 14:22 UTC+02</dd></div>
+        </dl>
+        <pre class="payload" aria-label="Raw payload">{
+  <span class="k">"externalOrderId"</span>: <span class="s">"ALG-2026-05-17-882414"</span>,
+  <span class="k">"status"</span>: <span class="s">"PAID"</span>,
+  <span class="k">"total"</span>: { <span class="k">"amount"</span>: <span class="n">84.20</span>, <span class="k">"currency"</span>: <span class="s">"EUR"</span> },
+  <span class="k">"lineItems"</span>: [
+    { <span class="k">"sku"</span>: <span class="s">"SKU-9182"</span>, <span class="k">"qty"</span>: <span class="n">2</span>, <span class="k">"price"</span>: <span class="n">29.95</span> },
+    { <span class="k">"sku"</span>: <span class="s">"SKU-3310"</span>, <span class="k">"qty"</span>: <span class="n">1</span>, <span class="k">"price"</span>: <span class="n">24.30</span> }
+  ],
+  <span class="k">"shipping"</span>: { <span class="k">"method"</span>: <span class="s">"INPOST_LOCKER"</span> }
+}</pre>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── DataTable ───────────────────────── -->
+    <section class="section" id="datatable">
+      <h2 class="section__title">DataTable</h2>
+      <p class="section__subtitle">The most consequential surface in the cockpit. Mono identifiers, tabular numerics, status as first-class, hover-revealed actions.</p>
+
+      <div class="table-shell">
+        <div class="table-toolbar">
+          <span class="table-toolbar__title">Recent orders</span>
+          <span class="table-toolbar__count">142</span>
+          <span class="table-toolbar__spacer"></span>
+          <span class="legend">
+            <span class="legend__item"><span class="legend__swatch" style="background:var(--status-success)"></span>Paid</span>
+            <span class="legend__item"><span class="legend__swatch" style="background:var(--status-warning)"></span>Pending</span>
+            <span class="legend__item"><span class="legend__swatch" style="background:var(--status-danger)"></span>Failed</span>
+          </span>
+          <button class="button button--ghost button--sm">Filters</button>
+          <button class="button button--secondary button--sm">Export</button>
+        </div>
+        <table class="data-table">
+          <caption class="sr-only">Recent orders, sortable by created date</caption>
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="descending">Created</th>
+              <th scope="col">Order</th>
+              <th scope="col">Channel</th>
+              <th scope="col">Buyer</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="is-numeric">Total</th>
+              <th scope="col" style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="is-id">2026-05-17 14:22</td>
+              <td>
+                <div class="entity-label">
+                  <div class="entity-label__thumb"></div>
+                  <div class="entity-label__text">
+                    <span class="entity-label__name">ALG-2026-05-17-882414</span>
+                    <span class="entity-label__sub">ol_order_a4f3b9c</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+              <td>Jan Kowalski</td>
+              <td><span class="status-badge status-badge--success">Paid</span></td>
+              <td class="is-numeric">€84.20</td>
+              <td><div class="cell-actions"><button class="button button--ghost button--xs">Open</button><button class="button button--ghost button--xs button--icon" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="is-id">2026-05-17 14:08</td>
+              <td>
+                <div class="entity-label">
+                  <div class="entity-label__thumb" style="background: radial-gradient(80% 80% at 30% 20%, oklch(60% 0.18 250), var(--bg-strong))"></div>
+                  <div class="entity-label__text">
+                    <span class="entity-label__name">PS-104822</span>
+                    <span class="entity-label__sub">ol_order_b18e4d1</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="channel-pill" data-channel="prestashop">PrestaShop</span></td>
+              <td>Anna Wiśniewska</td>
+              <td><span class="status-badge status-badge--info status-badge--pulse">Syncing</span></td>
+              <td class="is-numeric">€129.40</td>
+              <td><div class="cell-actions"><button class="button button--ghost button--xs">Open</button><button class="button button--ghost button--xs button--icon" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="is-id">2026-05-17 13:55</td>
+              <td>
+                <div class="entity-label">
+                  <div class="entity-label__thumb" style="background: radial-gradient(80% 80% at 30% 20%, oklch(72% 0.16 75), var(--bg-strong))"></div>
+                  <div class="entity-label__text">
+                    <span class="entity-label__name">AM-202-9920381</span>
+                    <span class="entity-label__sub">ol_order_c0271fa</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="channel-pill" data-channel="amazon">Amazon</span></td>
+              <td>Marek Zych</td>
+              <td><span class="status-badge status-badge--warning">Pending</span></td>
+              <td class="is-numeric">€42.00</td>
+              <td><div class="cell-actions"><button class="button button--ghost button--xs">Open</button><button class="button button--ghost button--xs button--icon" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="is-id">2026-05-17 13:40</td>
+              <td>
+                <div class="entity-label">
+                  <div class="entity-label__thumb"></div>
+                  <div class="entity-label__text">
+                    <span class="entity-label__name">ALG-2026-05-17-881902</span>
+                    <span class="entity-label__sub">ol_order_d4a812e</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+              <td>Test Buyer</td>
+              <td><span class="status-badge status-badge--danger">Failed</span></td>
+              <td class="is-numeric">€0.00</td>
+              <td><div class="cell-actions"><button class="button button--ghost button--xs">Retry</button><button class="button button--ghost button--xs button--icon" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="is-id">2026-05-17 13:21</td>
+              <td>
+                <div class="entity-label">
+                  <div class="entity-label__thumb" style="background: radial-gradient(80% 80% at 30% 20%, oklch(64% 0.16 150), var(--bg-strong))"></div>
+                  <div class="entity-label__text">
+                    <span class="entity-label__name">SH-#1041</span>
+                    <span class="entity-label__sub">ol_order_e992c4b</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="channel-pill" data-channel="shopify">Shopify</span></td>
+              <td>Tomasz Lis</td>
+              <td><span class="status-badge status-badge--review">Needs review</span></td>
+              <td class="is-numeric">€312.00</td>
+              <td><div class="cell-actions"><button class="button button--ghost button--xs">Open</button><button class="button button--ghost button--xs button--icon" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Tabs / stepper / nav ───────────────────────── -->
+    <section class="section" id="navigation">
+      <h2 class="section__title">Tabs, stepper & navigation</h2>
+
+      <div class="surface stack" style="gap: 24px">
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" role="tab" aria-selected="true">Overview <span class="tab__count">3</span></button>
+          <button class="tab" role="tab">Connections <span class="tab__count">12</span></button>
+          <button class="tab" role="tab">Mappings <span class="tab__count">1,284</span></button>
+          <button class="tab" role="tab">Webhooks</button>
+          <button class="tab" role="tab">Audit log</button>
+        </div>
+
+        <div class="stepper" aria-label="Setup progress">
+          <div class="stepper__step stepper__step--done"><span class="stepper__index">✓</span><span class="stepper__label">Create connection</span></div>
+          <div class="stepper__line"></div>
+          <div class="stepper__step stepper__step--done"><span class="stepper__index">✓</span><span class="stepper__label">Verify credentials</span></div>
+          <div class="stepper__line"></div>
+          <div class="stepper__step stepper__step--active"><span class="stepper__index">3</span><span class="stepper__label">Install webhooks</span></div>
+          <div class="stepper__line"></div>
+          <div class="stepper__step"><span class="stepper__index">4</span><span class="stepper__label">Map products</span></div>
+          <div class="stepper__line"></div>
+          <div class="stepper__step"><span class="stepper__index">5</span><span class="stepper__label">Go live</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Dialog / menu / tooltip ───────────────────────── -->
+    <section class="section" id="overlays">
+      <h2 class="section__title">Overlays</h2>
+      <p class="section__subtitle">Dialog with eyebrow, body, footer. Dropdown menu with grouped items and shortcuts. Tooltip for terse inline labels.</p>
+
+      <div class="grid grid--2" style="align-items:start">
+        <div>
+          <div class="dialog-demo" role="dialog" aria-labelledby="dlg-title" aria-describedby="dlg-desc">
+            <div class="dialog-demo__head">
+              <div class="dialog-demo__eyebrow">Destructive action</div>
+              <h3 class="dialog-demo__title" id="dlg-title">Disconnect Allegro · Main store?</h3>
+              <p class="dialog-demo__desc" id="dlg-desc">
+                We'll stop ingesting new orders from this connection and pause outbound offer updates.
+                Existing mappings stay intact and can be resumed at any time.
+              </p>
+            </div>
+            <div class="dialog-demo__body">
+              <div class="field">
+                <label class="field__label" for="dlg-conf">Type <span class="mono">disconnect</span> to confirm</label>
+                <input class="control" id="dlg-conf" placeholder="disconnect" />
+              </div>
+            </div>
+            <div class="dialog-demo__foot">
+              <button class="button button--ghost">Cancel</button>
+              <button class="button button--danger">Disconnect</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack" style="gap:24px">
+          <div class="menu" role="menu" aria-label="Order actions">
+            <div class="menu__group">
+              <div class="menu__item" role="menuitem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Open details<span class="menu__shortcut">↵</span></div>
+              <div class="menu__item" role="menuitem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>Force re-sync<span class="menu__shortcut">R</span></div>
+              <div class="menu__item" role="menuitem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export JSON<span class="menu__shortcut">⌘E</span></div>
+            </div>
+            <div class="menu__group">
+              <div class="menu__item menu__item--danger" role="menuitem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6 17.6 19.2A2 2 0 0 1 15.6 21H8.4a2 2 0 0 1-2-1.8L5 6"/></svg>Cancel order<span class="menu__shortcut">⌫</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="tooltip">Last synced 12 seconds ago</span>
+            <span class="tooltip" style="background: var(--accent); color: var(--text-on-accent)">3 conflicts pending</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Composed screen ───────────────────────── -->
+    <section class="section" id="screen">
+      <h2 class="section__title">Composed: orders cockpit</h2>
+      <p class="section__subtitle">Everything above, assembled. Note information density, scan-ability, restraint in colour.</p>
+
+      <div class="screen">
+        <aside class="screen__sidebar">
+          <div>
+            <h4>Workspace</h4>
+            <div class="screen__nav">
+              <a href="#"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Overview</a>
+              <a href="#" class="is-active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>Orders</a>
+              <a href="#"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7L12 3 4 7v10l8 4 8-4z"/></svg>Inventory</a>
+              <a href="#"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 3v4M8 3v4M3 11h18"/></svg>Listings</a>
+            </div>
+          </div>
+          <div>
+            <h4>Channels</h4>
+            <div class="screen__nav">
+              <a href="#"><span class="channel-pill" data-channel="allegro" style="border:0; background:transparent; padding:0">Allegro · Main</span></a>
+              <a href="#"><span class="channel-pill" data-channel="prestashop" style="border:0; background:transparent; padding:0">PrestaShop · EU</span></a>
+              <a href="#"><span class="channel-pill" data-channel="shopify" style="border:0; background:transparent; padding:0">Shopify · Outlet</span></a>
+              <a href="#"><span class="channel-pill" data-channel="amazon" style="border:0; background:transparent; padding:0">Amazon · DE</span></a>
+            </div>
+          </div>
+          <div style="margin-top:auto">
+            <div class="alert alert--warning" style="padding: var(--space-3)">
+              <div class="alert__body" style="gap: 4px">
+                <span class="alert__title" style="font-size:var(--text-sm)">Token expires in 6d</span>
+                <a href="#" style="font-size:var(--text-xs)">Refresh credentials →</a>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <div class="screen__main">
+          <div class="screen__head">
+            <div>
+              <div class="page__eyebrow">Last 7 days · UTC+02</div>
+              <h2 class="screen__title">Orders</h2>
+            </div>
+            <div class="row">
+              <button class="button button--ghost button--sm">Filters</button>
+              <button class="button button--secondary button--sm">Export CSV</button>
+              <button class="button button--primary button--sm">Sync now <span class="button__shortcut">R</span></button>
+            </div>
+          </div>
+
+          <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr)">
+            <div class="metric"><span class="metric__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18"/></svg></span><div><div class="metric__label">Open</div><div class="metric__value tabular">142</div></div></div>
+            <div class="metric"><span class="metric__icon" style="color:var(--status-success-fg);background:var(--status-success-soft)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></span><div><div class="metric__label">Paid 24h</div><div class="metric__value tabular">512</div></div></div>
+            <div class="metric"><span class="metric__icon" style="color:var(--status-warning-fg);background:var(--status-warning-soft)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><div class="metric__label">Pending</div><div class="metric__value tabular">38</div></div></div>
+            <div class="metric"><span class="metric__icon" style="color:var(--status-danger-fg);background:var(--status-danger-soft)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span><div><div class="metric__label">Failed 24h</div><div class="metric__value tabular">14</div></div></div>
+          </div>
+
+          <div class="screen__filters">
+            <span class="chip chip--accent">Status: All</span>
+            <span class="chip">Channel: All</span>
+            <span class="chip">Date: Last 7d</span>
+            <span class="muted-text" style="margin-left:auto; font-family:var(--font-mono); font-size:var(--text-xs)">↑↓ navigate · ↵ open · / search</span>
+          </div>
+
+          <div class="table-shell">
+            <table class="data-table">
+              <caption class="sr-only">Orders</caption>
+              <thead>
+                <tr>
+                  <th scope="col" aria-sort="descending">Created</th>
+                  <th scope="col">Order</th>
+                  <th scope="col">Channel</th>
+                  <th scope="col">Buyer</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="is-numeric">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="is-id">14:22</td><td><div class="entity-label"><div class="entity-label__thumb"></div><div class="entity-label__text"><span class="entity-label__name">ALG-882414</span><span class="entity-label__sub">ol_order_a4f3</span></div></div></td><td><span class="channel-pill" data-channel="allegro">Allegro</span></td><td>Jan Kowalski</td><td><span class="status-badge status-badge--success">Paid</span></td><td class="is-numeric">€84.20</td></tr>
+                <tr><td class="is-id">14:08</td><td><div class="entity-label"><div class="entity-label__thumb" style="background:radial-gradient(80% 80% at 30% 20%, oklch(60% 0.18 250), var(--bg-strong))"></div><div class="entity-label__text"><span class="entity-label__name">PS-104822</span><span class="entity-label__sub">ol_order_b18e</span></div></div></td><td><span class="channel-pill" data-channel="prestashop">PrestaShop</span></td><td>Anna Wiśniewska</td><td><span class="status-badge status-badge--info status-badge--pulse">Syncing</span></td><td class="is-numeric">€129.40</td></tr>
+                <tr><td class="is-id">13:55</td><td><div class="entity-label"><div class="entity-label__thumb" style="background:radial-gradient(80% 80% at 30% 20%, oklch(72% 0.16 75), var(--bg-strong))"></div><div class="entity-label__text"><span class="entity-label__name">AM-9920381</span><span class="entity-label__sub">ol_order_c027</span></div></div></td><td><span class="channel-pill" data-channel="amazon">Amazon</span></td><td>Marek Zych</td><td><span class="status-badge status-badge--warning">Pending</span></td><td class="is-numeric">€42.00</td></tr>
+                <tr><td class="is-id">13:40</td><td><div class="entity-label"><div class="entity-label__thumb"></div><div class="entity-label__text"><span class="entity-label__name">ALG-881902</span><span class="entity-label__sub">ol_order_d4a8</span></div></div></td><td><span class="channel-pill" data-channel="allegro">Allegro</span></td><td>Test Buyer</td><td><span class="status-badge status-badge--danger">Failed</span></td><td class="is-numeric">€0.00</td></tr>
+                <tr><td class="is-id">13:21</td><td><div class="entity-label"><div class="entity-label__thumb" style="background:radial-gradient(80% 80% at 30% 20%, oklch(64% 0.16 150), var(--bg-strong))"></div><div class="entity-label__text"><span class="entity-label__name">SH-1041</span><span class="entity-label__sub">ol_order_e992</span></div></div></td><td><span class="channel-pill" data-channel="shopify">Shopify</span></td><td>Tomasz Lis</td><td><span class="status-badge status-badge--review">Needs review</span></td><td class="is-numeric">€312.00</td></tr>
+                <tr><td class="is-id">13:05</td><td><div class="entity-label"><div class="entity-label__thumb"></div><div class="entity-label__text"><span class="entity-label__name">ALG-881620</span><span class="entity-label__sub">ol_order_f021</span></div></div></td><td><span class="channel-pill" data-channel="allegro">Allegro</span></td><td>Ewa Mazur</td><td><span class="status-badge status-badge--success">Paid</span></td><td class="is-numeric">€56.00</td></tr>
+                <tr><td class="is-id">12:44</td><td><div class="entity-label"><div class="entity-label__thumb" style="background:radial-gradient(80% 80% at 30% 20%, oklch(60% 0.18 250), var(--bg-strong))"></div><div class="entity-label__text"><span class="entity-label__name">PS-104821</span><span class="entity-label__sub">ol_order_a812</span></div></div></td><td><span class="channel-pill" data-channel="prestashop">PrestaShop</span></td><td>Piotr Nowak</td><td><span class="status-badge status-badge--success">Paid</span></td><td class="is-numeric">€201.10</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer style="margin-top:64px; padding-top:24px; border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--text-sm); display:flex; justify-content:space-between;">
+      <span>OpenLinker · UI overhaul mockup · #775</span>
+      <span class="mono">v0.1 · IBM Plex Sans + Mono · signal-orange accent</span>
+    </footer>
+  </main>
+
+  <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+  <script>
+    const root = document.documentElement;
+    const lightBtn = document.getElementById('theme-light');
+    const darkBtn  = document.getElementById('theme-dark');
+    function setTheme(t) {
+      root.dataset.theme = t;
+      lightBtn.classList.toggle('is-active', t === 'light');
+      darkBtn.classList.toggle('is-active', t === 'dark');
+      try { localStorage.setItem('ui-overhaul-theme', t); } catch {}
+    }
+    lightBtn.addEventListener('click', () => setTheme('light'));
+    darkBtn.addEventListener('click', () => setTheme('dark'));
+    try {
+      const saved = localStorage.getItem('ui-overhaul-theme');
+      if (saved) setTheme(saved);
+    } catch {}
+  </script>
+</body>
+</html>

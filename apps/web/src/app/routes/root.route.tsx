@@ -22,6 +22,7 @@ import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
 import { dashboardRoute } from './dashboard.route';
+import { devUiRoute } from './dev-ui.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { inventoryRoute } from './inventory.route';
@@ -69,6 +70,7 @@ export const coreChildren: RouteObject[] = [
   promptTemplatesLegacyListRedirectRoute,
   promptTemplateLegacyDetailRedirectRoute,
   aiProviderSettingsRoute,
+  devUiRoute,
 ];
 
 const pluginChildren: RouteObject[] = plugins.flatMap((plugin) => plugin.build?.routes ?? []);

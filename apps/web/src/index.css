@@ -189,110 +189,123 @@
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     'Liberation Mono', monospace;
 
-  /* ── Surfaces ─────────────────────────────────────────────────────── */
-  --bg-canvas: #f5f7fa;
-  --bg-shell: #ffffff;
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
   --bg-surface: #ffffff;
-  --bg-surface-elevated: #f8fafc;
-  --bg-muted: #eef2f6; /* pre-refactor — sunset after Phase 3 */
-  --bg-surface-muted: #eef2f6; /* FE-002 canonical — alias of --bg-muted */
-  --bg-surface-hover: #e3e8ef; /* FE-002 canonical — one step darker than --bg-surface-muted */
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
 
   /* ── Borders ──────────────────────────────────────────────────────── */
-  --border-subtle: #e5eaf0;
-  --border-default: #d7dee8;
-  --border-strong: #c2ccd8;
-  --border-focus: var(--accent-focus); /* FE-002 canonical — alias of --accent-focus */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
 
   /* ── Text ─────────────────────────────────────────────────────────── */
-  --text-primary: #16202b;
-  --text-secondary: #4f5f73;
-  --text-muted: #728197;
-  --text-disabled: #9aa6b5;
-  --text-on-primary: #eff6ff; /* pre-refactor — button text on --accent-primary */
-  --text-inverse: #eff6ff; /* FE-002 canonical — alias of --text-on-primary */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
 
   /* ── Accent ───────────────────────────────────────────────────────
-   * Monochrome by design — `--accent-primary` is an alias of
-   * `--text-primary`, so links, focus rings, and the active-nav inset
-   * indicator all read as page foreground. The alias is expressed via
-   * `var()` so it holds across theme flips automatically. Do not
-   * reintroduce a brand hue here; chroma is reserved for `--status-*`
-   * tokens. (#371)
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
    */
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #000000;
-  --accent-primary-soft: rgba(22, 32, 43, 0.06);
-  --accent-primary-border: rgba(22, 32, 43, 0.18);
-  --accent-focus: var(--text-primary);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
 
   /* ── Status: success ──────────────────────────────────────────────── */
-  --status-success: #1f9d63;
-  --status-success-soft: #eaf8f1;
-  --status-success-border: #b9e5cd;
-  --status-success-fg: #166643; /* pre-refactor — sunset after Phase 3 */
-  --status-success-strong: #166643; /* FE-002 canonical — alias of -fg */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
 
   /* ── Status: warning ──────────────────────────────────────────────── */
-  --status-warning: #b7791f;
-  --status-warning-soft: #fff6e5;
-  --status-warning-border: #f1d39a;
-  --status-warning-fg: #8a5b15; /* pre-refactor */
-  --status-warning-strong: #8a5b15; /* FE-002 canonical — alias of -fg */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
 
   /* ── Status: error ────────────────────────────────────────────────── */
-  --status-error: #c24141;
-  --status-error-soft: #fdecec;
-  --status-error-border: #efb7b7;
-  --status-error-fg: #9f3030; /* pre-refactor */
-  --status-error-strong: #9f3030; /* FE-002 canonical — alias of -fg */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
 
-  /* ── Status: info ───────────────────────────────────────────────
-   * Neutral slate, not blue — split from `--accent-primary` to keep
-   * informational alerts from competing with primary actions. (#371)
-   */
-  --status-info: #5a6b85;
-  --status-info-soft: #eef1f5;
-  --status-info-border: #c9d0db;
-  --status-info-fg: #3e4a60; /* pre-refactor */
-  --status-info-strong: #3e4a60; /* FE-002 canonical — alias of -fg */
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
 
   /* ── Status: review / manual ──────────────────────────────────────── */
-  --status-review: #7c5cc4;
-  --status-review-soft: #f2edfb;
-  --status-review-border: #d4c5f2;
-  --status-review-fg: #6445ad; /* pre-refactor */
-  --status-review-strong: #6445ad; /* FE-002 canonical — alias of -fg */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
 
   /* ── Status: conflict ─────────────────────────────────────────────── */
-  --status-conflict: #cf6d2f;
-  --status-conflict-soft: #fdf0e8;
-  --status-conflict-border: #efc7ad;
-  --status-conflict-strong: #a05019; /* net-new — no pre-refactor equivalent */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
 
   /* ── Status: disabled ─────────────────────────────────────────────── */
-  --status-disabled: #7b8695;
-  --status-disabled-soft: #f1f4f7;
-  --status-disabled-border: #d5dde6;
-  --status-disabled-fg: #5f6977; /* pre-refactor */
-  --status-disabled-strong: #5f6977; /* FE-002 canonical — alias of -fg */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
 
   /* ── Elevation ────────────────────────────────────────────────────── */
-  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
-  --shadow-soft-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.08);
-  --shadow-overlay: 0 8px 32px rgba(16, 24, 40, 0.18);
-  --overlay-scrim: rgba(16, 24, 40, 0.45);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.40);
 
-  /* FE-002 canonical shadow triplet (aliases onto --shadow-soft family). */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
 
-  /* Primary button hover — near-black in light mode. Overridden to
-     near-white in html[data-theme='dark'] so the primary button
-     auto-inverts alongside --text-primary / --text-inverse. */
-  --button-primary-bg-hover: #0b1520;
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
   --space-1: 0.25rem; /* 4px */
@@ -305,18 +318,26 @@
   --space-8: 4rem; /* 64px */
 
   /* ── Radius scale ─────────────────────────────────────────────────── */
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-pill: 9999px;
 
   /* ── Motion ───────────────────────────────────────────────────────── */
   --duration-fast: 120ms;
   --duration-normal: 180ms;
+  --duration-slow: 280ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
 
   color-scheme: light;
   font-family: var(--font-sans);
@@ -328,6 +349,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 /* ── Dark mode ──────────────────────────────────────────────────────
@@ -340,97 +362,106 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Primary button hover — keep contrast against the inverted --text-primary */
-  --button-primary-bg-hover: #f5fafd;
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
 
-  /* Surfaces — graphite ramp (#371). Replaces the prior navy bias;
-     elevation step sizes are matched so existing components carry over. */
-  --bg-canvas: #0e1014;
-  --bg-shell: #131519;
-  --bg-surface: #16181d;
-  --bg-surface-elevated: #1b1e24;
-  --bg-muted: #1f2229;
-  --bg-surface-muted: #1f2229;
-  --bg-surface-hover: #272b33;
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.24);
-  --border-focus: var(--accent-focus);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
 
   /* Text */
-  --text-primary: #e9eef5;
-  --text-secondary: #b5c1d1;
-  --text-muted: #8998ac;
-  --text-disabled: #596776;
-  --text-on-primary: #0e1014; /* tracks --bg-canvas (#371) */
-  --text-inverse: #0e1014;
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
 
-  /* Accent — see :root for the design rationale. (#371) */
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #ffffff;
-  --accent-primary-soft: rgba(233, 238, 245, 0.08);
-  --accent-primary-border: rgba(233, 238, 245, 0.24);
-  --accent-focus: var(--text-primary);
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
 
   /* Status — success */
-  --status-success: #3fbb82;
-  --status-success-soft: rgba(63, 187, 130, 0.16);
-  --status-success-border: rgba(63, 187, 130, 0.35);
-  --status-success-fg: #7ed6ab;
-  --status-success-strong: #7ed6ab;
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
 
   /* Status — warning */
-  --status-warning: #d8a347;
-  --status-warning-soft: rgba(216, 163, 71, 0.16);
-  --status-warning-border: rgba(216, 163, 71, 0.35);
-  --status-warning-fg: #efc685;
-  --status-warning-strong: #efc685;
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
 
   /* Status — error */
-  --status-error: #e06a6a;
-  --status-error-soft: rgba(224, 106, 106, 0.16);
-  --status-error-border: rgba(224, 106, 106, 0.35);
-  --status-error-fg: #f2a5a5;
-  --status-error-strong: #f2a5a5;
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
 
-  /* Status — info — neutral slate (#371) */
-  --status-info: #8a95a8;
-  --status-info-soft: rgba(138, 149, 168, 0.14);
-  --status-info-border: rgba(138, 149, 168, 0.32);
-  --status-info-fg: #c5cbd6;
-  --status-info-strong: #c5cbd6;
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
 
   /* Status — review */
-  --status-review: #9d82d8;
-  --status-review-soft: rgba(157, 130, 216, 0.16);
-  --status-review-border: rgba(157, 130, 216, 0.35);
-  --status-review-fg: #c5b1ea;
-  --status-review-strong: #c5b1ea;
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
 
   /* Status — conflict */
-  --status-conflict: #e08a4f;
-  --status-conflict-soft: rgba(224, 138, 79, 0.16);
-  --status-conflict-border: rgba(224, 138, 79, 0.35);
-  --status-conflict-strong: #f2b88a;
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
 
   /* Status — disabled */
-  --status-disabled: #8998ac;
-  --status-disabled-soft: rgba(137, 152, 172, 0.14);
-  --status-disabled-border: rgba(137, 152, 172, 0.32);
-  --status-disabled-fg: #b5c1d1;
-  --status-disabled-strong: #b5c1d1;
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
 
   /* Elevation */
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-soft-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.55);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.45);
-  --shadow-focus: 0 0 0 3px var(--accent-primary-soft);
-  --overlay-scrim: rgba(0, 0, 0, 0.6);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.60);
 }
 
 * {
@@ -462,26 +493,32 @@ textarea {
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────
- * Primary is near-black (`--text-primary`) per the Variant A concept,
- * auto-inverting in dark mode via the same token. `--accent-primary`
- * (blue) is reserved for links and focus affordances only.
+ * Primary is signal orange (`--accent-primary`) per #775, paired with
+ * `--text-on-primary` for legible text. Tone variants: primary (default),
+ * secondary (surface + border), ghost (transparent), danger (status-error).
+ * Sizes: --xs, --sm, --md (default), --lg.
  */
 button,
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  border: 1px solid var(--text-primary);
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
   border-radius: var(--radius-md);
-  padding: 0 0.875rem;
+  padding: 0 var(--space-4);
   height: 2rem;
-  background: var(--text-primary);
-  color: var(--text-inverse);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: var(--tracking-normal);
   cursor: pointer;
   text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -493,7 +530,13 @@ button:hover,
 .button:hover {
   background: var(--button-primary-bg-hover);
   border-color: var(--button-primary-bg-hover);
-  color: var(--text-inverse);
+  color: var(--text-on-primary);
+}
+
+button:active,
+.button:active {
+  background: var(--accent-primary-active);
+  border-color: var(--accent-primary-active);
 }
 
 button:focus-visible,
@@ -501,22 +544,23 @@ button:focus-visible,
 .nav-link:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 button:focus-visible,
 .button:focus-visible,
 .control:focus-visible,
 .nav-link:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .button--secondary {
   border-color: var(--border-default);
   background: var(--bg-surface);
   color: var(--text-primary);
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
 }
 
 .button--secondary:hover {
@@ -525,22 +569,28 @@ button:focus-visible,
   color: var(--text-primary);
 }
 
+.button--secondary:active {
+  background: var(--bg-surface-hover);
+}
+
 .button--danger {
-  border-color: var(--status-error);
+  border-color: color-mix(in oklab, var(--status-error) 80%, black);
   background: var(--status-error);
-  color: var(--text-inverse);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
 }
 
 .button--danger:hover {
-  background: var(--status-error-strong);
-  border-color: var(--status-error-strong);
-  color: var(--text-inverse);
+  background: color-mix(in oklab, var(--status-error) 90%, black);
+  border-color: color-mix(in oklab, var(--status-error) 70%, black);
+  color: #ffffff;
 }
 
 .button--ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+  box-shadow: none;
 }
 
 .button--ghost:hover {
@@ -552,53 +602,220 @@ button:focus-visible,
 button:disabled,
 .button:disabled {
   cursor: not-allowed;
-  border-color: var(--status-disabled-border);
-  background: var(--status-disabled-soft);
-  color: var(--text-disabled);
+  opacity: 0.55;
+  box-shadow: none;
 }
 
+/* ── Button sizes (#775) ─────────────────────────────────────────── */
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+}
+.button--md {
+  /* default — matches base .button */
+}
+.button--lg {
+  height: 2.375rem;
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+}
+
+/* ── Icon-only button (#775) ─────────────────────────────────────── */
+.button--icon {
+  padding: 0;
+  width: 2rem;
+}
+.button--icon.button--xs { width: 1.5rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button--icon.button--lg { width: 2.375rem; }
+
+/* ── Keyboard shortcut affordance inside a button (#775) ─────────── */
+.button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut,
+.button--ghost .button__shortcut {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+
+/* ── Form controls (#775) ───────────────────────────────────────────
+ * Single-line text-like controls are 32px tall to align with the
+ * default button size. Textarea grows from a 5rem min. Padding is
+ * tightened to 8/12; radius lands on --radius-md to match buttons.
+ * Focus is communicated by a 3px accent ring, not by changing border
+ * thickness (no layout shift). Invalid mirrors the same idea with the
+ * danger tone.
+ *
+ * The selector explicitly lists text-like input types so that
+ * `<input type="checkbox|radio|file|color|range|submit|button>` are
+ * unaffected — those are styled in their own blocks below.
+ */
 .control,
-input,
 select,
-textarea {
+textarea,
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+input[type='tel'],
+input[type='url'],
+input[type='number'],
+input[type='date'],
+input[type='datetime-local'],
+input[type='month'],
+input[type='time'],
+input[type='week'],
+input:not([type]) {
   width: 100%;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.625rem;
-  padding: 0.75rem 0.85rem;
-  background: var(--bg-surface-elevated);
+  height: 2rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
   color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.control:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled),
+input[type='text']:hover:not(:disabled),
+input[type='email']:hover:not(:disabled),
+input[type='password']:hover:not(:disabled),
+input[type='search']:hover:not(:disabled),
+input[type='tel']:hover:not(:disabled),
+input[type='url']:hover:not(:disabled),
+input[type='number']:hover:not(:disabled),
+input[type='date']:hover:not(:disabled),
+input[type='datetime-local']:hover:not(:disabled),
+input[type='month']:hover:not(:disabled),
+input[type='time']:hover:not(:disabled),
+input[type='week']:hover:not(:disabled),
+input:not([type]):hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.control:disabled,
+select:disabled,
+textarea:disabled,
+input:disabled {
+  background: var(--bg-surface-muted);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* ── Checkboxes + Radios (#775) ─────────────────────────────────────
+ * Native controls — we lean on `accent-color` (Baseline 2022, well
+ * supported) so the browser paints them in our brand orange without
+ * needing to rebuild the indicator. Sized to align with 13px body
+ * text; opacity-only disabled state to keep the click target visible.
+ *
+ * The earlier `.control,input,select,textarea` rule used to stretch
+ * checkboxes to 100% × 32px (and add a card border + shadow). That's
+ * the "checkboxes are too big" bug surfaced post-PR.
+ */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
 .control {
   appearance: none;
 }
 
-.control--select {
-  /* Closes #325 — extra right padding + chevron anchored closer to the edge
-     so the selected option text never clips against the caret at narrow widths. */
-  padding-right: 3rem;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+.control--select,
+select {
+  /* Closes #325 — chevron anchored to the edge so the selected option
+     never clips against the caret at narrow widths. */
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
   background-position:
     calc(100% - 14px) calc(50% - 2px),
     calc(100% - 8px) calc(50% - 2px);
   background-size:
-    6px 6px,
-    6px 6px;
+    5px 5px,
+    5px 5px;
   background-repeat: no-repeat;
 }
 
-.control--invalid {
-  border-color: var(--status-error-border);
+.control--invalid,
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--status-error);
+}
+
+.control--invalid:focus-visible,
+input[aria-invalid='true']:focus-visible,
+textarea[aria-invalid='true']:focus-visible,
+select[aria-invalid='true']:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 30%, transparent);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--text-disabled);
 }
 
 textarea {
+  height: auto;
+  min-height: 5rem;
+  padding: var(--space-2) var(--space-3);
   resize: vertical;
+  line-height: 1.45;
 }
 
 /* FileUpload primitive (#449) — vanilla-CSS dropzone over a native
@@ -1278,6 +1495,19 @@ textarea {
   flex: 1;
   padding: 20px 16px 32px;
   overflow-x: hidden;
+  /* Cross-fade + tiny upward translate on route change (#775). Keyed
+     by location.pathname on the <main> element. Respects
+     prefers-reduced-motion. */
+  animation: shell-content-enter 180ms var(--ease-out);
+}
+
+@keyframes shell-content-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-content { animation: none; }
 }
 
 @media (min-width: 768px) {
@@ -1411,9 +1641,9 @@ textarea {
 }
 
 .chip--active {
-  background: var(--bg-shell);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+  background: var(--accent-primary-soft);
+  border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+  color: var(--accent-primary-soft-strong);
   font-weight: 600;
 }
 
@@ -1778,14 +2008,33 @@ textarea {
 
 .toolbar {
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   background: var(--bg-shell);
 }
 
 .toolbar--compact {
-  gap: 0.5rem;
+  gap: var(--space-2);
+}
+
+/* Filter selects inside a `.toolbar` cap their width so the table
+   stays the visual focus and doesn't fight a 1200 px-wide select. */
+.toolbar select,
+.toolbar .control--select,
+.toolbar .control {
+  max-width: 17.5rem;
+  width: 17.5rem;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .toolbar select,
+  .toolbar .control--select,
+  .toolbar .control {
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .pagination {
@@ -1863,33 +2112,37 @@ textarea {
   gap: 0.45rem;
 }
 
+/* ── FormField (#775) ───────────────────────────────────────────────
+ * Label + control + (optional) description + (optional) error rows on
+ * a tight 8px stack. Label weight stops at 500 so it reads as UI text,
+ * not a heading.
+ */
 .form-field {
   display: grid;
-  gap: 0.45rem;
+  gap: var(--space-2);
 }
 
 .form-field__label {
   color: var(--text-primary);
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 .form-field__description {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 
-/* #632 — success-tinted variant for "matched from EAN / mapping" hints under
-   form fields. Inherits the description's spacing and size; only the colour
-   token changes. */
+/* #632 — success-tinted variant for "matched from EAN / mapping" hints. */
 .form-field__description--match {
   color: var(--status-success-strong);
 }
 
 .form-field__error {
   margin: 0;
-  color: var(--status-error);
-  font-size: 0.875rem;
+  color: var(--status-error-strong);
+  font-size: 0.75rem;
 }
 
 .form-error-summary__list {
@@ -1919,29 +2172,43 @@ textarea {
   text-align: left;
 }
 
+/* ── Status badge (#775) ────────────────────────────────────────────
+ * Mono + caps treatment so status communication reads as a label rather
+ * than a generic pill. Status colour is paired with a leading dot so
+ * colour is never the only signal. `--pulse` animates the dot for
+ * live/syncing states; `--solid` is the high-emphasis variant (Draft,
+ * Outbox, …) — currentColor-on-text-primary for inverted contrast.
+ */
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  border-radius: 999px;
-  padding: 0.22rem 0.6rem;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .status-badge--compact {
-  padding: 0.18rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
 }
 
 .status-badge__dot {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 999px;
   background: currentColor;
   flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .status-badge--success {
@@ -1978,6 +2245,32 @@ textarea {
   border-color: var(--status-disabled-border);
   background: var(--status-disabled-soft);
   color: var(--status-disabled-fg);
+}
+
+.status-badge--solid {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  border-color: var(--text-primary);
+}
+
+.status-badge--pulse .status-badge__dot {
+  position: relative;
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes status-badge-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.95;
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+    opacity: 0.55;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.95;
+  }
 }
 
 .state-card {
@@ -2084,36 +2377,53 @@ textarea {
   letter-spacing: -0.01em;
 }
 
+/* ── DataTable (#775) ───────────────────────────────────────────────
+ * Operator-cockpit table. Sticky thead with mono caps treatment so
+ * column headers read as eyebrows; tabular figures on numeric cells;
+ * subtle hover via color-mix so it survives both themes without
+ * tone-specific overrides. Wrap in `.table-shell` for the bordered
+ * surface look.
+ */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
+  font-size: 0.8125rem;
 }
 
 .data-table__container {
   overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
 }
 
-/* Virtualized mode: the inner scroller owns both axes. Drop the outer
-   container's horizontal overflow to avoid nested scroll containers. */
+/* Virtualized mode: the inner scroller owns both axes. */
 .data-table__container--virtual {
   overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
 }
 
 .data-table__virtual-scroller {
   overflow: auto;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
   contain: layout paint;
 }
 
 .data-table__virtual-scroller:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .data-table__cell--right {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table__cell--center {
@@ -2121,71 +2431,83 @@ textarea {
 }
 
 .data-table__empty-cell {
-  padding: 1.25rem 0.65rem;
+  padding: var(--space-5) var(--space-3);
+  color: var(--text-muted);
 }
 
 .data-table__stack {
   display: grid;
-  gap: 0.2rem;
+  gap: 2px;
 }
 
 .data-table__action {
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+.data-table__action:hover {
   color: var(--accent-primary-hover);
-  font-weight: 600;
 }
 
 .data-table th,
 .data-table td {
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
 .data-table thead th {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
   border-top: 0;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  background: var(--bg-surface-elevated);
+  background: var(--bg-shell);
   position: sticky;
   top: 0;
   z-index: 1;
+  user-select: none;
 }
 
 .data-table tbody td {
-  color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .data-table__row--linked {
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .data-table__row--linked:hover {
-  background: var(--bg-surface-muted);
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
 }
 
 .data-table__row--linked:hover .data-table__row-link {
-  color: var(--accent-primary-hover);
+  color: var(--accent-primary);
 }
 
 .data-table__row-link {
   color: var(--text-primary);
   text-decoration: none;
   font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .data-table__row-link:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
 .data-table__header--sortable {
@@ -2211,20 +2533,35 @@ textarea {
 }
 
 .data-table__header-button:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
-  border-radius: 3px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
+/* Sort indicator (#775) — mono glyph, accent on active column.
+ * Reserve the slot via empty content so columns don't shift when the
+ * indicator turns on. */
 .data-table__sort-indicator {
-  font-size: 9px;
+  display: inline-block;
+  min-width: 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
   color: var(--text-muted);
   line-height: 1;
+  opacity: 0.4;
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.data-table__header-button:hover .data-table__sort-indicator {
+  opacity: 0.75;
+  color: var(--text-secondary);
 }
 
 .data-table__header--sortable[aria-sort='ascending'] .data-table__sort-indicator,
 .data-table__header--sortable[aria-sort='descending'] .data-table__sort-indicator {
   color: var(--accent-primary);
+  opacity: 1;
 }
 
 .data-table__cell--hide-below-480,
@@ -2580,32 +2917,41 @@ textarea {
   z-index: 40;
 }
 
+/* ── Toast (#775) ───────────────────────────────────────────────────
+ * Transient status surface. Mirrors Alert's left-accent rule so toasts
+ * and alerts share visual vocabulary across the cockpit.
+ */
 .toast {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.75rem;
-  padding: 0.875rem 1rem;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
+  gap: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-disabled-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-md);
 }
 
 .toast--success {
   border-color: var(--status-success-border);
+  border-left-color: var(--status-success);
 }
 
 .toast--info {
   border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
 }
 
 .toast--warning {
   border-color: var(--status-warning-border);
+  border-left-color: var(--status-warning);
 }
 
 .toast--error {
   border-color: var(--status-error-border);
+  border-left-color: var(--status-error);
 }
 
 .toast__dismiss {
@@ -3308,26 +3654,37 @@ textarea {
 
 /* MetricCard -------------------------------------------------------- */
 
+/* ── MetricCard (#775) ──────────────────────────────────────────────
+ * Compact metric tile. Mono+caps label, tabular display value, optional
+ * tone tinting (success/warning/error/info) for high-emphasis dashboard
+ * cards. For the severity-aware variant with sparkline, prefer KpiCard.
+ *
+ * `height: 100%` so cards in a grid line up vertically even when some
+ * carry a description and others don't (no jagged bottom edge).
+ */
 .metric-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-xs);
   text-decoration: none;
   color: inherit;
+  height: 100%;
+  min-height: 5.5rem;
 }
 
 .metric-card__label {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -3343,20 +3700,22 @@ textarea {
 }
 
 .metric-card__value {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .metric-card__trend {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
 .metric-card__description {
-  font-size: 12.5px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
@@ -3413,21 +3772,25 @@ textarea {
   color: var(--status-info-strong);
 }
 
-/* KpiCard + Sparkline ----------------------------------------------
- * KpiCard is the severity-aware KPI primitive consumed by the Dashboard
- * per the Variant A concept. Keeps `.metric-card` alive for non-severity
- * KPIs elsewhere.
+/* ── KpiCard + Sparkline (#775) ─────────────────────────────────────
+ * Severity-aware KPI primitive used on the Dashboard. Top accent rule
+ * (`.kpi-card::before`) is shipped in the design-system extras block at
+ * the end of this file. The mono+caps label sits across from the
+ * sparkline; the value below is large and tabular.
  */
 .kpi-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-5);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
   text-decoration: none;
+  box-shadow: var(--shadow-xs);
+  height: 100%;
+  min-height: 7rem;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
@@ -3439,25 +3802,27 @@ a.kpi-card:hover {
 }
 
 a.kpi-card:focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .kpi-card__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .kpi-card__label-text {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 11.5px;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
 }
 
 .kpi-card__icon {
@@ -3468,27 +3833,28 @@ a.kpi-card:focus-visible {
 }
 
 .kpi-card__value {
-  font-size: 26px;
-  line-height: 32px;
+  font-size: 2rem;
+  line-height: 1;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--tracking-tight);
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: baseline;
-  gap: 0.375rem;
+  gap: var(--space-2);
   color: var(--text-primary);
 }
 
 .kpi-card__value-suffix {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-normal);
 }
 
 .kpi-card__description {
-  font-size: 11.5px;
-  line-height: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
@@ -3556,39 +3922,60 @@ a.kpi-card:focus-visible {
 
 /* KeyValueList ------------------------------------------------------ */
 
+/* ── KeyValueList (#775) ────────────────────────────────────────────
+ * Detail-view rows on a 2-col grid (label on shell bg, value on
+ * surface). Mono+caps label so the rows scan as an audit log; the
+ * value column flexes to whatever the consumer hands us.
+ */
 .key-value-list {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 0;
   margin: 0;
   padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 @media (min-width: 768px) {
   .key-value-list {
     grid-template-columns: minmax(160px, max-content) 1fr;
-    column-gap: 24px;
-    row-gap: 10px;
   }
 }
 
+.key-value-list__label,
+.key-value-list__value {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
 .key-value-list__label {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
 }
 
 .key-value-list__value {
-  margin: 0;
-  font-size: 13.5px;
   color: var(--text-primary);
+  font-size: 0.8125rem;
   word-break: break-word;
 }
 
 .key-value-list__value--mono {
-  font-size: 12.5px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+.key-value-list__label:first-of-type,
+.key-value-list > :nth-child(-n + 2) {
+  border-top: 0;
 }
 
 /* RawPayloadPanel --------------------------------------------------- */
@@ -3706,11 +4093,15 @@ a.kpi-card:focus-visible {
 
 /* Radix Dialog wrapper --------------------------------------------- */
 
+/* ── Radix Dialog wrapper (#775) ────────────────────────────────────
+ * Overlay scrim + centered surface card with title/description/footer
+ * slots. Shell-bg footer separates actions from body content.
+ */
 .dialog__overlay {
   position: fixed;
   inset: 0;
   background: var(--overlay-scrim);
-  animation: dialog-fade-in 120ms ease-out;
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
   z-index: 40;
 }
 
@@ -3722,67 +4113,72 @@ a.kpi-card:focus-visible {
   width: min(520px, 92vw);
   max-height: min(90vh, 720px);
   overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-overlay);
-  padding: 20px;
+  padding: var(--space-5) var(--space-6);
   z-index: 50;
-  animation: dialog-fade-in 120ms ease-out;
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
 }
 
 .dialog__title {
-  margin: 0 0 6px;
-  font-size: 16px;
+  margin: 0 0 var(--space-1);
+  font-size: 1.0625rem;
   font-weight: 600;
+  letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
 }
 
 .dialog__description {
-  margin: 0 0 16px;
-  font-size: 13px;
+  margin: 0 0 var(--space-4);
+  font-size: 0.8125rem;
   color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .dialog__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
+  gap: var(--space-2);
+  margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-shell);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 
 @keyframes dialog-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 
-/* Radix DropdownMenu wrapper --------------------------------------- */
-
+/* ── Radix DropdownMenu wrapper (#775) ──────────────────────────────
+ * Grouped item list with optional shortcut hints (mono caps glyphs).
+ * Subtle highlight on hover/keyboard navigation; tone-aware danger item.
+ */
 .dropdown-menu__content {
-  min-width: 180px;
-  padding: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  box-shadow: var(--shadow-overlay);
+  min-width: 220px;
+  padding: var(--space-1);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   z-index: 50;
 }
 
 .dropdown-menu__item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font-size: 13px;
+  gap: var(--space-3);
+  padding: 6px var(--space-3);
+  font-size: 0.8125rem;
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   outline: none;
   user-select: none;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .dropdown-menu__item[data-highlighted] {
@@ -3795,10 +4191,11 @@ a.kpi-card:focus-visible {
 }
 
 .dropdown-menu__label {
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  padding: 6px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -3806,20 +4203,28 @@ a.kpi-card:focus-visible {
 .dropdown-menu__separator {
   height: 1px;
   background: var(--border-subtle);
-  margin: 4px -4px;
+  margin: var(--space-1) calc(var(--space-1) * -1);
 }
 
-/* Radix Tooltip wrapper -------------------------------------------- */
+.dropdown-menu__shortcut {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
 
+/* ── Radix Tooltip wrapper (#775) ───────────────────────────────────
+ * Solid inverted surface for terse inline labels.
+ */
 .tooltip__content {
   max-width: 280px;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 4px var(--space-2);
+  font-size: 0.75rem;
   line-height: 1.4;
   color: var(--text-inverse);
   background: var(--text-primary);
-  border-radius: 6px;
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
   z-index: 60;
 }
 
@@ -3827,15 +4232,17 @@ a.kpi-card:focus-visible {
   fill: var(--text-primary);
 }
 
-/* Radix Popover wrapper -------------------------------------------- */
-
+/* ── Radix Popover wrapper (#775) ───────────────────────────────────
+ * Elevated surface with subtle border + larger radius. Larger min-width
+ * than tooltips because they typically host interactive content.
+ */
 .popover__content {
   min-width: 240px;
-  padding: 14px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  box-shadow: var(--shadow-overlay);
+  padding: var(--space-4);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   z-index: 50;
 }
 
@@ -4302,9 +4709,13 @@ a.kpi-card:focus-visible {
 }
 
 .tabs__trigger {
-  padding: 0.5rem 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   margin-bottom: -1px;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-secondary);
   background: transparent;
@@ -4315,6 +4726,28 @@ a.kpi-card:focus-visible {
   transition:
     color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);
+}
+
+/* Optional count badge inside a tab trigger. The page renders it as
+ * `<span className="tabs__count">…</span>` next to the label.
+ */
+.tabs__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+}
+
+.tabs__trigger[data-state='active'] .tabs__count {
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
 }
 
 .tabs__trigger:hover {
@@ -4459,8 +4892,9 @@ a.kpi-card:focus-visible {
 
   .setup-stepper__step--current .setup-stepper__indicator {
     border-color: var(--accent-primary);
-    background: var(--accent-primary);
-    color: var(--text-inverse, #fff);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-focus);
   }
 
   .setup-stepper__step--current .setup-stepper__label {
@@ -4469,9 +4903,9 @@ a.kpi-card:focus-visible {
   }
 
   .setup-stepper__step--done .setup-stepper__indicator {
-    border-color: var(--accent-primary);
-    background: var(--accent-primary-soft);
-    color: var(--accent-primary);
+    border-color: transparent;
+    background: var(--accent-primary);
+    color: var(--text-on-primary);
   }
 
   .setup-stepper__step--done .setup-stepper__label {
@@ -6722,4 +7156,495 @@ a.kpi-card:focus-visible {
   height: 28px;
   padding: 0 0.625rem;
   font-size: 0.8125rem;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ *
+ *   #775 — UI primitives overhaul · design-system page extras
+ *
+ *   New classes used by the /dev/ui design-system page (brandbook +
+ *   primitives gallery + composed patterns). Production primitives
+ *   inherit from the existing classes earlier in this file; the rules
+ *   below are net-new and only used by the dev page.
+ *
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* ── Layout helpers ──────────────────────────────────────────────── */
+.ds-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.ds-row--end { justify-content: flex-end; }
+.ds-row--baseline { align-items: baseline; }
+.ds-grid { display: grid; gap: var(--space-4); }
+.ds-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ds-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ds-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ds-grid--6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 960px) {
+  .ds-grid--3, .ds-grid--4, .ds-grid--6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Surface card used for grouping demos ────────────────────────── */
+.ds-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Section header inside a dev-ui tab panel ────────────────────── */
+.ds-section { display: flex; flex-direction: column; gap: var(--space-3); }
+.ds-section + .ds-section { margin-top: var(--space-6); }
+.ds-section__title {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.ds-section__title::before {
+  content: '';
+  width: 8px; height: 8px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  display: inline-block;
+}
+.ds-section__sub {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  max-width: 70ch;
+}
+
+/* ── Eyebrow / caps label ────────────────────────────────────────── */
+.ds-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Brandbook: color swatches ───────────────────────────────────── */
+.ds-swatch {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.ds-swatch__chip {
+  height: 56px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.ds-swatch__name {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+.ds-swatch__token {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-wide);
+  word-break: break-all;
+}
+
+/* ── Brandbook: type ramp ────────────────────────────────────────── */
+.ds-type-ramp { display: grid; gap: var(--space-4); }
+.ds-type-ramp__row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-type-ramp__row:first-child { border-top: 0; padding-top: 0; }
+.ds-type-ramp__label { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.ds-type-ramp__value { color: var(--text-primary); }
+
+/* ── Brandbook: spacing scale visualiser ─────────────────────────── */
+.ds-scale-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 5rem;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-scale-row:first-child { border-top: 0; }
+.ds-scale-row__name { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.ds-scale-row__bar { height: 12px; background: var(--accent-primary-soft); border-radius: 2px; }
+.ds-scale-row__value { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); text-align: right; }
+
+/* ── Brandbook: radius scale visualiser ──────────────────────────── */
+.ds-radius-row {
+  display: grid; grid-template-columns: 5rem 4rem 1fr; gap: var(--space-3); align-items: center;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ds-radius-row:first-child { border-top: 0; }
+.ds-radius-row__sample {
+  width: 48px; height: 32px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+}
+.ds-radius-row__name { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.ds-radius-row__value { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+
+/* ── Brandbook: shadow scale visualiser ──────────────────────────── */
+.ds-shadow-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+}
+.ds-shadow-card__name { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+
+/* ── Brand mark (for the brandbook tab) ──────────────────────────── */
+.ds-brand-mark {
+  width: 48px; height: 48px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 120% at 0% 0%, var(--accent-primary) 0%, transparent 60%),
+    linear-gradient(135deg, var(--text-primary), color-mix(in oklab, var(--text-primary) 70%, var(--accent-primary)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.15);
+}
+
+/* ── Theme scope helper — render a stripe in the opposite theme ─── */
+.ds-theme-scope {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
+}
+.ds-theme-scope[data-theme] { color: var(--text-primary); }
+
+/* ── Patterns: channel pill (used by the orders-cockpit demo) ────── */
+.channel-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.channel-pill::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.channel-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
+.channel-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.channel-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
+.channel-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+
+/* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
+.entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
+.entity-label__thumb {
+  width: 28px; height: 28px; flex: none;
+  background:
+    radial-gradient(80% 80% at 30% 20%, color-mix(in oklab, var(--accent-primary) 50%, var(--bg-surface-muted)), var(--bg-strong));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.entity-label__text { display: flex; flex-direction: column; gap: 1px; }
+.entity-label__name { font-weight: 500; color: var(--text-primary); font-size: 0.8125rem; }
+.entity-label__sub { font-family: var(--font-mono); font-size: 0.625rem; color: var(--text-muted); letter-spacing: var(--tracking-wide); }
+
+/* ── Patterns: KPI accent rule on top edge ───────────────────────── */
+.kpi-card { position: relative; }
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-primary) 60%, transparent), transparent);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Code snippet block (component-author copy-paste) ────────────── */
+.ds-code {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ── CopyableId (#775) ──────────────────────────────────────────────
+ * Mono identifier + copy button that hides until row-hover. Pairs with
+ * .data-table tbody tr:hover so dense tables stay clean.
+ */
+.copyable-id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.copyable-id__value {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyable-id__copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.copyable-id__copy:hover {
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.copyable-id__copy:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.data-table tbody tr:hover .copyable-id__copy,
+.copyable-id:hover .copyable-id__copy,
+.copyable-id:focus-within .copyable-id__copy {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── Structured error list (#775) ───────────────────────────────────
+ * Compact tone-tinted rows that replace the "wall of red pills"
+ * treatment for repeated errors on connection-detail health tabs.
+ * Tone is communicated by a 3 px left rule + monospace code prefix.
+ */
+.error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.error-list__row {
+  display: grid;
+  grid-template-columns: 7rem 16rem 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border-left: 3px solid var(--status-disabled-border);
+  font-size: 0.75rem;
+  align-items: baseline;
+  cursor: default;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.error-list__row:hover {
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+
+.error-list__row--error { border-left-color: var(--status-error); }
+.error-list__row--warning { border-left-color: var(--status-warning); }
+.error-list__row--info { border-left-color: var(--status-info); }
+.error-list__row--review { border-left-color: var(--status-review); }
+
+.error-list__when {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+}
+
+.error-list__code {
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-list__msg {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-list__row:hover .error-list__msg {
+  white-space: normal;
+}
+
+@media (max-width: 768px) {
+  .error-list__row {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}
+
+/* ── DataTable density modifiers (#775) ─────────────────────────────
+ * Operator-cockpit pages benefit from a compact mode that fits more
+ * rows on screen. `<html data-density="compact">` toggles it globally
+ * — every `.data-table` inherits without per-page wiring. Cozy is the
+ * default and matches the .data-table rules above.
+ */
+html[data-density='compact'] .data-table th,
+html[data-density='compact'] .data-table td {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+html[data-density='compact'] .data-table thead th {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  font-size: 0.625rem;
+}
+
+html[data-density='compact'] .entity-label__thumb,
+html[data-density='compact'] .product-thumbnail {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+html[data-density='compact'] .status-badge {
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+
+/* Topbar density toggle — 2-option segmented control */
+.density-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.density-toggle__option {
+  width: 1.75rem;
+  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.density-toggle__option:hover {
+  color: var(--text-primary);
+}
+
+.density-toggle__option.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.density-toggle__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.density-toggle__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* ── Mobile / touch tweaks for #775 new primitives ─────────────────
+ * On touch devices there is no hover, so `.copyable-id__copy` and any
+ * other hover-revealed affordance has to stay visible. We also collapse
+ * the dev-ui patterns at the smallest viewport.
+ */
+@media (hover: none) {
+  .copyable-id__copy {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .ds-grid--2,
+  .ds-grid--3,
+  .ds-grid--4,
+  .ds-grid--6 {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog__footer {
+    /* On the smallest viewports the rounded-bottom footer's negative
+       margin can clip oddly. Keep the actions stacked but flush. */
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .dialog__footer .button {
+    width: 100%;
+  }
+
+  .dropdown-menu__content,
+  .popover__content {
+    /* Constrain to viewport so portals don't trigger horizontal scroll
+       on narrow phones. The Radix portal already collision-shifts but
+       this caps the worst-case width. */
+    max-width: calc(100vw - 1rem);
+  }
+
+  /* Density toggle hides on the smallest viewports — density only
+     matters when you can see >5 rows at once, which a phone can't. */
+  .shell-user-chip__menu .density-toggle {
+    display: none;
+  }
 }

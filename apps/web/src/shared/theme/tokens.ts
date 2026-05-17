@@ -53,16 +53,26 @@ export const tokens = {
   'shadow-xs': 'var(--shadow-xs)',
   'shadow-sm': 'var(--shadow-sm)',
   'shadow-md': 'var(--shadow-md)',
+  'shadow-lg': 'var(--shadow-lg)',
   'shadow-soft': 'var(--shadow-soft)',
   'shadow-soft-hover': 'var(--shadow-soft-hover)',
   'shadow-overlay': 'var(--shadow-overlay)',
   'shadow-focus': 'var(--shadow-focus)',
+  'shadow-inset-top': 'var(--shadow-inset-top)',
 
   // ── Motion ──────────────────────────────────────────────────────
   'duration-fast': 'var(--duration-fast)',
   'duration-normal': 'var(--duration-normal)',
+  'duration-slow': 'var(--duration-slow)',
   'ease-out': 'var(--ease-out)',
   'ease-standard': 'var(--ease-standard)',
+  'ease-in-out': 'var(--ease-in-out)',
+
+  // ── Tracking (letter-spacing) ───────────────────────────────────
+  'tracking-tight': 'var(--tracking-tight)',
+  'tracking-normal': 'var(--tracking-normal)',
+  'tracking-wide': 'var(--tracking-wide)',
+  'tracking-caps': 'var(--tracking-caps)',
 
   // ── Backgrounds ─────────────────────────────────────────────────
   'bg-canvas': 'var(--bg-canvas)',
@@ -72,6 +82,7 @@ export const tokens = {
   'bg-surface-muted': 'var(--bg-surface-muted)',
   'bg-surface-hover': 'var(--bg-surface-hover)',
   'bg-muted': 'var(--bg-muted)',
+  'bg-strong': 'var(--bg-strong)',
   'overlay-scrim': 'var(--overlay-scrim)',
 
   // ── Borders ─────────────────────────────────────────────────────
@@ -87,13 +98,17 @@ export const tokens = {
   'text-disabled': 'var(--text-disabled)',
   'text-inverse': 'var(--text-inverse)',
   'text-on-primary': 'var(--text-on-primary)',
+  'text-link': 'var(--text-link)',
 
-  // ── Accent (monochrome — see #371) ──────────────────────────────
+  // ── Accent (signal orange — see #775) ───────────────────────────
   'accent-primary': 'var(--accent-primary)',
   'accent-primary-hover': 'var(--accent-primary-hover)',
+  'accent-primary-active': 'var(--accent-primary-active)',
   'accent-primary-soft': 'var(--accent-primary-soft)',
+  'accent-primary-soft-strong': 'var(--accent-primary-soft-strong)',
   'accent-primary-border': 'var(--accent-primary-border)',
   'accent-focus': 'var(--accent-focus)',
+  'accent-ring': 'var(--accent-ring)',
 
   // ── Button-specific ─────────────────────────────────────────────
   'button-primary-bg-hover': 'var(--button-primary-bg-hover)',

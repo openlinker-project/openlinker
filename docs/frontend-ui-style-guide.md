@@ -175,97 +175,123 @@ The FE-001 baseline should move away from a dark SaaS concept-shot aesthetic and
 
 Corrective direction:
 
-- use a white and graphite-neutral base with restrained accent usage
-- keep chroma reserved for semantic status states — primary CTAs, active/selected/focused affordances use `var(--accent-primary)`, which is itself a monochrome alias of `--text-primary` (see #371 and the "Color Usage Rules" section below)
+- use a warm-neutral light base with restrained accent usage
 - reduce panel padding and decorative empty space
 - replace roadmap or product-planning content with operator-facing queues, health lists, and activity views
 - prefer tables, compact lists, and timelines over large descriptive cards
 - keep the shell informational, not editorial
 
+### Visual System v2 (#775)
+
+The current visual system supersedes the monochrome stance from #371. The flat monochrome accent surfaced as the "doesn't feel like a designed product" complaint — #775 reintroduces a brand accent and rebuilds the palette on a perceptual model.
+
+- **Signal-orange accent** — `--accent-primary` is `oklch(68% 0.18 50)` in light, `oklch(72% 0.18 50)` in dark. Used sparingly: primary buttons, active-tab underline, KPI top-rule, pulsing live dot, focus rings, stepper done state, chip-active fill. Status hues remain reserved for status meaning.
+- **OKLCH-driven palette** — both themes share a single perceptual model. Warm neutrals in light (hue 80), cool neutrals in dark (hue 270).
+- **Live reference** — navigate to `/dev/ui` in the running app (admin tree, hidden from nav). Three tabs: Brandbook (every token), Primitives (kitchen sink), Patterns (composed cockpit examples). Use it as the canonical visual reference.
+
 ## Theme Tokens
 
-Recommended FE light theme tokens:
+Tokens are OKLCH-driven (#775), so both light and dark themes share one perceptual model. Drift is enforced — every CSS var in `:root` must appear in `apps/web/src/shared/theme/tokens.ts` and is checked by `scripts/check-design-tokens.mjs` under `pnpm lint`.
+
+Light theme tokens (canonical source: `apps/web/src/index.css :root`):
 
 ```css
-:root[data-theme="light"] {
-  --bg-canvas: #f5f7fa;
-  --bg-shell: #ffffff;
+:root,
+[data-theme='light'] {
+  /* Surfaces — warm-neutral OKLCH ramp (hue 80) */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
   --bg-surface: #ffffff;
-  --bg-surface-elevated: #f8fafc;
-  --bg-surface-muted: #f1f4f8;    /* active nav row, table hover, chip background */
-  --bg-surface-hover: #eef2f7;    /* hover over muted */
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-strong: oklch(93% 0.006 80);
 
-  --border-subtle: #e5eaf0;
-  --border-default: #d7dee8;
-  --border-strong: #c2ccd8;
-  --border-focus: var(--accent-focus);
+  /* Borders */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
 
-  --text-primary: #16202b;
-  --text-secondary: #4f5f73;
-  --text-muted: #728197;
-  --text-disabled: #9aa6b5;
-  --text-inverse: #ffffff;
+  /* Text */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-inverse: oklch(96% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);  /* paired with accent for contrast */
+  --text-link: oklch(50% 0.14 250);
 
-  /* Accent — monochrome by design (#371). `--accent-primary` is an alias
-     of `--text-primary`, expressed via `var()` so the alias holds across
-     theme flips. Do not reintroduce a chromatic brand hue here. */
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #000000;
-  --accent-primary-soft: rgba(22, 32, 43, 0.06);
-  --accent-primary-border: rgba(22, 32, 43, 0.18);
-  --accent-focus: var(--text-primary);
+  /* Signal-orange accent (#775) — sparingly: primary CTAs, active-tab
+     underline, KPI top-rule, pulsing live dot, focus rings. */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
 
-  /* Each status tone ships a 4-variable triple: base (icon/dot) / strong (text on soft surface) / soft (surface tint) / border */
-  --status-success: #1f9d63;
-  --status-success-strong: #167049;
-  --status-success-soft: #eaf8f1;
-  --status-success-border: #b9e5cd;
+  /* Status — each tone ships base / soft / border / fg / strong.
+     Hues spaced for distinction (success 150, warning 85, error 25,
+     info 245, review 290, conflict 45). */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
 
-  --status-warning: #b7791f;
-  --status-warning-strong: #885a17;
-  --status-warning-soft: #fff6e5;
-  --status-warning-border: #f1d39a;
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
 
-  --status-error: #c24141;
-  --status-error-strong: #962f2f;
-  --status-error-soft: #fdecec;
-  --status-error-border: #efb7b7;
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
 
-  /* Info is a neutral slate, not a second blue — it must not compete
-     with the primary surface for attention. (#371) */
-  --status-info: #5a6b85;
-  --status-info-strong: #3e4a60;
-  --status-info-soft: #eef1f5;
-  --status-info-border: #c9d0db;
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
 
-  --status-review: #7c5cc4;
-  --status-review-soft: #f2edfb;
-  --status-review-border: #d4c5f2;
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
 
-  --status-conflict: #cf6d2f;
-  --status-conflict-soft: #fdf0e8;
-  --status-conflict-border: #efc7ad;
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
 
-  --status-disabled: #7b8695;
-  --status-disabled-soft: #f1f4f7;
-  --status-disabled-border: #d5dde6;
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* Tracking, motion, spacing, radii, shadows live in the same :root
+     block. See apps/web/src/index.css for the full catalogue. */
 }
 ```
 
 ## Color Usage Rules
 
 - canvas and shell stay neutral
-- **the primary CTA is near-black** (`var(--text-primary)`) — it auto-inverts
-  to near-white in dark mode, so primary buttons read as "page foreground,
-  filled" in either theme.
-- **`--accent-primary` is itself monochrome** — aliased to `--text-primary`,
-  so links, focus rings, and the active-nav inset indicator all read as page
-  foreground. There is no demoted brand hue; chroma is reserved for the
-  `--status-*` tokens only. Do not reintroduce a blue (or any chromatic)
-  accent without revisiting #371.
+- **the primary CTA is signal orange** (`var(--accent-primary)`) paired with `var(--text-on-primary)` (near-black so contrast survives at small sizes). The accent is the brand mark — use sparingly: primary buttons, active-tab underline, KPI top-rule, pulsing live dot, focus rings, stepper done indicator, chip-active fill. (#775 reverses the monochrome stance of #371.)
+- **status hues are reserved for status meaning** — five tones (success / warning / error / info / review) plus `conflict` and `disabled`, each with `*` / `*-soft` / `*-border` / `*-fg`. Don't borrow them for decorative tinting.
 - semantic colors appear mainly in badges, icons, row markers, and compact highlights
 - large panels should not use semantic fills unless the whole panel is an alert or incident state
 - neutral borders should dominate the interface
+- **color is never the only signal** — pair tone with text, icon, or dot. `StatusBadge` enforces this by combining tone + leading dot + mono-caps label.
 
 ## Dark Mode
 
@@ -286,46 +312,50 @@ at `apps/web/src/shared/ui/theme-toggle.tsx`.
 
 ### Color
 
-The dark canvas is a **graphite ramp** — neutral with the slightest cool
-whisper, deliberately not navy. The accent inverts the light-mode rule:
-`--accent-primary` is aliased to `--text-primary` (near-white), so primary
-buttons, links, focus rings, and the active-nav inset indicator all read as
-page foreground in dark mode too. Status info is a neutral slate, never a
-second light-blue — see #371 for the rationale.
+The dark canvas is a **cool graphite ramp** (hue 270 with very low chroma) — neutral with a faint cool whisper, deliberately not navy. Surfaces step from `oklch(14% …)` (canvas) up to `oklch(28% …)` (strong/hover). Text inverts the same way as light: high-contrast primary, secondary, muted.
+
+The signal-orange accent **stays orange in dark mode** (slightly brighter at `oklch(72% 0.18 50)` for legibility on dark surfaces) so the brand mark is consistent across themes. Status hues lift in brightness so soft backgrounds don't wash out on dark surfaces (#775).
 
 ```css
 html[data-theme='dark'] {
-  --bg-canvas: #0e1014;
-  --bg-shell: #131519;
-  --bg-surface: #16181d;
-  --bg-surface-elevated: #1b1e24;
-  --bg-surface-muted: #1f2229;
-  --bg-surface-hover: #272b33;
+  /* Surfaces — cool graphite ramp */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-strong: oklch(28% 0.010 270);
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.24);
-  --border-focus: var(--accent-focus);
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
 
-  --text-primary: #e9eef5;
-  --text-secondary: #b5c1d1;
-  --text-muted: #8998ac;
-  --text-disabled: #596776;
-  --text-inverse: #0e1014;
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-inverse: oklch(20% 0.012 80);
+  --text-on-primary: oklch(16% 0.012 50);
+  --text-link: oklch(76% 0.14 245);
 
-  --accent-primary: var(--text-primary);
-  --accent-primary-hover: #ffffff;
-  --accent-primary-soft: rgba(233, 238, 245, 0.08);
-  --accent-primary-border: rgba(233, 238, 245, 0.24);
-  --accent-focus: var(--text-primary);
+  /* Accent — brighter for legibility on dark surfaces (#775) */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
 
-  --status-info: #8a95a8;
-  --status-info-strong: #c5cbd6;
-  --status-info-soft: rgba(138, 149, 168, 0.14);
-  --status-info-border: rgba(138, 149, 168, 0.32);
-
-  /* Status success / warning / error / review / conflict / disabled
-     keep their semantic chroma — see apps/web/src/index.css. */
+  /* Status — chroma kept; hues spaced as in light. See index.css for
+     the full set (success / warning / error / info / review / conflict /
+     disabled). */
 }
 ```
 
@@ -376,54 +406,37 @@ Use monospace for:
 
 ### Spacing And Shape
 
-Use a strict spacing scale such as:
+Use the strict 4 px spacing scale via `var(--space-{n})` tokens (1=4 / 2=8 / 3=12 / 4=16 / 5=24 / 6=32 / 7=48 / 8=64). Avoid raw rem values where a token exists — keeps the grid honest at refactor time.
 
-- 4
-- 8
-- 12
-- 16
-- 24
-- 32
+Use restrained radii and avoid overly soft shapes. Canonical scale (#775):
 
-Use restrained radii and avoid overly soft shapes.
+- form controls + buttons: `var(--radius-md)` — 8 px
+- cards (KPI/metric, feedback-state, table container): `var(--radius-lg)` — 10 px
+- dialogs, toasts, dev-ui section surface: `var(--radius-xl)` — 14 px
+- pills, chips, channel-pill: `var(--radius-pill)` — 9999 px
+- status badges (mono+caps treatment): `var(--radius-sm)` — 6 px
 
 Recommended defaults:
 
-- page gutters: `20px` to `24px`
-- panel padding: `16px`
-- panel radius: `8px`
-- input radius: `6px`
+- page gutters: `var(--space-5)` to `var(--space-6)` (24 / 32 px)
+- panel padding: `var(--space-4)` to `var(--space-5)` (16 / 24 px)
 - avoid more than three visual depth levels on the same screen
 
-### Type scale audit (Phase 1 — 2026-04-20)
+### Canonical type scale (#775)
 
-Phase 1 did not normalize per-component `font-size` values in `apps/web/src/index.css` — changing 40+ rules without per-component visual QA risks drift. Each primitive migration in Phase 3 (#239) normalizes its own typography to the canonical scale below. This table lists **off-scale values currently in component CSS** so Phase 3 PRs can track their resolution.
+The scale below is what primitives now use. Keep page-level typography aligned with these rem values.
 
-Canonical scale (rem):
+| Purpose | Rem | Pixels | Weight | Tracking |
+|---|---|---|---|---|
+| Display (KPI value, hero numbers) | `2rem` | 32 | 600 | `var(--tracking-tight)` |
+| Page title | `1.75rem` | 28 | 600 | `var(--tracking-tight)` |
+| Section title | `1.0625rem` | 17 | 600 | `var(--tracking-tight)` |
+| Body | `0.875rem` | 14 | 400 | normal |
+| Body (small / default control) | `0.8125rem` | 13 | 400 | normal |
+| Metadata / labels | `0.75rem` | 12 | 500 | normal |
+| Eyebrow / uppercase / mono-caps | `0.6875rem` | 11 | 500 | `var(--tracking-caps)` |
 
-| Purpose | Canonical | Pixels |
-|---|---|---|
-| Page title | `1.375rem` | 22 |
-| Section title | `1rem` | 16 |
-| Body | `0.875rem` | 14 |
-| Body (small) | `0.8125rem` | 13 |
-| Metadata / labels | `0.75rem` | 12 |
-| Eyebrow / uppercase | `0.6875rem` | 11 |
-
-Off-scale values currently in `index.css` (~31 occurrences — to be normalized during Phase 3, each resolved by the primitive that owns the affected selector):
-
-| Current | Nearest canonical | Affected selectors | Resolved by |
-|---|---|---|---|
-| `0.76rem` | `0.75rem` | `.topbar__label`, `.data-table thead th`, `.eyebrow` | Phase 2 (shell, #238) + Phase 3 (DataTable, #239) |
-| `0.8rem` | `0.75rem` | `.metric-card__label` | Phase 3 (MetricCard, #239) |
-| `0.82rem` | `0.8125rem` | `.timeline-list__time` | Phase 3 (Timeline, #239) |
-| `0.92rem` | `0.875rem` | `.data-table` | Phase 3 (DataTable, #239) |
-| `0.9375rem` | `0.875rem` | `.capability-fieldset__legend` | Phase 5 (wizards, #241) |
-| `1.125rem` | `1rem` | `.guest-page__title` | Phase 2 (shell, #238) — login/guest is part of shell scope |
-| `1.25rem` | `1rem` or `1.375rem` | `.guest-brand__title` | Phase 2 (shell, #238) |
-| `1.4rem` | `1.375rem` | `.metric-card__value` | Phase 3 (MetricCard, #239) |
-
-All other `font-size` usages already sit on the canonical scale. Full grep output archived with PR #244.
+**Always pair numerics with `font-variant-numeric: tabular-nums`** (or the `.tabular` utility) — the cockpit table view depends on it for scan-ability.
 
 ## CSS Implementation Standard
 
@@ -484,11 +497,12 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 ### Controls (unstyled wrappers over native HTML)
 
-- `Button` — tones: `primary` (dark), `secondary` (outlined), `ghost`, `danger`; sizes: `sm` (28px), `md` (32px), `xs` (24px)
-- `Input` / `Textarea` / native `Select`
+- `Button` — tones: `primary` (signal orange + `--text-on-primary`), `secondary` (surface + border), `ghost`, `danger`. Sizes via `className="button--{xs|sm|md|lg}"` (24 / 28 / 32 / 38 px). Icon-only via `button--icon`. Trailing keyboard shortcut affordance via `<span className="button__shortcut">⌘K</span>`.
+- `Input` / `Textarea` / native `Select` — 32 px height, `var(--radius-md)`. Invalid state via `aria-invalid` or the `invalid` prop (mirrors danger-tone focus ring).
+- Native `<input type="checkbox|radio">` — styled via `accent-color: var(--accent-primary)`. The form-controls rule excludes non-text input types so checkboxes keep their native 14 px size.
 - `FormField` — label + control + description + error wiring (`aria-invalid`, `aria-describedby`)
 - `FieldError`, `FormErrorSummary`
-- `Alert` — tonal variants matching status tokens
+- `Alert` — tonal variants matching status tokens, left-rule accent
 
 ### Tables
 
@@ -553,18 +567,16 @@ Control primitives should:
 
 ### Status Badge
 
-Status badges should use a normalized semantic vocabulary and visual variants rather than per-feature ad hoc styling.
+Status badges use a normalized semantic vocabulary + a mono-caps treatment so they read as a typed label rather than a generic pill (#775).
 
-Recommended MVP variants:
+Tones (the `tone` prop): `success`, `warning`, `error`, `info`, `review`, `neutral`. Optional flags:
 
-- success
-- warning
-- error
-- info
-- review
-- neutral
+- `withDot` — adds a leading tone-coloured dot (color is never the only signal).
+- `pulse` — animates the dot for live/syncing states. Implies `withDot`.
+- `solid` — high-emphasis inverted variant (Draft, Outbox, internal flags).
+- `compact` — slightly tighter padding for inline use inside table rows.
 
-Badges must still include status text, not just color or dot indicators.
+Always include status text — colour and dot are reinforcement, not substitutes.
 
 ## External Libraries
 

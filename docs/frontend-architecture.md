@@ -336,7 +336,8 @@ The frontend ships a typed catalog of every public design token at `apps/web/src
 export const tokens = {
   'bg-canvas': 'var(--bg-canvas)',
   'bg-shell': 'var(--bg-shell)',
-  // ... ~85 entries
+  // ... ~98 entries (post #775 — accent group expanded with -active /
+  // -soft-strong / -ring, shadow scale grew -lg, tracking-* added)
 } as const satisfies Record<string, `var(--${string})`>;
 
 export type TokenName = keyof typeof tokens;
@@ -356,9 +357,11 @@ export type TokenName = keyof typeof tokens;
 
 The frontend's public component catalog lives at `apps/web/src/shared/ui/index.ts` (#611). Anything re-exported there is part of the contract plugin authors and host code can compose against. Anything not in the catalog is internal — renaming, moving, or deleting it shouldn't break consumers.
 
-**v1 scope** is narrow (~25 primitives covering the cockpit vocabulary documented in `docs/frontend-ui-style-guide.md` § Core Component Patterns). Adding a primitive is a one-line edit — keep the list scannable and add only what real consumers need.
+**v1 scope** is narrow (~30 primitives covering the cockpit vocabulary documented in `docs/frontend-ui-style-guide.md` § Core Component Patterns). Adding a primitive is a one-line edit — keep the list scannable and add only what real consumers need.
 
 Components that wrap headless libraries (Radix, TanStack) sit on the same footing as native-HTML wrappers — the wrapper is the public surface, the underlying library is an implementation detail.
+
+**Live reference**: navigate to `/dev/ui` in a running app (admin tree, hidden from nav) for the brandbook + primitives gallery + composed patterns. Source under `apps/web/src/pages/dev-ui/`. The standalone HTML mockup at `docs/plans/ui-overhaul-mockup.html` is the offline reference.
 
 ## Internationalization (i18n)
 

@@ -8,6 +8,16 @@ paths:
 
 These rules apply when building pages and feature modules in the OpenLinker frontend.
 
+## Reference
+
+The **live design system** lives at `/dev/ui` (hidden admin route). Three tabs:
+
+- **Brandbook** — every token rendered live
+- **Primitives** — kitchen sink for every component in `shared/ui/`
+- **Patterns** — composed examples (orders cockpit, settings form). Use these as the visual reference when building a new page
+
+Look at `apps/web/src/pages/dev-ui/sections/patterns-section.tsx` for the source of the composed examples — copy-paste-friendly when scaffolding a new list page.
+
 ## Page Structure
 
 Every page follows this layout using `PageLayout`:
@@ -17,11 +27,19 @@ Every page follows this layout using `PageLayout`:
   eyebrow="Section"
   title="Page Title"
   description="Optional subtitle"
-  actions={<Link className="button button--primary" to="/new">Create</Link>}
+  actions={<Button tone="primary">Create</Button>}
 >
   {/* Page content */}
 </PageLayout>
 ```
+
+For a **cockpit-style list page** (orders, jobs, listings, etc.) the canonical composition under `PageLayout` is:
+
+1. KPI strip — 3–4 `MetricCard`s with tone variants for at-a-glance state
+2. Filter chip row — `chip--active` highlights selected filters
+3. `DataTable` with `EntityLabel` for identity columns, `StatusBadge` (`withDot` / `pulse`) for status, mono+tabular for numerics
+
+See `apps/web/src/pages/dev-ui/sections/patterns-section.tsx` for the reference implementation.
 
 ## Data Fetching Pattern
 

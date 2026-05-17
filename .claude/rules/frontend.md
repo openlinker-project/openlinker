@@ -32,11 +32,13 @@ paths:
 
 ## Styling
 
-- **No Tailwind, no CSS-in-JS** — pure vanilla CSS with design tokens in `index.css`
-- All colors, spacing, typography via CSS custom properties (`var(--token-name)`)
-- Spacing on 4px grid: `0.25rem`, `0.5rem`, `0.75rem`, `1rem`, `1.5rem`, `2rem`
+- **No Tailwind, no CSS-in-JS** — pure vanilla CSS with OKLCH-driven design tokens in `index.css`
+- All colors, spacing, typography via CSS custom properties (`var(--token-name)`) — use `var(--space-*)` not hardcoded rem values where a token exists
+- Spacing on 4px grid: `--space-1` (4px) through `--space-8` (64px)
 - CSS class naming: `.component-name`, `.component-name--modifier`, `.component-name__child`
-- New styles go in `apps/web/src/index.css` in the appropriate section
+- New styles go in `apps/web/src/index.css` in the appropriate section. Use bounded section comments (`/* ── Component (#issue) ── */`) so reviewers can chunk large diffs.
+- **Signal-orange accent (#775)** — `--accent-primary` is the brand colour. Use sparingly: primary buttons, active-tab underline, KPI top-rule, pulsing live dot, focus rings. Status hues stay reserved for status meaning.
+- **Drift checker** runs under `pnpm lint` — every CSS var must appear in `apps/web/src/shared/theme/tokens.ts`. Add to `index.css` first, then `tokens.ts`.
 
 ## Component Patterns
 
@@ -76,8 +78,8 @@ paths:
 - Use `FormField` for automatic `aria-invalid`, `aria-describedby` wiring
 - `role="alert"` for errors, `aria-live="polite"` for loading/status
 - `aria-hidden="true"` on decorative elements
-- Visible focus outlines — never remove (`2px solid var(--accent-focus)`)
-- Color is never the only signal — always pair with text
+- Visible focus rings — never remove. Prefer `box-shadow: var(--shadow-focus)` (3 px accent-ring glow, no layout shift) over `outline:` so it can coexist with hover borders.
+- Color is never the only signal — always pair with text, icon, or dot (`StatusBadge` enforces this — mono+caps label + tone-tinted dot)
 
 ## Testing
 
@@ -91,7 +93,8 @@ paths:
 ## UI Style
 
 - Follow `docs/frontend-ui-style-guide.md` for layout, spacing, and component patterns
+- The **live design system** lives at `/dev/ui` (hidden admin route). Three tabs: Brandbook (every token), Primitives (kitchen sink), Patterns (composed examples). Use it as the visual source of truth when polishing a feature.
 - Use shared UI components from `shared/ui/` — check existing inventory before creating new
 - Status-first, dense-but-readable operator cockpit style
-- Shopify admin clarity + Linear polish — no glassmorphism, heavy gradients, or glow effects
-- Monospace (`.mono-text`) for identifiers, payload fields, system references
+- Shopify admin clarity + Linear polish + signal-orange accent (#775) — no glassmorphism, heavy gradients, or glow effects
+- Monospace (`.mono-text` or `var(--font-mono)`) for identifiers, payload fields, system references, mono+caps eyebrows. Tabular figures (`font-variant-numeric: tabular-nums` or `.tabular`) on every numeric.
