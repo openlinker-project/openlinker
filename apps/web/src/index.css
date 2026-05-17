@@ -661,17 +661,33 @@ button:disabled,
 }
 
 /* ── Form controls (#775) ───────────────────────────────────────────
- * Single-line controls (input/select) are 32px tall to align with the
+ * Single-line text-like controls are 32px tall to align with the
  * default button size. Textarea grows from a 5rem min. Padding is
  * tightened to 8/12; radius lands on --radius-md to match buttons.
  * Focus is communicated by a 3px accent ring, not by changing border
  * thickness (no layout shift). Invalid mirrors the same idea with the
  * danger tone.
+ *
+ * The selector explicitly lists text-like input types so that
+ * `<input type="checkbox|radio|file|color|range|submit|button>` are
+ * unaffected — those are styled in their own blocks below.
  */
 .control,
-input,
 select,
-textarea {
+textarea,
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+input[type='tel'],
+input[type='url'],
+input[type='number'],
+input[type='date'],
+input[type='datetime-local'],
+input[type='month'],
+input[type='time'],
+input[type='week'],
+input:not([type]) {
   width: 100%;
   height: 2rem;
   border: 1px solid var(--border-default);
@@ -689,19 +705,70 @@ textarea {
 }
 
 .control:hover:not(:disabled),
-input:hover:not(:disabled),
 select:hover:not(:disabled),
-textarea:hover:not(:disabled) {
+textarea:hover:not(:disabled),
+input[type='text']:hover:not(:disabled),
+input[type='email']:hover:not(:disabled),
+input[type='password']:hover:not(:disabled),
+input[type='search']:hover:not(:disabled),
+input[type='tel']:hover:not(:disabled),
+input[type='url']:hover:not(:disabled),
+input[type='number']:hover:not(:disabled),
+input[type='date']:hover:not(:disabled),
+input[type='datetime-local']:hover:not(:disabled),
+input[type='month']:hover:not(:disabled),
+input[type='time']:hover:not(:disabled),
+input[type='week']:hover:not(:disabled),
+input:not([type]):hover:not(:disabled) {
   border-color: var(--border-strong);
 }
 
 .control:disabled,
-input:disabled,
 select:disabled,
-textarea:disabled {
+textarea:disabled,
+input:disabled {
   background: var(--bg-surface-muted);
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+
+/* ── Checkboxes + Radios (#775) ─────────────────────────────────────
+ * Native controls — we lean on `accent-color` (Baseline 2022, well
+ * supported) so the browser paints them in our brand orange without
+ * needing to rebuild the indicator. Sized to align with 13px body
+ * text; opacity-only disabled state to keep the click target visible.
+ *
+ * The earlier `.control,input,select,textarea` rule used to stretch
+ * checkboxes to 100% × 32px (and add a card border + shadow). That's
+ * the "checkboxes are too big" bug surfaced post-PR.
+ */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
 }
 
 .control {

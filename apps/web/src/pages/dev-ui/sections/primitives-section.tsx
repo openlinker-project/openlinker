@@ -248,6 +248,40 @@ export function PrimitivesSection(): ReactElement {
         </div>
       </Group>
 
+      <Group
+        title="Checkbox & Radio"
+        description="Native HTML controls styled via `accent-color` so they pick up the brand orange without rebuilding the indicator."
+      >
+        <div className="ds-row" style={{ gap: 'var(--space-5)' }}>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="checkbox" defaultChecked />
+            <span style={{ fontSize: '0.8125rem' }}>Sync inventory automatically</span>
+          </label>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="checkbox" />
+            <span style={{ fontSize: '0.8125rem' }}>Enable webhook signatures</span>
+          </label>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'not-allowed' }}>
+            <input type="checkbox" disabled />
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-disabled)' }}>Locked option</span>
+          </label>
+        </div>
+        <div className="ds-row" style={{ gap: 'var(--space-5)' }}>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="radio" name="ds-radio" defaultChecked />
+            <span style={{ fontSize: '0.8125rem' }}>Hourly</span>
+          </label>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="radio" name="ds-radio" />
+            <span style={{ fontSize: '0.8125rem' }}>Daily</span>
+          </label>
+          <label className="ds-row" style={{ gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="radio" name="ds-radio" />
+            <span style={{ fontSize: '0.8125rem' }}>Manual only</span>
+          </label>
+        </div>
+      </Group>
+
       <Group title="BackLink">
         <BackLink to="#" label="Back to orders" />
       </Group>

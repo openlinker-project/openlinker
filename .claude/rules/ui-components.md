@@ -9,7 +9,15 @@ These rules apply when creating or modifying shared UI components in `apps/web/s
 
 ## Design System Foundation
 
-This project uses **no external UI library** — components are thin wrappers over native HTML elements, styled with vanilla CSS and design tokens (`index.css`). The goal is Shopify admin clarity, Linear polish, and operations console efficiency.
+This project uses **no external styled UI library** (no Tailwind, shadcn, MUI, Mantine, Chakra) — primitives are thin wrappers over native HTML elements, styled with vanilla CSS and OKLCH-driven design tokens defined in `apps/web/src/index.css`. Headless libraries (Radix, TanStack Table, TanStack Virtual) are permitted when wrapped by a project primitive.
+
+The visual identity is **signal-orange accent + warm-neutral light + cool-neutral dark**, both themes first-class. Reference and live preview: navigate to `/dev/ui` (hidden route, admin tree). The three tabs there are the canonical source of truth:
+
+- **Brandbook** — every token, type ramp, spacing/radius/shadow/motion scale rendered live.
+- **Primitives** — kitchen sink for every component with all variants and states.
+- **Patterns** — composed examples (orders cockpit, settings form).
+
+The standalone HTML mockup `docs/plans/ui-overhaul-mockup.html` is the offline reference if the dev server isn't running.
 
 ## Component Structure
 
@@ -53,47 +61,59 @@ const classes = ['base-class', condition ? 'modifier' : '', className]
 
 ### Prop Naming
 
-- Boolean toggles: `invalid`, `compact`, `withDot` — not `isInvalid`, `isCompact`
+- Boolean toggles: `invalid`, `compact`, `withDot`, `pulse`, `solid` — not `isInvalid`, `isCompact`
 - Variant selectors: `tone` (not `variant`, `color`, or `type`)
 - Standard tones: `'primary' | 'secondary' | 'danger' | 'ghost'` for actions
 - Status tones: `'success' | 'warning' | 'error' | 'info' | 'review' | 'neutral'`
+- Size modifiers: append `--xs|--sm|--md|--lg` to the BEM class (e.g. `.button--sm`), don't add a `size` prop unless the size requires structural change
 
 ## Styling
 
 ### Use CSS Custom Properties (Design Tokens)
 
-Never hardcode colors, spacing, or typography. Always reference tokens from `index.css`:
+Never hardcode colors, spacing, or typography. Always reference tokens from `index.css`. Use `var(--token-name)` in CSS, or `tokens['token-name']` in TS (typed via `TokenName`):
 
 ```css
 /* Good */
 color: var(--text-primary);
 background: var(--bg-surface);
 border: 1px solid var(--border-subtle);
-border-radius: 0.625rem;
+border-radius: var(--radius-md);
+box-shadow: var(--shadow-xs), var(--shadow-inset-top);
 
 /* Bad */
 color: #16202b;
 background: white;
 border: 1px solid #e5eaf0;
+border-radius: 10px;
 ```
 
 ### Key Token Categories
 
-- **Backgrounds:** `--bg-canvas`, `--bg-shell`, `--bg-surface`, `--bg-surface-elevated`, `--bg-muted`
-- **Borders:** `--border-subtle`, `--border-default`, `--border-strong`
-- **Text:** `--text-primary`, `--text-secondary`, `--text-muted`, `--text-disabled`, `--text-on-primary`
-- **Accent:** `--accent-primary`, `--accent-primary-hover`, `--accent-primary-soft`, `--accent-focus`
-- **Status:** `--status-{tone}`, `--status-{tone}-soft`, `--status-{tone}-border`, `--status-{tone}-fg`
+- **Surfaces:** `--bg-canvas`, `--bg-shell`, `--bg-surface`, `--bg-surface-elevated`, `--bg-surface-muted`, `--bg-surface-hover`, `--bg-strong`, `--bg-muted`
+- **Borders:** `--border-subtle`, `--border-default`, `--border-strong`, `--border-focus`
+- **Text:** `--text-primary`, `--text-secondary`, `--text-muted`, `--text-disabled`, `--text-inverse`, `--text-on-primary`, `--text-link`
+- **Accent (signal orange — see #775):** `--accent-primary`, `--accent-primary-hover`, `--accent-primary-active`, `--accent-primary-soft`, `--accent-primary-soft-strong`, `--accent-primary-border`, `--accent-focus`, `--accent-ring`
+- **Status:** `--status-{tone}`, `--status-{tone}-soft`, `--status-{tone}-border`, `--status-{tone}-fg`, `--status-{tone}-strong` — tones are `success`, `warning`, `error`, `info`, `review`, `conflict`, `disabled`
+- **Shadows:** `--shadow-xs`, `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-soft`, `--shadow-soft-hover`, `--shadow-overlay`, `--shadow-focus`, `--shadow-inset-top`
+- **Motion:** `--duration-fast` (120ms), `--duration-normal` (180ms), `--duration-slow` (280ms), `--ease-out`, `--ease-standard`, `--ease-in-out`
+- **Tracking:** `--tracking-tight` (-0.012em), `--tracking-normal` (0), `--tracking-wide` (0.02em), `--tracking-caps` (0.08em)
+- **Spacing scale:** `--space-1`–`--space-8` (4px grid)
+- **Radii:** `--radius-xs` (4px), `--radius-sm` (6px), `--radius-md` (8px), `--radius-lg` (10px), `--radius-xl` (14px), `--radius-pill` (9999px)
+
+Drift check: `scripts/check-design-tokens.mjs` runs under `pnpm lint` and fails if a token in `tokens.ts` is missing from `index.css`. Add to `index.css` first, then `tokens.ts`.
 
 ### Spacing Scale (4px Increments)
 
-Use rem values on the 4px grid: `0.25rem`, `0.5rem`, `0.75rem`, `1rem`, `1.5rem`, `2rem`.
+Use `var(--space-{n})` tokens. Avoid inline rem values — keeps the 4px grid honest at refactor time.
 
 ### Border Radius
 
-- Form controls, buttons: `0.625rem` (10px)
-- Dialogs, toasts, cards: `0.75rem` (12px)
-- Pills, badges: `999px`
+- Form controls (`.control`, `input`, `select`, `textarea`), buttons: `var(--radius-md)` — 8px
+- Cards (`.kpi-card`, `.metric-card`, `.feedback-state`, table container): `var(--radius-lg)` — 10px
+- Dialogs, toasts, dev-ui section surface: `var(--radius-xl)` — 14px
+- Pills, badges, chips: `var(--radius-pill)` — 9999px
+- Status badges (mono+caps treatment): `var(--radius-sm)` — 6px
 
 ### CSS Class Naming
 
@@ -105,7 +125,13 @@ Use BEM-like flat convention matching existing patterns:
 .component-name__child { }
 ```
 
-Add new styles in `apps/web/src/index.css` in the appropriate section.
+Add new styles in `apps/web/src/index.css` in the appropriate section. Use bounded section comments (`/* ── Component (#775) ── */`) so reviewers can chunk large diffs.
+
+### Native Checkbox / Radio Convention
+
+Native `<input type="checkbox">` and `<input type="radio">` are styled with `accent-color: var(--accent-primary)` so the browser paints the indicator in our brand orange without rebuilding it from scratch. The form-controls rule explicitly excludes these types (and other non-text inputs like `file`, `color`, `range`) so they keep their native 14–16 px size instead of being stretched to 32 px tall.
+
+Don't wrap them in custom div trees unless you need a tri-state or a behaviour `accent-color` can't give you.
 
 ## Accessibility
 
@@ -118,15 +144,26 @@ Add new styles in `apps/web/src/index.css` in the appropriate section.
 5. **`role="alert"` for errors** — immediate screen reader announcement
 6. **`aria-live="polite"` for loading/status** — non-intrusive updates
 7. **`aria-hidden="true"` on decorative elements** — dots, icons, chevrons
-8. **Visible focus outlines** — `2px solid var(--accent-focus)` with `2px` offset. Never remove.
-9. **Color is never the only signal** — always pair with text, icon, or dot
+8. **Visible focus rings** — `box-shadow: var(--shadow-focus)` (3px accent-ring glow, no layout shift). Never remove. Prefer over `outline` so it can coexist with hover borders.
+9. **Color is never the only signal** — always pair with text, icon, or dot. `StatusBadge` enforces this by combining colour + dot + mono-caps label.
 
 ### Dialog Pattern
 
-Use native `<dialog>` with `.showModal()` / `.close()`:
+Wrap Radix Dialog (`@radix-ui/react-dialog`) with the project `Dialog` primitive. The CSS provides the centered surface card with rounded corners, entrance translate, and a shell-bg footer slot:
 
 ```tsx
-<dialog ref={dialogRef} aria-labelledby={titleId} aria-describedby={descId}>
+<Dialog>
+  <DialogTrigger>Open</DialogTrigger>
+  <DialogContent>
+    <DialogTitle>Title</DialogTitle>
+    <DialogDescription>Why we're asking.</DialogDescription>
+    {/* body */}
+    <DialogFooter>
+      <Button tone="ghost">Cancel</Button>
+      <Button tone="primary">Confirm</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 ```
 
 ### Table Pattern
@@ -134,13 +171,15 @@ Use native `<dialog>` with `.showModal()` / `.close()`:
 Always include a `<caption>` (use `.sr-only` if visually hidden):
 
 ```tsx
-<table className="data-table">
-  <caption className="sr-only">{caption}</caption>
-  <thead>
-    <tr>{columns.map(col => <th key={col.id} scope="col">...)}</tr>
-  </thead>
-</table>
+<DataTable
+  caption="Recent orders"
+  columns={columns}
+  rows={rows}
+  rowKey={(r) => r.id}
+/>
 ```
+
+The `.data-table` CSS auto-applies mono-caps sticky thead, tabular-nums on right-aligned cells, color-mix hover.
 
 ## Testing
 
@@ -181,14 +220,21 @@ describe('Button', () => {
 
 ## Existing Component Inventory
 
-Before creating a new component, check if one already exists in `shared/ui/`:
+Before creating a new component, check if one already exists in `shared/ui/index.ts`:
 
-- **Form controls:** `Button`, `Input`, `Select`, `Textarea`
-- **Form layout:** `FormField`, `FieldError`, `FormErrorSummary`
-- **Status:** `StatusBadge`, `Alert`, `EnvironmentBadge`
-- **Feedback:** `LoadingState`, `EmptyState`, `ErrorState` (in `feedback-state.tsx`)
-- **Data:** `DataTable` (generic, typed columns)
-- **Overlays:** `ConfirmDialog`, `ToastProvider` / `useToast()`
-- **Layout:** `AppShell`, `PageLayout`
+- **Controls:** `Button` (tones × sizes × icon × `.button__shortcut` slot), `Input`, `Textarea`, `Select`, `Combobox`, `Chip`, `FileUpload`, `ThemeToggle`
+- **Form composition:** `FormField`, `FieldError`, `FormErrorSummary`
+- **Feedback / status:** `Alert` (4 tones, left-rule), `StatusBadge` (7 tones, `pulse`, `solid`, `withDot`, `compact`), `EmptyState`, `LoadingState`, `ErrorState`, `StructuredErrorList`, `EnvironmentBadge`
+- **Layout / navigation:** `PageLayout`, `BackLink`, `Tabs` + `TabsList` + `TabsTrigger` + `TabsContent` (with `.tabs__count` badge slot), `SetupStepper`, `WizardLayout`, `WizardSummaryRow`, `DesktopOnlyBanner`
+- **Overlays (Radix-wrapped):** `Dialog`, `ConfirmDialog`, `DropdownMenu` (with `.dropdown-menu__shortcut` slot), `Popover`, `Tooltip`, `ToastProvider` / `useToast()`
+- **Data surfaces:** `DataTable` + `DataTableSkeleton`, `KeyValueList`, `RawPayloadPanel`, `TimeDisplay`, `MetricCard`, `KpiCard` (with sparkline + tone), `Sparkline`
+- **Identity / labels:** `EntityLabel`, `ProductThumbnail`, `CategoryTreeBrowser`
 
-Reuse and extend before creating new components.
+Reuse and extend before creating new components. If you're tempted to add a primitive, first check whether composing existing ones in the consuming page is enough — the `/dev/ui` Patterns tab is a good model for composition.
+
+## Recent Primitive APIs (#775)
+
+- `Button` — `tone='primary'|'secondary'|'danger'|'ghost'`. Size via `className="button--{xs|sm|md|lg}"`. Icon-only via `className="button--icon"`. Keyboard shortcut affordance via `<span className="button__shortcut">⌘K</span>`.
+- `StatusBadge` — `tone`, `withDot`, `compact`, plus new `pulse?: boolean` (animates dot for live/syncing states, implies `withDot`) and `solid?: boolean` (high-emphasis inverted variant for Draft / Outbox / etc).
+- `Tabs` — count badge via `<span className="tabs__count">12</span>` inside the trigger; active tab tints the count in accent-soft automatically.
+- `DropdownMenu` — group items under `.menu__group`; add `.dropdown-menu__shortcut` for trailing mono-caps shortcut hints.
