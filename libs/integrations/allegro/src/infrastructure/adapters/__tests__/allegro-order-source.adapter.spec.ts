@@ -617,6 +617,72 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(incoming.shippingAddress?.city).toBe('BuyerCity');
       });
     });
+
+    describe('deliverySmart (#738)', () => {
+      const baseForm = (): AllegroCheckoutForm => ({
+        id: 'cf',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: {
+          id: 'b',
+          email: 'b@e.com',
+          login: 'b',
+          firstName: 'Buyer',
+          lastName: 'Profile',
+          phoneNumber: '+48000000000',
+          address: {
+            street: 'Profile Street 1',
+            city: 'BuyerCity',
+            zipCode: '00-001',
+            countryCode: 'PL',
+          },
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should populate deliverySmart=true when delivery.smart is true', async () => {
+        const form = baseForm();
+        form.delivery = { smart: true };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.deliverySmart).toBe(true);
+      });
+
+      it('should populate deliverySmart=false when delivery.smart is false', async () => {
+        const form = baseForm();
+        form.delivery = { smart: false };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.deliverySmart).toBe(false);
+      });
+
+      // Single "missing" case covers both branches of the `?.smart` optional
+      // chain: (a) the `delivery` block is absent entirely, and (b) the
+      // `delivery` block is present but the `smart` key is not — both
+      // surface as `undefined` on the returned IncomingOrder.
+      it('should leave deliverySmart undefined when delivery block is absent', async () => {
+        const form = baseForm();
+        // No `delivery` block at all.
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.deliverySmart).toBeUndefined();
+      });
+    });
   });
 
   describe('SourceOptionsReader (#472 / #474)', () => {

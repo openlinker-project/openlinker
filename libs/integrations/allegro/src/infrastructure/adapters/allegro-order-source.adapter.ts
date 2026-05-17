@@ -201,6 +201,7 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
         billingAddress: undefined,
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
+        deliverySmart: checkoutForm.delivery?.smart,
         createdAt,
         updatedAt,
         metadata: {
