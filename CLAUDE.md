@@ -146,6 +146,10 @@ pnpm test        # all unit tests must pass
 
 For backend schema changes: also run `pnpm --filter @openlinker/api migration:show` to confirm no pending migrations are missing.
 
+### Commit signing
+
+All commits must use `git commit -s` (DCO sign-off — appends a `Signed-off-by:` trailer that certifies the contribution under the [Developer Certificate of Origin](https://developercertificate.org/)). GPG signing is handled by global git config; no `-S` flag is needed at commit time.
+
 ### For implementation plans
 
 Use `/plan <description or issue>`. Plans are saved to `docs/plans/implementation-plan-{feature-name}.md`.
