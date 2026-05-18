@@ -9,16 +9,28 @@
  *
  * @module apps/api/src/listings/http
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 
 import {
+  AdapterCapabilityNotSupportedException,
+  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
   BulkOfferCreationBatch,
+  BulkOfferCreationBatchNotFoundException,
+  BulkRetryMissingSnapshotException,
   EmptyBulkSubmissionException,
+  NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
+  IBulkOfferCreationRetryService,
   IBulkOfferCreationSubmitService,
   OfferCreationRecord,
 } from '@openlinker/core/listings';
@@ -30,6 +42,7 @@ import type { AuthenticatedUser } from '../../auth/auth.types';
 describe('BulkOfferCreationController', () => {
   let controller: BulkOfferCreationController;
   let bulkSubmit: jest.Mocked<IBulkOfferCreationSubmitService>;
+  let bulkRetry: jest.Mocked<IBulkOfferCreationRetryService>;
 
   const adminUser: AuthenticatedUser = {
     id: 'user-admin',
@@ -42,14 +55,15 @@ describe('BulkOfferCreationController', () => {
       submit: jest.fn(),
       getBatch: jest.fn(),
     };
+    bulkRetry = {
+      retryFailed: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BulkOfferCreationController],
       providers: [
-        {
-          provide: BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-          useValue: bulkSubmit,
-        },
+        { provide: BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN, useValue: bulkSubmit },
+        { provide: BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN, useValue: bulkRetry },
       ],
     }).compile();
 
@@ -201,6 +215,67 @@ describe('BulkOfferCreationController', () => {
       bulkSubmit.getBatch.mockResolvedValue(null);
 
       await expect(controller.getBatch('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('POST /listings/bulk-create/:batchId/retry-failed', () => {
+    const BATCH_ID = '00000000-0000-4000-8000-00000000000a';
+
+    it('returns the typed retry response on success (retryWaveId NOT on the wire)', async () => {
+      bulkRetry.retryFailed.mockResolvedValue({
+        retriedCount: 2,
+        retriedRecordIds: ['r-2', 'r-4'],
+        retryWaveId: 'wave-uuid-1',
+        batchStatus: 'running',
+      });
+
+      const response = await controller.retryFailed(BATCH_ID);
+
+      expect(response).toEqual({
+        retriedCount: 2,
+        retriedRecordIds: ['r-2', 'r-4'],
+        batchStatus: 'running',
+      });
+      expect(response).not.toHaveProperty('retryWaveId');
+      expect(bulkRetry.retryFailed).toHaveBeenCalledWith(BATCH_ID);
+    });
+
+    it('maps BulkOfferCreationBatchNotFoundException to NotFoundException (HTTP 404)', async () => {
+      bulkRetry.retryFailed.mockRejectedValue(
+        new BulkOfferCreationBatchNotFoundException(BATCH_ID)
+      );
+
+      await expect(controller.retryFailed(BATCH_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('maps NoFailedChildrenToRetryException to ConflictException (HTTP 409)', async () => {
+      bulkRetry.retryFailed.mockRejectedValue(new NoFailedChildrenToRetryException(BATCH_ID));
+
+      await expect(controller.retryFailed(BATCH_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('maps AdapterCapabilityNotSupportedException to UnprocessableEntityException (HTTP 422)', async () => {
+      bulkRetry.retryFailed.mockRejectedValue(
+        new AdapterCapabilityNotSupportedException(BATCH_ID, 'OfferCreator')
+      );
+
+      await expect(controller.retryFailed(BATCH_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException
+      );
+    });
+
+    it('maps BulkRetryMissingSnapshotException to InternalServerErrorException (HTTP 500) with the typed message', async () => {
+      const recordId = 'rec-missing-snapshot';
+      bulkRetry.retryFailed.mockRejectedValue(
+        new BulkRetryMissingSnapshotException(recordId, BATCH_ID)
+      );
+
+      const error = await controller
+        .retryFailed(BATCH_ID)
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toContain(recordId);
     });
   });
 });

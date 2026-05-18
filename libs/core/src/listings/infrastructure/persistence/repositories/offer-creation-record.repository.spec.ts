@@ -409,6 +409,46 @@ describe('OfferCreationRecordRepository', () => {
     });
   });
 
+  describe('resetForRetry (#742)', () => {
+    it('sets status=pending and clears externalOfferId/errors/classificationReport; preserves request snapshot', async () => {
+      const request = buildRequestSnapshot();
+      const before = buildOrm({
+        externalOfferId: 'external-7',
+        status: 'failed',
+        errors: [{ code: 'BAD_CATEGORY', message: 'm' }],
+        request,
+        bulkBatchId: 'batch-uuid',
+        classificationReport: { fulfilled: false, conditions: [] },
+      });
+      ormRepository.findOne.mockResolvedValue(before);
+      ormRepository.save.mockImplementation((e) =>
+        Promise.resolve({ ...(e as OfferCreationRecordOrmEntity), updatedAt: now })
+      );
+
+      const result = await repository.resetForRetry('rec-uuid');
+
+      expect(ormRepository.save).toHaveBeenCalledTimes(1);
+      const saved = ormRepository.save.mock.calls[0][0] as OfferCreationRecordOrmEntity;
+      expect(saved.status).toBe('pending');
+      expect(saved.externalOfferId).toBeNull();
+      expect(saved.errors).toBeNull();
+      expect(saved.classificationReport).toBeNull();
+      // Snapshot + bulkBatchId preserved.
+      expect(saved.request).toEqual(request);
+      expect(saved.bulkBatchId).toBe('batch-uuid');
+      expect(result.status).toBe('pending');
+    });
+
+    it('throws OfferCreationRecordNotFoundException when the row is missing', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+
+      await expect(repository.resetForRetry('missing')).rejects.toBeInstanceOf(
+        OfferCreationRecordNotFoundException
+      );
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('toDomain mapping', () => {
     it('should preserve all fields round-trip', async () => {
       const errors: OfferCreationError[] = [{ code: 'X', message: 'y' }];

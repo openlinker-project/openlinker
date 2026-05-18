@@ -16,10 +16,11 @@ import { Repository } from 'typeorm';
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
-import type {
-  CreateOfferCreationRecordInput,
-  OfferCreationError,
-  OfferCreationStatus,
+import {
+  OFFER_CREATION_STATUS,
+  type CreateOfferCreationRecordInput,
+  type OfferCreationError,
+  type OfferCreationStatus,
 } from '../../../domain/types/offer-creation-record.types';
 import type { SmartClassificationReport } from '../../../domain/types/smart-classification.types';
 import { OfferCreationRecordOrmEntity } from '../entities/offer-creation-record.orm-entity';
@@ -126,6 +127,21 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
       throw new OfferCreationRecordNotFoundException(id);
     }
     entity.classificationReport = report;
+    const saved = await this.repository.save(entity);
+    return this.toDomain(saved);
+  }
+
+  async resetForRetry(id: string): Promise<OfferCreationRecord> {
+    const entity = await this.repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new OfferCreationRecordNotFoundException(id);
+    }
+    entity.status = OFFER_CREATION_STATUS.Pending;
+    entity.externalOfferId = null;
+    entity.errors = null;
+    entity.classificationReport = null;
+    // `request` snapshot intentionally preserved — the retry rebuilds the
+    // V2 payload from it.
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
   }

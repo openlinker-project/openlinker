@@ -101,6 +101,14 @@ export type {
   BulkOfferCreationSubmitResult,
   BulkBatchSummary,
 } from './application/types/bulk-offer-creation-submit.types';
+export type { IBulkOfferCreationRetryService } from './application/interfaces/bulk-offer-creation-retry.service.interface';
+export type {
+  BulkOfferCreationRetryAiFlags,
+  BulkOfferCreationRetryResult,
+} from './application/types/bulk-offer-creation-retry.types';
+export { AdapterCapabilityNotSupportedException } from './domain/exceptions/adapter-capability-not-supported.exception';
+export { BulkRetryMissingSnapshotException } from './domain/exceptions/bulk-retry-missing-snapshot.exception';
+export { NoFailedChildrenToRetryException } from './domain/exceptions/no-failed-children-to-retry.exception';
 export { OfferCreationInvariantException } from './domain/exceptions/offer-creation-invariant.exception';
 export type { IOfferBuilderService } from './application/interfaces/offer-builder.service.interface';
 export type { BuildCreateOfferCommandInput } from './application/types/offer-builder.types';
