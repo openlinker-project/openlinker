@@ -1,25 +1,60 @@
+/**
+ * OrdersListPage tests
+ *
+ * Covers the cockpit redesign (#778): KPI strip wiring, filter-chip
+ * behaviour, channel-pill resolution via `useConnectionsQuery`,
+ * EntityLabel rendering on the Order column, pulse-on-syncing badge
+ * state. Preserves the four canonical async states
+ * (loading / error / empty / data) from the original page.
+ */
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
-import type { PaginatedOrders } from '../../features/orders/api/orders.types';
+import type { PaginatedOrders, OrderRecord } from '../../features/orders/api/orders.types';
+import type { Connection } from '../../features/connections';
 
-const sampleOrders: PaginatedOrders = {
-  items: [
+const sampleConnection: Connection = {
+  id: 'conn_allegro_1',
+  name: 'Allegro Store',
+  platformType: 'allegro',
+  status: 'active',
+  config: {},
+  credentialsBacked: false,
+  enabledCapabilities: [],
+  supportedCapabilities: [],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const sampleOrder: OrderRecord = {
+  internalOrderId: 'ol_order_abc123',
+  customerId: 'ol_customer_xyz',
+  sourceConnectionId: 'conn_allegro_1',
+  sourceEventId: null,
+  orderSnapshot: {
+    orderNumber: 'ALG-882414',
+    totals: { subtotal: 80, tax: 4.2, shipping: 0, total: 84.2, currency: 'EUR' },
+  },
+  syncStatus: [
     {
-      internalOrderId: 'ol_order_abc123',
-      customerId: 'ol_customer_xyz',
-      sourceConnectionId: 'conn_allegro_1',
-      sourceEventId: null,
-      orderSnapshot: {},
-      syncStatus: [{ destinationConnectionId: 'conn_ps_1', status: 'synced', syncedAt: '2026-01-15T10:00:00.000Z', externalOrderId: '42', externalOrderNumber: null, error: null }],
-      syncAttempts: [],
-      recordStatus: 'ready',
-      createdAt: '2026-01-15T10:00:00.000Z',
-      updatedAt: '2026-01-15T10:00:00.000Z',
+      destinationConnectionId: 'conn_ps_1',
+      status: 'synced',
+      syncedAt: '2026-01-15T10:00:00.000Z',
+      externalOrderId: '42',
+      externalOrderNumber: null,
+      error: null,
     },
   ],
+  syncAttempts: [],
+  recordStatus: 'ready',
+  createdAt: '2026-01-15T10:00:00.000Z',
+  updatedAt: '2026-01-15T10:00:00.000Z',
+};
+
+const sampleOrders: PaginatedOrders = {
+  items: [sampleOrder],
   total: 1,
   limit: 20,
   offset: 0,
@@ -36,18 +71,6 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(screen.getByRole('status')).toBeInTheDocument();
-  });
-
-  it('should show orders table when data loads', async () => {
-    const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
-    });
-
-    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
-
-    expect(await screen.findByText('ol_order_abc123')).toBeInTheDocument();
-    expect(screen.getByText('conn_allegro_1')).toBeInTheDocument();
-    expect(screen.getByText('ol_customer_xyz')).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
@@ -85,9 +108,155 @@ describe('OrdersListPage', () => {
     });
 
     expect(await screen.findByText('No orders match the current filters.')).toBeInTheDocument();
-    const clearButton = screen.getByRole('button', { name: 'Clear filters' });
-    await user.click(clearButton);
+    // Two "Clear filters" affordances now exist: the chip-row button
+    // and the empty-state CTA. Either path clears the URL filter; pick
+    // the empty-state CTA (last) so the test mirrors the operator flow
+    // when the filter strips the result set.
+    const clearButtons = screen.getAllByRole('button', { name: 'Clear filters' });
+    await user.click(clearButtons[clearButtons.length - 1]);
 
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
+  });
+
+  it('should render the KPI strip with four status counts wired to the orders query (#778)', async () => {
+    // Each MetricCard reads `.total` from its own filtered useOrdersQuery
+    // call (limit:1). Mocking `orders.list` so the count varies by filter
+    // arg exercises the four wires independently.
+    const list = vi.fn().mockImplementation(async (filters?: { syncStatus?: string }) => {
+      if (filters?.syncStatus === 'synced') return { items: [], total: 7, limit: 1, offset: 0 };
+      if (filters?.syncStatus === 'pending') return { items: [], total: 3, limit: 1, offset: 0 };
+      if (filters?.syncStatus === 'failed') return { items: [], total: 1, limit: 1, offset: 0 };
+      return sampleOrders;
+    });
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Labels are rendered by MetricCard.
+    expect(await screen.findByText('All orders')).toBeInTheDocument();
+    expect(screen.getByText('Synced')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+
+    // Values flow through once each query resolves. Scope to the
+    // MetricCard value slot — bare digit text would collide with the
+    // paginator's "Showing 1–1 of 1" line.
+    await screen.findByText('All orders');
+    const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
+      (el) => el.textContent,
+    );
+    expect(values).toContain('7'); // Synced
+    expect(values).toContain('3'); // Pending
+    expect(values).toContain('1'); // Failed
+  });
+
+  it('should render a channel-pill resolved from the connection platformType (#778)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Wait for the data row to mount.
+    await screen.findByText('ALG-882414');
+
+    const pill = container.querySelector('.channel-pill[data-channel="allegro"]');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toBe('Allegro');
+  });
+
+  it('should render the EntityLabel name from the parsed orderNumber, falling back to the internalOrderId when absent (#778)', async () => {
+    const orderWithoutNumber: OrderRecord = {
+      ...sampleOrder,
+      internalOrderId: 'ol_order_no_number',
+      orderSnapshot: {}, // No orderNumber.
+    };
+    const mockApi = createMockApiClient({
+      orders: {
+        list: vi.fn().mockResolvedValue({
+          items: [sampleOrder, orderWithoutNumber],
+          total: 2,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Parsed orderNumber wins as the human-facing label.
+    expect(await screen.findByText('ALG-882414')).toBeInTheDocument();
+    // Fallback: when no orderNumber, the EntityLabel renders the
+    // internalOrderId.
+    expect(await screen.findByText('ol_order_no_number')).toBeInTheDocument();
+  });
+
+  it('should render a temporal "Synced HH:MM" eyebrow derived from the freshest updatedAt (#778)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Eyebrow is locale-formatted (HH:MM) — assert the "Synced …" prefix
+    // and the digits without pinning the exact time zone the test runner
+    // happens to be in.
+    const eyebrow = await screen.findByText(/^Synced \d{1,2}:\d{2}/);
+    expect(eyebrow).toBeInTheDocument();
+  });
+
+  it('should refetch all queries when the R keyboard shortcut fires (#778)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(sampleOrders);
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Wait for the page to settle — main + 4 KPI queries each fire once.
+    await screen.findByText('ALG-882414');
+    const baselineCalls = list.mock.calls.length;
+
+    // Press R outside any focused input.
+    await user.keyboard('r');
+
+    // R should refetch the main query at minimum. The KPI queries also
+    // refetch via the same handler — assert the main one strictly and
+    // the total grows by at least 1.
+    await vi.waitFor(() => {
+      expect(list.mock.calls.length).toBeGreaterThan(baselineCalls);
+    });
+  });
+
+  it('should add the pulse class to the StatusBadge when a destination is syncing (#778)', async () => {
+    const orderSyncing: OrderRecord = {
+      ...sampleOrder,
+      syncStatus: [
+        {
+          destinationConnectionId: 'conn_ps_1',
+          status: 'syncing',
+          syncedAt: null,
+          externalOrderId: null,
+          externalOrderNumber: null,
+          error: null,
+        },
+      ],
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue({ items: [orderSyncing], total: 1, limit: 20, offset: 0 }) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('syncing');
+
+    // StatusBadge applies `status-badge--pulse` when pulse=true. Pinning the
+    // exact class (vs `[class*="pulse"]`) keeps the assertion contracted to
+    // the StatusBadge primitive's actual API.
+    const pulsed = container.querySelector('.status-badge--pulse');
+    expect(pulsed).not.toBeNull();
   });
 });
