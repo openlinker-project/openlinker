@@ -30,7 +30,7 @@ OpenLinker operator at risk.
 
 **Preferred channel — GitHub Security Advisories:**
 
-1. Navigate to the [Security tab](https://github.com/SilkSoftwareHouse/openlinker/security)
+1. Navigate to the [Security tab](https://github.com/openlinker-project/openlinker/security)
    on this repository.
 2. Click **Report a vulnerability**.
 3. Fill in the advisory form. The report stays private to the maintainers
@@ -39,17 +39,17 @@ OpenLinker operator at risk.
 GitHub Security Advisories give you a private, auditable thread with the
 maintainers and an automatic CVE issuance path once a fix lands.
 
-> **TODO (depends on [#642](https://github.com/SilkSoftwareHouse/openlinker/issues/642)):**
+> **TODO (depends on [#642](https://github.com/openlinker-project/openlinker/issues/642)):**
 > once the `openlinker.io` domain is operational, a `security@openlinker.io`
 > email alias will be added as a secondary channel. GitHub Security
 > Advisories will remain the primary channel.
 
-> **TODO (depends on [#641](https://github.com/SilkSoftwareHouse/openlinker/issues/641)):**
+> **TODO (depends on [#641](https://github.com/openlinker-project/openlinker/issues/641)):**
 > the Security-tab URL above resolves to the canonical repo URL today. Once
 > the org transfer completes, update the link (and any other references in
 > this doc) to the post-transfer URL. Tracked alongside the broader URL
 > convergence work in
-> [#664](https://github.com/SilkSoftwareHouse/openlinker/issues/664).
+> [#664](https://github.com/openlinker-project/openlinker/issues/664).
 
 When reporting, please include:
 

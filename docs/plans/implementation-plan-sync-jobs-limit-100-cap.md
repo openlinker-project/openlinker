@@ -1,6 +1,6 @@
 # Implementation plan — Sync Jobs / Dashboard `limit` cap fix (#270)
 
-**Issue:** https://github.com/SilkSoftwareHouse/openlinker/issues/270
+**Issue:** https://github.com/openlinker-project/openlinker/issues/270
 **Layer:** Frontend only (no backend changes)
 
 ## Goal

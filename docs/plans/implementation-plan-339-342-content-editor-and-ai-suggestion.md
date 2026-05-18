@@ -5,10 +5,10 @@
 **Estimated Effort**: ~18–22 hours (one combined vertical slice; two issues shipped together)
 
 **Issues**:
-- [#339 feat(web): unified product content editor (master + per-channel overrides)](https://github.com/SilkSoftwareHouse/openlinker/issues/339)
-- [#342 feat(core+web): AI description suggestion flow with draft integration](https://github.com/SilkSoftwareHouse/openlinker/issues/342)
+- [#339 feat(web): unified product content editor (master + per-channel overrides)](https://github.com/openlinker-project/openlinker/issues/339)
+- [#342 feat(core+web): AI description suggestion flow with draft integration](https://github.com/openlinker-project/openlinker/issues/342)
 
-**Epic**: [#6 Content & AI](https://github.com/SilkSoftwareHouse/openlinker/issues/6)
+**Epic**: [#6 Content & AI](https://github.com/openlinker-project/openlinker/issues/6)
 
 **Depends on** (all merged):
 - #338/#340 content storage + AI engine foundation (via #350)

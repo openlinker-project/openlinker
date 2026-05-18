@@ -1,6 +1,6 @@
 # Implementation Plan — #416 Configurable HTTP/Adapter Log-Body Truncation
 
-**Issue**: [#416](https://github.com/SilkSoftwareHouse/openlinker/issues/416)
+**Issue**: [#416](https://github.com/openlinker-project/openlinker/issues/416)
 **Type**: DX / Logging
 **Layer**: `libs/shared/src/logging/` (new helper) + integration call-site replacements
 **Branch**: `416-log-body-truncation-env`

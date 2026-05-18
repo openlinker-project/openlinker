@@ -1,7 +1,7 @@
 # Product Spec — #726 Allegro bulk listing creation (+ Smart! support)
 
 **Status:** phase A complete; phase B complete; phase C complete; phase D complete; Gate D = YES (build); phase E complete; ready for implementation
-**Parent issue:** [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726)
+**Parent issue:** [#726](https://github.com/openlinker-project/openlinker/issues/726)
 **Started:** 2026-05-15
 **Last updated:** 2026-05-15
 **Workflow:** [`docs/contributors/refinement-workflow.md`](../contributors/refinement-workflow.md)
@@ -158,7 +158,7 @@ Round 1 left three open questions about how Smart actually works contractually. 
 
 | Path | Contract structure | Label generation | InPost integration relevance |
 |---|---|---|---|
-| **(P1) Own-contract carrier** | Seller has own InPost / DPD / DHL agreement; uses their own account | Seller uses own carrier panel (e.g., InPost Manager Paczek) — covered by [#727 InPost integration](https://github.com/SilkSoftwareHouse/openlinker/issues/727) | ✅ Fully covered by #727 |
+| **(P1) Own-contract carrier** | Seller has own InPost / DPD / DHL agreement; uses their own account | Seller uses own carrier panel (e.g., InPost Manager Paczek) — covered by [#727 InPost integration](https://github.com/openlinker-project/openlinker/issues/727) | ✅ Fully covered by #727 |
 | **(P2) Allegro Delivery (Allegro Dostawa)** | Seller's contract is with **Allegro**; Allegro holds InPost/DPD/DHL/ORLEN agreements and bills seller monthly | Labels generated **only** via Allegro's `/shipment-management/*` REST API ("Wysyłam z Allegro") | ❌ NOT covered by #727 — requires new Allegro shipment-management integration |
 | **(P3) Allegro One** (Punkt / Box / Kurier) | Allegro's own last-mile network — only accessible *within* Allegro Delivery | Labels mandatory via `/shipment-management/*` | ❌ NOT covered by #727 — same |
 
@@ -359,7 +359,7 @@ User-visible criteria (technical AC will be defined per implementation issue in 
 | **Bulk update of existing offers** (price, stock, parameters) | Different workflow operating on existing mappings, not shop catalog. Separate Product Design. |
 | **Per-PS-variant separate Allegro offers** | v1 collapses to Allegro variant matrix (SC-2); "split variants" mode is v2 if demand |
 | **AI-suggested categories** for products without EAN match | OQ-C4 — manual pick in v1. AI category suggestions only if EAN auto-match accuracy is provably insufficient |
-| **Shipment generation / label printing** | Covered by [#727 InPost integration](https://github.com/SilkSoftwareHouse/openlinker/issues/727) (P1) and [#732 Wysyłam z Allegro integration](https://github.com/SilkSoftwareHouse/openlinker/issues/732) (P2/P3) |
+| **Shipment generation / label printing** | Covered by [#727 InPost integration](https://github.com/openlinker-project/openlinker/issues/727) (P1) and [#732 Wysyłam z Allegro integration](https://github.com/openlinker-project/openlinker/issues/732) (P2/P3) |
 | **OMP (PrestaShop) update on offer creation** | Listing creation does not change PS state — PS owns the product, OL creates the Allegro mirror. (Shipment-on-OMP-update IS in scope of #727/#732 via shared ADR.) |
 
 ---
@@ -388,7 +388,7 @@ If any of these prove false within 60 days of release to design partners, this P
 |---|---|---|
 | **R1** | Shop owners find the edit modal too complex and abandon mid-flow | Modal reuses existing single-offer wizard components — the operator has already used this UX for single offers. Validate with 2-3 design partners before broader release. |
 | **R2** | EAN auto-match accuracy too low — most rows need manual fix anyway, feature delivers no value over single-offer creation | Reusing established #431 smart-link primitive (Allegro's own product card lookup). Worst case: feature still beats no-bulk because per-row modal is still faster than N separate single-offer creations. |
-| **R3** | Shop owners on Allegro Delivery (P2/P3) hit a wall at shipment generation after listing — broken end-to-end flow | [#732 Wysyłam z Allegro integration](https://github.com/SilkSoftwareHouse/openlinker/issues/732) explicitly tracks this gap. v1 ships with a status banner warning Allegro Delivery sellers that label generation isn't yet supported. Communication in release notes. |
+| **R3** | Shop owners on Allegro Delivery (P2/P3) hit a wall at shipment generation after listing — broken end-to-end flow | [#732 Wysyłam z Allegro integration](https://github.com/openlinker-project/openlinker/issues/732) explicitly tracks this gap. v1 ships with a status banner warning Allegro Delivery sellers that label generation isn't yet supported. Communication in release notes. |
 | **R4** | AI description quality too low — operators turn it off, we wasted dev time | Incremental cost is just the modal toggle (AI infra already exists). If preservation rate proves consistently low, the toggle can be removed without losing core feature value. |
 
 ---
@@ -401,21 +401,21 @@ Nine implementation issues spawned, each independently shippable. Engineering ri
 
 | # | Title | Effort | Blocks |
 |---|---|:---:|---|
-| [#734](https://github.com/SilkSoftwareHouse/openlinker/issues/734) | `BulkOfferCreationBatch` domain entity + repository + migration | S (~5d) | #736, #737 |
-| [#735](https://github.com/SilkSoftwareHouse/openlinker/issues/735) | EAN-based bulk category auto-match service | S (~3d) | #740 |
-| [#736](https://github.com/SilkSoftwareHouse/openlinker/issues/736) | Bulk submission service + HTTP API + progress endpoint | S (~3d) | #740, #741 |
-| [#737](https://github.com/SilkSoftwareHouse/openlinker/issues/737) | Bulk-aware `marketplace.offer.create` handler + AI description + Smart classification readback | M (~3d) | #741 |
-| [#738](https://github.com/SilkSoftwareHouse/openlinker/issues/738) | Propagate `delivery.smart` from order payload to `OrderRecord` | S (~0.5–1d) | — (independent) |
-| [#739](https://github.com/SilkSoftwareHouse/openlinker/issues/739) | Products page multi-select + bulk action bar | S (~2d) | #740 |
-| [#740](https://github.com/SilkSoftwareHouse/openlinker/issues/740) | Bulk listing wizard (config modal + review table + per-row edit modal) | M (~5d) | #741 |
-| [#741](https://github.com/SilkSoftwareHouse/openlinker/issues/741) | Batch progress page + final summary | S (~3d) | #742 |
-| [#742](https://github.com/SilkSoftwareHouse/openlinker/issues/742) | Retry-failed endpoint + integration tests + polish | S (~3d) | — (last child) |
+| [#734](https://github.com/openlinker-project/openlinker/issues/734) | `BulkOfferCreationBatch` domain entity + repository + migration | S (~5d) | #736, #737 |
+| [#735](https://github.com/openlinker-project/openlinker/issues/735) | EAN-based bulk category auto-match service | S (~3d) | #740 |
+| [#736](https://github.com/openlinker-project/openlinker/issues/736) | Bulk submission service + HTTP API + progress endpoint | S (~3d) | #740, #741 |
+| [#737](https://github.com/openlinker-project/openlinker/issues/737) | Bulk-aware `marketplace.offer.create` handler + AI description + Smart classification readback | M (~3d) | #741 |
+| [#738](https://github.com/openlinker-project/openlinker/issues/738) | Propagate `delivery.smart` from order payload to `OrderRecord` | S (~0.5–1d) | — (independent) |
+| [#739](https://github.com/openlinker-project/openlinker/issues/739) | Products page multi-select + bulk action bar | S (~2d) | #740 |
+| [#740](https://github.com/openlinker-project/openlinker/issues/740) | Bulk listing wizard (config modal + review table + per-row edit modal) | M (~5d) | #741 |
+| [#741](https://github.com/openlinker-project/openlinker/issues/741) | Batch progress page + final summary | S (~3d) | #742 |
+| [#742](https://github.com/openlinker-project/openlinker/issues/742) | Retry-failed endpoint + integration tests + polish | S (~3d) | — (last child) |
 
 **Critical path:** #734 → #736 → #737 / #740 → #741 → #742. Parallelizable: #735 (auto-match), #738 (delivery.smart), #739 (multi-select) can start immediately.
 
 **Total wall-clock estimate:** 5–6 weeks with 1 backend + 1 FE dev in parallel.
 
-**Sibling Product Design:** [#732 — Wysyłam z Allegro integration (P2/P3 shipping)](https://github.com/SilkSoftwareHouse/openlinker/issues/732) — closes the end-to-end flow for Allegro Delivery sellers, separate from this spec.
+**Sibling Product Design:** [#732 — Wysyłam z Allegro integration (P2/P3 shipping)](https://github.com/openlinker-project/openlinker/issues/732) — closes the end-to-end flow for Allegro Delivery sellers, separate from this spec.
 
 **ADRs to file during implementation** (only if architectural reviewer requests):
 - ADR-XXX: Bulk offer creation as application-layer fan-out (not adapter capability) — filed during #734 if needed
@@ -432,7 +432,7 @@ Nine implementation issues spawned, each independently shippable. Engineering ri
 | 2026-05-15 | A→B | Phase A confirmed; primary persona = shop owner; bulk shape = inline multi-select on Products page (not separate wizard); Smart! scope deferred to Phase B research; UVP framing dropped at feature level | See §1 ambiguity resolutions A1-A4 | @piotrswierzy |
 | 2026-05-15 | B | Phase B round 1: Allegro Smart! is automatic (not per-offer toggle), driven by shipping-rate composition. Create-offer payload has no Smart field. Read-only classification available via `/sale/offers/{id}/smart` | See §3.2 research findings | product-researcher subagent + @piotrswierzy |
 | 2026-05-15 | B | Phase B round 2 surfaced 3 contractual paths (P1/P2/P3). `delivery.smart` boolean confirmed on order payload. `smartDeliveryMethods` deprecation date corrected to 2026-07-28 | See §3.4 contractual paths table | product-researcher subagent + @piotrswierzy |
-| 2026-05-15 | B→C | Product-level coverage decision: P1+P2+P3 required. P2/P3 Wysyłam z Allegro integration extracted as separate Product Design [#732](https://github.com/SilkSoftwareHouse/openlinker/issues/732). #726 stays focused on bulk listing CREATION (which works across all 3 paths automatically) | Bulk listing creation is path-agnostic at the offer level; shipping integration is the path-dependent concern | @piotrswierzy |
+| 2026-05-15 | B→C | Product-level coverage decision: P1+P2+P3 required. P2/P3 Wysyłam z Allegro integration extracted as separate Product Design [#732](https://github.com/openlinker-project/openlinker/issues/732). #726 stays focused on bulk listing CREATION (which works across all 3 paths automatically) | Bulk listing creation is path-agnostic at the offer level; shipping integration is the path-dependent concern | @piotrswierzy |
 | 2026-05-15 | B→C | Cross-cutting decision: when OL generates labels (in #727 or #732), OMP (PrestaShop) MUST be updated with shipment status + tracking#. Pattern to be captured in shared ADR ("Shipment lifecycle event propagation pattern") so #727, #732, and future courier integrations follow same convention | Standard fulfillment-status-sync pattern; OMP authoritativeness for downstream order state requires it | @piotrswierzy |
 | 2026-05-15 | Gate B | Gate B passed. Evidence supports problem statement; persona unchanged; scope clarified. Proceeding to Phase C. | All Phase B open questions resolved or deferred non-blockingly | @piotrswierzy |
 | 2026-05-15 | C | Shape chosen: Candidate E — "Approval flow with EAN auto-match". Multi-select on Products page → lightweight config → background auto-match → review table → per-row modal edit → approve → progress → summary | Highest listing quality + concrete value-add via EAN auto-match (reuses #431 smart-link); modal-per-row matches operator mental model | @piotrswierzy |

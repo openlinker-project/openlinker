@@ -3,7 +3,7 @@
 **Date**: 2026-04-06
 **Status**: Ready for Review
 **Estimated Effort**: 2–3 hours
-**Issue**: [#104 — FE: Implement settings page](https://github.com/SilkSoftwareHouse/openlinker/issues/104)
+**Issue**: [#104 — FE: Implement settings page](https://github.com/openlinker-project/openlinker/issues/104)
 
 ---
 

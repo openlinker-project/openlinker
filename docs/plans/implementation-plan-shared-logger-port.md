@@ -1,6 +1,6 @@
 # Implementation Plan — Shared Logger Port (#589)
 
-**Issue**: [#589 — [F2] [HIGH] @openlinker/shared Logger is a NestJS Logger subclass — locks plugins to a Nest version](https://github.com/SilkSoftwareHouse/openlinker/issues/589)
+**Issue**: [#589 — [F2] [HIGH] @openlinker/shared Logger is a NestJS Logger subclass — locks plugins to a Nest version](https://github.com/openlinker-project/openlinker/issues/589)
 **Thread**: Modularity Thread F · Catalog SDK-4
 **Layer**: SDK / Shared infrastructure (cross-cutting backend)
 

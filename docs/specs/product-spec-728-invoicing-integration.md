@@ -1,7 +1,7 @@
 # Product Spec — #728 Invoicing integration (Subiekt as first adapter)
 
 **Status:** phase A complete; phase B complete; phase C complete; phase D complete; Gate D = YES (build); phase E complete; ready for implementation
-**Parent issue:** [#728](https://github.com/SilkSoftwareHouse/openlinker/issues/728)
+**Parent issue:** [#728](https://github.com/openlinker-project/openlinker/issues/728)
 **Started:** 2026-05-16
 **Last updated:** 2026-05-16
 **Workflow:** [`docs/contributors/refinement-workflow.md`](../contributors/refinement-workflow.md)
@@ -65,7 +65,7 @@ The five ambiguity points from Phase A were resolved as follows:
 
 ### Primary persona: shop owner
 
-- **Role:** in-house operator at a PL e-commerce shop (same primary persona as [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726), [#727](https://github.com/SilkSoftwareHouse/openlinker/issues/727))
+- **Role:** in-house operator at a PL e-commerce shop (same primary persona as [#726](https://github.com/openlinker-project/openlinker/issues/726), [#727](https://github.com/openlinker-project/openlinker/issues/727))
 - **Company size:** 1–30 people
 - **Volume:** 100–1,000 SKUs; 10–200 orders/day, of which ~10–50 are invoice-requiring (B2B + customer-requested B2C)
 - **Sophistication:** operator-level — comfortable with admin UIs, NOT technical. Does not write or read Subiekt's COM API.
@@ -464,16 +464,16 @@ Ten implementation issues spawned, each independently shippable. Engineering ris
 
 | # | Title | Effort | Blocks |
 |---|---|:---:|---|
-| [#751](https://github.com/SilkSoftwareHouse/openlinker/issues/751) | `InvoicingPort` + capability declarations + `InvoiceRecord` + `BuyerProfile` + migration | S (~3-5d) | #753, #754, #757, #758, #759 |
-| [#752](https://github.com/SilkSoftwareHouse/openlinker/issues/752) | OL Subiekt Bridge bootstrap — .NET 8 Windows project + REST contract + release pipeline | M (~5-7d) | #755, #756 |
-| [#753](https://github.com/SilkSoftwareHouse/openlinker/issues/753) | Subiekt adapter plugin — HTTP-to-bridge implementation of `InvoicingPort` | S (~3-5d) | #757, #758, #759 |
-| [#754](https://github.com/SilkSoftwareHouse/openlinker/issues/754) | `FakeSubiektBridgeAdapter` for Mac/Linux dev | S (~2-3d) | — (enables #753 dev) |
-| [#755](https://github.com/SilkSoftwareHouse/openlinker/issues/755) | Bridge: invoice issuance endpoint via Sfera nexo .NET SDK | M (~5-7d) | — |
-| [#756](https://github.com/SilkSoftwareHouse/openlinker/issues/756) | Bridge: customer (kontrahent) upsert endpoint via Sfera | S (~2-3d) | — |
-| [#757](https://github.com/SilkSoftwareHouse/openlinker/issues/757) | FE: order detail invoice panel + manual issue/re-issue buttons | S (~2-3d) | — |
-| [#758](https://github.com/SilkSoftwareHouse/openlinker/issues/758) | FE: `/invoices` page with filters | M (~4-5d) | — |
-| [#759](https://github.com/SilkSoftwareHouse/openlinker/issues/759) | FE: Subiekt connection settings (trigger model + bridge URL + capability toggles) | S (~3d) | — |
-| [#760](https://github.com/SilkSoftwareHouse/openlinker/issues/760) | Docs: Subiekt integration page with version support matrix | S (~2d) | — (last child) |
+| [#751](https://github.com/openlinker-project/openlinker/issues/751) | `InvoicingPort` + capability declarations + `InvoiceRecord` + `BuyerProfile` + migration | S (~3-5d) | #753, #754, #757, #758, #759 |
+| [#752](https://github.com/openlinker-project/openlinker/issues/752) | OL Subiekt Bridge bootstrap — .NET 8 Windows project + REST contract + release pipeline | M (~5-7d) | #755, #756 |
+| [#753](https://github.com/openlinker-project/openlinker/issues/753) | Subiekt adapter plugin — HTTP-to-bridge implementation of `InvoicingPort` | S (~3-5d) | #757, #758, #759 |
+| [#754](https://github.com/openlinker-project/openlinker/issues/754) | `FakeSubiektBridgeAdapter` for Mac/Linux dev | S (~2-3d) | — (enables #753 dev) |
+| [#755](https://github.com/openlinker-project/openlinker/issues/755) | Bridge: invoice issuance endpoint via Sfera nexo .NET SDK | M (~5-7d) | — |
+| [#756](https://github.com/openlinker-project/openlinker/issues/756) | Bridge: customer (kontrahent) upsert endpoint via Sfera | S (~2-3d) | — |
+| [#757](https://github.com/openlinker-project/openlinker/issues/757) | FE: order detail invoice panel + manual issue/re-issue buttons | S (~2-3d) | — |
+| [#758](https://github.com/openlinker-project/openlinker/issues/758) | FE: `/invoices` page with filters | M (~4-5d) | — |
+| [#759](https://github.com/openlinker-project/openlinker/issues/759) | FE: Subiekt connection settings (trigger model + bridge URL + capability toggles) | S (~3d) | — |
+| [#760](https://github.com/openlinker-project/openlinker/issues/760) | Docs: Subiekt integration page with version support matrix | S (~2d) | — (last child) |
 
 **Critical path:** #751 + #752 (parallel) → #753 / #755 / #756 → #757 / #758 / #759 → #760
 

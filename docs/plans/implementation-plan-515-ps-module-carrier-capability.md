@@ -1,7 +1,7 @@
 # Implementation Plan — #515: PS Module Dynamic-Shipping CarrierModule Capability
 
-**Issue**: [#515](https://github.com/SilkSoftwareHouse/openlinker/issues/515) — _PS module: dynamic-shipping `CarrierModule` capability_
-**Epic**: [#513](https://github.com/SilkSoftwareHouse/openlinker/issues/513) — _PrestaShop dynamic shipping via OL carrier module_
+**Issue**: [#515](https://github.com/openlinker-project/openlinker/issues/515) — _PS module: dynamic-shipping `CarrierModule` capability_
+**Epic**: [#513](https://github.com/openlinker-project/openlinker/issues/513) — _PrestaShop dynamic shipping via OL carrier module_
 **Depends on**: #514 (module rename — landed via PR #520 → `apps/prestashop-module/openlinker/`)
 **Unblocks**: #516 (PS adapter sidecar write), #517 (FE picker), #518 (cleanup)
 

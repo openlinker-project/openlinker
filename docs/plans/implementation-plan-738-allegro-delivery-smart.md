@@ -1,7 +1,7 @@
 # Implementation Plan — #738 (`feat(allegro): propagate delivery.smart boolean from order payload to OrderRecord`)
 
 **Status**: Draft
-**Issue**: [#738](https://github.com/SilkSoftwareHouse/openlinker/issues/738)
+**Issue**: [#738](https://github.com/openlinker-project/openlinker/issues/738)
 **Parent epic**: #726 (Allegro Smart! + Bulk offer creation)
 **Branch**: `738-allegro-delivery-smart`
 

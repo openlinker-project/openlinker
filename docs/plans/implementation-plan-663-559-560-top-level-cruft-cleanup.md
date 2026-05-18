@@ -125,7 +125,7 @@ Walk diff against #663 / #559 / #560 acceptance criteria. Confirm:
 
 ## Risks
 
-- **External links to `https://github.com/SilkSoftwareHouse/openlinker/blob/main/ISSUE_30.md`** (or similar) may break post-merge. Unknown if such links exist; the repo is private today so any external reference is necessarily internal. Acceptable cost; recovery via `git show <commit>:ISSUE_30.md` against the parent commit.
+- **External links to `https://github.com/openlinker-project/openlinker/blob/main/ISSUE_30.md`** (or similar) may break post-merge. Unknown if such links exist; the repo is private today so any external reference is necessarily internal. Acceptable cost; recovery via `git show <commit>:ISSUE_30.md` against the parent commit.
 - **My disposition table in the PR body may misstate one file's shipped status.** The cost of getting one row wrong is low — the deletions are pure metadata, no functional impact — but worth a quick sanity-check by the maintainer.
 
 ## PR body checklist

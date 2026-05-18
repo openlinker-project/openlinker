@@ -48,7 +48,7 @@ Unique deny-pattern symbols visible in the line-based grep:
 | `CustomerProjectionRepositoryPort` | `customers` | prestashop plugin + factory + adapters + provisioner (+ specs), plus apps/api customers controller spec |
 | `ProductVariantRepositoryPort` | `products` | listings controller (+ spec) |
 
-Real `(file, symbol)` pair count is determined by running the broadened script in step 2 of the implementation plan. The pre-implementation grep is a lower bound — multi-line `import { ... }` blocks would be missed here but caught by the script. **For accurate post-implementation counts**, see the grouped allow-list comments in `scripts/check-cross-context-imports.mjs` and the production-file table in the **[#722](https://github.com/SilkSoftwareHouse/openlinker/issues/722)** follow-up issue body.
+Real `(file, symbol)` pair count is determined by running the broadened script in step 2 of the implementation plan. The pre-implementation grep is a lower bound — multi-line `import { ... }` blocks would be missed here but caught by the script. **For accurate post-implementation counts**, see the grouped allow-list comments in `scripts/check-cross-context-imports.mjs` and the production-file table in the **[#722](https://github.com/openlinker-project/openlinker/issues/722)** follow-up issue body.
 
 **Escalation note**: if the broadened-script audit surfaces a deny-pattern hit that ISN'T `*RepositoryPort` (e.g. an unanticipated `*Dto`, `*OrmEntity`, or `*Adapter`), do NOT silently allow-list it. Those typically indicate a real architecture gap that's worth surfacing in the PR description so reviewers can decide if it's allow-list material or a separate fix-before-merge.
 

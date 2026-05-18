@@ -3,15 +3,16 @@
   "version": "0.1.0",
   "description": "__Name__ adapter for OpenLinker",
   "license": "Apache-2.0",
+  "author": "OpenLinker",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SilkSoftwareHouse/openlinker.git",
+    "url": "git+https://github.com/openlinker-project/openlinker.git",
     "directory": "libs/integrations/__name__"
   },
-  "homepage": "https://github.com/SilkSoftwareHouse/openlinker/tree/main/libs/integrations/__name__#readme",
+  "homepage": "https://github.com/openlinker-project/openlinker/tree/main/libs/integrations/__name__#readme",
   "bugs": {
-    "url": "https://github.com/SilkSoftwareHouse/openlinker/issues"
+    "url": "https://github.com/openlinker-project/openlinker/issues"
   },
   "type": "commonjs",
   "main": "./dist/index.js",

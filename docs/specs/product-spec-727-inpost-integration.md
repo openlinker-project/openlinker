@@ -1,7 +1,7 @@
 # Product Spec — #727 InPost integration
 
 **Status:** phase A-E complete; Gate D = YES (build); refinement closed 2026-05-17; ready for implementation (impl tracked via #763-#772)
-**Parent issue:** [#727](https://github.com/SilkSoftwareHouse/openlinker/issues/727)
+**Parent issue:** [#727](https://github.com/openlinker-project/openlinker/issues/727)
 **Started:** 2026-05-17
 **Last updated:** 2026-05-17
 **Workflow:** [`docs/contributors/refinement-workflow.md`](../contributors/refinement-workflow.md)
@@ -26,12 +26,12 @@ Today's shop-owner workflow per shipment:
 
 For a typical shop with 10-50 shipments/day, this is **2-4 operator-hours/day of manual context-switching** between OL and InPost. Errors (wrong paczkomat copy-pasted, tracking number forgotten) compound.
 
-This blocks the **Q1 wedge promise** of "complete end-to-end workflow inside OL". Without InPost (P1 = own-contract carrier path per [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726) Phase B research), OL is a sync tool, not an orchestration platform — the "I bring my orders in, ship them, and let OL handle the rest" loop is broken at the shipping step.
+This blocks the **Q1 wedge promise** of "complete end-to-end workflow inside OL". Without InPost (P1 = own-contract carrier path per [#726](https://github.com/openlinker-project/openlinker/issues/726) Phase B research), OL is a sync tool, not an orchestration platform — the "I bring my orders in, ship them, and let OL handle the rest" loop is broken at the shipping step.
 
 ### Why now
 
 - **Q1 wedge timing** — needs all three legs (listings ✅ refined, invoicing ✅ refined, shipping ❌ blocking)
-- **Sibling issue [#732](https://github.com/SilkSoftwareHouse/openlinker/issues/732)** covers P2/P3 sellers via Allegro Delivery; #727 covers P1 sellers via own-contract InPost. Both needed for full PL market coverage.
+- **Sibling issue [#732](https://github.com/openlinker-project/openlinker/issues/732)** covers P2/P3 sellers via Allegro Delivery; #727 covers P1 sellers via own-contract InPost. Both needed for full PL market coverage.
 - **No fiscal urgency** like KSeF for #728 — but waiting more means shops continue using BaseLinker for shipping and resist switching their other workflows to OL.
 
 ### Gate A resolutions (2026-05-17)
@@ -55,7 +55,7 @@ All six ambiguities resolved per maintainer's hypothesis confirmations:
 
 ### Primary persona: PL shop owner with own InPost contract (P1)
 
-- **Role:** in-house operator at a PL e-commerce shop (same primary persona as [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726), [#728](https://github.com/SilkSoftwareHouse/openlinker/issues/728))
+- **Role:** in-house operator at a PL e-commerce shop (same primary persona as [#726](https://github.com/openlinker-project/openlinker/issues/726), [#728](https://github.com/openlinker-project/openlinker/issues/728))
 - **Company size:** 1–30 people
 - **Volume:** 100–1,000 SKUs; 10–200 orders/day, ~70-90% shipping via InPost (paczkomat dominant, kurier secondary)
 - **Sophistication:** operator-level — comfortable with admin UIs, NOT technical
@@ -64,10 +64,10 @@ All six ambiguities resolved per maintainer's hypothesis confirmations:
 
 ### Explicitly NOT covered by #727 (covered elsewhere or future)
 
-- **PL sellers on Allegro Delivery (P2/P3)** — covered by [#732 Wysyłam z Allegro integration](https://github.com/SilkSoftwareHouse/openlinker/issues/732)
+- **PL sellers on Allegro Delivery (P2/P3)** — covered by [#732 Wysyłam z Allegro integration](https://github.com/openlinker-project/openlinker/issues/732)
 - **Non-InPost couriers** (DHL, DPD, ORLEN Paczka, GLS, FedEx) — separate future PDs per courier, each plugin-as-adapter against the same shared port
 - **International shipping** (CZ/SK/IT InPost, international courier) — v2 / separate future PDs
-- **Allegro One delivery methods** (Box / Punkt / Kurier) — covered by [#732](https://github.com/SilkSoftwareHouse/openlinker/issues/732) (P3 = subset of P2)
+- **Allegro One delivery methods** (Box / Punkt / Kurier) — covered by [#732](https://github.com/openlinker-project/openlinker/issues/732) (P3 = subset of P2)
 
 ---
 
@@ -341,7 +341,7 @@ User-visible. Engineering AC (rate limits, retry policies, exact ShipX field map
 | **Multi-account per OL deployment** | A1 locked: single InPost account per connection in v1. v2 multi-account is a clean FE/registry change thanks to connectionId-first discipline. |
 | **Reader support for presta-mod.pl + prestahelp + WP-Desk PS InPost modules** | v1.1 polish — added per actual design-partner module distribution data. v1 ships official InPost module reader + manual picker fallback for everything else. |
 | **Multi-package shipments** (1 order → N parcels) | v2 if real demand. Most PL shop orders are single-parcel. |
-| **Allegro Delivery / Allegro One paczkomatowa (P2/P3 shipping)** | Covered by sibling [#732](https://github.com/SilkSoftwareHouse/openlinker/issues/732) — different contractual path (Allegro as logistics broker), different API (`/shipment-management/*`), separate Product Design. |
+| **Allegro Delivery / Allegro One paczkomatowa (P2/P3 shipping)** | Covered by sibling [#732](https://github.com/openlinker-project/openlinker/issues/732) — different contractual path (Allegro as logistics broker), different API (`/shipment-management/*`), separate Product Design. |
 
 ---
 
@@ -383,16 +383,16 @@ Ten implementation issues spawned, each independently shippable. Engineering ris
 
 | # | Title | Effort | Blocks |
 |---|---|:---:|---|
-| [#763](https://github.com/SilkSoftwareHouse/openlinker/issues/763) | `ShippingProviderManagerPort` + capability declarations + `Shipment` / `PickupPoint` / `ShippingMethod` entities + migration | S (~3-5d) | #764, #765, #766, #767, #768, #769, #770, #771, #772 |
-| [#764](https://github.com/SilkSoftwareHouse/openlinker/issues/764) | InPost adapter plugin — ShipX REST implementation of `ShippingProviderManagerPort` | M (~5-7d) | #768, #769, #771, #772 |
-| [#765](https://github.com/SilkSoftwareHouse/openlinker/issues/765) | `FakeInpostShippingAdapter` for Mac/Linux dev | S (~2-3d) | — (enables #764 dev) |
-| [#766](https://github.com/SilkSoftwareHouse/openlinker/issues/766) | Paczkomat caching service (Redis 24h TTL + background refresh) | S (~2-3d) | #769 |
-| [#767](https://github.com/SilkSoftwareHouse/openlinker/issues/767) | Read paczkomat ID from official InPost PS module on direct orders | S (~3d) | — |
-| [#768](https://github.com/SilkSoftwareHouse/openlinker/issues/768) | InPost shipment status webhook ingestion + signature verification + propagation to Allegro/PS | M (~3-5d) | — |
-| [#769](https://github.com/SilkSoftwareHouse/openlinker/issues/769) | FE: order detail Shipment panel + manual buttons + paczkomat picker modal | M (~4-5d) | — |
-| [#770](https://github.com/SilkSoftwareHouse/openlinker/issues/770) | FE: `/shipments` page with filters | S (~3d) | — |
-| [#771](https://github.com/SilkSoftwareHouse/openlinker/issues/771) | FE: InPost connection settings (ShipX OAuth + PS module dropdown + trigger config + webhook runbook) | S (~3d) | — |
-| [#772](https://github.com/SilkSoftwareHouse/openlinker/issues/772) | Polling fallback for InPost tracking status (when webhook not provisioned) | S (~2-3d) | — |
+| [#763](https://github.com/openlinker-project/openlinker/issues/763) | `ShippingProviderManagerPort` + capability declarations + `Shipment` / `PickupPoint` / `ShippingMethod` entities + migration | S (~3-5d) | #764, #765, #766, #767, #768, #769, #770, #771, #772 |
+| [#764](https://github.com/openlinker-project/openlinker/issues/764) | InPost adapter plugin — ShipX REST implementation of `ShippingProviderManagerPort` | M (~5-7d) | #768, #769, #771, #772 |
+| [#765](https://github.com/openlinker-project/openlinker/issues/765) | `FakeInpostShippingAdapter` for Mac/Linux dev | S (~2-3d) | — (enables #764 dev) |
+| [#766](https://github.com/openlinker-project/openlinker/issues/766) | Paczkomat caching service (Redis 24h TTL + background refresh) | S (~2-3d) | #769 |
+| [#767](https://github.com/openlinker-project/openlinker/issues/767) | Read paczkomat ID from official InPost PS module on direct orders | S (~3d) | — |
+| [#768](https://github.com/openlinker-project/openlinker/issues/768) | InPost shipment status webhook ingestion + signature verification + propagation to Allegro/PS | M (~3-5d) | — |
+| [#769](https://github.com/openlinker-project/openlinker/issues/769) | FE: order detail Shipment panel + manual buttons + paczkomat picker modal | M (~4-5d) | — |
+| [#770](https://github.com/openlinker-project/openlinker/issues/770) | FE: `/shipments` page with filters | S (~3d) | — |
+| [#771](https://github.com/openlinker-project/openlinker/issues/771) | FE: InPost connection settings (ShipX OAuth + PS module dropdown + trigger config + webhook runbook) | S (~3d) | — |
+| [#772](https://github.com/openlinker-project/openlinker/issues/772) | Polling fallback for InPost tracking status (when webhook not provisioned) | S (~2-3d) | — |
 
 **Critical path:** #763 → #764 / #767 → #768 / #769 / #771 / #772
 

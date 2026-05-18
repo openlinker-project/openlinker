@@ -1,6 +1,6 @@
 # Implementation Plan — Capability-shaped Offer Creation Wizard (#608)
 
-**Issue**: [#608 — [H5] [HIGH] CreateOfferWizard is Allegro-shaped, not capability-shaped](https://github.com/SilkSoftwareHouse/openlinker/issues/608)
+**Issue**: [#608 — [H5] [HIGH] CreateOfferWizard is Allegro-shaped, not capability-shaped](https://github.com/openlinker-project/openlinker/issues/608)
 **Thread**: H (FE plugin architecture)
 **Branch**: `608-create-offer-wizard-capability-shape`
 **Builds on**: #629 (FE plugin registry + open ApiClient — landed yesterday)

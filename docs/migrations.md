@@ -57,7 +57,7 @@ Migrations are automatically named with timestamp prefix:
 
 Every migration filename begins with exactly **13 digits** (the `Date.now()` millisecond shape TypeORM generates). Two rules are non-negotiable:
 
-1. **Unique**: no two files across `apps/api/src/migrations/` AND every plugin migration directory listed in `scripts/plugin-migration-dirs.json` (#599) share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/SilkSoftwareHouse/openlinker/issues/374)). Uniqueness is enforced across the *union*, so Allegro + a hypothetical Shopify plugin can't both pick the same prefix.
+1. **Unique**: no two files across `apps/api/src/migrations/` AND every plugin migration directory listed in `scripts/plugin-migration-dirs.json` (#599) share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/openlinker-project/openlinker/issues/374)). Uniqueness is enforced across the *union*, so Allegro + a hypothetical Shopify plugin can't both pick the same prefix.
 2. **Consistent**: the class declared in the file repeats the same timestamp suffix as the filename prefix. This catches half-renames where one side is updated but not the other.
 
 Both rules are enforced by `scripts/check-migration-timestamps.mjs`, chained into the root `check:invariants` command and therefore into every `pnpm lint` run (including pre-commit). A collision fails `pnpm lint` immediately.

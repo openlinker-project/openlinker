@@ -4,7 +4,7 @@
 **Status**: Ready for Review
 **Estimated Effort**: ~3 hours (frontend-only, no new primitives, no backend changes)
 
-**Issue**: [#276](https://github.com/SilkSoftwareHouse/openlinker/issues/276)
+**Issue**: [#276](https://github.com/openlinker-project/openlinker/issues/276)
 
 ---
 
@@ -375,7 +375,7 @@ Reuse `createMockApiClient()` + override `connections.list` to shape candidate s
 
 ## Related Documentation
 
-- [Issue #276](https://github.com/SilkSoftwareHouse/openlinker/issues/276)
+- [Issue #276](https://github.com/openlinker-project/openlinker/issues/276)
 - [frontend-architecture.md](../frontend-architecture.md)
 - [frontend-ui-style-guide.md](../frontend-ui-style-guide.md)
 - `.claude/rules/frontend.md`

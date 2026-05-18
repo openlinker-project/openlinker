@@ -3,7 +3,7 @@
 **Date**: 2026-04-06
 **Status**: Ready for Review
 **Estimated Effort**: 4–6 hours
-**Issues**: [#70](https://github.com/SilkSoftwareHouse/openlinker/issues/70) (BE) · [#71](https://github.com/SilkSoftwareHouse/openlinker/issues/71) (FE)
+**Issues**: [#70](https://github.com/openlinker-project/openlinker/issues/70) (BE) · [#71](https://github.com/openlinker-project/openlinker/issues/71) (FE)
 **Branch**: `70-71-sync-jobs-read-api-and-dashboard`
 
 ---

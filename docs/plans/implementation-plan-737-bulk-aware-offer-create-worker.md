@@ -1,7 +1,7 @@
 # Implementation Plan — Bulk-aware `marketplace.offer.create` worker handler (#737)
 
-**Issue**: [#737 — feat(worker): bulk-aware marketplace.offer.create handler + AI description + Smart classification readback](https://github.com/SilkSoftwareHouse/openlinker/issues/737)
-**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/SilkSoftwareHouse/openlinker/issues/726)
+**Issue**: [#737 — feat(worker): bulk-aware marketplace.offer.create handler + AI description + Smart classification readback](https://github.com/openlinker-project/openlinker/issues/737)
+**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/openlinker-project/openlinker/issues/726)
 **Spec**: `docs/specs/product-spec-726-allegro-bulk-listing.md` AC-7 + AC-9
 **Branch**: `737-bulk-aware-offer-create-worker`
 

@@ -1,8 +1,8 @@
 # Implementation Plan — Adapter Registry Type Safety (#573 + #574 + #575)
 
 **Branch:** `573-574-575-adapter-registry-type-safety`
-**Parent issues:** [#549 Modularity Thread C](https://github.com/SilkSoftwareHouse/openlinker/issues/549), [#546 Epic](https://github.com/SilkSoftwareHouse/openlinker/issues/546)
-**Issues:** [#573](https://github.com/SilkSoftwareHouse/openlinker/issues/573), [#574](https://github.com/SilkSoftwareHouse/openlinker/issues/574), [#575](https://github.com/SilkSoftwareHouse/openlinker/issues/575)
+**Parent issues:** [#549 Modularity Thread C](https://github.com/openlinker-project/openlinker/issues/549), [#546 Epic](https://github.com/openlinker-project/openlinker/issues/546)
+**Issues:** [#573](https://github.com/openlinker-project/openlinker/issues/573), [#574](https://github.com/openlinker-project/openlinker/issues/574), [#575](https://github.com/openlinker-project/openlinker/issues/575)
 
 ---
 

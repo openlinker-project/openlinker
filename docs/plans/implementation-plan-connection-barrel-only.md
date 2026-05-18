@@ -1,6 +1,6 @@
 # Implementation Plan — Connection Barrel-Only (#591) · Full Scope
 
-**Issue**: [#591 — [F4] [HIGH] Connection entity exposed via deep path and via barrel — two valid surfaces](https://github.com/SilkSoftwareHouse/openlinker/issues/591)
+**Issue**: [#591 — [F4] [HIGH] Connection entity exposed via deep path and via barrel — two valid surfaces](https://github.com/openlinker-project/openlinker/issues/591)
 **Thread**: Modularity Thread F · Catalog SDK-5
 **Layer**: Backend SDK — package-export surgery + import migration + lint guard
 

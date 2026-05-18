@@ -1178,8 +1178,8 @@ The `orders ↔ customers` pair shows up as a cycle at the barrel level. It's sa
 
 Pre-existing cross-context repository-port couplings are allow-listed in the script's `ALLOW_LIST` map by `(file, symbol)` pair until they're rewired through service interfaces:
 
-- **Core-to-core** (20 entries) — tracked in **[#718](https://github.com/SilkSoftwareHouse/openlinker/issues/718)**.
-- **Plugins + apps** (64 entries) — tracked in **[#722](https://github.com/SilkSoftwareHouse/openlinker/issues/722)**.
+- **Core-to-core** (20 entries) — tracked in **[#718](https://github.com/openlinker-project/openlinker/issues/718)**.
+- **Plugins + apps** (64 entries) — tracked in **[#722](https://github.com/openlinker-project/openlinker/issues/722)**.
 
 The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside.
 

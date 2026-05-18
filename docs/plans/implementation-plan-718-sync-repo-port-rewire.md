@@ -1,6 +1,6 @@
 # Implementation Plan — Rewire sync repository-port callers through ISyncJobsService / ISyncCursorsService (#718, slice 2 of 4)
 
-**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/SilkSoftwareHouse/openlinker/issues/718)
+**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/openlinker-project/openlinker/issues/718)
 **Slice**: 2 of 4 — sync-context callers.
 **Branch**: `718-sync-repo-port-rewire`
 **Drops**: 4 of the 12 remaining `(file, symbol)` entries from `scripts/check-cross-context-imports.mjs`.

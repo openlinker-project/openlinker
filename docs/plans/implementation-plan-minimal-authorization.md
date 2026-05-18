@@ -1,7 +1,7 @@
 # Implementation Plan: Minimal Authorization Model
 
 **Date**: 2026-03-28
-**Issue**: [#58 — Add minimal authorization model](https://github.com/SilkSoftwareHouse/openlinker/issues/58)
+**Issue**: [#58 — Add minimal authorization model](https://github.com/openlinker-project/openlinker/issues/58)
 **Status**: Ready for Review
 **Estimated Effort**: 1.5–2 days
 

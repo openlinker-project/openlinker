@@ -1,7 +1,7 @@
 # Implementation Plan — #516: PS Adapter Sidecar Write + Reconcile Removal
 
-**Issue**: [#516](https://github.com/SilkSoftwareHouse/openlinker/issues/516) — _PS adapter: sidecar write for OL carrier; remove reconcile workaround_
-**Epic**: [#513](https://github.com/SilkSoftwareHouse/openlinker/issues/513) — _PrestaShop dynamic shipping via OL carrier module_
+**Issue**: [#516](https://github.com/openlinker-project/openlinker/issues/516) — _PS adapter: sidecar write for OL carrier; remove reconcile workaround_
+**Epic**: [#513](https://github.com/openlinker-project/openlinker/issues/513) — _PrestaShop dynamic shipping via OL carrier module_
 **Depends on**: #515 (PS module CarrierModule capability — landed via PR #524)
 **Unblocks**: #517 (FE picker exposes OL Dynamic carrier), #518 (closes #510 / #511, rescopes #506)
 

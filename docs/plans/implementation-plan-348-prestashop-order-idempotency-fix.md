@@ -4,7 +4,7 @@
 **Status**: Ready for Review
 **Estimated Effort**: ~2 hours (single-file behavior change + focused tests)
 
-**Issue**: [#348](https://github.com/SilkSoftwareHouse/openlinker/issues/348)
+**Issue**: [#348](https://github.com/openlinker-project/openlinker/issues/348)
 
 ---
 

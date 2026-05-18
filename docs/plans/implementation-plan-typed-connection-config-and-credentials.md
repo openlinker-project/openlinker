@@ -1,8 +1,8 @@
 # Implementation Plan — Per-Plugin Connection Config + Credentials Validators (#586 + #587)
 
 **Branch:** `586-587-typed-connection-config-and-credentials`
-**Parent:** [#551 Modularity Thread E](https://github.com/SilkSoftwareHouse/openlinker/issues/551)
-**Issues:** [#586](https://github.com/SilkSoftwareHouse/openlinker/issues/586), [#587](https://github.com/SilkSoftwareHouse/openlinker/issues/587)
+**Parent:** [#551 Modularity Thread E](https://github.com/openlinker-project/openlinker/issues/551)
+**Issues:** [#586](https://github.com/openlinker-project/openlinker/issues/586), [#587](https://github.com/openlinker-project/openlinker/issues/587)
 
 ---
 

@@ -4,8 +4,8 @@
 **Status**: Ready for Review
 **Estimated Effort**: 5–7 hours
 **Issues**:
-- [#65 — BE: Add connection diagnostics and activity API](https://github.com/SilkSoftwareHouse/openlinker/issues/65)
-- [#74 — FE: Build health and environment dashboard](https://github.com/SilkSoftwareHouse/openlinker/issues/74)
+- [#65 — BE: Add connection diagnostics and activity API](https://github.com/openlinker-project/openlinker/issues/65)
+- [#74 — FE: Build health and environment dashboard](https://github.com/openlinker-project/openlinker/issues/74)
 **Branch**: `65-74-diagnostics-and-health-dashboard`
 
 ---

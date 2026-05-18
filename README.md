@@ -1,8 +1,8 @@
 # OpenLinker
 
-[![CI](https://github.com/SilkSoftwareHouse/openlinker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SilkSoftwareHouse/openlinker/actions/workflows/ci.yml)
+[![CI](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
-[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/SilkSoftwareHouse/openlinker/issues/670)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
 
 **Sync orders, inventory, and listings between your shop and the marketplaces you sell on. Self-hosted, open-source, pluggable.**
 
@@ -42,8 +42,8 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
 | **[Allegro](./libs/integrations/allegro/)** | Marketplace *(source + offers)* | ✅ Live |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
-| **Subiekt nexo** *([#728](https://github.com/SilkSoftwareHouse/openlinker/issues/728))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | 🚧 In progress |
-| **InPost** *([#727](https://github.com/SilkSoftwareHouse/openlinker/issues/727))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | 🚧 In progress |
+| **Subiekt nexo** *([#728](https://github.com/openlinker-project/openlinker/issues/728))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | 🚧 In progress |
+| **InPost** *([#727](https://github.com/openlinker-project/openlinker/issues/727))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | 🚧 In progress |
 | Shopify · WooCommerce · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DPD · DHL · FedEx · ORLEN Paczka · GLS | Shipping *(pending `ShippingProviderPort` from #727)* | 📋 Planned |
@@ -209,14 +209,14 @@ Any **📋 Planned** row in the [Integrations table](#integrations) is open for 
 
 ### Where we're at
 
-OpenLinker is moving fast and publicly. See [recent activity](https://github.com/SilkSoftwareHouse/openlinker/pulse) for what's landed lately, the [modularity audit (#546)](https://github.com/SilkSoftwareHouse/openlinker/issues/546) for the architectural thread making the codebase plugin-ready, and the [OSS launch epic (#670)](https://github.com/SilkSoftwareHouse/openlinker/issues/670) for what's blocking the first public release.
+OpenLinker is moving fast and publicly. See [recent activity](https://github.com/openlinker-project/openlinker/pulse) for what's landed lately, the [modularity audit (#546)](https://github.com/openlinker-project/openlinker/issues/546) for the architectural thread making the codebase plugin-ready, and the [OSS launch epic (#670)](https://github.com/openlinker-project/openlinker/issues/670) for what's blocking the first public release.
 
 ---
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/SilkSoftwareHouse/openlinker.git
+git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
 pnpm install
 cp apps/api/.env.example apps/api/.env

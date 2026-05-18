@@ -61,7 +61,7 @@ Use canonical OpenLinker link styles:
 - **Issues / PRs**: bare `#NNN` markdown. GitHub auto-links them within this repo.
 - **Other ADRs**: relative path `[ADR-NNN](./NNN-...md)`.
 - **Doc files**: relative path `[file](../file.md)`.
-- **External GitHub URLs**: avoid unless absolutely necessary. The `scripts/check-repo-urls.mjs` invariant enforces canonical `SilkSoftwareHouse/openlinker` URLs and will fail the build on full URLs that drift.
+- **External GitHub URLs**: avoid unless absolutely necessary. The `scripts/check-repo-urls.mjs` invariant enforces canonical `openlinker-project/openlinker` URLs and will fail the build on full URLs that drift.
 
 ## Cross-linking from architecture-overview.md
 

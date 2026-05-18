@@ -1,6 +1,6 @@
 # Implementation Plan — #380 Standard BackLink Primitive
 
-**Issue:** [SilkSoftwareHouse/openlinker#380](https://github.com/SilkSoftwareHouse/openlinker/issues/380)
+**Issue:** [openlinker-project/openlinker#380](https://github.com/openlinker-project/openlinker/issues/380)
 **Branch:** `380-backlink-primitive`
 **Layer:** Frontend (shared UI + page-level migrations)
 **Classification:** Frontend refactor / tech-debt

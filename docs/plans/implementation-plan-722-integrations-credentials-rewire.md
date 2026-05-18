@@ -1,7 +1,7 @@
 # Implementation Plan — #722 (Slice 1: integrations-credentials)
 
 **Status**: Draft
-**Issue**: [#722](https://github.com/SilkSoftwareHouse/openlinker/issues/722)
+**Issue**: [#722](https://github.com/openlinker-project/openlinker/issues/722)
 **Branch**: `722-integrations-credentials-rewire`
 **Scope**: One slice of #722 — rewires every cross-context import of `IntegrationCredentialRepositoryPort` (from `apps/api` and `libs/integrations/allegro`) to consume `ICredentialsService` via the `CREDENTIALS_SERVICE_TOKEN` Symbol seam instead.
 

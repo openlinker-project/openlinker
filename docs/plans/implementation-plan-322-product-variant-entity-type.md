@@ -4,7 +4,7 @@
 **Status**: Ready for Review
 **Estimated Effort**: ~3 hours (backend: adapter + repo + migration; frontend: 1 test)
 
-**Issue**: [#322](https://github.com/SilkSoftwareHouse/openlinker/issues/322)
+**Issue**: [#322](https://github.com/openlinker-project/openlinker/issues/322)
 
 ---
 

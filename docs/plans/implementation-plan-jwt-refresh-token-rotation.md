@@ -1,6 +1,6 @@
 # Implementation Plan — JWT refresh-token rotation (#710)
 
-**Issue**: [#710 — Replace localStorage JWT with refresh-token rotation](https://github.com/SilkSoftwareHouse/openlinker/issues/710)
+**Issue**: [#710 — Replace localStorage JWT with refresh-token rotation](https://github.com/openlinker-project/openlinker/issues/710)
 **Severity**: Security / CRITICAL
 **Branch**: `710-jwt-refresh-token-rotation`
 **Approach**: single PR — BE + FE land together; Postgres-backed `refresh_tokens` table.

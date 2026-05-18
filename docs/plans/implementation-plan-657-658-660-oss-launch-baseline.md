@@ -19,7 +19,7 @@ before the OpenLinker repo is flipped public.
 
 - **Domain / org transfer.** Issues #641 (org transfer) and #642 (domain
   purchase) are explicit dependencies for the *final* URLs and email aliases.
-  This PR uses the interim values (`SilkSoftwareHouse/openlinker` URL, a
+  This PR uses the interim values (`openlinker-project/openlinker` URL, a
   placeholder reporting channel) and tags them so they can be batch-updated
   when #641/#642 land. The issues themselves call out this interim approach.
 - **Enabling GitHub Private Vulnerability Reporting** in repo settings. That
@@ -159,7 +159,7 @@ Add a one-line "Do not file security vulnerabilities as public issues — see
 
 Concrete edits:
 - **Line 8** prerequisites: `pnpm 8+` → `pnpm 10+`.
-- **Line 16**: clone URL placeholder → `https://github.com/SilkSoftwareHouse/openlinker.git`.
+- **Line 16**: clone URL placeholder → `https://github.com/openlinker-project/openlinker.git`.
 - **Line 33**: `docker-compose up -d postgres redis` → `pnpm dev:stack:up`.
 - **Line 36-39**: replace the conditional "when available" migration block
   with a real, working command: `pnpm --filter @openlinker/api migration:run`

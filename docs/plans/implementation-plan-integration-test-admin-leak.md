@@ -1,6 +1,6 @@
 # Implementation plan — Integration test admin-user leak (#278)
 
-**Issue:** https://github.com/SilkSoftwareHouse/openlinker/issues/278
+**Issue:** https://github.com/openlinker-project/openlinker/issues/278
 **Layer:** Backend test infrastructure only (no production code, no migration)
 
 ## Goal
