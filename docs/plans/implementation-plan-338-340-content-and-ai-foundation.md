@@ -5,8 +5,8 @@
 **Estimated Effort**: ~8–10 hours (backend-only: two new bounded contexts + one new integrations package + migration + tests)
 
 **Issues**:
-- [#338 feat(core): product content storage with draft write-through semantics](https://github.com/SilkSoftwareHouse/openlinker/issues/338)
-- [#340 feat(core): AI engine foundation — AiCompletionPort + Vercel AI SDK adapter](https://github.com/SilkSoftwareHouse/openlinker/issues/340)
+- [#338 feat(core): product content storage with draft write-through semantics](https://github.com/openlinker-project/openlinker/issues/338)
+- [#340 feat(core): AI engine foundation — AiCompletionPort + Vercel AI SDK adapter](https://github.com/openlinker-project/openlinker/issues/340)
 
 ---
 

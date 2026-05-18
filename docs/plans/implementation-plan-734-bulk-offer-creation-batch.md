@@ -1,7 +1,7 @@
 # Implementation Plan — BulkOfferCreationBatch foundation (#734)
 
-**Issue**: [#734 — feat(listings): BulkOfferCreationBatch domain entity + repository + migration](https://github.com/SilkSoftwareHouse/openlinker/issues/734)
-**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/SilkSoftwareHouse/openlinker/issues/726)
+**Issue**: [#734 — feat(listings): BulkOfferCreationBatch domain entity + repository + migration](https://github.com/openlinker-project/openlinker/issues/734)
+**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/openlinker-project/openlinker/issues/726)
 **Spec**: `docs/specs/product-spec-726-allegro-bulk-listing.md`
 **Branch**: `734-bulk-offer-creation-batch`
 
@@ -19,7 +19,7 @@ Lay the persistence foundation for bulk offer creation. After this PR, the rest 
 - Smart-classification readback (→ #737)
 - EAN auto-match (→ #735)
 - `findByConnection` repository method — dropped during grill-me (no caller in scope; #734's AC framed it as test coverage). #736 will design the right-shape query (paginated, filterable) when a real caller arrives.
-- Rich entity behavior (anemic stays the convention for this slice). Long-term direction tracked in [#750 — Decide long-term direction for domain entity behavior](https://github.com/SilkSoftwareHouse/openlinker/issues/750).
+- Rich entity behavior (anemic stays the convention for this slice). Long-term direction tracked in [#750 — Decide long-term direction for domain entity behavior](https://github.com/openlinker-project/openlinker/issues/750).
 
 ---
 
@@ -385,7 +385,7 @@ Recorded so the PR review can verify each consciously rather than re-litigate.
 | 2 | **Dumb port + smart core application service** | Per `architecture-overview.md § 7`: orchestration policies in core services, not workers, not ports. Terminal-transition rule lives in `BulkBatchProgressService` in #736. Worker handler (#737) is a thin shell — same pattern as `marketplace-offer-create.handler.ts` cites in its own header. |
 | 3 | **`incrementCounters({ succeeded?, failed? })` — data-shaped deltas** | Matches `OfferCreationRecordRepositoryPort` precedent (data-shaped methods, not event-shaped). Event vocabulary lives in the application service layer above. |
 | 4 | **Permissive deltas (negative allowed)** | Future admin compensation flows. Port's data-shaped contract doesn't enforce a constraint the underlying primitive doesn't need. |
-| 5 | **Anemic entity (no behavior)** | Codebase precedent uniform; local drift to rich entities would be incoherent. Long-term direction tracked in [#750](https://github.com/SilkSoftwareHouse/openlinker/issues/750). |
+| 5 | **Anemic entity (no behavior)** | Codebase precedent uniform; local drift to rich entities would be incoherent. Long-term direction tracked in [#750](https://github.com/openlinker-project/openlinker/issues/750). |
 | 6 | **No `findByConnection`** | No caller in scope. Will be designed in #736 with a real caller. |
 | 7 | **`sharedConfig: Record<string, unknown>` at entity/port/ORM** | Matches `Connection.config` / `IntegrationCredential.credentialsJson` precedent. Shape belongs at application layer (#736). |
 | 8 | **`initiatedBy: string` non-nullable** | Bulk is always operator-initiated per US-1. No system-triggered path exists. |

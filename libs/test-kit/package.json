@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Integration-test harness for OpenLinker — Testcontainers (Postgres + Redis) + NestJS bootstrap factory for host apps and plugin authors (#600).",
   "license": "Apache-2.0",
+  "author": "OpenLinker",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",

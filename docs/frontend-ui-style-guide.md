@@ -31,7 +31,7 @@ OpenLinker should feel less like:
 
 ## Direction (FE-002)
 
-Adopted during the UI refactor epic ([#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236)).
+Adopted during the UI refactor epic ([#236](https://github.com/openlinker-project/openlinker/issues/236)).
 
 **Aesthetic baseline:** **shadcn/ui** look-and-feel (compact inputs, subdued palette, restrained shadows, clean proportions, small radii) — **implemented in vanilla CSS**, not Tailwind.
 
@@ -793,7 +793,7 @@ Required:
 
 ## FE-002 refactor epic
 
-Tracked by epic [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236) with six phase sub-issues (tokens → shell → primitives → detail pages → forms → dashboard). Every phase PR should attach before/after screenshots and reason about the change against this style guide.
+Tracked by epic [#236](https://github.com/openlinker-project/openlinker/issues/236) with six phase sub-issues (tokens → shell → primitives → detail pages → forms → dashboard). Every phase PR should attach before/after screenshots and reason about the change against this style guide.
 
 ---
 

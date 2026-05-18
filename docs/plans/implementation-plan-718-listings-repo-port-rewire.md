@@ -1,6 +1,6 @@
 # Implementation Plan — Rewire content callers through IOfferMappingsService (#718, slice 3 of 4)
 
-**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/SilkSoftwareHouse/openlinker/issues/718)
+**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/openlinker-project/openlinker/issues/718)
 **Slice**: 3 of 4 — `content` → `listings.OfferMappingRepositoryPort` callers.
 **Branch**: `718-listings-repo-port-rewire`
 **Drops**: 4 of the 8 remaining (post-slice-2) `(file, symbol)` allow-list entries.

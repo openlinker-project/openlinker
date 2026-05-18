@@ -14,7 +14,7 @@
 
 # Implementation Plan — #726 Allegro Smart! support + Bulk listing creation (PRE-REFINEMENT DRAFT)
 
-**Issue:** [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726) — Discovery & refinement (converting to Product Design)
+**Issue:** [#726](https://github.com/openlinker-project/openlinker/issues/726) — Discovery & refinement (converting to Product Design)
 **Layer:** Integration (`libs/integrations/allegro`) + Application (`libs/core/src/listings`) + Frontend (`apps/web`)
 **Branch (this discovery doc):** `726-allegro-smart-bulk-refinement`
 **Status:** ⚠️ Pre-refinement draft — supersedes by `docs/specs/product-spec-726-{slug}.md` once Tier 1 refinement completes.
@@ -585,9 +585,9 @@ This design has been checked against `docs/architecture-overview.md` and `docs/e
 
 ## 12. References
 
-- Issue: [#726](https://github.com/SilkSoftwareHouse/openlinker/issues/726)
-- Related: [#431 — EAN-based smart-link product card resolution](https://github.com/SilkSoftwareHouse/openlinker/issues/431) (unrelated to Allegro Smart! despite naming)
-- Related: [#451 / #452 — AI provider switching + prompt template seeding](https://github.com/SilkSoftwareHouse/openlinker/issues/451)
+- Issue: [#726](https://github.com/openlinker-project/openlinker/issues/726)
+- Related: [#431 — EAN-based smart-link product card resolution](https://github.com/openlinker-project/openlinker/issues/431) (unrelated to Allegro Smart! despite naming)
+- Related: [#451 / #452 — AI provider switching + prompt template seeding](https://github.com/openlinker-project/openlinker/issues/451)
 - Architecture: `docs/architecture-overview.md` — Listings bounded context, OfferCreator capability
 - Engineering standards: `docs/engineering-standards.md` — hexagonal rules, Symbol DI tokens, naming
 - Existing code:

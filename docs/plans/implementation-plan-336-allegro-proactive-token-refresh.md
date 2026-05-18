@@ -1,6 +1,6 @@
 # Implementation Plan — #336 Proactive Allegro access-token refresh
 
-**Issue:** [#336](https://github.com/SilkSoftwareHouse/openlinker/issues/336) — Proactive Allegro access-token refresh using `expiresAt` (avoid first-request 401)
+**Issue:** [#336](https://github.com/openlinker-project/openlinker/issues/336) — Proactive Allegro access-token refresh using `expiresAt` (avoid first-request 401)
 **Layer:** Integration (`libs/integrations/allegro`)
 **Branch:** `336-allegro-proactive-token-refresh`
 

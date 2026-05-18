@@ -23,7 +23,7 @@ Every spec follows this skeleton. Sections are filled out incrementally by the f
 # Product Spec — #N {slug}
 
 **Status:** phase X in progress | phase X complete | ready for implementation | deferred | archived
-**Parent issue:** [#N](https://github.com/SilkSoftwareHouse/openlinker/issues/N)
+**Parent issue:** [#N](https://github.com/openlinker-project/openlinker/issues/N)
 **Started:** YYYY-MM-DD
 **Last updated:** YYYY-MM-DD
 

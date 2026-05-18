@@ -1,6 +1,6 @@
 # Implementation Plan — Rewire products repository-port callers through IProductsService (#718, slice 1 of 4)
 
-**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/SilkSoftwareHouse/openlinker/issues/718)
+**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/openlinker-project/openlinker/issues/718)
 **Slice**: 4 callers of `products` repository ports → `IProductsService` extensions.
 **Branch**: `718-products-repo-port-rewire`
 **Drops**: 8 of the 20 `(file, symbol)` entries from `scripts/check-cross-context-imports.mjs`.

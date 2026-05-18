@@ -1,7 +1,7 @@
 # Implementation Plan — #736 (Bulk offer submission service + HTTP API + progress endpoint)
 
 **Status**: Draft
-**Issue**: [#736](https://github.com/SilkSoftwareHouse/openlinker/issues/736)
+**Issue**: [#736](https://github.com/openlinker-project/openlinker/issues/736)
 **Parent epic**: #726 (Allegro Smart! + Bulk offer creation)
 **Branch**: `736-listings-bulk-offer-submission`
 **Blocker**: #734 — MERGED (PR #774, 2026-05-17)

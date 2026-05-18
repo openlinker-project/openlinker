@@ -1,7 +1,7 @@
 # Implementation Plan — Allegro EAN bulk category auto-match (#735)
 
-**Issue**: [#735 — feat(allegro): EAN-based bulk category auto-match service](https://github.com/SilkSoftwareHouse/openlinker/issues/735)
-**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/SilkSoftwareHouse/openlinker/issues/726)
+**Issue**: [#735 — feat(allegro): EAN-based bulk category auto-match service](https://github.com/openlinker-project/openlinker/issues/735)
+**Parent epic**: [#726 — Allegro Smart! + bulk listing](https://github.com/openlinker-project/openlinker/issues/726)
 **Spec**: `docs/specs/product-spec-726-allegro-bulk-listing.md` § 4.5
 **Branch**: `735-allegro-ean-bulk-category-auto-match`
 

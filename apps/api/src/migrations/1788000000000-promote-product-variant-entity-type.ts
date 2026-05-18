@@ -21,7 +21,7 @@
  * historical rows — no code reads or writes it anymore, and scrubbing it from
  * the JSON would bloat this migration for zero functional benefit.
  *
- * Issue: https://github.com/SilkSoftwareHouse/openlinker/issues/322
+ * Issue: https://github.com/openlinker-project/openlinker/issues/322
  * Generated: 2026-04-22
  * @module apps/api/src/migrations
  */

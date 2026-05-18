@@ -1,6 +1,6 @@
 # Implementation Plan — UI refactor (FE-001 → FE-002)
 
-Epic: [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236) · Phases: [#237](https://github.com/SilkSoftwareHouse/openlinker/issues/237) → [#242](https://github.com/SilkSoftwareHouse/openlinker/issues/242)
+Epic: [#236](https://github.com/openlinker-project/openlinker/issues/236) · Phases: [#237](https://github.com/openlinker-project/openlinker/issues/237) → [#242](https://github.com/openlinker-project/openlinker/issues/242)
 
 ---
 
@@ -53,7 +53,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ## 4. Phase-by-phase
 
-### Phase 1 — Tokens & typography (issue [#237](https://github.com/SilkSoftwareHouse/openlinker/issues/237))
+### Phase 1 — Tokens & typography (issue [#237](https://github.com/openlinker-project/openlinker/issues/237))
 
 **Scope**: No visual changes. Align `apps/web/src/index.css` with the FE-002 token palette in the style guide. Add IBM Plex loading. Audit and remove hardcoded hex values from component CSS.
 
@@ -80,7 +80,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ---
 
-### Phase 2 — Shell (issue [#238](https://github.com/SilkSoftwareHouse/openlinker/issues/238))
+### Phase 2 — Shell (issue [#238](https://github.com/openlinker-project/openlinker/issues/238))
 
 **Scope**: Restructure left nav, top bar, page header. These appear on every page — improvements compound immediately.
 
@@ -117,7 +117,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ---
 
-### Phase 3 — Shared primitives (issue [#239](https://github.com/SilkSoftwareHouse/openlinker/issues/239))
+### Phase 3 — Shared primitives (issue [#239](https://github.com/openlinker-project/openlinker/issues/239))
 
 **Scope**: Biggest phase. Introduce the primitive layer; migrate every page onto it. Each primitive ships with unit tests and a real-page usage.
 
@@ -179,7 +179,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ---
 
-### Phase 4 — Detail pages (issue [#240](https://github.com/SilkSoftwareHouse/openlinker/issues/240))
+### Phase 4 — Detail pages (issue [#240](https://github.com/openlinker-project/openlinker/issues/240))
 
 **Scope**: Order / Connection / Product / Customer / Inventory / Listing / Job (succeeded + failed). Restructure per the pattern: header → status banner → summary → related sections → activity timeline → raw data (collapsed).
 
@@ -210,7 +210,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ---
 
-### Phase 5 — Forms & wizards (issue [#241](https://github.com/SilkSoftwareHouse/openlinker/issues/241))
+### Phase 5 — Forms & wizards (issue [#241](https://github.com/openlinker-project/openlinker/issues/241))
 
 **Scope**: Convert single-screen setup forms into step-based wizards. Ship `SetupStepper`. Tighten form widths. Audit validation surfaces.
 
@@ -238,7 +238,7 @@ Phases 4, 5, and 6 are independent of each other — can land in any order once 
 
 ---
 
-### Phase 6 — Dashboard & triage surfaces (issue [#242](https://github.com/SilkSoftwareHouse/openlinker/issues/242))
+### Phase 6 — Dashboard & triage surfaces (issue [#242](https://github.com/openlinker-project/openlinker/issues/242))
 
 **Scope**: Redesign Dashboard around triage (not product overview). This phase consumes every primitive from earlier phases, so it lands last.
 
@@ -399,7 +399,7 @@ Same as epic #236:
 
 ## Related documents
 
-- Epic: [#236](https://github.com/SilkSoftwareHouse/openlinker/issues/236)
+- Epic: [#236](https://github.com/openlinker-project/openlinker/issues/236)
 - Audit: [`docs/ui-audit/audit.md`](../ui-audit/audit.md)
 - Baseline: [`docs/ui-audit/baseline/README.md`](../ui-audit/baseline/README.md)
 - Library decision: [`docs/ui-audit/library-analysis.md`](../ui-audit/library-analysis.md)

@@ -1,6 +1,6 @@
 # Implementation Plan — Rewire ai callers through ICredentialsService (#718, slice 4 of 4 — final)
 
-**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/SilkSoftwareHouse/openlinker/issues/718)
+**Issue**: [#718 — Rewire cross-context repository-port couplings through service interfaces](https://github.com/openlinker-project/openlinker/issues/718)
 **Slice**: 4 of 4 — `ai` → `integrations.IntegrationCredentialRepositoryPort` callers.
 **Branch**: `718-ai-credentials-repo-port-rewire`
 **Drops**: the final 4 core-scope `(file, symbol)` allow-list entries (83 → 79 remaining; the 79 left over are all plugin + apps scope tracked separately by #722).

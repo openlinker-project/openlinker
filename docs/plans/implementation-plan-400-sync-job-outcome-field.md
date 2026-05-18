@@ -3,7 +3,7 @@
 **Date**: 2026-04-26
 **Status**: Ready for Review
 **Estimated Effort**: ~1 day
-**Issue**: [#400](https://github.com/SilkSoftwareHouse/openlinker/issues/400) (follow-up to closed #391)
+**Issue**: [#400](https://github.com/openlinker-project/openlinker/issues/400) (follow-up to closed #391)
 
 ---
 
@@ -457,5 +457,5 @@ Mirrors the issue body; condensed:
 - [Migrations Guide](../migrations.md)
 - [Frontend Architecture](../frontend-architecture.md)
 - [Frontend UI Style Guide](../frontend-ui-style-guide.md)
-- Issue [#400](https://github.com/SilkSoftwareHouse/openlinker/issues/400) — this PR's parent
-- Issue [#391](https://github.com/SilkSoftwareHouse/openlinker/issues/391) — Plan A (closed, shipped via PR #396)
+- Issue [#400](https://github.com/openlinker-project/openlinker/issues/400) — this PR's parent
+- Issue [#391](https://github.com/openlinker-project/openlinker/issues/391) — Plan A (closed, shipped via PR #396)

@@ -55,7 +55,7 @@ Remove entirely:
 
 ```diff
 -
-- > **Status:** work in progress. Built incrementally as part of [#152](https://github.com/SilkSoftwareHouse/openlinker/issues/152). Sections marked _TBD_ are not yet documented.
+- > **Status:** work in progress. Built incrementally as part of [#152](https://github.com/openlinker-project/openlinker/issues/152). Sections marked _TBD_ are not yet documented.
 -
 ```
 
@@ -78,14 +78,14 @@ are removed, the banner has nothing to flag.
 + mapped, you're ready to:
 +
 + - **Create your first Allegro offer from a PrestaShop product.** Walkthrough
-+   in progress — tracked in [#429](https://github.com/SilkSoftwareHouse/openlinker/issues/429)
++   in progress — tracked in [#429](https://github.com/openlinker-project/openlinker/issues/429)
 +   (Allegro offer-creation epic). The flow is functional today; the screenshot-
 +   level guide is the next doc to land.
 + - **Watch an Allegro order land in PrestaShop.** End-to-end sandbox walkthrough
-+   tracked in [#152](https://github.com/SilkSoftwareHouse/openlinker/issues/152)
++   tracked in [#152](https://github.com/openlinker-project/openlinker/issues/152)
 +   (clean-state E2E epic). The ingestion path is exercised by the carrier-
 +   mapping vertical-slice int-spec
-+   ([#535](https://github.com/SilkSoftwareHouse/openlinker/pull/671)) — the
++   ([#535](https://github.com/openlinker-project/openlinker/pull/671)) — the
 +   user-facing walkthrough is the missing piece.
 +
 + Until those walkthroughs land, the **Jobs & Logs** page in the OpenLinker web

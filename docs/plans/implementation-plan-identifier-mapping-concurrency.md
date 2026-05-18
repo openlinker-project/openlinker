@@ -3,7 +3,7 @@
 **Date**: 2026-04-06  
 **Status**: Ready for Review  
 **Estimated Effort**: 1–2 hours  
-**Issue**: [#97](https://github.com/SilkSoftwareHouse/openlinker/issues/97)
+**Issue**: [#97](https://github.com/openlinker-project/openlinker/issues/97)
 
 ---
 

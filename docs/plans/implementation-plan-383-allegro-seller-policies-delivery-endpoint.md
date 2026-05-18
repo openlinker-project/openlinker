@@ -1,6 +1,6 @@
 # Implementation Plan — #383: Allegro `fetchSellerPolicies` uses wrong delivery endpoint
 
-**Issue:** [#383](https://github.com/SilkSoftwareHouse/openlinker/issues/383)
+**Issue:** [#383](https://github.com/openlinker-project/openlinker/issues/383)
 **Branch:** `383-allegro-seller-policies-delivery-endpoint`
 **Type:** Bug fix (integration adapter)
 **Layer:** Infrastructure adapter (`libs/integrations/allegro/`)

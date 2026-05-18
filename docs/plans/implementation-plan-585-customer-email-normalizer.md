@@ -1,6 +1,6 @@
 # Implementation Plan — #585 Customer Email Normalizer Strategy
 
-**Issue:** [#585 — [E5] [HIGH] CustomerIdentityResolverService hardcodes 'allegro' for email normalization](https://github.com/SilkSoftwareHouse/openlinker/issues/585)
+**Issue:** [#585 — [E5] [HIGH] CustomerIdentityResolverService hardcodes 'allegro' for email normalization](https://github.com/openlinker-project/openlinker/issues/585)
 
 **Branch:** `585-customer-email-normalizer-strategy`
 

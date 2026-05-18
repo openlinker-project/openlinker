@@ -172,7 +172,7 @@ Replace the current "run `pnpm dev:stack:seed-prestashop` once the install compl
 > ```
 > Idempotent — re-running is a no-op when fixtures are already present.
 
-Plus a one-line note in the existing fixture-reference section: "Auto-runs on first `docker compose up` per [#525](https://github.com/SilkSoftwareHouse/openlinker/issues/525)."
+Plus a one-line note in the existing fixture-reference section: "Auto-runs on first `docker compose up` per [#525](https://github.com/openlinker-project/openlinker/issues/525)."
 
 ### Operator action required for existing dev installs
 

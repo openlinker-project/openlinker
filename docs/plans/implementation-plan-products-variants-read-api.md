@@ -15,7 +15,7 @@
 
 **Classification**: Interface (controllers, DTOs) + CORE extension (repository pagination)
 
-**Issues**: [#82](https://github.com/SilkSoftwareHouse/openlinker/issues/82), [#83](https://github.com/SilkSoftwareHouse/openlinker/issues/83)
+**Issues**: [#82](https://github.com/openlinker-project/openlinker/issues/82), [#83](https://github.com/openlinker-project/openlinker/issues/83)
 
 ---
 

@@ -4,7 +4,7 @@ Different question types route to different places. Please use the channel that 
 
 ## Bug reports
 
-Found a defect? Open a [GitHub issue](https://github.com/SilkSoftwareHouse/openlinker/issues/new) with the `bug` label.
+Found a defect? Open a [GitHub issue](https://github.com/openlinker-project/openlinker/issues/new) with the `bug` label.
 
 Include:
 
@@ -19,9 +19,9 @@ Include:
 
 ## Feature requests
 
-OpenLinker will use [GitHub Discussions](https://github.com/SilkSoftwareHouse/openlinker/discussions) for design conversations once Discussions is enabled in repo settings (tracked alongside the org transfer in [#641](https://github.com/SilkSoftwareHouse/openlinker/issues/641)).
+OpenLinker will use [GitHub Discussions](https://github.com/openlinker-project/openlinker/discussions) for design conversations once Discussions is enabled in repo settings (tracked alongside the org transfer in [#641](https://github.com/openlinker-project/openlinker/issues/641)).
 
-In the interim, open an [issue](https://github.com/SilkSoftwareHouse/openlinker/issues/new) with the `enhancement` label and describe:
+In the interim, open an [issue](https://github.com/openlinker-project/openlinker/issues/new) with the `enhancement` label and describe:
 
 - The operator workflow or integration scenario the feature unlocks.
 - The proposed shape (API surface, UI affordance, or capability port).
@@ -29,13 +29,13 @@ In the interim, open an [issue](https://github.com/SilkSoftwareHouse/openlinker/
 
 ## General questions
 
-Usage questions, "how do I …", and design discussions belong on [GitHub Discussions](https://github.com/SilkSoftwareHouse/openlinker/discussions) once it is enabled.
+Usage questions, "how do I …", and design discussions belong on [GitHub Discussions](https://github.com/openlinker-project/openlinker/discussions) once it is enabled.
 
 In the interim, open an issue with the `question` label. Please search closed issues and the [documentation](./docs/) first — many setup questions are already covered by `docs/dev-environment.md` and `CONTRIBUTING.md`.
 
 ## Commercial / enterprise support
 
-A commercial-support offering is planned but not available today. Tracked alongside the OpenLinker domain in [#642](https://github.com/SilkSoftwareHouse/openlinker/issues/642); this section will be updated when a maintained channel exists.
+A commercial-support offering is planned but not available today. Tracked alongside the OpenLinker domain in [#642](https://github.com/openlinker-project/openlinker/issues/642); this section will be updated when a maintained channel exists.
 
 ## Code of conduct
 

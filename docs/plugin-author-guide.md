@@ -1013,6 +1013,6 @@ boot and self-registers against the host registries.
 2026-05-13). If you spot drift between this guide and the live code —
 or hit a step that's wrong or unclear — please open an issue or PR.
 A lint-time invariant that checks the verbatim quotes against the
-source is tracked in [#680](https://github.com/SilkSoftwareHouse/openlinker/issues/680).
+source is tracked in [#680](https://github.com/openlinker-project/openlinker/issues/680).
 The code is the spec; this guide is the map. Maps go stale; the
 code can't.</sub>

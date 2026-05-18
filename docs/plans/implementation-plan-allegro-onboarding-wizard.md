@@ -3,7 +3,7 @@
 **Date**: 2026-04-06
 **Status**: Ready for Review
 **Estimated Effort**: 4–6 hours
-**Issue**: [#66 — FE: Build Allegro onboarding wizard](https://github.com/SilkSoftwareHouse/openlinker/issues/66)
+**Issue**: [#66 — FE: Build Allegro onboarding wizard](https://github.com/openlinker-project/openlinker/issues/66)
 
 ---
 

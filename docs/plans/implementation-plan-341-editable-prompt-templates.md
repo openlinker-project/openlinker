@@ -24,9 +24,9 @@
 - FE render helper location corrected to `features/prompt-templates/lib/` (not `api/`).
 - File-header acceptance criterion added to §7.
 
-**Issue**: [#341 feat(core+web): editable prompt template storage and admin UI](https://github.com/SilkSoftwareHouse/openlinker/issues/341)
+**Issue**: [#341 feat(core+web): editable prompt template storage and admin UI](https://github.com/openlinker-project/openlinker/issues/341)
 
-**Epic**: [#6 Content & AI](https://github.com/SilkSoftwareHouse/openlinker/issues/6)
+**Epic**: [#6 Content & AI](https://github.com/openlinker-project/openlinker/issues/6)
 
 **Depends on**: #338/#340 (foundation merged via #350) — reuses the `libs/core/src/ai/` bounded context.
 **Blocks**: #342 (AI description suggestion flow will call `PromptTemplateService.render`).

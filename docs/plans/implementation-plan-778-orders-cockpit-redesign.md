@@ -1,7 +1,7 @@
 # Implementation Plan — #778 (`feat(web): redesign /orders page to match the new cockpit pattern`)
 
 **Status**: Draft
-**Issue**: [#778](https://github.com/SilkSoftwareHouse/openlinker/issues/778)
+**Issue**: [#778](https://github.com/openlinker-project/openlinker/issues/778)
 **Branch**: `778-orders-cockpit-redesign`
 **Layer classification**: Frontend — presentation-only, no API changes.
 

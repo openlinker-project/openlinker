@@ -1,6 +1,6 @@
 # Implementation Plan — Scheduler Task Registry (#584)
 
-**Issue**: [#584 — [E4] [HIGH] SchedulerService hardcodes Allegro-specific cron tasks and env-var keys](https://github.com/SilkSoftwareHouse/openlinker/issues/584)
+**Issue**: [#584 — [E4] [HIGH] SchedulerService hardcodes Allegro-specific cron tasks and env-var keys](https://github.com/openlinker-project/openlinker/issues/584)
 **Thread**: E (Remove platform-specific knowledge from core orchestration) — last HIGH item.
 **Branch**: `584-scheduler-task-registry`
 

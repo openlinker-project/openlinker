@@ -12,12 +12,11 @@
  *     fixed in #556 / #690.
  *   - `your-org/openlinker` — README/CONTRIBUTING placeholder template
  *     URL flagged in #664; cleaned up in earlier PRs.
- *
- * The current canonical pre-transfer URL `SilkSoftwareHouse/openlinker`
- * is **deliberately not** watched here — bulk rename to the new org
- * happens in #641, and a watcher would require a 250+-file allowlist
- * today. Add it as a forbidden pattern in the #641 PR that flips every
- * live reference at once.
+ *   - `SilkSoftwareHouse/openlinker` — pre-transfer URL; the repo
+ *     transferred to `openlinker-project/openlinker` per #641. All live
+ *     references were flipped in the same bulk-rename PR, so this
+ *     pattern is forbidden going forward to catch drift back to the
+ *     old slug.
  *
  * Allowlist policy: a file may keep a forbidden substring only when the
  * substring is an annotated historical reference (e.g., a plan / review
@@ -39,7 +38,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 
-const FORBIDDEN_PATTERNS = ['piotrswierzy/openlinker', 'your-org/openlinker'];
+const FORBIDDEN_PATTERNS = [
+  'piotrswierzy/openlinker',
+  'your-org/openlinker',
+  'SilkSoftwareHouse/openlinker',
+];
 
 // Files allowed to contain forbidden substrings because they preserve a
 // historical audit trail (annotated "tracked in #664" or describing

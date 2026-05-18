@@ -37,7 +37,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement via [GitHub Security Advisories](https://github.com/SilkSoftwareHouse/openlinker/security/advisories/new) — a private channel the maintainers monitor for both security and conduct reports. Please prefix the advisory title with `[Conduct]` so the report routes to the correct reviewer. A dedicated `conduct@openlinker.io` email alias will replace this shared channel once the OpenLinker domain is operational (tracked in [#642](https://github.com/SilkSoftwareHouse/openlinker/issues/642)). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement via [GitHub Security Advisories](https://github.com/openlinker-project/openlinker/security/advisories/new) — a private channel the maintainers monitor for both security and conduct reports. Please prefix the advisory title with `[Conduct]` so the report routes to the correct reviewer. A dedicated `conduct@openlinker.io` email alias will replace this shared channel once the OpenLinker domain is operational (tracked in [#642](https://github.com/openlinker-project/openlinker/issues/642)). All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

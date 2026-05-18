@@ -1,6 +1,6 @@
 # Implementation Plan — #705 Docs Cleanup
 
-**Issue:** [#705 docs: retire shipped implementation plans, consolidate overlapping guides](https://github.com/SilkSoftwareHouse/openlinker/issues/705)
+**Issue:** [#705 docs: retire shipped implementation plans, consolidate overlapping guides](https://github.com/openlinker-project/openlinker/issues/705)
 **Branch:** `705-docs-cleanup`
 **Type:** DX / documentation
 **Layer:** none (docs-only)

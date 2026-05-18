@@ -8,7 +8,7 @@ provides guidelines and instructions for contributing.
 The fastest path from a fresh clone to a green test run:
 
 ```bash
-git clone https://github.com/SilkSoftwareHouse/openlinker.git
+git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
 pnpm install
 cp apps/api/.env.example apps/api/.env
@@ -35,7 +35,7 @@ but undocumented; the supported path is Docker.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/SilkSoftwareHouse/openlinker.git
+   git clone https://github.com/openlinker-project/openlinker.git
    cd openlinker
    ```
 
@@ -185,7 +185,7 @@ Signed-off-by: Your Name <you@example.com>
 ```
 
 Automated DCO enforcement will be turned on once the repository transfer
-([#641](https://github.com/SilkSoftwareHouse/openlinker/issues/641))
+([#641](https://github.com/openlinker-project/openlinker/issues/641))
 completes; in the interim, please sign off your commits anyway so the
 history is consistent when enforcement starts.
 
