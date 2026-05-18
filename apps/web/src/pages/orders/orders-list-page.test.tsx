@@ -216,9 +216,10 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('syncing');
 
-    // StatusBadge applies the pulse-* class to its element when pulse=true.
-    // The class is the contract the cockpit ties its animation to.
-    const pulsed = container.querySelector('[class*="pulse"]');
+    // StatusBadge applies `status-badge--pulse` when pulse=true. Pinning the
+    // exact class (vs `[class*="pulse"]`) keeps the assertion contracted to
+    // the StatusBadge primitive's actual API.
+    const pulsed = container.querySelector('.status-badge--pulse');
     expect(pulsed).not.toBeNull();
   });
 });

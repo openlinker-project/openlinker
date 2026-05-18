@@ -69,6 +69,15 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 /**
+ * Type-guard for the syncStatus URL param. `OrderSyncStatusValues.includes`
+ * widens the haystack to `readonly string[]` so the predicate accepts any
+ * string and narrows cleanly to `OrderSyncStatusValue` without a cast.
+ */
+function isOrderSyncStatus(value: string | null): value is OrderSyncStatusValue {
+  return value !== null && (OrderSyncStatusValues as readonly string[]).includes(value);
+}
+
+/**
  * Resolve the per-row total via the i18n seam (#612). Currency varies per row
  * so we instantiate per call — locale comes from the LocaleProvider rather
  * than being pinned to en-US. Mirrors `localeToBcp47` from `useNumberFormat`
@@ -85,10 +94,7 @@ export function OrdersListPage(): ReactElement {
   const { locale } = useTranslation();
 
   const rawSyncStatus = searchParams.get('syncStatus');
-  const syncStatus =
-    rawSyncStatus && OrderSyncStatusValues.includes(rawSyncStatus as OrderSyncStatusValue)
-      ? (rawSyncStatus as OrderSyncStatusValue)
-      : undefined;
+  const syncStatus = isOrderSyncStatus(rawSyncStatus) ? rawSyncStatus : undefined;
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
