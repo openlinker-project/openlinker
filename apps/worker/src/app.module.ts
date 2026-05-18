@@ -12,14 +12,11 @@ import { CacheModule } from '@openlinker/shared/cache';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
-import {
-  IntegrationsModule as CoreIntegrationsModule,
-  PluginRegistryModule,
-} from '@openlinker/core/integrations';
+import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
-import { workerPlugins } from './plugins';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncWorkerModule } from './sync/sync-worker.module';
 import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
 
@@ -34,7 +31,7 @@ import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
     CacheModule,
     IdentifierMappingModule,
     CoreIntegrationsModule,
-    PluginRegistryModule.forRoot({ plugins: workerPlugins }),
+    IntegrationsModule,
     ProductsModule,
     InventoryModule,
     SyncModule,
