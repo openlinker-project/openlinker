@@ -4,10 +4,10 @@
  * Binds `CONTENT_SUGGESTION_SERVICE_TOKEN` to `ContentSuggestionService` for
  * the worker process. Mirrors the `apps/api/src/content/content.module.ts`
  * suggestion-binding pattern — the suggestion service depends on
- * `AI_COMPLETION_PORT_TOKEN`, which the worker resolves via
- * `PluginRegistryModule.forRoot({ plugins: workerPlugins })` in
- * `AppModule` (where `workerPlugins` includes `AiIntegrationModule.register()`
- * as of #737).
+ * `AI_COMPLETION_PORT_TOKEN`, which the worker resolves via the worker-side
+ * `IntegrationsModule` wrapper (`apps/worker/src/integrations/integrations.module.ts`),
+ * which composes `workerPlugins` (including `AiIntegrationModule.register()`
+ * as of #737) through `PluginRegistryModule.forRoot` and re-exports it.
  *
  * Cannot live in `libs/core/src/content/content.module.ts` because that
  * would force core to value-import `@openlinker/integrations-ai`,
@@ -31,9 +31,16 @@ import {
 import { ContentSuggestionService } from '@openlinker/core/content';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-  imports: [CoreContentModule, CoreIntegrationsModule, CoreListingsModule, CoreAiModule],
+  imports: [
+    CoreContentModule,
+    CoreIntegrationsModule,
+    CoreListingsModule,
+    CoreAiModule,
+    IntegrationsModule, // `AI_COMPLETION_PORT_TOKEN` resolves via `PluginRegistryModule` re-export.
+  ],
   providers: [
     ContentSuggestionService,
     {
