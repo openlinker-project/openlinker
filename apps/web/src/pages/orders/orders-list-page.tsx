@@ -14,7 +14,7 @@
  *
  * @module pages/orders
  */
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -86,6 +86,27 @@ function isOrderSyncStatus(value: string | null): value is OrderSyncStatusValue 
 function formatCurrency(amount: number, currency: string, locale: LocaleCode): string {
   const bcp47 = locale === 'en' ? 'en-US' : locale;
   return new Intl.NumberFormat(bcp47, { style: 'currency', currency }).format(amount);
+}
+
+/**
+ * Cockpit-style "data freshness" line — the freshest `updatedAt` across
+ * visible rows, rendered as a locale-aware HH:MM. The temporal eyebrow is
+ * the operator's "how stale is this view" signal; same locale-resolution
+ * path as `formatCurrency` so the i18n seam stays single-source-of-truth.
+ */
+function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): string | null {
+  if (items.length === 0) return null;
+  let mostRecentMs = 0;
+  for (const item of items) {
+    const ms = Date.parse(item.updatedAt);
+    if (Number.isFinite(ms) && ms > mostRecentMs) mostRecentMs = ms;
+  }
+  if (mostRecentMs === 0) return null;
+  const bcp47 = locale === 'en' ? 'en-US' : locale;
+  const time = new Intl.DateTimeFormat(bcp47, { hour: '2-digit', minute: '2-digit' }).format(
+    new Date(mostRecentMs),
+  );
+  return `Synced ${time}`;
 }
 
 export function OrdersListPage(): ReactElement {
@@ -247,15 +268,63 @@ export function OrdersListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
+  // Temporal eyebrow — freshest `updatedAt` across the visible page. Falls
+  // back to the static "Operations" label when nothing has loaded yet, so the
+  // header layout is stable on first paint.
+  const freshness = useMemo(
+    () => formatFreshness(query.data?.items ?? [], locale),
+    [query.data?.items, locale],
+  );
+
+  // `R` keyboard shortcut — operator-cockpit affordance for "refresh
+  // everything visible." Skips when modifier keys are pressed (Cmd+R is
+  // browser reload) and when a text input has focus.
+  function refreshAll(): void {
+    void query.refetch();
+    void allOrdersKpi.refetch();
+    void syncedKpi.refetch();
+    void pendingKpi.refetch();
+    void failedKpi.refetch();
+  }
+
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent): void {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        refreshAll();
+      }
+    }
+    document.addEventListener('keydown', onKeydown);
+    return () => { document.removeEventListener('keydown', onKeydown); };
+    // Empty deps: `refreshAll` closes over the five React-Query refetch
+    // handles, whose identities are stable per query instance — the
+    // listener doesn't need to rebind on every render. The handler will
+    // see fresh refetch handles at fire-time via the closure.
+  }, []);
+
   return (
     <PageLayout
-      eyebrow="Operations"
+      eyebrow={freshness ?? 'Operations'}
       title="Orders"
-      description="Order monitoring — track sync status and troubleshoot failures."
       actions={
-        <Link to="/orders/failed" className="button button--ghost">
-          Failed Orders
-        </Link>
+        <>
+          <Button tone="ghost" className="button--sm" onClick={refreshAll}>
+            Refresh
+            <span className="button__shortcut">R</span>
+          </Button>
+          <Link to="/orders/failed" className="button button--ghost">
+            Failed Orders
+          </Link>
+        </>
       }
     >
       {/* KPI strip — counts by sync status. Tone-tinted; '—' placeholders
@@ -314,6 +383,18 @@ export function OrdersListPage(): ReactElement {
           >
             Clear filters
           </Button>
+        )}
+
+        {/* Right-aligned results-count signal. Surfaces the total above
+            the table — operators don't need to scan to the paginator to
+            tell whether the filter is doing anything. */}
+        {query.data && (
+          <span
+            className="text-muted mono tabular"
+            style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
+          >
+            {query.data.total.toLocaleString()} results
+          </span>
         )}
       </div>
 

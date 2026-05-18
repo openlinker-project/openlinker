@@ -193,6 +193,43 @@ describe('OrdersListPage', () => {
     expect(await screen.findByText('ol_order_no_number')).toBeInTheDocument();
   });
 
+  it('should render a temporal "Synced HH:MM" eyebrow derived from the freshest updatedAt (#778)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Eyebrow is locale-formatted (HH:MM) — assert the "Synced …" prefix
+    // and the digits without pinning the exact time zone the test runner
+    // happens to be in.
+    const eyebrow = await screen.findByText(/^Synced \d{1,2}:\d{2}/);
+    expect(eyebrow).toBeInTheDocument();
+  });
+
+  it('should refetch all queries when the R keyboard shortcut fires (#778)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(sampleOrders);
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Wait for the page to settle — main + 4 KPI queries each fire once.
+    await screen.findByText('ALG-882414');
+    const baselineCalls = list.mock.calls.length;
+
+    // Press R outside any focused input.
+    await user.keyboard('r');
+
+    // R should refetch the main query at minimum. The KPI queries also
+    // refetch via the same handler — assert the main one strictly and
+    // the total grows by at least 1.
+    await vi.waitFor(() => {
+      expect(list.mock.calls.length).toBeGreaterThan(baselineCalls);
+    });
+  });
+
   it('should add the pulse class to the StatusBadge when a destination is syncing (#778)', async () => {
     const orderSyncing: OrderRecord = {
       ...sampleOrder,
