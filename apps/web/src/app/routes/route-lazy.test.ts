@@ -61,7 +61,7 @@ const lazyRoutes = collectLazyRoutes([
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 35;
+const EXPECTED_LAZY_ROUTE_COUNT = 37;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

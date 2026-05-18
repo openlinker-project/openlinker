@@ -67,3 +67,7 @@ export { ProductThumbnail } from './product-thumbnail';
 export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';
 export type { Density } from './density-toggle';
+
+// ── Bulk-selection (#739) ──────────────────────────────────────────
+export { BulkActionBar } from './bulk-action-bar';
+export type { BulkActionBarProps } from './bulk-action-bar';

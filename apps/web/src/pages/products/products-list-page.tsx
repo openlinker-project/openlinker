@@ -1,5 +1,16 @@
-import { useState, type ReactElement, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+/**
+ * Products List Page
+ *
+ * Browseable catalog of products synced from connected platforms. Supports
+ * search + pagination via URL params, and bulk selection of 1-100 products
+ * for batch Allegro listing creation (#739). Selection state is component-
+ * local; it is serialised into the wizard URL only on navigation so the
+ * URL doesn't grow on every checkbox toggle.
+ *
+ * @module apps/web/src/pages/products
+ */
+import { useCallback, useMemo, useState, type ChangeEvent, type ReactElement, type ReactNode } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -9,12 +20,15 @@ import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import type { Product, ProductFilters } from '../../features/products/api/products.types';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+/** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
+export const BULK_SELECTION_CAP = 100;
 
 // When currency is missing, the raw amount is shown muted with a hover-reveal
 // rather than silently emitting a bare decimal — explicit ambiguity is safer.
@@ -32,53 +46,9 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
   );
 }
 
-const COLUMNS: DataTableColumn<Product>[] = [
-  {
-    id: 'name',
-    header: 'Name',
-    cell: (product) => (
-      <span className="product-row">
-        <ProductThumbnail src={product.images?.[0]} name={product.name} />
-        <span className="product-row__name">{product.name}</span>
-      </span>
-    ),
-    accessor: (product) => product.name,
-    sortable: true,
-  },
-  {
-    id: 'sku',
-    header: 'SKU',
-    cell: (product) =>
-      product.sku ? (
-        <span className="mono-text" title={product.sku}>{product.sku}</span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-    accessor: (product) => product.sku,
-    sortable: true,
-    hideBelow: 768,
-  },
-  {
-    id: 'price',
-    header: 'Price',
-    align: 'right',
-    cell: (product) => formatPrice(product.price, product.currency),
-    accessor: (product) => product.price,
-    sortable: true,
-    hideBelow: 480,
-  },
-  {
-    id: 'createdAt',
-    header: 'Created',
-    cell: (product) => <TimeDisplay iso={product.createdAt} format="date" />,
-    accessor: (product) => product.createdAt,
-    sortable: true,
-    hideBelow: 1024,
-  },
-];
-
 export function ProductsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
 
   const urlSearch = searchParams.get('search') ?? '';
@@ -87,39 +57,105 @@ export function ProductsListPage(): ReactElement {
   const [searchInput, setSearchInput] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
 
+  // Selection state is component-local. It is *not* mirrored into URL params
+  // during selection (the URL would balloon on every checkbox toggle, and the
+  // common bulk-listing pattern is "select → submit", not "share a selection
+  // link"). On submit click, the variant IDs are serialised into the wizard
+  // route so the destination has the full list.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const filters: ProductFilters = { search: debouncedSearch || undefined };
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useProductsQuery(filters, pagination);
+  const items = query.data?.items ?? [];
 
-  function handleSearchChange(value: string): void {
-    setSearchInput(value);
-    // Reset pagination immediately when typing
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) {
-        next.set('search', value);
-      } else {
-        next.delete('search');
+  const handleToggleRow = useCallback(
+    (productId: string) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(productId)) {
+          next.delete(productId);
+          return next;
+        }
+        // Enforce the cap by refusing the toggle when at capacity.
+        if (next.size >= BULK_SELECTION_CAP) {
+          return prev;
+        }
+        next.add(productId);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const visibleIds = useMemo(() => items.map((p) => p.id), [items]);
+  const visibleSelectedCount = useMemo(
+    () => visibleIds.reduce((sum, id) => sum + (selectedIds.has(id) ? 1 : 0), 0),
+    [visibleIds, selectedIds],
+  );
+
+  const headerCheckboxState =
+    visibleIds.length > 0 && visibleSelectedCount === visibleIds.length
+      ? 'all'
+      : visibleSelectedCount > 0
+        ? 'some'
+        : 'none';
+
+  const handleToggleHeader = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (headerCheckboxState === 'all') {
+        // Unselect everything visible on the current page; keep other-page
+        // selections intact so paginating through doesn't lose state.
+        for (const id of visibleIds) next.delete(id);
+        return next;
       }
-      next.delete('offset');
+      // Select all visible, respecting the cap. If selecting all would
+      // exceed the cap, select up to the cap and stop — caller already
+      // sees disabled checkboxes for over-cap rows.
+      for (const id of visibleIds) {
+        if (next.has(id)) continue;
+        if (next.size >= BULK_SELECTION_CAP) break;
+        next.add(id);
+      }
       return next;
     });
-  }
+  }, [headerCheckboxState, visibleIds]);
 
-  function setOffset(next: number): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === 0) {
-        p.delete('offset');
-      } else {
-        p.set('offset', String(next));
-      }
-      return p;
-    });
-  }
+  const handleSearchChange = useCallback(
+    (value: string): void => {
+      setSearchInput(value);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) {
+          next.set('search', value);
+        } else {
+          next.delete('search');
+        }
+        next.delete('offset');
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
 
-  function clearSearch(): void {
+  const setOffset = useCallback(
+    (nextOffset: number): void => {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        if (nextOffset === 0) {
+          p.delete('offset');
+        } else {
+          p.set('offset', String(nextOffset));
+        }
+        return p;
+      });
+    },
+    [setSearchParams],
+  );
+
+  const clearSearch = useCallback((): void => {
     setSearchInput('');
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -127,7 +163,115 @@ export function ProductsListPage(): ReactElement {
       next.delete('offset');
       return next;
     });
-  }
+  }, [setSearchParams]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  // On submit: serialise the selection into the wizard URL. The wizard
+  // page consumes ?productIds= and hydrates products + variants from there.
+  // We send product IDs; the wizard resolves each to its primary variant
+  // before calling the BE bulk-create endpoint (which actually accepts
+  // variant IDs — see bulk-listings.types.ts file header).
+  const handleSubmit = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds).join(',');
+    void navigate(`/listings/bulk-create/wizard?productIds=${encodeURIComponent(ids)}`);
+  }, [selectedIds, navigate]);
+
+  const atCap = selectedIds.size >= BULK_SELECTION_CAP;
+
+  const columns: DataTableColumn<Product>[] = useMemo(
+    () => [
+      {
+        id: 'select',
+        // Header rendered manually for indeterminate state.
+        header: (
+          <CheckboxCell
+            state={headerCheckboxState}
+            onToggle={handleToggleHeader}
+            ariaLabel={
+              headerCheckboxState === 'all'
+                ? 'Unselect all visible products'
+                : 'Select all visible products'
+            }
+          />
+        ),
+        cell: (product) => {
+          const checked = selectedIds.has(product.id);
+          const disabled = !checked && atCap;
+          return (
+            <CheckboxCell
+              state={checked ? 'all' : 'none'}
+              onToggle={() => {
+                handleToggleRow(product.id);
+              }}
+              disabled={disabled}
+              ariaLabel={
+                checked
+                  ? `Unselect ${product.name}`
+                  : disabled
+                    ? `Maximum ${BULK_SELECTION_CAP} products per batch reached`
+                    : `Select ${product.name}`
+              }
+              tooltip={
+                disabled ? `Max ${BULK_SELECTION_CAP} per batch` : undefined
+              }
+            />
+          );
+        },
+        align: 'left',
+      },
+      {
+        id: 'name',
+        header: 'Name',
+        cell: (product) => (
+          <span className="product-row">
+            <ProductThumbnail src={product.images?.[0]} name={product.name} />
+            <Link to={product.id} className="product-row__name product-row__name--link">
+              {product.name}
+            </Link>
+          </span>
+        ),
+        accessor: (product) => product.name,
+        sortable: true,
+      },
+      {
+        id: 'sku',
+        header: 'SKU',
+        cell: (product) =>
+          product.sku ? (
+            <span className="mono-text" title={product.sku}>
+              {product.sku}
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          ),
+        accessor: (product) => product.sku,
+        sortable: true,
+        hideBelow: 768,
+      },
+      {
+        id: 'price',
+        header: 'Price',
+        align: 'right',
+        cell: (product) => formatPrice(product.price, product.currency),
+        accessor: (product) => product.price,
+        sortable: true,
+        hideBelow: 480,
+      },
+      {
+        id: 'createdAt',
+        header: 'Created',
+        cell: (product) => <TimeDisplay iso={product.createdAt} format="date" />,
+        accessor: (product) => product.createdAt,
+        sortable: true,
+        hideBelow: 1024,
+      },
+    ],
+    [selectedIds, atCap, headerCheckboxState, handleToggleRow, handleToggleHeader],
+  );
 
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
@@ -137,30 +281,28 @@ export function ProductsListPage(): ReactElement {
     <PageLayout
       eyebrow="Operations"
       title="Products"
-      description="Product catalog explorer — search by name or SKU."
+      description="Product catalog explorer — search by name or SKU. Select up to 100 products to bulk-list on Allegro."
     >
-      {/* Search bar */}
       <div className="toolbar">
         <Input
           aria-label="Search products by name or SKU"
           placeholder="Search by name or SKU…"
           value={searchInput}
-          onChange={(e) => { handleSearchChange(e.target.value); }}
+          onChange={(e) => {
+            handleSearchChange(e.target.value);
+          }}
         />
       </div>
 
-      {/* Table */}
       {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} />
+        <DataTableSkeleton columns={columns} />
       ) : query.error ? (
         <ErrorState
           title="Unable to load products"
           message={query.error.message}
-          action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
-          }
+          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
         />
-      ) : (query.data?.items.length ?? 0) === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState
           liveRegion="off"
           title="No products found"
@@ -183,10 +325,9 @@ export function ProductsListPage(): ReactElement {
         <>
           <DataTable
             caption="Products"
-            columns={COLUMNS}
-            rows={query.data?.items ?? []}
+            columns={columns}
+            rows={items}
             rowKey={(product) => product.id}
-            rowHref={(product) => product.id}
             sort={sort}
             onSortChange={setSort}
             cardView={{
@@ -202,7 +343,6 @@ export function ProductsListPage(): ReactElement {
             }}
           />
 
-          {/* Pagination */}
           <div className="pagination">
             <span className="text-muted">
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
@@ -222,8 +362,63 @@ export function ProductsListPage(): ReactElement {
               </Button>
             </div>
           </div>
+
+          <BulkActionBar
+            count={selectedIds.size}
+            itemNoun="product"
+            hint={
+              atCap
+                ? `Max ${BULK_SELECTION_CAP} per batch`
+                : `Max ${BULK_SELECTION_CAP} per batch · ${BULK_SELECTION_CAP - selectedIds.size} more available`
+            }
+            actions={
+              <>
+                <Button tone="ghost" className="button--sm" onClick={clearSelection}>
+                  Clear
+                </Button>
+                <Button tone="primary" onClick={handleSubmit}>
+                  Create Allegro offers ({selectedIds.size.toLocaleString()})
+                </Button>
+              </>
+            }
+          />
         </>
       )}
     </PageLayout>
+  );
+}
+
+interface CheckboxCellProps {
+  state: 'all' | 'some' | 'none';
+  onToggle: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  tooltip?: string;
+}
+
+function CheckboxCell({
+  state,
+  onToggle,
+  disabled = false,
+  ariaLabel,
+  tooltip,
+}: CheckboxCellProps): ReactElement {
+  return (
+    <input
+      type="checkbox"
+      checked={state === 'all'}
+      ref={(el) => {
+        if (el) el.indeterminate = state === 'some';
+      }}
+      disabled={disabled}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      // Stop click from bubbling to a row-click handler if a parent sets one.
+      onClick={(e) => { e.stopPropagation(); }}
+      aria-label={ariaLabel}
+      title={tooltip}
+    />
   );
 }

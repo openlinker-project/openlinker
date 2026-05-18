@@ -1,9 +1,19 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import type * as ReactRouterDom from 'react-router-dom';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: (): typeof navigateMock => navigateMock,
+  };
+});
 
 const sampleProducts: PaginatedProducts = {
   items: [
@@ -40,6 +50,7 @@ describe('ProductsListPage', () => {
     // shouldAdvanceTime allows waitFor/findBy to work while still controlling
     // timers so we can flush pending debounce timers in afterEach.
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    navigateMock.mockReset();
   });
 
   afterEach(() => {
@@ -186,5 +197,105 @@ describe('ProductsListPage', () => {
     await user.click(screen.getByRole('button', { name: 'Clear search' }));
 
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
+  });
+
+  // ── Multi-select + BulkActionBar (#739) ────────────────────────────
+
+  it('should not show the bulk action bar when no rows are selected', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const bar = document.querySelector('.bulk-action-bar');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('should show the bulk action bar with count when a row is selected', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '1 product selected' })).toBeInTheDocument();
+  });
+
+  it('header checkbox selects all visible rows; clicking again unselects them', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const headerCheckbox = screen.getByRole('checkbox', {
+      name: 'Select all visible products',
+    });
+    await user.click(headerCheckbox);
+
+    expect(
+      screen.getByRole('button', { name: 'Create Allegro offers (2)' }),
+    ).toBeInTheDocument();
+
+    // After selecting all, header checkbox should be "Unselect all visible"
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Unselect all visible products' }),
+    );
+    const bar = document.querySelector('.bulk-action-bar');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('Clear button empties the selection', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+    expect(
+      screen.getByRole('button', { name: 'Create Allegro offers (1)' }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    const bar = document.querySelector('.bulk-action-bar');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('CTA navigates to the wizard with selected ids in the URL', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Another Product' }));
+
+    const cta = screen.getByRole('button', { name: 'Create Allegro offers (2)' });
+    await user.click(cta);
+
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    const navArg = navigateMock.mock.calls[0]?.[0];
+    expect(typeof navArg).toBe('string');
+    if (typeof navArg !== 'string') return;
+    expect(navArg.startsWith('/listings/bulk-create/wizard?productIds=')).toBe(true);
+    expect(decodeURIComponent(navArg)).toContain('ol_product_abc123');
+    expect(decodeURIComponent(navArg)).toContain('ol_product_def456');
   });
 });

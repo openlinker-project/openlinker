@@ -2805,6 +2805,16 @@ textarea {
   white-space: nowrap;
 }
 
+.product-row__name--link {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.product-row__name--link:hover {
+  color: var(--text-link);
+  text-decoration: underline;
+}
+
 .timeline-list {
   list-style: none;
   padding: 0;
@@ -7640,5 +7650,385 @@ html[data-density='compact'] .status-badge {
      matters when you can see >5 rows at once, which a phone can't. */
   .shell-user-chip__menu .density-toggle {
     display: none;
+  }
+}
+
+/* ── BulkActionBar (#739) ────────────────────────────────────────────
+ * Sticky band that appears when an operator multi-selects on a list page.
+ * Pinned to the bottom of the viewport on mobile; sits inline above the
+ * page footer on desktop. Visually hidden — but kept in the DOM — when
+ * the selection is empty, so screen readers can announce changes on the
+ * `aria-live` region inside without re-mounting the node.
+ */
+.bulk-action-bar {
+  position: sticky;
+  bottom: var(--space-4);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  transition: opacity var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.bulk-action-bar--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+}
+
+.bulk-action-bar__count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.bulk-action-bar__num {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bulk-action-bar__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bulk-action-bar__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bulk-action-bar__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 639.98px) {
+  /* Mobile: pin to viewport bottom edge. */
+  .bulk-action-bar {
+    position: fixed;
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: var(--space-3);
+    margin: 0;
+    flex-wrap: wrap;
+  }
+  .bulk-action-bar__hint {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .bulk-action-bar__actions {
+    margin-left: auto;
+  }
+}
+
+/* Selected-row highlight for products list (#739) */
+.products-list__row--selected td {
+  background: var(--accent-primary-soft);
+}
+
+/* ── Bulk listing wizard (#740) ─────────────────────────────────────
+ * The wizard composes existing primitives (DataTable, Dialog, SetupStepper,
+ * Button, FormField). Only the page-level scaffolding lives here.
+ */
+.bulk-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.bulk-wizard__stepper {
+  margin-bottom: var(--space-2);
+}
+
+.bulk-wizard__body {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+}
+
+.bulk-wizard__body--center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  text-align: center;
+  padding: var(--space-7) var(--space-5);
+}
+
+.bulk-wizard__progress-bar {
+  width: 360px;
+  max-width: 100%;
+  height: 6px;
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin: var(--space-3) 0;
+}
+
+.bulk-wizard__progress-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
+.bulk-wizard__progress-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.bulk-wizard__resolve-sub {
+  max-width: 480px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.bulk-wizard__review-summary {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bulk-wizard__review-summary b {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-wizard__review-summary .sep {
+  color: var(--border-strong);
+}
+
+.bulk-wizard__row-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.bulk-wizard__row-name-text {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-wizard__row-category {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.bulk-wizard__row-category--dim {
+  color: var(--text-muted);
+}
+
+.bulk-wizard__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bulk-wizard__footer--start {
+  justify-content: flex-start;
+}
+
+.bulk-wizard__footer-spacer {
+  flex: 1;
+}
+
+/* Edit modal — AI button row */
+.bulk-edit__desc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.bulk-edit__ai-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--status-review-fg);
+  background: var(--status-review-soft);
+  border: 1px solid var(--status-review-border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.bulk-edit__ai-button:hover {
+  background: color-mix(in oklab, var(--status-review-soft) 70%, var(--status-review-border));
+}
+
+.bulk-edit__ai-button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bulk-edit__cat-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.bulk-edit__cat-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-edit__cat-path b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.bulk-edit__cat-change {
+  margin-left: auto;
+  color: var(--text-link);
+  background: none;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.bulk-edit__cat-change:hover {
+  text-decoration: underline;
+}
+
+/* ── Bulk batch progress (#741) ─────────────────────────────────────
+ * Cockpit layout: KPI strip (4 cards) + status banner + records table.
+ */
+.bulk-batch__kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 1023.98px) {
+  .bulk-batch__kpi-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 639.98px) {
+  .bulk-batch__kpi-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bulk-batch__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.bulk-batch__summary-main {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.bulk-batch__summary-main b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.bulk-batch__summary-links {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.bulk-batch__summary-links a {
+  color: var(--text-link);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bulk-batch__summary-links a:hover {
+  text-decoration: underline;
+}
+
+.bulk-batch__err {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--status-error-fg);
+  display: inline-block;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-batch__ext-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-link);
+  text-decoration: none;
+}
+
+.bulk-batch__ext-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 639.98px) {
+  .bulk-batch__summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .bulk-batch__summary-links {
+    margin-left: 0;
+    flex-wrap: wrap;
   }
 }
