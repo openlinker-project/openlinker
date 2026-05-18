@@ -40,4 +40,13 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
       .execute();
     return { created: result.identifiers.length > 0 };
   }
+
+  async deleteForRecord(
+    bulkBatchId: string,
+    offerCreationRecordId: string,
+  ): Promise<void> {
+    // TypeORM's `.delete({...})` matches by composite key; a non-existent
+    // row is a no-op (affected=0). Returns void per the port contract.
+    await this.repository.delete({ bulkBatchId, offerCreationRecordId });
+  }
 }

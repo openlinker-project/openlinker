@@ -46,6 +46,7 @@ describe('BulkOfferCreationProgressService', () => {
     };
     advancements = {
       markAdvancedIfNotExists: jest.fn(),
+      deleteForRecord: jest.fn(),
     };
     service = new BulkOfferCreationProgressService(batches, advancements);
   });

@@ -25,6 +25,9 @@ export const OFFER_CREATION_ENQUEUE_SERVICE_TOKEN = Symbol('IOfferCreationEnqueu
 export const BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN = Symbol(
   'IBulkOfferCreationSubmitService',
 );
+export const BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN = Symbol(
+  'IBulkOfferCreationRetryService',
+);
 export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');

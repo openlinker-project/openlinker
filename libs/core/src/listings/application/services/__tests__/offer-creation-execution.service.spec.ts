@@ -98,6 +98,7 @@ describe('OfferCreationExecutionService', () => {
         ),
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
+      resetForRetry: jest.fn(),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),

@@ -15,22 +15,31 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
+  InternalServerErrorException,
   NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import {
+  AdapterCapabilityNotSupportedException,
+  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
+  BulkOfferCreationBatchNotFoundException,
+  BulkRetryMissingSnapshotException,
   EmptyBulkSubmissionException,
+  IBulkOfferCreationRetryService,
   IBulkOfferCreationSubmitService,
+  NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
   BulkBatchSummary,
@@ -47,6 +56,7 @@ import {
   BulkBatchSummaryDto,
   BulkOfferCreateResponseDto,
 } from './dto/bulk-offer-create-response.dto';
+import { BulkOfferCreationRetryResponseDto } from './dto/bulk-offer-creation-retry-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -55,7 +65,9 @@ import {
 export class BulkOfferCreationController {
   constructor(
     @Inject(BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN)
-    private readonly bulkSubmit: IBulkOfferCreationSubmitService
+    private readonly bulkSubmit: IBulkOfferCreationSubmitService,
+    @Inject(BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN)
+    private readonly bulkRetry: IBulkOfferCreationRetryService
   ) {}
 
   @Post()
@@ -132,6 +144,54 @@ export class BulkOfferCreationController {
       throw new NotFoundException(`Bulk offer creation batch not found: ${batchId}`);
     }
     return this.toSummaryDto(summary);
+  }
+
+  @Post(':batchId/retry-failed')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiParam({ name: 'batchId', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Re-enqueue the failed children of a bulk batch',
+    description:
+      'Reopens the batch by decrementing failedCount per record (lock-stepped to the per-record reset), deleting per-record advancement rows, and flipping terminal-state batches back to `running`. Each retried record is reset to `pending` and its `marketplace.offer.create` job is enqueued with a wave-distinct idempotency key. Succeeded / pending children are skipped.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Retry wave dispatched',
+    type: BulkOfferCreationRetryResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  @ApiResponse({ status: 409, description: 'Batch has no failed children to retry' })
+  @ApiResponse({ status: 422, description: 'Adapter no longer supports offer creation' })
+  @ApiResponse({ status: 500, description: 'Documented invariant violation (snapshot missing)' })
+  async retryFailed(
+    @Param('batchId', new ParseUUIDPipe()) batchId: string
+  ): Promise<BulkOfferCreationRetryResponseDto> {
+    try {
+      const result = await this.bulkRetry.retryFailed(batchId);
+      return {
+        retriedRecordIds: result.retriedRecordIds,
+        retriedCount: result.retriedCount,
+        batchStatus: result.batchStatus,
+      };
+    } catch (error) {
+      if (error instanceof BulkOfferCreationBatchNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof NoFailedChildrenToRetryException) {
+        throw new ConflictException(error.message);
+      }
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      if (error instanceof BulkRetryMissingSnapshotException) {
+        // Documented invariant violation: every record on a bulk batch
+        // carries a `request` snapshot. Map to 500 explicitly with the
+        // typed message so the operator sees `recordId` + `batchId` in
+        // the response body (Nest's default 500 filter swallows it).
+        throw new InternalServerErrorException(error.message);
+      }
+      throw error;
+    }
   }
 
   private toSummaryDto(summary: BulkBatchSummary): BulkBatchSummaryDto {

@@ -32,6 +32,7 @@ import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repo
 import { SellerPoliciesService } from './application/services/seller-policies.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
 import { BulkOfferCreationSubmitService } from './application/services/bulk-offer-creation-submit.service';
+import { BulkOfferCreationRetryService } from './application/services/bulk-offer-creation-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
@@ -47,6 +48,7 @@ import {
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
+  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
@@ -67,6 +69,7 @@ export {
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
+  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
@@ -101,6 +104,7 @@ export {
     OfferCreationExecutionService,
     OfferCreationEnqueueService,
     BulkOfferCreationSubmitService,
+    BulkOfferCreationRetryService,
     OfferStatusPollService,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
@@ -157,6 +161,10 @@ export {
       useExisting: BulkOfferCreationSubmitService,
     },
     {
+      provide: BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
+      useExisting: BulkOfferCreationRetryService,
+    },
+    {
       provide: OFFER_STATUS_POLL_SERVICE_TOKEN,
       useExisting: OfferStatusPollService,
     },
@@ -183,6 +191,7 @@ export {
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
     BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
+    BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
     OFFER_STATUS_POLL_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,

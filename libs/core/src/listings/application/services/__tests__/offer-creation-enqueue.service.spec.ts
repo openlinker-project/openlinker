@@ -62,6 +62,7 @@ describe('OfferCreationEnqueueService', () => {
       updateExternalIdAndStatus: jest.fn(),
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
+      resetForRetry: jest.fn(),
     };
 
     jobEnqueue = {

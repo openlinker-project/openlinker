@@ -125,4 +125,15 @@ export interface OfferCreationRecordRepositoryPort {
     id: string,
     report: SmartClassificationReport | null
   ): Promise<OfferCreationRecord>;
+
+  /**
+   * Reset a record for retry (#742): atomically set `status='pending'` and
+   * clear `externalOfferId`, `errors`, and `classificationReport`. The
+   * `request` snapshot is intentionally preserved so the retry can
+   * reconstruct the original V2 payload. Idempotent at `pending` (re-resetting
+   * an already-reset record is a no-op write).
+   *
+   * Throws `OfferCreationRecordNotFoundException` if the record does not exist.
+   */
+  resetForRetry(id: string): Promise<OfferCreationRecord>;
 }

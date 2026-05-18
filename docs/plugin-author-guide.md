@@ -937,6 +937,25 @@ boot and self-registers against the host registries.
 
 ---
 
+## Composing bulk flows over single-offer primitives
+
+Bulk operations in OpenLinker (today: bulk offer creation, #726) are not parallel pipelines — they're application-layer fan-outs over the same single-offer primitives every adapter already implements. A plugin author writing a new adapter doesn't add a "bulk" capability or a "bulk-retry" port. The bulk lifecycle is core's responsibility; the adapter implements `OfferCreator` (single create) and the bulk flow composes that.
+
+The four core services owning the bulk offer-creation lifecycle (#734 / #736 / #737 / #742):
+
+| Phase | Service | Behaviour |
+|---|---|---|
+| Submit | `BulkOfferCreationSubmitService` | Validate connection + `OfferCreator` once, persist the `BulkOfferCreationBatch`, fan N `enqueueCreation` calls out, flip batch to `running`. |
+| Run | `OfferCreationEnqueueService` + `OfferCreationExecutionService` | Same primitives the single-offer endpoint uses. The worker handler routes V2 payloads with `bulkBatchId` here. |
+| Progress | `BulkOfferCreationProgressService` | Per-child terminal-status callback. Gates counter advancement at-most-once via the `bulk_batch_advancements` join table (composite-PK + `INSERT ON CONFLICT DO NOTHING`). Derives terminal batch status (`completed | partially-failed | failed`) once `succeededCount + failedCount === totalCount`. |
+| Retry | `BulkOfferCreationRetryService` | Re-runs failed children. Deletes their advancement rows, decrements `failedCount` per-record (lock-stepped to the per-record reset), transitions terminal-state batches back to `running`, and re-enqueues each failed child with a wave-distinct idempotency key (`bulk:{batchId}:variant:{variantId}:retry:{retryWaveId}`). |
+
+**The pattern for plugin authors**: implement single-offer capabilities (`OfferCreator`, `OfferStatusReader`, `OfferSmartClassificationReader` when applicable) on your `OfferManagerPort` adapter. The bulk flow composes from there — your adapter never has to know it was called as part of a batch.
+
+If you're proposing a new "bulk" capability on a port, that's almost certainly an architectural smell. Surface the single-row operation and let core compose the fan-out.
+
+---
+
 ## Things plugin authors trip on
 
 - **Top-level barrel only** for cross-package imports (#591). ESLint
