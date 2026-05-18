@@ -106,9 +106,14 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
 function SidebarBrand(): ReactElement {
   return (
     <div className="shell-brand">
-      <span className="shell-brand__mark" aria-hidden="true">
-        OL
-      </span>
+      <img
+        className="shell-brand__mark"
+        src="/openlinker-logo.svg"
+        alt=""
+        aria-hidden="true"
+        width={26}
+        height={26}
+      />
       <span className="shell-brand__name">OpenLinker</span>
       <EnvironmentBadge compact />
     </div>

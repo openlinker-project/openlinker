@@ -1043,15 +1043,9 @@ textarea {
 .shell-brand__mark {
   width: 26px;
   height: 26px;
-  background: var(--text-primary);
-  color: var(--text-inverse);
   border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0;
+  display: block;
+  object-fit: cover;
 }
 
 .shell-brand__name {
