@@ -35,6 +35,24 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 
 ---
 
+## Integrations
+
+| Integration | Role | Status |
+|---|---|---|
+| **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
+| **[Allegro](./libs/integrations/allegro/)** | Marketplace *(source + offers)* | ✅ Live |
+| **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
+| **Subiekt nexo** *([#728](https://github.com/SilkSoftwareHouse/openlinker/issues/728))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | 🚧 In progress |
+| **InPost** *([#727](https://github.com/SilkSoftwareHouse/openlinker/issues/727))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | 🚧 In progress |
+| Shopify · WooCommerce · BigCommerce · Magento | Shop | 📋 Planned |
+| eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
+| DPD · DHL · FedEx · ORLEN Paczka · GLS | Shipping *(pending `ShippingProviderPort` from #727)* | 📋 Planned |
+| Fakturownia · iFirma · wFirma · inFakt | Invoicing *(siblings of Subiekt under `InvoicingPort`)* | 📋 Planned |
+
+Planned items are open for community contributions — see [Adding your own integration](#adding-your-own-integration) below.
+
+---
+
 ## Capabilities
 
 OpenLinker is built around a small set of capability ports. Each integration implements one or more of them — adding a new platform means adding implementations, not changing core code.
@@ -187,14 +205,7 @@ Full walkthrough in the [Plugin Author Guide](./docs/plugin-author-guide.md). Th
 
 ### Wanted
 
-Community plugins explicitly welcome for:
-
-- **Shops** — Shopify, WooCommerce, BigCommerce, Magento
-- **Marketplaces** — eBay, Amazon, OLX, Empik, Bol
-- **Shipping providers** — InPost, DPD, DHL, FedEx (the `ShippingProviderPort` is on the roadmap)
-- **Payment processors** — Stripe, Adyen, Przelewy24 (`PaymentProcessorPort` is on the roadmap)
-
-Propose one — or anything not listed — via the [`new_integration` issue template](./.github/ISSUE_TEMPLATE/new_integration.md). The [Plugin Author Guide](./docs/plugin-author-guide.md) walks through port selection, package layout, registry wiring, OAuth, and tests.
+Any **📋 Planned** row in the [Integrations table](#integrations) is open for community contribution — or propose something not listed via the [`new_integration` issue template](./.github/ISSUE_TEMPLATE/new_integration.md). The [Plugin Author Guide](./docs/plugin-author-guide.md) walks through port selection, package layout, registry wiring, OAuth, and tests.
 
 ### Where we're at
 
