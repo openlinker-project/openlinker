@@ -21,6 +21,11 @@ export interface ProductVariant {
   attributes: Record<string, string> | null;
   ean: string | null;
   gtin: string | null;
+  /**
+   * Master variant price. `null` until the master adapter populates the
+   * column on the next sync (no historical backfill — see #792 PR 1).
+   */
+  price: number | null;
   createdAt: string;
   updatedAt: string;
   externalIds?: ExternalIdMapping[];

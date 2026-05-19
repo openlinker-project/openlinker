@@ -213,7 +213,12 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   }
 
   /**
-   * Map ORM entity to domain entity
+   * Map ORM entity to domain entity.
+   *
+   * TypeORM surfaces `decimal` columns as strings; `!== null` preserves
+   * `price=0` (a truthy shortcut would coerce it to `undefined`). Null on
+   * the ORM side becomes `undefined` on the domain side to match the
+   * optional `ProductVariant.price?: number` shape — see the entity comment.
    */
   private toDomain(entity: ProductVariantOrmEntity): ProductVariant {
     return {
@@ -223,6 +228,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       attributes: entity.attributes,
       ean: entity.ean,
       gtin: entity.gtin,
+      price: entity.price !== null ? Number(entity.price) : undefined,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -239,6 +245,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     entity.attributes = variant.attributes;
     entity.ean = variant.ean;
     entity.gtin = variant.gtin;
+    entity.price = variant.price ?? null;
     // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;

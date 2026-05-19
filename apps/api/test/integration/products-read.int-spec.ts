@@ -1,9 +1,14 @@
 /**
  * Products Read API Integration Test
  *
- * Vertical slice covering `currency` persistence round-trip for #358:
- * seed → `GET /products` → assert the field survives ORM ↔ domain ↔ DTO mapping
- * without loss (both a populated ISO 4217 code and the null case).
+ * Vertical slice covering:
+ *   - `currency` persistence round-trip for #358: seed → `GET /products` →
+ *     assert the field survives ORM ↔ domain ↔ DTO mapping without loss
+ *     (both a populated ISO 4217 code and the null case).
+ *   - `variant.price` persistence round-trip for #792 PR 1: seed a product
+ *     with a variant carrying a price → `GET /products/:id` → assert the
+ *     variant's `price` survives the chain end-to-end. Also covers the
+ *     null-price case (returns `null` on the wire).
  *
  * Uses real Postgres via Testcontainers.
  *
@@ -15,7 +20,10 @@ import {
   ProductRepositoryPort,
   PRODUCT_REPOSITORY_TOKEN,
 } from '@openlinker/core/products';
-import { ProductOrmEntity } from '@openlinker/core/products/orm-entities';
+import {
+  ProductOrmEntity,
+  ProductVariantOrmEntity,
+} from '@openlinker/core/products/orm-entities';
 import {
   getTestHarness,
   IntegrationTestHarness,
@@ -47,6 +55,31 @@ async function seedProduct(
     description: null,
     images: null,
     ...overrides,
+  });
+  return repo.save(entity);
+}
+
+interface SeedVariantOverrides {
+  id?: string;
+  productId: string;
+  sku?: string | null;
+  price?: number | null;
+}
+
+async function seedVariant(
+  dataSource: DataSource,
+  overrides: SeedVariantOverrides,
+): Promise<ProductVariantOrmEntity> {
+  const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const repo = dataSource.getRepository(ProductVariantOrmEntity);
+  const entity = repo.create({
+    id: overrides.id ?? `ol_variant_fixture_${suffix}`,
+    productId: overrides.productId,
+    sku: overrides.sku ?? 'SKU-FIX-V',
+    attributes: null,
+    ean: null,
+    gtin: null,
+    price: overrides.price ?? null,
   });
   return repo.save(entity);
 }
@@ -102,6 +135,40 @@ describe('Products Read API Integration — currency persistence', () => {
     );
     expect(item).toBeDefined();
     expect(item.currency).toBeNull();
+  });
+
+  it('should surface persisted variant price through GET /products/:id (#792)', async () => {
+    const http = harness.getHttp();
+    const dataSource = harness.getDataSource();
+    const token = await loginAsAdmin(http, dataSource);
+
+    const product = await seedProduct(dataSource);
+    await seedVariant(dataSource, { productId: product.id, price: 19.99 });
+
+    const response = await http
+      .get(`/products/${product.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.variants).toHaveLength(1);
+    expect(response.body.variants[0].price).toBe(19.99);
+  });
+
+  it('should return null variant price when the column is null (#792)', async () => {
+    const http = harness.getHttp();
+    const dataSource = harness.getDataSource();
+    const token = await loginAsAdmin(http, dataSource);
+
+    const product = await seedProduct(dataSource);
+    await seedVariant(dataSource, { productId: product.id, price: null });
+
+    const response = await http
+      .get(`/products/${product.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.variants).toHaveLength(1);
+    expect(response.body.variants[0].price).toBeNull();
   });
 
   it('should persist currency via ProductRepository.upsert (domain → ORM)', async () => {

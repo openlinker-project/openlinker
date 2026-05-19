@@ -37,6 +37,7 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     attributes: overrides.attributes ?? { size: 'S' },
     ean: overrides.ean ?? '1234567890123',
     gtin: overrides.gtin ?? null,
+    price: overrides.price,
     createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
   };
@@ -150,11 +151,27 @@ describe('ProductsController', () => {
       expect(result.currency).toBeNull();
       expect(result.variants).toHaveLength(1);
       expect(result.variants![0].id).toBe('ol_product_v1');
+      // Variant without a domain `price` serialises as `null` at the wire
+      // boundary (variantToDto normalises `undefined ↔ null`).
+      expect(result.variants![0].price).toBeNull();
       expect(result.externalIds).toHaveLength(1);
       expect(result.externalIds![0].externalId).toBe('42');
       // Verify correct entity type passed for product and variant
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_v1');
+    });
+
+    it('should surface variant price when the domain entity carries one (#792)', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ price: 19.99 })],
+        total: 1,
+      });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].price).toBe(19.99);
     });
 
     it('should surface currency when the domain entity carries one', async () => {

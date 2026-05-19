@@ -42,6 +42,9 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'varchar', nullable: true })
   gtin!: string | null;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  price!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

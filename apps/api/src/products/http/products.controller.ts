@@ -55,6 +55,10 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
     attributes: variant.attributes,
     ean: variant.ean ?? null,
     gtin: variant.gtin ?? null,
+    // Optional on the domain entity (adapters may omit on construction);
+    // normalised to `null` at the wire boundary so the FE sees a consistent
+    // nullable shape.
+    price: variant.price ?? null,
     createdAt: variant.createdAt!.toISOString(),
     updatedAt: variant.updatedAt!.toISOString(),
   };

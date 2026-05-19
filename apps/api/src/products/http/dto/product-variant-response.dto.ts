@@ -28,6 +28,13 @@ export class ProductVariantResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'GTIN barcode' })
   gtin!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Master variant price. Nullable when not yet synced or unavailable from the master source.',
+  })
+  price!: number | null;
+
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 

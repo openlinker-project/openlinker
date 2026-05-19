@@ -411,6 +411,9 @@ describe('PrestashopProductMasterAdapter', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].sku).toBe(samplePrestashopProduct.reference);
+      // Synthetic variant inherits master price from the parent product so
+      // simple products carry a usable price for the bulk wizard (#792).
+      expect(result[0].price).toBe(19.99);
       expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         'ProductVariant',
         `product:${externalProductId}`,
@@ -429,6 +432,38 @@ describe('PrestashopProductMasterAdapter', () => {
         })
       );
     });
+
+    it.each([
+      ['undefined price', undefined],
+      ['null price', null],
+      ['non-numeric price', 'not-a-number'],
+    ])(
+      'should leave synthetic variant price undefined when parent product has %s',
+      async (_label, priceValue) => {
+        const productId = 'internal-product-456';
+        const externalProductId = '43';
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+          {
+            connectionId: connection.id,
+            externalId: externalProductId,
+            entityType: 'Product',
+          },
+        ]);
+
+        mockHttpClient.getResource = jest
+          .fn()
+          .mockResolvedValue({ ...samplePrestashopProduct, price: priceValue });
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        const result = await adapter.getProductVariants(productId);
+
+        expect(result).toHaveLength(1);
+        // Surfaces as `no-master-price` blocker downstream in #792.
+        expect(result[0].price).toBeUndefined();
+      }
+    );
 
     it('should throw PrestashopResourceNotFoundException when product not found', async () => {
       const productId = 'internal-product-123';
