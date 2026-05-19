@@ -186,9 +186,8 @@ export function BulkResolveStep({
     };
     // Mount-only effect — the 15 s budget is anchored to mount, not to
     // every render. Closure-captured `rows` is acceptable because the
-    // wizard never mutates the row list mid-resolve; live state flows
-    // through `resolvedRef`. Live state flowing through `resolvedRef`
-    // means partial-settle progress survives the closure.
+    // wizard never mutates the row list mid-resolve; live `resolved` state
+    // flows through `resolvedRef` so partial-settle progress survives.
   }, []);
 
   // Prefetch the resolved-categories queries so they're hot for the Review
