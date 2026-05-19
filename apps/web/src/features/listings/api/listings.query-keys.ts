@@ -45,4 +45,6 @@ export const listingsQueryKeys = {
       barcode ?? '',
       sourceCategoryIds ?? [],
     ] as const,
+  /** #741 — bulk batch progress polling. */
+  bulkBatch: (batchId: string) => ['listings', 'bulkBatch', batchId] as const,
 };

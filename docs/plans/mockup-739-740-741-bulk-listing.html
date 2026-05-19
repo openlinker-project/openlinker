@@ -1,0 +1,1861 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OpenLinker · Bulk listing wizard mockup (#739 / #740 / #741)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   OpenLinker design tokens — OKLCH (warm-neutral, hue 80)
+   Mirrors apps/web/src/index.css :root. Light theme only.
+   ============================================================ */
+:root {
+  /* Surfaces */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* Borders */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+
+  /* Text */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-inverse: oklch(96% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+
+  /* Signal-orange accent (#775) */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* Status */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+
+  --status-neutral-soft: oklch(96% 0.005 80);
+  --status-neutral-border: oklch(85% 0.008 80);
+  --status-neutral-fg: oklch(42% 0.010 80);
+
+  /* Spacing — 4px grid */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+
+  /* Radii */
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
+  --radius-xl: 14px; --radius-pill: 9999px;
+
+  /* Tracking */
+  --tracking-tight: -0.02em;
+  --tracking-caps: 0.09em;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px oklch(20% 0.012 80 / 0.04);
+  --shadow-md: 0 4px 12px oklch(20% 0.012 80 / 0.06);
+  --shadow-lg: 0 12px 28px oklch(20% 0.012 80 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text-primary);
+  background: var(--bg-shell);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: -0.01em; }
+.tabular { font-variant-numeric: tabular-nums; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   Mockup page chrome
+   ============================================================ */
+.mockup-header {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-6) var(--space-5);
+}
+.mockup-header h1 {
+  font-size: 28px; line-height: 32px; font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-2);
+}
+.mockup-header p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  max-width: 720px;
+  margin: 0 0 var(--space-4);
+}
+.mockup-header .meta {
+  display: flex; gap: var(--space-3); flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted); letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.mockup-header .meta span {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 4px 8px; background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.surface-section {
+  max-width: 1440px;
+  margin: var(--space-6) auto;
+  padding: 0 var(--space-6);
+}
+.surface-label {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+}
+.surface-label .num {
+  font-family: var(--font-mono); font-weight: 600; font-size: 11px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-primary-border);
+}
+.surface-label .title {
+  font-size: 17px; font-weight: 600; letter-spacing: var(--tracking-tight);
+}
+.surface-label .path {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--text-muted);
+}
+.surface-label .state-tag {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+}
+
+/* "Viewport" frame — emulates a window edge so the cockpit feel reads */
+.viewport {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  min-height: 680px;
+}
+.viewport.no-sidebar { grid-template-columns: 1fr; }
+
+/* ============================================================
+   Sidebar (240px)
+   ============================================================ */
+.sidebar {
+  background: var(--bg-shell);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--space-4) 0;
+}
+.sidebar__logo {
+  padding: 0 var(--space-4) var(--space-5);
+  display: flex; align-items: center; gap: var(--space-2);
+  font-weight: 600; font-size: 15px;
+  letter-spacing: var(--tracking-tight);
+}
+.sidebar__logo-mark {
+  width: 22px; height: 22px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  display: grid; place-items: center;
+  color: var(--text-on-primary);
+  font-family: var(--font-mono); font-weight: 700; font-size: 12px;
+}
+.sidebar__group {
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.sidebar__group-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--space-2) var(--space-2);
+}
+.sidebar__item {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 28px; padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  position: relative;
+}
+.sidebar__item:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.sidebar__item--active {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 0 var(--accent-primary);
+}
+.sidebar__item--planned {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.sidebar__item-icon {
+  width: 14px; height: 14px; display: grid; place-items: center;
+  color: currentColor; opacity: 0.85;
+}
+
+/* ============================================================
+   Top bar (52px)
+   ============================================================ */
+.topbar {
+  height: 52px;
+  display: flex; align-items: center;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  gap: var(--space-4);
+}
+.topbar__crumb {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+}
+.topbar__crumb b { color: var(--text-secondary); font-weight: 500; }
+.topbar__search {
+  flex: 1; max-width: 480px;
+  height: 32px;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.topbar__search .kbd {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+.topbar__right { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
+.topbar__env {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--status-success-fg);
+  background: var(--status-success-soft);
+  border: 1px solid var(--status-success-border);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+.topbar__user {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Page main
+   ============================================================ */
+.main {
+  display: flex; flex-direction: column;
+  min-height: calc(680px - 0px);
+}
+.page {
+  padding: var(--space-5) var(--space-6);
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: var(--space-5);
+}
+
+.page-header__eyebrow {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.page-header__title {
+  font-size: 22px; line-height: 28px; font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+  display: flex; align-items: baseline; gap: var(--space-3);
+}
+.page-header__desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+}
+.page-header__row {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+}
+.page-header__actions {
+  margin-left: auto;
+  display: flex; align-items: center; gap: var(--space-2);
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.button {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans); font-weight: 500; font-size: 13px;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.button:hover { background: var(--bg-surface-muted); }
+.button--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+.button--primary:hover { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+.button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.button--ghost:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.button--danger {
+  color: var(--status-error-fg);
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+}
+.button--sm { height: 28px; padding: 0 var(--space-3); font-size: 12px; }
+.button--xs { height: 24px; padding: 0 var(--space-2); font-size: 11px; }
+.button--lg { height: 38px; padding: 0 var(--space-4); font-size: 14px; }
+.button[disabled] {
+  opacity: 0.5; cursor: not-allowed;
+}
+
+/* ============================================================
+   Status pills (mono+caps, leading dot)
+   ============================================================ */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-weight: 500; font-size: 10.5px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  padding: 3px 8px 3px 7px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  border: 1px solid transparent;
+  line-height: 1;
+}
+.pill::before {
+  content: ''; display: block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.pill--success { background: var(--status-success-soft); color: var(--status-success-fg); border-color: var(--status-success-border); }
+.pill--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); border-color: var(--status-warning-border); }
+.pill--error   { background: var(--status-error-soft);   color: var(--status-error-fg);   border-color: var(--status-error-border); }
+.pill--info    { background: var(--status-info-soft);    color: var(--status-info-fg);    border-color: var(--status-info-border); }
+.pill--neutral { background: var(--status-neutral-soft); color: var(--status-neutral-fg); border-color: var(--status-neutral-border); }
+.pill--review  { background: var(--status-review-soft);  color: var(--status-review-fg);  border-color: var(--status-review-border); }
+
+.pill--pulse::before {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+/* ============================================================
+   Tables (DataTable, 36px rows)
+   ============================================================ */
+.table-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th {
+  height: 36px;
+  text-align: left;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-shell);
+}
+.table th.right { text-align: right; }
+.table th.center { text-align: center; width: 36px; }
+.table td {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: var(--bg-surface-muted); }
+.table td.right { text-align: right; font-variant-numeric: tabular-nums; }
+.table td.mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.table td.num { font-variant-numeric: tabular-nums; }
+.table tr.row--selected td { background: var(--accent-primary-soft); }
+
+/* Checkbox cell */
+.check {
+  appearance: none;
+  width: 14px; height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: background 80ms, border-color 80ms;
+}
+.check:hover { border-color: var(--accent-primary); }
+.check:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.check:checked::after {
+  content: '';
+  width: 8px; height: 4px;
+  border-left: 2px solid var(--text-on-primary);
+  border-bottom: 2px solid var(--text-on-primary);
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.check--indeterminate {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.check--indeterminate::after {
+  content: '';
+  width: 7px; height: 2px;
+  background: var(--text-on-primary);
+}
+.check[disabled] { opacity: 0.4; cursor: not-allowed; }
+.check[disabled]:hover { border-color: var(--border-strong); }
+
+/* Product row: thumbnail + name */
+.product {
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.thumb {
+  width: 28px; height: 28px;
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 600; font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+.thumb--blue   { background: oklch(94% 0.04 245); color: oklch(40% 0.12 245); }
+.thumb--green  { background: oklch(94% 0.04 150); color: oklch(36% 0.12 150); }
+.thumb--amber  { background: oklch(94% 0.05 85);  color: oklch(42% 0.12 80); }
+.thumb--red    { background: oklch(94% 0.04 25);  color: oklch(42% 0.16 25); }
+.thumb--violet { background: oklch(94% 0.04 290); color: oklch(42% 0.14 290); }
+.thumb--orange { background: oklch(94% 0.05 50);  color: oklch(45% 0.16 50); }
+
+.product__name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.product__name-sub {
+  display: block;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ============================================================
+   Toolbar (above table)
+   ============================================================ */
+.toolbar {
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.input {
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  min-width: 280px;
+}
+.input:focus { outline: none; border-color: var(--accent-primary); box-shadow: var(--shadow-focus); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.chip--active {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+/* ============================================================
+   Pagination
+   ============================================================ */
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.pagination__count { font-variant-numeric: tabular-nums; }
+.pagination__actions { display: flex; gap: var(--space-2); }
+
+/* ============================================================
+   Bulk action bar (#739)
+   ============================================================ */
+.bulk-bar {
+  position: sticky;
+  bottom: var(--space-4);
+  margin: var(--space-4) calc(var(--space-6) * -1) calc(var(--space-4) * -1);
+  /* Make it visually pinned at the bottom of the page area */
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-3) var(--space-4);
+  display: flex; align-items: center; gap: var(--space-4);
+  margin-left: var(--space-6);
+  margin-right: var(--space-6);
+}
+.bulk-bar__count {
+  display: flex; align-items: baseline; gap: var(--space-2);
+}
+.bulk-bar__count strong {
+  font-size: 16px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.bulk-bar__count span {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+}
+.bulk-bar__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.bulk-bar__actions {
+  margin-left: auto;
+  display: flex; align-items: center; gap: var(--space-2);
+}
+
+/* ============================================================
+   Wizard layout
+   ============================================================ */
+.wizard-state {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.wizard-state__caption {
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-3) var(--space-5);
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+}
+.wizard-state__caption b {
+  color: var(--accent-primary);
+  font-weight: 600;
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.wizard-state__body {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+/* Stepper (SetupStepper) */
+.stepper {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.stepper__step {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.stepper__num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: var(--text-muted);
+}
+.stepper__step--done .stepper__num {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-primary);
+}
+.stepper__step--done {
+  color: var(--text-secondary);
+}
+.stepper__step--active {
+  color: var(--text-primary); font-weight: 600;
+}
+.stepper__step--active .stepper__num {
+  background: var(--bg-surface);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+.stepper__sep {
+  flex: 0 0 32px;
+  height: 1px;
+  background: var(--border-default);
+}
+.stepper__step--done + .stepper__sep { background: var(--accent-primary); }
+
+/* Wizard page-header inside */
+.wizard-head {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.wizard-head__title {
+  font-size: 18px; line-height: 24px; font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+}
+.wizard-head__desc {
+  font-size: 13px; color: var(--text-secondary); margin: 4px 0 0;
+}
+
+/* ============================================================
+   Form fields
+   ============================================================ */
+.field {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: var(--space-4);
+}
+.field__label {
+  font-size: 12px; font-weight: 500;
+  color: var(--text-secondary);
+}
+.field__desc {
+  font-size: 11.5px; color: var(--text-muted);
+  margin-top: -2px;
+}
+.input--full { width: 100%; min-width: 0; }
+.select {
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 14px, calc(100% - 10px) 14px;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  padding-right: var(--space-7);
+}
+.checkbox-row {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+.checkbox-row label {
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.checkbox-row label small {
+  display: block; color: var(--text-muted); font-size: 11.5px; margin-top: 2px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+.form-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-grid > .field { margin-bottom: 0; }
+.field--span { grid-column: 1 / -1; }
+
+/* Card */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.card--narrow { max-width: 560px; }
+
+/* ============================================================
+   Resolving step — progress
+   ============================================================ */
+.resolve {
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--space-7) var(--space-5);
+  text-align: center;
+}
+.resolve__spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--bg-surface-muted);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  margin-bottom: var(--space-4);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.resolve__title {
+  font-size: 16px; font-weight: 600;
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono); letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.resolve__progress {
+  font-family: var(--font-mono); font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.resolve__bar {
+  width: 360px;
+  height: 6px;
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+.resolve__bar-fill {
+  height: 100%; width: 46%;
+  background: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  transition: width 200ms;
+}
+.resolve__sub {
+  font-size: 13px; color: var(--text-muted);
+  max-width: 460px;
+}
+
+/* ============================================================
+   Review summary strip
+   ============================================================ */
+.review-summary {
+  display: flex; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+  font-family: var(--font-mono); font-size: 11.5px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+}
+.review-summary b {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.review-summary .sep { color: var(--border-strong); }
+
+/* ============================================================
+   Modal (Edit modal + Confirm modal)
+   ============================================================ */
+.modal-overlay {
+  position: relative;
+  background: oklch(20% 0.012 80 / 0.40);
+  padding: var(--space-7) var(--space-5);
+  border-radius: var(--radius-lg);
+}
+.modal {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 640px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+.modal--sm { max-width: 440px; }
+.modal__head {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.modal__title {
+  font-size: 16px; font-weight: 600;
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+}
+.modal__close {
+  margin-left: auto;
+  width: 28px; height: 28px;
+  border: none; background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  display: grid; place-items: center;
+}
+.modal__close:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.modal__body {
+  padding: var(--space-5);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.modal__foot {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  display: flex; gap: var(--space-2); justify-content: flex-end;
+  background: var(--bg-shell);
+}
+
+/* ============================================================
+   Category picker button
+   ============================================================ */
+.cat-pick {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.cat-pick__path {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--text-secondary);
+}
+.cat-pick__path b { color: var(--text-primary); font-weight: 600; }
+.cat-pick__change {
+  margin-left: auto;
+  color: var(--text-link); text-decoration: none;
+  font-size: 12px; font-weight: 500;
+}
+
+/* AI button */
+.ai-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+  color: var(--status-review-fg);
+  background: var(--status-review-soft);
+  border: 1px solid var(--status-review-border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.ai-btn:hover { background: oklch(93% 0.06 290); }
+
+/* Textarea */
+.textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-primary);
+  resize: vertical;
+}
+.textarea:focus { outline: none; border-color: var(--accent-primary); box-shadow: var(--shadow-focus); }
+
+/* ============================================================
+   KPI strip (progress page)
+   ============================================================ */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+.kpi {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  min-height: 96px;
+  position: relative;
+  display: flex; flex-direction: column; justify-content: space-between;
+  overflow: hidden;
+}
+.kpi::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--border-strong);
+}
+.kpi--success::before { background: var(--status-success); }
+.kpi--error::before   { background: var(--status-error); }
+.kpi--info::before    { background: var(--status-info); }
+.kpi__label {
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted);
+}
+.kpi__value {
+  font-size: 32px; line-height: 36px; font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+}
+.kpi__hint {
+  font-size: 11.5px; color: var(--text-muted);
+}
+
+/* ============================================================
+   Status banner
+   ============================================================ */
+.banner {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  border-left-width: 3px;
+}
+.banner--warning {
+  background: var(--status-warning-soft);
+  border-color: var(--status-warning-border);
+  border-left-color: var(--status-warning);
+  color: var(--status-warning-fg);
+}
+.banner--info {
+  background: var(--status-info-soft);
+  border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
+  color: var(--status-info-fg);
+}
+.banner__title { font-weight: 600; font-size: 13px; }
+.banner__body { font-size: 13px; color: var(--text-secondary); }
+.banner__actions { margin-left: auto; }
+
+/* Summary card on terminal */
+.summary-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex; align-items: center; gap: var(--space-4);
+}
+.summary-card__main {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.summary-card__main b { color: var(--text-primary); font-weight: 600; }
+.summary-card__links {
+  margin-left: auto;
+  display: flex; align-items: center; gap: var(--space-4);
+}
+.summary-card__links a {
+  color: var(--text-link); text-decoration: none;
+  font-size: 13px; font-weight: 500;
+}
+
+/* External link */
+.ext {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--text-link); text-decoration: none;
+}
+.ext:hover { text-decoration: underline; }
+
+/* Error excerpt (FAILED row column) */
+.err {
+  font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--status-error-fg);
+  max-width: 280px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline-block;
+}
+
+/* Dim utility */
+.dim { color: var(--text-muted); }
+.right { text-align: right; }
+hr.hairline { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0; }
+
+/* Footer */
+.footer-note {
+  max-width: 1440px;
+  margin: var(--space-7) auto;
+  padding: var(--space-5) var(--space-6);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+</style>
+</head>
+
+<body>
+
+<header class="mockup-header">
+  <div class="eyebrow">OpenLinker · Implementation plan visual contract</div>
+  <h1>Allegro bulk-listing wizard — #739 / #740 / #741</h1>
+  <p>Visual reference for the three FE surfaces shipped in this PR. OKLCH tokens lifted from <span class="mono">apps/web/src/index.css</span>; cockpit density per <span class="mono">docs/frontend-ui-style-guide.md</span>; status pills use the canonical mono+caps treatment with leading dot. Implementation in vanilla CSS will follow this contract pixel for pixel.</p>
+  <div class="meta">
+    <span>UI · IBM Plex Sans</span>
+    <span>Mono · IBM Plex Mono</span>
+    <span>Accent · <span style="background:var(--accent-primary);width:10px;height:10px;border-radius:2px;display:inline-block"></span> signal orange</span>
+    <span>Row height · 36px</span>
+    <span>Tabular nums on numerics</span>
+  </div>
+</header>
+
+<!-- ============================================================
+     SURFACE 1 — /products with multi-select + bulk action bar
+     ============================================================ -->
+<section class="surface-section">
+  <div class="surface-label">
+    <span class="num">Surface 1</span>
+    <span class="title">Products list — multi-select</span>
+    <span class="path">/products?search=</span>
+    <span class="state-tag">23 of 100 selected</span>
+  </div>
+
+  <div class="viewport">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <span class="sidebar__logo-mark">OL</span>
+        OpenLinker
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Operations</div>
+        <div class="sidebar__item">Dashboard</div>
+        <div class="sidebar__item">Orders</div>
+        <div class="sidebar__item sidebar__item--active">Products</div>
+        <div class="sidebar__item">Inventory</div>
+        <div class="sidebar__item">Customers</div>
+        <div class="sidebar__item">Listings</div>
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Diagnostics</div>
+        <div class="sidebar__item">Jobs &amp; Logs</div>
+        <div class="sidebar__item">Webhooks</div>
+        <div class="sidebar__item">Cursors</div>
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Platform</div>
+        <div class="sidebar__item">Integrations</div>
+        <div class="sidebar__item">Adapters</div>
+        <div class="sidebar__item">Settings</div>
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Planned</div>
+        <div class="sidebar__item sidebar__item--planned">Automations</div>
+        <div class="sidebar__item sidebar__item--planned">Shipping</div>
+        <div class="sidebar__item sidebar__item--planned">Invoices</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar__crumb"><b>Operations</b> · Products</div>
+        <div class="topbar__search">
+          <span class="dim mono">Search anything…</span>
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="topbar__right">
+          <span class="topbar__env">production</span>
+          <div class="topbar__user">PS</div>
+        </div>
+      </div>
+
+      <div class="page">
+        <div class="page-header__row">
+          <div>
+            <div class="page-header__eyebrow">Operations</div>
+            <h2 class="page-header__title">Products</h2>
+            <p class="page-header__desc">Product catalog explorer — search by name or SKU. Select up to 100 to bulk-list on Allegro.</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <input class="input" type="search" placeholder="Search by name or SKU…" value="" />
+          <span class="chip chip--active">connection · Polly's Phone Store</span>
+          <span class="chip">in-stock</span>
+          <span class="chip">+ Add filter</span>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th class="center"><input type="checkbox" class="check check--indeterminate" /></th>
+                <th>Name</th>
+                <th>SKU</th>
+                <th class="right">Price</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="row--selected">
+                <td class="center"><input type="checkbox" class="check" checked /></td>
+                <td><div class="product"><span class="thumb thumb--blue">iC</span><span class="product__name">iPhone 14 Pro silicone case — Forest Green</span></div></td>
+                <td class="mono">SKU-IP14P-CASE-FG</td>
+                <td class="right tabular">79.00 zł</td>
+                <td class="mono">2026-04-12</td>
+              </tr>
+              <tr class="row--selected">
+                <td class="center"><input type="checkbox" class="check" checked /></td>
+                <td><div class="product"><span class="thumb thumb--green">SG</span><span class="product__name">Samsung Galaxy S23 tempered glass screen protector</span></div></td>
+                <td class="mono">SKU-SG-S23-GLASS</td>
+                <td class="right tabular">29.00 zł</td>
+                <td class="mono">2026-04-12</td>
+              </tr>
+              <tr>
+                <td class="center"><input type="checkbox" class="check" /></td>
+                <td><div class="product"><span class="thumb thumb--amber">PB</span><span class="product__name">Anker PowerCore 10000 mAh power bank</span></div></td>
+                <td class="mono">SKU-ANKR-PC10K</td>
+                <td class="right tabular">149.00 zł</td>
+                <td class="mono">2026-04-11</td>
+              </tr>
+              <tr class="row--selected">
+                <td class="center"><input type="checkbox" class="check" checked /></td>
+                <td><div class="product"><span class="thumb thumb--violet">HW</span><span class="product__name">Apple Watch Series 9 sport band — Storm Blue</span></div></td>
+                <td class="mono">SKU-AW9-BAND-SB</td>
+                <td class="right tabular">119.00 zł</td>
+                <td class="mono">2026-04-11</td>
+              </tr>
+              <tr class="row--selected">
+                <td class="center"><input type="checkbox" class="check" checked /></td>
+                <td><div class="product"><span class="thumb thumb--orange">CB</span><span class="product__name">USB-C to Lightning cable — braided 2m</span></div></td>
+                <td class="mono">SKU-CABLE-USBC-LT-2M</td>
+                <td class="right tabular">49.00 zł</td>
+                <td class="mono">2026-04-10</td>
+              </tr>
+              <tr>
+                <td class="center"><input type="checkbox" class="check" /></td>
+                <td><div class="product"><span class="thumb thumb--blue">EP</span><span class="product__name">Apple EarPods USB-C</span></div></td>
+                <td class="mono">SKU-EARPODS-USBC</td>
+                <td class="right tabular">99.00 zł</td>
+                <td class="mono">2026-04-10</td>
+              </tr>
+              <tr class="row--selected">
+                <td class="center"><input type="checkbox" class="check" checked /></td>
+                <td><div class="product"><span class="thumb thumb--red">WC</span><span class="product__name">MagSafe wireless charger — 15W</span></div></td>
+                <td class="mono">SKU-MAGSAFE-15W</td>
+                <td class="right tabular">189.00 zł</td>
+                <td class="mono">2026-04-09</td>
+              </tr>
+              <tr>
+                <td class="center"><input type="checkbox" class="check" /></td>
+                <td><div class="product"><span class="thumb thumb--green">SC</span><span class="product__name">Xiaomi Redmi Note 13 silicone bumper case — Black</span></div></td>
+                <td class="mono">SKU-XM-RN13-CASE</td>
+                <td class="right tabular">39.00 zł</td>
+                <td class="mono">2026-04-09</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span class="pagination__count">Showing 1–20 of 247</span>
+          <div class="pagination__actions">
+            <button class="button button--sm" disabled>Previous</button>
+            <button class="button button--sm">Next</button>
+          </div>
+        </div>
+
+        <!-- BulkActionBar (#739) — new shared/ui primitive -->
+        <div class="bulk-bar">
+          <div class="bulk-bar__count">
+            <strong class="tabular">23</strong>
+            <span>selected</span>
+          </div>
+          <div class="bulk-bar__hint">Max 100 per batch · 77 more available</div>
+          <div class="bulk-bar__actions">
+            <button class="button button--ghost button--sm">Clear</button>
+            <button class="button button--primary">Create Allegro offers (23)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SURFACE 2 — /listings/bulk-create/wizard
+     ============================================================ -->
+<section class="surface-section">
+  <div class="surface-label">
+    <span class="num">Surface 2</span>
+    <span class="title">Bulk listing wizard</span>
+    <span class="path">/listings/bulk-create/wizard?productIds=…</span>
+    <span class="state-tag">5 wizard states · stacked</span>
+  </div>
+
+  <!-- STEP 1: CONFIG -->
+  <div class="wizard-state">
+    <div class="wizard-state__caption">State <b>1 / 5</b> · Step 1 — Config · /wizard?step=config</div>
+    <div class="wizard-state__body">
+      <div class="stepper">
+        <div class="stepper__step stepper__step--active"><span class="stepper__num">1</span>Config</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">2</span>Resolving</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">3</span>Review</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">4</span>Confirm</div>
+      </div>
+
+      <div class="wizard-head">
+        <div>
+          <h3 class="wizard-head__title">Configure batch</h3>
+          <p class="wizard-head__desc">Shared defaults applied to all 23 selected products. You can override per row in the next step.</p>
+        </div>
+      </div>
+
+      <div class="card card--narrow">
+        <div class="field">
+          <label class="field__label">Allegro connection</label>
+          <select class="select">
+            <option>Polly's Phone Store — allegro.pl (active)</option>
+            <option>Polly's Test Sandbox — allegro.pl.allegrosandbox</option>
+          </select>
+          <div class="field__desc">Offers will be published under the selected connection's seller account.</div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">Shipping rate package</label>
+          <select class="select">
+            <option>Default delivery (InPost · Allegro Smart eligible)</option>
+            <option>Heavy items (DPD)</option>
+            <option>EU-wide (Allegro Delivery)</option>
+          </select>
+          <div class="field__desc">Allegro Smart eligibility is derived server-side from the chosen package.</div>
+        </div>
+
+        <hr class="hairline" />
+
+        <div class="form-grid">
+          <div class="field">
+            <label class="field__label">Default stock</label>
+            <input class="input input--full tabular" type="number" value="10" />
+          </div>
+          <div class="field">
+            <label class="field__label">Default currency</label>
+            <select class="select"><option>PLN — Polish złoty</option><option>EUR — Euro</option></select>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" class="check" checked />
+          <label><b>Publish immediately</b><small>Uncheck to create offers as drafts. You can publish them from /listings later.</small></label>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" class="check" />
+          <label><b>Generate AI descriptions by default</b><small>Worker uses ContentSuggestionService per row. You can still override per-row in the next step.</small></label>
+        </div>
+      </div>
+
+      <div class="modal__foot" style="margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-6) * -1); border-top: 1px solid var(--border-subtle); border-radius: 0;">
+        <button class="button">Cancel</button>
+        <button class="button button--primary">Proceed →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: RESOLVING -->
+  <div class="wizard-state">
+    <div class="wizard-state__caption">State <b>2 / 5</b> · Step 2 — Auto-match · /wizard?step=resolve · 8 parallel cap</div>
+    <div class="wizard-state__body">
+      <div class="stepper">
+        <div class="stepper__step stepper__step--done"><span class="stepper__num">✓</span>Config</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step stepper__step--active"><span class="stepper__num">2</span>Resolving</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">3</span>Review</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">4</span>Confirm</div>
+      </div>
+
+      <div class="resolve">
+        <div class="resolve__spinner"></div>
+        <div class="resolve__title">Resolving categories from EANs</div>
+        <div class="resolve__progress tabular">23 of 50</div>
+        <div class="resolve__bar"><div class="resolve__bar-fill"></div></div>
+        <div class="resolve__sub">
+          We're matching each product's EAN against Allegro's catalog. This typically takes 5–15 seconds. Rows that don't resolve in time can still be edited manually.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: REVIEW TABLE -->
+  <div class="wizard-state">
+    <div class="wizard-state__caption">State <b>3 / 5</b> · Step 3 — Review · /wizard?step=review · 50 rows</div>
+    <div class="wizard-state__body">
+      <div class="stepper">
+        <div class="stepper__step stepper__step--done"><span class="stepper__num">✓</span>Config</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step stepper__step--done"><span class="stepper__num">✓</span>Resolving</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step stepper__step--active"><span class="stepper__num">3</span>Review</div>
+        <div class="stepper__sep"></div>
+        <div class="stepper__step"><span class="stepper__num">4</span>Confirm</div>
+      </div>
+
+      <div class="page-header__row" style="margin-bottom: var(--space-4);">
+        <div>
+          <h3 class="wizard-head__title">Review 50 products</h3>
+          <p class="wizard-head__desc">Click <b>Edit</b> to override any row. <span class="pill pill--info">approve all</span> stays disabled while rows need manual attention.</p>
+        </div>
+        <div class="page-header__actions">
+          <input class="input" type="search" placeholder="Filter by name…" style="min-width:240px" />
+          <button class="button button--primary button--lg" disabled>Approve all (50)</button>
+        </div>
+      </div>
+
+      <div class="review-summary">
+        <span><b>44</b> ready</span>
+        <span class="sep">·</span>
+        <span><b>1</b> still resolving</span>
+        <span class="sep">·</span>
+        <span><b>5</b> need manual category</span>
+      </div>
+
+      <div class="table-wrap" style="margin-top:var(--space-3)">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:34%">Name</th>
+              <th style="width:18%">Status</th>
+              <th>Matched category</th>
+              <th class="right" style="width:80px">Stock</th>
+              <th class="right" style="width:96px">Price</th>
+              <th class="right" style="width:80px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--blue">iC</span><span class="product__name">iPhone 14 Pro silicone case — Forest Green</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Telefony › Etui › 165123</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">79.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--green">SG</span><span class="product__name">Samsung Galaxy S23 tempered glass</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Telefony › Folie › 165245</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">29.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--amber">PB</span><span class="product__name">Anker PowerCore 10000 mAh power bank</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Elektronika › Power banki › 13218</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">149.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--violet">HW</span><span class="product__name">Apple Watch Series 9 sport band — Storm Blue</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Akcesoria › Smartwatch › 256711</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">119.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--orange">CB</span><span class="product__name">USB-C to Lightning cable — braided 2m</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Akcesoria › Kable › 165898</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">49.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--red">CC</span><span class="product__name">Cosrx Snail Mucin 96 Power essence — 100ml</span></div></td>
+              <td><span class="pill pill--error">manual category required</span></td>
+              <td class="mono dim">— EAN found, no Allegro match</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">89.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--blue">EP</span><span class="product__name">Apple EarPods USB-C</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Audio › Słuchawki › 13267</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">99.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--red">WC</span><span class="product__name">MagSafe wireless charger — 15W</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Akcesoria › Ładowarki › 256982</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">189.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--green">SC</span><span class="product__name">Xiaomi Redmi Note 13 silicone bumper case</span></div></td>
+              <td><span class="pill pill--success">matched</span></td>
+              <td class="mono">Telefony › Etui › 165341</td>
+              <td class="right tabular">10</td>
+              <td class="right tabular">39.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td><div class="product"><span class="thumb thumb--violet">CR</span><span class="product__name">Custom resin-cast keychain — Skull</span></div></td>
+              <td><span class="pill pill--info pill--pulse">still resolving</span></td>
+              <td class="mono dim">— Late-arriving — will update</td>
+              <td class="right tabular">5</td>
+              <td class="right tabular">25.00 zł</td>
+              <td class="right"><button class="button button--xs">Edit</button></td>
+            </tr>
+            <tr>
+              <td colspan="6" style="text-align:center; color: var(--text-muted); font-size:12px; padding: var(--space-3) 0; font-style: italic;">
+                … 40 more rows (44 matched · 5 need manual category) …
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: EDIT MODAL (overlay over Step 3) -->
+  <div class="wizard-state">
+    <div class="wizard-state__caption">State <b>4 / 5</b> · Step 4 — Edit modal (overlays Step 3) · per-row override</div>
+    <div class="wizard-state__body" style="padding: 0;">
+      <div class="modal-overlay">
+        <div class="modal">
+          <div class="modal__head">
+            <h4 class="modal__title">Edit offer — iPhone 14 Pro silicone case · Forest Green</h4>
+            <button class="modal__close">×</button>
+          </div>
+          <div class="modal__body">
+            <div class="field">
+              <label class="field__label">Title <span class="dim">(max 75 chars)</span></label>
+              <input class="input input--full" type="text" value="iPhone 14 Pro silicone case — Forest Green · MagSafe" />
+              <div class="field__desc tabular dim">52 / 75</div>
+            </div>
+
+            <div class="field">
+              <label class="field__label">Allegro category</label>
+              <div class="cat-pick">
+                <span class="cat-pick__path">Telefony &amp; Akcesoria › <b>Etui i pokrowce</b></span>
+                <a href="#" class="cat-pick__change">Change →</a>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" style="display:flex; align-items:center; justify-content:space-between;">
+                Description
+                <button class="ai-btn" type="button">
+                  <span>✨</span> Generate with AI
+                </button>
+              </label>
+              <textarea class="textarea">Premium silicone case for iPhone 14 Pro in Forest Green. Soft-touch finish, microfiber lining, precise port cutouts, raised camera bezel for lens protection. MagSafe compatible.</textarea>
+            </div>
+
+            <div class="form-grid form-grid--3">
+              <div class="field">
+                <label class="field__label">Stock</label>
+                <input class="input input--full tabular" type="number" value="10" />
+              </div>
+              <div class="field">
+                <label class="field__label">Price</label>
+                <input class="input input--full tabular" type="text" value="79.00" />
+              </div>
+              <div class="field">
+                <label class="field__label">Currency</label>
+                <select class="select"><option>PLN</option><option>EUR</option></select>
+              </div>
+            </div>
+
+            <div class="checkbox-row">
+              <input type="checkbox" class="check" checked />
+              <label>Publish immediately</label>
+            </div>
+
+            <hr class="hairline" />
+
+            <div class="field">
+              <label class="field__label">Category parameters <span class="dim">(3 required)</span></label>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label class="field__label">Brand</label>
+                <select class="select"><option>OEM</option><option>Spigen</option><option>Apple</option></select>
+              </div>
+              <div class="field">
+                <label class="field__label">Manufacturer code</label>
+                <input class="input input--full mono" type="text" value="IP14P-CASE-FG" />
+              </div>
+              <div class="field field--span">
+                <label class="field__label">Color</label>
+                <select class="select"><option>Forest Green</option><option>Storm Blue</option><option>Midnight Black</option></select>
+              </div>
+            </div>
+          </div>
+          <div class="modal__foot">
+            <button class="button">Cancel</button>
+            <button class="button button--primary">Save row</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5: CONFIRM MODAL -->
+  <div class="wizard-state">
+    <div class="wizard-state__caption">State <b>5 / 5</b> · Step 5 — Submit confirmation · small modal</div>
+    <div class="wizard-state__body" style="padding: 0;">
+      <div class="modal-overlay" style="padding: var(--space-6) var(--space-5);">
+        <div class="modal modal--sm">
+          <div class="modal__head">
+            <h4 class="modal__title">Create 50 Allegro offers?</h4>
+          </div>
+          <div class="modal__body">
+            <p style="margin:0 0 var(--space-3); font-size:13px; color: var(--text-secondary);">
+              You're about to create 50 new offers on <b style="color:var(--text-primary)">Polly's Phone Store</b>. Each offer will be created as a separate job; you can follow progress on the next page.
+            </p>
+            <div class="checkbox-row">
+              <input type="checkbox" class="check" checked />
+              <label><b>Publish immediately</b><small>Uncheck to create all 50 as drafts.</small></label>
+            </div>
+            <div class="banner banner--info" style="margin-top:var(--space-3)">
+              <div>
+                <div class="banner__title">Idempotency protected</div>
+                <div class="banner__body" style="color:inherit">If you accidentally double-submit, OpenLinker will recognize the retry and avoid duplicate offers.</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal__foot">
+            <button class="button">Cancel</button>
+            <button class="button button--primary">Create offers</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SURFACE 3 — /listings/bulk-batches/:batchId (partially-failed)
+     ============================================================ -->
+<section class="surface-section">
+  <div class="surface-label">
+    <span class="num">Surface 3</span>
+    <span class="title">Batch progress page</span>
+    <span class="path">/listings/bulk-batches/8d4f2c11…</span>
+    <span class="state-tag">Terminal · partially-failed</span>
+  </div>
+
+  <div class="viewport">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <span class="sidebar__logo-mark">OL</span>
+        OpenLinker
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Operations</div>
+        <div class="sidebar__item">Dashboard</div>
+        <div class="sidebar__item">Orders</div>
+        <div class="sidebar__item">Products</div>
+        <div class="sidebar__item">Inventory</div>
+        <div class="sidebar__item">Customers</div>
+        <div class="sidebar__item sidebar__item--active">Listings</div>
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Diagnostics</div>
+        <div class="sidebar__item">Jobs &amp; Logs</div>
+        <div class="sidebar__item">Webhooks</div>
+        <div class="sidebar__item">Cursors</div>
+      </div>
+      <div class="sidebar__group">
+        <div class="sidebar__group-label">Platform</div>
+        <div class="sidebar__item">Integrations</div>
+        <div class="sidebar__item">Adapters</div>
+        <div class="sidebar__item">Settings</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar__crumb"><b>Operations</b> · Listings · Bulk batch</div>
+        <div class="topbar__search">
+          <span class="dim mono">Search anything…</span>
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="topbar__right">
+          <span class="topbar__env">production</span>
+          <div class="topbar__user">PS</div>
+        </div>
+      </div>
+
+      <div class="page">
+        <div class="page-header__row">
+          <div>
+            <div class="page-header__eyebrow">Operations · Listings</div>
+            <h2 class="page-header__title">
+              Bulk batch <span class="mono tabular" style="font-size:18px; color: var(--text-muted)">8d4f2c11</span>
+            </h2>
+            <p class="page-header__desc">Submitted 4 minutes ago to Allegro · Polly's Phone Store · 50 products</p>
+          </div>
+          <div class="page-header__actions">
+            <button class="button button--sm">Open in /listings →</button>
+          </div>
+        </div>
+
+        <!-- KPI strip -->
+        <div class="kpi-strip">
+          <div class="kpi">
+            <div class="kpi__label">Total</div>
+            <div class="kpi__value tabular">50</div>
+            <div class="kpi__hint">submitted variants</div>
+          </div>
+          <div class="kpi kpi--success">
+            <div class="kpi__label">Succeeded · 76%</div>
+            <div class="kpi__value tabular">38</div>
+            <div class="kpi__hint">offers live on Allegro</div>
+          </div>
+          <div class="kpi kpi--error">
+            <div class="kpi__label">Failed · 14%</div>
+            <div class="kpi__value tabular">7</div>
+            <div class="kpi__hint">retry available</div>
+          </div>
+          <div class="kpi kpi--info">
+            <div class="kpi__label">
+              In progress
+              <span class="pill pill--info pill--pulse" style="font-size:10px; padding: 2px 6px;">live</span>
+            </div>
+            <div class="kpi__value tabular">5</div>
+            <div class="kpi__hint">2 pending · 3 running</div>
+          </div>
+        </div>
+
+        <!-- Banner (partially-failed) -->
+        <div class="banner banner--warning">
+          <div>
+            <div class="banner__title">Batch ended with 7 failures</div>
+            <div class="banner__body" style="color:inherit">Some offers couldn't be created. You can retry all failures in one click — successful offers won't be touched.</div>
+          </div>
+          <div class="banner__actions">
+            <button class="button button--primary">Retry all failed (7)</button>
+          </div>
+        </div>
+
+        <!-- Records table -->
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:24%">Product</th>
+                <th style="width:14%">Variant ID</th>
+                <th style="width:13%">Status</th>
+                <th>Offer / Failure</th>
+                <th class="right" style="width:120px">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--violet">CR</span><span class="product__name">Custom resin-cast keychain — Skull</span></div></td>
+                <td class="mono">ol_variant_a93f8e</td>
+                <td><span class="pill pill--neutral">pending</span></td>
+                <td class="dim">Queued · waiting for worker slot</td>
+                <td class="right mono dim">—</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--amber">PB</span><span class="product__name">Anker PowerCore II 20000 mAh</span></div></td>
+                <td class="mono">ol_variant_61bc02</td>
+                <td><span class="pill pill--neutral">pending</span></td>
+                <td class="dim">Queued · waiting for worker slot</td>
+                <td class="right mono dim">—</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--blue">EP</span><span class="product__name">Apple EarPods USB-C</span></div></td>
+                <td class="mono">ol_variant_5f2a91</td>
+                <td><span class="pill pill--info pill--pulse">running</span></td>
+                <td class="dim">Creating offer on Allegro…</td>
+                <td class="right mono tabular">15:08:42</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--red">WC</span><span class="product__name">MagSafe wireless charger — 15W</span></div></td>
+                <td class="mono">ol_variant_3d8e17</td>
+                <td><span class="pill pill--info pill--pulse">running</span></td>
+                <td class="dim">Creating offer on Allegro…</td>
+                <td class="right mono tabular">15:08:41</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--orange">CB</span><span class="product__name">USB-C to Lightning cable — braided 2m</span></div></td>
+                <td class="mono">ol_variant_72fa30</td>
+                <td><span class="pill pill--info pill--pulse">running</span></td>
+                <td class="dim">Creating offer on Allegro…</td>
+                <td class="right mono tabular">15:08:40</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--blue">iC</span><span class="product__name">iPhone 14 Pro silicone case · Forest Green</span></div></td>
+                <td class="mono">ol_variant_8b3c12</td>
+                <td><span class="pill pill--success">succeeded</span></td>
+                <td><a class="ext" href="#">allegro.pl/oferta/iphone-14-pro… ↗</a></td>
+                <td class="right mono tabular">15:08:21</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--green">SG</span><span class="product__name">Samsung Galaxy S23 tempered glass</span></div></td>
+                <td class="mono">ol_variant_d419f2</td>
+                <td><span class="pill pill--success">succeeded</span></td>
+                <td><a class="ext" href="#">allegro.pl/oferta/samsung-glass… ↗</a></td>
+                <td class="right mono tabular">15:08:14</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--violet">HW</span><span class="product__name">Apple Watch Series 9 sport band — Storm Blue</span></div></td>
+                <td class="mono">ol_variant_a201c8</td>
+                <td><span class="pill pill--success">succeeded</span></td>
+                <td><a class="ext" href="#">allegro.pl/oferta/aw9-band… ↗</a></td>
+                <td class="right mono tabular">15:08:09</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--red">CC</span><span class="product__name">Cosrx Snail Mucin 96 Power essence — 100ml</span></div></td>
+                <td class="mono">ol_variant_e771b9</td>
+                <td><span class="pill pill--error">failed</span></td>
+                <td><span class="err" title="Category requires GTIN to be set on the variant before submission">Category requires GTIN to be set…</span></td>
+                <td class="right mono tabular">15:07:55</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--green">SC</span><span class="product__name">Xiaomi Redmi Note 13 silicone bumper case</span></div></td>
+                <td class="mono">ol_variant_4c6df0</td>
+                <td><span class="pill pill--error">failed</span></td>
+                <td><span class="err" title="Allegro returned 422: parameter 'Manufacturer code' is required">Allegro 422 · 'Manufacturer code' required</span></td>
+                <td class="right mono tabular">15:07:51</td>
+              </tr>
+              <tr>
+                <td><div class="product"><span class="thumb thumb--amber">PB</span><span class="product__name">Anker PowerCore 10000 mAh — vintage SKU</span></div></td>
+                <td class="mono">ol_variant_99b2af</td>
+                <td><span class="pill pill--error">failed</span></td>
+                <td><span class="err" title="Rate limit exceeded — retry will succeed after 60s">Rate limit exceeded · retry after 60s</span></td>
+                <td class="right mono tabular">15:07:48</td>
+              </tr>
+              <tr>
+                <td colspan="5" style="text-align:center; color: var(--text-muted); font-size:12px; padding: var(--space-3) 0; font-style: italic;">
+                  … 39 more rows (35 succeeded · 4 failed) …
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Final summary -->
+        <div class="summary-card">
+          <div class="summary-card__main">
+            <b>Batch completed in 4 minutes 23 seconds</b> · 38 offers created · 7 failed · 5 still in progress
+          </div>
+          <div class="summary-card__links">
+            <a href="#">Review failed offers ↓</a>
+            <a href="#">Open in /listings →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div class="footer-note">
+  <div class="eyebrow" style="margin-bottom: var(--space-2);">Implementation notes</div>
+  <p>
+    Every pixel uses <span class="mono">var(--…)</span> tokens — no hardcoded colors, no rem leaks. Status pills carry mono+caps + leading dot per the StatusBadge contract (color is never the only signal). DataTable rows 36px; KPI cards 96px; buttons 28/32/38px; page content starts ≤120px from top in the actual viewport. Sidebar 240px, top bar 52px — both the cockpit-frame contract.
+  </p>
+  <p style="margin-top: var(--space-3);">
+    <span class="mono">BulkActionBar</span> is the only new <span class="mono">shared/ui</span> primitive this PR adds — it fulfils the style-guide promise where <span class="mono">docs/frontend-ui-style-guide.md § Core Component Patterns</span> already listed it.
+  </p>
+</div>
+
+</body>
+</html>

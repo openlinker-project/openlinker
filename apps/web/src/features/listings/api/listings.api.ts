@@ -25,6 +25,12 @@ import type {
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
+import type {
+  BulkBatchSummary,
+  BulkOfferCreateRequest,
+  BulkOfferCreateResponse,
+  BulkOfferCreationRetryResponse,
+} from './bulk-listings.types';
 
 export interface CreateOfferOptions {
   /**
@@ -74,6 +80,18 @@ export interface ListingsApi {
     connectionId: string,
     body: ResolveCategoryRequest,
   ) => Promise<ResolveCategoryResponse>;
+  /**
+   * Submit a bulk offer-creation batch (#736). Returns the persisted
+   * `batchId` and per-job message IDs. 1..100 variants per batch.
+   */
+  bulkCreate: (
+    request: BulkOfferCreateRequest,
+    options?: CreateOfferOptions,
+  ) => Promise<BulkOfferCreateResponse>;
+  /** Read a bulk batch + its per-record summary. Used for polling on #741. */
+  getBulkBatch: (batchId: string) => Promise<BulkBatchSummary>;
+  /** Re-enqueue failed children of a batch (#742). Batch-level retry only. */
+  retryBulkFailed: (batchId: string) => Promise<BulkOfferCreationRetryResponse>;
 }
 
 interface ApiRequest {
@@ -160,6 +178,28 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         },
+      );
+    },
+    bulkCreate(body, options): Promise<BulkOfferCreateResponse> {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (options?.idempotencyKey) {
+        headers['x-idempotency-key'] = options.idempotencyKey;
+      }
+      return request<BulkOfferCreateResponse>('/listings/bulk-create', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    },
+    getBulkBatch(batchId): Promise<BulkBatchSummary> {
+      return request<BulkBatchSummary>(
+        `/listings/bulk-create/${encodeURIComponent(batchId)}`,
+      );
+    },
+    retryBulkFailed(batchId): Promise<BulkOfferCreationRetryResponse> {
+      return request<BulkOfferCreationRetryResponse>(
+        `/listings/bulk-create/${encodeURIComponent(batchId)}/retry-failed`,
+        { method: 'POST' },
       );
     },
   };
