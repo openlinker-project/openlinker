@@ -79,7 +79,6 @@ import type {
   AllegroOffersResponse,
   AllegroOfferEventsResponse,
   AllegroOfferFieldsPatchBody,
-  AllegroMatchingCategoriesResponse,
   AllegroProductOfferCreateRequest,
   AllegroProductOfferCreateResponse,
   AllegroProductSetEntry,
@@ -110,6 +109,13 @@ const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
 /** Cache key prefix — global namespace; Allegro category schemas are public taxonomy. */
 const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
+
+/**
+ * Variant key used when `matchCategoryByBarcode` delegates to the batch util
+ * with a single-item input. Any stable string works — the result map is
+ * consumed by one read in the same call.
+ */
+const SINGLE_ITEM_KEY = 'single';
 
 /**
  * Type guard used when filtering untyped `platformParams.parameters` into the
@@ -813,34 +819,24 @@ export class AllegroOfferManagerAdapter
   }
 
   async matchCategoryByBarcode(barcode: string): Promise<string | null> {
-    this.logger.debug(
-      `Matching Allegro category by barcode (connection: ${this.connectionId}, barcode: ${barcode})`
+    // Delegates to the shared #735 batch util so single-call and batch paths
+    // share the `/sale/products?phrase=…&mode=GTIN` endpoint, cache namespace,
+    // and exact-GTIN match logic. The util is no-throw — HTTP failures
+    // collapse to `no-match`, surfaced at the public boundary as `null`.
+    const results = await resolveCategoriesForBatchByEan(
+      this.httpClient,
+      this.cache,
+      this.connectionId,
+      { items: [{ variantId: SINGLE_ITEM_KEY, ean: barcode }] }
     );
-    try {
-      const response = await this.httpClient.get<AllegroMatchingCategoriesResponse>(
-        '/sale/matching-categories',
-        { queryParams: { ean: barcode } }
+    const outcome = results.get(SINGLE_ITEM_KEY);
+    if (outcome?.kind === 'matched') {
+      this.logger.debug(
+        `Barcode auto-detect matched category ${outcome.allegroCategoryId} (connection: ${this.connectionId})`
       );
-      const matches = response.data.matchingCategories ?? [];
-      if (matches.length === 1) {
-        const categoryId = matches[0].category.id;
-        this.logger.debug(
-          `Barcode auto-detect matched category ${categoryId} (connection: ${this.connectionId})`
-        );
-        return categoryId;
-      }
-      if (matches.length > 1) {
-        this.logger.debug(
-          `Barcode auto-detect returned ${matches.length} categories, skipping (connection: ${this.connectionId})`
-        );
-      }
-      return null;
-    } catch (error) {
-      this.logger.warn(
-        `Failed to match category by barcode (connection: ${this.connectionId}): ${(error as Error).message}`
-      );
-      return null;
+      return outcome.allegroCategoryId;
     }
+    return null;
   }
 
   /**
