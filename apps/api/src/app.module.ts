@@ -20,6 +20,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
 import { AiModule as CoreAiModule } from '@openlinker/core/ai';
+import { ShippingModule } from '@openlinker/core/shipping';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -62,6 +63,7 @@ import { ContentApiModule } from './content/content.module';
     CoreAiModule, // Editable prompt-template storage + render service (#341)
     AiApiModule, // REST surface for prompt templates (#341)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
+    ShippingModule, // Shipment aggregate + ShipmentRepositoryPort binding (#763)
   ],
   controllers: [AppController],
   providers: [AppService],

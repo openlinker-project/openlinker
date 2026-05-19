@@ -14,10 +14,11 @@ import { CoreEntityTypeValues, ENTITY_TYPE_ID_PREFIX } from '../identifier-mappi
 
 describe('identifier-mapping.types', () => {
   describe('CoreEntityTypeValues', () => {
-    it('should expose the documented seven well-known entity types', () => {
+    it('should expose the documented well-known entity types', () => {
       // Guards against silent reordering or accidental additions/removals
       // of the published well-known set. The architecture doc enumerates
-      // the same seven values at §"Internal Identifier Format".
+      // the same values at §"Internal Identifier Format". `Shipment`
+      // joined in #763 (foundation slice for the InPost shipping epic).
       expect([...CoreEntityTypeValues]).toEqual([
         'Product',
         'ProductVariant',
@@ -26,6 +27,7 @@ describe('identifier-mapping.types', () => {
         'Offer',
         'Inventory',
         'Customer',
+        'Shipment',
       ]);
     });
   });
@@ -60,6 +62,8 @@ describe('identifier-mapping.types', () => {
       expect(resolvePrefix('Product')).toBe('product');
       expect(resolvePrefix('Offer')).toBe('offer');
       expect(resolvePrefix('Customer')).toBe('customer');
+      // #763 — Shipment uses the default lowercase fallback (ol_shipment_*).
+      expect(resolvePrefix('Shipment')).toBe('shipment');
     });
 
     it('should fall back to lowercased entityType for plugin-registered types', () => {

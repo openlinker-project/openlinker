@@ -138,6 +138,11 @@
       "types": "./dist/content/orm-entities.d.ts",
       "require": "./dist/content/orm-entities.js",
       "default": "./dist/content/orm-entities.js"
+    },
+    "./shipping": {
+      "types": "./dist/shipping/index.d.ts",
+      "require": "./dist/shipping/index.js",
+      "default": "./dist/shipping/index.js"
     }
   },
   "files": [
