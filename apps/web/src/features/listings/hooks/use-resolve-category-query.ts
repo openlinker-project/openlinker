@@ -6,7 +6,7 @@
  * id and the resolution method (`auto_detect` | `category_mapping` | `manual`).
  *
  * Enabled only when both `connectionId` and `barcode` are set. `retry: false`
- * because Allegro's `/sale/matching-categories` regularly returns "no match"
+ * because Allegro's `/sale/products` GTIN lookup regularly returns "no match"
  * and that's a normal 200 from our BE, not a transient error.
  *
  * @module apps/web/src/features/listings/hooks
@@ -20,7 +20,7 @@ import type { ResolveCategoryResponse } from '../api/listings.types';
 // barcode) pair — the only legitimate invalidator is an admin changing
 // category mappings, which is rare. 10 min covers a wizard session and the
 // usual Step 0 ↔ Step 2 navigation without re-hitting Allegro's rate-limited
-// /sale/matching-categories endpoint on every remount.
+// /sale/products GTIN lookup on every remount.
 export const RESOLVE_CATEGORY_STALE_TIME_MS = 10 * 60 * 1000;
 
 export function useResolveCategoryQuery(

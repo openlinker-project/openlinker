@@ -13,6 +13,7 @@ import type { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type {
   AllegroOfferQuantityChangeCommandResponse,
+  AllegroProductCardSummary,
   AllegroProductOfferCreateResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
@@ -712,11 +713,29 @@ describe('AllegroOfferManagerAdapter', () => {
   });
 
   describe('matchCategoryByBarcode', () => {
-    it('should return category ID when exactly one match is found', async () => {
+    // Delegates to `resolveCategoriesForBatchByEan` (#735, #794) — these
+    // tests assert the public boundary contract (categoryId | null) plus the
+    // outgoing endpoint shape. Cache + multi-match nuances are covered by
+    // the batch util's own spec.
+    type ProductCardFixture = Pick<
+      AllegroProductCardSummary,
+      'id' | 'category' | 'parameters'
+    >;
+    function buildProductCard(
+      ean: string,
+      categoryId: string,
+      productId = 'prod-id',
+    ): ProductCardFixture {
+      return {
+        id: productId,
+        category: { id: categoryId },
+        parameters: [{ id: 'gtin', options: { isGTIN: true }, values: [ean] }],
+      };
+    }
+
+    it('should return category ID when exactly one exact-GTIN match is found', async () => {
       httpClient.get.mockResolvedValue({
-        data: {
-          matchingCategories: [{ category: { id: 'cat-100', name: 'Electronics' } }],
-        },
+        data: { products: [buildProductCard('5901234123457', 'cat-100')] },
         status: 200,
         headers: {},
       });
@@ -724,14 +743,14 @@ describe('AllegroOfferManagerAdapter', () => {
       const result = await adapter.matchCategoryByBarcode('5901234123457');
 
       expect(result).toBe('cat-100');
-      expect(httpClient.get).toHaveBeenCalledWith('/sale/matching-categories', {
-        queryParams: { ean: '5901234123457' },
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/products', {
+        queryParams: { phrase: '5901234123457', mode: 'GTIN', limit: 10 },
       });
     });
 
-    it('should return null when no matches are found', async () => {
+    it('should return null when no exact-GTIN matches are found', async () => {
       httpClient.get.mockResolvedValue({
-        data: { matchingCategories: [] },
+        data: { products: [] },
         status: 200,
         headers: {},
       });
@@ -741,10 +760,13 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when multiple matches are found', async () => {
+    it('should return null when multiple exact-GTIN matches are found', async () => {
       httpClient.get.mockResolvedValue({
         data: {
-          matchingCategories: [{ category: { id: 'cat-1' } }, { category: { id: 'cat-2' } }],
+          products: [
+            buildProductCard('5901234123457', 'cat-1', 'prod-1'),
+            buildProductCard('5901234123457', 'cat-2', 'prod-2'),
+          ],
         },
         status: 200,
         headers: {},
