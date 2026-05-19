@@ -56,6 +56,22 @@ export function BulkResolveStep({
   );
   const [progress, setProgress] = useState({ done: 0, total: rows.length });
   const startedRef = useRef(false);
+  // The timeout effect has `[]` deps so it can't read `resolved` directly —
+  // mirroring through a ref keeps the legitimate slow-resolves case correct
+  // (some rows settled, some not; the timeout outcomes must reflect the
+  // current resolved map, not the seed-time closure).
+  const resolvedRef = useRef(resolved);
+  // Flipped to true when the resolve loop fires `onComplete` itself, so the
+  // 15-s fallback timeout knows to short-circuit and not overwrite settled
+  // statuses with a stale `pending-after-timeout` outcome (#796).
+  const completedRef = useRef(false);
+  // Holds the timeout id so the success path can `clearTimeout` it eagerly.
+  // Defence in depth — `completedRef` would short-circuit the callback anyway.
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    resolvedRef.current = resolved;
+  }, [resolved]);
 
   // Tasks that need a BE call (have a barcode, no synthetic outcome yet).
   const tasks: ResolveTask[] = useMemo(
@@ -135,6 +151,11 @@ export function BulkResolveStep({
         done += 1;
         setProgress({ done, total });
       });
+      completedRef.current = true;
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       setResolved(next);
       onComplete(buildOutcomes(rows, next));
     })();
@@ -148,19 +169,26 @@ export function BulkResolveStep({
   }, [tasks]);
 
   // 15-second budget: if not all tasks settled by now, advance anyway.
-  // The Review step still subscribes to the same cached queries via the
-  // wizard's outcomes, so late-arriving resolves flip rows from
-  // `pending-after-timeout` to `matched` automatically.
+  // Reads through `resolvedRef.current` so partial-settle state is preserved
+  // when the timeout legitimately fires; `completedRef` short-circuits the
+  // callback when the resolve loop already finished, preventing the stale
+  // overwrite that flipped settled rows to `pending-after-timeout` (#796).
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      onComplete(buildOutcomes(rows, resolved, true));
+    timerRef.current = window.setTimeout(() => {
+      if (completedRef.current) return;
+      onComplete(buildOutcomes(rows, resolvedRef.current, true));
     }, BULK_RESOLVE_TIMEOUT_MS);
     return () => {
-      window.clearTimeout(timeoutId);
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
     // Mount-only effect — the 15 s budget is anchored to mount, not to
-    // every render. Resolving fresh state happens through the resolves
-    // loop above; this one only fires once.
+    // every render. Closure-captured `rows` is acceptable because the
+    // wizard never mutates the row list mid-resolve; live state flows
+    // through `resolvedRef`. Live state flowing through `resolvedRef`
+    // means partial-settle progress survives the closure.
   }, []);
 
   // Prefetch the resolved-categories queries so they're hot for the Review
