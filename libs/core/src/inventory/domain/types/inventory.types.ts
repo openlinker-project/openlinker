@@ -72,6 +72,22 @@ export interface PaginatedInventoryItems {
   total: number;
 }
 
+/**
+ * Per-variant inventory availability summed across all locations.
+ *
+ * Returned by `InventoryRepositoryPort.findAvailabilityByVariantIds` and
+ * `IInventoryQueryService.getAvailabilityByVariantIds`. The service-layer
+ * call zero-fills entries for variants that have no inventory rows; the
+ * repo-layer call returns only matched rows.
+ *
+ * Used by the bulk-wizard master-pull resolver (#792 PR 3).
+ */
+export interface VariantAvailability {
+  productVariantId: string;
+  totalAvailable: number;
+  locationCount: number;
+}
+
 
 
 

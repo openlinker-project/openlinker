@@ -22,7 +22,11 @@ import type { Product } from '@openlinker/core/products';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type { InventoryFilters, InventoryPagination } from '../../domain/types/inventory.types';
+import type {
+  InventoryFilters,
+  InventoryPagination,
+  VariantAvailability,
+} from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
   InventoryViewProduct,
@@ -58,6 +62,29 @@ export class InventoryQueryService implements IInventoryQueryService {
     }
     const product = await this.productsService.getProduct(item.productId);
     return this.compose(item, product);
+  }
+
+  async getAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]> {
+    // Short-circuit empty input to avoid an unnecessary repo call. The
+    // controller's DTO validation rejects [] with 400, but a direct
+    // service caller (or a test) should still get a sane shape rather
+    // than crashing on `undefined.map(...)`.
+    if (variantIds.length === 0) return [];
+
+    const rows = await this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
+    const byId = new Map(rows.map((r) => [r.productVariantId, r]));
+    // Zero-fill unknowns so the caller can build a Map<variantId, …> directly
+    // without re-walking the input list. Output order preserves input order.
+    return variantIds.map(
+      (id) =>
+        byId.get(id) ?? {
+          productVariantId: id,
+          totalAvailable: 0,
+          locationCount: 0,
+        }
+    );
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {

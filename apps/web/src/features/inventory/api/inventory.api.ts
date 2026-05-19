@@ -11,11 +11,18 @@ import type {
   InventoryPagination,
   PaginatedInventory,
   InventoryItem,
+  InventoryAvailabilityResponse,
 } from './inventory.types';
 
 export interface InventoryApi {
   list: (filters?: InventoryFilters, pagination?: InventoryPagination) => Promise<PaginatedInventory>;
   getById: (id: string) => Promise<InventoryItem>;
+  /**
+   * Batch lookup of per-variant availability (#792 PR 2). Caller is
+   * responsible for deduping (the hook does this) and chunking when the
+   * list exceeds the server-side cap (200 IDs per request).
+   */
+  availability: (productVariantIds: readonly string[]) => Promise<InventoryAvailabilityResponse>;
 }
 
 interface ApiRequest {
@@ -40,6 +47,10 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     },
     getById(id): Promise<InventoryItem> {
       return request<InventoryItem>(`/inventory/${id}`);
+    },
+    availability(productVariantIds): Promise<InventoryAvailabilityResponse> {
+      const params = new URLSearchParams({ productVariantIds: productVariantIds.join(',') });
+      return request<InventoryAvailabilityResponse>(`/inventory/availability?${params.toString()}`);
     },
   };
 }

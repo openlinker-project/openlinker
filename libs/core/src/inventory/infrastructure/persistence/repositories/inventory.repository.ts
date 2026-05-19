@@ -24,6 +24,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
+  VariantAvailability,
 } from '../../../domain/types/inventory.types';
 
 @Injectable()
@@ -97,6 +98,34 @@ export class InventoryRepository implements InventoryRepositoryPort {
       items: entities.map((e) => this.toDomain(e)),
       total,
     };
+  }
+
+  async findAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]> {
+    if (variantIds.length === 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.productVariantId', 'productVariantId')
+      .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
+      .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
+      .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
+      .groupBy('inv.productVariantId')
+      .getRawMany<{
+        productVariantId: string;
+        totalAvailable: string;
+        locationCount: string;
+      }>();
+
+    // Postgres returns SUM as numeric (string) and COUNT(DISTINCT) as bigint
+    // (string) through TypeORM's raw-query path — explicit Number() cast
+    // surfaces the right shape to consumers.
+    return rows.map((row) => ({
+      productVariantId: row.productVariantId,
+      totalAvailable: Number(row.totalAvailable),
+      locationCount: Number(row.locationCount),
+    }));
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {
