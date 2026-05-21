@@ -2139,6 +2139,50 @@ textarea {
   font-size: 0.75rem;
 }
 
+/* ── Form layout utilities (#793) ───────────────────────────────────
+ * Lay sibling FormFields out on a shared subgrid so their label /
+ * input / description / error rows align across columns even when only
+ * some cells carry a description. Without this each FormField is its
+ * own grid context, so a cell with a description grows taller than its
+ * neighbours and the row's bottom edge breaks alignment.
+ *
+ * Mobile-first: a single-column stack by default (three side-by-side
+ * inputs are unreadable < 768px); the shared-subgrid multi-column
+ * layout layers in at the tablet breakpoint. Column count comes from
+ * `--cols` (default 2) or the `--cols-3` modifier. The row-gap MUST
+ * stay var(--space-2): subgrid children inherit the parent's row-gap,
+ * and that value reproduces FormField's own internal 8px stack.
+ *
+ * Alignment is by child *index* (label→1, input→2, description→3,
+ * error→4), not semantic role — a cell with an error but no description
+ * would place that error in the description track. Fine for rows that
+ * mix description / no-description cells (today's only consumer); a
+ * future row mixing error-only and description-only cells would not
+ * align those two.
+ */
+.form-field-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+.form-field-row--cols-3 {
+  --cols: 3;
+}
+
+@media (min-width: 768px) {
+  .form-field-row {
+    grid-template-columns: repeat(var(--cols, 2), 1fr);
+    grid-template-rows: auto auto auto auto; /* label · input · description · error */
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .form-field-row .form-field {
+    grid-template-rows: subgrid;
+    grid-row: span 4;
+  }
+}
+
 .form-error-summary__list {
   margin: 0;
   padding-left: 1rem;
