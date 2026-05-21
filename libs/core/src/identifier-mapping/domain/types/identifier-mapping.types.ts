@@ -24,6 +24,7 @@ export const CoreEntityTypeValues = [
   'Offer',
   'Inventory',
   'Customer',
+  'Shipment',
 ] as const;
 
 /**
@@ -58,6 +59,7 @@ export const CORE_ENTITY_TYPE = {
   Offer: 'Offer',
   Inventory: 'Inventory',
   Customer: 'Customer',
+  Shipment: 'Shipment',
 } as const satisfies Record<CoreEntityType, CoreEntityType>;
 
 /**

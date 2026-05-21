@@ -1,0 +1,75 @@
+/**
+ * Shipping — Public Barrel
+ *
+ * Pure contracts plus the NestJS wiring module. Anything exported here is
+ * part of the cross-context surface plugins and apps can value-import
+ * from `@openlinker/core/shipping`.
+ *
+ * @module libs/core/src/shipping
+ */
+
+// Module
+export { ShippingModule } from './shipping.module';
+
+// Tokens
+export * from './shipping.tokens';
+
+// Domain types
+export {
+  ShipmentStatusValues,
+  SHIPMENT_STATUS,
+  TerminalShipmentStatusValues,
+} from './domain/types/shipment-status.types';
+export type {
+  ShipmentStatus,
+  TerminalShipmentStatus,
+} from './domain/types/shipment-status.types';
+
+export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
+export type { ShippingMethod } from './domain/types/shipping-method.types';
+
+export {
+  PickupPointStatusValues,
+  PICKUP_POINT_STATUS,
+  PickupPointDayValues,
+  PICKUP_POINT_DAY,
+} from './domain/types/pickup-point.types';
+export type {
+  PickupPoint,
+  PickupPointAddress,
+  PickupPointStatus,
+  PickupPointDay,
+  PickupPointDayHours,
+  PickupPointOpeningHours,
+  FindPickupPointsQuery,
+} from './domain/types/pickup-point.types';
+
+export type {
+  GenerateLabelCommand,
+  GenerateLabelResult,
+} from './domain/types/generate-label.types';
+
+export type { TrackingSnapshot } from './domain/types/tracking-snapshot.types';
+
+export type {
+  CreateShipmentInput,
+  UpdateShipmentInput,
+} from './domain/types/shipment.types';
+
+// Domain entity
+export { Shipment } from './domain/entities/shipment.entity';
+
+// Ports
+export type { ShippingProviderManagerPort } from './domain/ports/shipping-provider-manager.port';
+export type { ShipmentRepositoryPort } from './domain/ports/shipment-repository.port';
+export type { PickupPointCachePort } from './domain/ports/pickup-point-cache.port';
+
+// Sub-capabilities (#763 — sub-port + co-located type guard pattern per
+// engineering-standards §"Port sub-capabilities").
+export type { ShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
+export { isShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
+export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
+export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
+
+// Domain exceptions
+export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
