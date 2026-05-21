@@ -26,6 +26,7 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     attributes: null,
     ean: '5901234123457',
     gtin: null,
+    price: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
