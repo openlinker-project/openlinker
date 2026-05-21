@@ -7941,6 +7941,73 @@ html[data-density='compact'] .status-badge {
   text-decoration: underline;
 }
 
+/* ── Bulk wizard master-pull policies + candidate chips (#792) ──────── */
+.bulk-config__policy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.bulk-config__policy legend {
+  padding: 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bulk-config__policy-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.bulk-config__policy-text {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.bulk-edit__candidates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.bulk-edit__candidates-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bulk-edit__candidate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.bulk-edit__candidate-chip {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--status-review-fg);
+  background: var(--status-review-soft);
+  border: 1px solid var(--status-review-border);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.bulk-edit__candidate-chip:hover {
+  background: color-mix(in oklab, var(--status-review-soft) 70%, var(--status-review-border));
+}
+
 /* ── Bulk batch progress (#741) ─────────────────────────────────────
  * Cockpit layout: KPI strip (4 cards) + status banner + records table.
  */

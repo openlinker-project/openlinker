@@ -22,6 +22,7 @@
 export { Alert } from './alert';
 export type { AlertTone } from './alert';
 export { StatusBadge } from './status-badge';
+export type { StatusBadgeTone } from './status-badge';
 export { EmptyState, ErrorState, LoadingState } from './feedback-state';
 export { StructuredErrorList } from './structured-error-list';
 

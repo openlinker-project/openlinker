@@ -45,6 +45,11 @@ export const listingsQueryKeys = {
       barcode ?? '',
       sourceCategoryIds ?? [],
     ] as const,
+  // #795 — batch EAN → Allegro category resolution for the bulk wizard.
+  // Keyed on the variant-id set so a different selection doesn't share a
+  // cache entry; distinct prefix from the single-row `resolveCategory` key.
+  resolveCategoryBatch: (connectionId: string, variantIds: string[]) =>
+    ['listings', 'resolveCategoryBatch', connectionId, variantIds] as const,
   /** #741 — bulk batch progress polling. */
   bulkBatch: (batchId: string) => ['listings', 'bulkBatch', batchId] as const,
 };

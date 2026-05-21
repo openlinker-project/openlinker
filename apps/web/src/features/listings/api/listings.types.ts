@@ -397,3 +397,44 @@ export interface ResolveCategoryResponse {
   /** Which step of the 3-step fallback produced the result. */
   method: CategoryResolutionMethod;
 }
+
+/**
+ * Per-variant outcome of the batch EAN→category resolve (#795). Mirrors the BE
+ * `EanMatchResult` discriminated union from `@openlinker/core/listings`
+ * (duplicated FE-side per #591 — same convention as `CategoryResolutionMethod`
+ * above). The richer envelope (vs single-resolve's flat shape) carries the
+ * `multi-match` candidate list the bulk-wizard edit modal surfaces (#740 / #792).
+ */
+export const EanMatchResultKindValues = [
+  'matched',
+  'multi-match',
+  'no-ean',
+  'no-match',
+] as const;
+export type EanMatchResultKind = (typeof EanMatchResultKindValues)[number];
+
+export interface EanMatchCandidate {
+  allegroCategoryId: string;
+  productCardId: string;
+  /** Allegro display name for the candidate-picker chip. */
+  name?: string;
+}
+
+export type EanMatchResult =
+  | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
+  | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
+  | { kind: 'no-ean' }
+  | { kind: 'no-match' };
+
+/**
+ * Request body for `POST /listings/connections/:connectionId/categories/resolve-batch`
+ * (#795). One result entry per item, keyed by `variantId`.
+ */
+export interface ResolveCategoriesBatchRequest {
+  items: Array<{ variantId: string; ean: string | null }>;
+}
+
+/** Response from the batch resolve route (#795). Keyed by `variantId`. */
+export interface ResolveCategoriesBatchResponse {
+  results: Record<string, EanMatchResult>;
+}

@@ -1,11 +1,11 @@
 /**
- * Bulk listing wizard (#740)
+ * Bulk listing wizard (#740 / #792 PR 3)
  *
- * Multi-step controller: Config → Resolving → Review (with Edit modal) →
- * Confirm → submit. Owns the rows[] state + sharedConfig + perRow overrides.
- *
- * `step` is driven via URL search param so the wizard is linkable; on submit
- * the page redirects to /listings/bulk-batches/:batchId.
+ * Multi-step controller: Config → Resolve → Review (with Edit modal) →
+ * Confirm → submit. Owns the rows[] state + batch config + per-row overrides.
+ * The Resolve step pulls each product's master price/stock and computes the
+ * per-row blocker set from the batch-wide pricing/stock policies (#792); the
+ * Review step renders the computed values and gates submit on `blockers`.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
@@ -18,13 +18,14 @@ import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
 } from '../../api/bulk-listings.types';
+import type { EanMatchResult } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
 import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
 import { BulkReviewStep } from './bulk-review-step';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { computeBlockers, computeResolvedPrice, computeResolvedStock } from './bulk-policy';
 import type {
-  BulkRowStatus,
   BulkWizardConfig,
   BulkWizardRow,
   BulkWizardStep,
@@ -61,13 +62,10 @@ export function BulkWizard({
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Sync row state when products list changes (rare — would only happen if
-  // the page upstream refetches). We compare against the product-id set,
-  // not the product object identities, so a passive cache refresh that
-  // produces structurally-equal products doesn't clobber row state.
-  // `productsSignature` (not `products` directly) is the dependency —
-  // `products` flips identity on every TanStack cache rehydrate, which
-  // would re-run this for structurally-equal data and clobber row state.
+  // Sync row state when products list changes (rare — would only happen if the
+  // page upstream refetches). Compare against the product-id signature, not
+  // object identity, so a passive cache refresh producing structurally-equal
+  // products doesn't clobber row state.
   const productsSignature = products.map((p) => p.id).join(',');
   useEffect(() => {
     setRows((prev) => {
@@ -81,13 +79,10 @@ export function BulkWizard({
     setStep('resolve');
   }, []);
 
-  const handleResolveComplete = useCallback(
-    (outcomes: BulkResolveOutcome[]) => {
-      setRows((prev) => applyResolveOutcomes(prev, outcomes));
-      setStep('review');
-    },
-    [],
-  );
+  const handleResolveComplete = useCallback((outcomes: BulkResolveOutcome[]) => {
+    setRows((prev) => mergeResolveOutcomes(prev, outcomes));
+    setStep('review');
+  }, []);
 
   const handleUpdateRow = useCallback(
     (
@@ -95,46 +90,45 @@ export function BulkWizard({
       override: BulkPerProductOverride,
       editFormValues: Record<string, unknown>,
     ) => {
+      if (!config) return;
       setRows((prev) =>
         prev.map((row) => {
           if (row.primaryVariant?.id !== variantId) return row;
-          // Filling in a category override marks a previously-error row as ready.
-          const newStatus: BulkRowStatus =
-            override.overrides?.categoryId &&
-            (row.status === 'no-ean' ||
-              row.status === 'no-match' ||
-              row.status === 'pending-after-timeout')
-              ? 'matched'
-              : row.status;
-          return {
-            ...row,
+          const resolvedCategoryId =
+            override.overrides?.categoryId ?? row.resolvedCategoryId;
+          const blockers = computeBlockers({
+            hasVariant: true,
+            categoryResult: categoryResultFor(row, resolvedCategoryId),
+            pricingPolicy: config.pricingPolicy,
+            stockPolicy: config.stockPolicy,
+            masterPrice: row.masterPrice,
+            masterStock: row.masterStock,
+            masterCurrency: row.masterCurrency,
+            batchCurrency: config.currency,
             override,
-            editFormValues,
-            status: newStatus,
-            resolvedCategoryId:
-              override.overrides?.categoryId ?? row.resolvedCategoryId,
-          };
+          });
+          return { ...row, override, editFormValues, blockers, resolvedCategoryId };
         }),
       );
     },
-    [],
+    [config],
   );
 
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
 
-      // Build the bulk submit payload. Variant IDs (NOT product IDs) go in
-      // `productIds` — the BE field name is misleading; see
-      // `bulk-listings.types.ts` file header.
+      // Submittable = has a variant and no outstanding blockers. Variant IDs
+      // (NOT product IDs) go in `productIds` — the BE field name is misleading;
+      // see `bulk-listings.types.ts` file header.
       const submittableRows = rows.filter(
-        (r) => r.primaryVariant !== null && r.status === 'matched',
+        (r) => r.primaryVariant !== null && r.blockers.length === 0,
       );
 
       if (submittableRows.length === 0) {
         showToast({
           tone: 'error',
-          description: 'No rows are ready to submit. Approve some matched rows first.',
+          description: 'No rows are ready to submit. Resolve the flagged rows first.',
         });
         return;
       }
@@ -142,41 +136,41 @@ export function BulkWizard({
       const variantIds = submittableRows.map((r) => r.primaryVariant!.id);
       const perProductOverrides: Record<string, BulkPerProductOverride> = {};
       for (const row of submittableRows) {
-        if (Object.keys(row.override).length > 0 || row.resolvedCategoryId) {
-          // Always send the resolved category — even if the operator didn't
-          // touch the row — so the worker doesn't fall back to auto-detect.
-          perProductOverrides[row.primaryVariant!.id] = {
-            ...row.override,
-            overrides: {
-              ...(row.override.overrides ?? {}),
-              categoryId:
-                row.override.overrides?.categoryId ??
-                row.resolvedCategoryId ??
-                undefined,
-            },
-          };
-        }
+        // Every submittable row carries its own computed price + stock (the
+        // policy resolves a distinct value per product); send them per-row so
+        // the worker never falls back to the shared nominal default.
+        const price = computeResolvedPrice(config.pricingPolicy, row.masterPrice, row.override);
+        const stock = computeResolvedStock(config.stockPolicy, row.masterStock, row.override);
+        perProductOverrides[row.primaryVariant!.id] = {
+          ...row.override,
+          stock: row.override.stock ?? stock.value ?? undefined,
+          price:
+            row.override.price ??
+            (price.value !== null
+              ? { amount: price.value, currency: config.currency }
+              : undefined),
+          overrides: {
+            ...(row.override.overrides ?? {}),
+            categoryId:
+              row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined,
+          },
+        };
       }
-
-      const sharedOverridesPlatformParams: Record<string, unknown> = {
-        deliveryPolicyId: config.deliveryPolicyId,
-      };
 
       const request: BulkOfferCreateRequest = {
         connectionId: config.connectionId,
         productIds: variantIds,
         sharedConfig: {
-          stock: config.defaultStock,
+          // Per-row stock is always supplied via perProductOverrides above; this
+          // is a required nominal fallback the worker should never reach.
+          stock: 1,
           publishImmediately,
           generateDescription: config.generateDescription,
-          ...(config.defaultPrice ? { price: config.defaultPrice } : {}),
           overrides: {
-            platformParams: sharedOverridesPlatformParams,
+            platformParams: { deliveryPolicyId: config.deliveryPolicyId },
           },
         },
-        ...(Object.keys(perProductOverrides).length > 0
-          ? { perProductOverrides }
-          : {}),
+        perProductOverrides,
       };
 
       try {
@@ -197,7 +191,10 @@ export function BulkWizard({
     [config, rows, mutation, navigate, showToast],
   );
 
-  const noVariants = rows.filter((r) => r.status === 'no-variant').length;
+  const noVariants = rows.filter((r) => r.primaryVariant === null).length;
+  const readyCount = rows.filter(
+    (r) => r.primaryVariant !== null && r.blockers.length === 0,
+  ).length;
 
   return (
     <PageLayout
@@ -210,18 +207,14 @@ export function BulkWizard({
           <SetupStepper
             steps={WIZARD_STEPS.map((s) => s.label)}
             currentStep={stepOrder(step)}
-            completedSteps={
-              new Set(
-                Array.from({ length: stepOrder(step) }, (_, i) => i),
-              )
-            }
+            completedSteps={new Set(Array.from({ length: stepOrder(step) }, (_, i) => i))}
           />
         </div>
 
         {noVariants > 0 ? (
           <Alert tone="warning">
-            {noVariants} of {rows.length} products have no variants and cannot be
-            listed. They'll be skipped on submit.
+            {noVariants} of {rows.length} products have no variants and cannot be listed.
+            They'll be skipped on submit.
           </Alert>
         ) : null}
 
@@ -237,6 +230,9 @@ export function BulkWizard({
             <BulkResolveStep
               rows={rows}
               connectionId={config.connectionId}
+              pricingPolicy={config.pricingPolicy}
+              stockPolicy={config.stockPolicy}
+              currency={config.currency}
               onComplete={handleResolveComplete}
             />
           )}
@@ -244,14 +240,10 @@ export function BulkWizard({
             <BulkReviewStep
               rows={rows}
               connectionId={config.connectionId}
-              defaults={{
-                stock: config.defaultStock,
-                publishImmediately: config.publishImmediately,
-                priceAmount: config.defaultPrice
-                  ? config.defaultPrice.amount.toFixed(2)
-                  : '0.00',
-                priceCurrency: config.defaultPrice?.currency ?? 'PLN',
-              }}
+              pricingPolicy={config.pricingPolicy}
+              stockPolicy={config.stockPolicy}
+              currency={config.currency}
+              publishImmediately={config.publishImmediately}
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}
@@ -263,7 +255,7 @@ export function BulkWizard({
           <BulkConfirmModal
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
-            rowCount={rows.filter((r) => r.status === 'matched').length}
+            rowCount={readyCount}
             connectionName={resolveConnectionName(config.connectionId)}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
@@ -283,35 +275,46 @@ function stepOrder(step: BulkWizardStep): number {
 }
 
 /**
- * Pure reducer that applies a batch of resolve-step outcomes to the wizard's
- * row state. Exported for unit testing; the wizard calls it from
- * `handleResolveComplete` via `setRows((prev) => applyResolveOutcomes(...))`.
- *
- * Guard semantics (#796): a `pending-after-timeout` outcome must NEVER
- * overwrite a row already in a terminal state (`matched` / `no-match` /
- * `no-ean` / `no-variant`). The resolve-step fix prevents the stale-closure
- * `onComplete` from firing in the first place; this guard catches any
- * future regression that tries to downgrade settled rows.
+ * Reconstruct an `EanMatchResult` from a row's current category state so
+ * `computeBlockers` can re-derive the category blocker after a per-row edit
+ * without re-fetching. An operator-picked / previously-matched category id
+ * yields `matched`; otherwise the surviving category blocker decides.
  */
-export function applyResolveOutcomes(
+function categoryResultFor(
+  row: BulkWizardRow,
+  resolvedCategoryId: string | null,
+): EanMatchResult {
+  if (resolvedCategoryId) {
+    return { kind: 'matched', allegroCategoryId: resolvedCategoryId, productCardId: '' };
+  }
+  if (row.blockers.includes('no-ean')) return { kind: 'no-ean' };
+  if (row.blockers.includes('multi-match')) {
+    return { kind: 'multi-match', candidates: [...row.categoryCandidates] };
+  }
+  return { kind: 'no-match' };
+}
+
+/**
+ * Merge resolve-step outcomes into the wizard's rows by `productId`. Exported
+ * for unit testing; the wizard calls it from `handleResolveComplete`.
+ */
+export function mergeResolveOutcomes(
   rows: BulkWizardRow[],
   outcomes: BulkResolveOutcome[],
 ): BulkWizardRow[] {
+  const byId = new Map(outcomes.map((o) => [o.productId, o]));
   return rows.map((row) => {
-    const o = outcomes.find((x) => x.productId === row.productId);
+    const o = byId.get(row.productId);
     if (!o) return row;
-    if (
-      o.status === 'pending-after-timeout' &&
-      row.status !== 'resolving' &&
-      row.status !== 'pending-after-timeout'
-    ) {
-      return row;
-    }
     return {
       ...row,
-      status: o.status,
-      resolvedCategoryId: o.categoryId,
-      resolutionMethod: o.method,
+      blockers: o.blockers,
+      resolvedCategoryId: o.resolvedCategoryId,
+      resolutionMethod: o.resolutionMethod,
+      masterPrice: o.masterPrice,
+      masterStock: o.masterStock,
+      masterCurrency: o.masterCurrency,
+      categoryCandidates: o.categoryCandidates,
     };
   });
 }
@@ -322,21 +325,17 @@ function seedRows(products: Product[]): BulkWizardRow[] {
 
 function seedRow(product: Product): BulkWizardRow {
   const primaryVariant: ProductVariant | null = product.variants?.[0] ?? null;
-  let status: BulkRowStatus;
-  if (!primaryVariant) {
-    status = 'no-variant';
-  } else if (!primaryVariant.ean && !primaryVariant.gtin) {
-    status = 'no-ean';
-  } else {
-    status = 'resolving';
-  }
   return {
     productId: product.id,
     product,
     primaryVariant,
-    status,
+    blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
     resolutionMethod: null,
+    masterPrice: null,
+    masterStock: null,
+    masterCurrency: null,
+    categoryCandidates: [],
     override: {},
   };
 }

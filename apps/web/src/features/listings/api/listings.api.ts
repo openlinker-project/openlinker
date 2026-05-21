@@ -19,6 +19,8 @@ import type {
   OfferCreationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
+  ResolveCategoriesBatchRequest,
+  ResolveCategoriesBatchResponse,
   ResolveCategoryRequest,
   ResolveCategoryResponse,
   SellerPoliciesResponse,
@@ -80,6 +82,16 @@ export interface ListingsApi {
     connectionId: string,
     body: ResolveCategoryRequest,
   ) => Promise<ResolveCategoryResponse>;
+  /**
+   * Batch-resolve N variant EANs to marketplace categories in one call (#795).
+   * Wraps the adapter's `EanCategoryMatcher` sub-capability; drives the bulk
+   * wizard's Resolve step, replacing the per-row `resolveCategory` loop. Max
+   * 200 items per request; results keyed by `variantId`.
+   */
+  resolveCategoriesBatch: (
+    connectionId: string,
+    body: ResolveCategoriesBatchRequest,
+  ) => Promise<ResolveCategoriesBatchResponse>;
   /**
    * Submit a bulk offer-creation batch (#736). Returns the persisted
    * `batchId` and per-job message IDs. 1..100 variants per batch.
@@ -173,6 +185,16 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
       return request<ResolveCategoryResponse>(
         `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    resolveCategoriesBatch(connectionId, body): Promise<ResolveCategoriesBatchResponse> {
+      return request<ResolveCategoriesBatchResponse>(
+        `/listings/connections/${connectionId}/categories/resolve-batch`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
