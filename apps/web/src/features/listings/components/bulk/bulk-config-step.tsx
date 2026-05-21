@@ -183,7 +183,7 @@ export function BulkConfigStep({
         )}
       </FormField>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)' }}>
+      <div className="form-field-row form-field-row--cols-3">
         <FormField name="bulk-config-stock" label="Default stock">
           <Input
             type="number"
