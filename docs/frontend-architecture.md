@@ -372,6 +372,7 @@ The frontend ships a **no-op i18n seam** at `apps/web/src/shared/i18n/` (#612). 
 - `LocaleProvider` — mounted at the app root between `ThemeProvider` and `PluginRegistryProvider`. Defaults to `locale='en'` with an empty catalog.
 - `useTranslation()` — returns `{ t, locale }`. `t(key, fallback)` returns the catalog hit or the fallback. With the host's empty catalog, every call returns its `fallback` argument today.
 - `useNumberFormat(options?)` — memoised `Intl.NumberFormat` for the current locale. Replaces module-scope `new Intl.NumberFormat('en-US')` instantiations so number formatting follows locale, not en-US-pinned.
+- `getBcp47Locale(locale)` — resolves a `LocaleCode` to a BCP 47 language tag for per-row `Intl.*` options (currency, date). Single source of truth so consumers don't mirror the `'en' → 'en-US'` mapping inline (#783). A locale resolver, not a formatter — so it doesn't reopen the deferred currency/date-formatting-helper scope below.
 - `LocaleCode`, `TranslationCatalog`, `LocaleContextValue` — types.
 
 **v1 scope** — explicitly **does NOT** migrate any existing English strings to `t()`. Every label, breadcrumb, button, and toast remains an inline string. The only host-side consumer is `useNumberFormat()` in `app-shell.tsx`. String migration is a per-feature follow-up issue per feature; each migration PR moves a single feature's strings to `t(key, fallback)` and ships an `en` catalog entry per key.
