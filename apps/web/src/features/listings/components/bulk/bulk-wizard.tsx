@@ -83,25 +83,7 @@ export function BulkWizard({
 
   const handleResolveComplete = useCallback(
     (outcomes: BulkResolveOutcome[]) => {
-      setRows((prev) =>
-        prev.map((row) => {
-          const o = outcomes.find((x) => x.productId === row.productId);
-          if (!o) return row;
-          // If a resolved-from-cache outcome already exists, don't downgrade it.
-          if (
-            row.status === 'matched' &&
-            o.status === 'pending-after-timeout'
-          ) {
-            return row;
-          }
-          return {
-            ...row,
-            status: o.status,
-            resolvedCategoryId: o.categoryId,
-            resolutionMethod: o.method,
-          };
-        }),
-      );
+      setRows((prev) => applyResolveOutcomes(prev, outcomes));
       setStep('review');
     },
     [],
@@ -298,6 +280,40 @@ export function BulkWizard({
 
 function stepOrder(step: BulkWizardStep): number {
   return WIZARD_STEPS.findIndex((s) => s.id === step);
+}
+
+/**
+ * Pure reducer that applies a batch of resolve-step outcomes to the wizard's
+ * row state. Exported for unit testing; the wizard calls it from
+ * `handleResolveComplete` via `setRows((prev) => applyResolveOutcomes(...))`.
+ *
+ * Guard semantics (#796): a `pending-after-timeout` outcome must NEVER
+ * overwrite a row already in a terminal state (`matched` / `no-match` /
+ * `no-ean` / `no-variant`). The resolve-step fix prevents the stale-closure
+ * `onComplete` from firing in the first place; this guard catches any
+ * future regression that tries to downgrade settled rows.
+ */
+export function applyResolveOutcomes(
+  rows: BulkWizardRow[],
+  outcomes: BulkResolveOutcome[],
+): BulkWizardRow[] {
+  return rows.map((row) => {
+    const o = outcomes.find((x) => x.productId === row.productId);
+    if (!o) return row;
+    if (
+      o.status === 'pending-after-timeout' &&
+      row.status !== 'resolving' &&
+      row.status !== 'pending-after-timeout'
+    ) {
+      return row;
+    }
+    return {
+      ...row,
+      status: o.status,
+      resolvedCategoryId: o.categoryId,
+      resolutionMethod: o.method,
+    };
+  });
 }
 
 function seedRows(products: Product[]): BulkWizardRow[] {
