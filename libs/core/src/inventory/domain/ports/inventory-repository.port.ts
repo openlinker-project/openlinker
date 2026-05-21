@@ -14,6 +14,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
+  VariantAvailability,
 } from '../types/inventory.types';
 
 /**
@@ -61,4 +62,17 @@ export interface InventoryRepositoryPort {
     filters: InventoryFilters,
     pagination: InventoryPagination
   ): Promise<PaginatedInventoryItems>;
+
+  /**
+   * Summed per-variant availability across all locations for the given
+   * variant IDs (#792 PR 2). Returns rows ONLY for variants that have at
+   * least one matching inventory row; zero-filling for unknown variants is
+   * the service layer's responsibility. Empty input → empty output.
+   *
+   * @param variantIds list of internal product-variant IDs to look up
+   * @returns one VariantAvailability row per variant with inventory
+   */
+  findAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]>;
 }

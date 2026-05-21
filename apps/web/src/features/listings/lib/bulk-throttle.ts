@@ -3,7 +3,7 @@
  *
  * Caps in-flight promises at `limit` while preserving result order. Used by
  * the bulk-wizard auto-match step to avoid saturating Allegro's
- * `/sale/matching-categories` endpoint at 50+ parallel requests (`useResolveCategoryQuery`
+ * `/sale/products` endpoint at 50+ parallel requests (`useResolveCategoryQuery`
  * has `retry: false`, so a 429 burst would silently flip rows to ❌).
  *
  * No external dependency — 20 lines, `Promise.allSettled` semantics.

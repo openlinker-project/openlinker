@@ -25,6 +25,8 @@ import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlink
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
 import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';
+import { GetInventoryAvailabilityQueryDto } from './dto/get-inventory-availability-query.dto';
+import { InventoryAvailabilityResponseDto } from './dto/inventory-availability-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -64,6 +66,39 @@ export class InventoryController {
       total,
       limit,
       offset,
+    };
+  }
+
+  // Declared before @Get(':id') so /inventory/availability is matched by
+  // this handler rather than getInventoryItem (which would treat
+  // 'availability' as a literal ID). Same registration-order concern as
+  // apps/api/src/products/http/products.controller.ts:101 documents for
+  // /products/variants/:variantId.
+  @Get('availability')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Batch lookup of per-variant inventory availability (#792)',
+    description:
+      'Returns one row per requested productVariantId with availableQuantity summed across all locations. ' +
+      'Zero-filled for variants that have no inventory rows. Capped at 200 IDs per request.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-variant availability',
+    type: InventoryAvailabilityResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Empty or oversize productVariantIds list' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getAvailability(
+    @Query() query: GetInventoryAvailabilityQueryDto
+  ): Promise<InventoryAvailabilityResponseDto> {
+    const items = await this.queryService.getAvailabilityByVariantIds(query.productVariantIds);
+    return {
+      items: items.map((i) => ({
+        productVariantId: i.productVariantId,
+        totalAvailable: i.totalAvailable,
+        locationCount: i.locationCount,
+      })),
     };
   }
 

@@ -58,6 +58,7 @@ describe('InventoryController', () => {
     const mockQueryService: jest.Mocked<IInventoryQueryService> = {
       listInventoryItems: jest.fn(),
       getInventoryItem: jest.fn(),
+      getAvailabilityByVariantIds: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -157,6 +158,38 @@ describe('InventoryController', () => {
       queryService.getInventoryItem.mockResolvedValue(null);
 
       await expect(controller.getInventoryItem('inv-missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getAvailability (#792)', () => {
+    it('passes the parsed variantIds through to the service and wraps the response in items[]', async () => {
+      queryService.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
+        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+      ]);
+
+      const result = await controller.getAvailability({
+        productVariantIds: ['var-a', 'var-b'],
+      });
+
+      expect(queryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['var-a', 'var-b']);
+      expect(result).toEqual({
+        items: [
+          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
+          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+        ],
+      });
+    });
+
+    it('returns an empty items[] when the service returns no rows', async () => {
+      // Service-level zero-fill guarantees an entry per requested ID, but a
+      // direct caller passing a single-known-empty input still gets the
+      // empty-envelope shape.
+      queryService.getAvailabilityByVariantIds.mockResolvedValue([]);
+
+      const result = await controller.getAvailability({ productVariantIds: ['var-x'] });
+
+      expect(result).toEqual({ items: [] });
     });
   });
 });
