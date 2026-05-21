@@ -25,7 +25,14 @@ export interface ProductVariant {
   createdAt?: Date;
   /** Populated by the repository on load; adapters/drafts may omit. */
   updatedAt?: Date;
-  /** Master-derived, not persisted on the variants table. */
+  /**
+   * Master price for this variant. Persisted on the variants table.
+   * Optional at the domain level so adapter drafts and test factories may
+   * omit it; the repository / DTO layer normalises `undefined ↔ null` at
+   * the persistence and wire boundaries. Do not assign `null` directly to
+   * a domain instance — TypeScript will reject it, and the boundary
+   * normalisation is what callers should rely on.
+   */
   price?: number;
   /** Master-derived, not persisted on the variants table. */
   weight?: number;

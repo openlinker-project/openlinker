@@ -226,6 +226,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
           attributes: null,
           ean: productEan ?? null,
           gtin: productGtin ?? null,
+          // Inherit master price from the parent product so the synthetic
+          // variant carries a usable price (simple products are the common
+          // case for SMB shops). Null/non-numeric → undefined → surfaces as
+          // a `no-master-price` blocker downstream (#792).
+          price: this.parseProductPrice(prestashopProduct.price),
         },
       ];
     }
@@ -291,6 +296,20 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
   private normalizeGtin(value?: string | null): string | null {
     return normalizeBarcode(value ?? null);
+  }
+
+  /**
+   * Parse the PrestaShop product `price` field into a domain number.
+   * Mirrors `PrestashopProductMapper.parseNumber` semantics — returns
+   * `undefined` for null / undefined / non-finite values so the
+   * downstream `no-master-price` blocker can surface accurately. Inlined
+   * here (rather than reusing the mapper's private `parseNumber`) to
+   * avoid widening the mapper's public interface for one call site.
+   */
+  private parseProductPrice(value: string | number | undefined | null): number | undefined {
+    if (value === undefined || value === null) return undefined;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : undefined;
   }
 
   // Write operations - not supported in MVP

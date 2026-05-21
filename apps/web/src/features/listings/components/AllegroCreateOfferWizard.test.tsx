@@ -50,6 +50,7 @@ const product: Product = {
       attributes: { size: 'M' },
       ean: '5901234567890',
       gtin: null,
+      price: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
     },

@@ -23,6 +23,7 @@ const sampleProduct: Product = {
       attributes: { size: 'M', color: 'blue' },
       ean: '1234567890123',
       gtin: null,
+      price: null,
       createdAt: '2026-01-15T10:00:00.000Z',
       updatedAt: '2026-01-15T10:00:00.000Z',
       externalIds: [
