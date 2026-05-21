@@ -10,5 +10,6 @@
 export { LocaleProvider } from './locale-provider';
 export { useTranslation } from './use-translation';
 export { useNumberFormat } from './use-number-format';
+export { getBcp47Locale } from './locale';
 export { LocaleCodeValues } from './i18n.types';
 export type { LocaleCode, TranslationCatalog, LocaleContextValue } from './i18n.types';
