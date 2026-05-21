@@ -377,13 +377,17 @@ function PolicyRadio({
   children,
 }: PolicyRadioProps): ReactElement {
   return (
-    <label className="bulk-config__policy-option">
-      <input type="radio" name={name} checked={checked} onChange={onChange} />
-      <span className="bulk-config__policy-text">
-        <strong>{label}</strong>
-        <small style={{ display: 'block', color: 'var(--text-muted)' }}>{hint}</small>
-        {children}
-      </span>
-    </label>
+    <div className="bulk-config__policy-option">
+      <label className="bulk-config__policy-label">
+        <input type="radio" name={name} checked={checked} onChange={onChange} />
+        <span className="bulk-config__policy-text">
+          <strong>{label}</strong>
+          <small style={{ display: 'block', color: 'var(--text-muted)' }}>{hint}</small>
+        </span>
+      </label>
+      {/* Conditional input lives OUTSIDE the <label> — nesting a FormField (which
+          renders its own <label>) inside would produce invalid label-in-label markup. */}
+      {children ? <div className="bulk-config__policy-detail">{children}</div> : null}
+    </div>
   );
 }

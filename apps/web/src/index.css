@@ -7963,6 +7963,12 @@ html[data-density='compact'] .status-badge {
 
 .bulk-config__policy-option {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bulk-config__policy-label {
+  display: flex;
   align-items: flex-start;
   gap: var(--space-2);
 }
@@ -7971,6 +7977,11 @@ html[data-density='compact'] .status-badge {
   display: block;
   min-width: 0;
   flex: 1;
+}
+
+/* Conditional policy input, indented under the radio caption. */
+.bulk-config__policy-detail {
+  padding-left: calc(14px + var(--space-2));
 }
 
 .bulk-edit__candidates {

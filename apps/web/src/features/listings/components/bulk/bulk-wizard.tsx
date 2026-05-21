@@ -118,14 +118,24 @@ export function BulkWizard({
     async (publishImmediately: boolean) => {
       if (!config) return;
 
-      // Submittable = has a variant and no outstanding blockers. Variant IDs
-      // (NOT product IDs) go in `productIds` — the BE field name is misleading;
+      // Submittable = has a variant, no blockers, AND a concrete computed
+      // price + stock. The price/stock guard is belt-and-suspenders: a
+      // blocker-free row always resolves both, but filtering on them here
+      // means a future logic gap excludes the row rather than silently
+      // publishing the nominal `sharedConfig` fallback. Variant IDs (NOT
+      // product IDs) go in `productIds` — the BE field name is misleading;
       // see `bulk-listings.types.ts` file header.
-      const submittableRows = rows.filter(
-        (r) => r.primaryVariant !== null && r.blockers.length === 0,
-      );
+      const submittable = rows
+        .filter((r) => r.primaryVariant !== null && r.blockers.length === 0)
+        .map((row) => ({
+          row,
+          variantId: row.primaryVariant!.id,
+          price: computeResolvedPrice(config.pricingPolicy, row.masterPrice, row.override),
+          stock: computeResolvedStock(config.stockPolicy, row.masterStock, row.override),
+        }))
+        .filter(({ price, stock }) => price.value !== null && stock.value !== null);
 
-      if (submittableRows.length === 0) {
+      if (submittable.length === 0) {
         showToast({
           tone: 'error',
           description: 'No rows are ready to submit. Resolve the flagged rows first.',
@@ -133,17 +143,15 @@ export function BulkWizard({
         return;
       }
 
-      const variantIds = submittableRows.map((r) => r.primaryVariant!.id);
+      const variantIds = submittable.map((s) => s.variantId);
       const perProductOverrides: Record<string, BulkPerProductOverride> = {};
-      for (const row of submittableRows) {
-        // Every submittable row carries its own computed price + stock (the
-        // policy resolves a distinct value per product); send them per-row so
-        // the worker never falls back to the shared nominal default.
-        const price = computeResolvedPrice(config.pricingPolicy, row.masterPrice, row.override);
-        const stock = computeResolvedStock(config.stockPolicy, row.masterStock, row.override);
-        perProductOverrides[row.primaryVariant!.id] = {
+      for (const { row, variantId, price, stock } of submittable) {
+        // Each row carries its own computed price + stock (the policy resolves
+        // a distinct value per product). A per-row override price keeps its own
+        // currency; policy-derived prices use the batch-wide currency (D7).
+        perProductOverrides[variantId] = {
           ...row.override,
-          stock: row.override.stock ?? stock.value ?? undefined,
+          stock: stock.value ?? undefined,
           price:
             row.override.price ??
             (price.value !== null

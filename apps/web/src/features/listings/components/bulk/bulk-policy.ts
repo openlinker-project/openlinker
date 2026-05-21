@@ -54,17 +54,24 @@ export function computeResolvedPrice(
   }
   switch (policy.mode) {
     case 'flat':
+      // Operator's explicit batch-wide amount — used verbatim, never blocks.
       return { value: policy.amount, source: 'policy', blocker: null };
     case 'markup': {
       if (masterPrice === null) {
         return { value: null, source: 'policy', blocker: 'no-master-price' };
       }
       const factor = 1 + clampMarkupPercent(policy.percent) / 100;
-      return { value: roundHalfUp(masterPrice * factor), source: 'policy', blocker: null };
+      const value = roundHalfUp(masterPrice * factor);
+      // A markup that zeroes the price (e.g. -100%) can't publish on Allegro;
+      // flag it client-side so the operator sets a per-row price instead.
+      return value > 0
+        ? { value, source: 'policy', blocker: null }
+        : { value: null, source: 'policy', blocker: 'no-master-price' };
     }
     case 'use-master':
     default:
-      if (masterPrice === null) {
+      // Null or non-positive master price has no usable value to publish.
+      if (masterPrice === null || masterPrice <= 0) {
         return { value: null, source: 'master', blocker: 'no-master-price' };
       }
       return { value: masterPrice, source: 'master', blocker: null };

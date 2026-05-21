@@ -63,6 +63,18 @@ describe('computeResolvedPrice', () => {
     ).toBe('no-master-price');
   });
 
+  it('blocks no-master-price when a markup zeroes the price (e.g. -100%)', () => {
+    const result = computeResolvedPrice({ mode: 'markup', percent: -100 }, 12, NO_OVERRIDE);
+    expect(result.value).toBeNull();
+    expect(result.blocker).toBe('no-master-price');
+  });
+
+  it('blocks no-master-price under use-master when master price is 0', () => {
+    expect(computeResolvedPrice({ mode: 'use-master' }, 0, NO_OVERRIDE).blocker).toBe(
+      'no-master-price',
+    );
+  });
+
   it('uses the flat amount verbatim and never blocks', () => {
     expect(computeResolvedPrice({ mode: 'flat', amount: 79 }, null, NO_OVERRIDE)).toEqual({
       value: 79,
