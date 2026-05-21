@@ -9,7 +9,11 @@
  * @module libs/core/src/inventory/application/services
  * @see {@link InventoryQueryService} for the implementation
  */
-import type { InventoryFilters, InventoryPagination } from '../../domain/types/inventory.types';
+import type {
+  InventoryFilters,
+  InventoryPagination,
+  VariantAvailability,
+} from '../../domain/types/inventory.types';
 import type { InventoryItemView, PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -30,4 +34,18 @@ export interface IInventoryQueryService {
    * Callers in the interface layer translate `null` to an HTTP 404.
    */
   getInventoryItem(id: string): Promise<InventoryItemView | null>;
+
+  /**
+   * Batch per-variant availability lookup (#792 PR 2).
+   *
+   * Returns one row per requested variant ID with `availableQuantity`
+   * summed across all locations and the distinct-location count. Variants
+   * with no inventory rows are zero-filled
+   * (`{ totalAvailable: 0, locationCount: 0 }`) so the caller can build a
+   * `Map<variantId, VariantAvailability>` directly. Output order matches
+   * input order.
+   */
+  getAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]>;
 }

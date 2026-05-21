@@ -38,3 +38,20 @@ export interface PaginatedInventory {
   limit: number;
   offset: number;
 }
+
+/**
+ * Per-variant availability returned by `GET /inventory/availability` (#792 PR 2).
+ *
+ * One entry per requested productVariantId; `totalAvailable=0` and
+ * `locationCount=0` signal a variant with no inventory rows (zero-filled
+ * server-side so consumers can build a `Map<variantId, …>` directly).
+ */
+export interface InventoryAvailability {
+  productVariantId: string;
+  totalAvailable: number;
+  locationCount: number;
+}
+
+export interface InventoryAvailabilityResponse {
+  items: InventoryAvailability[];
+}
