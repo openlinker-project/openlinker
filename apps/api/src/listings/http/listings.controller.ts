@@ -29,6 +29,7 @@ import { randomUUID } from 'crypto';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  AdapterCapabilityNotSupportedException,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -74,6 +75,10 @@ import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
+import {
+  ResolveCategoryBatchRequestDto,
+  ResolveCategoryBatchResponseDto,
+} from './dto/resolve-category-batch.dto';
 import type { FindProductsByBarcodeResponseDto } from './dto/catalog-product.dto';
 import {
   CatalogProductResponseDto,
@@ -491,6 +496,49 @@ export class ListingsController {
       allegroCategoryId: result.allegroCategoryId,
       method: result.method,
     };
+  }
+
+  @Post('connections/:connectionId/categories/resolve-batch')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Batch-resolve marketplace categories by variant EAN (#795)',
+    description:
+      'Resolves up to 200 variant EANs to marketplace categories in one call via the ' +
+      'connection adapter’s EanCategoryMatcher sub-capability (#735). EAN-only — no ' +
+      'mapping fallback. Drives the bulk-listing wizard Resolve step, replacing the ' +
+      'previous one-HTTP-call-per-row loop. Results are keyed by variantId; every input ' +
+      'item gets exactly one entry.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-variant resolution results.',
+    type: ResolveCategoryBatchResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Connection adapter does not support OfferManager / EanCategoryMatcher.',
+  })
+  async resolveCategoriesBatch(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: ResolveCategoryBatchRequestDto
+  ): Promise<ResolveCategoryBatchResponseDto> {
+    try {
+      const results = await this.categoryResolution.resolveCategoriesBatch(connectionId, {
+        items: dto.items.map((item) => ({ variantId: item.variantId, ean: item.ean ?? null })),
+      });
+      return { results: Object.fromEntries(results) };
+    } catch (error) {
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        // Connection is a marketplace but its adapter can't batch-resolve EANs
+        // (e.g. a future Shopify/WooCommerce adapter). Single-product flows can
+        // still use the per-row /categories/resolve route.
+        throw new UnprocessableEntityException(error.message);
+      }
+      throw error;
+    }
   }
 
   // -----------------------------------------------------------------

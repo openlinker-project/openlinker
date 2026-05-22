@@ -1,11 +1,11 @@
 /**
- * Bulk wizard Step 3 — Review table
+ * Bulk wizard Step 3 — Review table (#792 PR 3)
  *
- * One row per selected product. Renders the per-row status pill, the
- * resolved category, and an Edit button that opens the per-row modal.
- * The "Approve all" CTA stays disabled while any row is not in a ready
- * state (matched or pending-after-timeout — both flip to matched once
- * late-arriving resolves settle).
+ * One row per selected product. Renders the per-row blocker chips, the
+ * computed price/stock (master → policy → override) with a provenance badge
+ * when the value isn't the raw master, the resolved category, and an Edit
+ * button. "Approve all" stays disabled while any listable row still carries a
+ * blocker; no-variant products are skipped, not blocking.
  *
  * @module apps/web/src/features/listings/components/bulk
  */
@@ -17,20 +17,31 @@ import {
   ProductThumbnail,
   StatusBadge,
 } from '../../../../shared/ui';
-import type { DataTableColumn } from '../../../../shared/ui';
+import type { DataTableColumn, StatusBadgeTone } from '../../../../shared/ui';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
-import type { BulkRowStatus, BulkWizardRow } from './bulk-wizard.types';
+import {
+  computeResolvedPrice,
+  computeResolvedStock,
+  type ResolvedPrice,
+  type ResolvedStock,
+} from './bulk-policy';
+import type {
+  BulkRowBlocker,
+  BulkValueSource,
+  BulkWizardRow,
+  PricingPolicy,
+  StockPolicy,
+} from './bulk-wizard.types';
 import { BulkEditModal } from './bulk-edit-modal';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
   connectionId: string;
-  defaults: {
-    stock: number;
-    publishImmediately: boolean;
-    priceAmount: string;
-    priceCurrency: string;
-  };
+  pricingPolicy: PricingPolicy;
+  stockPolicy: StockPolicy;
+  /** Batch-wide currency (D7). */
+  currency: string;
+  publishImmediately: boolean;
   onUpdateRow: (
     variantId: string,
     override: BulkPerProductOverride,
@@ -40,10 +51,23 @@ interface BulkReviewStepProps {
   onBack: () => void;
 }
 
+const BLOCKER_CHIPS: Record<BulkRowBlocker, { tone: StatusBadgeTone; label: string }> = {
+  'no-variant': { tone: 'neutral', label: 'no variant' },
+  'no-ean': { tone: 'error', label: 'no EAN' },
+  'no-match': { tone: 'error', label: 'manual category' },
+  'multi-match': { tone: 'warning', label: 'choose category' },
+  'no-master-price': { tone: 'error', label: 'no master price' },
+  'no-master-stock': { tone: 'error', label: 'no master stock' },
+  'currency-mismatch': { tone: 'warning', label: 'currency mismatch' },
+};
+
 export function BulkReviewStep({
   rows,
   connectionId,
-  defaults,
+  pricingPolicy,
+  stockPolicy,
+  currency,
+  publishImmediately,
   onUpdateRow,
   onApproveAll,
   onBack,
@@ -54,14 +78,17 @@ export function BulkReviewStep({
   const filteredRows = useMemo(() => {
     if (filter.trim() === '') return rows;
     const needle = filter.toLowerCase();
-    return rows.filter((r) =>
-      (r.product?.name ?? '').toLowerCase().includes(needle) ||
-      (r.primaryVariant?.sku ?? '').toLowerCase().includes(needle),
+    return rows.filter(
+      (r) =>
+        (r.product?.name ?? '').toLowerCase().includes(needle) ||
+        (r.primaryVariant?.sku ?? '').toLowerCase().includes(needle),
     );
   }, [rows, filter]);
 
   const counts = useMemo(() => countByReadiness(rows), [rows]);
-  const canApprove = counts.notReady === 0 && rows.length > 0;
+  // No-variant rows are skipped on submit, not blocking. Approval is gated on
+  // every *listable* row being clear, with at least one ready row to submit.
+  const canApprove = counts.ready > 0 && counts.needsAttention === 0;
 
   const editingRow = useMemo(
     () => (editingId ? rows.find((r) => r.productId === editingId) ?? null : null),
@@ -87,7 +114,7 @@ export function BulkReviewStep({
       {
         id: 'status',
         header: 'Status',
-        cell: (row) => <RowStatusBadge status={row.status} />,
+        cell: (row) => <RowStatusCell blockers={row.blockers} />,
       },
       {
         id: 'category',
@@ -108,22 +135,29 @@ export function BulkReviewStep({
         id: 'stock',
         header: 'Stock',
         align: 'right',
-        cell: (row) => (
-          <span className="tabular">{row.override.stock ?? defaults.stock}</span>
-        ),
+        cell: (row) => {
+          const stock = computeResolvedStock(stockPolicy, row.masterStock, row.override);
+          return <ValueCell value={stock.value} source={stock.source} />;
+        },
         hideBelow: 768,
       },
       {
         id: 'price',
         header: 'Price',
         align: 'right',
-        cell: (row) => (
-          <span className="tabular">
-            {row.override.price !== undefined
-              ? `${row.override.price.amount.toFixed(2)} ${row.override.price.currency}`
-              : `${defaults.priceAmount} ${defaults.priceCurrency}`}
-          </span>
-        ),
+        cell: (row) => {
+          if (row.blockers.includes('currency-mismatch')) {
+            return <span className="bulk-wizard__row-category--dim">—</span>;
+          }
+          const price = computeResolvedPrice(pricingPolicy, row.masterPrice, row.override);
+          return (
+            <ValueCell
+              value={price.value}
+              source={price.source}
+              format={(v) => `${v.toFixed(2)} ${currency}`}
+            />
+          );
+        },
         hideBelow: 768,
       },
       {
@@ -131,10 +165,8 @@ export function BulkReviewStep({
         header: '',
         align: 'right',
         cell: (row) =>
-          row.status === 'no-variant' ? (
-            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              No variant
-            </span>
+          row.primaryVariant === null ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No variant</span>
           ) : (
             <Button
               tone="ghost"
@@ -146,8 +178,15 @@ export function BulkReviewStep({
           ),
       },
     ],
-    [defaults],
+    [pricingPolicy, stockPolicy, currency],
   );
+
+  const editingPrice: ResolvedPrice | null = editingRow
+    ? computeResolvedPrice(pricingPolicy, editingRow.masterPrice, editingRow.override)
+    : null;
+  const editingStock: ResolvedStock | null = editingRow
+    ? computeResolvedStock(stockPolicy, editingRow.masterStock, editingRow.override)
+    : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -157,8 +196,8 @@ export function BulkReviewStep({
             Review {rows.length} {rows.length === 1 ? 'product' : 'products'}
           </h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-            Click <strong>Edit</strong> to override any row before submit. Approve all
-            stays disabled while rows need attention.
+            Click <strong>Edit</strong> to override any row before submit. Approve all stays
+            disabled while rows need attention.
           </p>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -170,33 +209,24 @@ export function BulkReviewStep({
             style={{ minWidth: 220 }}
             aria-label="Filter rows by product name or SKU"
           />
-          <Button
-            tone="primary"
-            disabled={!canApprove}
-            onClick={onApproveAll}
-          >
-            Approve all ({rows.length})
+          <Button tone="primary" disabled={!canApprove} onClick={onApproveAll}>
+            Approve all ({counts.ready})
           </Button>
         </div>
       </header>
 
       <div className="bulk-wizard__review-summary">
         <span><strong>{counts.ready}</strong> ready</span>
-        {counts.pending > 0 ? (
+        {counts.needsAttention > 0 ? (
           <>
             <span className="sep">·</span>
-            <span>
-              <strong>{counts.pending}</strong>{' '}
-              {counts.pending === 1 ? 'still resolving' : 'still resolving'}
-            </span>
+            <span><strong>{counts.needsAttention}</strong> need attention</span>
           </>
         ) : null}
-        {counts.notReady > 0 ? (
+        {counts.skipped > 0 ? (
           <>
             <span className="sep">·</span>
-            <span>
-              <strong>{counts.notReady}</strong> need manual category
-            </span>
+            <span><strong>{counts.skipped}</strong> skipped (no variant)</span>
           </>
         ) : null}
       </div>
@@ -213,7 +243,7 @@ export function BulkReviewStep({
         <div className="bulk-wizard__footer-spacer" />
       </footer>
 
-      {editingRow && editingRow.primaryVariant ? (
+      {editingRow && editingRow.primaryVariant && editingPrice && editingStock ? (
         <BulkEditModal
           open={editingId !== null}
           onOpenChange={(open) => {
@@ -221,7 +251,12 @@ export function BulkReviewStep({
           }}
           row={editingRow}
           connectionId={connectionId}
-          defaults={defaults}
+          defaults={{
+            stock: editingStock.value ?? 0,
+            publishImmediately,
+            priceAmount: editingPrice.value !== null ? editingPrice.value.toFixed(2) : '',
+            priceCurrency: currency,
+          }}
           onSave={onUpdateRow}
         />
       ) : null}
@@ -229,47 +264,61 @@ export function BulkReviewStep({
   );
 }
 
-function RowStatusBadge({ status }: { status: BulkRowStatus }): ReactElement {
-  switch (status) {
-    case 'matched':
-      return <StatusBadge tone="success" withDot>matched</StatusBadge>;
-    case 'resolving':
-    case 'pending-after-timeout':
-      return (
-        <StatusBadge tone="info" withDot pulse>
-          {status === 'resolving' ? 'resolving' : 'still resolving'}
-        </StatusBadge>
-      );
-    case 'no-ean':
-      return <StatusBadge tone="error" withDot>no EAN</StatusBadge>;
-    case 'no-variant':
-      return <StatusBadge tone="error" withDot>no variant</StatusBadge>;
-    case 'no-match':
-      return <StatusBadge tone="error" withDot>manual category required</StatusBadge>;
+function RowStatusCell({ blockers }: { blockers: readonly BulkRowBlocker[] }): ReactElement {
+  if (blockers.length === 0) {
+    return <StatusBadge tone="success" withDot>ready</StatusBadge>;
   }
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
+      {blockers.map((b) => (
+        <StatusBadge key={b} tone={BLOCKER_CHIPS[b].tone} withDot compact>
+          {BLOCKER_CHIPS[b].label}
+        </StatusBadge>
+      ))}
+    </span>
+  );
+}
+
+function ValueCell({
+  value,
+  source,
+  format,
+}: {
+  value: number | null;
+  source: BulkValueSource;
+  format?: (v: number) => string;
+}): ReactElement {
+  if (value === null) {
+    return <span className="bulk-wizard__row-category--dim">—</span>;
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
+      <span className="tabular">{format ? format(value) : value}</span>
+      {source === 'policy' ? (
+        <StatusBadge tone="warning" compact>POLICY</StatusBadge>
+      ) : source === 'override' ? (
+        <StatusBadge tone="review" compact>OVERRIDE</StatusBadge>
+      ) : null}
+    </span>
+  );
 }
 
 function countByReadiness(rows: BulkWizardRow[]): {
   ready: number;
-  pending: number;
-  notReady: number;
+  needsAttention: number;
+  skipped: number;
 } {
   let ready = 0;
-  let pending = 0;
-  let notReady = 0;
+  let needsAttention = 0;
+  let skipped = 0;
   for (const r of rows) {
-    if (r.status === 'matched') {
-      // A matched-from-resolve row can become "not ready" if the operator
-      // explicitly cleared the override's categoryId; but ready by default.
-      // If a row needed manual but the operator filled it via the edit modal,
-      // we'd surface that here too. For v1 we trust the wizard's
-      // applyOverrides mutation to update row.status on save (see wizard).
+    if (r.primaryVariant === null) {
+      skipped += 1;
+    } else if (r.blockers.length === 0) {
       ready += 1;
-    } else if (r.status === 'pending-after-timeout' || r.status === 'resolving') {
-      pending += 1;
     } else {
-      notReady += 1;
+      needsAttention += 1;
     }
   }
-  return { ready, pending, notReady };
+  return { ready, needsAttention, skipped };
 }

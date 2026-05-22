@@ -11,10 +11,12 @@ import type {
   CatalogProduct,
   CatalogProductMatchResult,
   CategoryParameter,
+  EanMatchResult,
   OfferManagerPort,
   SellerPolicies,
 } from '@openlinker/core/listings';
 import {
+  AdapterCapabilityNotSupportedException,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
 } from '@openlinker/core/listings';
@@ -121,6 +123,7 @@ describe('ListingsController', () => {
     };
     categoryResolution = {
       resolveCategory: jest.fn(),
+      resolveCategoriesBatch: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -754,6 +757,58 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(ConnectionNotFoundException);
 
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveCategoriesBatch (#795)', () => {
+    it('maps null EANs through and converts the service Map to a results record', async () => {
+      const serviceResult = new Map<string, EanMatchResult>([
+        ['v1', { kind: 'matched', allegroCategoryId: '257933', productCardId: 'card-1' }],
+        ['v2', { kind: 'no-ean' }],
+      ]);
+      categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
+
+      const result = await controller.resolveCategoriesBatch('conn-1', {
+        items: [
+          { variantId: 'v1', ean: '5901234567890' },
+          { variantId: 'v2' },
+        ],
+      });
+
+      expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
+        items: [
+          { variantId: 'v1', ean: '5901234567890' },
+          { variantId: 'v2', ean: null },
+        ],
+      });
+      expect(result).toEqual({
+        results: {
+          v1: { kind: 'matched', allegroCategoryId: '257933', productCardId: 'card-1' },
+          v2: { kind: 'no-ean' },
+        },
+      });
+    });
+
+    it('maps AdapterCapabilityNotSupportedException to 422', async () => {
+      categoryResolution.resolveCategoriesBatch.mockRejectedValue(
+        new AdapterCapabilityNotSupportedException('conn-1', 'EanCategoryMatcher')
+      );
+
+      await expect(
+        controller.resolveCategoriesBatch('conn-1', { items: [{ variantId: 'v1', ean: '590' }] })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('propagates non-capability errors (e.g. connection not found) untouched', async () => {
+      categoryResolution.resolveCategoriesBatch.mockRejectedValue(
+        new ConnectionNotFoundException('conn-missing')
+      );
+
+      await expect(
+        controller.resolveCategoriesBatch('conn-missing', {
+          items: [{ variantId: 'v1', ean: '590' }],
+        })
+      ).rejects.toBeInstanceOf(ConnectionNotFoundException);
     });
   });
 
