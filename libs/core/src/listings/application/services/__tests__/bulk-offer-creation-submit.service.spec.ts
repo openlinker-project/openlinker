@@ -162,6 +162,45 @@ describe('BulkOfferCreationSubmitService', () => {
       });
     });
 
+    it('preserves shared platformParams when a per-product override has none, and deep-merges when it does (#808)', async () => {
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a', 'v-b'],
+        sharedConfig: {
+          stock: 5,
+          publishImmediately: false,
+          overrides: {
+            platformParams: { deliveryPolicyId: 'dp-shared', handlingTime: 'PT24H' },
+          },
+        },
+        perProductOverrides: {
+          // Row override carries category/card but NO platformParams — the
+          // shared deliveryPolicyId must still flow through (the bug: a
+          // wholesale replace dropped it → DefaultShippingRatesNotFound).
+          'v-a': { overrides: { categoryId: '257933', productCardId: 'card-a' } },
+          // Row override with its own platformParams — deep-merged: per-product
+          // key wins, shared sibling key survives.
+          'v-b': { overrides: { platformParams: { deliveryPolicyId: 'dp-b' } } },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'v-a',
+        overrides: {
+          categoryId: '257933',
+          productCardId: 'card-a',
+          platformParams: { deliveryPolicyId: 'dp-shared', handlingTime: 'PT24H' },
+        },
+      });
+      expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+        internalVariantId: 'v-b',
+        overrides: {
+          platformParams: { deliveryPolicyId: 'dp-b', handlingTime: 'PT24H' },
+        },
+      });
+    });
+
     it('forwards AI flags from shared config into every enqueue call', async () => {
       await service.submit({
         connectionId,
