@@ -121,6 +121,19 @@ export interface ComputeBlockersInput {
   masterCurrency: string | null;
   batchCurrency: string;
   override: BulkPerProductOverride;
+  /**
+   * True when the submit will link an Allegro catalogue card (#808), which
+   * inherits the category's required product parameters. Card-linked rows are
+   * never blocked for missing product params. Omitted (undefined) at resolve
+   * time, where no-card rows have no category yet — treated as not-blocking.
+   */
+  willLinkProductCard?: boolean;
+  /**
+   * Required `section: 'product'` parameter ids for the row's submit category
+   * (unconditional only — `dependsOn`-gated params are excluded). undefined =
+   * schema not loaded yet → do not block (avoids flicker). (#810)
+   */
+  requiredProductParamIds?: readonly string[];
 }
 
 /**
@@ -147,6 +160,18 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     // 'matched' → no category blocker
   }
 
+  // Product parameters (#810) — a row that creates a product inline (no card to
+  // inherit from) under a category with required product-section params it
+  // hasn't supplied would 422 at submit. Card-linked rows (#808) inherit the
+  // params, so they're exempt. Coverage-based so the blocker clears once the
+  // operator fills the params in the edit modal.
+  if (!input.willLinkProductCard && input.requiredProductParamIds?.length) {
+    const supplied = suppliedProductParamIds(input.override);
+    if (input.requiredProductParamIds.some((id) => !supplied.has(id))) {
+      blockers.push('needs-product-parameters');
+    }
+  }
+
   // Price / stock — override-aware via the resolvers above.
   const price = computeResolvedPrice(input.pricingPolicy, input.masterPrice, input.override);
   if (price.blocker) blockers.push(price.blocker);
@@ -168,4 +193,23 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   }
 
   return blockers;
+}
+
+/**
+ * Extract the set of product-section parameter ids the operator has supplied
+ * for a row, read from the serialized `platformParams.productParameters` wire
+ * array (`{ id, … }[]`, see `serializeAllegroParameters`). Used to coverage-
+ * check the required product params so the `needs-product-parameters` blocker
+ * clears once they're filled (#810).
+ */
+function suppliedProductParamIds(override: BulkPerProductOverride): Set<string> {
+  const params: unknown = override.overrides?.platformParams?.productParameters;
+  const ids = new Set<string>();
+  if (!Array.isArray(params)) return ids;
+  for (const p of params) {
+    if (p && typeof p === 'object' && typeof (p as { id?: unknown }).id === 'string') {
+      ids.add((p as { id: string }).id);
+    }
+  }
+  return ids;
 }

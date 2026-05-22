@@ -79,6 +79,7 @@ function renderReview(
   rows: BulkWizardRow[],
   pricingPolicy: PricingPolicy = { mode: 'use-master' },
   stockPolicy: StockPolicy = { mode: 'use-master' },
+  paramsResolving = false,
 ) {
   return renderWithProviders(
     <BulkReviewStep
@@ -88,6 +89,7 @@ function renderReview(
       stockPolicy={stockPolicy}
       currency="PLN"
       publishImmediately
+      paramsResolving={paramsResolving}
       onUpdateRow={() => undefined}
       onApproveAll={() => undefined}
       onBack={() => undefined}
@@ -142,6 +144,7 @@ describe('BulkReviewStep', () => {
         stockPolicy={{ mode: 'use-master' }}
         currency="PLN"
         publishImmediately
+        paramsResolving={false}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}
@@ -157,5 +160,49 @@ describe('BulkReviewStep', () => {
     };
     renderReview([makeRow('a', [], { masterPrice: 12, masterStock: 5 }), noVariantRow]);
     expect(screen.getByRole('button', { name: /Approve all/ })).toBeEnabled();
+  });
+
+  // #810 — needs-product-parameters blocker surfacing
+  it('renders the add-product-params chip and a remediation hint', () => {
+    renderReview([makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 })]);
+    expect(screen.getByText('add product params')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(/Edit/);
+    expect(screen.getByRole('note')).toHaveTextContent(/product parameters/);
+  });
+
+  it('singularises the hint for one affected row and pluralises for many', () => {
+    const { rerender } = renderReview([
+      makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+    ]);
+    expect(screen.getByRole('note')).toHaveTextContent(/1\s+row needs/);
+
+    rerender(
+      <BulkReviewStep
+        rows={[
+          makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+          makeRow('b', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+        ]}
+        connectionId="conn_1"
+        pricingPolicy={{ mode: 'use-master' }}
+        stockPolicy={{ mode: 'use-master' }}
+        currency="PLN"
+        publishImmediately
+        paramsResolving={false}
+        onUpdateRow={() => undefined}
+        onApproveAll={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('note')).toHaveTextContent(/2\s+rows need/);
+  });
+
+  it('disables Approve all while category-parameter schemas are still resolving', () => {
+    renderReview(
+      [makeRow('a', [], { masterPrice: 12, masterStock: 5 })],
+      { mode: 'use-master' },
+      { mode: 'use-master' },
+      true,
+    );
+    expect(screen.getByRole('button', { name: /Approve all/ })).toBeDisabled();
   });
 });

@@ -9,11 +9,12 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
+import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
@@ -26,6 +27,7 @@ import { BulkReviewStep } from './bulk-review-step';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import { computeBlockers, computeResolvedPrice, computeResolvedStock } from './bulk-policy';
 import type {
+  BulkRowBlocker,
   BulkWizardConfig,
   BulkWizardRow,
   BulkWizardStep,
@@ -74,6 +76,47 @@ export function BulkWizard({
     });
   }, [productsSignature, products]);
 
+  // Distinct categories of rows that will submit WITHOUT a card link (#810).
+  // Only these can hit the missing-product-parameters 422 — card-linked rows
+  // inherit the params. Feeds the schema fan-out below.
+  const noCardCategoryIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      if (!row.primaryVariant) continue;
+      if (selectBulkProductCardId(row) !== undefined) continue;
+      const categoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+      if (categoryId) set.add(categoryId);
+    }
+    return Array.from(set);
+  }, [rows]);
+
+  const { requiredByCategory, isResolving: paramsResolving } = useBulkRequiredProductParams(
+    config?.connectionId,
+    noCardCategoryIds,
+  );
+
+  // Reconcile the `needs-product-parameters` blocker whenever a category's
+  // schema resolves (it loads after the operator picks the category, so it
+  // can't be decided at resolve time). Gated to the Review step: only there do
+  // rows carry resolved master data, so recomputing earlier would clobber the
+  // seed blockers with values derived from un-resolved (null) master data.
+  // `recomputeRowBlockers` is idempotent and the identity guard prevents a
+  // re-render loop. (#810)
+  useEffect(() => {
+    if (!config || step !== 'review') return;
+    setRows((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        if (!row.primaryVariant) return row;
+        const blockers = recomputeRowBlockers(row, config, requiredByCategory);
+        if (sameBlockers(blockers, row.blockers)) return row;
+        changed = true;
+        return { ...row, blockers };
+      });
+      return changed ? next : prev;
+    });
+  }, [config, step, requiredByCategory]);
+
   const handleConfigProceed = useCallback((next: BulkWizardConfig) => {
     setConfig(next);
     setStep('resolve');
@@ -96,22 +139,15 @@ export function BulkWizard({
           if (row.primaryVariant?.id !== variantId) return row;
           const resolvedCategoryId =
             override.overrides?.categoryId ?? row.resolvedCategoryId;
-          const blockers = computeBlockers({
-            hasVariant: true,
-            categoryResult: categoryResultFor(row, resolvedCategoryId),
-            pricingPolicy: config.pricingPolicy,
-            stockPolicy: config.stockPolicy,
-            masterPrice: row.masterPrice,
-            masterStock: row.masterStock,
-            masterCurrency: row.masterCurrency,
-            batchCurrency: config.currency,
-            override,
-          });
-          return { ...row, override, editFormValues, blockers, resolvedCategoryId };
+          const updated: BulkWizardRow = { ...row, override, editFormValues, resolvedCategoryId };
+          return {
+            ...updated,
+            blockers: recomputeRowBlockers(updated, config, requiredByCategory),
+          };
         }),
       );
     },
-    [config],
+    [config, requiredByCategory],
   );
 
   const handleSubmit = useCallback(
@@ -256,6 +292,7 @@ export function BulkWizard({
               stockPolicy={config.stockPolicy}
               currency={config.currency}
               publishImmediately={config.publishImmediately}
+              paramsResolving={paramsResolving}
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}
@@ -308,6 +345,45 @@ function categoryResultFor(
     return { kind: 'multi-match', candidates: [...row.categoryCandidates] };
   }
   return { kind: 'no-match' };
+}
+
+/**
+ * Recompute a row's full blocker set from its current state — the shared path
+ * for the post-resolve sites (the Edit-save handler and the schema-reconcile
+ * effect). Threads the #808 card-link signal and the #810 required-product-
+ * param ids for the row's submit category into `computeBlockers`. Module-scope
+ * (not a closure) so the reconcile effect needs no `rows` dependency.
+ *
+ * Exported for unit testing; the wizard calls it from `handleUpdateRow` and the
+ * schema-reconcile effect.
+ */
+export function recomputeRowBlockers(
+  row: BulkWizardRow,
+  config: BulkWizardConfig,
+  requiredByCategory: Map<string, readonly string[]>,
+): BulkRowBlocker[] {
+  if (!row.primaryVariant) return ['no-variant'];
+  const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+  return computeBlockers({
+    hasVariant: true,
+    categoryResult: categoryResultFor(row, submitCategoryId),
+    pricingPolicy: config.pricingPolicy,
+    stockPolicy: config.stockPolicy,
+    masterPrice: row.masterPrice,
+    masterStock: row.masterStock,
+    masterCurrency: row.masterCurrency,
+    batchCurrency: config.currency,
+    override: row.override,
+    willLinkProductCard: selectBulkProductCardId(row) !== undefined,
+    requiredProductParamIds: submitCategoryId
+      ? requiredByCategory.get(submitCategoryId)
+      : undefined,
+  });
+}
+
+/** Order-sensitive blocker-list equality (`computeBlockers` emits a stable order). */
+function sameBlockers(a: readonly BulkRowBlocker[], b: readonly BulkRowBlocker[]): boolean {
+  return a.length === b.length && a.every((blocker, i) => blocker === b[i]);
 }
 
 /**
