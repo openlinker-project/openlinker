@@ -275,12 +275,6 @@ export interface AllegroProductSetEntry {
     images?: string[];
   };
   /**
-   * Per-entry quantity, used on the smart-link path (#431) where stock is
-   * declared on the productSet entry rather than on `body.stock`. The
-   * inline-product path leaves this undefined and uses `body.stock`.
-   */
-  quantity?: number;
-  /**
    * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
    * Allegro on every `productSet[]` entry when the entry creates an inline
    * product (no `product.id`). Smart-linked entries inherit this from the
