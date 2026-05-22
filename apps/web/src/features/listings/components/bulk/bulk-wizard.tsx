@@ -162,15 +162,9 @@ export function BulkWizard({
             categoryId:
               row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined,
             // #808 — link the EAN-matched product card so Allegro inherits its
-            // required product parameters (Brand, Type, EAN, …). Dropped when
-            // the operator manually overrode the category, since the card was
-            // matched against the auto-detected one; the adapter then falls
-            // back to its (GTIN-tightened) re-resolution.
-            productCardId:
-              row.override.overrides?.productCardId ??
-              (row.override.overrides?.categoryId
-                ? undefined
-                : (row.resolvedProductCardId ?? undefined)),
+            // required product parameters (Brand, Type, EAN, …). See
+            // `selectBulkProductCardId` for the keep/drop rule.
+            productCardId: selectBulkProductCardId(row),
           },
         };
       }
@@ -340,6 +334,33 @@ export function mergeResolveOutcomes(
       categoryCandidates: o.categoryCandidates,
     };
   });
+}
+
+/**
+ * #808 — choose the catalogue card id to thread into a bulk submit override.
+ *
+ * The EAN-matched card was resolved against the auto-detected category, so it
+ * stays valid only while the category being submitted is still that resolved
+ * category — whether the category arrives via the seeded/edited override or
+ * the raw resolve. (The review-step edit form seeds `override.overrides` with
+ * the resolved category + title + description even for un-touched rows, so a
+ * plain "override has a categoryId" check is NOT a reliable "operator changed
+ * the category" signal — it must be compared to the resolved category.)
+ *
+ * An explicit operator-set card always wins; switching to a *different*
+ * category drops the card so the adapter re-resolves by barcode.
+ *
+ * Exported for unit testing; the wizard calls it from `handleSubmit`.
+ */
+export function selectBulkProductCardId(row: BulkWizardRow): string | undefined {
+  const explicit = row.override.overrides?.productCardId;
+  if (explicit) return explicit;
+  const submittedCategoryId =
+    row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? null;
+  if (row.resolvedProductCardId && submittedCategoryId === row.resolvedCategoryId) {
+    return row.resolvedProductCardId;
+  }
+  return undefined;
 }
 
 function seedRows(products: Product[]): BulkWizardRow[] {
