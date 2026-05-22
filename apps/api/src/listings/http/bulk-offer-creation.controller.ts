@@ -202,6 +202,7 @@ export class BulkOfferCreationController {
       externalOfferId: record.externalOfferId,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
+      errors: record.errors,
     }));
     return {
       id: summary.batch.id,

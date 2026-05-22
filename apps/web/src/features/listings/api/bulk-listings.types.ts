@@ -13,7 +13,7 @@
  * @module apps/web/src/features/listings/api
  */
 
-import type { OfferCreationStatus } from './listings.types';
+import type { OfferCreationError, OfferCreationStatus } from './listings.types';
 
 export const BulkBatchStatusValues = [
   'pending',
@@ -85,6 +85,8 @@ export interface BulkBatchRecordSummary {
   externalOfferId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Structured failure reasons; populated when status=failed, null otherwise (#806). */
+  errors: OfferCreationError[] | null;
 }
 
 export interface BulkBatchSummary {

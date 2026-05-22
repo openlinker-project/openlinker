@@ -183,6 +183,16 @@ describe('BulkOfferCreationController', () => {
           externalOfferId: 'ext-1',
           createdAt: new Date('2026-05-17T10:01:00Z'),
           updatedAt: new Date('2026-05-17T10:02:00Z'),
+          errors: null,
+        } as unknown as OfferCreationRecord,
+        {
+          id: 'r-2',
+          internalVariantId: 'v-b',
+          status: 'failed',
+          externalOfferId: null,
+          createdAt: new Date('2026-05-17T10:01:00Z'),
+          updatedAt: new Date('2026-05-17T10:03:00Z'),
+          errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
         } as unknown as OfferCreationRecord,
       ];
       bulkSubmit.getBatch.mockResolvedValue({ batch, records });
@@ -206,6 +216,16 @@ describe('BulkOfferCreationController', () => {
             externalOfferId: 'ext-1',
             createdAt: '2026-05-17T10:01:00.000Z',
             updatedAt: '2026-05-17T10:02:00.000Z',
+            errors: null,
+          },
+          {
+            id: 'r-2',
+            internalVariantId: 'v-b',
+            status: 'failed',
+            externalOfferId: null,
+            createdAt: '2026-05-17T10:01:00.000Z',
+            updatedAt: '2026-05-17T10:03:00.000Z',
+            errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
           },
         ],
       });

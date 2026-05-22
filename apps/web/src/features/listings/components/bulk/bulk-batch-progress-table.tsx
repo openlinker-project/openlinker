@@ -1,23 +1,33 @@
 /**
- * Bulk batch progress table (#741)
+ * Bulk batch progress table (#741 / #806)
  *
  * One row per `BulkBatchRecordSummary`. Variant ID as the identity column
  * (the BE summary doesn't carry product names today; mapping variant→product
  * for the row label is a follow-up tracked alongside the Smart-classification
  * surface — see plan §9 follow-up #6 candidate). Status pill + offer link /
- * failure excerpt + timestamp complete the row.
+ * failure reason + timestamp complete the row.
+ *
+ * Failed rows show the first error message inline (truncated) and a "Details"
+ * button that opens the per-record failure dialog (#806) — the structured
+ * errors ride along on the polled batch-summary payload, so no extra fetch.
  *
  * The Smart classification badge is intentionally not rendered here — see
  * implementation-plan §2 (parent AC-7 deferral).
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, type ReactElement } from 'react';
-import { DataTable, StatusBadge, TimeDisplay } from '../../../../shared/ui';
+import { useMemo, useState, type ReactElement } from 'react';
+import { Button, DataTable, StatusBadge, TimeDisplay } from '../../../../shared/ui';
 import type { DataTableColumn } from '../../../../shared/ui';
-import type {
-  BulkBatchRecordSummary,
-} from '../../api/bulk-listings.types';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../../../shared/ui/dialog';
+import type { BulkBatchRecordSummary } from '../../api/bulk-listings.types';
 import type { OfferCreationStatus } from '../../api/listings.types';
 
 interface BulkBatchProgressTableProps {
@@ -30,6 +40,8 @@ export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
 }: BulkBatchProgressTableProps): ReactElement {
+  const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
+
   const columns: DataTableColumn<BulkBatchRecordSummary>[] = useMemo(
     () => [
       {
@@ -64,11 +76,21 @@ export function BulkBatchProgressTable({
             );
           }
           if (record.status === 'failed') {
-            // Truncated. Full error is on the offer-creation record detail (#465);
-            // a hover-expand follow-up is filed as part of the per-record retry.
+            const firstMessage = record.errors?.[0]?.message;
             return (
-              <span className="bulk-batch__err" title="Open the listing for full error details">
-                Failed — see record detail
+              <span className="bulk-batch__err-cell">
+                <span className="bulk-batch__err" title={firstMessage ?? 'Failed'}>
+                  {firstMessage ?? 'Failed'}
+                </span>
+                <Button
+                  tone="ghost"
+                  className="button--xs"
+                  onClick={() => {
+                    setDetailRecord(record);
+                  }}
+                >
+                  Details
+                </Button>
               </span>
             );
           }
@@ -104,20 +126,85 @@ export function BulkBatchProgressTable({
   );
 
   return (
-    <DataTable<BulkBatchRecordSummary>
-      caption="Bulk batch records"
-      columns={columns}
-      rows={records}
-      rowKey={(record) => record.id}
-    />
+    <>
+      <DataTable<BulkBatchRecordSummary>
+        caption="Bulk batch records"
+        columns={columns}
+        rows={records}
+        rowKey={(record) => record.id}
+      />
+
+      <Dialog
+        open={detailRecord !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailRecord(null);
+        }}
+      >
+        <DialogContent>
+          {detailRecord ? <RecordFailureDetail record={detailRecord} /> : null}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button tone="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
-function RecordStatusBadge({
-  status,
-}: {
-  status: OfferCreationStatus;
-}): ReactElement {
+function RecordFailureDetail({ record }: { record: BulkBatchRecordSummary }): ReactElement {
+  return (
+    <>
+      <DialogTitle>Record failure detail</DialogTitle>
+      <DialogDescription>
+        Variant <span className="mono-text">{record.internalVariantId}</span>
+      </DialogDescription>
+      <dl className="bulk-batch__detail">
+        <div className="bulk-batch__detail-row">
+          <dt className="bulk-batch__detail-label">Status</dt>
+          <dd>
+            <RecordStatusBadge status={record.status} />
+          </dd>
+        </div>
+        {record.externalOfferId ? (
+          <div className="bulk-batch__detail-row">
+            <dt className="bulk-batch__detail-label">Offer</dt>
+            <dd className="mono-text">{record.externalOfferId}</dd>
+          </div>
+        ) : null}
+        <div className="bulk-batch__detail-row">
+          <dt className="bulk-batch__detail-label">Updated</dt>
+          <dd className="mono-text">
+            <TimeDisplay iso={record.updatedAt} format="datetime" />
+          </dd>
+        </div>
+        <div className="bulk-batch__detail-row bulk-batch__detail-row--errors">
+          <dt className="bulk-batch__detail-label">Errors</dt>
+          <dd>
+            {record.errors && record.errors.length > 0 ? (
+              <ul className="bulk-batch__err-list">
+                {record.errors.map((err, i) => (
+                  <li key={`${err.code}-${i}`} className="bulk-batch__err-item">
+                    <span className="bulk-batch__err-code">{err.code}</span>
+                    {err.field ? (
+                      <span className="bulk-batch__err-field mono-text">{err.field}</span>
+                    ) : null}
+                    <span className="bulk-batch__err-msg">{err.message}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="dim">No structured error detail was recorded.</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </>
+  );
+}
+
+function RecordStatusBadge({ status }: { status: OfferCreationStatus }): ReactElement {
   switch (status) {
     case 'pending':
       return <StatusBadge tone="neutral" withDot>pending</StatusBadge>;
