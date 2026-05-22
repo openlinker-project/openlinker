@@ -1492,7 +1492,7 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cardLinkResult, cmd.stock);
+    this.applyPlatformParams(body, platformParams, cardLinkResult);
 
     return body;
   }
@@ -1500,8 +1500,7 @@ export class AllegroOfferManagerAdapter
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
-    cardLinkResult: ResolveProductCardResult,
-    stock: number
+    cardLinkResult: ResolveProductCardResult
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -1552,12 +1551,14 @@ export class AllegroOfferManagerAdapter
     // so we **skip** writing all of those on the entry. Offer-section
     // `body.parameters[]` (set above) still flows through normally.
     if (cardLinkResult.kind === 'unique') {
-      body.productSet = [
-        {
-          product: { id: cardLinkResult.productId },
-          quantity: stock,
-        },
-      ];
+      // Reference the catalogue card by id only. The offer's sellable quantity
+      // lives on `body.stock.available` (set in buildCreateOfferRequest on
+      // every path). `productSet[].quantity` is the *multipack size* — units of
+      // the card per sale item — which defaults to 1 when omitted. Writing the
+      // sellable stock here was both wrong-typed (Allegro wants an object, not
+      // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
+      // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
+      body.productSet = [{ product: { id: cardLinkResult.productId } }];
       this.logger.log(
         `Allegro smart-link applied: connection=${this.connectionId} ` +
           `productId=${cardLinkResult.productId} outcome=unique`

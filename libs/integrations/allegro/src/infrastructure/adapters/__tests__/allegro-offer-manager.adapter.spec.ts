@@ -2045,7 +2045,7 @@ describe('AllegroOfferManagerAdapter', () => {
     });
 
     describe('smart-link by EAN (#431)', () => {
-      it('on unique match: links via productSet[0].product.id, omits inline name/parameters/images/GPSR, uses per-entry quantity', async () => {
+      it('on unique match: links via productSet[0].product.id, omits inline name/parameters/images/GPSR, and carries sellable stock on body.stock (not productSet)', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({
             id: 'allegro-offer-linked',
@@ -2078,12 +2078,12 @@ describe('AllegroOfferManagerAdapter', () => {
         });
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body.productSet).toEqual([
-          {
-            product: { id: 'allegro-card-1' },
-            quantity: 7,
-          },
-        ]);
+        // Card reference is id-only; Allegro rejects a bare-number
+        // `productSet[].quantity` with JsonMappingException (#808).
+        expect(body.productSet).toEqual([{ product: { id: 'allegro-card-1' } }]);
+        // Sellable stock lives on body.stock.available, never on the
+        // productSet entry (whose `quantity` is multipack size).
+        expect(body.stock).toEqual({ available: 7, unit: 'UNIT' });
         // Card-linked offers inherit GPSR from the card — adapter must NOT
         // write `responsibleProducer` / `safetyInformation` on the entry.
         expect(body.productSet).not.toContainEqual(
@@ -2117,7 +2117,10 @@ describe('AllegroOfferManagerAdapter', () => {
 
         expect(httpClient.get).not.toHaveBeenCalledWith('/sale/products', expect.anything());
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body.productSet).toEqual([{ product: { id: 'allegro-card-pre' }, quantity: 4 }]);
+        expect(body.productSet).toEqual([{ product: { id: 'allegro-card-pre' } }]);
+        // Stock on body.stock.available, not as a (wrong-typed) productSet
+        // quantity that Allegro rejects with JsonMappingException (#808).
+        expect(body.stock).toEqual({ available: 4, unit: 'UNIT' });
       });
 
       it('falls through to inline path when variantBarcode is missing (smart-link short-circuits)', async () => {
