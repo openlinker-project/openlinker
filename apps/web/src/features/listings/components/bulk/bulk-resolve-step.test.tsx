@@ -50,6 +50,7 @@ function makeRow(productId: string, variant: Partial<ProductVariant>, product: P
     primaryVariant: makeVariant({ id: `var_${productId}`, productId, ...variant }),
     blockers: [],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: null,
     masterStock: null,
@@ -119,7 +120,12 @@ describe('BulkResolveStep', () => {
     });
     const outcomes = onComplete.mock.calls[0][0];
     expect(outcomes.every((o) => o.blockers.length === 0)).toBe(true);
-    expect(outcomes[0]).toMatchObject({ resolvedCategoryId: 'cat-A', masterPrice: 12, masterStock: 5 });
+    expect(outcomes[0]).toMatchObject({
+      resolvedCategoryId: 'cat-A',
+      resolvedProductCardId: 'card-A',
+      masterPrice: 12,
+      masterStock: 5,
+    });
   });
 
   it('flags no-master-price when the variant has no master price', async () => {

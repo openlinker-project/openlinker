@@ -32,6 +32,7 @@ export interface BulkResolveOutcome {
   productId: string;
   blockers: readonly BulkRowBlocker[];
   resolvedCategoryId: string | null;
+  resolvedProductCardId: string | null;
   resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
   masterPrice: number | null;
   masterStock: number | null;
@@ -98,6 +99,7 @@ export function BulkResolveStep({
           productId: row.productId,
           blockers: ['no-variant'] as const,
           resolvedCategoryId: null,
+          resolvedProductCardId: null,
           resolutionMethod: null,
           masterPrice: null,
           masterStock: null,
@@ -133,6 +135,8 @@ export function BulkResolveStep({
         blockers,
         resolvedCategoryId:
           categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
+        resolvedProductCardId:
+          categoryResult.kind === 'matched' ? categoryResult.productCardId : null,
         resolutionMethod: categoryResult.kind === 'matched' ? 'auto_detect' : null,
         masterPrice,
         masterStock,

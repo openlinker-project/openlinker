@@ -126,8 +126,12 @@ describe('WebhookDeliveriesPage', () => {
 
     renderWithProviders(<WebhookDeliveriesPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('PrestaShop Main')).toBeInTheDocument();
-  });
+    // ConnectionEntityLabel resolves the name via a second async query
+    // (deliveries load → render → connections query settles). Give it a
+    // generous ceiling so a starved event loop under full-suite parallel CI
+    // can't lapse the default 1000ms mid-chain (#808 drive-by de-flake).
+    expect(await screen.findByText('PrestaShop Main', {}, { timeout: 5000 })).toBeInTheDocument();
+  }, 15000);
 
   it('filters deliveries by the selected connection when changing the dropdown', async () => {
     const user = userEvent.setup();

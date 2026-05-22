@@ -16,6 +16,7 @@ function makeRow(productId: string): BulkWizardRow {
     primaryVariant: null,
     blockers: [],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: null,
     masterStock: null,
@@ -33,6 +34,7 @@ function outcome(
     productId,
     blockers: [],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: null,
     masterStock: null,
@@ -47,22 +49,24 @@ describe('mergeResolveOutcomes', () => {
     const rows = [makeRow('prod_1')];
     const next = mergeResolveOutcomes(rows, [
       outcome('prod_1', {
-        blockers: ['multi-match'],
-        resolvedCategoryId: null,
+        blockers: [],
+        resolvedCategoryId: 'cat-A',
+        resolvedProductCardId: 'card-A',
         masterPrice: 12,
         masterStock: 3,
         masterCurrency: 'PLN',
-        categoryCandidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B' }],
+        categoryCandidates: [],
       }),
     ]);
 
     expect(next[0]).toMatchObject({
       productId: 'prod_1',
-      blockers: ['multi-match'],
+      blockers: [],
+      resolvedCategoryId: 'cat-A',
+      resolvedProductCardId: 'card-A',
       masterPrice: 12,
       masterStock: 3,
       masterCurrency: 'PLN',
-      categoryCandidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B' }],
     });
   });
 

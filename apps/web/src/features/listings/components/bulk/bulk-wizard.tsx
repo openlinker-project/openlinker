@@ -161,6 +161,16 @@ export function BulkWizard({
             ...(row.override.overrides ?? {}),
             categoryId:
               row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? undefined,
+            // #808 — link the EAN-matched product card so Allegro inherits its
+            // required product parameters (Brand, Type, EAN, …). Dropped when
+            // the operator manually overrode the category, since the card was
+            // matched against the auto-detected one; the adapter then falls
+            // back to its (GTIN-tightened) re-resolution.
+            productCardId:
+              row.override.overrides?.productCardId ??
+              (row.override.overrides?.categoryId
+                ? undefined
+                : (row.resolvedProductCardId ?? undefined)),
           },
         };
       }
@@ -293,7 +303,11 @@ function categoryResultFor(
   resolvedCategoryId: string | null,
 ): EanMatchResult {
   if (resolvedCategoryId) {
-    return { kind: 'matched', allegroCategoryId: resolvedCategoryId, productCardId: '' };
+    return {
+      kind: 'matched',
+      allegroCategoryId: resolvedCategoryId,
+      productCardId: row.resolvedProductCardId ?? '',
+    };
   }
   if (row.blockers.includes('no-ean')) return { kind: 'no-ean' };
   if (row.blockers.includes('multi-match')) {
@@ -318,6 +332,7 @@ export function mergeResolveOutcomes(
       ...row,
       blockers: o.blockers,
       resolvedCategoryId: o.resolvedCategoryId,
+      resolvedProductCardId: o.resolvedProductCardId,
       resolutionMethod: o.resolutionMethod,
       masterPrice: o.masterPrice,
       masterStock: o.masterStock,
@@ -339,6 +354,7 @@ function seedRow(product: Product): BulkWizardRow {
     primaryVariant,
     blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: null,
     masterStock: null,

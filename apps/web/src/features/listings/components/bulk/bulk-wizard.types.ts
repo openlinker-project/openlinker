@@ -81,6 +81,12 @@ export interface BulkWizardRow {
   blockers: readonly BulkRowBlocker[];
   /** Resolved Allegro category id (after Resolve, or operator pick). */
   resolvedCategoryId: string | null;
+  /**
+   * Catalogue product-card id from a unique EAN match (#808). Threaded to
+   * `overrides.productCardId` on submit so the adapter links the card and
+   * inherits its required product parameters. Null when no unique match.
+   */
+  resolvedProductCardId: string | null;
   /** How the category was resolved (telemetry / UI hint). */
   resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
   /** Master variant price captured at resolve (`variant.price`). Null if unset. */
