@@ -96,6 +96,14 @@ export class CreateOfferOverridesDto {
   categoryId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Platform-specific catalogue product-card id resolved from the variant barcode (#808). When present, smart-linking adapters link the existing card and inherit its required product parameters instead of creating a product inline.',
+  })
+  @IsOptional()
+  @IsString()
+  productCardId?: string;
+
+  @ApiPropertyOptional({
     nullable: true,
     isArray: true,
     type: String,

@@ -1391,6 +1391,18 @@ export class AllegroOfferManagerAdapter
   private async maybeResolveProductCard(
     cmd: CreateOfferCommand
   ): Promise<ResolveProductCardResult> {
+    // #808 — when the caller already resolved a unique catalogue card (the
+    // bulk wizard's EAN match), link it directly. Skipping the re-search
+    // avoids the weaker fuzzy `phrase` lookup that can downgrade a known
+    // unique match to `ambiguous`/`no_match` and force inline product
+    // creation (→ 422 on categories with required product parameters).
+    if (cmd.productCardId) {
+      this.logger.debug(
+        `Allegro smart-link: using pre-resolved productCardId=${cmd.productCardId} ` +
+          `connection=${this.connectionId}`
+      );
+      return { kind: 'unique', productId: cmd.productCardId };
+    }
     const ean = cmd.variantBarcode;
     const categoryId = cmd.overrides?.categoryId;
     if (!ean || !categoryId) {

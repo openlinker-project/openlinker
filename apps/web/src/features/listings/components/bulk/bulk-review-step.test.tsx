@@ -65,6 +65,7 @@ function makeRow(
     primaryVariant: variant,
     blockers,
     resolvedCategoryId: opts.resolvedCategoryId ?? (blockers.length === 0 ? 'cat-A' : null),
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: opts.masterPrice ?? null,
     masterStock: opts.masterStock ?? null,

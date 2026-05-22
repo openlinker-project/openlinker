@@ -2091,6 +2091,35 @@ describe('AllegroOfferManagerAdapter', () => {
         );
       });
 
+      it('on pre-resolved productCardId (#808): links the card directly and skips the catalogue search', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({
+            id: 'allegro-offer-prelinked',
+            publication: { status: 'INACTIVE' },
+          })
+        );
+
+        await adapter.createOffer({
+          ...baseCmd,
+          // Pre-resolved by the bulk wizard's EAN match. A barcode is present
+          // too, but the pre-resolved id must win without any /sale/products
+          // re-search (the path that previously downgraded to inline → 422).
+          productCardId: 'allegro-card-pre',
+          variantBarcode: '5901234123457',
+          stock: 4,
+          overrides: {
+            ...baseCmd.overrides,
+            platformParams: {
+              productParameters: [{ id: '248811', valuesIds: ['248811_canon'] }],
+            },
+          },
+        });
+
+        expect(httpClient.get).not.toHaveBeenCalledWith('/sale/products', expect.anything());
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body.productSet).toEqual([{ product: { id: 'allegro-card-pre' }, quantity: 4 }]);
+      });
+
       it('falls through to inline path when variantBarcode is missing (smart-link short-circuits)', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({

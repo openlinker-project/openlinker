@@ -30,6 +30,15 @@ export interface CreateOfferOverrides {
   /** Platform-specific category id (e.g. Allegro category id). */
   categoryId?: string;
   /**
+   * Platform-specific catalogue product-card id resolved from the variant's
+   * barcode (e.g. an Allegro product-card UUID). When present, adapters that
+   * support catalogue smart-linking (#431) link the offer to the existing
+   * card — so required product parameters (Brand, Type, EAN, …) are inherited
+   * from the card rather than supplied inline. Carried FE→BE so a resolution
+   * the wizard already performed isn't redone (and weakened) at create time.
+   */
+  productCardId?: string;
+  /**
    * Image URLs in display order. Falls back to variant images. `null` or
    * `undefined` both mean "no override".
    */
@@ -77,6 +86,14 @@ export interface CreateOfferCommand {
    * `null` means "no usable barcode" (variant has neither EAN nor GTIN).
    */
   variantBarcode?: string | null;
+  /**
+   * Pre-resolved catalogue product-card id (e.g. Allegro product-card UUID),
+   * lifted by `OfferBuilderService` from `overrides.productCardId`. When set,
+   * smart-linking adapters link this card directly via the platform's product
+   * set and skip re-resolving by barcode — Allegro then inherits the card's
+   * required product parameters. `null`/absent means "resolve from barcode".
+   */
+  productCardId?: string | null;
 }
 
 /**

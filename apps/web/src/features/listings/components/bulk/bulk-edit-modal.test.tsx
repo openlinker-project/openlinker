@@ -62,6 +62,7 @@ function makeRow(opts: {
     primaryVariant: variant,
     blockers: [],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: 12,
     masterStock: 5,

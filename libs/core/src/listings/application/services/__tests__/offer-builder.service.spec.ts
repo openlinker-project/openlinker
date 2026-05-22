@@ -123,7 +123,33 @@ describe('OfferBuilderService', () => {
         idempotencyKey: undefined,
         // #431 — barcode threaded through for adapter-side smart-link.
         variantBarcode: '5901234123457',
+        // #808 — no pre-resolved card on this input.
+        productCardId: null,
       });
+    });
+
+    it('lifts overrides.productCardId to the top-level command (#808)', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat', productCardId: 'allegro-card-42' },
+      });
+
+      expect(result.productCardId).toBe('allegro-card-42');
+      // Stays a top-level hint (like variantBarcode), not duplicated in overrides.
+      expect(result.overrides).not.toHaveProperty('productCardId');
+    });
+
+    it('sets productCardId null when no overrides.productCardId is provided (#808)', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(result.productCardId).toBeNull();
     });
   });
 
