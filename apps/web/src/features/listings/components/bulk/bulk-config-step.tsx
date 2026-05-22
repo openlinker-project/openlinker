@@ -211,6 +211,32 @@ export function BulkConfigStep({
               ))}
             </Select>
           )}
+            ))}
+          </Select>
+        )}
+      </FormField>
+
+      <div className="form-field-row form-field-row--cols-3">
+        <FormField name="bulk-config-stock" label="Default stock">
+          <Input
+            type="number"
+            min={0}
+            value={defaultStock}
+            onChange={(e) => { setDefaultStock(e.target.value); }}
+            aria-invalid={!stockValid}
+          />
+        </FormField>
+        <FormField
+          name="bulk-config-price-amount"
+          label="Default price (optional)"
+          description="Used when a product has no price set."
+        >
+          <Input
+            placeholder="79.00"
+            value={defaultPriceAmount}
+            onChange={(e) => { setDefaultPriceAmount(e.target.value); }}
+            aria-invalid={!priceValid}
+          />
         </FormField>
         <FormField name="bulk-config-currency" label="Currency">
           <Select value={currency} onChange={(e) => { setCurrency(e.target.value); }}>

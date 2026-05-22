@@ -33,7 +33,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard } from '../../shared/ui/metric-card';
 import { EntityLabel } from '../../shared/ui/entity-label';
-import { useTranslation } from '../../shared/i18n';
+import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
@@ -80,12 +80,13 @@ function isOrderSyncStatus(value: string | null): value is OrderSyncStatusValue 
 /**
  * Resolve the per-row total via the i18n seam (#612). Currency varies per row
  * so we instantiate per call — locale comes from the LocaleProvider rather
- * than being pinned to en-US. Mirrors `localeToBcp47` from `useNumberFormat`
- * to keep the seam single-source-of-truth on locale resolution.
+ * than being pinned to en-US. Locale resolution goes through the shared
+ * `getBcp47Locale` helper so the seam stays single-source-of-truth (#783).
  */
 function formatCurrency(amount: number, currency: string, locale: LocaleCode): string {
-  const bcp47 = locale === 'en' ? 'en-US' : locale;
-  return new Intl.NumberFormat(bcp47, { style: 'currency', currency }).format(amount);
+  return new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(
+    amount,
+  );
 }
 
 /**
@@ -102,10 +103,10 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
     if (Number.isFinite(ms) && ms > mostRecentMs) mostRecentMs = ms;
   }
   if (mostRecentMs === 0) return null;
-  const bcp47 = locale === 'en' ? 'en-US' : locale;
-  const time = new Intl.DateTimeFormat(bcp47, { hour: '2-digit', minute: '2-digit' }).format(
-    new Date(mostRecentMs),
-  );
+  const time = new Intl.DateTimeFormat(getBcp47Locale(locale), {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(mostRecentMs));
   return `Synced ${time}`;
 }
 
