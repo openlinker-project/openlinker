@@ -85,6 +85,7 @@ export function BulkBatchProgressTable({
                 <Button
                   tone="ghost"
                   className="button--xs"
+                  aria-label={`Failure details for ${record.internalVariantId}`}
                   onClick={() => {
                     setDetailRecord(record);
                   }}
@@ -141,7 +142,12 @@ export function BulkBatchProgressTable({
         }}
       >
         <DialogContent>
-          {detailRecord ? <RecordFailureDetail record={detailRecord} /> : null}
+          {detailRecord ? (
+            <RecordFailureDetail
+              record={detailRecord}
+              buildExternalOfferUrl={buildExternalOfferUrl}
+            />
+          ) : null}
           <DialogFooter>
             <DialogClose asChild>
               <Button tone="secondary">Close</Button>
@@ -153,7 +159,16 @@ export function BulkBatchProgressTable({
   );
 }
 
-function RecordFailureDetail({ record }: { record: BulkBatchRecordSummary }): ReactElement {
+function RecordFailureDetail({
+  record,
+  buildExternalOfferUrl,
+}: {
+  record: BulkBatchRecordSummary;
+  buildExternalOfferUrl?: (externalOfferId: string) => string;
+}): ReactElement {
+  const offerUrl = record.externalOfferId
+    ? buildExternalOfferUrl?.(record.externalOfferId)
+    : undefined;
   return (
     <>
       <DialogTitle>Record failure detail</DialogTitle>
@@ -170,7 +185,20 @@ function RecordFailureDetail({ record }: { record: BulkBatchRecordSummary }): Re
         {record.externalOfferId ? (
           <div className="bulk-batch__detail-row">
             <dt className="bulk-batch__detail-label">Offer</dt>
-            <dd className="mono-text">{record.externalOfferId}</dd>
+            <dd>
+              {offerUrl ? (
+                <a
+                  className="bulk-batch__ext-link"
+                  href={offerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {record.externalOfferId} ↗
+                </a>
+              ) : (
+                <span className="mono-text">{record.externalOfferId}</span>
+              )}
+            </dd>
           </div>
         ) : null}
         <div className="bulk-batch__detail-row">

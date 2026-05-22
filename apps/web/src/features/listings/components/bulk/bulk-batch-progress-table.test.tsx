@@ -67,12 +67,33 @@ describe('BulkBatchProgressTable', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: /Failure details/ }));
 
     expect(screen.getByText('Record failure detail')).toBeInTheDocument();
     // Code + field are dialog-only (the inline cell shows just the message).
     expect(screen.getByText('INVALID_PRICE')).toBeInTheDocument();
     expect(screen.getByText('price')).toBeInTheDocument();
+  });
+
+  it('renders every structured error in the dialog list', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[
+          rec({
+            errors: [
+              { field: 'price', code: 'INVALID_PRICE', message: 'Price too low for category' },
+              { code: 'MISSING_PARAM', message: 'Required parameter "Brand" is missing' },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Failure details/ }));
+
+    expect(screen.getByText('INVALID_PRICE')).toBeInTheDocument();
+    expect(screen.getByText('MISSING_PARAM')).toBeInTheDocument();
+    expect(screen.getByText('Required parameter "Brand" is missing')).toBeInTheDocument();
   });
 
   it('falls back to "Failed" inline when a failed row has no structured errors', () => {
@@ -90,6 +111,6 @@ describe('BulkBatchProgressTable', () => {
 
     const link = screen.getByRole('link', { name: /ALG-123/ });
     expect(link).toHaveAttribute('href', 'https://allegro.pl/oferta/ALG-123');
-    expect(screen.queryByRole('button', { name: 'Details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Failure details/ })).not.toBeInTheDocument();
   });
 });
