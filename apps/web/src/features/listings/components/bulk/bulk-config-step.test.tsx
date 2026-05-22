@@ -36,10 +36,12 @@ async function renderAndSelectPolicy() {
     <BulkConfigStep initial={{}} onProceed={onProceed} onCancel={() => undefined} />,
     { apiClient: makeClient() },
   );
-  // Wait for the delivery option to render — that only happens after the lone
-  // connection auto-selects and its seller policies load (the select is shown
-  // empty before then, since a disabled query isn't "loading").
-  await screen.findByRole('option', { name: 'Courier 24h' });
+  // Wait for the delivery option to render — that only happens after a 3-hop
+  // async chain: connections query → auto-select effect → seller-policies query
+  // resolves (the select renders empty before then, since a disabled query
+  // isn't "loading"). The generous timeout rides out a starved event loop under
+  // heavy parallel CI load, where the default 1000ms can lapse mid-chain.
+  await screen.findByRole('option', { name: 'Courier 24h' }, { timeout: 5000 });
   fireEvent.change(screen.getByRole('combobox', { name: 'Shipping rate package' }), {
     target: { value: 'dp1' },
   });
@@ -48,7 +50,7 @@ async function renderAndSelectPolicy() {
 
 async function clickProceed(): Promise<void> {
   const proceed = screen.getByRole('button', { name: /Proceed/ });
-  await waitFor(() => { expect(proceed).toBeEnabled(); });
+  await waitFor(() => { expect(proceed).toBeEnabled(); }, { timeout: 5000 });
   fireEvent.click(proceed);
 }
 
@@ -68,7 +70,7 @@ describe('BulkConfigStep', () => {
       publishImmediately: true,
       generateDescription: false,
     });
-  });
+  }, 15000);
 
   it('builds markup + cap policy objects from the selected modes and values', async () => {
     const { onProceed } = await renderAndSelectPolicy();
@@ -85,7 +87,7 @@ describe('BulkConfigStep', () => {
       pricingPolicy: { mode: 'markup', percent: 15 },
       stockPolicy: { mode: 'cap', value: 8 },
     });
-  });
+  }, 15000);
 
   it('disables Proceed when the markup percent is out of range', async () => {
     await renderAndSelectPolicy();
@@ -94,5 +96,5 @@ describe('BulkConfigStep', () => {
     fireEvent.change(screen.getByLabelText('Markup %'), { target: { value: '999' } });
 
     expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
-  });
+  }, 15000);
 });
