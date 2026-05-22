@@ -26,6 +26,7 @@ function makeBatch(overrides: Partial<BulkBatchSummary> = {}): BulkBatchSummary 
         externalOfferId: null,
         createdAt: '2026-05-18T15:00:00.000Z',
         updatedAt: '2026-05-18T15:00:00.000Z',
+        errors: null,
       },
       {
         id: 'rec_2',
@@ -34,6 +35,7 @@ function makeBatch(overrides: Partial<BulkBatchSummary> = {}): BulkBatchSummary 
         externalOfferId: '99988877',
         createdAt: '2026-05-18T15:00:01.000Z',
         updatedAt: '2026-05-18T15:00:30.000Z',
+        errors: null,
       },
     ],
     ...overrides,

@@ -10,7 +10,10 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import type { OfferCreationError } from '@openlinker/core/listings';
 import { BulkBatchStatusValues, OfferCreationStatusValues } from '@openlinker/core/listings';
+
+import { OfferCreationErrorDto } from './offer-creation-status-response.dto';
 
 export class BulkOfferCreateResponseDto {
   @ApiProperty({ description: 'Persisted batch id (UUID).', format: 'uuid' })
@@ -45,6 +48,13 @@ export class BulkBatchRecordSummaryDto {
 
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [OfferCreationErrorDto],
+    description: 'Structured failure reasons populated when status=failed; null otherwise.',
+  })
+  errors!: OfferCreationError[] | null;
 }
 
 export class BulkBatchSummaryDto {

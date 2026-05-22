@@ -75,6 +75,7 @@ async function seedRecord(
     internalVariantId: string;
     status: 'pending' | 'draft' | 'validating' | 'active' | 'failed';
     externalOfferId: string | null;
+    errors: Array<{ field?: string; code: string; message: string }>;
   }> = {}
 ): Promise<string> {
   const result = (await dataSource.query(
@@ -87,7 +88,7 @@ async function seedRecord(
       CONN_A,
       overrides.externalOfferId ?? null,
       overrides.status ?? 'pending',
-      null,
+      overrides.errors ? JSON.stringify(overrides.errors) : null,
       false,
       null,
       bulkBatchId,
@@ -227,6 +228,36 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       expect(response.body.records[1].id).toBe(recordB);
       expect(response.body.records[1].status).toBe('pending');
       expect(response.body.records[1].externalOfferId).toBeNull();
+    });
+
+    it('round-trips structured errors on a failed record (#806)', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const batchId = await seedBatch(dataSource, {
+        status: 'failed',
+        totalCount: 1,
+        succeededCount: 0,
+        failedCount: 1,
+      });
+      const recordId = await seedRecord(dataSource, batchId, {
+        internalVariantId: 'ol_variant_fail',
+        status: 'failed',
+        errors: [{ field: 'price', code: 'INVALID_PRICE', message: 'Price too low' }],
+      });
+
+      const response = await http
+        .get(`/listings/bulk-create/${batchId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const record = (response.body.records as Array<{ id: string; errors: unknown }>).find(
+        (r) => r.id === recordId
+      );
+      expect(record?.errors).toEqual([
+        { field: 'price', code: 'INVALID_PRICE', message: 'Price too low' },
+      ]);
     });
 
     it('returns an empty records array when the batch has no child rows yet', async () => {

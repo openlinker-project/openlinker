@@ -8144,6 +8144,85 @@ html[data-density='compact'] .status-badge {
   text-decoration: underline;
 }
 
+/* ── Bulk batch record failure detail (#806) ──────────────────────── */
+.bulk-batch__err-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.bulk-batch__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+}
+
+.bulk-batch__detail-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.bulk-batch__detail-row--errors {
+  align-items: flex-start;
+}
+
+.bulk-batch__detail-label {
+  flex: 0 0 84px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bulk-batch__detail-row dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.bulk-batch__err-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bulk-batch__err-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.bulk-batch__err-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--status-error-fg);
+  background: var(--status-error-soft);
+  border: 1px solid var(--status-error-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+
+.bulk-batch__err-field {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bulk-batch__err-msg {
+  font-size: 13px;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
 @media (max-width: 639.98px) {
   .bulk-batch__summary {
     flex-direction: column;
