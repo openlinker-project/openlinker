@@ -111,6 +111,10 @@ Picking a multi-match candidate chip (`bulk-edit-modal.tsx:267`) currently sets 
 
 Recommendation: **(B)** — it's a few lines, removes a whole class of avoidable blocks, and is the same pattern #808 established. Confirm before implementing.
 
+### 3.6 Stale-card fix (grill-surfaced)
+
+`handleUpdateRow` overwrote `row.resolvedCategoryId` with the operator's pick, which defeated `selectBulkProductCardId`'s guard (`submitCategory === resolvedCategoryId`): a *matched* row recategorised via the picker kept threading its **stale** card under the new category → Allegro 422 (wrong-category card) **and** `willLinkProductCard` was wrongly `true`, so the new blocker never fired — a silent "looks ready" 422, the exact failure class #810 targets. Fix: stop overwriting `resolvedCategoryId` (it stays the EAN-resolved reference); the review category column renders the *effective* category (`override.categoryId ?? resolvedCategoryId`). Now a recategorised matched row drops the card, re-resolves/creates inline, and the param blocker fires if the new category needs params. The existing `selectBulkProductCardId` "drops the card on category switch" test already encodes the target behaviour — the fix makes the live flow reach it.
+
 ## 4. Step-by-step implementation
 
 1. **`bulk-wizard.types.ts`** — add `'needs-product-parameters'` to `BulkRowBlockerValues` + doc comment. *AC: type compiles; value exported.*

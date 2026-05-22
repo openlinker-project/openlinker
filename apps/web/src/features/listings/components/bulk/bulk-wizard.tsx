@@ -137,9 +137,13 @@ export function BulkWizard({
       setRows((prev) =>
         prev.map((row) => {
           if (row.primaryVariant?.id !== variantId) return row;
-          const resolvedCategoryId =
-            override.overrides?.categoryId ?? row.resolvedCategoryId;
-          const updated: BulkWizardRow = { ...row, override, editFormValues, resolvedCategoryId };
+          // `resolvedCategoryId` is the EAN-matched category and stays put — it's
+          // the reference `selectBulkProductCardId` compares the submit category
+          // against to decide whether the matched card still applies (#810). The
+          // operator's pick lives in `override.categoryId`; overwriting the
+          // resolved value here would defeat that guard and thread a stale card
+          // under a switched category.
+          const updated: BulkWizardRow = { ...row, override, editFormValues };
           return {
             ...updated,
             blockers: recomputeRowBlockers(updated, config, requiredByCategory),

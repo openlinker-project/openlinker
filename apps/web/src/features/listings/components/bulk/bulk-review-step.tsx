@@ -134,17 +134,22 @@ export function BulkReviewStep({
       {
         id: 'category',
         header: 'Matched category',
-        cell: (row) => (
-          <span
-            className={
-              row.resolvedCategoryId
-                ? 'bulk-wizard__row-category'
-                : 'bulk-wizard__row-category bulk-wizard__row-category--dim'
-            }
-          >
-            {row.resolvedCategoryId ?? '—'}
-          </span>
-        ),
+        // Effective submit category — an operator pick (override) wins over the
+        // EAN-resolved value, which stays put for the card-link guard (#810).
+        cell: (row) => {
+          const categoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+          return (
+            <span
+              className={
+                categoryId
+                  ? 'bulk-wizard__row-category'
+                  : 'bulk-wizard__row-category bulk-wizard__row-category--dim'
+              }
+            >
+              {categoryId ?? '—'}
+            </span>
+          );
+        },
       },
       {
         id: 'stock',

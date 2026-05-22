@@ -214,4 +214,17 @@ describe('recomputeRowBlockers (#810)', () => {
     const blockers = recomputeRowBlockers(row, config, new Map());
     expect(blockers).not.toContain('needs-product-parameters');
   });
+
+  it('drops the stale card and blocks when a matched row is recategorised to a card-less category', () => {
+    // Regression: editing an auto-matched row to a *different* category must
+    // drop the card (it belonged to the resolved category), so the row is no
+    // longer card-linked and the new category's required params apply.
+    const row = variantRow({
+      resolvedCategoryId: 'cat-A',
+      resolvedProductCardId: 'card-1',
+      override: { overrides: { categoryId: 'cat-B' } },
+    });
+    const blockers = recomputeRowBlockers(row, config, new Map([['cat-B', ['brand']]]));
+    expect(blockers).toContain('needs-product-parameters');
+  });
 });
