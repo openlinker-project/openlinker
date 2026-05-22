@@ -135,7 +135,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     };
 
     this.logger.debug(
-      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'}`
+      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} productCardId=${command.productCardId ?? 'null'}`
     );
 
     return command;
