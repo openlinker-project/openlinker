@@ -34,6 +34,7 @@ import {
   IOfferCreationEnqueueService,
   OfferCreationRecordRepositoryPort} from '@openlinker/core/listings';
 import type {
+  CreateOfferOverrides,
   OfferManagerPort,
 } from '@openlinker/core/listings';
 import {
@@ -176,7 +177,12 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
     const publishImmediately =
       override?.publishImmediately ?? input.sharedConfig.publishImmediately;
     const price = override?.price ?? input.sharedConfig.price;
-    const overrides = override?.overrides ?? input.sharedConfig.overrides;
+    // Layer per-product overrides on top of the batch-wide shared overrides.
+    // A wholesale `??` replacement silently dropped shared settings the wizard
+    // never repeats per row — notably `platformParams.deliveryPolicyId`, whose
+    // absence makes Allegro reject the offer with
+    // `DefaultShippingRatesNotFoundException`. (#808)
+    const overrides = this.mergeOverrides(input.sharedConfig.overrides, override?.overrides);
 
     return {
       internalVariantId: productId,
@@ -191,6 +197,29 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
         descriptionTone: input.sharedConfig.descriptionTone,
       }),
     };
+  }
+
+  /**
+   * Layer a per-product override on top of the batch-wide shared overrides.
+   * Scalar fields (title, categoryId, productCardId, imageUrls, …) take the
+   * per-product value when present; `platformParams` is **deep-merged** so
+   * shared keys (e.g. `deliveryPolicyId`) survive even when a row supplies its
+   * own platform tweaks. Returns `undefined` only when neither side has any
+   * overrides, so the enqueue input keeps omitting the field in that case.
+   */
+  private mergeOverrides(
+    shared: CreateOfferOverrides | undefined,
+    perProduct: CreateOfferOverrides | undefined
+  ): CreateOfferOverrides | undefined {
+    if (!shared && !perProduct) return undefined;
+    const merged: CreateOfferOverrides = { ...shared, ...perProduct };
+    if (shared?.platformParams || perProduct?.platformParams) {
+      merged.platformParams = {
+        ...shared?.platformParams,
+        ...perProduct?.platformParams,
+      };
+    }
+    return merged;
   }
 }
 
