@@ -5,7 +5,7 @@
  * productId; rows without a matching outcome keep their identity.
  */
 import { describe, expect, it } from 'vitest';
-import { mergeResolveOutcomes } from './bulk-wizard';
+import { mergeResolveOutcomes, selectBulkProductCardId } from './bulk-wizard';
 import type { BulkResolveOutcome } from './bulk-resolve-step';
 import type { BulkWizardRow } from './bulk-wizard.types';
 
@@ -87,5 +87,51 @@ describe('mergeResolveOutcomes', () => {
     const next = mergeResolveOutcomes(rows, [outcome('prod_2', { blockers: ['no-ean'] })]);
     expect(next[0]).toBe(rows[0]);
     expect(next[1]).toMatchObject({ productId: 'prod_2', blockers: ['no-ean'] });
+  });
+});
+
+describe('selectBulkProductCardId (#808)', () => {
+  function rowWith(partial: Partial<BulkWizardRow>): BulkWizardRow {
+    return { ...makeRow('prod_1'), ...partial };
+  }
+
+  it('threads the resolved card on a clean auto-resolved row', () => {
+    const row = rowWith({ resolvedCategoryId: '257933', resolvedProductCardId: 'card-1' });
+    expect(selectBulkProductCardId(row)).toBe('card-1');
+  });
+
+  it('threads the resolved card when the seeded/edited override repeats the resolved category', () => {
+    // Regression for the original bug: the review-step edit form seeds
+    // override.overrides.categoryId with the resolved category even for
+    // un-touched rows; the card must still be threaded.
+    const row = rowWith({
+      resolvedCategoryId: '257933',
+      resolvedProductCardId: 'card-1',
+      override: { overrides: { categoryId: '257933', title: 'Seeded title' } },
+    });
+    expect(selectBulkProductCardId(row)).toBe('card-1');
+  });
+
+  it('drops the card when the operator switched to a different category', () => {
+    const row = rowWith({
+      resolvedCategoryId: '257933',
+      resolvedProductCardId: 'card-1',
+      override: { overrides: { categoryId: '999000' } },
+    });
+    expect(selectBulkProductCardId(row)).toBeUndefined();
+  });
+
+  it('prefers an explicit operator-set card override', () => {
+    const row = rowWith({
+      resolvedCategoryId: '257933',
+      resolvedProductCardId: 'card-1',
+      override: { overrides: { productCardId: 'manual-card' } },
+    });
+    expect(selectBulkProductCardId(row)).toBe('manual-card');
+  });
+
+  it('returns undefined when there is no resolved card', () => {
+    const row = rowWith({ resolvedCategoryId: '257933', resolvedProductCardId: null });
+    expect(selectBulkProductCardId(row)).toBeUndefined();
   });
 });
