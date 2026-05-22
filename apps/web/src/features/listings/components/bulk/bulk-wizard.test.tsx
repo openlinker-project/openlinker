@@ -1,79 +1,87 @@
 /**
- * BulkWizard pure-reducer tests
+ * BulkWizard pure-reducer tests (#792 PR 3)
  *
- * Pins the #796 widened guard: a `pending-after-timeout` outcome must not
- * overwrite a row already in a terminal state. The resolve-step fix
- * prevents the stale-closure `onComplete` from firing, so this is defence
- * in depth — but the reducer is the actual safety net, and a future
- * regression in the resolve step shouldn't be able to flip settled rows.
+ * Pins `mergeResolveOutcomes`: resolve outcomes are folded into rows by
+ * productId; rows without a matching outcome keep their identity.
  */
 import { describe, expect, it } from 'vitest';
-import { applyResolveOutcomes } from './bulk-wizard';
+import { mergeResolveOutcomes } from './bulk-wizard';
 import type { BulkResolveOutcome } from './bulk-resolve-step';
-import type { BulkRowStatus, BulkWizardRow } from './bulk-wizard.types';
+import type { BulkWizardRow } from './bulk-wizard.types';
 
-function makeRow(productId: string, status: BulkRowStatus): BulkWizardRow {
+function makeRow(productId: string): BulkWizardRow {
   return {
     productId,
     product: null,
     primaryVariant: null,
-    status,
+    blockers: [],
     resolvedCategoryId: null,
     resolutionMethod: null,
+    masterPrice: null,
+    masterStock: null,
+    masterCurrency: null,
+    categoryCandidates: [],
     override: {},
   };
 }
 
-function timedOut(productId: string): BulkResolveOutcome {
+function outcome(
+  productId: string,
+  partial: Partial<BulkResolveOutcome> = {},
+): BulkResolveOutcome {
   return {
     productId,
-    status: 'pending-after-timeout',
-    categoryId: null,
-    method: null,
+    blockers: [],
+    resolvedCategoryId: null,
+    resolutionMethod: null,
+    masterPrice: null,
+    masterStock: null,
+    masterCurrency: null,
+    categoryCandidates: [],
+    ...partial,
   };
 }
 
-describe('applyResolveOutcomes', () => {
-  it.each<BulkRowStatus>(['matched', 'no-match', 'no-ean', 'no-variant'])(
-    'should ignore a pending-after-timeout outcome for a row already in terminal state "%s"',
-    (terminalStatus) => {
-      const rows = [{ ...makeRow('prod_1', terminalStatus), resolvedCategoryId: 'cat-A' }];
-      const next = applyResolveOutcomes(rows, [timedOut('prod_1')]);
-      expect(next[0]).toEqual(rows[0]);
-    },
-  );
+describe('mergeResolveOutcomes', () => {
+  it('folds resolve outcome fields into the matching row', () => {
+    const rows = [makeRow('prod_1')];
+    const next = mergeResolveOutcomes(rows, [
+      outcome('prod_1', {
+        blockers: ['multi-match'],
+        resolvedCategoryId: null,
+        masterPrice: 12,
+        masterStock: 3,
+        masterCurrency: 'PLN',
+        categoryCandidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B' }],
+      }),
+    ]);
 
-  it('should apply a pending-after-timeout outcome when the row is still resolving', () => {
-    const rows = [makeRow('prod_1', 'resolving')];
-    const next = applyResolveOutcomes(rows, [timedOut('prod_1')]);
     expect(next[0]).toMatchObject({
       productId: 'prod_1',
-      status: 'pending-after-timeout',
+      blockers: ['multi-match'],
+      masterPrice: 12,
+      masterStock: 3,
+      masterCurrency: 'PLN',
+      categoryCandidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B' }],
     });
   });
 
-  it('should apply a settled outcome regardless of prior status (status flows forward in the happy path)', () => {
-    const rows = [makeRow('prod_1', 'resolving')];
-    const next = applyResolveOutcomes(rows, [
-      {
-        productId: 'prod_1',
-        status: 'matched',
-        categoryId: 'cat-A',
-        method: 'auto_detect',
-      },
-    ]);
+  it('records a matched category + method', () => {
+    const next = mergeResolveOutcomes(
+      [makeRow('prod_1')],
+      [outcome('prod_1', { resolvedCategoryId: 'cat-A', resolutionMethod: 'auto_detect' })],
+    );
     expect(next[0]).toMatchObject({
-      productId: 'prod_1',
-      status: 'matched',
+      blockers: [],
       resolvedCategoryId: 'cat-A',
       resolutionMethod: 'auto_detect',
     });
   });
 
-  it('should leave rows without a matching outcome untouched', () => {
-    const rows = [makeRow('prod_1', 'matched'), makeRow('prod_2', 'resolving')];
-    const next = applyResolveOutcomes(rows, [timedOut('prod_2')]);
+  it('leaves rows without a matching outcome untouched (identity preserved)', () => {
+    const rows = [makeRow('prod_1'), makeRow('prod_2')];
+    const next = mergeResolveOutcomes(rows, [outcome('prod_2', { blockers: ['no-ean'] })]);
     expect(next[0]).toBe(rows[0]);
-    expect(next[1]).toMatchObject({ status: 'pending-after-timeout' });
+    expect(next[1]).toMatchObject({ productId: 'prod_2', blockers: ['no-ean'] });
   });
 });

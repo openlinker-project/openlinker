@@ -12,8 +12,16 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { OfferManagerPort } from '@openlinker/core/listings';
-import { isCategoryBarcodeMatcher } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  BatchCategoryByEanInput,
+  EanMatchResult,
+} from '@openlinker/core/listings';
+import {
+  isCategoryBarcodeMatcher,
+  isEanCategoryMatcher,
+  AdapterCapabilityNotSupportedException,
+} from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
@@ -61,6 +69,26 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // Step 3: Manual pick
     this.logger.debug(`Category unresolved, manual pick required (connection=${connectionId})`);
     return { allegroCategoryId: null, method: 'manual' };
+  }
+
+  async resolveCategoriesBatch(
+    connectionId: string,
+    input: BatchCategoryByEanInput
+  ): Promise<Map<string, EanMatchResult>> {
+    // Resolving the OfferManager adapter validates the connection up front:
+    // unknown/disabled connections surface as 404/409, and a non-marketplace
+    // connection as 422 — same gate the single-resolve route relies on.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+    if (!isEanCategoryMatcher(adapter)) {
+      throw new AdapterCapabilityNotSupportedException(connectionId, 'EanCategoryMatcher');
+    }
+    this.logger.debug(
+      `Batch-resolving ${input.items.length} variant EAN(s) (connection=${connectionId})`
+    );
+    return adapter.resolveCategoriesForBatchByEan(input);
   }
 
   private async tryAutoDetect(connectionId: string, barcode: string): Promise<string | null> {

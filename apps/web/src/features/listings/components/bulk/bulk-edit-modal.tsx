@@ -11,7 +11,7 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import {
   Controller,
   FormProvider,
@@ -122,13 +122,20 @@ function BulkEditModalForm({
 }: BulkEditModalFormProps): ReactElement {
   const variantId = row.primaryVariant?.id ?? '';
 
-  const initialValues = useMemo<BulkEditModalValues>(() => {
+  // Snapshot the row's resolved values at modal-open time. `BulkEditModalForm`
+  // mounts fresh on open (Radix Dialog portals its content), so a one-time ref
+  // capture is the snapshot. A background availability refetch can mutate the
+  // `row` prop while the modal is open; binding to this snapshot (and NOT
+  // resetting the form on `row` changes) prevents it from clobbering the
+  // operator's in-progress edits (#792).
+  const initialValuesRef = useRef<BulkEditModalValues | null>(null);
+  if (initialValuesRef.current === null) {
     const o = row.override.overrides ?? {};
     // Restore the operator's previously-entered parameter form values from
     // the row's FE-only stash, NOT from `platformParams` (the wire payload).
     const storedFormParameters =
       (row.editFormValues?.parameters as Record<string, unknown> | undefined) ?? {};
-    return {
+    initialValuesRef.current = {
       title: o.title ?? row.product?.name ?? '',
       categoryId: o.categoryId ?? row.resolvedCategoryId ?? '',
       description:
@@ -139,21 +146,17 @@ function BulkEditModalForm({
           ? String(row.override.price.amount)
           : defaults.priceAmount,
       priceCurrency: (row.override.price?.currency ?? defaults.priceCurrency) as BulkEditModalValues['priceCurrency'],
-      publishImmediately:
-        row.override.publishImmediately ?? defaults.publishImmediately,
+      publishImmediately: row.override.publishImmediately ?? defaults.publishImmediately,
       parameters: storedFormParameters,
     };
-  }, [row, defaults]);
+  }
+  const initialValues = initialValuesRef.current;
 
   const form = useForm<BulkEditModalValues, undefined, BulkEditModalSubmission>({
     defaultValues: initialValues,
     resolver: zodResolver(bulkEditModalSchema),
     mode: 'onSubmit',
   });
-
-  useEffect(() => {
-    form.reset(initialValues);
-  }, [form, initialValues]);
 
   // Watch categoryId so the parameters query refetches on category change.
   const watchedCategoryId = form.watch('categoryId');
@@ -250,6 +253,29 @@ function BulkEditModalForm({
             />
           </FormField>
 
+          {row.categoryCandidates.length > 0 ? (
+            <div className="bulk-edit__candidates">
+              <span className="bulk-edit__candidates-label">
+                Suggested categories (EAN matched several)
+              </span>
+              <div className="bulk-edit__candidate-chips">
+                {row.categoryCandidates.map((candidate) => (
+                  <button
+                    key={candidate.allegroCategoryId}
+                    type="button"
+                    className="bulk-edit__candidate-chip"
+                    onClick={() => {
+                      form.setValue('categoryId', candidate.allegroCategoryId, {
+                        shouldDirty: true,
+                      });
+                    }}
+                  >
+                    {candidate.name ?? candidate.allegroCategoryId}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <FormField
             name="bulk-edit-category"
             label="Allegro category"
