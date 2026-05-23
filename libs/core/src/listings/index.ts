@@ -228,6 +228,21 @@ export type {
   OfferStatusReadResult,
 } from './domain/types/offer-status-read.types';
 export { OfferPublicationStatusValues } from './domain/types/offer-status-read.types';
+export { OfferStatusSnapshot } from './domain/entities/offer-status-snapshot.entity';
+export type {
+  OfferStatusSnapshotProps,
+  OfferStatusSnapshotDetails,
+  UpsertOfferStatusSnapshotCommand,
+  OfferStatusSyncResult,
+} from './domain/types/offer-status-snapshot.types';
+export type {
+  OfferStatusSnapshotRepositoryPort,
+  OfferStatusUpsertResult,
+} from './domain/ports/offer-status-snapshot-repository.port';
+export type {
+  IOfferStatusSyncService,
+  OfferStatusSyncOptions,
+} from './application/services/offer-status-sync.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
 export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';

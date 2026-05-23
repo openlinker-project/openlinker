@@ -84,6 +84,7 @@ const harness = createIntegrationTestHarness({
     // registry is the seam for adding ad-hoc tasks (#584).
     OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
     OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
 

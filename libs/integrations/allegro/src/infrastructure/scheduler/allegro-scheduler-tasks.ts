@@ -2,17 +2,21 @@
  * Allegro Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Allegro contributes to the core
- * `SchedulerTaskRegistryService` (#584). Two tasks today:
+ * `SchedulerTaskRegistryService` (#584). Three tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
  *     every 5 minutes. Cursor key `allegro.orders.lastEventId`.
  *   - `allegro-offers-sync` — incremental offer-events ingest (or full
  *     listing, depending on `OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE`), default
  *     every 30 minutes. Cursor key `allegro.offers.lastEventId`.
+ *   - `allegro-offer-status-sync` (#816) — steady-state refresh of mapped
+ *     offers' publication status into `offer_status_snapshots`, default
+ *     hourly. Rolling scan-offset cursor key `allegro.offerStatus.scanOffset`.
  *
  * Env-var gating is preserved verbatim from the previous core implementation
  * for deployer back-compat: when `OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false`
- * (or `OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED=false`) the helper omits
+ * (or `OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED=false`,
+ * `OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false`) the helper omits
  * the corresponding task. The scheduler also re-checks the gate at each
  * cron tick, so toggling without restart works for tasks that *did*
  * register at boot.
@@ -105,6 +109,32 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       },
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offers:sync:${timestamp}`,
+    });
+  }
+
+  if (isEnabled(configService, 'OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED')) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_OFFER_STATUS_SYNC_INTERVAL_CRON',
+      '0 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_OFFER_STATUS_SYNC_PAGE_LIMIT', '100')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 100;
+
+    tasks.push({
+      taskId: 'allegro-offer-status-sync',
+      platformType: 'allegro',
+      jobType: 'marketplace.offer.statusSync',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: pageLimit,
+        cursorKey: 'allegro.offerStatus.scanOffset',
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
     });
   }
 
