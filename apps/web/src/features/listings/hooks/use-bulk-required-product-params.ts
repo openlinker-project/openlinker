@@ -61,28 +61,18 @@ export function useBulkRequiredProductParams(
 
   const isResolving = results.some((q) => q.isLoading);
 
-  // A category's schema is immutable, so this signature flips at most once per
-  // category (unloaded → loaded). Memoising the return value on it keeps the
-  // object identity stable when nothing changed — the consumer effect depends
-  // on `requiredByCategory`, so a fresh Map every render would re-run it.
-  const signature = distinctIds
-    .map((id, i) => `${id}:${results[i]?.data ? '1' : '0'}`)
-    .join('|');
+  // Built fresh each render — no memoisation. The only consumer (the wizard's
+  // schema-reconcile effect) short-circuits when the recomputed blocker set is
+  // unchanged, so a new `Map` identity per render can't cause a re-render loop.
+  const requiredByCategory = new Map<string, readonly string[]>();
+  distinctIds.forEach((categoryId, i) => {
+    const data = results[i]?.data;
+    if (!data) return;
+    requiredByCategory.set(
+      categoryId,
+      data.filter((p) => p.required && p.section === 'product' && !p.dependsOn).map((p) => p.id),
+    );
+  });
 
-  return useMemo<BulkRequiredProductParams>(() => {
-    const requiredByCategory = new Map<string, readonly string[]>();
-    distinctIds.forEach((categoryId, i) => {
-      const data = results[i]?.data;
-      if (!data) return;
-      requiredByCategory.set(
-        categoryId,
-        data
-          .filter((p) => p.required && p.section === 'product' && !p.dependsOn)
-          .map((p) => p.id),
-      );
-    });
-    return { requiredByCategory, isResolving };
-    // `signature` captures distinctIds + each query's loaded state; `results`
-    // identity changes every render so it intentionally isn't a dep.
-  }, [signature, isResolving]);
+  return { requiredByCategory, isResolving };
 }

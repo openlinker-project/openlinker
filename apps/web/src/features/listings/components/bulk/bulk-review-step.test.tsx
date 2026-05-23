@@ -166,15 +166,15 @@ describe('BulkReviewStep', () => {
   it('renders the add-product-params chip and a remediation hint', () => {
     renderReview([makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 })]);
     expect(screen.getByText('add product params')).toBeInTheDocument();
-    expect(screen.getByRole('note')).toHaveTextContent(/Edit/);
-    expect(screen.getByRole('note')).toHaveTextContent(/product parameters/);
+    expect(screen.getByRole('status')).toHaveTextContent(/Edit/);
+    expect(screen.getByRole('status')).toHaveTextContent(/product parameters/);
   });
 
   it('singularises the hint for one affected row and pluralises for many', () => {
     const { rerender } = renderReview([
       makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
     ]);
-    expect(screen.getByRole('note')).toHaveTextContent(/1\s+row needs/);
+    expect(screen.getByRole('status')).toHaveTextContent(/1\s+row needs/);
 
     rerender(
       <BulkReviewStep
@@ -193,7 +193,7 @@ describe('BulkReviewStep', () => {
         onBack={() => undefined}
       />,
     );
-    expect(screen.getByRole('note')).toHaveTextContent(/2\s+rows need/);
+    expect(screen.getByRole('status')).toHaveTextContent(/2\s+rows need/);
   });
 
   it('disables Approve all while category-parameter schemas are still resolving', () => {

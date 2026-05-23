@@ -5,11 +5,8 @@
  * productId; rows without a matching outcome keep their identity.
  */
 import { describe, expect, it } from 'vitest';
-import {
-  mergeResolveOutcomes,
-  recomputeRowBlockers,
-  selectBulkProductCardId,
-} from './bulk-wizard';
+import { mergeResolveOutcomes } from './bulk-wizard';
+import { recomputeRowBlockers, selectBulkProductCardId } from './bulk-policy';
 import type { BulkResolveOutcome } from './bulk-resolve-step';
 import type { BulkWizardConfig, BulkWizardRow } from './bulk-wizard.types';
 import type { ProductVariant } from '../../../products';

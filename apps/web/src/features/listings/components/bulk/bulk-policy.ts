@@ -14,6 +14,8 @@ import type { EanMatchResult } from '../../api/listings.types';
 import type {
   BulkRowBlocker,
   BulkValueSource,
+  BulkWizardConfig,
+  BulkWizardRow,
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
@@ -212,4 +214,86 @@ function suppliedProductParamIds(override: BulkPerProductOverride): Set<string> 
     }
   }
   return ids;
+}
+
+/**
+ * Reconstruct an `EanMatchResult` from a row's current category state so
+ * `computeBlockers` can re-derive the category blocker after a per-row edit
+ * without re-fetching. An operator-picked / previously-matched category id
+ * yields `matched`; otherwise the surviving category blocker decides.
+ */
+export function categoryResultFor(
+  row: BulkWizardRow,
+  resolvedCategoryId: string | null,
+): EanMatchResult {
+  if (resolvedCategoryId) {
+    return {
+      kind: 'matched',
+      allegroCategoryId: resolvedCategoryId,
+      productCardId: row.resolvedProductCardId ?? '',
+    };
+  }
+  if (row.blockers.includes('no-ean')) return { kind: 'no-ean' };
+  if (row.blockers.includes('multi-match')) {
+    return { kind: 'multi-match', candidates: [...row.categoryCandidates] };
+  }
+  return { kind: 'no-match' };
+}
+
+/**
+ * #808 — choose the catalogue card id to thread into a bulk submit override.
+ *
+ * The EAN-matched card was resolved against the auto-detected category, so it
+ * stays valid only while the category being submitted is still that resolved
+ * category — whether the category arrives via the seeded/edited override or
+ * the raw resolve. (The review-step edit form seeds `override.overrides` with
+ * the resolved category + title + description even for un-touched rows, so a
+ * plain "override has a categoryId" check is NOT a reliable "operator changed
+ * the category" signal — it must be compared to the resolved category.)
+ *
+ * An explicit operator-set card always wins; switching to a *different*
+ * category drops the card so the adapter re-resolves by barcode.
+ *
+ * Exported for unit testing; the wizard calls it from `handleSubmit`.
+ */
+export function selectBulkProductCardId(row: BulkWizardRow): string | undefined {
+  const explicit = row.override.overrides?.productCardId;
+  if (explicit) return explicit;
+  const submittedCategoryId =
+    row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? null;
+  if (row.resolvedProductCardId && submittedCategoryId === row.resolvedCategoryId) {
+    return row.resolvedProductCardId;
+  }
+  return undefined;
+}
+
+/**
+ * Recompute a row's full blocker set from its current state — the shared path
+ * for the post-resolve sites (the Edit-save handler and the schema-reconcile
+ * effect). Threads the #808 card-link signal and the #810 required-product-
+ * param ids for the row's submit category into `computeBlockers`. Pure (no
+ * closure) so the wizard's reconcile effect needs no `rows` dependency.
+ */
+export function recomputeRowBlockers(
+  row: BulkWizardRow,
+  config: BulkWizardConfig,
+  requiredByCategory: Map<string, readonly string[]>,
+): BulkRowBlocker[] {
+  if (!row.primaryVariant) return ['no-variant'];
+  const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+  return computeBlockers({
+    hasVariant: true,
+    categoryResult: categoryResultFor(row, submitCategoryId),
+    pricingPolicy: config.pricingPolicy,
+    stockPolicy: config.stockPolicy,
+    masterPrice: row.masterPrice,
+    masterStock: row.masterStock,
+    masterCurrency: row.masterCurrency,
+    batchCurrency: config.currency,
+    override: row.override,
+    willLinkProductCard: selectBulkProductCardId(row) !== undefined,
+    requiredProductParamIds: submitCategoryId
+      ? requiredByCategory.get(submitCategoryId)
+      : undefined,
+  });
 }

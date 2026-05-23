@@ -235,7 +235,7 @@ export function BulkReviewStep({
         </div>
       </header>
 
-      <div className="bulk-wizard__review-summary">
+      <div className="bulk-wizard__review-summary" aria-live="polite">
         <span><strong>{counts.ready}</strong> ready</span>
         {counts.needsAttention > 0 ? (
           <>
@@ -252,7 +252,7 @@ export function BulkReviewStep({
       </div>
 
       {needsProductParamsCount > 0 ? (
-        <p className="bulk-wizard__review-hint" role="note">
+        <p className="bulk-wizard__review-hint" role="status">
           <strong>{needsProductParamsCount}</strong>{' '}
           {needsProductParamsCount === 1 ? 'row needs' : 'rows need'} required product
           parameters. There's no matched product card to inherit them, so{' '}
