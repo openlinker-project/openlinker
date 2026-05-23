@@ -1,9 +1,13 @@
 /**
  * Bulk wizard pricing/stock policy + blocker computation (#792 PR 3)
  *
- * Pure, side-effect-free helpers shared by the Resolve step (blocker compute)
- * and the Review step (computed value + provenance rendering). Kept isolated
- * from React so the policy maths are unit-testable without rendering.
+ * Pure, side-effect-free helpers for the bulk wizard: pricing/stock resolution
+ * + blocker computation, plus the #808 card-link selector and #810
+ * product-parameter derivation. Consumed by the Resolve step (initial blocker
+ * compute), the Review step (computed value + provenance rendering), the
+ * Edit-save handler + schema-reconcile effect (`recomputeRowBlockers`), and the
+ * submit path (`selectBulkProductCardId`). Kept isolated from React so the
+ * policy maths are unit-testable without rendering.
  *
  * Resolution precedence: master → policy → per-row override (override wins).
  *
@@ -221,8 +225,10 @@ function suppliedProductParamIds(override: BulkPerProductOverride): Set<string> 
  * `computeBlockers` can re-derive the category blocker after a per-row edit
  * without re-fetching. An operator-picked / previously-matched category id
  * yields `matched`; otherwise the surviving category blocker decides.
+ *
+ * Module-private — only `recomputeRowBlockers` consumes it.
  */
-export function categoryResultFor(
+function categoryResultFor(
   row: BulkWizardRow,
   resolvedCategoryId: string | null,
 ): EanMatchResult {

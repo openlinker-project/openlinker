@@ -235,7 +235,7 @@ export function BulkReviewStep({
         </div>
       </header>
 
-      <div className="bulk-wizard__review-summary" aria-live="polite">
+      <div className="bulk-wizard__review-summary">
         <span><strong>{counts.ready}</strong> ready</span>
         {counts.needsAttention > 0 ? (
           <>
