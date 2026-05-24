@@ -395,6 +395,16 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     this.logger.log(`Re-authenticating existing Allegro connection in place: ${connectionId}`);
 
     // Resolve + guard: must be an existing Allegro connection.
+    //
+    // ASSUMPTION (#819 / ADR-008): the operator re-authenticates the SAME
+    // Allegro seller account. We validate platformType but NOT that the new
+    // token authorizes the same seller — OpenLinker doesn't yet persist the
+    // Allegro account id on the connection. Re-authing with a different
+    // developer app / seller would silently rebind this connection while
+    // retaining mappings keyed to the previous seller's external-id space.
+    // It's admin-gated and the operator supplies their own credentials, so
+    // it's a foot-gun, not a security hole. Validating seller identity here
+    // is a tracked follow-up.
     const existing = await this.connectionService.get(connectionId);
     if (existing.platformType !== 'allegro') {
       throw new BadRequestException(

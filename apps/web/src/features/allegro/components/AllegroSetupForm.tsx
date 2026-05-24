@@ -141,8 +141,10 @@ export function AllegroSetupForm(): ReactElement {
         {reauthConnectionId ? (
           <Alert tone="warning" title="Re-authenticating an existing connection">
             Completing this flow replaces the stored credentials for the flagged connection and
-            resumes syncing. Re-enter the Client ID and Client Secret from your Allegro developer
-            app — the connection and its mappings are preserved.
+            resumes syncing. Re-enter the Client ID and Client Secret for the{' '}
+            <strong>same Allegro seller account</strong> from your developer app — the connection and
+            its mappings are preserved. The Environment and Product-catalog selections below do not
+            change the existing connection&rsquo;s configuration; only the credentials are rotated.
           </Alert>
         ) : null}
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (

@@ -525,7 +525,7 @@ interface Connection {
   id: string;                    // Unique connection ID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Connection-specific configuration
   credentialsRef: string;        // Reference to credentials storage
   createdAt: Date;
@@ -1266,7 +1266,7 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
   id: string;                    // UUID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Platform-specific config
   credentialsRef: string;        // Reference to stored credentials
   adapterKey?: string;           // Optional explicit adapter key
@@ -1294,8 +1294,10 @@ registrations (connection tester, retry classifier, scheduler tasks, email
 normalizer, webhook provisioner), and a `createCapabilityAdapter(connection,
 capability, host)` factory. The `HostServices` bag carries the curated set
 of services every plugin can rely on: `logger`, `identifierMapping`,
-`credentialsResolver`, optional `cache`, plus typed handles to the 7
-well-known registries. Plugin-specific cross-package ports (e.g.
+`credentialsResolver`, optional `cache`, plus typed handles to the 8
+well-known registries (the 7 originals plus the auth-failure classifier
+registry, #819 — see [ADR-008](./architecture/adrs/008-auth-failure-classifier-connection-reauth.md)).
+Plugin-specific cross-package ports (e.g.
 `CustomerIdentityResolverPort`, `IMappingConfigService`) are passed into
 the descriptor's constructor closure — they're intentionally not in the
 host bag, to keep the contract surface lean.

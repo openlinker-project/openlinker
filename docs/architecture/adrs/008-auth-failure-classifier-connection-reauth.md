@@ -60,6 +60,14 @@ from the overloaded `error`) carries the precise signal to the FE re-auth banner
   by type-check). This is the deliberate cost of keeping the seam marketplace-agnostic.
 - A second classifier registry sits alongside the retry one; the two are correlated but intentionally
   separate.
+- **In-place re-auth assumes the operator re-authenticates the *same* seller account.** Re-using the
+  connection id is what preserves connection-scoped mappings, but the recovery path validates only
+  `platformType`, not that the freshly-issued token authorizes the same Allegro seller as the original
+  connection. Re-authing with a different developer app / seller would silently rebind the connection
+  while retaining mappings keyed to the previous seller's external-id space. It is admin-gated and the
+  operator supplies their own credentials, so it is a foot-gun rather than a security hole. Validating
+  seller identity on re-auth (e.g. persisting the Allegro account id on the connection and comparing)
+  is tracked as a follow-up.
 
 **Migration path (if applicable):**
 - PrestaShop (API-key, non-OAuth) does not register a classifier yet — it never reaches `needs_reauth`
