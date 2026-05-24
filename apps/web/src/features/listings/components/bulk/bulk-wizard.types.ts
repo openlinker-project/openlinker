@@ -37,6 +37,10 @@ export const BulkRowBlockerValues = [
   'no-match',
   // EAN matched several Allegro cards — operator picks one from the candidates.
   'multi-match',
+  // Row will create a product inline (no card to inherit from) under a category
+  // whose required product-section params (Marka, Model, EAN, …) aren't supplied.
+  // Clears once the operator fills them in the edit modal (#810).
+  'needs-product-parameters',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
   // Active stock policy needs a master stock value and it's 0 or null.

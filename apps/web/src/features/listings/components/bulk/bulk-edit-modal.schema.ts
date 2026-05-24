@@ -20,6 +20,11 @@ const ALLOWED_CURRENCIES = ['PLN', 'EUR', 'USD', 'GBP', 'CZK'] as const;
 export const bulkEditModalSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(TITLE_MAX),
   categoryId: z.string().trim().min(1, 'Category is required'),
+  // Hidden field — not user-editable. Set when the operator picks a multi-match
+  // candidate chip so the offer links that card (#810, mirrors #808). Cleared
+  // on a manual category change since the card belongs to the candidate's
+  // category. Threaded into `overrides.productCardId` at submit.
+  productCardId: z.string().optional(),
   description: z.string().trim().min(1, 'Description is required').max(DESCRIPTION_MAX),
   stock: z.coerce.number().int().min(0, 'Stock cannot be negative'),
   priceAmount: z

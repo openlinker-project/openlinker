@@ -222,4 +222,71 @@ describe('computeBlockers', () => {
     );
     expect(result).toEqual([]);
   });
+
+  // #810 — needs-product-parameters (no card to inherit from + required product params)
+  const withPickedCategory = (extra: Partial<ComputeBlockersInput> = {}) =>
+    base({
+      categoryResult: { kind: 'no-match' },
+      override: { overrides: { categoryId: 'cat-1' } },
+      willLinkProductCard: false,
+      ...extra,
+    });
+
+  it('fires needs-product-parameters when no card links and a required product param is missing', () => {
+    const result = computeBlockers(
+      withPickedCategory({ requiredProductParamIds: ['brand', 'model'] }),
+    );
+    expect(result).toContain('needs-product-parameters');
+  });
+
+  it('does NOT fire when all required product params are supplied (clearable)', () => {
+    const result = computeBlockers(
+      withPickedCategory({
+        requiredProductParamIds: ['brand', 'model'],
+        override: {
+          overrides: {
+            categoryId: 'cat-1',
+            platformParams: {
+              productParameters: [
+                { id: 'brand', valuesIds: ['x'] },
+                { id: 'model', values: ['Z9'] },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    expect(result).not.toContain('needs-product-parameters');
+  });
+
+  it('does NOT fire when the row links a product card (params inherited, #808)', () => {
+    const result = computeBlockers(
+      withPickedCategory({
+        willLinkProductCard: true,
+        requiredProductParamIds: ['brand'],
+      }),
+    );
+    expect(result).not.toContain('needs-product-parameters');
+  });
+
+  it('does NOT fire while the category schema is still unknown (undefined ids)', () => {
+    const result = computeBlockers(withPickedCategory({ requiredProductParamIds: undefined }));
+    expect(result).not.toContain('needs-product-parameters');
+  });
+
+  it('does NOT fire for a category with no required product params (empty ids)', () => {
+    const result = computeBlockers(withPickedCategory({ requiredProductParamIds: [] }));
+    expect(result).not.toContain('needs-product-parameters');
+  });
+
+  it('orders the param blocker after the category resolves and before price/stock', () => {
+    const result = computeBlockers(
+      withPickedCategory({
+        requiredProductParamIds: ['brand'],
+        masterPrice: null,
+        masterStock: null,
+      }),
+    );
+    expect(result).toEqual(['needs-product-parameters', 'no-master-price', 'no-master-stock']);
+  });
 });

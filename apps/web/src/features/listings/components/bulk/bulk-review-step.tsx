@@ -42,6 +42,12 @@ interface BulkReviewStepProps {
   /** Batch-wide currency (D7). */
   currency: string;
   publishImmediately: boolean;
+  /**
+   * True while category parameter schemas are still loading (#810). Gates
+   * "Approve all" so the operator can't submit before the
+   * `needs-product-parameters` blocker has had a chance to appear.
+   */
+  paramsResolving: boolean;
   onUpdateRow: (
     variantId: string,
     override: BulkPerProductOverride,
@@ -56,6 +62,7 @@ const BLOCKER_CHIPS: Record<BulkRowBlocker, { tone: StatusBadgeTone; label: stri
   'no-ean': { tone: 'error', label: 'no EAN' },
   'no-match': { tone: 'error', label: 'manual category' },
   'multi-match': { tone: 'warning', label: 'choose category' },
+  'needs-product-parameters': { tone: 'warning', label: 'add product params' },
   'no-master-price': { tone: 'error', label: 'no master price' },
   'no-master-stock': { tone: 'error', label: 'no master stock' },
   'currency-mismatch': { tone: 'warning', label: 'currency mismatch' },
@@ -68,6 +75,7 @@ export function BulkReviewStep({
   stockPolicy,
   currency,
   publishImmediately,
+  paramsResolving,
   onUpdateRow,
   onApproveAll,
   onBack,
@@ -87,8 +95,15 @@ export function BulkReviewStep({
 
   const counts = useMemo(() => countByReadiness(rows), [rows]);
   // No-variant rows are skipped on submit, not blocking. Approval is gated on
-  // every *listable* row being clear, with at least one ready row to submit.
-  const canApprove = counts.ready > 0 && counts.needsAttention === 0;
+  // every *listable* row being clear, with at least one ready row to submit —
+  // and on category-parameter schemas having settled, so a row that's about to
+  // gain the `needs-product-parameters` blocker can't sneak through (#810).
+  const canApprove = counts.ready > 0 && counts.needsAttention === 0 && !paramsResolving;
+
+  const needsProductParamsCount = useMemo(
+    () => rows.filter((r) => r.blockers.includes('needs-product-parameters')).length,
+    [rows],
+  );
 
   const editingRow = useMemo(
     () => (editingId ? rows.find((r) => r.productId === editingId) ?? null : null),
@@ -119,17 +134,22 @@ export function BulkReviewStep({
       {
         id: 'category',
         header: 'Matched category',
-        cell: (row) => (
-          <span
-            className={
-              row.resolvedCategoryId
-                ? 'bulk-wizard__row-category'
-                : 'bulk-wizard__row-category bulk-wizard__row-category--dim'
-            }
-          >
-            {row.resolvedCategoryId ?? '—'}
-          </span>
-        ),
+        // Effective submit category — an operator pick (override) wins over the
+        // EAN-resolved value, which stays put for the card-link guard (#810).
+        cell: (row) => {
+          const categoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+          return (
+            <span
+              className={
+                categoryId
+                  ? 'bulk-wizard__row-category'
+                  : 'bulk-wizard__row-category bulk-wizard__row-category--dim'
+              }
+            >
+              {categoryId ?? '—'}
+            </span>
+          );
+        },
       },
       {
         id: 'stock',
@@ -230,6 +250,15 @@ export function BulkReviewStep({
           </>
         ) : null}
       </div>
+
+      {needsProductParamsCount > 0 ? (
+        <p className="bulk-wizard__review-hint" role="status">
+          <strong>{needsProductParamsCount}</strong>{' '}
+          {needsProductParamsCount === 1 ? 'row needs' : 'rows need'} required product
+          parameters. There's no matched product card to inherit them, so{' '}
+          <strong>Edit</strong> each row to add them before submitting.
+        </p>
+      ) : null}
 
       <DataTable<BulkWizardRow>
         caption="Bulk listing review"

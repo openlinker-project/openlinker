@@ -1,9 +1,13 @@
 /**
  * Bulk wizard pricing/stock policy + blocker computation (#792 PR 3)
  *
- * Pure, side-effect-free helpers shared by the Resolve step (blocker compute)
- * and the Review step (computed value + provenance rendering). Kept isolated
- * from React so the policy maths are unit-testable without rendering.
+ * Pure, side-effect-free helpers for the bulk wizard: pricing/stock resolution
+ * + blocker computation, plus the #808 card-link selector and #810
+ * product-parameter derivation. Consumed by the Resolve step (initial blocker
+ * compute), the Review step (computed value + provenance rendering), the
+ * Edit-save handler + schema-reconcile effect (`recomputeRowBlockers`), and the
+ * submit path (`selectBulkProductCardId`). Kept isolated from React so the
+ * policy maths are unit-testable without rendering.
  *
  * Resolution precedence: master → policy → per-row override (override wins).
  *
@@ -14,6 +18,8 @@ import type { EanMatchResult } from '../../api/listings.types';
 import type {
   BulkRowBlocker,
   BulkValueSource,
+  BulkWizardConfig,
+  BulkWizardRow,
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
@@ -121,6 +127,19 @@ export interface ComputeBlockersInput {
   masterCurrency: string | null;
   batchCurrency: string;
   override: BulkPerProductOverride;
+  /**
+   * True when the submit will link an Allegro catalogue card (#808), which
+   * inherits the category's required product parameters. Card-linked rows are
+   * never blocked for missing product params. Omitted (undefined) at resolve
+   * time, where no-card rows have no category yet — treated as not-blocking.
+   */
+  willLinkProductCard?: boolean;
+  /**
+   * Required `section: 'product'` parameter ids for the row's submit category
+   * (unconditional only — `dependsOn`-gated params are excluded). undefined =
+   * schema not loaded yet → do not block (avoids flicker). (#810)
+   */
+  requiredProductParamIds?: readonly string[];
 }
 
 /**
@@ -147,6 +166,18 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     // 'matched' → no category blocker
   }
 
+  // Product parameters (#810) — a row that creates a product inline (no card to
+  // inherit from) under a category with required product-section params it
+  // hasn't supplied would 422 at submit. Card-linked rows (#808) inherit the
+  // params, so they're exempt. Coverage-based so the blocker clears once the
+  // operator fills the params in the edit modal.
+  if (!input.willLinkProductCard && input.requiredProductParamIds?.length) {
+    const supplied = suppliedProductParamIds(input.override);
+    if (input.requiredProductParamIds.some((id) => !supplied.has(id))) {
+      blockers.push('needs-product-parameters');
+    }
+  }
+
   // Price / stock — override-aware via the resolvers above.
   const price = computeResolvedPrice(input.pricingPolicy, input.masterPrice, input.override);
   if (price.blocker) blockers.push(price.blocker);
@@ -168,4 +199,107 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   }
 
   return blockers;
+}
+
+/**
+ * Extract the set of product-section parameter ids the operator has supplied
+ * for a row, read from the serialized `platformParams.productParameters` wire
+ * array (`{ id, … }[]`, see `serializeAllegroParameters`). Used to coverage-
+ * check the required product params so the `needs-product-parameters` blocker
+ * clears once they're filled (#810).
+ */
+function suppliedProductParamIds(override: BulkPerProductOverride): Set<string> {
+  const params: unknown = override.overrides?.platformParams?.productParameters;
+  const ids = new Set<string>();
+  if (!Array.isArray(params)) return ids;
+  for (const p of params) {
+    if (p && typeof p === 'object' && typeof (p as { id?: unknown }).id === 'string') {
+      ids.add((p as { id: string }).id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Reconstruct an `EanMatchResult` from a row's current category state so
+ * `computeBlockers` can re-derive the category blocker after a per-row edit
+ * without re-fetching. An operator-picked / previously-matched category id
+ * yields `matched`; otherwise the surviving category blocker decides.
+ *
+ * Module-private — only `recomputeRowBlockers` consumes it.
+ */
+function categoryResultFor(
+  row: BulkWizardRow,
+  resolvedCategoryId: string | null,
+): EanMatchResult {
+  if (resolvedCategoryId) {
+    return {
+      kind: 'matched',
+      allegroCategoryId: resolvedCategoryId,
+      productCardId: row.resolvedProductCardId ?? '',
+    };
+  }
+  if (row.blockers.includes('no-ean')) return { kind: 'no-ean' };
+  if (row.blockers.includes('multi-match')) {
+    return { kind: 'multi-match', candidates: [...row.categoryCandidates] };
+  }
+  return { kind: 'no-match' };
+}
+
+/**
+ * #808 — choose the catalogue card id to thread into a bulk submit override.
+ *
+ * The EAN-matched card was resolved against the auto-detected category, so it
+ * stays valid only while the category being submitted is still that resolved
+ * category — whether the category arrives via the seeded/edited override or
+ * the raw resolve. (The review-step edit form seeds `override.overrides` with
+ * the resolved category + title + description even for un-touched rows, so a
+ * plain "override has a categoryId" check is NOT a reliable "operator changed
+ * the category" signal — it must be compared to the resolved category.)
+ *
+ * An explicit operator-set card always wins; switching to a *different*
+ * category drops the card so the adapter re-resolves by barcode.
+ *
+ * Exported for unit testing; the wizard calls it from `handleSubmit`.
+ */
+export function selectBulkProductCardId(row: BulkWizardRow): string | undefined {
+  const explicit = row.override.overrides?.productCardId;
+  if (explicit) return explicit;
+  const submittedCategoryId =
+    row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? null;
+  if (row.resolvedProductCardId && submittedCategoryId === row.resolvedCategoryId) {
+    return row.resolvedProductCardId;
+  }
+  return undefined;
+}
+
+/**
+ * Recompute a row's full blocker set from its current state — the shared path
+ * for the post-resolve sites (the Edit-save handler and the schema-reconcile
+ * effect). Threads the #808 card-link signal and the #810 required-product-
+ * param ids for the row's submit category into `computeBlockers`. Pure (no
+ * closure) so the wizard's reconcile effect needs no `rows` dependency.
+ */
+export function recomputeRowBlockers(
+  row: BulkWizardRow,
+  config: BulkWizardConfig,
+  requiredByCategory: Map<string, readonly string[]>,
+): BulkRowBlocker[] {
+  if (!row.primaryVariant) return ['no-variant'];
+  const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
+  return computeBlockers({
+    hasVariant: true,
+    categoryResult: categoryResultFor(row, submitCategoryId),
+    pricingPolicy: config.pricingPolicy,
+    stockPolicy: config.stockPolicy,
+    masterPrice: row.masterPrice,
+    masterStock: row.masterStock,
+    masterCurrency: row.masterCurrency,
+    batchCurrency: config.currency,
+    override: row.override,
+    willLinkProductCard: selectBulkProductCardId(row) !== undefined,
+    requiredProductParamIds: submitCategoryId
+      ? requiredByCategory.get(submitCategoryId)
+      : undefined,
+  });
 }
