@@ -162,6 +162,26 @@ describe('ProductsService', () => {
     });
   });
 
+  describe('getVariantsByProductId', () => {
+    it('forwards the product id to the repository and returns the result', async () => {
+      const variants = [makeVariant()];
+      variantRepo.findByProductId.mockResolvedValue(variants);
+
+      const result = await service.getVariantsByProductId('ol_product_1');
+
+      expect(result).toBe(variants);
+      expect(variantRepo.findByProductId).toHaveBeenCalledWith('ol_product_1');
+    });
+
+    it('returns the repository result verbatim for an unknown product ([])', async () => {
+      variantRepo.findByProductId.mockResolvedValue([]);
+
+      const result = await service.getVariantsByProductId('ol_product_unknown');
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('listProducts', () => {
     it('should return paginated products', async () => {
       const products = [makeProduct(), makeProduct({ id: 'ol_product_2', name: 'Second' })];

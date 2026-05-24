@@ -22,6 +22,7 @@ import type {
   Inventory as InventoryPortInterface,
 } from '@openlinker/core/inventory';
 import { InventoryItemEntity as InventoryItem } from '@openlinker/core/inventory';
+import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
 describe('MasterInventorySyncService', () => {
   let service: MasterInventorySyncService;
@@ -29,6 +30,7 @@ describe('MasterInventorySyncService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let inventoryService: jest.Mocked<IInventoryService>;
   let inventoryAdapter: jest.Mocked<InventoryMasterPort>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>>;
 
   const connectionId = 'connection-123';
   const externalId = 'ext-product-9';
@@ -65,10 +67,17 @@ describe('MasterInventorySyncService', () => {
       getInventory: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IInventoryService>;
 
+    productsService = {
+      // Default: no variants resolved ⇒ product-level (null) keying, which
+      // matches the pre-#822 behaviour the existing cases below assert.
+      getVariantsByProductId: jest.fn().mockResolvedValue([]),
+    };
+
     service = new MasterInventorySyncService(
       integrationsService,
       identifierMapping,
-      inventoryService
+      inventoryService,
+      productsService as unknown as IProductsService
     );
   });
 
@@ -245,6 +254,88 @@ describe('MasterInventorySyncService', () => {
       await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
+    });
+  });
+
+  // #822 — master inventory is keyed to the product's canonical variant so the
+  // variant-keyed availability read (bulk offer wizard) finds stock. Log
+  // assertions are deliberately omitted per this file's logger-as-is precedent;
+  // the persisted `productVariantId` is the meaningful behavioural signal.
+  describe('variant resolution (#822)', () => {
+    const makeVariant = (id: string): ProductVariant => ({
+      id,
+      productId: internalProductId,
+      sku: null,
+      attributes: null,
+      ean: null,
+      gtin: null,
+    });
+
+    // PrestaShop returns product-level stock with no variantId (today's reality).
+    const productLevelAdapterInventory: InventoryPortInterface = {
+      id: 'adapter-inv',
+      productId: internalProductId,
+      quantity: 50,
+      reserved: 0,
+      available: 50,
+      updatedAt: new Date('2026-05-01T10:00:00Z'),
+    };
+
+    it('keys inventory to the synthetic variant when the product has exactly one variant', async () => {
+      inventoryAdapter.getInventory.mockResolvedValue(productLevelAdapterInventory);
+      productsService.getVariantsByProductId.mockResolvedValue([makeVariant('ol_variant_a')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.getVariantsByProductId).toHaveBeenCalledWith(internalProductId);
+      // existing-row lookup uses the resolved variant key, not null
+      expect(inventoryService.getInventory).toHaveBeenCalledWith(
+        internalProductId,
+        'ol_variant_a',
+        null
+      );
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: 'ol_variant_a' })
+      );
+    });
+
+    it('keeps inventory product-level (null) for a multi-variant product', async () => {
+      inventoryAdapter.getInventory.mockResolvedValue(productLevelAdapterInventory);
+      productsService.getVariantsByProductId.mockResolvedValue([
+        makeVariant('ol_variant_a'),
+        makeVariant('ol_variant_b'),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: null })
+      );
+    });
+
+    it('keeps inventory product-level (null) for a product with no variants', async () => {
+      inventoryAdapter.getInventory.mockResolvedValue(productLevelAdapterInventory);
+      productsService.getVariantsByProductId.mockResolvedValue([]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: null })
+      );
+    });
+
+    it('uses an adapter-supplied variantId verbatim without resolving variants', async () => {
+      inventoryAdapter.getInventory.mockResolvedValue({
+        ...productLevelAdapterInventory,
+        variantId: 'ol_variant_adapter',
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: 'ol_variant_adapter' })
+      );
     });
   });
 });

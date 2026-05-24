@@ -62,6 +62,15 @@ export interface IProductsService {
   getVariant(id: string): Promise<ProductVariant | null>;
 
   /**
+   * All variants belonging to a product, by internal product ID. A simple
+   * product resolves to its single deterministic synthetic variant; a
+   * combination product resolves to one variant per combination. An unknown
+   * product yields `[]`. Used by master-inventory sync to key inventory to the
+   * product's canonical variant (#822).
+   */
+  getVariantsByProductId(productId: string): Promise<ProductVariant[]>;
+
+  /**
    * Variant lookup by SKU list. Used by offer-mapping reconciliation flows
    * to resolve marketplace external-refs / SKUs back to internal variants.
    * Empty input returns `[]` without a DB round-trip.

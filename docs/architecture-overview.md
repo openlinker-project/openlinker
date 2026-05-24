@@ -144,6 +144,7 @@ The system is organized into the following core bounded contexts:
 - **Key Entities**: Inventory, InventoryAdjustment, InventoryMapping
 - **Location**: `libs/core/src/inventory/`
 - **Capability**: Uses `InventoryMasterPort` abstraction
+- **Variant-keyed master inventory (#822, [ADR-010](./architecture/adrs/010-variant-keyed-master-inventory.md))**: `MasterInventorySyncService` keys each `inventory_items` row to the product's canonical **variant** (a simple product's deterministic synthetic variant), not the bare product — so the variant-keyed availability read (`getAvailabilityByVariantIds`, used by the bulk offer wizard) finds stock. Resolution precedence: adapter-supplied `Inventory.variantId` → the product's lone variant when it has exactly one → else product-level (`productVariantId = NULL`). Multi-variant (combination) products stay product-level pending per-combination master stock (**#823**) and Allegro auto-grouped variant offers (**#824**); until then they read as 0 by variant.
 
 ### 4. Orders
 - **Responsibility**: Order ingestion, synchronization, and lifecycle management
