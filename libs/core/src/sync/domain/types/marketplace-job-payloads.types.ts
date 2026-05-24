@@ -175,3 +175,32 @@ export interface MarketplaceOfferPollCreationStatusPayloadV1 {
    */
   pollAttempt: number;
 }
+
+/**
+ * Payload for `marketplace.offer.statusSync` jobs (#816).
+ *
+ * Steady-state refresh of the live marketplace publication status for offers
+ * already mapped to internal variants — distinct from
+ * `marketplace.offer.pollCreationStatus` (#447), which follows a single
+ * freshly-created offer through `validating → active|draft` and writes
+ * `OfferCreationRecord`. This job reads every mapped offer's status and
+ * persists it into `offer_status_snapshots`; the two never write the same row.
+ *
+ * Enumeration is paced by a numeric **scan offset** persisted on the
+ * connection cursor (`cursorKey`, default `allegro.offerStatus.scanOffset`):
+ * each run refreshes the next `limit` offers ordered by the offer-mapping
+ * repository, advancing the offset and wrapping to `0` at the end of the
+ * catalog. There is no marketplace cursor — Allegro exposes no bulk status
+ * endpoint, so the work list is OL's own offer mappings.
+ */
+export interface MarketplaceOfferStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of mapped offers to refresh per run. */
+  limit: number;
+  /**
+   * Connection-cursor key under which the rolling numeric scan offset is
+   * persisted. Omitted → the handler falls back to
+   * `allegro.offerStatus.scanOffset`.
+   */
+  cursorKey?: string;
+}

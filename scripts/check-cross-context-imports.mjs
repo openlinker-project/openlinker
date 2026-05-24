@@ -227,6 +227,14 @@ const ALLOW_LIST = new Map([
     'apps/worker/src/sync/handlers/__tests__/marketplace-offers-sync.handler.spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
+  [
+    'apps/worker/src/sync/handlers/marketplace-offer-status-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/src/sync/handlers/__tests__/marketplace-offer-status-sync.handler.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
 
   // worker → sync.{SyncJobRepositoryPort + ConnectionCursorRepositoryPort} — rewire via ISyncJobsService + ISyncCursorsService
   [
@@ -316,6 +324,13 @@ const ALLOW_LIST = new Map([
 
   // apps → products.{ProductRepositoryPort, ProductVariantRepositoryPort} — rewire via IProductsService
   ['apps/api/test/integration/products-read.int-spec.ts', new Set(['ProductRepositoryPort'])],
+
+  // apps → listings.OfferStatusSnapshotRepositoryPort (#816) — int-spec validates the
+  // persistence round-trip directly; rewire via a read service if one lands.
+  [
+    'apps/api/test/integration/listings-offer-status-snapshot.int-spec.ts',
+    new Set(['OfferStatusSnapshotRepositoryPort']),
+  ],
 
   // apps → listings.{OfferMappingRepositoryPort, OfferCreationRecordRepositoryPort} +
   //        products.ProductVariantRepositoryPort — rewire via IListingsService + IProductsService
