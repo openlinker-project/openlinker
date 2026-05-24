@@ -22,7 +22,9 @@ describe('AllegroOAuthService', () => {
     del: jest.Mock;
   };
   let credentials: jest.Mocked<ICredentialsService>;
-  let connectionService: jest.Mocked<Pick<ConnectionService, 'get' | 'create'>>;
+  let connectionService: jest.Mocked<
+    Pick<ConnectionService, 'get' | 'create' | 'update' | 'updateCredentials'>
+  >;
 
   beforeEach(async () => {
     redisClient = {
@@ -38,7 +40,11 @@ describe('AllegroOAuthService', () => {
     connectionService = {
       get: jest.fn(),
       create: jest.fn(),
-    } as unknown as jest.Mocked<Pick<ConnectionService, 'get' | 'create'>>;
+      update: jest.fn(),
+      updateCredentials: jest.fn(),
+    } as unknown as jest.Mocked<
+      Pick<ConnectionService, 'get' | 'create' | 'update' | 'updateCredentials'>
+    >;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -236,6 +242,67 @@ describe('AllegroOAuthService', () => {
       const createCall = (connectionService.create as jest.Mock).mock.calls[0] as unknown[];
       const createdConfig = (createCall[0] as { config: Record<string, unknown> }).config;
       expect(createdConfig.masterCatalogConnectionId).toBeUndefined();
+    });
+
+    it('re-authenticates an existing connection in place when stateData.connectionId is set (#819)', async () => {
+      connectionService.get.mockResolvedValue({
+        id: 'conn-existing',
+        name: 'My Allegro',
+        platformType: 'allegro',
+        status: 'needs_reauth',
+      } as never);
+      connectionService.updateCredentials.mockResolvedValue(undefined as never);
+      connectionService.update.mockResolvedValue({
+        id: 'conn-existing',
+        name: 'My Allegro',
+        status: 'active',
+      } as never);
+
+      const result = await service.storeCredentialsAndCreateConnection(
+        { access_token: 'fresh-tok', refresh_token: 'fresh-rt', token_type: 'bearer' },
+        {
+          clientId: 'cid',
+          clientSecret: 'csec',
+          redirectUri: 'https://example.com/cb',
+          environment: 'sandbox',
+          connectionId: 'conn-existing',
+        }
+      );
+
+      // Credentials rotated in place; status cleared to active; NO new connection minted.
+      expect(connectionService.updateCredentials).toHaveBeenCalledWith(
+        'conn-existing',
+        expect.objectContaining({ accessToken: 'fresh-tok', refreshToken: 'fresh-rt' })
+      );
+      expect(connectionService.update).toHaveBeenCalledWith('conn-existing', { status: 'active' });
+      expect(connectionService.create).not.toHaveBeenCalled();
+      expect(credentials.create).not.toHaveBeenCalled();
+      expect(result).toEqual(expect.objectContaining({ id: 'conn-existing', status: 'active' }));
+    });
+
+    it('rejects re-auth when the target connection is not an Allegro connection', async () => {
+      connectionService.get.mockResolvedValue({
+        id: 'conn-ps',
+        name: 'Shop',
+        platformType: 'prestashop',
+        status: 'active',
+      } as never);
+
+      await expect(
+        service.storeCredentialsAndCreateConnection(
+          { access_token: 'tok', token_type: 'bearer' },
+          {
+            clientId: 'cid',
+            clientSecret: 'csec',
+            redirectUri: 'https://example.com/cb',
+            environment: 'sandbox',
+            connectionId: 'conn-ps',
+          }
+        )
+      ).rejects.toThrow(BadRequestException);
+
+      expect(connectionService.updateCredentials).not.toHaveBeenCalled();
+      expect(connectionService.update).not.toHaveBeenCalled();
     });
   });
 

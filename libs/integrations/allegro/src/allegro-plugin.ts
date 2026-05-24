@@ -31,6 +31,7 @@ import type { QuantityPollConfig } from './infrastructure/adapters/allegro-offer
 import { AllegroConnectionTesterAdapter } from './infrastructure/adapters/allegro-connection-tester.adapter';
 import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro-email-normalizer.adapter';
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+import { AllegroAuthFailureClassifierAdapter } from './infrastructure/adapters/allegro-auth-failure-classifier.adapter';
 import { AllegroConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/allegro-connection-config-shape-validator.adapter';
 import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
 import type { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
@@ -113,6 +114,10 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
       host.retryClassifierRegistry.register(
         'allegro.publicapi.v1',
         new AllegroRetryClassifierAdapter()
+      );
+      host.authFailureClassifierRegistry.register(
+        'allegro.publicapi.v1',
+        new AllegroAuthFailureClassifierAdapter()
       );
       host.connectionConfigShapeValidatorRegistry.register(
         'allegro.publicapi.v1',

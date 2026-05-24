@@ -16,20 +16,26 @@ import {
   SYNC_JOB_REPOSITORY_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+  AuthFailureClassifierRegistryService,
 } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-// The runner's *production* code is now platform-neutral (#581) — it
-// asks the retry-classifier registry instead of `instanceof`-ing Allegro
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+// The runner's *production* code is now platform-neutral (#581 / #819) — it
+// asks the classifier registries instead of `instanceof`-ing Allegro
 // classes directly. The runner *spec* still uses the real Allegro
-// classifier wired into a real registry to verify end-to-end behaviour;
+// classifiers wired into real registries to verify end-to-end behaviour;
 // these imports don't follow the runner's deletions.
 import {
   AllegroApiException,
   AllegroNetworkException,
+  AllegroAuthenticationException,
   AllegroRetryClassifierAdapter,
+  AllegroAuthFailureClassifierAdapter,
 } from '@openlinker/integrations-allegro';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { randomUUID } from 'crypto';
@@ -39,6 +45,7 @@ describe('SyncJobRunner', () => {
   let jobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let handlerRegistry: jest.Mocked<SyncJobHandlerRegistry>;
   let mockHandler: jest.Mocked<SyncJobHandler>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
   let moduleRef: TestingModule;
 
   beforeEach(async () => {
@@ -77,6 +84,30 @@ describe('SyncJobRunner', () => {
     const retryClassifierRegistry = new RetryClassifierRegistryService();
     retryClassifierRegistry.register('allegro.publicapi.v1', new AllegroRetryClassifierAdapter());
 
+    // Real auth-failure registry + real Allegro classifier — same rationale as
+    // the retry registry above: exercise the production registration path so
+    // the runner's "flag on terminal credential rejection" behaviour (#819) is
+    // verified end-to-end rather than via a mocked `isCredentialRejected`.
+    const authFailureClassifierRegistry = new AuthFailureClassifierRegistryService();
+    authFailureClassifierRegistry.register(
+      'allegro.publicapi.v1',
+      new AllegroAuthFailureClassifierAdapter()
+    );
+
+    // Connection port mock — the runner flips a flagged connection's status.
+    // Default: an active Allegro connection that updates cleanly.
+    const mockConnectionPort = {
+      get: jest.fn().mockResolvedValue({
+        id: 'conn-1',
+        platformType: 'allegro',
+        status: 'active',
+      }),
+      update: jest.fn().mockResolvedValue(undefined),
+      list: jest.fn(),
+      create: jest.fn(),
+      disable: jest.fn(),
+    } as unknown as jest.Mocked<ConnectionPort>;
+
     moduleRef = await Test.createTestingModule({
       providers: [
         SyncJobRunner,
@@ -101,12 +132,21 @@ describe('SyncJobRunner', () => {
           provide: RETRY_CLASSIFIER_REGISTRY_TOKEN,
           useValue: retryClassifierRegistry,
         },
+        {
+          provide: AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+          useValue: authFailureClassifierRegistry,
+        },
+        {
+          provide: CONNECTION_PORT_TOKEN,
+          useValue: mockConnectionPort,
+        },
       ],
     }).compile();
 
     runner = moduleRef.get<SyncJobRunner>(SyncJobRunner);
     jobRepository = moduleRef.get(SYNC_JOB_REPOSITORY_TOKEN);
     handlerRegistry = moduleRef.get(SyncJobHandlerRegistry);
+    connectionPort = moduleRef.get(CONNECTION_PORT_TOKEN);
   });
 
   afterEach(async () => {
@@ -424,6 +464,141 @@ describe('SyncJobRunner', () => {
         expect.any(Date)
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('connection flagging on terminal credential rejection (#819)', () => {
+    const createMockJob = (): SyncJob =>
+      new SyncJob(
+        randomUUID(),
+        'marketplace.orders.poll',
+        'conn-1',
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        1,
+        10,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date()
+      );
+
+    it('flags the connection needs_reauth when the cause is a terminal credential rejection', async () => {
+      const job = createMockJob();
+      const cause = new AllegroAuthenticationException(
+        'Authentication failed: Invalid or expired access token',
+        401,
+        'https://api.allegro.pl/order/checkout-forms'
+      );
+      const error = new SyncJobExecutionError(
+        'Marketplace orders poll failed: ' + cause.message,
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause
+      );
+      connectionPort.get.mockResolvedValueOnce({
+        id: job.connectionId,
+        platformType: 'allegro',
+        status: 'active',
+      } as never);
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(connectionPort.update).toHaveBeenCalledWith(job.connectionId, {
+        status: 'needs_reauth',
+      });
+      // The job is still marked dead — flagging is in addition to, not instead of.
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('does NOT flag the connection on a transient network failure (still retryable)', async () => {
+      const job = createMockJob();
+      const cause = new AllegroNetworkException(
+        'Token refresh network failure: fetch failed',
+        'https://allegro.pl/auth/oauth/token'
+      );
+      const error = new SyncJobExecutionError(
+        'Marketplace orders poll failed: ' + cause.message,
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause
+      );
+      jobRepository.markFailed.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(connectionPort.update).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    it('does NOT flag the connection on a non-auth non-retryable error (deterministic 422)', async () => {
+      const job = createMockJob();
+      const cause = new AllegroApiException('Validation failed', 422, 'body', 'https://api.allegro.pl/x');
+      const error = new SyncJobExecutionError(
+        'Marketplace offer create failed: Validation failed',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause
+      );
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      // Marked dead (non-retryable) but NOT flagged — a 422 is a data problem,
+      // not a credential rejection.
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(connectionPort.update).not.toHaveBeenCalled();
+    });
+
+    it('does NOT re-flag a connection that is not currently active', async () => {
+      const job = createMockJob();
+      const cause = new AllegroAuthenticationException('Invalid refresh token', 401);
+      const error = new SyncJobExecutionError(
+        'Marketplace orders poll failed',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause
+      );
+      connectionPort.get.mockResolvedValueOnce({
+        id: job.connectionId,
+        platformType: 'allegro',
+        status: 'disabled',
+      } as never);
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(connectionPort.update).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).toHaveBeenCalled();
+    });
+
+    it('swallows connection-flagging errors without masking the job failure', async () => {
+      const job = createMockJob();
+      const cause = new AllegroAuthenticationException('Invalid refresh token', 401);
+      const error = new SyncJobExecutionError(
+        'Marketplace orders poll failed',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        cause
+      );
+      connectionPort.get.mockRejectedValueOnce(new Error('DB down'));
+      jobRepository.markDead.mockResolvedValueOnce(undefined);
+
+      await expect((runner as any).handleJobFailure(job, error)).resolves.toBeUndefined();
+
+      // Job is still marked dead despite the flagging failure.
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
     });
   });
 

@@ -12,6 +12,7 @@
  *      screen so the access token can come back through the callback page
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
@@ -49,6 +50,11 @@ function maskSecret(secret: string): string {
 }
 
 export function AllegroSetupForm(): ReactElement {
+  const [searchParams] = useSearchParams();
+  // When present, this OAuth run re-authenticates an existing connection in
+  // place (rotating its credentials, clearing needs_reauth) instead of minting
+  // a new one (#819).
+  const reauthConnectionId = searchParams.get('reauth') ?? undefined;
   const startOAuth = useStartAllegroOAuthMutation();
   const { connectionsQuery, productMasterConnections, autoSelectedConnectionId } =
     useProductMasterConnections();
@@ -99,7 +105,7 @@ export function AllegroSetupForm(): ReactElement {
     try {
       const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
       const { authorizationUrl } = await startOAuth.mutateAsync(
-        toStartOAuthInput(values, redirectUri)
+        toStartOAuthInput(values, redirectUri, reauthConnectionId)
       );
       // Clear the dirty flag so abandon-prevention doesn't pop a native
       // "leave page?" confirm when we navigate to Allegro's consent screen.
@@ -132,6 +138,13 @@ export function AllegroSetupForm(): ReactElement {
       <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
         <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
+        {reauthConnectionId ? (
+          <Alert tone="warning" title="Re-authenticating an existing connection">
+            Completing this flow replaces the stored credentials for the flagged connection and
+            resumes syncing. Re-enter the Client ID and Client Secret from your Allegro developer
+            app — the connection and its mappings are preserved.
+          </Alert>
+        ) : null}
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}

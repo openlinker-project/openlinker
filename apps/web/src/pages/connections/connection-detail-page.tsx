@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
+import { usePlatform } from '../../shared/plugins';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -24,7 +25,52 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'neutral';
     case 'error':
       return 'error';
+    case 'needs_reauth':
+      return 'warning';
   }
+}
+
+/**
+ * Re-authentication banner (#819).
+ *
+ * Shown when a connection has been auto-flagged `needs_reauth` after a terminal
+ * credential rejection (the scheduler has paused syncing against it). For OAuth
+ * platforms it links to the setup wizard in re-auth mode (`?reauth={id}`),
+ * which rotates credentials in place and clears the flag. Non-OAuth platforms
+ * fall back to editing the connection's credentials.
+ */
+function ReauthRequiredBanner({ connection }: { connection: Connection }): ReactElement | null {
+  const platform = usePlatform(connection.platformType);
+
+  if (connection.status !== 'needs_reauth') return null;
+
+  const platformLabel = platform?.displayName ?? connection.platformType;
+  const oauthReauthTo =
+    platform?.requiresExternalAuthRedirect && platform.setupCard?.to
+      ? `${platform.setupCard.to}?reauth=${connection.id}`
+      : null;
+
+  return (
+    <Alert
+      tone="warning"
+      title="Re-authentication required"
+      action={
+        oauthReauthTo ? (
+          <Link className="button button--primary" to={oauthReauthTo}>
+            Re-authenticate
+          </Link>
+        ) : (
+          <Link className="button button--primary" to={`/connections/${connection.id}/edit`}>
+            Update credentials
+          </Link>
+        )
+      }
+    >
+      OpenLinker can no longer authenticate with {platformLabel} — the stored credentials were
+      rejected, so syncing is paused for this connection. Re-authenticate to restore access; the
+      connection and its mappings are preserved.
+    </Alert>
+  );
 }
 
 const TAB_VALUES = ['overview', 'health', 'actions', 'config'] as const;
@@ -195,6 +241,7 @@ export function ConnectionDetailPage(): ReactElement {
           message="No connection data was returned for this route. Retry from the integrations list or verify the selected identifier."
         />
       ) : null}
+      {connection ? <ReauthRequiredBanner connection={connection} /> : null}
       {connection ? (
         <ProductCatalogLinkBanner
           connection={connection}

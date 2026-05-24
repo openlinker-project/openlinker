@@ -37,6 +37,7 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
 export function toStartOAuthInput(
   values: AllegroSetupFormSubmission,
   redirectUri: string,
+  reauthConnectionId?: string,
 ): StartAllegroOAuthInput {
   return {
     clientId: values.clientId,
@@ -47,5 +48,6 @@ export function toStartOAuthInput(
     ...(values.masterCatalogConnectionId
       ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
       : {}),
+    ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
   };
 }

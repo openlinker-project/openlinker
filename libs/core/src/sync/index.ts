@@ -13,6 +13,7 @@ export { SyncJobRepositoryPort } from './domain/ports/sync-job-repository.port';
 export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
 export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
 export { RetryClassifierPort } from './domain/ports/retry-classifier.port';
+export { AuthFailureClassifierPort } from './domain/ports/auth-failure-classifier.port';
 export { SyncJobQueuePort, EnqueueJobRequest, EnqueueJobOptions } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 
@@ -84,6 +85,7 @@ export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.err
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
+export { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
 
 // Scheduler task contract (consumed by integration modules to contribute cron tasks)

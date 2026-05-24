@@ -44,6 +44,7 @@ import type {
 } from '@openlinker/core/integrations';
 import type {
   RetryClassifierRegistryService,
+  AuthFailureClassifierRegistryService,
   SchedulerTaskRegistryService,
 } from '@openlinker/core/sync';
 
@@ -94,6 +95,15 @@ export interface HostServices {
 
   /** Retry-classifier registry — adapter-owned exception-to-retry-policy mapping (#581). */
   readonly retryClassifierRegistry: RetryClassifierRegistryService;
+
+  /**
+   * Auth-failure classifier registry — adapter-owned mapping from an exception
+   * to "this is a terminal credential rejection, the connection needs
+   * re-authentication" (#819). The runner consults it at the dead-job boundary
+   * to flag the originating connection. Narrower than the retry classifier: a
+   * non-retryable validation error must NOT be classified here.
+   */
+  readonly authFailureClassifierRegistry: AuthFailureClassifierRegistryService;
 
   /** Scheduler-task registry — adapter-contributed cron tasks (#584). */
   readonly schedulerTaskRegistry: SchedulerTaskRegistryService;

@@ -271,4 +271,24 @@ describe('ConnectionDetailPage', () => {
       expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
     });
   });
+
+  describe('ReauthRequiredBanner (#819)', () => {
+    it('shows the re-auth banner with an OAuth re-auth link when status is needs_reauth', async () => {
+      const connection = makeAllegro({ status: 'needs_reauth' });
+      const apiClient = apiClientForBanner(connection, []);
+      await renderDetailPage(connection, apiClient);
+
+      expect(await screen.findByText('Re-authentication required')).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: /re-authenticate/i });
+      expect(link).toHaveAttribute('href', `/connections/new/allegro?reauth=${ALLEGRO_UUID}`);
+    });
+
+    it('does NOT show the re-auth banner when the connection is active', async () => {
+      const connection = makeAllegro({ status: 'active' });
+      const apiClient = apiClientForBanner(connection, []);
+      await renderDetailPage(connection, apiClient);
+
+      expect(screen.queryByText('Re-authentication required')).toBeNull();
+    });
+  });
 });

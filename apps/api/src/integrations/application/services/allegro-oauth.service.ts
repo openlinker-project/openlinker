@@ -64,7 +64,8 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     environment: string = 'sandbox',
     state?: string,
     connectionName?: string,
-    masterCatalogConnectionId?: string
+    masterCatalogConnectionId?: string,
+    connectionId?: string
   ): Promise<AllegroOAuthAuthorizationResponse> {
     // Generate state if not provided
     const oauthState = state || randomBytes(32).toString('hex');
@@ -78,6 +79,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       environment,
       connectionName,
       masterCatalogConnectionId,
+      connectionId,
     };
     const stateKey = `allegro:oauth:state:${oauthState}`;
     await this.redisClient.setEx(stateKey, this.STATE_TTL_SECONDS, JSON.stringify(stateData));
@@ -303,6 +305,14 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     tokenResponse: AllegroOAuthTokenResponse,
     stateData: OAuthStateData
   ): Promise<Connection> {
+    // Re-authentication path (#819): when state carries an existing
+    // connectionId, rotate that connection's credentials in place and clear
+    // its needs_reauth flag instead of minting a new connection — re-using the
+    // connection preserves all connection-scoped identifier mappings.
+    if (stateData.connectionId) {
+      return this.reauthenticateExistingConnection(tokenResponse, stateData, stateData.connectionId);
+    }
+
     this.logger.log(
       `Storing credentials and creating connection for Allegro (environment: ${stateData.environment}, connectionName: ${stateData.connectionName || 'N/A'})`
     );
@@ -363,6 +373,56 @@ export class AllegroOAuthService implements IAllegroOAuthService {
 
     this.logger.log(
       `Connection created successfully: ${connection.id} (name: ${connection.name}, credentialsRef: ${connection.credentialsRef})`
+    );
+
+    return connection;
+  }
+
+  /**
+   * Re-authenticate an existing connection in place (#819).
+   *
+   * Rotates the connection's stored OAuth credentials with the freshly-issued
+   * token and flips its status back to `active`, clearing a `needs_reauth`
+   * flag. Unlike the create path, this preserves the connection's id — and
+   * therefore every connection-scoped identifier mapping (products, offers,
+   * orders) that would be orphaned by minting a new connection.
+   */
+  private async reauthenticateExistingConnection(
+    tokenResponse: AllegroOAuthTokenResponse,
+    stateData: OAuthStateData,
+    connectionId: string
+  ): Promise<Connection> {
+    this.logger.log(`Re-authenticating existing Allegro connection in place: ${connectionId}`);
+
+    // Resolve + guard: must be an existing Allegro connection.
+    const existing = await this.connectionService.get(connectionId);
+    if (existing.platformType !== 'allegro') {
+      throw new BadRequestException(
+        `Connection ${connectionId} is not an Allegro connection (platformType: ${existing.platformType})`
+      );
+    }
+
+    // Same credential blob shape the create path persists, with the rotated token.
+    const credentials = {
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token,
+      expiresAt: tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString()
+        : undefined,
+      clientId: stateData.clientId,
+      clientSecret: stateData.clientSecret,
+    };
+
+    await this.connectionService.updateCredentials(
+      connectionId,
+      credentials as unknown as Record<string, unknown>
+    );
+
+    // Clear the re-auth flag — return the connection to active service.
+    const connection = await this.connectionService.update(connectionId, { status: 'active' });
+
+    this.logger.log(
+      `Connection re-authenticated successfully: ${connection.id} (name: ${connection.name}, status: ${connection.status})`
     );
 
     return connection;
