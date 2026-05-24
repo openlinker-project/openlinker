@@ -28,6 +28,7 @@ import {
 } from '@openlinker/core/integrations';
 import {
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { IDENTIFIER_MAPPING_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
@@ -58,6 +59,7 @@ describe('createNestAdapterModule', () => {
     connectionConfigShapeValidatorRegistry: object;
     connectionCredentialsShapeValidatorRegistry: object;
     retryClassifierRegistry: object;
+    authFailureClassifierRegistry: object;
     schedulerTaskRegistry: object;
   } {
     return {
@@ -71,6 +73,7 @@ describe('createNestAdapterModule', () => {
       connectionConfigShapeValidatorRegistry: {},
       connectionCredentialsShapeValidatorRegistry: {},
       retryClassifierRegistry: {},
+      authFailureClassifierRegistry: {},
       schedulerTaskRegistry: {},
     };
   }
@@ -103,6 +106,10 @@ describe('createNestAdapterModule', () => {
           useValue: registries.connectionCredentialsShapeValidatorRegistry,
         },
         { provide: RETRY_CLASSIFIER_REGISTRY_TOKEN, useValue: registries.retryClassifierRegistry },
+        {
+          provide: AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+          useValue: registries.authFailureClassifierRegistry,
+        },
         { provide: SCHEDULER_TASK_REGISTRY_TOKEN, useValue: registries.schedulerTaskRegistry },
         { provide: IDENTIFIER_MAPPING_PORT_TOKEN, useValue: stubIdentifierMapping },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: stubCredentialsResolver },
@@ -162,6 +169,7 @@ describe('createNestAdapterModule', () => {
         emailNormalizerRegistry: expect.any(Object),
         webhookProvisioningRegistry: expect.any(Object),
         retryClassifierRegistry: expect.any(Object),
+        authFailureClassifierRegistry: expect.any(Object),
         schedulerTaskRegistry: expect.any(Object),
       }),
     );

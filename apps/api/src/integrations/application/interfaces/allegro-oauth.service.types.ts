@@ -40,6 +40,13 @@ export interface OAuthStateData {
   environment: string;
   connectionName?: string;
   masterCatalogConnectionId?: string;
+  /**
+   * When set, the callback re-authenticates this existing connection in place
+   * (rotating its stored credentials and clearing a `needs_reauth` flag) rather
+   * than minting a new connection (#819). Re-using the connection preserves all
+   * connection-scoped identifier mappings (products / offers / orders).
+   */
+  connectionId?: string;
 }
 
 /**

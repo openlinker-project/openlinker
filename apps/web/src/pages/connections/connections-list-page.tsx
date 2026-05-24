@@ -11,7 +11,7 @@ import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Select } from '../../shared/ui/select';
 
-const CONNECTION_STATUSES = ['active', 'disabled', 'error'] as const;
+const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
 function isValidStatus(value: string): value is ConnectionStatus {
   return CONNECTION_STATUSES.includes(value as ConnectionStatus);
@@ -25,6 +25,8 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'neutral';
     case 'error':
       return 'error';
+    case 'needs_reauth':
+      return 'warning';
   }
 }
 

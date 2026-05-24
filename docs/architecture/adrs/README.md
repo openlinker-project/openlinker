@@ -97,5 +97,6 @@ One pointer per section, identical format every time.
 | [ADR-005](./005-postgres-authoritative-job-dedup.md) | Postgres-authoritative job dedup with Redis Streams as transport | Accepted | 2026-05-13 |
 | [ADR-006](./006-credentials-encryption-at-rest.md) | AES-256-GCM credentials encryption with prod-gate | Accepted | 2026-05-15 |
 | [ADR-007](./007-syncjob-status-vs-outcome-split.md) | SyncJob status-vs-outcome split | Accepted | 2026-04-15 |
+| [ADR-008](./008-auth-failure-classifier-connection-reauth.md) | Marketplace-agnostic auth-failure classifier for connection re-auth flagging | Accepted | 2026-05-24 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

@@ -18,8 +18,15 @@ export type PlatformType = string;
  * Runtime array of all valid connection status values. Used for validation,
  * Swagger documentation, and UI dropdowns. Follows OpenLinker engineering
  * standards: `as const` + derived union type pattern.
+ *
+ * `needs_reauth` is set automatically when a job dies from a terminal
+ * credential rejection (e.g. Allegro `invalid_grant` on token refresh, #819).
+ * It is distinct from `error` (which covers other failure modes) so the UI can
+ * surface a precise "re-authentication required" affordance, and — like every
+ * non-`active` status — the scheduler's `status: 'active'` filter stops
+ * enqueuing jobs against it. A successful re-auth flips it back to `active`.
  */
-export const ConnectionStatusValues = ['active', 'disabled', 'error'] as const;
+export const ConnectionStatusValues = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
 /**
  * Connection status type

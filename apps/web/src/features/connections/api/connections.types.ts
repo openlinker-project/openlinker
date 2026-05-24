@@ -15,7 +15,7 @@ export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro'] as const;
  */
 export type PlatformType = string;
 
-export type ConnectionStatus = 'active' | 'disabled' | 'error';
+export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
 
 /**
  * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.

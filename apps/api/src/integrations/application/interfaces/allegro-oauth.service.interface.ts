@@ -36,7 +36,8 @@ export interface IAllegroOAuthService {
     environment?: string,
     state?: string,
     connectionName?: string,
-    masterCatalogConnectionId?: string
+    masterCatalogConnectionId?: string,
+    connectionId?: string
   ): Promise<AllegroOAuthAuthorizationResponse>;
 
   /**
