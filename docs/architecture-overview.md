@@ -182,7 +182,7 @@ The system is organized into the following core bounded contexts:
   - Price management for marketplace offers
 - Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
 - Allegro offer sync uses `GET /sale/offer-events` with persisted cursor key `allegro.offers.lastEventId`.
-- **Offer status sync (#816)**: the `marketplace.offer.statusSync` job refreshes the live marketplace publication status (`active | activating | inactivating | inactive | ended`) of mapped offers into the `offer_status_snapshots` table — the *steady-state* counterpart to `OfferCreationRecord`'s one-shot creation lifecycle. It reuses the `OfferStatusReader` capability, enumerates OL's own offer mappings paged by a rolling scan-offset cursor (`allegro.offerStatus.scanOffset`; Allegro has no bulk status endpoint), and writes a disjoint table from the creation poller (#447) so the two never race. See [ADR-008](./architecture/adrs/008-persisted-offer-status-snapshots.md).
+- **Offer status sync (#816)**: the `marketplace.offer.statusSync` job refreshes the live marketplace publication status (`active | activating | inactivating | inactive | ended`) of mapped offers into the `offer_status_snapshots` table — the *steady-state* counterpart to `OfferCreationRecord`'s one-shot creation lifecycle. It reuses the `OfferStatusReader` capability, enumerates OL's own offer mappings paged by a rolling scan-offset cursor (`allegro.offerStatus.scanOffset`; Allegro has no bulk status endpoint), and writes a disjoint table from the creation poller (#447) so the two never race. See [ADR-009](./architecture/adrs/009-persisted-offer-status-snapshots.md).
 - Offer linking by barcode uses master-catalog scoping and links only on unique matches.
 - **Category parameter sections (#415 / #419)**: per-platform create-offer requests may split category parameters into **offer-section** and **product-section** payloads (`body.parameters[]` vs `body.productSet[].product.parameters[]` on Allegro — the latter carries Brand, Model, Manufacturer-code, etc., and mirrors the shape Allegro returns from `GET /sale/product-offers/{offerId}`). The neutral `CategoryParameter.section: 'offer' | 'product'` field carries this distinction through to adapters; the wizard renders both kinds in one unified list and the FE serializer (`serializeAllegroParameters`) splits them into two arrays at submit time. Adapters that cannot distinguish always emit `'offer'`.
 - **Public surface**: `@openlinker/core/listings` exposes pure contracts (ports, types, capability guards, entities, exceptions, service interfaces, Symbol tokens) safe to value-import from any sibling package. Runtime wiring (`ListingsModule` + the 8 `@Injectable` service classes) lives on the `@openlinker/core/listings/services` subpath — kept separate to prevent runtime circular requires when sibling packages value-import from the main barrel (#337/#359). Cross-context ORM-entity access (host-only) is routed through `@openlinker/core/<ctx>/orm-entities` sub-barrels (#594) — see `docs/engineering-standards.md § Import Aliases` for the general rule.
@@ -526,7 +526,7 @@ interface Connection {
   id: string;                    // Unique connection ID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Connection-specific configuration
   credentialsRef: string;        // Reference to credentials storage
   createdAt: Date;
@@ -1267,7 +1267,7 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
   id: string;                    // UUID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Platform-specific config
   credentialsRef: string;        // Reference to stored credentials
   adapterKey?: string;           // Optional explicit adapter key
@@ -1295,8 +1295,10 @@ registrations (connection tester, retry classifier, scheduler tasks, email
 normalizer, webhook provisioner), and a `createCapabilityAdapter(connection,
 capability, host)` factory. The `HostServices` bag carries the curated set
 of services every plugin can rely on: `logger`, `identifierMapping`,
-`credentialsResolver`, optional `cache`, plus typed handles to the 7
-well-known registries. Plugin-specific cross-package ports (e.g.
+`credentialsResolver`, optional `cache`, plus typed handles to the 8
+well-known registries (the 7 originals plus the auth-failure classifier
+registry, #819 — see [ADR-008](./architecture/adrs/008-auth-failure-classifier-connection-reauth.md)).
+Plugin-specific cross-package ports (e.g.
 `CustomerIdentityResolverPort`, `IMappingConfigService`) are passed into
 the descriptor's constructor closure — they're intentionally not in the
 host bag, to keep the contract surface lean.

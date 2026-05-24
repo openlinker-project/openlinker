@@ -16,7 +16,7 @@
  * status sync* (#816) does persist it — as `OfferPublicationStatus` on the
  * `offer_status_snapshots` table — so a union change is no longer purely
  * non-breaking: a removed/renamed member needs a data migration for that
- * table. Adding a member stays additive. See ADR-008.
+ * table. Adding a member stays additive. See ADR-009.
  *
  * @module libs/core/src/listings/domain/types
  * @see {@link OfferStatusReader} for the capability

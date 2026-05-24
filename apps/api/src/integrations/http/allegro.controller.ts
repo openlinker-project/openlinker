@@ -127,7 +127,8 @@ export class AllegroController {
       dto.environment || 'sandbox',
       dto.state,
       dto.connectionName,
-      dto.masterCatalogConnectionId
+      dto.masterCatalogConnectionId,
+      dto.connectionId // present when re-authenticating an existing connection in place (#819)
     );
 
     return result;

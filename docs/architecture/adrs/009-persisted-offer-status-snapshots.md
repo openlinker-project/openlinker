@@ -1,4 +1,4 @@
-# ADR-008: Persisted offer-status snapshots
+# ADR-009: Persisted offer-status snapshots
 
 - **Status**: Accepted
 - **Date**: 2026-05-23

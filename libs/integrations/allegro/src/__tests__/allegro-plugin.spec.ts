@@ -29,6 +29,7 @@ describe('createAllegroPlugin → register(host)', () => {
       connectionTesterRegistry: { register: jest.fn() },
       emailNormalizerRegistry: { register: jest.fn() },
       retryClassifierRegistry: { register: jest.fn() },
+      authFailureClassifierRegistry: { register: jest.fn() },
       schedulerTaskRegistry: { register: jest.fn() },
       connectionConfigShapeValidatorRegistry: configRegistry,
       connectionCredentialsShapeValidatorRegistry: credentialsRegistry,

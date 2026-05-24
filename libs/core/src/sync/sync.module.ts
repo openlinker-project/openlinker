@@ -12,6 +12,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsModule } from '@openlinker/core/events';
 import { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 import { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
+import { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 import { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
 import { SyncJobOrmEntity } from './infrastructure/persistence/entities/sync-job.orm-entity';
 import { SyncJobRepository } from './infrastructure/persistence/repositories/sync-job.repository';
@@ -32,6 +33,7 @@ import {
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SYNC_JOBS_SERVICE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -47,6 +49,7 @@ export {
   SYNC_JOB_RETRY_SERVICE_TOKEN,
   SYNC_JOB_BULK_RETRY_SERVICE_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SYNC_JOBS_SERVICE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -111,6 +114,17 @@ export {
       useExisting: RetryClassifierRegistryService,
     },
 
+    // Auth-failure classifier registry — integration modules self-register
+    // their platform-specific classifiers in `onModuleInit`; the runner queries
+    // the registry to decide whether a terminal job failure means the
+    // connection's credentials were rejected (re-auth required) without
+    // importing platform exception classes by name (#819).
+    AuthFailureClassifierRegistryService,
+    {
+      provide: AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+      useExisting: AuthFailureClassifierRegistryService,
+    },
+
     // Scheduler task registry — integration modules contribute their cron
     // tasks (Allegro orders-poll, offers-sync, …) at bootstrap; the API-side
     // `SchedulerService` drains the registry at `onApplicationBootstrap`
@@ -152,6 +166,8 @@ export {
     SyncJobBulkRetryService,
     RETRY_CLASSIFIER_REGISTRY_TOKEN,
     RetryClassifierRegistryService,
+    AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+    AuthFailureClassifierRegistryService,
     SCHEDULER_TASK_REGISTRY_TOKEN,
     SchedulerTaskRegistryService,
     SYNC_JOBS_SERVICE_TOKEN,
