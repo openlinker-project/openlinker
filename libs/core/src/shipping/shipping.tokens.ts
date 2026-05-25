@@ -12,3 +12,4 @@
 
 export const SHIPMENT_REPOSITORY_TOKEN = Symbol('ShipmentRepositoryPort');
 export const PICKUP_POINT_CACHE_TOKEN = Symbol('PickupPointCachePort');
+export const SHIPMENT_DISPATCH_SERVICE_TOKEN = Symbol('IShipmentDispatchService');
