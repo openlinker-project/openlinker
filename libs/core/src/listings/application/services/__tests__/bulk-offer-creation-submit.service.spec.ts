@@ -12,6 +12,8 @@ import { UnprocessableEntityException } from '@nestjs/common';
 
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
+import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 
 import type { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { BulkOfferCreationBatch } from '../../../domain/entities/bulk-offer-creation-batch.entity';
@@ -27,6 +29,8 @@ describe('BulkOfferCreationSubmitService', () => {
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let enqueueService: jest.Mocked<IOfferCreationEnqueueService>;
   let integrations: jest.Mocked<IIntegrationsService>;
+  let products: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
+  let inventoryQuery: jest.Mocked<Pick<IInventoryQueryService, 'getAvailabilityByVariantIds'>>;
 
   const connectionId = 'conn-1';
   const initiatedBy = 'user-1';
@@ -35,6 +39,14 @@ describe('BulkOfferCreationSubmitService', () => {
     ({
       ...(createOffer ? { createOffer } : {}),
     }) as unknown as OfferManagerPort;
+
+  const variant = (overrides: Partial<ProductVariant> & Pick<ProductVariant, 'id' | 'productId'>): ProductVariant => ({
+    sku: null,
+    attributes: null,
+    ean: null,
+    gtin: null,
+    ...overrides,
+  });
 
   const makeBatch = (overrides: Partial<BulkOfferCreationBatch> = {}): BulkOfferCreationBatch =>
     new BulkOfferCreationBatch(
@@ -93,11 +105,23 @@ describe('BulkOfferCreationSubmitService', () => {
       resolveAdapterMetadata: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    // Default: every id resolves to an unknown variant → passthrough (pre-#824
+    // behaviour). Multi-variant tests override per-id.
+    products = {
+      getVariant: jest.fn().mockResolvedValue(null),
+      getVariantsByProductId: jest.fn().mockResolvedValue([]),
+    };
+    inventoryQuery = {
+      getAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
+    };
+
     service = new BulkOfferCreationSubmitService(
       bulkBatchRepo,
       offerCreationRecords,
       enqueueService,
-      integrations
+      integrations,
+      products as unknown as IProductsService,
+      inventoryQuery as unknown as IInventoryQueryService
     );
   });
 
@@ -303,6 +327,182 @@ describe('BulkOfferCreationSubmitService', () => {
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
       expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('multi-variant expansion (#824)', () => {
+    it('expands a multi-variant product into one offer per variant with per-variant master stock', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222' }),
+        variant({ id: 'v-c', productId: 'P', ean: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1 },
+        { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 0 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(['v-a', 'v-b', 'v-c']);
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalCount: 3 })
+      );
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(3);
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0])).toEqual([
+        expect.objectContaining({ internalVariantId: 'v-a', stock: 10 }),
+        expect.objectContaining({ internalVariantId: 'v-b', stock: 5 }),
+        // v-c has 0 master stock → master is authoritative, lists as 0 (no
+        // phantom backfill to the operator's bulk quantity of 7).
+        expect.objectContaining({ internalVariantId: 'v-c', stock: 0 }),
+      ]);
+      expect(result.jobIds).toEqual(['job-v-a', 'job-v-b', 'job-v-c']);
+    });
+
+    it('expands each selected product once when two variants of the same product are submitted', async () => {
+      products.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(variant({ id, productId: 'P', ean: id }))
+      );
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222' }),
+        variant({ id: 'v-c', productId: 'P', ean: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a', 'v-b'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      // 3 distinct variants, not 6 — the second selected id is already covered.
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(3);
+      expect(products.getVariantsByProductId).toHaveBeenCalledTimes(1);
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalCount: 3 })
+      );
+    });
+
+    it('leaves a single-variant product unchanged and issues no inventory query', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 9, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'v-a',
+        stock: 9,
+      });
+      expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalCount: 1 })
+      );
+    });
+
+    it('skips sibling variants without a barcode (cannot link to a catalog product)', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P' }), // no ean/gtin → skipped
+        variant({ id: 'v-c', productId: 'P', gtin: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'v-a',
+        'v-c',
+      ]);
+      expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(['v-a', 'v-c']);
+    });
+
+    it('still lists the selected variant when the product variant list omits it (defensive)', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      // Inconsistent: siblings do not include the selected v-a.
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-b', productId: 'P', ean: '222' }),
+        variant({ id: 'v-c', productId: 'P', ean: '333' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+      });
+
+      const enqueuedIds = enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId);
+      expect(enqueuedIds).toContain('v-a');
+      expect(enqueuedIds).toHaveLength(3);
+    });
+
+    it('keeps the FE-resolved productCardId for the selected variant but drops it for siblings', async () => {
+      products.getVariant.mockResolvedValue(variant({ id: 'v-a', productId: 'P', ean: '111' }));
+      products.getVariantsByProductId.mockResolvedValue([
+        variant({ id: 'v-a', productId: 'P', ean: '111' }),
+        variant({ id: 'v-b', productId: 'P', ean: '222' }),
+      ]);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v-a', totalAvailable: 3, locationCount: 1 },
+        { productVariantId: 'v-b', totalAvailable: 3, locationCount: 1 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a'],
+        sharedConfig: {
+          stock: 7,
+          publishImmediately: false,
+          overrides: { categoryId: 'cat-1', productCardId: 'card-shared' },
+        },
+      });
+
+      // Selected variant keeps the wizard-resolved card.
+      expect(enqueueService.enqueueCreation.mock.calls[0][0].overrides).toEqual({
+        categoryId: 'cat-1',
+        productCardId: 'card-shared',
+      });
+      // Sibling self-links by its own barcode → no inherited card, other overrides survive.
+      expect(enqueueService.enqueueCreation.mock.calls[1][0].overrides).toEqual({
+        categoryId: 'cat-1',
+      });
     });
   });
 

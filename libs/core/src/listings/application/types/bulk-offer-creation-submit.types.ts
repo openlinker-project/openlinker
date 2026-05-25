@@ -90,13 +90,56 @@ export interface BulkOfferCreationSubmitInput {
 }
 
 /**
+ * Internal expansion unit produced before the enqueue fan-out (#824).
+ *
+ * A submitted id is a primary-variant id. For a **multi-variant** product
+ * it expands into one job per sibling variant so each lists as its own
+ * Allegro offer (Allegro auto-groups them from the Product Catalog by GTIN
+ * + distinguishing parameter — there is no variant-set API after 14 Apr
+ * 2026). Single-variant products and unknown ids pass through unchanged, so
+ * pre-#824 behaviour is byte-identical for them.
+ *
+ * Not exported from the package barrel — purely an implementation detail of
+ * `BulkOfferCreationSubmitService`.
+ */
+export interface ExpandedVariantJob {
+  /** The variant this offer-creation job lists. */
+  variantId: string;
+  /**
+   * The originally-submitted id whose `perProductOverrides` entry applies to
+   * this job. Equals `variantId` for passthrough jobs and for the selected
+   * variant of an expanded family; equals the family's selected id for
+   * expanded siblings.
+   */
+  selectedId: string;
+  /**
+   * Source `stock` from per-variant master inventory (#823) rather than the
+   * shared/override quantity — authoritative, including 0 (an out-of-stock
+   * variant is not backfilled with the operator's bulk quantity). Set only
+   * for multi-variant expansion jobs.
+   */
+  useMasterStock: boolean;
+  /**
+   * Strip the FE-resolved `productCardId` so this variant self-links to its
+   * own catalog product by its own barcode. Set for expanded siblings (the
+   * card the wizard resolved belongs to the selected variant only).
+   */
+  clearProductCard: boolean;
+}
+
+/**
  * Service-layer result returned by `submit`. The controller maps to
  * `BulkOfferCreateResponseDto` for the HTTP boundary.
  */
 export interface BulkOfferCreationSubmitResult {
   /** Persisted batch id (UUID). */
   batchId: string;
-  /** Redis Streams message ids, one per enqueued job; positional with `productIds`. */
+  /**
+   * Redis Streams message ids, one per enqueued offer. Positional with the
+   * expanded job list — for a multi-variant product this is one id per
+   * variant, so the array can be longer than the submitted `productIds`
+   * (#824).
+   */
   jobIds: string[];
 }
 
