@@ -46,6 +46,21 @@ export interface InventoryMasterPort {
   getInventory(productId: string, locationId?: string): Promise<Inventory>;
 
   /**
+   * List all inventory for a product, broken down by variant.
+   *
+   * Returns one `Inventory` entry per variant: a simple product yields a single
+   * entry keyed to its synthetic variant; a combination product yields one entry
+   * per combination, each with `variantId` set. This is the source the master
+   * inventory sync uses to write one variant-keyed row per combination (#823).
+   * Marketplace-agnostic — any inventory master expresses per-variant stock the
+   * same way.
+   *
+   * @param productId - Internal OpenLinker product ID
+   * @returns One Inventory per variant, each with internal IDs
+   */
+  listInventory(productId: string): Promise<Inventory[]>;
+
+  /**
    * Adjust inventory (increase or decrease)
    *
    * Adjusts the inventory quantity for a product or variant.
