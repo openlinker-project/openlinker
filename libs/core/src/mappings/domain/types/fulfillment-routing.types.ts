@@ -100,3 +100,19 @@ export interface FulfillmentRoutingResolution {
   processorConnectionId: string | null;
   source: FulfillmentRoutingSource;
 }
+
+/**
+ * A processor option the operator may route a source delivery method to,
+ * for the routing-config UI (#836). Read-side projection of the SAME
+ * compatibility predicate `replaceRules` validates against — so any returned
+ * candidate is guaranteed to pass `replaceRules`, and any rejected one is
+ * never offered.
+ *
+ * IDs + kind only by design: the FE resolves the connection's display name
+ * (`ConnectionEntityLabel`, name-first) and maps `processorKind → label`
+ * client-side, so core takes no dependency on connection naming or i18n.
+ */
+export interface CandidateProcessor {
+  processorKind: FulfillmentProcessorKind;
+  processorConnectionId: string;
+}

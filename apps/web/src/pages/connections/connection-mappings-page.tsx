@@ -13,22 +13,18 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { Alert } from '../../shared/ui/alert';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
+import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
 import { usePaymentMappingsQuery, useUpsertPaymentMappings } from '../../features/mappings/hooks/use-payment-mappings';
+import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import type { MappingOption } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 
-type TabId = 'status' | 'carriers' | 'payments';
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'status', label: 'Order Statuses' },
-  { id: 'carriers', label: 'Carriers' },
-  { id: 'payments', label: 'Payments' },
-];
+type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments';
 
 interface FallbackBannerSpec {
   tone: 'info' | 'warning';
@@ -40,6 +36,11 @@ interface FallbackBannerSpec {
  * Returns null when the banner should not render (loading, errored,
  * nothing unmapped, or when we genuinely don't have enough info to
  * decide). Banner only fires on the carriers tab.
+ *
+ * `unmappedCount` is routing-aware (#836): methods diverted to a non-OMP
+ * processor (Allegro Delivery, OL-managed carrier) never flow through PS
+ * carrier mapping, so the caller excludes them before counting — the
+ * banner only warns about methods that genuinely still need a PS carrier.
  *
  * Decision tree mirrors the BE adapter's resolution chain (#516):
  *   (1) `defaultCarrierId` set        → "using fallback: {name}"   info
@@ -115,6 +116,9 @@ export function ConnectionMappingsPage(): ReactElement {
   // can't load the connection we just suppress the banner; the BE still
   // does the right thing at sync time per #516.
   const connectionQuery = useConnectionQuery(connectionId);
+  // Routing rules feed two things: the Fulfillment tab and the routing-aware
+  // carrier-banner count (#836). Deduped with the panel's own subscription.
+  const routingRulesQuery = useRoutingRulesQuery(connectionId);
 
   // Per-panel error isolation (#484): a failure in one bundle key must not
   // block the other tabs. Each panel only watches the two keys it actually
@@ -130,8 +134,29 @@ export function ConnectionMappingsPage(): ReactElement {
   const upsertCarrier = useUpsertCarrierMappings(connectionId);
   const upsertPayment = useUpsertPaymentMappings(connectionId);
 
-  const isLoading = statusQuery.isLoading || carrierQuery.isLoading || paymentQuery.isLoading;
+  // Wait for the connection too so the capability-gated Fulfillment tab doesn't
+  // pop in after load. A connection *error* is still tolerated below (the tab
+  // simply stays hidden), matching the carrier-banner's error tolerance.
+  const isLoading =
+    statusQuery.isLoading ||
+    carrierQuery.isLoading ||
+    paymentQuery.isLoading ||
+    connectionQuery.isLoading;
   const loadError = statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? null;
+
+  // The Fulfillment tab applies only to connections that ingest orders (the
+  // routing key is a *source* delivery method). Capability-gated, not
+  // platformType-gated, so any future OrderSource adapter inherits it.
+  const supportsOrderSource =
+    connectionQuery.data?.supportedCapabilities.includes('OrderSource') ?? false;
+
+  const tabs: { id: TabId; label: string }[] = [
+    ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
+    { id: 'status' as const, label: 'Order Statuses' },
+    { id: 'carriers' as const, label: 'Carriers' },
+    { id: 'payments' as const, label: 'Payments' },
+  ];
+  const defaultTab = tabs[0].id;
 
   if (isLoading) {
     return (
@@ -164,14 +189,30 @@ export function ConnectionMappingsPage(): ReactElement {
   // rather than inline in the JSX so the conditions (loading/errored/no
   // unmapped methods) read top-to-bottom. Suppressed when any required
   // input isn't ready; the BE still does the right thing at sync time.
+  // Routing-aware unmapped count (#836): a method is "unmapped" for the carrier
+  // banner only if it has neither a PS carrier mapping NOR a routing rule
+  // diverting it to a non-PS processor. Subtraction by id (not length) is exact
+  // even when saved rows reference methods no longer in the live options.
+  const divertedMethodIds = new Set(
+    (routingRulesQuery.data ?? []).map((r) => r.sourceDeliveryMethodId),
+  );
+  const carrierMappedIds = new Set(carrierRows.map((r) => r.sourceValue));
+  const unmappedDeliveryCount = options.allegroDeliveryMethods.filter(
+    (m) => !carrierMappedIds.has(m.value) && !divertedMethodIds.has(m.value),
+  ).length;
+
   const carriersReady =
-    !optionsLoading && carrierOptionsError === null && connectionQuery.data !== undefined;
+    !optionsLoading &&
+    carrierOptionsError === null &&
+    connectionQuery.data !== undefined &&
+    !routingRulesQuery.isLoading &&
+    routingRulesQuery.error === null;
   const connectionConfig = connectionQuery.data?.config as
     | { defaultCarrierId?: unknown }
     | undefined;
   const carrierFallbackBanner = carriersReady
     ? deriveCarrierFallbackBanner({
-        unmappedCount: options.allegroDeliveryMethods.length - carrierRows.length,
+        unmappedCount: unmappedDeliveryCount,
         defaultCarrierId:
           connectionConfig?.defaultCarrierId !== undefined &&
           connectionConfig.defaultCarrierId !== null
@@ -216,14 +257,25 @@ export function ConnectionMappingsPage(): ReactElement {
         visible but large tables may overflow horizontally.
       </DesktopOnlyBanner>
 
-      <Tabs defaultValue="status" aria-label="Mapping types">
+      <Tabs defaultValue={defaultTab} aria-label="Mapping types">
         <TabsList>
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
+
+        {supportsOrderSource && (
+          <TabsContent value="fulfillment">
+            <RoutingRulesPanel
+              connectionId={connectionId}
+              deliveryMethods={options.allegroDeliveryMethods}
+              deliveryMethodsLoading={optionsLoading}
+              deliveryMethodsError={optionsErrors.allegroDeliveryMethods ?? null}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="status">
           <MappingPanel

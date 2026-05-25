@@ -123,6 +123,41 @@ export interface UpsertCategoryMappingPayload {
   allegroCategoryPath?: string;
 }
 
+// ── Fulfillment routing (#836) ─────────────────────────────────────────────
+
+/** Mirrors the backend `FulfillmentProcessorKind` (`@openlinker/core/mappings`). */
+export const FulfillmentProcessorKindValues = [
+  'omp_fulfilled',
+  'ol_managed_carrier',
+  'source_brokered',
+] as const;
+export type FulfillmentProcessorKind = (typeof FulfillmentProcessorKindValues)[number];
+
+/** A persisted routing rule — a source delivery method diverted away from the PS default. */
+export interface RoutingRule {
+  id: string;
+  sourceConnectionId: string;
+  sourceDeliveryMethodId: string;
+  processorKind: FulfillmentProcessorKind;
+  processorConnectionId: string;
+}
+
+export interface RoutingRuleInput {
+  sourceDeliveryMethodId: string;
+  processorKind: FulfillmentProcessorKind;
+  processorConnectionId: string;
+}
+
+export interface UpsertRoutingRulesPayload {
+  items: RoutingRuleInput[];
+}
+
+/** A processor a delivery method may be routed to (from the candidates endpoint). */
+export interface CandidateProcessor {
+  processorKind: FulfillmentProcessorKind;
+  processorConnectionId: string;
+}
+
 // ── Mapping options bundle ────────────────────────────────────────────────
 
 export interface MappingOptions {

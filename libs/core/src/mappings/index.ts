@@ -38,4 +38,5 @@ export type {
   FulfillmentRoutingRuleInput,
   FulfillmentRoutingQuery,
   FulfillmentRoutingResolution,
+  CandidateProcessor,
 } from './domain/types/fulfillment-routing.types';

@@ -29,6 +29,9 @@ import type {
   UpsertCarrierMappingsPayload,
   UpsertPaymentMappingsPayload,
   UpsertCategoryMappingPayload,
+  RoutingRule,
+  CandidateProcessor,
+  UpsertRoutingRulesPayload,
 } from './mappings.types';
 
 export interface MappingsApi {
@@ -58,6 +61,14 @@ export interface MappingsApi {
   deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
   getPrestashopCategories: (connectionId: string) => Promise<PrestashopCategory[]>;
+
+  // Fulfillment routing (#836) — sibling of /mappings, keyed on the source connection.
+  getRoutingRules: (connectionId: string) => Promise<RoutingRule[]>;
+  replaceRoutingRules: (
+    connectionId: string,
+    payload: UpsertRoutingRulesPayload,
+  ) => Promise<RoutingRule[]>;
+  getRoutingCandidates: (connectionId: string) => Promise<CandidateProcessor[]>;
 }
 
 interface ApiRequest {
@@ -92,6 +103,18 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         method: 'PUT',
         body: JSON.stringify(payload),
       }),
+
+    getRoutingRules: (connectionId) =>
+      request<RoutingRule[]>(`/connections/${connectionId}/routing-rules`),
+
+    replaceRoutingRules: (connectionId, payload) =>
+      request<RoutingRule[]>(`/connections/${connectionId}/routing-rules`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    getRoutingCandidates: (connectionId) =>
+      request<CandidateProcessor[]>(`/connections/${connectionId}/routing-rules/candidates`),
 
     getMappingOptions: (connectionId, side, kind) =>
       request<MappingOption[]>(

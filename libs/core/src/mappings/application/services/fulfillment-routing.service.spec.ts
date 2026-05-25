@@ -8,7 +8,7 @@
  */
 
 import type { AdapterMetadata, IIntegrationsService } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { FulfillmentRoutingService } from './fulfillment-routing.service';
 import type { FulfillmentRoutingRepositoryPort } from '../../domain/ports/fulfillment-routing-repository.port';
 import { FulfillmentRoutingRule } from '../../domain/entities/fulfillment-routing-rule.entity';
@@ -38,6 +38,7 @@ function makeRule(overrides: Partial<FulfillmentRoutingRule> = {}): FulfillmentR
 describe('FulfillmentRoutingService', () => {
   let repository: jest.Mocked<FulfillmentRoutingRepositoryPort>;
   let integrations: jest.Mocked<IIntegrationsService>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
   let service: FulfillmentRoutingService;
 
   /** Stub `getAdapter` to return a connection declaring the given capabilities. */
@@ -46,6 +47,23 @@ describe('FulfillmentRoutingService', () => {
       connection: { id: connectionId } as Connection,
       metadata: { supportedCapabilities: capabilities } as AdapterMetadata,
     });
+  }
+
+  /** Stub `getAdapter` to return per-connection capabilities (for candidate enumeration). */
+  function declareCapabilitiesByConnection(capsByConnection: Record<string, string[]>): void {
+    integrations.getAdapter.mockImplementation((connectionId: string) =>
+      Promise.resolve({
+        connection: { id: connectionId } as Connection,
+        metadata: {
+          supportedCapabilities: capsByConnection[connectionId] ?? [],
+        } as AdapterMetadata,
+      }),
+    );
+  }
+
+  /** Build a minimal active-connection list for `connectionPort.list`. */
+  function activeConnections(...ids: string[]): Connection[] {
+    return ids.map((id) => ({ id }) as Connection);
   }
 
   beforeEach(() => {
@@ -60,7 +78,14 @@ describe('FulfillmentRoutingService', () => {
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
     };
-    service = new FulfillmentRoutingService(repository, integrations);
+    connectionPort = {
+      get: jest.fn(),
+      list: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      disable: jest.fn(),
+    };
+    service = new FulfillmentRoutingService(repository, integrations, connectionPort);
   });
 
   describe('resolve', () => {
@@ -256,6 +281,111 @@ describe('FulfillmentRoutingService', () => {
 
       await expect(service.getRules(SOURCE)).resolves.toBe(rules);
       expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(SOURCE);
+    });
+  });
+
+  describe('getCandidateProcessors', () => {
+    it('offers each connection only under the kinds its capabilities + topology allow', async () => {
+      declareCapabilitiesByConnection({
+        [SOURCE]: ['OrderSource'],
+        [PS]: ['OrderProcessorManager'],
+        [INPOST]: ['ShippingProviderManager'],
+      });
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS, INPOST));
+
+      const candidates = await service.getCandidateProcessors(SOURCE);
+
+      expect(candidates).toEqual(
+        expect.arrayContaining([
+          { processorKind: 'omp_fulfilled', processorConnectionId: PS },
+          { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST },
+        ]),
+      );
+      // SOURCE declares only OrderSource → no source_brokered (needs SPM), not an OMP/carrier.
+      expect(candidates).not.toContainEqual({
+        processorKind: 'source_brokered',
+        processorConnectionId: SOURCE,
+      });
+      // A distinct carrier connection is never an OMP candidate.
+      expect(candidates).not.toContainEqual({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: INPOST,
+      });
+      expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
+    });
+
+    it('offers source_brokered for the source connection when it declares ShippingProviderManager', async () => {
+      declareCapabilitiesByConnection({ [SOURCE]: ['OrderSource', 'ShippingProviderManager'] });
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE));
+
+      const candidates = await service.getCandidateProcessors(SOURCE);
+
+      expect(candidates).toContainEqual({
+        processorKind: 'source_brokered',
+        processorConnectionId: SOURCE,
+      });
+      // Topology: an OL-managed carrier must be distinct from the source.
+      expect(candidates).not.toContainEqual({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: SOURCE,
+      });
+    });
+
+    it('never offers a candidate that replaceRules would reject (shared-predicate consistency)', async () => {
+      declareCapabilitiesByConnection({
+        [SOURCE]: ['OrderSource', 'ShippingProviderManager'],
+        [PS]: ['OrderProcessorManager'],
+        [INPOST]: ['ShippingProviderManager'],
+      });
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS, INPOST));
+      repository.replaceForConnection.mockResolvedValue([]);
+
+      const candidates = await service.getCandidateProcessors(SOURCE);
+      expect(candidates.length).toBeGreaterThan(0);
+
+      for (const candidate of candidates) {
+        await expect(
+          service.replaceRules(SOURCE, [
+            {
+              sourceDeliveryMethodId: `m-${candidate.processorKind}-${candidate.processorConnectionId}`,
+              processorKind: candidate.processorKind,
+              processorConnectionId: candidate.processorConnectionId,
+            },
+          ]),
+        ).resolves.toBeDefined();
+      }
+    });
+
+    it('propagates when the source connection cannot be resolved', async () => {
+      integrations.getAdapter.mockRejectedValue(new Error('connection not found'));
+
+      await expect(service.getCandidateProcessors(SOURCE)).rejects.toThrow('connection not found');
+      expect(connectionPort.list).not.toHaveBeenCalled();
+    });
+
+    it('skips an active connection whose adapter metadata cannot be resolved', async () => {
+      const BROKEN = 'conn-broken';
+      // SOURCE + PS resolve normally; BROKEN (stale adapterKey, plugin removed)
+      // rejects during enumeration. It must be skipped, not fail the whole list.
+      integrations.getAdapter.mockImplementation((connectionId: string) => {
+        if (connectionId === BROKEN) {
+          return Promise.reject(new Error('adapter not registered'));
+        }
+        const caps: Record<string, string[]> = {
+          [SOURCE]: ['OrderSource'],
+          [PS]: ['OrderProcessorManager'],
+        };
+        return Promise.resolve({
+          connection: { id: connectionId } as Connection,
+          metadata: { supportedCapabilities: caps[connectionId] ?? [] } as AdapterMetadata,
+        });
+      });
+      connectionPort.list.mockResolvedValue(activeConnections(SOURCE, PS, BROKEN));
+
+      const candidates = await service.getCandidateProcessors(SOURCE);
+
+      expect(candidates).toContainEqual({ processorKind: 'omp_fulfilled', processorConnectionId: PS });
+      expect(candidates.some((c) => c.processorConnectionId === BROKEN)).toBe(false);
     });
   });
 });

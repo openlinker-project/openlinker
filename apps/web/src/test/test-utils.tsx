@@ -316,6 +316,9 @@ export function createMockApiClient(
       getPaymentMappings: vi.fn().mockResolvedValue([]),
       upsertPaymentMappings: vi.fn().mockResolvedValue([]),
       getMappingOptions: vi.fn().mockResolvedValue([]),
+      getRoutingRules: vi.fn().mockResolvedValue([]),
+      replaceRoutingRules: vi.fn().mockResolvedValue([]),
+      getRoutingCandidates: vi.fn().mockResolvedValue([]),
       ...overrides.mappings,
     } as ApiClient['mappings'],
     syncJobs: {

@@ -13,6 +13,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { StatusMappingOrmEntity } from './infrastructure/persistence/entities/status-mapping.orm-entity';
 import { CarrierMappingOrmEntity } from './infrastructure/persistence/entities/carrier-mapping.orm-entity';
 import { PaymentMappingOrmEntity } from './infrastructure/persistence/entities/payment-mapping.orm-entity';
@@ -45,6 +46,10 @@ import {
       FulfillmentRoutingRuleOrmEntity,
     ]),
     IntegrationsModule,
+    // Provides CONNECTION_PORT_TOKEN — FulfillmentRoutingService enumerates
+    // active connections for getCandidateProcessors (#836). IntegrationsModule
+    // imports IdentifierMappingModule but does not re-export the token.
+    IdentifierMappingModule,
   ],
   providers: [
     StatusMappingRepository,
