@@ -23,10 +23,15 @@ import type {
   UpsertRoutingRulesPayload,
 } from '../api/mappings.types';
 
-export function useRoutingRulesQuery(connectionId: string): UseQueryResult<RoutingRule[]> {
+export function useRoutingRulesQuery(
+  connectionId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<RoutingRule[]> {
   const apiClient = useApiClient();
   return useQuery({
-    enabled: connectionId.length > 0,
+    // Caller may gate further (e.g. only for OrderSource connections); the
+    // connectionId guard always applies.
+    enabled: connectionId.length > 0 && (options?.enabled ?? true),
     queryKey: mappingsQueryKeys.routingRules(connectionId),
     queryFn: () => apiClient.mappings.getRoutingRules(connectionId),
   });

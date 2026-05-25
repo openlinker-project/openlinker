@@ -236,14 +236,19 @@ export function RoutingRulesPanel({
         )}
       </div>
 
-      <p className="muted-text" style={{ marginBottom: '1rem' }}>
+      <p className="muted-text" style={{ marginBottom: 'var(--space-4)' }}>
         Choose how each marketplace delivery method is fulfilled. Methods stay with the default
         order-management platform unless you divert them to a connected carrier or
         marketplace-delivery processor.
       </p>
 
       {divertOptions.length === 0 && (
-        <p className="muted-text" role="status" aria-live="polite" style={{ marginBottom: '0.75rem' }}>
+        <p
+          className="muted-text"
+          role="status"
+          aria-live="polite"
+          style={{ marginBottom: 'var(--space-3)' }}
+        >
           No compatible fulfillment processors are connected yet. Every method stays with the
           default until you add a carrier-managed or marketplace-delivery connection.
         </p>
@@ -291,12 +296,19 @@ export function RoutingRulesPanel({
       )}
 
       {replaceMutation.error && (
-        <p className="error-message" role="alert" style={{ marginTop: '0.5rem' }}>
+        <p className="error-message" role="alert" style={{ marginTop: 'var(--space-2)' }}>
           {replaceMutation.error.message}
         </p>
       )}
 
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div
+        style={{
+          marginTop: 'var(--space-4)',
+          display: 'flex',
+          gap: 'var(--space-2)',
+          alignItems: 'center',
+        }}
+      >
         <Button tone="primary" disabled={!isDirty || replaceMutation.isPending} onClick={handleSave}>
           {replaceMutation.isPending ? 'Saving…' : 'Save routing'}
         </Button>

@@ -72,6 +72,12 @@ describe('FulfillmentRoutingController', () => {
         },
       ]);
     });
+
+    it('should map ConnectionNotFoundException to 404', async () => {
+      routing.getRules.mockRejectedValue(new ConnectionNotFoundException(SOURCE));
+
+      await expect(controller.getRules(SOURCE)).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 
   describe('getCandidates', () => {

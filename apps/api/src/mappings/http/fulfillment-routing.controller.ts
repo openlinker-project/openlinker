@@ -53,10 +53,15 @@ export class FulfillmentRoutingController {
   @ApiOperation({ summary: 'Get fulfillment-routing rules for a source connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [RoutingRuleResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getRules(@Param('connectionId') connectionId: string): Promise<RoutingRuleResponseDto[]> {
-    const rules = await this.routing.getRules(connectionId);
-    return rules.map((rule) => RoutingRuleResponseDto.fromDomain(rule));
+    try {
+      const rules = await this.routing.getRules(connectionId);
+      return rules.map((rule) => RoutingRuleResponseDto.fromDomain(rule));
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
   }
 
   @Get('candidates')

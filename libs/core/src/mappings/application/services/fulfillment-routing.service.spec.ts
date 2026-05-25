@@ -9,6 +9,7 @@
 
 import type { AdapterMetadata, IIntegrationsService } from '@openlinker/core/integrations';
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import { FulfillmentRoutingService } from './fulfillment-routing.service';
 import type { FulfillmentRoutingRepositoryPort } from '../../domain/ports/fulfillment-routing-repository.port';
 import { FulfillmentRoutingRule } from '../../domain/entities/fulfillment-routing-rule.entity';
@@ -275,12 +276,20 @@ describe('FulfillmentRoutingService', () => {
   });
 
   describe('getRules', () => {
-    it('should delegate to the repository', async () => {
+    it('should delegate to the repository when the connection exists', async () => {
       const rules = [makeRule()];
+      connectionPort.get.mockResolvedValue({ id: SOURCE } as Connection);
       repository.findBySourceConnectionId.mockResolvedValue(rules);
 
       await expect(service.getRules(SOURCE)).resolves.toBe(rules);
       expect(repository.findBySourceConnectionId).toHaveBeenCalledWith(SOURCE);
+    });
+
+    it('should reject and not query rules when the connection does not exist', async () => {
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException(SOURCE));
+
+      await expect(service.getRules(SOURCE)).rejects.toBeInstanceOf(ConnectionNotFoundException);
+      expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
     });
   });
 

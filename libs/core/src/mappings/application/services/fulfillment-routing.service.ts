@@ -67,6 +67,12 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
   ) {}
 
   async getRules(sourceConnectionId: string): Promise<FulfillmentRoutingRule[]> {
+    // Validate existence (throws ConnectionNotFoundException → 404 on unknown),
+    // but NOT active status — an operator can still read the routing config of a
+    // disabled connection. Uniform "unknown connection → 404" with
+    // getCandidateProcessors / replaceRules, which additionally require active
+    // (they resolve adapter metadata via getAdapter).
+    await this.connectionPort.get(sourceConnectionId);
     return this.repository.findBySourceConnectionId(sourceConnectionId);
   }
 
@@ -80,28 +86,40 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     // connection whose adapter wouldn't construct (e.g. missing credentials).
     const connections = await this.connectionPort.list({ status: 'active' });
 
+    // Resolve each connection's adapter metadata concurrently (the lookups are
+    // independent). A connection whose metadata can't be resolved (e.g. its
+    // plugin was removed, leaving a stale adapterKey) is simply not an offerable
+    // processor — drop it rather than blanking the whole candidate list.
+    const resolved = await Promise.all(
+      connections.map(async (connection) => {
+        try {
+          const { metadata } = await this.integrations.getAdapter(connection.id);
+          return { connectionId: connection.id, capabilities: metadata.supportedCapabilities };
+        } catch (error) {
+          this.logger.debug(
+            `Skipping connection ${connection.id} in candidate enumeration: ` +
+              `adapter metadata unresolved (${(error as Error).message})`,
+          );
+          return null;
+        }
+      }),
+    );
+
+    // Promise.all preserves input order, so candidate order follows the
+    // connection list deterministically.
     const candidates: CandidateProcessor[] = [];
-    for (const connection of connections) {
-      // A connection whose adapter metadata can't be resolved (e.g. its plugin
-      // was removed, leaving a stale adapterKey) is simply not an offerable
-      // processor — skip it rather than blanking the whole candidate list.
-      let capabilities: readonly string[];
-      try {
-        const { metadata } = await this.integrations.getAdapter(connection.id);
-        capabilities = metadata.supportedCapabilities;
-      } catch (error) {
-        this.logger.debug(
-          `Skipping connection ${connection.id} in candidate enumeration: ` +
-            `adapter metadata unresolved (${(error as Error).message})`,
-        );
-        continue;
-      }
+    for (const entry of resolved) {
+      if (!entry) continue;
       for (const processorKind of FulfillmentProcessorKindValues) {
         if (
-          this.evaluateCompatibility(processorKind, sourceConnectionId, connection.id, capabilities)
-            .compatible
+          this.evaluateCompatibility(
+            processorKind,
+            sourceConnectionId,
+            entry.connectionId,
+            entry.capabilities,
+          ).compatible
         ) {
-          candidates.push({ processorKind, processorConnectionId: connection.id });
+          candidates.push({ processorKind, processorConnectionId: entry.connectionId });
         }
       }
     }

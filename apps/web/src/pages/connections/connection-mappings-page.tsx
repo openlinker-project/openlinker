@@ -116,9 +116,17 @@ export function ConnectionMappingsPage(): ReactElement {
   // can't load the connection we just suppress the banner; the BE still
   // does the right thing at sync time per #516.
   const connectionQuery = useConnectionQuery(connectionId);
+
+  // The Fulfillment tab + routing rules apply only to connections that ingest
+  // orders (the routing key is a *source* delivery method). Capability-gated,
+  // not platformType-gated, so any future OrderSource adapter inherits it.
+  const supportsOrderSource =
+    connectionQuery.data?.supportedCapabilities.includes('OrderSource') ?? false;
+
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
-  // carrier-banner count (#836). Deduped with the panel's own subscription.
-  const routingRulesQuery = useRoutingRulesQuery(connectionId);
+  // carrier-banner count (#836). Gated to OrderSource connections (no rules
+  // exist otherwise); deduped with the panel's own subscription.
+  const routingRulesQuery = useRoutingRulesQuery(connectionId, { enabled: supportsOrderSource });
 
   // Per-panel error isolation (#484): a failure in one bundle key must not
   // block the other tabs. Each panel only watches the two keys it actually
@@ -143,12 +151,6 @@ export function ConnectionMappingsPage(): ReactElement {
     paymentQuery.isLoading ||
     connectionQuery.isLoading;
   const loadError = statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? null;
-
-  // The Fulfillment tab applies only to connections that ingest orders (the
-  // routing key is a *source* delivery method). Capability-gated, not
-  // platformType-gated, so any future OrderSource adapter inherits it.
-  const supportsOrderSource =
-    connectionQuery.data?.supportedCapabilities.includes('OrderSource') ?? false;
 
   const tabs: { id: TabId; label: string }[] = [
     ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
