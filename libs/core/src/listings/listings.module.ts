@@ -11,6 +11,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { ProductsModule } from '@openlinker/core/products';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';
 import { OfferLinkingService } from './application/services/offer-linking.service';
@@ -95,6 +96,11 @@ export {
     IntegrationsModule,
     IdentifierMappingModule,
     ProductsModule,
+    // Per-variant master stock for multi-variant bulk-offer expansion (#824).
+    // No DI cycle: at the NestJS module layer InventoryModule does not import
+    // ListingsModule, and the documented `inventory → listings` edge is a
+    // type/token-only import. App-boot integration tests verify the resolved graph.
+    InventoryModule,
     MappingsModule,
     SyncModule,
   ],
