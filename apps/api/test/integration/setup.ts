@@ -66,6 +66,11 @@ const harness = createIntegrationTestHarness({
     'refresh_tokens',
     'product_variants',
     'products',
+    // fulfillment_routing_rules is connection-scoped config (#832). Listed
+    // explicitly because — like connection_carrier_mappings — its FKs live in
+    // the migration, not the ORM decorators, so the synchronize-built test
+    // schema has no FK to cascade from `connections`.
+    'fulfillment_routing_rules',
     'connections',
     'users',
   ],
