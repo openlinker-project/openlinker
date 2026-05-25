@@ -879,6 +879,8 @@ When `emailHash` matches multiple customers (collision):
 
 ## Hexagonal Architecture Structure
 
+*See [ADR-011](./architecture/adrs/011-domain-entity-behavior.md) for the domain entity behavior policy (anemic-by-default with pure read-only derivations).*
+
 Each domain module follows a standardized hexagonal structure:
 
 ```

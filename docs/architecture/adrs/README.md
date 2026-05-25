@@ -100,5 +100,6 @@ One pointer per section, identical format every time.
 | [ADR-008](./008-auth-failure-classifier-connection-reauth.md) | Marketplace-agnostic auth-failure classifier for connection re-auth flagging | Accepted | 2026-05-24 |
 | [ADR-009](./009-persisted-offer-status-snapshots.md) | Persisted offer-status snapshots | Accepted | 2026-05-23 |
 | [ADR-010](./010-variant-keyed-master-inventory.md) | Variant-keyed master inventory | Accepted | 2026-05-24 |
+| [ADR-011](./011-domain-entity-behavior.md) | Domain entity behavior — anemic-by-default with pure read-only derivations | Accepted | 2026-05-25 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
