@@ -930,6 +930,44 @@ export class Product {
 }
 ```
 
+### Behavior on Domain Entities
+
+**Entities are anemic-by-default, with a bounded allowance for *pure read-only* behavior.** See [ADR-011](./architecture/adrs/011-domain-entity-behavior.md) for the decision and rationale (immutable entities + thin data-mapper persistence + an orchestration-shaped domain).
+
+A domain entity **MAY** expose:
+
+- instance getters/methods that are **pure synchronous functions of its own already-loaded fields** — no `async`/`Promise`, no parameters except scalars or a `Date now`, no I/O, no repository/port/service access, no reach into sibling aggregates, no imports beyond the entity's own `*.types.ts` (e.g. the existing `RefreshToken.isActive(now)`, `PasswordResetToken.isUsable(now)`);
+- **pure static factories** that only call the constructor (e.g. the existing `AllegroQuantityCommand.create`).
+
+A domain entity **MUST NOT** carry state-mutation methods, `async` behavior, cross-aggregate logic, or event emission. State changes go through explicit repository methods (`updateStatus`, `incrementCounters`, `upsert`); orchestration stays in application services. Return-new-instance transformations are out of scope for now (deferred — see [ADR-011](./architecture/adrs/011-domain-entity-behavior.md)). Behavior that exceeds a single-entity field derivation but spans entities belongs in a domain service — the `domain-services/` convention exists but is not yet instantiated — not on the entity.
+
+✅ **Good** (a real, shipping example):
+```typescript
+// libs/core/src/users/domain/entities/refresh-token.entity.ts
+export class RefreshToken {
+  constructor(
+    public readonly expiresAt: Date,
+    public readonly revokedAt: Date | null,
+    // ... other readonly fields
+  ) {}
+
+  // Pure function of the entity's own fields — no I/O, no mutation.
+  isActive(now: Date = new Date()): boolean {
+    return this.revokedAt === null && this.expiresAt.getTime() > now.getTime();
+  }
+}
+```
+
+❌ **Bad**:
+```typescript
+export class SomeBatch {
+  // ❌ state mutation — entities are readonly; persistence is a thin data-mapper
+  markChildSucceeded(): void { /* ... */ }
+  // ❌ async / I/O — belongs in an application service
+  async loadChildren(): Promise<OfferCreationRecord[]> { /* ... */ }
+}
+```
+
 ### Error Handling
 
 **Use custom exceptions** for domain errors, standard exceptions for infrastructure errors.
