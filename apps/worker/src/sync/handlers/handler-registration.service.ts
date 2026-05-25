@@ -17,6 +17,7 @@ import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-up
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
+import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
@@ -35,6 +36,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
+    private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
@@ -59,6 +61,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.pollCreationStatus',
       this.marketplaceOfferPollCreationStatusHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.statusSync',
+      this.marketplaceOfferStatusSyncHandler
     );
 
     // Register generic master handlers (Option B)

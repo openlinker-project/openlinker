@@ -138,6 +138,7 @@ function BulkEditModalForm({
     initialValuesRef.current = {
       title: o.title ?? row.product?.name ?? '',
       categoryId: o.categoryId ?? row.resolvedCategoryId ?? '',
+      productCardId: o.productCardId ?? '',
       description:
         typeof o.description === 'string' ? o.description : row.product?.description ?? '',
       stock: row.override.stock ?? defaults.stock,
@@ -205,6 +206,7 @@ function BulkEditModalForm({
         title: values.title,
         description: values.description,
         categoryId: values.categoryId,
+        ...(values.productCardId ? { productCardId: values.productCardId } : {}),
         ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
       },
     };
@@ -265,7 +267,13 @@ function BulkEditModalForm({
                     type="button"
                     className="bulk-edit__candidate-chip"
                     onClick={() => {
+                      // Link the candidate's card so Allegro inherits its
+                      // required product params (#810, mirrors #808's unique-
+                      // match path). Both move together.
                       form.setValue('categoryId', candidate.allegroCategoryId, {
+                        shouldDirty: true,
+                      });
+                      form.setValue('productCardId', candidate.productCardId, {
                         shouldDirty: true,
                       });
                     }}
@@ -291,6 +299,11 @@ function BulkEditModalForm({
                   value={field.value || null}
                   onChange={(id) => {
                     field.onChange(id);
+                    // A manual category pick is not tied to a candidate card —
+                    // drop any card so the offer doesn't link a card from a
+                    // different category (#810). Re-clicking a candidate chip
+                    // re-sets both.
+                    form.setValue('productCardId', '', { shouldDirty: true });
                   }}
                   invalid={Boolean(form.formState.errors.categoryId)}
                 />

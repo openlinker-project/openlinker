@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks — Unit Spec
  *
  * Covers `buildAllegroSchedulerTasks`: enable-gate semantics for each of
- * the two tasks, payload shape, idempotency key, and the
+ * the three tasks, payload shape, idempotency key, and the
  * `masterCatalogConnectionId` lookup on the offers-sync payload.
  *
  * @module libs/integrations/allegro/src/infrastructure/scheduler/__tests__
@@ -35,30 +35,48 @@ const makeConnection = (overrides: Partial<{ config: Record<string, unknown> }> 
 
 describe('buildAllegroSchedulerTasks', () => {
   describe('enable gates', () => {
-    it('should return both tasks by default (env-vars unset)', () => {
+    it('should return all three tasks by default (env-vars unset)', () => {
       const tasks = buildAllegroSchedulerTasks(makeConfig());
-      expect(tasks.map((t) => t.taskId)).toEqual(['allegro-orders-poll', 'allegro-offers-sync']);
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-orders-poll',
+        'allegro-offers-sync',
+        'allegro-offer-status-sync',
+      ]);
     });
 
     it('should omit orders-poll when OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false', () => {
       const tasks = buildAllegroSchedulerTasks(
         makeConfig({ OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false' })
       );
-      expect(tasks.map((t) => t.taskId)).toEqual(['allegro-offers-sync']);
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-offers-sync',
+        'allegro-offer-status-sync',
+      ]);
     });
 
     it('should omit offers-sync when OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED=false', () => {
       const tasks = buildAllegroSchedulerTasks(
         makeConfig({ OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false' })
       );
-      expect(tasks.map((t) => t.taskId)).toEqual(['allegro-orders-poll']);
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-orders-poll',
+        'allegro-offer-status-sync',
+      ]);
     });
 
-    it('should return an empty array when both env-vars are false', () => {
+    it('should omit offer-status-sync when OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false' })
+      );
+      expect(tasks.map((t) => t.taskId)).toEqual(['allegro-orders-poll', 'allegro-offers-sync']);
+    });
+
+    it('should return an empty array when all env-vars are false', () => {
       const tasks = buildAllegroSchedulerTasks(
         makeConfig({
           OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
+          OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
         })
       );
       expect(tasks).toEqual([]);
@@ -162,6 +180,50 @@ describe('buildAllegroSchedulerTasks', () => {
       const offersSync = tasks.find((t) => t.taskId === 'allegro-offers-sync');
       expect(offersSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
         'marketplace:conn-allegro-1:offers:sync:2026-05-11-12-34'
+      );
+    });
+  });
+
+  describe('offer-status-sync task', () => {
+    it('should target platformType=allegro and jobType=marketplace.offer.statusSync', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
+      expect(statusSync?.platformType).toBe('allegro');
+      expect(statusSync?.jobType).toBe('marketplace.offer.statusSync');
+    });
+
+    it('should default to an hourly cron and emit the scan-offset cursor key + limit 100', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
+      expect(statusSync?.cronExpression).toBe('0 * * * *');
+      expect(statusSync?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        limit: 100,
+        cursorKey: 'allegro.offerStatus.scanOffset',
+      });
+    });
+
+    it('should honour OL_ALLEGRO_OFFER_STATUS_SYNC_INTERVAL_CRON override', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_OFFER_STATUS_SYNC_INTERVAL_CRON: '*/15 * * * *' })
+      );
+      const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
+      expect(statusSync?.cronExpression).toBe('*/15 * * * *');
+    });
+
+    it('should fall back to limit=100 when OL_ALLEGRO_OFFER_STATUS_SYNC_PAGE_LIMIT is non-numeric', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_OFFER_STATUS_SYNC_PAGE_LIMIT: 'not-a-number' })
+      );
+      const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
+      expect(statusSync?.generatePayload(makeConnection())?.limit).toBe(100);
+    });
+
+    it('should generate a per-connection, per-minute idempotency key', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
+      expect(statusSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:offer:status:sync:2026-05-11-12-34'
       );
     });
   });

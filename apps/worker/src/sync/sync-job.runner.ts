@@ -17,8 +17,11 @@ import {
   SyncJobExecutionError,
   RetryClassifierRegistryService,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  AuthFailureClassifierRegistryService,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
+import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -48,7 +51,11 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly configService: ConfigService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
-    private readonly retryClassifierRegistry: RetryClassifierRegistryService
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService,
+    @Inject(AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly authFailureClassifierRegistry: AuthFailureClassifierRegistryService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   onModuleInit(): void {
@@ -297,6 +304,17 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
     // Check for non-retryable errors (authentication failures)
     if (this.isNonRetryableError(error)) {
+      // A terminal *credential rejection* (e.g. Allegro `invalid_grant` on
+      // token refresh) flags the originating connection for re-authentication
+      // (#819). This is the narrow `credential-rejected` subset of
+      // non-retryable errors — a deterministic 422 validation failure is also
+      // non-retryable but must NOT flag the connection. Transient
+      // `network-failure` during refresh is surfaced as a retryable exception
+      // and never reaches this branch.
+      const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+      if (this.authFailureClassifierRegistry.isCredentialRejected(cause)) {
+        await this.flagConnectionNeedsReauth(job.connectionId);
+      }
       await this.jobRepository.markDead(job.id, errorMessage);
       this.logger.warn(`Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`);
       return;
@@ -360,6 +378,39 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     return this.retryClassifierRegistry.isNonRetryable(cause);
+  }
+
+  /**
+   * Flag a connection as needing re-authentication after a terminal credential
+   * rejection (#819).
+   *
+   * Only flips a connection that is currently `active`: we never clobber an
+   * admin-set `disabled`, never re-write an already-flagged connection, and
+   * never thrash on the repeated failures that a dead-credentials connection
+   * produces. Once flagged, the scheduler's `status: 'active'` filter stops
+   * enqueuing new jobs against it until a successful re-auth flips it back.
+   *
+   * Best-effort by design: a failure here must never mask the original job
+   * failure or break the runner loop, so errors are logged and swallowed.
+   */
+  private async flagConnectionNeedsReauth(connectionId: string): Promise<void> {
+    try {
+      const connection = await this.connectionPort.get(connectionId);
+      if (connection.status !== 'active') {
+        return;
+      }
+      await this.connectionPort.update(connectionId, { status: 'needs_reauth' });
+      this.logger.warn(
+        `Connection ${connectionId} (${connection.platformType}) flagged needs_reauth ` +
+          `after a terminal credential rejection — scheduler will stop enqueuing jobs ` +
+          `against it until re-authentication`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to flag connection ${connectionId} as needs_reauth`,
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
   }
 
   /**

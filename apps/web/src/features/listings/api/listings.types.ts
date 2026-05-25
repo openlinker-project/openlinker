@@ -157,6 +157,12 @@ export interface CreateOfferOverrides {
   title?: string;
   description?: string | null;
   categoryId?: string;
+  /**
+   * Catalogue product-card id resolved from the variant barcode (#808).
+   * Threaded through so smart-linking adapters link the existing card and
+   * inherit its required product parameters instead of creating one inline.
+   */
+  productCardId?: string;
   imageUrls?: string[] | null;
   platformParams?: Record<string, unknown>;
 }

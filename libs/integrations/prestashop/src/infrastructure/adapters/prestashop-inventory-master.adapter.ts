@@ -129,6 +129,110 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     };
   }
 
+  async listInventory(productId: string): Promise<Inventory[]> {
+    this.logger.debug(
+      `Listing inventory for product: ${productId} (connection: ${this.connection.id})`
+    );
+
+    // Resolve internal product ID → PrestaShop product ID.
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId
+    );
+    const prestashopProductId = externalIds.find(
+      (e: { connectionId: string }) => e.connectionId === this.connection.id
+    );
+
+    if (!prestashopProductId) {
+      throw new PrestashopResourceNotFoundException(
+        `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id
+      );
+    }
+
+    const rawExternalId = prestashopProductId.externalId;
+    const psProductId = rawExternalId.startsWith('product:')
+      ? rawExternalId.slice('product:'.length)
+      : rawExternalId;
+
+    // All stock rows for the product: the id_product_attribute=0 aggregate plus
+    // one row per combination.
+    const stockRecords = await this.httpClient.listResources<PrestashopStockAvailable>(
+      'stock_availables',
+      { custom: { id_product: psProductId } }
+    );
+
+    if (stockRecords.length === 0) {
+      throw new PrestashopResourceNotFoundException(
+        `Inventory not found for product: ${productId}`,
+        CORE_ENTITY_TYPE.Inventory,
+        productId,
+        this.connection.id
+      );
+    }
+
+    const combinationRows = stockRecords.filter(
+      (record) => Number(record.id_product_attribute) !== 0
+    );
+
+    // Multi-variant: one variant-keyed Inventory per combination. The
+    // id_product_attribute=0 aggregate is ignored — the per-combination rows
+    // carry the real per-variant stock.
+    if (combinationRows.length > 0) {
+      const inventories: Inventory[] = [];
+      for (const record of combinationRows) {
+        inventories.push(
+          await this.toVariantInventory(record, productId, String(record.id_product_attribute))
+        );
+      }
+      return inventories;
+    }
+
+    // Simple product: the single aggregate row maps to the deterministic
+    // synthetic variant (mirrors the product adapter's `product:<id>` scheme).
+    return [await this.toVariantInventory(stockRecords[0], productId, `product:${psProductId}`)];
+  }
+
+  /**
+   * Map one stock_available row to a variant-keyed Inventory: resolve the
+   * PrestaShop combination (or synthetic) external id to the internal
+   * ProductVariant id and mint the Inventory internal id. `getOrCreate` is
+   * idempotent — it returns the variant mapping the product sync already
+   * created, or self-reconciles if inventory sync runs first.
+   */
+  private async toVariantInventory(
+    stockRecord: PrestashopStockAvailable,
+    productId: string,
+    variantExternalId: string
+  ): Promise<Inventory> {
+    const variantId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      variantExternalId,
+      this.connection.id,
+      {
+        parentEntityType: CORE_ENTITY_TYPE.Product,
+        parentInternalId: productId,
+        metadata: { variantExternalId },
+      }
+    );
+
+    const mapped = this.inventoryMapper.mapInventory(stockRecord, productId, variantId);
+
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Inventory,
+      String(stockRecord.id),
+      this.connection.id,
+      {
+        parentEntityType: CORE_ENTITY_TYPE.Product,
+        parentInternalId: productId,
+      }
+    );
+
+    return { ...mapped, id: internalId };
+  }
+
   async getAvailableQuantity(productId: string, locationId?: string): Promise<number> {
     const inventory = await this.getInventory(productId, locationId);
     return inventory.available;

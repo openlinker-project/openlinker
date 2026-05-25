@@ -40,6 +40,8 @@ export interface BulkOfferOverrides {
   title?: string;
   description?: string | null;
   categoryId?: string;
+  /** Catalogue product-card id from a unique EAN match (#808). */
+  productCardId?: string;
   imageUrls?: string[] | null;
   platformParams?: Record<string, unknown>;
 }

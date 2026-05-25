@@ -54,6 +54,8 @@ import {
   SyncModule,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   RetryClassifierRegistryService,
+  AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+  AuthFailureClassifierRegistryService,
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SchedulerTaskRegistryService,
 } from '@openlinker/core/sync';
@@ -108,6 +110,8 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
       private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
       @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
       private readonly retryClassifierRegistry: RetryClassifierRegistryService,
+      @Inject(AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN)
+      private readonly authFailureClassifierRegistry: AuthFailureClassifierRegistryService,
       @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
       private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
       @Inject(IDENTIFIER_MAPPING_PORT_TOKEN)
@@ -134,6 +138,7 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
         connectionTesterRegistry: this.connectionTesterRegistry,
         emailNormalizerRegistry: this.emailNormalizerRegistry,
         retryClassifierRegistry: this.retryClassifierRegistry,
+        authFailureClassifierRegistry: this.authFailureClassifierRegistry,
         schedulerTaskRegistry: this.schedulerTaskRegistry,
         webhookProvisioningRegistry: this.webhookProvisioningRegistry,
         connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,

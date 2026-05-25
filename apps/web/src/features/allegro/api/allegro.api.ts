@@ -5,6 +5,12 @@ export interface StartAllegroOAuthInput {
   environment?: 'sandbox' | 'production';
   connectionName?: string;
   masterCatalogConnectionId?: string;
+  /**
+   * UUID of an existing Allegro connection to re-authenticate in place. When
+   * set, the callback rotates that connection's credentials and clears its
+   * needs_reauth flag instead of creating a new connection (#819).
+   */
+  connectionId?: string;
 }
 
 export interface StartAllegroOAuthResponse {

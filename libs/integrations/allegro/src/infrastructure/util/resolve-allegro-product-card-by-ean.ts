@@ -84,6 +84,10 @@ export async function resolveAllegroProductCardByEan(
     const response = await httpClient.get<AllegroProductsSearchResponse>('/sale/products', {
       queryParams: {
         phrase: input.ean,
+        // #808 — `mode=GTIN` tells Allegro to interpret `phrase` as a GTIN,
+        // matching the tighter lookup the category matcher uses (#735/#797)
+        // rather than the looser phrase-only search this path used before.
+        mode: 'GTIN',
         'category.id': input.categoryId,
         limit,
       },

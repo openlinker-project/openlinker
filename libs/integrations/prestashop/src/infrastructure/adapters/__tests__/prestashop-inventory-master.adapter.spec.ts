@@ -284,6 +284,133 @@ describe('PrestashopInventoryMasterAdapter', () => {
     });
   });
 
+  describe('listInventory', () => {
+    it('returns one variant-keyed Inventory per combination and ignores the product-level aggregate', async () => {
+      const productId = 'internal-product-456';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '38', entityType: 'Product' },
+      ]);
+
+      const aggregateRow: PrestashopStockAvailable = {
+        id: '200',
+        id_product: '38',
+        id_product_attribute: '0',
+        quantity: '30',
+        out_of_stock: '0',
+      };
+      const combo15: PrestashopStockAvailable = {
+        id: '201',
+        id_product: '38',
+        id_product_attribute: '15',
+        quantity: '10',
+        out_of_stock: '0',
+      };
+      const combo16: PrestashopStockAvailable = {
+        id: '202',
+        id_product: '38',
+        id_product_attribute: '16',
+        quantity: '20',
+        out_of_stock: '0',
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValue([aggregateRow, combo15, combo16]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getOrCreateInternalId = jest
+        .fn()
+        .mockImplementation((entityType: string, externalId: string) =>
+          Promise.resolve(`${entityType}:${externalId}`)
+        );
+
+      const result = await adapter.listInventory(productId);
+
+      // One entry per combination — the id_product_attribute=0 aggregate is ignored.
+      expect(result).toHaveLength(2);
+      expect(result.map((i) => i.variantId)).toEqual(['ProductVariant:15', 'ProductVariant:16']);
+      expect(result.map((i) => i.quantity)).toEqual([10, 20]);
+      // Single stock_availables call scoped by id_product (all rows in one fetch).
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(1);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'stock_availables',
+        expect.objectContaining({ custom: { id_product: '38' } })
+      );
+      // Combination ids resolve under entityType='ProductVariant'.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'ProductVariant',
+        '15',
+        connection.id,
+        expect.objectContaining({ parentInternalId: productId })
+      );
+    });
+
+    it('maps the single aggregate row to the synthetic variant for a simple product', async () => {
+      const productId = 'internal-product-123';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '42', entityType: 'Product' },
+      ]);
+
+      const aggregateRow: PrestashopStockAvailable = {
+        id: '101',
+        id_product: '42',
+        id_product_attribute: '0',
+        quantity: '50',
+        out_of_stock: '0',
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([aggregateRow]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getOrCreateInternalId = jest
+        .fn()
+        .mockImplementation((entityType: string, externalId: string) =>
+          Promise.resolve(`${entityType}:${externalId}`)
+        );
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].variantId).toBe('ProductVariant:product:42');
+      expect(result[0].quantity).toBe(50);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'ProductVariant',
+        'product:42',
+        connection.id,
+        expect.objectContaining({ parentInternalId: productId })
+      );
+    });
+
+    it('throws PrestashopResourceNotFoundException when the product has no external mapping', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
+
+      await expect(adapter.listInventory('internal-product-x')).rejects.toThrow(
+        PrestashopResourceNotFoundException
+      );
+    });
+
+    it('throws PrestashopResourceNotFoundException when no stock rows exist', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '42', entityType: 'Product' },
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+      await expect(adapter.listInventory('internal-product-123')).rejects.toThrow(
+        PrestashopResourceNotFoundException
+      );
+    });
+  });
+
   describe('getAvailableQuantity', () => {
     it('should return available quantity from inventory', async () => {
       const productId = 'internal-product-123';

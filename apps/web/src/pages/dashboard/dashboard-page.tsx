@@ -41,6 +41,7 @@ function groupKey(group: Pick<SyncJobGroup, 'connectionId' | 'jobType'>): string
 function toRowStatusTone(status: ConnectionStatus | JobStatus): DashboardTone {
   if (status === 'active' || status === 'succeeded') return 'success';
   if (status === 'error' || status === 'dead') return 'error';
+  if (status === 'needs_reauth') return 'warning';
   return 'neutral';
 }
 

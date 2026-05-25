@@ -76,7 +76,7 @@ describe('resolveAllegroProductCardByEan', () => {
 
     expect(result).toEqual({ kind: 'unique', productId: 'allegro-prod-1' });
     expect(httpClient.get).toHaveBeenCalledWith('/sale/products', {
-      queryParams: { phrase: '5901234123457', 'category.id': 'cat-1', limit: 10 },
+      queryParams: { phrase: '5901234123457', mode: 'GTIN', 'category.id': 'cat-1', limit: 10 },
     });
     expect(cache.set).toHaveBeenCalledWith(
       'allegro:product-card:cat-1:5901234123457',

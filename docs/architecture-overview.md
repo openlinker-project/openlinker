@@ -144,6 +144,8 @@ The system is organized into the following core bounded contexts:
 - **Key Entities**: Inventory, InventoryAdjustment, InventoryMapping
 - **Location**: `libs/core/src/inventory/`
 - **Capability**: Uses `InventoryMasterPort` abstraction
+- **Variant-keyed master inventory (#822, [ADR-010](./architecture/adrs/010-variant-keyed-master-inventory.md))**: `MasterInventorySyncService` keys each `inventory_items` row to the product's canonical **variant** (a simple product's deterministic synthetic variant), not the bare product — so the variant-keyed availability read (`getAvailabilityByVariantIds`, used by the bulk offer wizard) finds stock. Resolution precedence: adapter-supplied `Inventory.variantId` → the product's lone variant when it has exactly one → else product-level (`productVariantId = NULL`).
+- **Per-combination master stock (#823)**: the master sync iterates `InventoryMasterPort.listInventory(productId)` — one `Inventory` per variant — and writes one variant-keyed row each. The PrestaShop adapter enumerates `stock_availables` for the product and emits one entry per combination (resolving each combination id to its `ProductVariant`), or the synthetic variant for a simple product, so multi-variant products now carry correct per-variant stock. Marketplace-agnostic: any inventory master expresses per-variant stock the same way. The Allegro destination half (one auto-grouped offer per variant) remains **#824**.
 
 ### 4. Orders
 - **Responsibility**: Order ingestion, synchronization, and lifecycle management
@@ -182,10 +184,12 @@ The system is organized into the following core bounded contexts:
   - Price management for marketplace offers
 - Offer mappings are populated via the `marketplace.offers.sync` job (pre-sync pipeline).
 - Allegro offer sync uses `GET /sale/offer-events` with persisted cursor key `allegro.offers.lastEventId`.
+- **Offer status sync (#816)**: the `marketplace.offer.statusSync` job refreshes the live marketplace publication status (`active | activating | inactivating | inactive | ended`) of mapped offers into the `offer_status_snapshots` table — the *steady-state* counterpart to `OfferCreationRecord`'s one-shot creation lifecycle. It reuses the `OfferStatusReader` capability, enumerates OL's own offer mappings paged by a rolling scan-offset cursor (`allegro.offerStatus.scanOffset`; Allegro has no bulk status endpoint), and writes a disjoint table from the creation poller (#447) so the two never race. See [ADR-009](./architecture/adrs/009-persisted-offer-status-snapshots.md).
 - Offer linking by barcode uses master-catalog scoping and links only on unique matches.
 - **Category parameter sections (#415 / #419)**: per-platform create-offer requests may split category parameters into **offer-section** and **product-section** payloads (`body.parameters[]` vs `body.productSet[].product.parameters[]` on Allegro — the latter carries Brand, Model, Manufacturer-code, etc., and mirrors the shape Allegro returns from `GET /sale/product-offers/{offerId}`). The neutral `CategoryParameter.section: 'offer' | 'product'` field carries this distinction through to adapters; the wizard renders both kinds in one unified list and the FE serializer (`serializeAllegroParameters`) splits them into two arrays at submit time. Adapters that cannot distinguish always emit `'offer'`.
 - **Public surface**: `@openlinker/core/listings` exposes pure contracts (ports, types, capability guards, entities, exceptions, service interfaces, Symbol tokens) safe to value-import from any sibling package. Runtime wiring (`ListingsModule` + the 8 `@Injectable` service classes) lives on the `@openlinker/core/listings/services` subpath — kept separate to prevent runtime circular requires when sibling packages value-import from the main barrel (#337/#359). Cross-context ORM-entity access (host-only) is routed through `@openlinker/core/<ctx>/orm-entities` sub-barrels (#594) — see `docs/engineering-standards.md § Import Aliases` for the general rule.
 - **Bulk-flow lifecycle (#726)**: a `BulkOfferCreationBatch` (#734) is the parent aggregate; four core application services own its phases — `BulkOfferCreationSubmitService` (intake, #736), `OfferCreationEnqueueService` / `OfferCreationExecutionService` (per-child enqueue + run, shared with single-offer), `BulkOfferCreationProgressService` (counter advancement gated at-most-once by `bulk_batch_advancements`, #737), and `BulkOfferCreationRetryService` (#742). All four delegate to the same single-offer primitives — there's no parallel "bulk" pipeline. `BulkOfferCreationRetryService` reopens a terminal-state batch: per failed record it deletes the `bulk_batch_advancements` row, decrements `failedCount` lock-stepped to the record reset, then transitions `completed | partially-failed | failed → running` once after the loop. The per-record V2 payload is rebuilt from the persisted `request` snapshot + the parent batch's `sharedConfig.generateDescription` / `sharedConfig.descriptionTone` (the snapshot itself doesn't carry AI flags — they're batch-scoped). Each retry wave uses a wave-distinct idempotency key (`bulk:{batchId}:variant:{variantId}:retry:{retryWaveId}`) to bypass the 7-day TTL on the original submit's dedup gate.
+- **Multi-variant expansion (#824)**: `BulkOfferCreationSubmitService.submit` treats each submitted id as a primary-variant id and, for a **multi-variant** product, expands it into one offer-creation job per sibling variant before persisting the batch (so `totalCount` matches the real fan-out). Each variant-offer sources its `stock.available` from per-variant master inventory (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — **master is authoritative, including 0**, so an out-of-stock variant lists as 0 rather than being backfilled with the operator's bulk quantity (the operator quantity stays the source for single-variant / passthrough offers). Each offer self-links to its own Allegro catalog product by its own barcode (siblings drop the wizard-resolved `productCardId`). Allegro auto-groups the resulting offers into one buyer-facing listing from the Product Catalog (GTIN + distinguishing parameter) — the explicit variant-set API (`/sale/offer-variants`) was removed 14 Apr 2026 and is not used. Single-variant products and unknown ids pass through unchanged. Emitting OL variant `attributes` as explicit Allegro distinguishing parameters is a deferred follow-up (grouping already works off each variant's own catalog product).
 
 ### 7. Sync Manager
 *See [ADR-007](./architecture/adrs/007-syncjob-status-vs-outcome-split.md) for the decision rationale.*
@@ -525,7 +529,7 @@ interface Connection {
   id: string;                    // Unique connection ID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Connection-specific configuration
   credentialsRef: string;        // Reference to credentials storage
   createdAt: Date;
@@ -875,6 +879,8 @@ When `emailHash` matches multiple customers (collision):
 
 ## Hexagonal Architecture Structure
 
+*See [ADR-011](./architecture/adrs/011-domain-entity-behavior.md) for the domain entity behavior policy (anemic-by-default with pure read-only derivations).*
+
 Each domain module follows a standardized hexagonal structure:
 
 ```
@@ -1151,6 +1157,7 @@ graph LR
   content --> products
   listings --> identifier-mapping
   listings --> integrations
+  listings --> inventory
   listings --> mappings
   listings --> products
   listings --> sync
@@ -1171,7 +1178,7 @@ graph LR
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
 
-The `orders ↔ customers` pair shows up as a cycle at the barrel level. It's safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
+The `orders ↔ customers` and `listings ↔ inventory` (the latter added for #824) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes (and at the NestJS module layer the back-edge — `inventory → listings` — is type/token-only, not a module import, so `ListingsModule` can import `InventoryModule` without a DI cycle). The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
 
 ### Enforcement
 
@@ -1266,7 +1273,7 @@ OpenLinker uses **implicit capabilities**: capabilities are declared in code via
   id: string;                    // UUID
   platformType: string;          // 'prestashop', 'allegro', etc.
   name: string;                  // Human-readable name
-  status: 'active' | 'disabled' | 'error';
+  status: 'active' | 'disabled' | 'error' | 'needs_reauth';
   config: Record<string, any>;   // Platform-specific config
   credentialsRef: string;        // Reference to stored credentials
   adapterKey?: string;           // Optional explicit adapter key
@@ -1294,8 +1301,10 @@ registrations (connection tester, retry classifier, scheduler tasks, email
 normalizer, webhook provisioner), and a `createCapabilityAdapter(connection,
 capability, host)` factory. The `HostServices` bag carries the curated set
 of services every plugin can rely on: `logger`, `identifierMapping`,
-`credentialsResolver`, optional `cache`, plus typed handles to the 7
-well-known registries. Plugin-specific cross-package ports (e.g.
+`credentialsResolver`, optional `cache`, plus typed handles to the 8
+well-known registries (the 7 originals plus the auth-failure classifier
+registry, #819 — see [ADR-008](./architecture/adrs/008-auth-failure-classifier-connection-reauth.md)).
+Plugin-specific cross-package ports (e.g.
 `CustomerIdentityResolverPort`, `IMappingConfigService`) are passed into
 the descriptor's constructor closure — they're intentionally not in the
 host bag, to keep the contract surface lean.

@@ -10,7 +10,7 @@
  * data dependencies.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
 import type { BulkWizardRow } from './bulk-wizard.types';
@@ -62,6 +62,7 @@ function makeRow(opts: {
     primaryVariant: variant,
     blockers: [],
     resolvedCategoryId: null,
+    resolvedProductCardId: null,
     resolutionMethod: null,
     masterPrice: 12,
     masterStock: 5,
@@ -136,5 +137,36 @@ describe('BulkEditModal', () => {
 
     expect(screen.getByDisplayValue('Widget')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Changed name')).not.toBeInTheDocument();
+  });
+
+  it('threads the picked candidate product card into the saved override (#810)', async () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow({
+          candidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B', name: 'Books' }],
+        })}
+        connectionId="conn_1"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    // Pick the candidate → category + card move together; fill the required
+    // description so the form passes validation.
+    fireEvent.click(screen.getByRole('button', { name: 'Books' }));
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'A fine description' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+    const override = onSave.mock.calls[0][1] as {
+      overrides?: { categoryId?: string; productCardId?: string };
+    };
+    expect(override.overrides?.categoryId).toBe('cat-B');
+    expect(override.overrides?.productCardId).toBe('card-B');
   });
 });

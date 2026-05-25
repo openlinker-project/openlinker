@@ -9,7 +9,11 @@
 
 export interface MasterInventorySyncResult {
   internalProductId: string;
+  /** Number of canonical inventory rows written — one per variant/combination (#823). */
+  itemsWritten: number;
+  /** Total available quantity summed across all written rows. */
   availableQuantity: number;
+  /** Total reserved quantity summed across all written rows. */
   reservedQuantity: number;
 }
 

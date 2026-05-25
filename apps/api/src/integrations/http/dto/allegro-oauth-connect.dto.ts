@@ -72,5 +72,16 @@ export class AllegroOAuthConnectDto {
   @IsUUID()
   @IsOptional()
   masterCatalogConnectionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'UUID of an existing Allegro connection to re-authenticate in place. When set, the ' +
+      'callback rotates this connection’s credentials and clears its needs_reauth flag ' +
+      'instead of creating a new connection (#819).',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID()
+  @IsOptional()
+  connectionId?: string;
 }
 

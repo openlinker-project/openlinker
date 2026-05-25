@@ -11,6 +11,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { ProductsModule } from '@openlinker/core/products';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';
 import { OfferLinkingService } from './application/services/offer-linking.service';
@@ -34,6 +35,9 @@ import { OfferCreationEnqueueService } from './application/services/offer-creati
 import { BulkOfferCreationSubmitService } from './application/services/bulk-offer-creation-submit.service';
 import { BulkOfferCreationRetryService } from './application/services/bulk-offer-creation-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
+import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
+import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
+import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -50,6 +54,8 @@ import {
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
   BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
@@ -71,6 +77,8 @@ export {
   BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
   BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
+  OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
 } from './listings.tokens';
@@ -83,10 +91,16 @@ export {
       BulkOfferCreationBatchOrmEntity,
       BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
+      OfferStatusSnapshotOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
     ProductsModule,
+    // Per-variant master stock for multi-variant bulk-offer expansion (#824).
+    // No DI cycle: at the NestJS module layer InventoryModule does not import
+    // ListingsModule, and the documented `inventory → listings` edge is a
+    // type/token-only import. App-boot integration tests verify the resolved graph.
+    InventoryModule,
     MappingsModule,
     SyncModule,
   ],
@@ -106,6 +120,8 @@ export {
     BulkOfferCreationSubmitService,
     BulkOfferCreationRetryService,
     OfferStatusPollService,
+    OfferStatusSyncService,
+    OfferStatusSnapshotRepository,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
     {
@@ -169,6 +185,14 @@ export {
       useExisting: OfferStatusPollService,
     },
     {
+      provide: OFFER_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: OfferStatusSyncService,
+    },
+    {
+      provide: OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
+      useExisting: OfferStatusSnapshotRepository,
+    },
+    {
       provide: SELLER_POLICIES_CACHE_TOKEN,
       useExisting: SellerPoliciesCacheRepository,
     },
@@ -193,6 +217,7 @@ export {
     BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
     BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
     OFFER_STATUS_POLL_SERVICE_TOKEN,
+    OFFER_STATUS_SYNC_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
   ],

@@ -91,6 +91,11 @@ export {
 // asymmetry should be reconsidered (export both, or move both behind
 // deep paths).
 export { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
+// Auth-failure classifier (#819) — exported so the worker runner spec can
+// register the real classifier in its auth-failure registry (mirrors the
+// retry classifier above). Plugin host modules register via
+// `host.authFailureClassifierRegistry`.
+export { AllegroAuthFailureClassifierAdapter } from './infrastructure/adapters/allegro-auth-failure-classifier.adapter';
 // Config shape validator (#587) — exported so the host-side
 // `connection.service.spec.ts` can register the real validator in its
 // shape-validator registry instead of duplicating the DTO logic in a

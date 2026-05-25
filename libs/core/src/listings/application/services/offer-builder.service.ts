@@ -126,10 +126,16 @@ export class OfferBuilderService implements IOfferBuilderService {
       // #431 — smart-link by barcode. Pre-resolved here so adapters that
       // need it (Allegro) don't have to re-fetch the variant.
       variantBarcode: variant.ean ?? variant.gtin ?? null,
+      // #808 — smart-link by pre-resolved catalogue card. When the wizard
+      // already matched a unique product card by EAN, thread its id straight
+      // through so the adapter links it (and inherits its required product
+      // parameters) instead of re-resolving — kept off `overrides` so the
+      // adapter sees it as a top-level hint alongside `variantBarcode`.
+      productCardId: input.overrides?.productCardId ?? null,
     };
 
     this.logger.debug(
-      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'}`
+      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} productCardId=${command.productCardId ?? 'null'}`
     );
 
     return command;
