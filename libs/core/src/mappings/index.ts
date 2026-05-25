@@ -21,3 +21,21 @@ export type {
   PaymentMappingInput,
   CategoryMappingInput,
 } from './domain/types/mapping.types';
+
+// Fulfillment routing (#832)
+export type { IFulfillmentRoutingService } from './application/interfaces/fulfillment-routing.service.interface';
+export { FulfillmentRoutingRule } from './domain/entities/fulfillment-routing-rule.entity';
+export { IncompatibleProcessorException } from './domain/exceptions/incompatible-processor.exception';
+export { DuplicateRoutingRuleException } from './domain/exceptions/duplicate-routing-rule.exception';
+export {
+  FulfillmentProcessorKindValues,
+  FULFILLMENT_PROCESSOR_KIND,
+  FulfillmentRoutingSourceValues,
+} from './domain/types/fulfillment-routing.types';
+export type {
+  FulfillmentProcessorKind,
+  FulfillmentRoutingSource,
+  FulfillmentRoutingRuleInput,
+  FulfillmentRoutingQuery,
+  FulfillmentRoutingResolution,
+} from './domain/types/fulfillment-routing.types';
