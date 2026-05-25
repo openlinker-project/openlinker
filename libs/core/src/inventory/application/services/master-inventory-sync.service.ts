@@ -56,18 +56,29 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         'InventoryMaster'
       );
 
-    const inventoryFromAdapter = await inventoryAdapter.getInventory(internalProductId, undefined);
-    const inventoryItem = await this.toDomainInventoryItem(inventoryFromAdapter, internalProductId);
-    await this.inventoryService.setInventory(inventoryItem);
+    // One Inventory per variant — per-combination rows for multi-variant
+    // products, the synthetic variant for simple products (#823). The sync
+    // writes one variant-keyed canonical row per entry.
+    const inventories = await inventoryAdapter.listInventory(internalProductId);
+
+    let availableQuantity = 0;
+    let reservedQuantity = 0;
+    for (const inventory of inventories) {
+      const inventoryItem = await this.toDomainInventoryItem(inventory, internalProductId);
+      await this.inventoryService.setInventory(inventoryItem);
+      availableQuantity += inventoryItem.availableQuantity;
+      reservedQuantity += inventoryItem.reservedQuantity;
+    }
 
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, available=${inventoryItem.availableQuantity}, reserved=${inventoryItem.reservedQuantity})`
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
 
     return {
       internalProductId,
-      availableQuantity: inventoryItem.availableQuantity,
-      reservedQuantity: inventoryItem.reservedQuantity,
+      itemsWritten: inventories.length,
+      availableQuantity,
+      reservedQuantity,
     };
   }
 
@@ -105,14 +116,12 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
    * product's variant rather than the bare product — this is what lets the
    * variant-keyed availability read (the bulk offer wizard) find stock.
    *
-   * - An adapter that already knows the variant wins (future-proof; the
-   *   PrestaShop adapter does not supply one today).
-   * - A simple product has exactly one deterministic synthetic variant ⇒ key to it.
-   * - A multi-variant (combination) product cannot have its single product-level
-   *   aggregate split across variants here, so it stays product-level (`null`)
-   *   and reads as 0 by variant until per-combination stock lands. Deferred:
-   *   #823 (PrestaShop per-combination master stock) / #824 (Allegro
-   *   auto-grouped variant offers).
+   * - An adapter that already knows the variant wins. Since #823 the PrestaShop
+   *   adapter supplies a variantId per combination (and for the synthetic
+   *   variant) via `listInventory`, so this is the normal path.
+   * - Safety net for an adapter that doesn't set variantId: a product with
+   *   exactly one variant ⇒ key to it; multiple/zero variants ⇒ product-level
+   *   (`null`).
    */
   private async resolveVariantId(
     inventory: InventoryPortInterface,
