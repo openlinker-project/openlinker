@@ -30,9 +30,11 @@ import type { PluginEntry } from '@openlinker/core/integrations';
 import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
+import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
   AllegroIntegrationModule,
   AiIntegrationModule.register(),
+  InpostIntegrationModule,
 ];

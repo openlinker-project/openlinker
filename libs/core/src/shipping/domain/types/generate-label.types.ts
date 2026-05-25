@@ -7,21 +7,21 @@
  * `offer-create.types.ts` precedent — port files contain only the port
  * interface; their types live here).
  *
- * NOTE: no `platformParams` / `overrides` escape hatch in this foundation
- * slice. When #764 (InPost adapter) needs adapter-specific fields (parcel
- * dims, sender-address override, etc.), that PR adds them — either as
- * typed optional fields on the canonical command, or as a typed
- * `GenerateLabelOverrides` interface (mirroring listings'
- * `CreateOfferOverrides` shape) with `platformParams?: Record<string,
- * unknown>` as the bottom-of-stack escape hatch. Adding optional fields
- * is forward-compatible; speculating now would risk locking in the wrong
- * shape before two real adapters (#764 + future #732) reveal what's
- * shared vs adapter-specific.
+ * #764 (InPost) added the `recipient` + `parcel` fields below. They're
+ * carrier-neutral — every shipping provider needs a recipient and a parcel
+ * descriptor — so they live on the canonical command rather than behind a
+ * `platformParams` escape hatch. Provider-specific translation (ShipX
+ * `service` / `custom_attributes.target_point`, courier-vs-locker parcel
+ * shape, etc.) stays inside each adapter. A future provider needing a
+ * genuinely adapter-specific input should add a typed optional field here
+ * (or a `GenerateLabelOverrides` interface) — never an untyped bag.
  *
  * @module libs/core/src/shipping/domain/types
  */
 
 import type { ShippingMethod } from './shipping-method.types';
+import type { ShipmentRecipient } from './shipment-recipient.types';
+import type { ShipmentParcel } from './shipment-parcel.types';
 
 export interface GenerateLabelCommand {
   /** Internal Shipment id (`ol_shipment_*`). */
@@ -36,6 +36,14 @@ export interface GenerateLabelCommand {
   /** Required when `shippingMethod === 'paczkomat'`. Provider-issued
    * locker id (e.g. `'POZ08A'`). */
   paczkomatId?: string;
+  /** Recipient (buyer) — name, contact, optional postal address. The caller
+   * resolves it from the order. Adapters require `recipient.address` for
+   * courier methods. */
+  recipient: ShipmentRecipient;
+  /** Parcel descriptor — a carrier size `template` (locker) or
+   * `dimensions` + `weightGrams` (courier). The adapter validates the right
+   * combination per method. */
+  parcel: ShipmentParcel;
 }
 
 export interface GenerateLabelResult {

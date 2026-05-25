@@ -49,6 +49,15 @@ export type {
   GenerateLabelResult,
 } from './domain/types/generate-label.types';
 
+export type {
+  ShipmentRecipient,
+  ShipmentAddress,
+} from './domain/types/shipment-recipient.types';
+export type {
+  ShipmentParcel,
+  ShipmentDimensions,
+} from './domain/types/shipment-parcel.types';
+
 export type { TrackingSnapshot } from './domain/types/tracking-snapshot.types';
 
 export type {

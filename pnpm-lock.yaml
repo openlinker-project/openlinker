@@ -114,6 +114,9 @@ importers:
       '@openlinker/integrations-allegro':
         specifier: workspace:*
         version: link:../../libs/integrations/allegro
+      '@openlinker/integrations-inpost':
+        specifier: workspace:*
+        version: link:../../libs/integrations/inpost
       '@openlinker/integrations-prestashop':
         specifier: workspace:*
         version: link:../../libs/integrations/prestashop
@@ -515,6 +518,52 @@ importers:
       image-size:
         specifier: ^1.0.0
         version: 1.2.1
+    devDependencies:
+      '@types/jest':
+        specifier: 29.5.12
+        version: 29.5.12
+      '@types/node':
+        specifier: 20.11.30
+        version: 20.11.30
+      '@typescript-eslint/eslint-plugin':
+        specifier: 7.3.1
+        version: 7.3.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint@8.57.0)(typescript@5.4.3)
+      '@typescript-eslint/parser':
+        specifier: 7.3.1
+        version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      eslint:
+        specifier: 8.57.0
+        version: 8.57.0
+      jest:
+        specifier: 29.7.0
+        version: 29.7.0(@types/node@20.11.30)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
+      ts-jest:
+        specifier: 29.1.2
+        version: 29.1.2(@babel/core@7.28.5)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.5))(jest@29.7.0(@types/node@20.11.30)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))(typescript@5.4.3)
+      typescript:
+        specifier: 5.4.3
+        version: 5.4.3
+
+  libs/integrations/inpost:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^10.0.0
+        version: 10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1)
+      '@openlinker/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@openlinker/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+      '@openlinker/shared':
+        specifier: workspace:*
+        version: link:../../shared
+      class-transformer:
+        specifier: 0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: 0.14.1
+        version: 0.14.1
     devDependencies:
       '@types/jest':
         specifier: 29.5.12
