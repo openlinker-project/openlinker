@@ -66,6 +66,9 @@ const harness = createIntegrationTestHarness({
     'refresh_tokens',
     'product_variants',
     'products',
+    // shipments (#763 / #835) — order- + connection-scoped; truncate before
+    // connections so the dispatch int-spec starts each case with no rows.
+    'shipments',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test

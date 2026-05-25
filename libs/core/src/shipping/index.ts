@@ -82,3 +82,13 @@ export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-fi
 
 // Domain exceptions
 export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
+export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
+
+// Application — dispatch seam (#835). Interface + types only; the service
+// class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
+// `export * from './shipping.tokens'`), never value-imported.
+export type { IShipmentDispatchService } from './application/interfaces/shipment-dispatch.service.interface';
+export type {
+  ShipmentDispatchInput,
+  ShipmentDispatchResult,
+} from './application/types/shipment-dispatch.types';
