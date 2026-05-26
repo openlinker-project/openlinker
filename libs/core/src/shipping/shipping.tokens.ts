@@ -15,3 +15,4 @@ export const PICKUP_POINT_CACHE_TOKEN = Symbol('PickupPointCachePort');
 export const SHIPMENT_DISPATCH_SERVICE_TOKEN = Symbol('IShipmentDispatchService');
 export const SHIPMENT_QUERY_SERVICE_TOKEN = Symbol('IShipmentQueryService');
 export const SHIPMENT_CANCELLATION_SERVICE_TOKEN = Symbol('IShipmentCancellationService');
+export const PICKUP_POINT_LOOKUP_SERVICE_TOKEN = Symbol('IPickupPointLookupService');
