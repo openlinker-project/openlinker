@@ -14,6 +14,7 @@ export const ORDER_INGESTION_SERVICE_TOKEN = Symbol('IOrderIngestionService');
 export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort');
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRetryService');
+export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 
 
 

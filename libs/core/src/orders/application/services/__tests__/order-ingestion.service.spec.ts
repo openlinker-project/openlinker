@@ -21,7 +21,7 @@ import type {
 } from '@openlinker/core/customers';
 import type { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
-import type { OrderItemRefResolverService } from '../order-item-ref-resolver.service';
+import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 
 describe('OrderIngestionService', () => {
@@ -37,7 +37,7 @@ describe('OrderIngestionService', () => {
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let orderSource: jest.Mocked<OrderSourcePort>;
-  let orderItemRefResolver: jest.Mocked<OrderItemRefResolverService>;
+  let orderItemRefResolver: jest.Mocked<IOrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
 
@@ -84,7 +84,7 @@ describe('OrderIngestionService', () => {
     orderItemRefResolver = {
       resolve: jest.fn(),
       tryResolve: jest.fn(),
-    } as unknown as jest.Mocked<OrderItemRefResolverService>;
+    } as unknown as jest.Mocked<IOrderItemRefResolverService>;
 
     orderSyncService = {
       syncOrder: jest.fn(),

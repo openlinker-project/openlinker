@@ -11,6 +11,7 @@ import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTIT
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { IncomingOrderItemRef } from '../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import type { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import type {
   ItemResolutionResult,
   ResolvedOrderItemProduct,
@@ -19,7 +20,7 @@ import type {
 export type { ItemResolutionResult, ResolvedOrderItemProduct };
 
 @Injectable()
-export class OrderItemRefResolverService {
+export class OrderItemRefResolverService implements IOrderItemRefResolverService {
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,

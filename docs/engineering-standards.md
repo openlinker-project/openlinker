@@ -404,6 +404,13 @@ export class ProductSyncService {
 }
 ```
 
+**Two clarifications (#712):**
+
+1. **Implementing a capability `*Port` satisfies the rule.** A service that adapts a domain port — e.g. `RedisSyncLockService implements SyncLockPort`, `SyncJobQueueService implements SyncJobQueuePort` — already codes against an interface and is injected via a Symbol token. It does **not** also need a redundant parallel `I{Name}Service`; the port *is* its contract.
+2. **The interface file may live in `application/interfaces/` or be colocated in `application/services/`.** Both conventions are in use across contexts; either location is accepted (the file just has to exist for the service it backs).
+
+**Enforcement.** `scripts/check-service-interfaces.mjs` (run from `pnpm lint` via `pnpm check:invariants`) asserts that every `libs/core/src/**/application/services/*.service.ts` declares an `implements` clause referencing either an `I*Service` with a sibling `*.service.interface.ts` (in either location above) or a `*Port`. It fails the build with a `file` + reason on any regression.
+
 ### Type Definitions in Separate Files
 
 **All types must be defined in separate files** (`*.types.ts`). Types should not be defined inline in service, entity, or other implementation files.

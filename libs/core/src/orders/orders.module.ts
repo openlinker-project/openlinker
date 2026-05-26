@@ -21,6 +21,7 @@ import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -70,6 +71,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
       useExisting: OrderDestinationRetryService,
+    },
+    {
+      provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
+      useExisting: OrderItemRefResolverService,
     },
   ],
   exports: [
