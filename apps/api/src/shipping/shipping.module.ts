@@ -6,7 +6,9 @@
  * `ShipmentRepositoryPort` + dispatch seam from #763/#835), plus `OrdersModule`
  * for `ORDER_RECORD_SERVICE_TOKEN` — the controller resolves each shipment's
  * `orderId → Order.customerId` for the customer column (#770). Registers the
- * shipment controller. Mirrors `MappingsApiModule`.
+ * shipment controller plus the pickup-point controller (#766) — the latter
+ * resolves `PICKUP_POINT_LOOKUP_SERVICE_TOKEN` from the core `ShippingModule`.
+ * Mirrors `MappingsApiModule`.
  *
  * @module apps/api/src/shipping
  */
@@ -15,9 +17,10 @@ import { ShippingModule } from '@openlinker/core/shipping';
 import { OrdersModule } from '@openlinker/core/orders';
 
 import { ShipmentController } from './http/shipment.controller';
+import { PickupPointController } from './http/pickup-point.controller';
 
 @Module({
   imports: [ShippingModule, OrdersModule],
-  controllers: [ShipmentController],
+  controllers: [ShipmentController, PickupPointController],
 })
 export class ShippingApiModule {}

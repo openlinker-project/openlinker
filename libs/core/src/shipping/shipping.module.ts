@@ -12,8 +12,11 @@
  * to the module preserves the hexagonal boundary documented in
  * engineering-standards §"ORM ↔ Domain Mapping".
  *
- * No binding for `PICKUP_POINT_CACHE_TOKEN` here — the Redis-backed
- * adapter implementation is provided by #766 (paczkomat caching service).
+ * Paczkomat caching (#766): binds `PICKUP_POINT_CACHE_TOKEN` to the
+ * Redis-backed `RedisPickupPointCacheAdapter` and `PICKUP_POINT_LOOKUP_SERVICE_TOKEN`
+ * to the read-through `PickupPointLookupService`. `CACHE_PORT_TOKEN` is provided
+ * by the host-global `CacheModule` (`@openlinker/shared/cache`), so it is not
+ * imported here.
  *
  * @module libs/core/src/shipping
  */
@@ -24,10 +27,14 @@ import { MappingsModule } from '@openlinker/core/mappings';
 
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
+import { RedisPickupPointCacheAdapter } from './infrastructure/adapters/redis-pickup-point-cache.adapter';
 import { ShipmentDispatchService } from './application/services/shipment-dispatch.service';
 import { ShipmentQueryService } from './application/services/shipment-query.service';
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
+import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
 import {
+  PICKUP_POINT_CACHE_TOKEN,
+  PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
@@ -65,12 +72,24 @@ import {
       provide: SHIPMENT_CANCELLATION_SERVICE_TOKEN,
       useExisting: ShipmentCancellationService,
     },
+    RedisPickupPointCacheAdapter,
+    {
+      provide: PICKUP_POINT_CACHE_TOKEN,
+      useExisting: RedisPickupPointCacheAdapter,
+    },
+    PickupPointLookupService,
+    {
+      provide: PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
+      useExisting: PickupPointLookupService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
     SHIPMENT_DISPATCH_SERVICE_TOKEN,
     SHIPMENT_QUERY_SERVICE_TOKEN,
     SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+    PICKUP_POINT_CACHE_TOKEN,
+    PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}

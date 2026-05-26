@@ -91,6 +91,7 @@ export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-foun
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
+export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
@@ -105,3 +106,7 @@ export type {
 // injected via SHIPMENT_QUERY_SERVICE_TOKEN / SHIPMENT_CANCELLATION_SERVICE_TOKEN.
 export type { IShipmentQueryService } from './application/interfaces/shipment-query.service.interface';
 export type { IShipmentCancellationService } from './application/interfaces/shipment-cancellation.service.interface';
+
+// Application — pickup-point lookup seam (#766). Interface only; the service is
+// injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
+export type { IPickupPointLookupService } from './application/interfaces/pickup-point-lookup.service.interface';
