@@ -26,6 +26,7 @@ import {
 import type {
   GenerateLabelCommand,
   GenerateLabelResult,
+  ShipmentCanceller,
   ShippingMethod,
   ShippingProviderManagerPort,
   TrackingSnapshot,
@@ -45,7 +46,10 @@ export function installInpostTestShippingStub(harness: IntegrationTestHarness): 
     .get<AdapterFactoryResolverService>(ADAPTER_FACTORY_RESOLVER_TOKEN);
 
   let counter = 0;
-  const shippingStub: ShippingProviderManagerPort = {
+  // Implements ShipmentCanceller too (#846): the cancel command resolves this
+  // adapter and narrows via `isShipmentCanceller`. #835's dispatch spec ignores
+  // the extra method, so adding it is backward-compatible.
+  const shippingStub: ShippingProviderManagerPort & ShipmentCanceller = {
     getSupportedMethods(): readonly ShippingMethod[] {
       return ['paczkomat', 'kurier'];
     },
@@ -59,6 +63,9 @@ export function installInpostTestShippingStub(harness: IntegrationTestHarness): 
     },
     getTracking(_input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
       return Promise.resolve({ status: 'generated', providerStatus: 'generated' });
+    },
+    cancelShipment(_input: { providerShipmentId: string }): Promise<void> {
+      return Promise.resolve();
     },
   };
 

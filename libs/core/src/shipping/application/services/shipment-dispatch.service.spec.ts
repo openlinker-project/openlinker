@@ -90,6 +90,7 @@ describe('ShipmentDispatchService', () => {
   beforeEach(() => {
     repository = {
       create: jest.fn(),
+      findMany: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),

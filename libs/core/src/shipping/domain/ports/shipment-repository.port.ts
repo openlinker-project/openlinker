@@ -16,6 +16,11 @@
 
 import type { Shipment } from '../entities/shipment.entity';
 import type {
+  PaginatedShipments,
+  ShipmentFilters,
+  ShipmentPagination,
+} from '../types/shipment-query.types';
+import type {
   CreateShipmentInput,
   UpdateShipmentInput,
 } from '../types/shipment.types';
@@ -28,6 +33,13 @@ export interface ShipmentRepositoryPort {
    * initialised to `null`.
    */
   create(input: CreateShipmentInput): Promise<Shipment>;
+
+  /**
+   * Filtered, paginated list across all orders/connections, ordered by
+   * `createdAt DESC`. Filters combine with AND; `total` is the unpaginated
+   * match count. Backs the `/shipments` read API (#846).
+   */
+  findMany(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments>;
 
   findById(id: string): Promise<Shipment | null>;
 

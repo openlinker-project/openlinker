@@ -14,7 +14,16 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import {
+  Between,
+  type FindOptionsWhere,
+  In,
+  IsNull,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Not,
+  Repository,
+} from 'typeorm';
 
 import { formatInternalId } from '@openlinker/core/identifier-mapping';
 
@@ -22,6 +31,11 @@ import { Shipment } from '../../../domain/entities/shipment.entity';
 import { ShipmentNotFoundException } from '../../../domain/exceptions/shipment-not-found.exception';
 import type { ShipmentRepositoryPort } from '../../../domain/ports/shipment-repository.port';
 import { TerminalShipmentStatusValues } from '../../../domain/types/shipment-status.types';
+import type {
+  PaginatedShipments,
+  ShipmentFilters,
+  ShipmentPagination,
+} from '../../../domain/types/shipment-query.types';
 import type {
   CreateShipmentInput,
   UpdateShipmentInput,
@@ -39,6 +53,20 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     const entity = this.buildOrmEntity(input);
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
+  }
+
+  async findMany(
+    filters: ShipmentFilters,
+    pagination: ShipmentPagination,
+  ): Promise<PaginatedShipments> {
+    const where = this.buildWhere(filters);
+    const [entities, total] = await this.repository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: pagination.offset,
+      take: pagination.limit,
+    });
+    return { items: entities.map((entity) => this.toDomain(entity)), total };
   }
 
   async findById(id: string): Promise<Shipment | null> {
@@ -101,6 +129,26 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.failedAt = null;
     entity.errorMessage = null;
     return entity;
+  }
+
+  private buildWhere(filters: ShipmentFilters): FindOptionsWhere<ShipmentOrmEntity> {
+    const where: FindOptionsWhere<ShipmentOrmEntity> = {};
+    if (filters.orderId !== undefined) where.orderId = filters.orderId;
+    if (filters.status !== undefined) where.status = filters.status;
+    if (filters.connectionId !== undefined) where.connectionId = filters.connectionId;
+    if (filters.shippingMethod !== undefined) where.shippingMethod = filters.shippingMethod;
+    if (filters.hasTracking !== undefined) {
+      where.trackingNumber = filters.hasTracking ? Not(IsNull()) : IsNull();
+    }
+    const { createdFrom, createdTo } = filters;
+    if (createdFrom !== undefined && createdTo !== undefined) {
+      where.createdAt = Between(createdFrom, createdTo);
+    } else if (createdFrom !== undefined) {
+      where.createdAt = MoreThanOrEqual(createdFrom);
+    } else if (createdTo !== undefined) {
+      where.createdAt = LessThanOrEqual(createdTo);
+    }
+    return where;
   }
 
   private buildUpdatePayload(patch: UpdateShipmentInput): Partial<ShipmentOrmEntity> {

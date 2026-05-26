@@ -25,7 +25,14 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
 import { ShipmentDispatchService } from './application/services/shipment-dispatch.service';
-import { SHIPMENT_DISPATCH_SERVICE_TOKEN, SHIPMENT_REPOSITORY_TOKEN } from './shipping.tokens';
+import { ShipmentQueryService } from './application/services/shipment-query.service';
+import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
+import {
+  SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+  SHIPMENT_DISPATCH_SERVICE_TOKEN,
+  SHIPMENT_QUERY_SERVICE_TOKEN,
+  SHIPMENT_REPOSITORY_TOKEN,
+} from './shipping.tokens';
 
 @Module({
   imports: [
@@ -48,7 +55,22 @@ import { SHIPMENT_DISPATCH_SERVICE_TOKEN, SHIPMENT_REPOSITORY_TOKEN } from './sh
       provide: SHIPMENT_DISPATCH_SERVICE_TOKEN,
       useExisting: ShipmentDispatchService,
     },
+    ShipmentQueryService,
+    {
+      provide: SHIPMENT_QUERY_SERVICE_TOKEN,
+      useExisting: ShipmentQueryService,
+    },
+    ShipmentCancellationService,
+    {
+      provide: SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+      useExisting: ShipmentCancellationService,
+    },
   ],
-  exports: [SHIPMENT_REPOSITORY_TOKEN, SHIPMENT_DISPATCH_SERVICE_TOKEN],
+  exports: [
+    SHIPMENT_REPOSITORY_TOKEN,
+    SHIPMENT_DISPATCH_SERVICE_TOKEN,
+    SHIPMENT_QUERY_SERVICE_TOKEN,
+    SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+  ],
 })
 export class ShippingModule {}

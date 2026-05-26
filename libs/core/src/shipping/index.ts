@@ -65,6 +65,12 @@ export type {
   UpdateShipmentInput,
 } from './domain/types/shipment.types';
 
+export type {
+  ShipmentFilters,
+  ShipmentPagination,
+  PaginatedShipments,
+} from './domain/types/shipment-query.types';
+
 // Domain entity
 export { Shipment } from './domain/entities/shipment.entity';
 
@@ -83,6 +89,8 @@ export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-fi
 // Domain exceptions
 export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
+export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
+export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
@@ -92,3 +100,8 @@ export type {
   ShipmentDispatchInput,
   ShipmentDispatchResult,
 } from './application/types/shipment-dispatch.types';
+
+// Application — read + cancel seams (#846). Interfaces only; services are
+// injected via SHIPMENT_QUERY_SERVICE_TOKEN / SHIPMENT_CANCELLATION_SERVICE_TOKEN.
+export type { IShipmentQueryService } from './application/interfaces/shipment-query.service.interface';
+export type { IShipmentCancellationService } from './application/interfaces/shipment-cancellation.service.interface';
