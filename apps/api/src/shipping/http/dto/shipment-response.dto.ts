@@ -19,6 +19,13 @@ export class ShipmentResponseDto {
   @ApiProperty({ description: 'Internal order id (ol_order_*)' })
   orderId!: string;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      "Internal customer id (ol_customer_*) of the shipment's order, resolved at the API layer; null when the order has no customer or is unknown. The client resolves the display name from it.",
+  })
+  customerId!: string | null;
+
   @ApiProperty({ description: 'Shipping-provider connection id (UUID)' })
   connectionId!: string;
 
@@ -61,10 +68,11 @@ export class ShipmentResponseDto {
   @ApiProperty({ type: String, format: 'date-time' })
   updatedAt!: string;
 
-  static fromDomain(shipment: Shipment): ShipmentResponseDto {
+  static fromDomain(shipment: Shipment, customerId: string | null = null): ShipmentResponseDto {
     const dto = new ShipmentResponseDto();
     dto.id = shipment.id;
     dto.orderId = shipment.orderId;
+    dto.customerId = customerId;
     dto.connectionId = shipment.connectionId;
     dto.shippingMethod = shipment.shippingMethod;
     dto.status = shipment.status;
