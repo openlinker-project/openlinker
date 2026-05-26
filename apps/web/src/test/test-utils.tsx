@@ -321,6 +321,15 @@ export function createMockApiClient(
       getRoutingCandidates: vi.fn().mockResolvedValue([]),
       ...overrides.mappings,
     } as ApiClient['mappings'],
+    shipments: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      ...overrides.shipments,
+    } as ApiClient['shipments'],
     syncJobs: {
       enqueue: vi.fn().mockResolvedValue({
         jobId: 'job_1',

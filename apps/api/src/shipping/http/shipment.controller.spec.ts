@@ -25,6 +25,8 @@ import {
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
 
+import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+
 import { ShipmentController } from './shipment.controller';
 import type { GenerateLabelDto } from './dto/generate-label.dto';
 import type { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
@@ -65,6 +67,7 @@ describe('ShipmentController', () => {
   let query: jest.Mocked<IShipmentQueryService>;
   let dispatch: jest.Mocked<IShipmentDispatchService>;
   let cancellation: jest.Mocked<IShipmentCancellationService>;
+  let orders: jest.Mocked<IOrderRecordService>;
   let controller: ShipmentController;
 
   beforeEach(() => {
@@ -75,7 +78,14 @@ describe('ShipmentController', () => {
     };
     dispatch = { dispatch: jest.fn() };
     cancellation = { cancel: jest.fn() };
-    controller = new ShipmentController(query, dispatch, cancellation);
+    orders = {
+      persistOrder: jest.fn(),
+      updateSyncStatus: jest.fn(),
+      persistIncomingSnapshot: jest.fn(),
+      // Default: order/customer unknown → customerId resolves to null.
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    };
+    controller = new ShipmentController(query, dispatch, cancellation, orders);
   });
 
   describe('list', () => {
@@ -117,6 +127,42 @@ describe('ShipmentController', () => {
         expect.objectContaining({ createdFrom: undefined, createdTo: undefined }),
         { limit: 20, offset: 0 },
       );
+    });
+
+    it("should resolve each row's customerId from its order (deduped) and set it on the DTO", async () => {
+      query.list.mockResolvedValue({
+        items: [
+          makeShipment({ id: 'ol_shipment_1', orderId: 'ol_order_1' }),
+          makeShipment({ id: 'ol_shipment_2', orderId: 'ol_order_1' }), // same order → deduped
+          makeShipment({ id: 'ol_shipment_3', orderId: 'ol_order_2' }),
+        ],
+        total: 3,
+      });
+      orders.getOrderRecord.mockImplementation((orderId: string) =>
+        Promise.resolve(
+          orderId === 'ol_order_1'
+            ? ({ customerId: 'ol_customer_a' } as OrderRecord)
+            : ({ customerId: null } as OrderRecord),
+        ),
+      );
+
+      const result = await controller.list({});
+
+      expect(result.items[0].customerId).toBe('ol_customer_a');
+      expect(result.items[1].customerId).toBe('ol_customer_a');
+      expect(result.items[2].customerId).toBeNull();
+      // Deduped: 2 distinct order ids → 2 lookups, not 3.
+      expect(orders.getOrderRecord).toHaveBeenCalledTimes(2);
+    });
+
+    it('should degrade customerId to null (not 500) when an order lookup fails', async () => {
+      query.list.mockResolvedValue({ items: [makeShipment({ orderId: 'ol_order_x' })], total: 1 });
+      orders.getOrderRecord.mockRejectedValue(new Error('db blip'));
+
+      const result = await controller.list({});
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].customerId).toBeNull();
     });
   });
 

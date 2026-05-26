@@ -36,6 +36,7 @@ import { createInventoryApi, type InventoryApi } from '../../features/inventory/
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
+import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
   createPromptTemplatesApi,
   type PromptTemplatesApi,
@@ -93,6 +94,7 @@ export interface CoreApiClient {
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
+  shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -218,6 +220,7 @@ export function createApiClient({
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
+    shipments: createShipmentsApi(request),
     syncJobs: createSyncJobsApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

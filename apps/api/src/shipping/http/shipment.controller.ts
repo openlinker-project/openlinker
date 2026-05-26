@@ -5,6 +5,8 @@
  * + active-by-order reads, and the two commands — generate-label (delegates to
  * the #835 dispatch seam) and cancel. Reads/commands go through `I*Service`
  * seams (never `ShipmentRepositoryPort` — banned cross-context in apps/**).
+ * The read paths enrich each row's `customerId` by resolving its order via
+ * `IOrderRecordService` (#770; degrades to null on lookup failure).
  * Domain exceptions are mapped to HTTP at this boundary. Admin + JWT.
  *
  * @module apps/api/src/shipping/http
@@ -41,6 +43,8 @@ import {
   ShipmentNotFoundException,
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
+import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
@@ -53,6 +57,8 @@ import { ShipmentResponseDto } from './dto/shipment-response.dto';
 @ApiTags('shipments')
 @Controller('shipments')
 export class ShipmentController {
+  private readonly logger = new Logger(ShipmentController.name);
+
   constructor(
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
     private readonly query: IShipmentQueryService,
@@ -60,6 +66,8 @@ export class ShipmentController {
     private readonly dispatch: IShipmentDispatchService,
     @Inject(SHIPMENT_CANCELLATION_SERVICE_TOKEN)
     private readonly cancellation: IShipmentCancellationService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService,
   ) {}
 
   @Get()
@@ -80,8 +88,11 @@ export class ShipmentController {
     };
 
     const page = await this.query.list(filters, { limit, offset });
+    const customerByOrder = await this.resolveCustomerIds(page.items.map((s) => s.orderId));
     return {
-      items: page.items.map((shipment) => ShipmentResponseDto.fromDomain(shipment)),
+      items: page.items.map((shipment) =>
+        ShipmentResponseDto.fromDomain(shipment, customerByOrder.get(shipment.orderId) ?? null),
+      ),
       total: page.total,
       limit,
       offset,
@@ -103,7 +114,7 @@ export class ShipmentController {
     if (!shipment) {
       throw new NotFoundException(`No active shipment for order: ${orderId}`);
     }
-    return ShipmentResponseDto.fromDomain(shipment);
+    return ShipmentResponseDto.fromDomain(shipment, await this.resolveCustomerId(shipment.orderId));
   }
 
   @Get(':id')
@@ -115,7 +126,7 @@ export class ShipmentController {
     if (!shipment) {
       throw new NotFoundException(`Shipment not found: ${id}`);
     }
-    return ShipmentResponseDto.fromDomain(shipment);
+    return ShipmentResponseDto.fromDomain(shipment, await this.resolveCustomerId(shipment.orderId));
   }
 
   @Post('generate-label')
@@ -158,6 +169,43 @@ export class ShipmentController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+  }
+
+  /**
+   * Resolve an order's customer id (`Order.customerId`) for the customer column.
+   * Returns null when the order is unknown or has no customer. Cross-context
+   * read via `IOrderRecordService` (host-layer composition — orders is reached
+   * through its `I*Service`, not its repository).
+   */
+  private async resolveCustomerId(orderId: string): Promise<string | null> {
+    // The customer column is a secondary enrichment — a failed order lookup must
+    // NOT take down the primary shipments read. Degrade to null on error
+    // (mirrors how the FE entity-labels degrade to the bare id).
+    try {
+      const order = await this.orders.getOrderRecord(orderId);
+      return order?.customerId ?? null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to resolve customer for order ${orderId}: ${message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Batch-resolve customer ids for a page of shipments. Dedupes order ids so a
+   * page with N shipments across M distinct orders costs M lookups, not N.
+   * NOTE: no batch read exists on `IOrderRecordService` yet — this is M single
+   * `getOrderRecord` calls; a `findByIds` batch is a tracked follow-up.
+   */
+  private async resolveCustomerIds(orderIds: string[]): Promise<Map<string, string | null>> {
+    const distinct = [...new Set(orderIds)];
+    const entries = await Promise.all(
+      distinct.map(async (orderId): Promise<[string, string | null]> => [
+        orderId,
+        await this.resolveCustomerId(orderId),
+      ]),
+    );
+    return new Map(entries);
   }
 
   /**
