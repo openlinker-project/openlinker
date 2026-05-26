@@ -96,7 +96,12 @@ describe('ShipmentDispatchService', () => {
       findByProviderShipmentId: jest.fn(),
       update: jest.fn(),
     };
-    routing = { getRules: jest.fn(), replaceRules: jest.fn(), resolve: jest.fn() };
+    routing = {
+      getRules: jest.fn(),
+      getCandidateProcessors: jest.fn(),
+      replaceRules: jest.fn(),
+      resolve: jest.fn(),
+    };
     adapter = {
       generateLabel: jest.fn(),
       getTracking: jest.fn(),

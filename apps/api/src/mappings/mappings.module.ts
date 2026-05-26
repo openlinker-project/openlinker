@@ -14,6 +14,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CategoriesModule } from '../categories/categories.module';
 import { MappingsController } from './http/mappings.controller';
 import { MappingOptionsController } from './http/mapping-options.controller';
+import { FulfillmentRoutingController } from './http/fulfillment-routing.controller';
 
 @Module({
   // - CoreIntegrationsModule provides INTEGRATIONS_SERVICE_TOKEN — the
@@ -26,6 +27,6 @@ import { MappingOptionsController } from './http/mapping-options.controller';
   //   IdentifierMappingModule but does not re-export the token, so the
   //   import here is direct.
   imports: [CoreMappingsModule, CoreIntegrationsModule, IdentifierMappingModule, CategoriesModule],
-  controllers: [MappingsController, MappingOptionsController],
+  controllers: [MappingsController, MappingOptionsController, FulfillmentRoutingController],
 })
 export class MappingsApiModule {}

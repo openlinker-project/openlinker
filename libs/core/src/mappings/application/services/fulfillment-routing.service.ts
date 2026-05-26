@@ -16,17 +16,22 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import {
   type CoreCapability,
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
+import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IFulfillmentRoutingService } from '../interfaces/fulfillment-routing.service.interface';
 import { FULFILLMENT_ROUTING_REPOSITORY_TOKEN } from '../../mappings.tokens';
 import { FulfillmentRoutingRepositoryPort } from '../../domain/ports/fulfillment-routing-repository.port';
 import type { FulfillmentRoutingRule } from '../../domain/entities/fulfillment-routing-rule.entity';
 import {
+  type CandidateProcessor,
   FULFILLMENT_PROCESSOR_KIND,
+  FulfillmentProcessorKindValues,
+  type FulfillmentProcessorKind,
   type FulfillmentRoutingQuery,
   type FulfillmentRoutingResolution,
   type FulfillmentRoutingRuleInput,
@@ -50,15 +55,75 @@ const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
 
 @Injectable()
 export class FulfillmentRoutingService implements IFulfillmentRoutingService {
+  private readonly logger = new Logger(FulfillmentRoutingService.name);
+
   constructor(
     @Inject(FULFILLMENT_ROUTING_REPOSITORY_TOKEN)
     private readonly repository: FulfillmentRoutingRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
   ) {}
 
   async getRules(sourceConnectionId: string): Promise<FulfillmentRoutingRule[]> {
+    // Validate existence (throws ConnectionNotFoundException → 404 on unknown),
+    // but NOT active status — an operator can still read the routing config of a
+    // disabled connection. Uniform "unknown connection → 404" with
+    // getCandidateProcessors / replaceRules, which additionally require active
+    // (they resolve adapter metadata via getAdapter).
+    await this.connectionPort.get(sourceConnectionId);
     return this.repository.findBySourceConnectionId(sourceConnectionId);
+  }
+
+  async getCandidateProcessors(sourceConnectionId: string): Promise<CandidateProcessor[]> {
+    // Validates the source exists + is active (throws ConnectionNotFound /
+    // ConnectionDisabled, mapped to 404/400 at the HTTP boundary).
+    await this.integrations.getAdapter(sourceConnectionId);
+
+    // Metadata-only enumeration: `getAdapter` is a metadata-only lookup (no
+    // adapter instance is constructed), so listing candidates can't fail on a
+    // connection whose adapter wouldn't construct (e.g. missing credentials).
+    const connections = await this.connectionPort.list({ status: 'active' });
+
+    // Resolve each connection's adapter metadata concurrently (the lookups are
+    // independent). A connection whose metadata can't be resolved (e.g. its
+    // plugin was removed, leaving a stale adapterKey) is simply not an offerable
+    // processor — drop it rather than blanking the whole candidate list.
+    const resolved = await Promise.all(
+      connections.map(async (connection) => {
+        try {
+          const { metadata } = await this.integrations.getAdapter(connection.id);
+          return { connectionId: connection.id, capabilities: metadata.supportedCapabilities };
+        } catch (error) {
+          this.logger.debug(
+            `Skipping connection ${connection.id} in candidate enumeration: ` +
+              `adapter metadata unresolved (${(error as Error).message})`,
+          );
+          return null;
+        }
+      }),
+    );
+
+    // Promise.all preserves input order, so candidate order follows the
+    // connection list deterministically.
+    const candidates: CandidateProcessor[] = [];
+    for (const entry of resolved) {
+      if (!entry) continue;
+      for (const processorKind of FulfillmentProcessorKindValues) {
+        if (
+          this.evaluateCompatibility(
+            processorKind,
+            sourceConnectionId,
+            entry.connectionId,
+            entry.capabilities,
+          ).compatible
+        ) {
+          candidates.push({ processorKind, processorConnectionId: entry.connectionId });
+        }
+      }
+    }
+    return candidates;
   }
 
   async replaceRules(
@@ -103,10 +168,11 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
   }
 
   /**
-   * Capability + topology compatibility for a single rule. `getAdapter`
-   * resolves the connection's adapter metadata and throws
+   * Capability + topology compatibility for a single rule (write path).
+   * Resolves the processor connection's adapter metadata (`getAdapter` throws
    * `ConnectionNotFoundException` / `ConnectionDisabledException` for an
-   * invalid processor connection — those propagate unchanged.
+   * invalid processor connection — those propagate unchanged) and delegates
+   * the decision to the shared `evaluateCompatibility` predicate.
    */
   private async assertCompatible(
     sourceConnectionId: string,
@@ -114,62 +180,77 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
   ): Promise<void> {
     const { processorKind, processorConnectionId } = item;
     const { metadata } = await this.integrations.getAdapter(processorConnectionId);
-    const capabilities = metadata.supportedCapabilities;
+    const { compatible, reason } = this.evaluateCompatibility(
+      processorKind,
+      sourceConnectionId,
+      processorConnectionId,
+      metadata.supportedCapabilities,
+    );
+    if (!compatible) {
+      throw new IncompatibleProcessorException(processorConnectionId, processorKind, reason);
+    }
+  }
 
+  /**
+   * Pure per-kind capability + topology predicate — the **single source of
+   * truth** shared by `assertCompatible` (write-path validation) and
+   * `getCandidateProcessors` (read-path offer-set). Keeping both paths on one
+   * predicate guarantees the routing-config UI never offers a processor that
+   * `replaceRules` would reject, nor hides one it would accept (#836).
+   */
+  private evaluateCompatibility(
+    processorKind: FulfillmentProcessorKind,
+    sourceConnectionId: string,
+    processorConnectionId: string,
+    capabilities: readonly string[],
+  ): { compatible: boolean; reason: string } {
     switch (processorKind) {
       case FULFILLMENT_PROCESSOR_KIND.OmpFulfilled:
-        if (!capabilities.includes(ORDER_PROCESSOR_MANAGER_CAPABILITY)) {
-          throw new IncompatibleProcessorException(
-            processorConnectionId,
-            processorKind,
-            `does not declare the ${ORDER_PROCESSOR_MANAGER_CAPABILITY} capability`,
-          );
-        }
-        return;
+        return capabilities.includes(ORDER_PROCESSOR_MANAGER_CAPABILITY)
+          ? { compatible: true, reason: '' }
+          : {
+              compatible: false,
+              reason: `does not declare the ${ORDER_PROCESSOR_MANAGER_CAPABILITY} capability`,
+            };
 
       case FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier:
         if (!capabilities.includes(SHIPPING_PROVIDER_MANAGER_CAPABILITY)) {
-          throw new IncompatibleProcessorException(
-            processorConnectionId,
-            processorKind,
-            `does not declare the ${SHIPPING_PROVIDER_MANAGER_CAPABILITY} capability`,
-          );
+          return {
+            compatible: false,
+            reason: `does not declare the ${SHIPPING_PROVIDER_MANAGER_CAPABILITY} capability`,
+          };
         }
         if (processorConnectionId === sourceConnectionId) {
-          throw new IncompatibleProcessorException(
-            processorConnectionId,
-            processorKind,
-            'an OL-managed carrier must be a connection distinct from the order source',
-          );
+          return {
+            compatible: false,
+            reason: 'an OL-managed carrier must be a connection distinct from the order source',
+          };
         }
-        return;
+        return { compatible: true, reason: '' };
 
       case FULFILLMENT_PROCESSOR_KIND.SourceBrokered:
         if (!capabilities.includes(SHIPPING_PROVIDER_MANAGER_CAPABILITY)) {
-          throw new IncompatibleProcessorException(
-            processorConnectionId,
-            processorKind,
-            `does not declare the ${SHIPPING_PROVIDER_MANAGER_CAPABILITY} capability`,
-          );
+          return {
+            compatible: false,
+            reason: `does not declare the ${SHIPPING_PROVIDER_MANAGER_CAPABILITY} capability`,
+          };
         }
         if (processorConnectionId !== sourceConnectionId) {
-          throw new IncompatibleProcessorException(
-            processorConnectionId,
-            processorKind,
-            'a source-brokered processor must be the order source connection itself',
-          );
+          return {
+            compatible: false,
+            reason: 'a source-brokered processor must be the order source connection itself',
+          };
         }
-        return;
+        return { compatible: true, reason: '' };
 
       default: {
         // Exhaustiveness guard: a new FulfillmentProcessorKind added without a
         // matching compatibility rule must fail loud, never pass unvalidated.
         const exhaustive: never = processorKind;
-        throw new IncompatibleProcessorException(
-          processorConnectionId,
-          String(exhaustive),
-          'unknown processor kind has no compatibility rule',
-        );
+        return {
+          compatible: false,
+          reason: `unknown processor kind '${String(exhaustive)}' has no compatibility rule`,
+        };
       }
     }
   }
