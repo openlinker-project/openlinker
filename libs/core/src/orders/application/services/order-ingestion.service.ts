@@ -37,12 +37,16 @@ import type {
   OrderIngestionOptions,
   OrderIngestionResult,
 } from '../interfaces/order-ingestion.service.interface';
-import { ORDER_SYNC_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_SYNC_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
+} from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import { Logger } from '@openlinker/shared/logging';
-import { OrderItemRefResolverService } from './order-item-ref-resolver.service';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 @Injectable()
@@ -63,7 +67,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly lock: SyncLockPort,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
-    private readonly orderItemRefResolver: OrderItemRefResolverService,
+    @Inject(ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN)
+    private readonly orderItemRefResolver: IOrderItemRefResolverService,
     @Inject(ORDER_SYNC_SERVICE_TOKEN)
     private readonly orderSyncService: IOrderSyncService,
     @Inject(CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN)
