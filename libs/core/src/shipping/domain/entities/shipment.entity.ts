@@ -45,5 +45,14 @@ export class Shipment {
     public readonly errorMessage: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    // Deliberately appended AFTER the timestamps (not spliced among the
+    // existing `string | null` fields) so a misplaced arg can't silently
+    // reshuffle same-typed positions — the trailing slot is type-distinct from
+    // the two `Date`s above, so omission/misplacement is a compile error.
+    // Keep it here; do not "tidy" it into the middle. Required (no default) so
+    // every construction site is forced to supply it.
+    // Source marketplace delivery-method id this shipment was routed from
+    // (audit/forensics; distinct from the resolved provider delivery method).
+    public readonly sourceDeliveryMethodId: string | null,
   ) {}
 }

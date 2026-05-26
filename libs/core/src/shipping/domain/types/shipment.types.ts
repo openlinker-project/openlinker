@@ -24,6 +24,11 @@ export interface CreateShipmentInput {
   shippingMethod: ShippingMethod;
   /** Required when `shippingMethod === 'paczkomat'`; absent for kurier. */
   paczkomatId?: string;
+  /** Source-side delivery-method id (`OrderShipping.methodId`) this shipment
+   * was routed from. Persisted for audit/forensics (which marketplace method
+   * produced the shipment) — distinct from the resolved provider
+   * `deliveryMethodId` the adapter sends. */
+  sourceDeliveryMethodId?: string;
 }
 
 /**

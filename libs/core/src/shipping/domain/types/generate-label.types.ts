@@ -33,6 +33,12 @@ export interface GenerateLabelCommand {
   /** Which shipping shape the adapter should produce. Adapters MUST throw
    * if this value isn't in their `getSupportedMethods()`. */
   shippingMethod: ShippingMethod;
+  /** Resolved provider-side delivery-method id the adapter sends to its API
+   * (e.g. Allegro `/shipment-management` `deliveryMethodId`). Resolved
+   * upstream at dispatch from the source method behind a seam (#833 ADR-012);
+   * own-contract adapters (InPost) ignore it. Source-brokered adapters that
+   * require it MUST throw a readable error when it is absent. */
+  deliveryMethodId?: string;
   /** Required when `shippingMethod === 'paczkomat'`. Provider-issued
    * locker id (e.g. `'POZ08A'`). */
   paczkomatId?: string;

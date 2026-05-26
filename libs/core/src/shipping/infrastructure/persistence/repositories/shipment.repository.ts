@@ -121,6 +121,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.status = 'draft';
     entity.providerShipmentId = null;
     entity.paczkomatId = input.paczkomatId ?? null;
+    entity.sourceDeliveryMethodId = input.sourceDeliveryMethodId ?? null;
     entity.trackingNumber = null;
     entity.labelPdfRef = null;
     entity.dispatchedAt = null;
@@ -185,6 +186,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.errorMessage,
       entity.createdAt,
       entity.updatedAt,
+      entity.sourceDeliveryMethodId,
     );
   }
 }

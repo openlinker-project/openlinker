@@ -91,6 +91,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     }
   }
 
+  /**
+   * Resolve the provider-side delivery-method id the adapter sends, from the
+   * source-side method — the **compatibility seam** ADR-012 keeps the OQ-B1
+   * namespace question behind. v1 is identity: it assumes the order's
+   * `delivery.method.id` is the value the source-brokered provider expects.
+   * If a sandbox probe shows the namespaces diverge, only this body changes
+   * (e.g. a co-keyed source→service mapping lookup, mirroring `CarrierMapping`)
+   * — the adapter and routing model never reshape. Returns `undefined` for the
+   * omp-fulfilled default (no source method); source-brokered adapters that
+   * require the id throw a readable error when it is absent.
+   */
+  private resolveProviderDeliveryMethodId(input: ShipmentDispatchInput): string | undefined {
+    return input.sourceDeliveryMethodId ?? undefined;
+  }
+
   private async dispatchViaShippingProvider(
     input: ShipmentDispatchInput,
     processorConnectionId: string | null,
@@ -126,6 +141,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       connectionId: processorConnectionId,
       shippingMethod: input.shippingMethod,
       paczkomatId: input.paczkomatId,
+      sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
     });
 
     // NOTE: if generateLabel commits provider-side but its response fails, the
@@ -140,6 +156,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         orderId: input.orderId,
         shippingMethod: input.shippingMethod,
         paczkomatId: input.paczkomatId,
+        deliveryMethodId: this.resolveProviderDeliveryMethodId(input),
         recipient: input.recipient,
         parcel: input.parcel,
       });

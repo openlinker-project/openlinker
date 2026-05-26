@@ -73,7 +73,7 @@ export interface CreateAllegroPluginDeps {
 export const allegroAdapterManifest: AdapterMetadata = {
   adapterKey: 'allegro.publicapi.v1',
   platformType: 'allegro',
-  supportedCapabilities: ['OrderSource', 'OfferManager'],
+  supportedCapabilities: ['OrderSource', 'OfferManager', 'ShippingProviderManager'],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,
@@ -156,6 +156,7 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
         {
           OfferManager: () => adapters.offerManager,
           OrderSource: () => adapters.orderSource,
+          ShippingProviderManager: () => adapters.shippingManager,
         },
         ALLEGRO_BRAND
       );

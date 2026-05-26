@@ -41,6 +41,12 @@ export class ShipmentResponseDto {
   @ApiProperty({ nullable: true, description: 'Paczkomat / pickup-point id' })
   paczkomatId!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    description: 'Source marketplace delivery-method id this shipment was routed from',
+  })
+  sourceDeliveryMethodId!: string | null;
+
   @ApiProperty({ nullable: true })
   trackingNumber!: string | null;
 
@@ -78,6 +84,7 @@ export class ShipmentResponseDto {
     dto.status = shipment.status;
     dto.providerShipmentId = shipment.providerShipmentId;
     dto.paczkomatId = shipment.paczkomatId;
+    dto.sourceDeliveryMethodId = shipment.sourceDeliveryMethodId;
     dto.trackingNumber = shipment.trackingNumber;
     dto.labelPdfRef = shipment.labelPdfRef;
     dto.dispatchedAt = shipment.dispatchedAt?.toISOString() ?? null;

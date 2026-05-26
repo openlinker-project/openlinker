@@ -59,6 +59,9 @@ export class ShipmentOrmEntity {
   paczkomatId!: string | null;
 
   @Column({ type: 'text', nullable: true })
+  sourceDeliveryMethodId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
   trackingNumber!: string | null;
 
   @Column({ type: 'text', nullable: true })

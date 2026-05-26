@@ -144,15 +144,18 @@ describe('Fulfillment Routing HTTP Integration', () => {
       .expect(200);
 
     const candidates = res.body as { processorKind: string; processorConnectionId: string }[];
-    // PrestaShop is the only OMP-capable processor; InPost the only shipping
-    // carrier. Allegro (source) declares neither, so it is not a candidate.
+    // PrestaShop is the OMP-capable processor; InPost the OL-managed shipping
+    // carrier; and since #833 the Allegro source itself declares
+    // ShippingProviderManager, so it is a source_brokered candidate (a
+    // source-brokered processor is the source connection itself).
     expect(candidates).toEqual(
       expect.arrayContaining([
         { processorKind: 'omp_fulfilled', processorConnectionId: prestashopId },
         { processorKind: 'ol_managed_carrier', processorConnectionId: inpostId },
+        { processorKind: 'source_brokered', processorConnectionId: sourceId },
       ]),
     );
-    expect(candidates).toHaveLength(2);
+    expect(candidates).toHaveLength(3);
   });
 
   it('rejects an incompatible processor with 400', async () => {
