@@ -247,8 +247,10 @@ describe('PrestashopWebserviceClient', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       const url = fetchCall[0] as string;
 
-      expect(url).toContain('limit=50');
-      expect(url).toContain('offset=100');
+      // PrestaShop paging syntax is `limit=[offset,]count` — offset=100, count=50.
+      // A standalone `offset=` param is silently ignored by PrestaShop (#851).
+      expect(url).toContain('limit=100,50');
+      expect(url).not.toContain('offset=');
     });
 
     it('should use default page size when limit not provided', async () => {
@@ -271,6 +273,76 @@ describe('PrestashopWebserviceClient', () => {
       const url = fetchCall[0] as string;
 
       expect(url).toContain('limit=100'); // Default page size
+    });
+
+    it('should walk every page when paginated by offset and terminate (#851 regression)', async () => {
+      // Emulate PrestaShop's real `limit=[offset,]count` semantics: a comma value
+      // means [offset, count]; a bare value means count from offset 0. Crucially,
+      // there is NO `offset=` parameter — under the pre-fix builder the URL carried
+      // `limit=2&offset=2`, this fake would parse `limit=2` (offset 0) and return the
+      // same first page forever, so the walk below would never see a short page and
+      // would spin to its guard, collecting only the first page's IDs.
+      const catalog = ['101', '102', '103', '104', '105'];
+      const pageSize = 2;
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        const query = url.split('?')[1] ?? '';
+        const limitParam =
+          query
+            .split('&')
+            .find((p) => p.startsWith('limit='))
+            ?.slice('limit='.length) ?? '';
+        let offset = 0;
+        let count = catalog.length;
+        if (limitParam.includes(',')) {
+          const [rawOffset, rawCount] = limitParam.split(',');
+          offset = Number(rawOffset);
+          count = Number(rawCount);
+        } else if (limitParam.length > 0) {
+          count = Number(limitParam);
+        }
+        const slice = catalog.slice(offset, offset + count);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () =>
+            Promise.resolve(
+              JSON.stringify({
+                prestashop: { products: { product: slice.map((id) => ({ id })) } },
+              })
+            ),
+        });
+      });
+
+      // Mirror MasterProductSyncAllHandler.collectExternalIds with a generous guard.
+      const MAX_PAGES = 50;
+      const collected: string[] = [];
+      let offset = 0;
+      let pages = 0;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        pages++;
+        const batch = await client.listResources<{ id: string }>(
+          'products',
+          { display: '[id]' },
+          pageSize,
+          offset
+        );
+        if (batch.length === 0) break;
+        collected.push(...batch.map((r) => String(r.id)));
+        if (batch.length < pageSize) break;
+        offset += batch.length;
+      }
+
+      // Terminated naturally on the short final page (3 = 2 + 2 + 1), not on the guard.
+      expect(pages).toBe(3);
+      expect(collected).toEqual(catalog);
+
+      // Page 2 must request the offset slice via the comma form, never `offset=`.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      const secondUrl = (global.fetch as jest.Mock).mock.calls[1][0] as string;
+      expect(secondUrl).toContain('limit=2,2');
+      expect(secondUrl).not.toContain('offset=');
     });
 
     it('should normalize collection response to array', async () => {

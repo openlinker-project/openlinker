@@ -90,7 +90,7 @@ describe('PrestashopQueryBuilder', () => {
   });
 
   describe('buildQueryWithPagination', () => {
-    it('should include limit parameter', () => {
+    it('should emit count-only limit when no offset is given', () => {
       const query = PrestashopQueryBuilder.buildQueryWithPagination(
         'products',
         undefined,
@@ -98,9 +98,26 @@ describe('PrestashopQueryBuilder', () => {
         50
       );
       expect(query).toContain('limit=50');
+      // PrestaShop has no standalone `offset` parameter — it must never appear.
+      expect(query).not.toContain('offset=');
     });
 
-    it('should include offset parameter', () => {
+    it('should emit `limit=offset,count` when paginating with an offset (#851)', () => {
+      // PrestaShop pagination syntax is `limit=[offset,]count` (offset 0-indexed),
+      // NOT a separate `offset=` param. limit=200, offset=200 → page 2 of 200.
+      const query = PrestashopQueryBuilder.buildQueryWithPagination(
+        'products',
+        undefined,
+        undefined,
+        200,
+        200
+      );
+      expect(query).toContain('limit=200,200');
+      expect(query).not.toContain('offset=');
+      expect(query).not.toContain('limit=200&'); // not the bare count form
+    });
+
+    it('should drop a bare offset that has no count (cannot be expressed in PrestaShop)', () => {
       const query = PrestashopQueryBuilder.buildQueryWithPagination(
         'products',
         undefined,
@@ -108,10 +125,11 @@ describe('PrestashopQueryBuilder', () => {
         undefined,
         100
       );
-      expect(query).toContain('offset=100');
+      expect(query).not.toContain('offset=');
+      expect(query).not.toContain('limit=');
     });
 
-    it('should combine filters and pagination', () => {
+    it('should combine filters and offset pagination', () => {
       const filters = {
         status: 'pending',
       };
@@ -123,8 +141,9 @@ describe('PrestashopQueryBuilder', () => {
         50
       );
       expect(query).toContain('filter[current_state]=[pending]');
-      expect(query).toContain('limit=25');
-      expect(query).toContain('offset=50');
+      // offset=50, count=25 → `limit=50,25`.
+      expect(query).toContain('limit=50,25');
+      expect(query).not.toContain('offset=');
     });
   });
 

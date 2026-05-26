@@ -155,13 +155,17 @@ export class PrestashopQueryBuilder {
     const baseQuery = this.buildQuery(resource, filters, config);
     const params: string[] = [baseQuery];
 
-    // Pagination
+    // Pagination. PrestaShop's WebService has no standalone `offset` parameter:
+    // paging is expressed entirely through `limit` using the `[offset,]count`
+    // comma syntax (offset 0-indexed). e.g. `limit=200,200` = 200 rows starting
+    // at element 201. A bare `offset=N` is silently ignored by PrestaShop, which
+    // made every page return the same first `count` rows (issue #851). The comma
+    // form requires a count, so an offset with no limit cannot be expressed and
+    // is dropped — the only offset>0 caller (listExternalIds) always passes limit.
     if (limit !== undefined && limit > 0) {
-      params.push(`limit=${limit}`);
-    }
-
-    if (offset !== undefined && offset > 0) {
-      params.push(`offset=${offset}`);
+      params.push(
+        offset !== undefined && offset > 0 ? `limit=${offset},${limit}` : `limit=${limit}`
+      );
     }
 
     return params.join('&');
