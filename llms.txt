@@ -1,0 +1,23 @@
+# OpenLinker
+
+> Open-source, self-hosted, API-first e-commerce orchestration platform. Sync orders, inventory, and listings between your shop (PrestaShop, …) and the marketplaces you sell on (Allegro, …). Built on Hexagonal Architecture (ports and adapters) in a pnpm monorepo — platforms plug in as packages that implement typed capability ports, so adding a platform is a plugin, not a fork.
+
+The canonical, always-current version of this file is served by the project site at https://openlinker.io/llms.txt. This copy lives in the source repository so AI crawlers reading the code also find the site.
+
+## Site
+
+- [openlinker.io](https://openlinker.io): Project homepage
+- [Architecture](https://openlinker.io/en/architecture): Bounded contexts, capability ports, and data flow
+- [Integrations](https://openlinker.io/en/integrations): Supported and planned platform integrations
+- [vs BaseLinker](https://openlinker.io/en/vs/baselinker): How OpenLinker compares to BaseLinker
+- [llms.txt](https://openlinker.io/llms.txt): Canonical site-hosted version of this file
+
+## Repository documentation
+
+- [Architecture Overview](https://github.com/openlinker-project/openlinker/blob/main/docs/architecture-overview.md): Bounded contexts, capability ports, and data flow
+- [Engineering Standards](https://github.com/openlinker-project/openlinker/blob/main/docs/engineering-standards.md): Naming, file layout, and the repository-port pattern
+- [Plugin Author Guide](https://github.com/openlinker-project/openlinker/blob/main/docs/plugin-author-guide.md): Adding a new integration as a plugin
+- [Getting Started](https://github.com/openlinker-project/openlinker/blob/main/docs/getting-started.md): From a clean machine to a working PrestaShop + Allegro setup
+- [Testing Guide](https://github.com/openlinker-project/openlinker/blob/main/docs/testing-guide.md): Unit and Testcontainers-based integration tests
+- [Public API Contract](https://github.com/openlinker-project/openlinker/blob/main/PUBLIC_API.md): What's stable for plugin authors and downstream consumers
+- [README](https://github.com/openlinker-project/openlinker/blob/main/README.md): Overview, capabilities, integrations, and quickstart

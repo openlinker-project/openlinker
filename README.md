@@ -4,6 +4,8 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
 
+**[openlinker.io](https://openlinker.io)** · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
+
 **Sync orders, inventory, and listings between your shop and the marketplaces you sell on. Self-hosted, open-source, pluggable.**
 
 If you sell on your own shop *and* on marketplaces like Allegro, you've already lived the pain: orders coming in from multiple places, inventory drifting between channels, manually rewriting product descriptions for every listing, customer data scattered across systems. The usual answers are SaaS channel managers (you pay forever and your data lives on their servers) or custom scripts (fragile and yours to maintain alone). OpenLinker is the third option: a self-hosted, open-source orchestration platform that does the same job, on your servers, with your data, with code you can read and extend.
