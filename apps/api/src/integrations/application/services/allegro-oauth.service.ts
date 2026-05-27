@@ -18,8 +18,8 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
 import { RedisClientType } from 'redis';
-import type { AllegroConnectionConfig } from '@openlinker/integrations-allegro';
-import { AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
+import type { AllegroConnectionConfig, AllegroAccountIdentity } from '@openlinker/integrations-allegro';
+import { AllegroEnvironmentValues, AllegroAccountReader } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
 import type { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
 import {
@@ -47,7 +47,8 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
     @Inject(CREDENTIALS_SERVICE_TOKEN)
-    private readonly credentials: ICredentialsService
+    private readonly credentials: ICredentialsService,
+    private readonly accountReader: AllegroAccountReader
   ) {}
 
   /**
@@ -305,12 +306,23 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     tokenResponse: AllegroOAuthTokenResponse,
     stateData: OAuthStateData
   ): Promise<Connection> {
+    // Capture the seller identity for the freshly-issued token up front, so
+    // both the create and re-auth paths share one verified anchor. A failure
+    // is fatal (see resolveSellerIdentity) — a connection is never
+    // seller-anchored to an unverified account.
+    const identity = await this.resolveSellerIdentity(tokenResponse, stateData.environment);
+
     // Re-authentication path (#819): when state carries an existing
     // connectionId, rotate that connection's credentials in place and clear
     // its needs_reauth flag instead of minting a new connection — re-using the
     // connection preserves all connection-scoped identifier mappings.
     if (stateData.connectionId) {
-      return this.reauthenticateExistingConnection(tokenResponse, stateData, stateData.connectionId);
+      return this.reauthenticateExistingConnection(
+        tokenResponse,
+        stateData,
+        stateData.connectionId,
+        identity
+      );
     }
 
     this.logger.log(
@@ -355,6 +367,7 @@ export class AllegroOAuthService implements IAllegroOAuthService {
     // Prepare connection config
     const config: AllegroConnectionConfig = {
       environment: stateData.environment as 'sandbox' | 'production',
+      sellerId: identity.sellerId,
       ...(stateData.masterCatalogConnectionId
         ? { masterCatalogConnectionId: stateData.masterCatalogConnectionId }
         : {}),
@@ -390,26 +403,38 @@ export class AllegroOAuthService implements IAllegroOAuthService {
   private async reauthenticateExistingConnection(
     tokenResponse: AllegroOAuthTokenResponse,
     stateData: OAuthStateData,
-    connectionId: string
+    connectionId: string,
+    identity: AllegroAccountIdentity
   ): Promise<Connection> {
     this.logger.log(`Re-authenticating existing Allegro connection in place: ${connectionId}`);
 
-    // Resolve + guard: must be an existing Allegro connection.
-    //
-    // ASSUMPTION (#819 / ADR-008): the operator re-authenticates the SAME
-    // Allegro seller account. We validate platformType but NOT that the new
-    // token authorizes the same seller — OpenLinker doesn't yet persist the
-    // Allegro account id on the connection. Re-authing with a different
-    // developer app / seller would silently rebind this connection while
-    // retaining mappings keyed to the previous seller's external-id space.
-    // It's admin-gated and the operator supplies their own credentials, so
-    // it's a foot-gun, not a security hole. Validating seller identity here
-    // is a tracked follow-up.
     const existing = await this.connectionService.get(connectionId);
     if (existing.platformType !== 'allegro') {
       throw new BadRequestException(
         `Connection ${connectionId} is not an Allegro connection (platformType: ${existing.platformType})`
       );
+    }
+
+    // Same-seller guard (#820): the in-place re-auth preserves the connection
+    // id and every connection-scoped identifier mapping, so the new token MUST
+    // authorize the same Allegro seller. Reject BEFORE rotating credentials
+    // when the stored seller differs. A connection created before #820 has no
+    // stored sellerId — nothing to compare against — so it's backfilled below
+    // rather than rejected.
+    const storedSellerId = (existing.config as { sellerId?: string } | undefined)?.sellerId;
+    if (storedSellerId && storedSellerId !== identity.sellerId) {
+      this.logger.warn(
+        `Allegro re-auth seller mismatch on connection ${connectionId} (name: ${existing.name}): ` +
+          `stored=${storedSellerId}, incoming=${identity.sellerId} (login: ${identity.login})`
+      );
+      throw new BadRequestException({
+        message:
+          `This authorization is for a different Allegro seller (login '${identity.login}', ` +
+          `id ${identity.sellerId}) than connection "${existing.name}" is bound to ` +
+          `(seller id ${storedSellerId}). Re-authenticate with the original seller account, ` +
+          `or create a new connection.`,
+        code: 'ALLEGRO_SELLER_MISMATCH',
+      });
     }
 
     // Same credential blob shape the create path persists, with the rotated token.
@@ -428,8 +453,23 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       credentials as unknown as Record<string, unknown>
     );
 
-    // Clear the re-auth flag — return the connection to active service.
-    const connection = await this.connectionService.update(connectionId, { status: 'active' });
+    // Clear the re-auth flag and persist (or backfill) the verified seller id.
+    // The shape-validator re-runs on the merged config (non-whitelisting, so
+    // adjacent fields pass through).
+    const mergedConfig = {
+      ...((existing.config as Record<string, unknown> | undefined) ?? {}),
+      sellerId: identity.sellerId,
+    };
+    const connection = await this.connectionService.update(connectionId, {
+      status: 'active',
+      config: mergedConfig as ConnectionConfig,
+    });
+
+    if (!storedSellerId) {
+      this.logger.log(
+        `Backfilled Allegro sellerId=${identity.sellerId} on connection ${connectionId} during re-auth`
+      );
+    }
 
     this.logger.log(
       `Connection re-authenticated successfully: ${connection.id} (name: ${connection.name}, status: ${connection.status})`
@@ -554,6 +594,31 @@ export class AllegroOAuthService implements IAllegroOAuthService {
       // Self-heal: drop the poisoned marker so a subsequent write can succeed cleanly.
       await this.redisClient.del(key);
       return null;
+    }
+  }
+
+  /**
+   * Resolve the Allegro seller identity for a freshly-issued token via the
+   * plugin's account reader (#820). A failure is fatal to OAuth completion —
+   * a connection must never be seller-anchored to an unverified account — so
+   * it surfaces as 500; the callback state stays uncompleted, so the operator
+   * can retry. (Mirrors how `exchangeCodeForToken` wraps its own fetch.)
+   */
+  private async resolveSellerIdentity(
+    tokenResponse: AllegroOAuthTokenResponse,
+    environment: string
+  ): Promise<AllegroAccountIdentity> {
+    try {
+      return await this.accountReader.fetchSellerIdentity(
+        this.getApiBaseUrl(environment),
+        tokenResponse.access_token
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to verify Allegro seller identity: ${(error as Error).message}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      throw new InternalServerErrorException('Failed to verify Allegro seller identity');
     }
   }
 

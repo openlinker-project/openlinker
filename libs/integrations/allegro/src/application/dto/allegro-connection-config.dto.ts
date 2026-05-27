@@ -150,4 +150,12 @@ export class AllegroConnectionConfigDto {
   @ValidateNested()
   @Type(() => AllegroSellerDefaultsDto)
   sellerDefaults?: AllegroSellerDefaultsDto;
+
+  // Allegro seller/account id captured at OAuth completion (#820). The
+  // same-seller re-auth guard compares against it. Optional so pre-#820
+  // connections validate cleanly; backfilled on next re-auth.
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  sellerId?: string;
 }
