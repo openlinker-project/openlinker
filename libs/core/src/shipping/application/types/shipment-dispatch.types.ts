@@ -25,7 +25,9 @@ export type ShipmentDispatchInput = {
   sourceConnectionId: string;
   /** Source-side delivery method id; `null` resolves to the omp_fulfilled default. */
   sourceDeliveryMethodId: string | null;
-} & Omit<GenerateLabelCommand, 'shipmentId' | 'connectionId'>;
+  // `deliveryMethodId` is omitted: the seam resolves the provider delivery
+  // method from `sourceDeliveryMethodId` (#833 ADR-012), never the caller.
+} & Omit<GenerateLabelCommand, 'shipmentId' | 'connectionId' | 'deliveryMethodId'>;
 
 /**
  * Outcome of a dispatch. A discriminated union (rather than `Shipment | null`)

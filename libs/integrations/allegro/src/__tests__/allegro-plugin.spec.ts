@@ -12,7 +12,15 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 
-import { createAllegroPlugin } from '../allegro-plugin';
+import { allegroAdapterManifest, createAllegroPlugin } from '../allegro-plugin';
+
+describe('allegroAdapterManifest', () => {
+  it('declares the ShippingProviderManager capability so it routes as a source_brokered processor (#833)', () => {
+    expect(allegroAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['OrderSource', 'OfferManager', 'ShippingProviderManager']),
+    );
+  });
+});
 
 describe('createAllegroPlugin → register(host)', () => {
   function makeRegisterHost(): {

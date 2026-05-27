@@ -49,6 +49,8 @@ export { AllegroApiException } from './domain/exceptions/allegro-api.exception';
 export { AllegroAuthenticationException } from './domain/exceptions/allegro-authentication.exception';
 export { AllegroRateLimitException } from './domain/exceptions/allegro-rate-limit.exception';
 export { AllegroNetworkException } from './domain/exceptions/allegro-network.exception';
+export { AllegroShipmentRejectedException } from './domain/exceptions/allegro-shipment-rejected.exception';
+export { AllegroShipmentPendingException } from './domain/exceptions/allegro-shipment-pending.exception';
 export { DuplicateAllegroQuantityCommandError } from './domain/exceptions/duplicate-allegro-quantity-command.error';
 export { AllegroQuantityCommandNotFoundException } from './domain/exceptions/allegro-quantity-command-not-found.error';
 export type { AllegroValidationError } from './domain/types/allegro-api.types';

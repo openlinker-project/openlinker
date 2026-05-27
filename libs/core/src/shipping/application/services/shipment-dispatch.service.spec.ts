@@ -66,6 +66,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.errorMessage ?? null,
     new Date(),
     new Date(),
+    overrides.sourceDeliveryMethodId ?? null,
   );
 }
 
@@ -171,6 +172,8 @@ describe('ShipmentDispatchService', () => {
         connectionId: INPOST,
         shippingMethod: 'paczkomat',
         paczkomatId: 'POZ08A',
+        // Persisted for audit (A2) — the source method this shipment routed from.
+        sourceDeliveryMethodId: 'allegro-courier',
       });
       expect(adapter.generateLabel).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -179,6 +182,9 @@ describe('ShipmentDispatchService', () => {
           orderId: 'ol_order_1',
           shippingMethod: 'paczkomat',
           paczkomatId: 'POZ08A',
+          // The identity seam resolves the provider delivery-method id from the
+          // source method (#833 ADR-012) and threads it to the adapter.
+          deliveryMethodId: 'allegro-courier',
           recipient: input.recipient,
           parcel: input.parcel,
         }),

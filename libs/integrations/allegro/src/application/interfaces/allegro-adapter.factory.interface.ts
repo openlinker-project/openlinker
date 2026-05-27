@@ -13,6 +13,8 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { AllegroOfferManagerAdapter } from '../../infrastructure/adapters/allegro-offer-manager.adapter';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/allegro-order-source.adapter';
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
+import type { AllegroDeliveryShippingAdapter } from '../../infrastructure/adapters/allegro-delivery-shipping.adapter';
 
 /**
  * Allegro adapter instances
@@ -24,6 +26,8 @@ import type { AllegroOrderSourceAdapter } from '../../infrastructure/adapters/al
 export interface AllegroAdapters {
   offerManager: AllegroOfferManagerAdapter;
   orderSource: AllegroOrderSourceAdapter;
+  /** Allegro Delivery / Allegro One source-brokered shipping (#833). */
+  shippingManager: AllegroDeliveryShippingAdapter;
 }
 
 /**

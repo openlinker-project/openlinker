@@ -49,6 +49,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     null,
     new Date('2026-05-20T10:00:00.000Z'),
     new Date('2026-05-20T10:00:00.000Z'),
+    overrides.sourceDeliveryMethodId ?? null,
   );
 }
 

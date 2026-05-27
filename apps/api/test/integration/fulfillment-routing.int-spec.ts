@@ -147,23 +147,29 @@ describe('Fulfillment Routing Integration', () => {
       ).rejects.toBeInstanceOf(IncompatibleProcessorException);
     });
 
-    it('should reject a source_brokered rule because the source does not yet declare ShippingProviderManager (#833)', async () => {
+    it('should accept a source_brokered rule now that the Allegro source declares ShippingProviderManager (#833)', async () => {
       const { sourceId } = await seedConnections();
       const service = getService();
 
-      // source_brokered requires the source connection itself to declare
-      // ShippingProviderManager. Allegro Delivery (#833) is not yet
-      // implemented, so the Allegro adapter declares no shipping capability —
-      // the rule is correctly uncreatable until that lands behind this seam.
-      await expect(
-        service.replaceRules(sourceId, [
-          {
-            sourceDeliveryMethodId: 'allegro-one-box',
-            processorKind: FULFILLMENT_PROCESSOR_KIND.SourceBrokered,
-            processorConnectionId: sourceId,
-          },
-        ]),
-      ).rejects.toBeInstanceOf(IncompatibleProcessorException);
+      // #833 landed: the Allegro adapter (allegro.publicapi.v1) now declares
+      // ShippingProviderManager, so a source_brokered rule whose processor is
+      // the source connection itself passes the capability + topology gate
+      // (source_brokered requires processorConnectionId === sourceConnectionId).
+      const rules = await service.replaceRules(sourceId, [
+        {
+          sourceDeliveryMethodId: 'allegro-one-box',
+          processorKind: FULFILLMENT_PROCESSOR_KIND.SourceBrokered,
+          processorConnectionId: sourceId,
+        },
+      ]);
+
+      expect(rules).toHaveLength(1);
+      expect(rules[0]).toMatchObject({
+        sourceDeliveryMethodId: 'allegro-one-box',
+        processorKind: 'source_brokered',
+        processorConnectionId: sourceId,
+      });
+      expect(await service.getRules(sourceId)).toHaveLength(1);
     });
 
     it('should fully replace the previous rule set on a second call', async () => {

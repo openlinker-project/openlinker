@@ -23,6 +23,7 @@ import { AllegroConnectionTokenState } from '../infrastructure/http/allegro-conn
 import type { QuantityPollConfig } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOfferManagerAdapter } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-order-source.adapter';
+import { AllegroDeliveryShippingAdapter } from '../infrastructure/adapters/allegro-delivery-shipping.adapter';
 import type { TokenRefreshResult } from '../infrastructure/http/allegro-http-client.types';
 import type { AllegroTokenRefreshService } from '../infrastructure/token-refresh/allegro-token-refresh.service';
 import { Logger } from '@openlinker/shared/logging';
@@ -128,11 +129,21 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     );
     const orderSourceAdapter = new AllegroOrderSourceAdapter(connection.id, httpClient, connection);
 
+    // #833 — Allegro Delivery / Allegro One source-brokered shipping. Uses the
+    // api host client; hosted on the same (source) connection, which is what
+    // makes it a valid `source_brokered` processor under #832's topology rule.
+    const shippingAdapter = new AllegroDeliveryShippingAdapter(
+      connection.id,
+      httpClient,
+      connection,
+    );
+
     this.logger.log(`Allegro adapters created successfully for connection: ${connection.id}`);
 
     return {
       offerManager: offerManagerAdapter,
       orderSource: orderSourceAdapter,
+      shippingManager: shippingAdapter,
     };
   }
 
