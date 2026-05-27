@@ -15,6 +15,8 @@ import type {
   AllegroCheckoutForm,
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
+import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import { AllegroOrderDispatchRejectedException } from '../../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 
 describe('AllegroOrderSourceAdapter', () => {
   let adapter: AllegroOrderSourceAdapter;
@@ -45,6 +47,67 @@ describe('AllegroOrderSourceAdapter', () => {
     );
 
     adapter = new AllegroOrderSourceAdapter(connectionId, httpClient, connection);
+  });
+
+  describe('notifyDispatched (#837)', () => {
+    it('marks the order sent only (no waybill) for the source-brokered branch', async () => {
+      await adapter.notifyDispatched({ externalOrderId: 'cf-1' });
+      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
+        status: 'SENT',
+      });
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('marks sent and attaches the waybill with a mapped carrierId for an own-contract shipment', async () => {
+      await adapter.notifyDispatched({
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'inpost' },
+      });
+      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
+        status: 'SENT',
+      });
+      expect(httpClient.post).toHaveBeenCalledWith('/order/checkout-forms/cf-1/shipments', {
+        carrierId: 'INPOST',
+        waybill: '680',
+      });
+    });
+
+    it('falls back to OTHER + carrierName for an unmapped carrier', async () => {
+      await adapter.notifyDispatched({
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'wackycarrier' },
+      });
+      expect(httpClient.post).toHaveBeenCalledWith('/order/checkout-forms/cf-1/shipments', {
+        carrierId: 'OTHER',
+        waybill: '680',
+        carrierName: 'wackycarrier',
+      });
+    });
+
+    it('treats a 409 on fulfillment as already-sent (success) and still attaches the waybill', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('conflict', 409));
+      await expect(
+        adapter.notifyDispatched({
+          externalOrderId: 'cf-1',
+          trackingNumber: '680',
+          carrier: { platformType: 'inpost' },
+        }),
+      ).resolves.toBeUndefined();
+      expect(httpClient.post).toHaveBeenCalled();
+    });
+
+    it('wraps a waybill-attach failure into AllegroOrderDispatchRejectedException', async () => {
+      httpClient.post.mockRejectedValueOnce(new AllegroApiException('bad carrier', 400));
+      await expect(
+        adapter.notifyDispatched({
+          externalOrderId: 'cf-1',
+          trackingNumber: '680',
+          carrier: { platformType: 'inpost' },
+        }),
+      ).rejects.toBeInstanceOf(AllegroOrderDispatchRejectedException);
+    });
   });
 
   describe('listOrderFeed', () => {

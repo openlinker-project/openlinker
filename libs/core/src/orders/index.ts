@@ -18,6 +18,13 @@ export type { DestinationOptionsReader } from './domain/ports/capabilities/desti
 export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
 export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
 export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
+// Dispatch-notify sub-capabilities (#837): mark-sent on the source + post-create
+// fulfillment update on the destination.
+export type { OrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
+export { isOrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
+export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
+export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
+export type { DispatchCarrierHint } from './domain/types/dispatch-carrier-hint.types';
 export type { MappingOption, MappingOptionKind } from './domain/types/mapping-option.types';
 export { MappingOptionKindValues } from './domain/types/mapping-option.types';
 
