@@ -110,3 +110,11 @@ export type { IShipmentCancellationService } from './application/interfaces/ship
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
 export type { IPickupPointLookupService } from './application/interfaces/pickup-point-lookup.service.interface';
+
+// Application — dispatch-notify seam (#837). Interface + result types only; the
+// service is injected via SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN.
+export type { IShipmentDispatchNotificationService } from './application/interfaces/shipment-dispatch-notification.service.interface';
+export type {
+  ShipmentDispatchNotificationInput,
+  ShipmentDispatchNotificationResult,
+} from './application/types/shipment-dispatch-notification.types';
