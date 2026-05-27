@@ -10,7 +10,13 @@
  * @implements {OrderSourcePort}
  */
 
-import type { OrderSourcePort, SourceOptionsReader, MappingOption } from '@openlinker/core/orders';
+import type {
+  OrderSourcePort,
+  SourceOptionsReader,
+  OrderDispatchNotifier,
+  DispatchCarrierHint,
+  MappingOption,
+} from '@openlinker/core/orders';
 import type {
   OrderFeedInput,
   OrderFeedOutput,
@@ -32,6 +38,13 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
+import {
+  ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
+  ALLEGRO_FULFILLMENT_STATUS_SENT,
+  ALLEGRO_OTHER_CARRIER_ID,
+} from '../../domain/types/allegro-order-fulfillment.types';
+import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -45,7 +58,9 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * `OrderIngestionService` against the `IncomingOrder` payload, so the adapter
  * does not need the identifier-mapping port itself.
  */
-export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptionsReader {
+export class AllegroOrderSourceAdapter
+  implements OrderSourcePort, SourceOptionsReader, OrderDispatchNotifier
+{
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
   constructor(
@@ -54,6 +69,72 @@ export class AllegroOrderSourceAdapter implements OrderSourcePort, SourceOptions
     _connection: Connection
   ) {
     void _connection;
+  }
+
+  /**
+   * Order-side dispatch (#837): mark the Allegro order sent, and attach the
+   * waybill when one is supplied (own-contract branch). For the source-brokered
+   * branch (Allegro Delivery) no `trackingNumber` is passed — Allegro already
+   * holds the waybill it issued — so only the fulfillment status is set.
+   */
+  async notifyDispatched(input: {
+    externalOrderId: string;
+    trackingNumber?: string;
+    carrier?: DispatchCarrierHint;
+  }): Promise<void> {
+    // 1. Mark sent. Treat a 409 (stale optimistic-lock revision / already-sent)
+    //    as success for idempotency. `needs-sandbox-probe`: exact 409 semantics.
+    try {
+      await this.httpClient.put(
+        `/order/checkout-forms/${input.externalOrderId}/fulfillment`,
+        { status: ALLEGRO_FULFILLMENT_STATUS_SENT },
+      );
+    } catch (error) {
+      if (this.isAlreadySentOrStale(error)) {
+        this.logger.debug(
+          `Allegro order ${input.externalOrderId} fulfillment already sent / stale revision — treating as success (connection: ${this.connectionId})`,
+        );
+      } else {
+        throw this.toRejected(error, `mark Allegro order ${input.externalOrderId} sent`);
+      }
+    }
+
+    // 2. Attach the waybill when present (own-contract branch).
+    if (input.trackingNumber) {
+      const { carrierId, carrierName } = this.resolveCarrier(input.carrier);
+      try {
+        await this.httpClient.post(
+          `/order/checkout-forms/${input.externalOrderId}/shipments`,
+          { carrierId, waybill: input.trackingNumber, ...(carrierName ? { carrierName } : {}) },
+        );
+      } catch (error) {
+        throw this.toRejected(error, `attach waybill to Allegro order ${input.externalOrderId}`);
+      }
+    }
+  }
+
+  /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */
+  private resolveCarrier(carrier?: DispatchCarrierHint): { carrierId: string; carrierName?: string } {
+    const platformType = carrier?.platformType;
+    const known = platformType ? ALLEGRO_CARRIER_BY_PLATFORM_TYPE[platformType] : undefined;
+    if (known) {
+      return { carrierId: known };
+    }
+    return { carrierId: ALLEGRO_OTHER_CARRIER_ID, carrierName: platformType ?? 'Carrier' };
+  }
+
+  private isAlreadySentOrStale(error: unknown): boolean {
+    return (
+      error instanceof AllegroApiException &&
+      (error.statusCode === 409 || /already/i.test(error.message))
+    );
+  }
+
+  private toRejected(error: unknown, context: string): Error {
+    if (error instanceof AllegroApiException) {
+      return new AllegroOrderDispatchRejectedException(`Failed to ${context}: ${error.message}`);
+    }
+    return error instanceof Error ? error : new Error(String(error));
   }
 
   /**

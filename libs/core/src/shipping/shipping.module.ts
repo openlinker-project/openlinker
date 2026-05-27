@@ -24,6 +24,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { MappingsModule } from '@openlinker/core/mappings';
+import { OrdersModule } from '@openlinker/core/orders';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
@@ -32,10 +34,12 @@ import { ShipmentDispatchService } from './application/services/shipment-dispatc
 import { ShipmentQueryService } from './application/services/shipment-query.service';
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
+import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import {
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+  SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
@@ -50,6 +54,11 @@ import {
     // imports ShippingModule except the host app graph.
     IntegrationsModule,
     MappingsModule,
+    // #837 mark-sent orchestration: resolve the order's source + destination
+    // capabilities (OrdersModule) and the source's external order id
+    // (IdentifierMappingModule). Acyclic — OrdersModule does not import ShippingModule.
+    OrdersModule,
+    IdentifierMappingModule,
   ],
   providers: [
     ShipmentRepository,
@@ -82,6 +91,11 @@ import {
       provide: PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
       useExisting: PickupPointLookupService,
     },
+    ShipmentDispatchNotificationService,
+    {
+      provide: SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
+      useExisting: ShipmentDispatchNotificationService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -90,6 +104,7 @@ import {
     SHIPMENT_CANCELLATION_SERVICE_TOKEN,
     PICKUP_POINT_CACHE_TOKEN,
     PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
+    SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}
