@@ -110,14 +110,14 @@ describe('ShipmentDispatchNotificationService', () => {
     );
   });
 
-  it('returns shipment-not-found when the shipment does not exist', async () => {
+  it('should return shipment-not-found when the shipment does not exist', async () => {
     shipments.findById.mockResolvedValue(null);
     const result = await service.notifyDispatched({ shipmentId: 'missing' });
     expect(result.outcome).toBe('shipment-not-found');
     expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
   });
 
-  it('skips (status-gate) when the shipment is not generated', async () => {
+  it('should skip (status-gate) when the shipment is not generated', async () => {
     shipments.findById.mockResolvedValue(makeShipment({ status: 'dispatched' }));
     const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
     expect(result.outcome).toBe('skipped-not-generated');
@@ -125,7 +125,7 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(shipments.update).not.toHaveBeenCalled();
   });
 
-  it('notifies source + destination and advances to dispatched on success', async () => {
+  it('should notify source + destination and advance to dispatched on success', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
 
@@ -146,7 +146,7 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(result).toMatchObject({ outcome: 'notified', source: 'ok', destinations: [{ connectionId: PS, status: 'ok' }] });
   });
 
-  it('does NOT advance to dispatched when the source notify fails (retriable)', async () => {
+  it('should not advance to dispatched when the source notify fails (retriable)', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     sourceNotify.mockRejectedValue(new Error('Allegro 422'));
 
@@ -157,7 +157,7 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(destUpdate).toHaveBeenCalled(); // B still attempted
   });
 
-  it('advances to dispatched when there is no source-notify capability (absent)', async () => {
+  it('should advance to dispatched when there is no source-notify capability (absent)', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     (integrations.getCapabilityAdapter as jest.Mock).mockImplementation((_c: string, cap: string) =>
       Promise.resolve(
@@ -173,7 +173,7 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(shipments.update).toHaveBeenCalledWith('ol_shipment_1', expect.objectContaining({ status: 'dispatched' }));
   });
 
-  it('marks an unsupported destination without failing, and still dispatches', async () => {
+  it('should mark an unsupported destination without failing and still dispatch', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     (integrations.getCapabilityAdapter as jest.Mock).mockImplementation((_c: string, cap: string) =>
       Promise.resolve(
@@ -189,7 +189,7 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(shipments.update).toHaveBeenCalledWith('ol_shipment_1', expect.objectContaining({ status: 'dispatched' }));
   });
 
-  it('treats a destination failure as best-effort (logged, not fatal) and still dispatches', async () => {
+  it('should treat a destination failure as best-effort and still dispatch', async () => {
     shipments.findById.mockResolvedValue(makeShipment());
     destUpdate.mockRejectedValue(new Error('PS 500'));
 
@@ -197,6 +197,38 @@ describe('ShipmentDispatchNotificationService', () => {
 
     expect(result.source).toBe('ok');
     expect(result.destinations).toEqual([{ connectionId: PS, status: 'failed' }]);
+    expect(shipments.update).toHaveBeenCalledWith('ol_shipment_1', expect.objectContaining({ status: 'dispatched' }));
+  });
+
+  it('should isolate per-destination outcomes when one of several destinations fails', async () => {
+    const PS2 = 'conn-ps-2';
+    shipments.findById.mockResolvedValue(makeShipment());
+    orderRecords.getOrderRecord.mockResolvedValue(
+      makeRecord({
+        syncStatus: [
+          { destinationConnectionId: PS, status: 'synced', externalOrderId: 'ps-100' },
+          { destinationConnectionId: PS2, status: 'synced', externalOrderId: 'ps-200' },
+        ],
+      }),
+    );
+    // First destination succeeds, second rejects — the rejection must not
+    // suppress the first's `ok` (Promise.all over per-item try/catch).
+    const destUpdate2 = jest.fn().mockRejectedValue(new Error('PS2 500'));
+    (integrations.getCapabilityAdapter as jest.Mock).mockImplementation((connId: string, cap: string) =>
+      Promise.resolve(
+        cap === 'OrderSource'
+          ? { listOrderFeed: jest.fn(), getOrder: jest.fn(), notifyDispatched: sourceNotify }
+          : { createOrder: jest.fn(), updateFulfillment: connId === PS2 ? destUpdate2 : destUpdate },
+      ),
+    );
+
+    const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(result.destinations).toEqual([
+      { connectionId: PS, status: 'ok' },
+      { connectionId: PS2, status: 'failed' },
+    ]);
+    // Source succeeded → still advances despite the partial destination failure.
     expect(shipments.update).toHaveBeenCalledWith('ol_shipment_1', expect.objectContaining({ status: 'dispatched' }));
   });
 });

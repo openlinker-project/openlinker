@@ -120,7 +120,13 @@ export class ShipmentDispatchNotificationService
     try {
       const { metadata } = await this.integrations.getAdapter(connectionId);
       return { platformType: metadata.platformType };
-    } catch {
+    } catch (error) {
+      // Degraded but non-fatal: with no hint, a source adapter attaching a
+      // waybill falls back to its catch-all carrier (Allegro → OTHER + a generic
+      // name). Log so that silent downgrade is traceable rather than invisible.
+      this.logger.debug(
+        `Carrier-hint resolution failed for connection ${connectionId}; a waybill (if any) will use the source adapter's catch-all carrier: ${this.message(error)}`,
+      );
       return undefined;
     }
   }
@@ -178,12 +184,15 @@ export class ShipmentDispatchNotificationService
     shipment: Shipment,
     record: OrderRecord | null,
   ): Promise<DestinationOutcome[]> {
-    const synced = (record?.syncStatus ?? []).filter(
+    // Gate on external-id presence, NOT on sync status: if a destination carries
+    // an externalOrderId the order exists there, so a shipped+tracking update is
+    // valid even if that destination's last sync attempt failed.
+    const withExternalId = (record?.syncStatus ?? []).filter(
       (s): s is typeof s & { externalOrderId: string } => Boolean(s.externalOrderId),
     );
 
     return Promise.all(
-      synced.map(async (entry): Promise<DestinationOutcome> => {
+      withExternalId.map(async (entry): Promise<DestinationOutcome> => {
         try {
           const adapter = await this.integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
             entry.destinationConnectionId,

@@ -50,7 +50,7 @@ describe('AllegroOrderSourceAdapter', () => {
   });
 
   describe('notifyDispatched (#837)', () => {
-    it('marks the order sent only (no waybill) for the source-brokered branch', async () => {
+    it('should mark the order sent only (no waybill) for the source-brokered branch', async () => {
       await adapter.notifyDispatched({ externalOrderId: 'cf-1' });
       expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
         status: 'SENT',
@@ -58,7 +58,7 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
-    it('marks sent and attaches the waybill with a mapped carrierId for an own-contract shipment', async () => {
+    it('should mark sent and attach the waybill with a mapped carrierId for an own-contract shipment', async () => {
       await adapter.notifyDispatched({
         externalOrderId: 'cf-1',
         trackingNumber: '680',
@@ -73,7 +73,7 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
-    it('falls back to OTHER + carrierName for an unmapped carrier', async () => {
+    it('should fall back to OTHER + carrierName for an unmapped carrier', async () => {
       await adapter.notifyDispatched({
         externalOrderId: 'cf-1',
         trackingNumber: '680',
@@ -86,7 +86,7 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
-    it('treats a 409 on fulfillment as already-sent (success) and still attaches the waybill', async () => {
+    it('should treat a 409 on fulfillment as already-sent (success) and still attach the waybill', async () => {
       httpClient.put.mockRejectedValueOnce(new AllegroApiException('conflict', 409));
       await expect(
         adapter.notifyDispatched({
@@ -98,7 +98,7 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(httpClient.post).toHaveBeenCalled();
     });
 
-    it('wraps a waybill-attach failure into AllegroOrderDispatchRejectedException', async () => {
+    it('should wrap a waybill-attach failure into AllegroOrderDispatchRejectedException', async () => {
       httpClient.post.mockRejectedValueOnce(new AllegroApiException('bad carrier', 400));
       await expect(
         adapter.notifyDispatched({
