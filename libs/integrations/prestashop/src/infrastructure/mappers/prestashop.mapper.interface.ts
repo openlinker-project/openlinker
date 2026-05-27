@@ -9,7 +9,7 @@
  */
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
-import type { Order, OrderCreate } from '@openlinker/core/orders';
+import type { Order, OrderCreate, OrderStatus } from '@openlinker/core/orders';
 
 /**
  * PrestaShop product data (from API response)
@@ -229,4 +229,12 @@ export interface IPrestashopOrderMapper {
      */
     externalCarrierId?: number
   ): Record<string, unknown>;
+
+  /**
+   * Map an OpenLinker `OrderStatus` to its PrestaShop order-state id
+   * (e.g. `'shipped' → 4`). Single source of truth for the status→state-id
+   * table, reused by `mapOrderCreate` and by the order-fulfillment update
+   * (#858 capability B).
+   */
+  mapStatusToPrestashopStateId(status: OrderStatus): number;
 }

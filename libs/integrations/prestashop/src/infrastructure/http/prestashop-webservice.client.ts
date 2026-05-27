@@ -11,6 +11,7 @@
 import type {
   IPrestashopWebserviceClient,
   PrestashopQueryFilters,
+  PrestashopWriteOptions,
 } from './prestashop-webservice.client.interface';
 import type {
   PrestashopConnectionConfig,
@@ -25,6 +26,22 @@ import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
+
+/**
+ * Resources whose PrestaShop singular element name is not the plural minus a
+ * trailing 's' (the naive `slice(0,-1)`). The WS XML envelope and the response
+ * key both use the singular, so these must be mapped explicitly — e.g.
+ * `order_histories → order_history`, not `order_historie`.
+ */
+const IRREGULAR_RESOURCE_SINGULARS: Readonly<Record<string, string>> = {
+  addresses: 'address',
+  order_histories: 'order_history',
+};
+
+/** PrestaShop singular element name for a WS resource (handles irregular plurals). */
+function singularizeResource(resource: string): string {
+  return IRREGULAR_RESOURCE_SINGULARS[resource] ?? resource.slice(0, -1);
+}
 
 /**
  * Retry configuration
@@ -179,16 +196,21 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return this.normalizeCollection<T>(parsed, resource);
   }
 
-  async createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T> {
-    return this.writeResource<T>(resource, undefined, data);
+  async createResource<T = unknown>(
+    resource: string,
+    data: Record<string, unknown>,
+    options?: PrestashopWriteOptions
+  ): Promise<T> {
+    return this.writeResource<T>(resource, undefined, data, options);
   }
 
   async updateResource<T = unknown>(
     resource: string,
     id: string | number,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    options?: PrestashopWriteOptions
   ): Promise<T> {
-    return this.writeResource<T>(resource, id, data);
+    return this.writeResource<T>(resource, id, data, options);
   }
 
   /**
@@ -203,10 +225,16 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   private async writeResource<T = unknown>(
     resource: string,
     id: string | number | undefined,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    options?: PrestashopWriteOptions
   ): Promise<T> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
-    const url = `${this.baseUrl}${path}`;
+    const requestUrl = `${this.baseUrl}${path}`;
+    // `sendmail=1` is a PrestaShop WS *query* flag (not a body field) that
+    // fires the order-state customer email on an `order_histories` write (#858).
+    const url = options?.sendEmail
+      ? `${requestUrl}${requestUrl.includes('?') ? '&' : '?'}sendmail=1`
+      : requestUrl;
 
     const isUpdate = id !== undefined;
     this.logger.debug(
@@ -217,12 +245,8 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
 
     // Wrap data in PrestaShop format: { prestashop: { customer: { ... } } }
-    // Handle special cases for resource singularization
-    // 'addresses' → 'address' (not 'addresse')
-    let resourceKey = resource.slice(0, -1); // e.g., 'customer' from 'customers'
-    if (resource === 'addresses') {
-      resourceKey = 'address'; // Special case: addresses → address
-    }
+    // Singular element name (handles irregular plurals like addresses/order_histories).
+    const resourceKey = singularizeResource(resource);
     const wrappedData = {
       prestashop: {
         [resourceKey]: data,
@@ -255,9 +279,8 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // Note: Some resources have irregular singular forms (e.g., 'addresses' → 'address', not 'addresse')
     const parsedObj = parsed as Record<string, unknown>;
 
-    // Handle special cases for resource singularization
-    // 'addresses' → 'address' (not 'addresse')
-    const singularResourceKey = resource === 'addresses' ? 'address' : resourceKey;
+    // `resourceKey` is already the irregular-aware singular (see singularizeResource).
+    const singularResourceKey = resourceKey;
 
     // Try with prestashop wrapper first
     if (parsedObj.prestashop && typeof parsedObj.prestashop === 'object') {

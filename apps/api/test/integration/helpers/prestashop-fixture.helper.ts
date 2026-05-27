@@ -52,6 +52,7 @@ const WS_RESOURCES = [
   'carts',
   'orders',
   'order_carriers',
+  'order_histories', // #858: OrderFulfillmentUpdater POSTs order_histories to advance state
   'order_states',
   'customers',
   'addresses',
