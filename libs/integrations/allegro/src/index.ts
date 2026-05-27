@@ -26,6 +26,7 @@ export {
 // Types
 export { AllegroConnectionConfig, AllegroEnvironment, AllegroEnvironmentValues } from './domain/types/allegro-config.types';
 export { AllegroCredentials } from './domain/types/allegro-credentials.types';
+export type { AllegroMeResponse, AllegroAccountIdentity } from './domain/types/allegro-account.types';
 export {
   PolishVoivodeshipValues,
   type PolishVoivodeship,
@@ -63,6 +64,9 @@ export { AllegroQuantityCommandRepositoryPort, AllegroQuantityCommandFilters } f
 
 // Tokens
 export { ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN } from './allegro.tokens';
+
+// Account reader (#820 — seller-identity read for same-seller re-auth guard)
+export { AllegroAccountReader } from './infrastructure/http/allegro-account-reader';
 
 // Token Refresh
 export { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';

@@ -13,6 +13,7 @@ import { AllegroOAuthService } from './allegro-oauth.service';
 import { ConnectionService } from './connection.service';
 import type { ICredentialsService } from '@openlinker/core/integrations';
 import { CREDENTIALS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { AllegroAccountReader } from '@openlinker/integrations-allegro';
 
 describe('AllegroOAuthService', () => {
   let service: AllegroOAuthService;
@@ -25,6 +26,7 @@ describe('AllegroOAuthService', () => {
   let connectionService: jest.Mocked<
     Pick<ConnectionService, 'get' | 'create' | 'update' | 'updateCredentials'>
   >;
+  let accountReader: { fetchSellerIdentity: jest.Mock };
 
   beforeEach(async () => {
     redisClient = {
@@ -46,12 +48,17 @@ describe('AllegroOAuthService', () => {
       Pick<ConnectionService, 'get' | 'create' | 'update' | 'updateCredentials'>
     >;
 
+    accountReader = {
+      fetchSellerIdentity: jest.fn().mockResolvedValue({ sellerId: 'seller-1', login: 'my_shop' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AllegroOAuthService,
         { provide: ConnectionService, useValue: connectionService },
         { provide: 'REDIS_CLIENT', useValue: redisClient },
         { provide: CREDENTIALS_SERVICE_TOKEN, useValue: credentials },
+        { provide: AllegroAccountReader, useValue: accountReader },
       ],
     }).compile();
 
@@ -274,7 +281,15 @@ describe('AllegroOAuthService', () => {
         'conn-existing',
         expect.objectContaining({ accessToken: 'fresh-tok', refreshToken: 'fresh-rt' })
       );
-      expect(connectionService.update).toHaveBeenCalledWith('conn-existing', { status: 'active' });
+      // Backfill path: the legacy mock connection carries no stored sellerId,
+      // so re-auth adopts the freshly-verified seller into the config (#820).
+      expect(connectionService.update).toHaveBeenCalledWith(
+        'conn-existing',
+        expect.objectContaining({
+          status: 'active',
+          config: expect.objectContaining({ sellerId: 'seller-1' }),
+        })
+      );
       expect(connectionService.create).not.toHaveBeenCalled();
       expect(credentials.create).not.toHaveBeenCalled();
       expect(result).toEqual(expect.objectContaining({ id: 'conn-existing', status: 'active' }));
@@ -303,6 +318,103 @@ describe('AllegroOAuthService', () => {
 
       expect(connectionService.updateCredentials).not.toHaveBeenCalled();
       expect(connectionService.update).not.toHaveBeenCalled();
+    });
+
+    it('persists the seller id on the connection config when creating a new connection (#820)', async () => {
+      credentials.create.mockResolvedValue(undefined as never);
+      connectionService.create.mockResolvedValue({ id: 'conn-1', name: 'Test' } as never);
+
+      await service.storeCredentialsAndCreateConnection(
+        { access_token: 'tok', token_type: 'bearer' },
+        { clientId: 'cid', clientSecret: 'csec', redirectUri: 'https://example.com/cb', environment: 'sandbox' }
+      );
+
+      expect(accountReader.fetchSellerIdentity).toHaveBeenCalledWith(expect.any(String), 'tok');
+      expect(connectionService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ config: expect.objectContaining({ sellerId: 'seller-1' }) })
+      );
+    });
+
+    it('re-authenticates in place when the new token authorizes the same seller (#820)', async () => {
+      connectionService.get.mockResolvedValue({
+        id: 'conn-existing',
+        name: 'My Allegro',
+        platformType: 'allegro',
+        status: 'needs_reauth',
+        config: { environment: 'sandbox', sellerId: 'seller-1' },
+      } as never);
+      connectionService.updateCredentials.mockResolvedValue(undefined as never);
+      connectionService.update.mockResolvedValue({
+        id: 'conn-existing',
+        name: 'My Allegro',
+        status: 'active',
+      } as never);
+      accountReader.fetchSellerIdentity.mockResolvedValue({ sellerId: 'seller-1', login: 'my_shop' });
+
+      await service.storeCredentialsAndCreateConnection(
+        { access_token: 'fresh-tok', token_type: 'bearer' },
+        {
+          clientId: 'cid',
+          clientSecret: 'csec',
+          redirectUri: 'https://example.com/cb',
+          environment: 'sandbox',
+          connectionId: 'conn-existing',
+        }
+      );
+
+      expect(connectionService.updateCredentials).toHaveBeenCalled();
+      expect(connectionService.update).toHaveBeenCalledWith(
+        'conn-existing',
+        expect.objectContaining({
+          status: 'active',
+          config: expect.objectContaining({ sellerId: 'seller-1' }),
+        })
+      );
+    });
+
+    it('rejects re-auth when the new token authorizes a different seller, without rotating credentials (#820)', async () => {
+      connectionService.get.mockResolvedValue({
+        id: 'conn-existing',
+        name: 'My Allegro',
+        platformType: 'allegro',
+        status: 'needs_reauth',
+        config: { environment: 'sandbox', sellerId: 'seller-1' },
+      } as never);
+      accountReader.fetchSellerIdentity.mockResolvedValue({
+        sellerId: 'seller-2',
+        login: 'other_shop',
+      });
+
+      await expect(
+        service.storeCredentialsAndCreateConnection(
+          { access_token: 'fresh-tok', token_type: 'bearer' },
+          {
+            clientId: 'cid',
+            clientSecret: 'csec',
+            redirectUri: 'https://example.com/cb',
+            environment: 'sandbox',
+            connectionId: 'conn-existing',
+          }
+        )
+      ).rejects.toThrow(BadRequestException);
+
+      // Mismatch is rejected BEFORE any credential rotation or status flip.
+      expect(connectionService.updateCredentials).not.toHaveBeenCalled();
+      expect(connectionService.update).not.toHaveBeenCalled();
+    });
+
+    it('aborts OAuth completion when the seller-identity read fails (#820)', async () => {
+      accountReader.fetchSellerIdentity.mockRejectedValue(new Error('me failed'));
+
+      await expect(
+        service.storeCredentialsAndCreateConnection(
+          { access_token: 'tok', token_type: 'bearer' },
+          { clientId: 'cid', clientSecret: 'csec', redirectUri: 'https://example.com/cb', environment: 'sandbox' }
+        )
+      ).rejects.toThrow(InternalServerErrorException);
+
+      expect(credentials.create).not.toHaveBeenCalled();
+      expect(connectionService.create).not.toHaveBeenCalled();
     });
   });
 

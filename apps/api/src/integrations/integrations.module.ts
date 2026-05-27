@@ -18,6 +18,7 @@ import {
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { RedisConfigModule } from '@openlinker/shared/redis';
+import { AllegroAccountReader } from '@openlinker/integrations-allegro';
 import { apiPlugins } from '../plugins';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
@@ -37,6 +38,7 @@ import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oa
   controllers: [ConnectionController, AdapterController, AllegroController],
   providers: [
     ConnectionService,
+    AllegroAccountReader, // #820 — injected into AllegroOAuthService for the seller-identity check
     AllegroOAuthService,
     { provide: ALLEGRO_OAUTH_SERVICE_TOKEN, useExisting: AllegroOAuthService },
   ],

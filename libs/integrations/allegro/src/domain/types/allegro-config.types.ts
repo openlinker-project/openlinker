@@ -56,6 +56,15 @@ export interface AllegroConnectionConfig {
    * creation fails fast with `SELLER_DEFAULTS_NOT_CONFIGURED` if missing.
    */
   sellerDefaults?: AllegroSellerDefaultsConfig;
+
+  /**
+   * Allegro seller/account id (`GET /me` → `id`) captured at OAuth completion.
+   * The stable anchor an in-place re-auth (#819) checks against to verify the
+   * new token authorizes the same seller (#820). Optional at the type level so
+   * connections created before #820 parse cleanly — they backfill on next
+   * re-auth.
+   */
+  sellerId?: string;
 }
 
 
