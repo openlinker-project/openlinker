@@ -15,6 +15,11 @@ import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
+import type {
+  OrderRecordFilters,
+  OrderRecordPagination,
+  PaginatedOrderRecords,
+} from '../../domain/types/order-record.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
@@ -191,6 +196,13 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async getOrderRecord(internalOrderId: string): Promise<OrderRecord | null> {
     return this.repository.findById(internalOrderId);
+  }
+
+  async findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<PaginatedOrderRecords> {
+    return this.repository.findMany(filters, pagination);
   }
 
   /**
