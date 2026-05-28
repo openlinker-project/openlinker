@@ -2,7 +2,7 @@
  * Allegro Controller Unit Tests
  *
  * Unit tests for AllegroController, verifying HTTP endpoint handling,
- * OAuth flow, connection validation, cursor queries, and command queries.
+ * OAuth flow, cursor queries, and command queries.
  *
  * @module apps/api/src/integrations/http
  */
@@ -53,7 +53,6 @@ describe('AllegroController', () => {
       generateAuthorizationUrl: jest.fn(),
       validateState: jest.fn(),
       completeAuthorization: jest.fn(),
-      validateConnection: jest.fn(),
       markStateCompleted: jest.fn(),
       checkCompletedState: jest.fn(),
     } as unknown as jest.Mocked<IOAuthConnectionService>;
@@ -301,39 +300,6 @@ describe('AllegroController', () => {
       oauthService.completeAuthorization.mockRejectedValue(new Error('Token exchange failed'));
 
       await expect(controller.callback(query)).rejects.toThrow('Token exchange failed');
-    });
-  });
-
-  describe('validate', () => {
-    it('should validate connection successfully', async () => {
-      const connectionId = 'connection-123';
-      const validationResult = {
-        valid: true,
-        errors: [],
-      };
-
-      oauthService.validateConnection.mockResolvedValue(validationResult);
-
-      const result = await controller.validate(connectionId);
-
-      expect(result).toEqual(validationResult);
-      expect(oauthService.validateConnection).toHaveBeenCalledWith(connectionId);
-    });
-
-    it('should return validation errors when connection is invalid', async () => {
-      const connectionId = 'connection-123';
-      const validationResult = {
-        valid: false,
-        errors: ['Config is missing environment', 'Connection is missing credentialsRef'],
-      };
-
-      oauthService.validateConnection.mockResolvedValue(validationResult);
-
-      const result = await controller.validate(connectionId);
-
-      expect(result).toEqual(validationResult);
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 
