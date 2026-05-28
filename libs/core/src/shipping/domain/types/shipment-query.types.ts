@@ -18,6 +18,13 @@ export interface ShipmentFilters {
   /** Internal order id (`ol_order_*`). */
   orderId?: string;
   status?: ShipmentStatus;
+  /**
+   * Multi-status IN filter (#838). Takes precedence over `status` when both
+   * are set. Lets the status-sync scan exclude terminal rows at the DB layer
+   * (e.g. `['generated','dispatched','in-transit']`) — keep the explicit set,
+   * not "non-terminal", so a future status addition is a deliberate edit.
+   */
+  statuses?: readonly ShipmentStatus[];
   /** Shipping-provider connection id (UUID). */
   connectionId?: string;
   shippingMethod?: ShippingMethod;
