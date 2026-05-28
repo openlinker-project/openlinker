@@ -69,6 +69,7 @@ export {
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
+  MarketplaceFulfillmentStatusSyncPayloadV1,
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
 export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';

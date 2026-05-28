@@ -36,7 +36,9 @@ import { ShipmentCancellationService } from './application/services/shipment-can
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
+import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
 import {
+  FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
@@ -103,6 +105,13 @@ import {
       provide: SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
       useExisting: ShipmentStatusSyncService,
     },
+    // #834 branch-1 (OMP-fulfilled) shipment status read-back. Sole creator
+    // + updater of branch-1 Shipment rows (projection-only semantics).
+    FulfillmentStatusSyncService,
+    {
+      provide: FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: FulfillmentStatusSyncService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -113,6 +122,7 @@ import {
     PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
+    FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}
