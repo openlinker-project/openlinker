@@ -21,6 +21,7 @@
  *
  * @module libs/integrations/prestashop/src
  */
+import type { ConfigService } from '@nestjs/config';
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -31,6 +32,7 @@ import { PrestashopAdapterFactory } from './application/prestashop-adapter.facto
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
 import { PrestashopConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-config-shape-validator.adapter';
 import { PrestashopConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-credentials-shape-validator.adapter';
+import { buildPrestashopSchedulerTasks } from './infrastructure/scheduler/prestashop-scheduler-tasks';
 import type { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
 import type { PrestashopAddressProvisioner } from './infrastructure/provisioners/prestashop-address-provisioner';
 import type { PrestashopWebhookProvisioningAdapter } from './infrastructure/adapters/prestashop-webhook-provisioning.adapter';
@@ -42,6 +44,12 @@ export interface CreatePrestashopPluginDeps {
   readonly mappingConfigService: IMappingConfigService;
   readonly webhookSecretProvider: WebhookSecretProviderPort;
   readonly webhookProvisioningAdapter: PrestashopWebhookProvisioningAdapter;
+  /**
+   * NestJS ConfigService — used to build scheduler tasks
+   * (`buildPrestashopSchedulerTasks`, #834). When absent (unit-test
+   * bootstraps), the plugin skips scheduler-task registration.
+   */
+  readonly configService?: ConfigService;
 }
 
 /**
@@ -100,6 +108,20 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
         'prestashop.webservice.v1',
         new PrestashopConnectionCredentialsShapeValidatorAdapter(PRESTASHOP_BRAND),
       );
+      if (deps.configService) {
+        for (const task of buildPrestashopSchedulerTasks(deps.configService)) {
+          host.schedulerTaskRegistry.register(task);
+        }
+      } else {
+        // Unit-test bootstrap (no ConfigService). Production wiring always
+        // passes one; if a runtime path ever lands here, the scheduler
+        // task simply doesn't fire and the operator sees the gap via
+        // missing cursor advancement. This log line makes the gap
+        // greppable when triaging "why isn't branch-1 status-sync running?"
+        host.logger(`${PRESTASHOP_BRAND}IntegrationModule`).debug(
+          'Skipping scheduler-task registration: no ConfigService provided to createPrestashopPlugin (expected in unit-test bootstraps only).',
+        );
+      }
     },
 
     async createCapabilityAdapter<T>(

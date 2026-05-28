@@ -231,3 +231,34 @@ export interface MarketplaceShipmentStatusSyncPayloadV1 {
    */
   cursorKey?: string;
 }
+
+/**
+ * marketplace.fulfillment.statusSync (#834)
+ *
+ * Branch-1 (OMP-fulfilled) shipment status read-back. The handler pages OL
+ * Order Records mirrored to this OMP connection, reads each one's
+ * PrestaShop state via the `FulfillmentStatusReader` capability, and
+ * projects branch-1 `Shipment` rows. Mirrors
+ * `MarketplaceShipmentStatusSyncPayloadV1` in shape — both are rolling
+ * scan-offset polls — but disjoint in scope (branch-1 vs branches 2/3).
+ *
+ * Cursor key default (when omitted) is
+ * `prestashop.fulfillmentStatus.scanOffset`.
+ */
+export interface MarketplaceFulfillmentStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of OrderRecords to scan per run. */
+  limit: number;
+  /**
+   * Connection-cursor key under which the rolling numeric scan offset is
+   * persisted. Omitted → the handler falls back to
+   * `prestashop.fulfillmentStatus.scanOffset`.
+   */
+  cursorKey?: string;
+  /**
+   * Iteration-window bound (days). Records whose `updatedAt` is older than
+   * this many days are skipped. Defaults to `DEFAULT_UPDATED_SINCE_DAYS` (30)
+   * inside the service when omitted.
+   */
+  updatedSinceDays?: number;
+}
