@@ -235,6 +235,14 @@ const ALLOW_LIST = new Map([
     'apps/worker/src/sync/handlers/__tests__/marketplace-offer-status-sync.handler.spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
+  [
+    'apps/worker/src/sync/handlers/marketplace-shipment-status-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/src/sync/handlers/__tests__/marketplace-shipment-status-sync.handler.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
 
   // worker → sync.{SyncJobRepositoryPort + ConnectionCursorRepositoryPort} — rewire via ISyncJobsService + ISyncCursorsService
   [
