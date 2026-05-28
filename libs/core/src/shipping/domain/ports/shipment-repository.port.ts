@@ -60,6 +60,25 @@ export interface ShipmentRepositoryPort {
   findByProviderShipmentId(providerShipmentId: string): Promise<Shipment | null>;
 
   /**
+   * Branch-1 (#834) idempotency gate. Returns the existing branch-1
+   * Shipment for `(orderId, connectionId)` if one is already projected,
+   * or `null` to greenlight `create()`. Matches the persisted-shape
+   * predicate `orderId = ? AND connectionId = ? AND providerShipmentId
+   * IS NULL` — the same predicate the partial-unique index
+   * `UQ_shipments_branch_one_per_order_conn` enforces at the DB.
+   *
+   * Returns `null` when the order has only non-null-`providerShipmentId`
+   * rows (branches 2/3 — the order is being shipped by InPost / Allegro
+   * Delivery, not the OMP), so the sync service can skip branch-1
+   * projection for non-branch-1 orders even before checking the routing
+   * resolution.
+   */
+  findBranchOneByOrderAndConnection(
+    orderId: string,
+    connectionId: string,
+  ): Promise<Shipment | null>;
+
+  /**
    * Apply a partial patch. Throws `ShipmentNotFoundException` when no
    * row matches `id`. Only fields present on the patch are written;
    * unspecified fields stay untouched.

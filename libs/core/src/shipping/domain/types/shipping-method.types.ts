@@ -1,24 +1,35 @@
 /**
  * Shipping Method Types
  *
- * Discriminates the kind of shipment a `ShippingProviderManagerPort`
- * adapter can produce. Each value corresponds to a different ShipX (or
- * equivalent) endpoint shape on the provider side. The runtime-discoverable
- * answer to "what shipment kinds does this adapter support?" is
- * `ShippingProviderManagerPort.getSupportedMethods()`, which returns a
- * `readonly ShippingMethod[]`.
+ * Discriminates the kind of shipment OL persists on a `Shipment` row. The
+ * runtime-discoverable answer to "what shipment kinds does a given
+ * `ShippingProviderManagerPort` adapter support?" is
+ * `getSupportedMethods()`, which returns a `readonly ShippingMethod[]`.
  *
- * Future adapters (e.g. #732 Allegro Delivery) may add new values here as
- * new shipping models surface. Removing a value requires a coordinated
- * migration; adding one is a forward-compatible change.
+ * Two flavours of value live in the same union:
+ *
+ * - **Provider-issued methods** — `paczkomat`, `kurier` (and future ones
+ *   for #732 Allegro Delivery): each maps to a different ShipX endpoint
+ *   shape on the provider side, and a label-issuing
+ *   `ShippingProviderManagerPort` adapter is the row's authoritative
+ *   writer.
+ * - **Projection-only methods** — `omp` (#834, ADR-012): branch-1
+ *   shipments where the destination OMP ships externally and OL holds no
+ *   provider id, no `labelPdfRef`. The row exists as a *projection* of
+ *   the OMP's state, populated by `FulfillmentStatusSyncService`. No
+ *   `ShippingProviderManagerPort` ever advertises `omp`.
+ *
+ * Adding a new provider-issued value is a forward-compatible change;
+ * removing any value requires a coordinated migration.
  *
  * @module libs/core/src/shipping/domain/types
  */
 
-export const ShippingMethodValues = ['paczkomat', 'kurier'] as const;
+export const ShippingMethodValues = ['paczkomat', 'kurier', 'omp'] as const;
 export type ShippingMethod = (typeof ShippingMethodValues)[number];
 
 export const SHIPPING_METHOD = {
   Paczkomat: 'paczkomat',
   Kurier: 'kurier',
-} as const satisfies Record<'Paczkomat' | 'Kurier', ShippingMethod>;
+  Omp: 'omp',
+} as const satisfies Record<'Paczkomat' | 'Kurier' | 'Omp', ShippingMethod>;

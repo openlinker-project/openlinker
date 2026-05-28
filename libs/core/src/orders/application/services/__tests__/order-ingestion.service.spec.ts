@@ -95,6 +95,7 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({}),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      findMany: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
