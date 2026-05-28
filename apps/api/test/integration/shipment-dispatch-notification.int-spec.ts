@@ -55,6 +55,7 @@ import {
   installDispatchNotifyTestStubs,
 } from './helpers/dispatch-notify-test-stubs.helper';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
+import { loginAsAdmin } from './helpers/test-auth.helper';
 
 const SOURCE_EXTERNAL_ID = 'allegro-checkout-AAA';
 const DEST_EXTERNAL_ID = 'ps-order-77';
@@ -241,5 +242,73 @@ describe('Shipment Dispatch Notification Integration', () => {
     });
     expect(stubs.source.calls).toHaveLength(1);
     expect(stubs.dest.calls).toHaveLength(1);
+  });
+
+  describe('POST /shipments/:id/notify-dispatched (#769 HTTP endpoint)', () => {
+    it('should run the orchestration end-to-end and return 200 with the result shape', async () => {
+      const { shipmentId, destId } = await seedDispatchableShipment('ol_order_notify_http_1');
+
+      const http = harness.getHttp();
+      const token = await loginAsAdmin(http, harness.getDataSource());
+
+      const response = await http
+        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        shipmentId,
+        outcome: 'notified',
+        source: 'ok',
+        destinations: [{ connectionId: destId, status: 'ok' }],
+      });
+
+      // Same shipped-stubs verification as the service-call test above:
+      expect(stubs.source.calls).toHaveLength(1);
+      expect(stubs.dest.calls).toHaveLength(1);
+
+      const persisted = await queryService().getById(shipmentId);
+      expect(persisted?.status).toBe('dispatched');
+    });
+
+    it('should idempotent-no-op on second HTTP call (200 + outcome=skipped-not-generated)', async () => {
+      const { shipmentId } = await seedDispatchableShipment('ol_order_notify_http_2');
+
+      const http = harness.getHttp();
+      const token = await loginAsAdmin(http, harness.getDataSource());
+
+      const first = await http
+        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(first.status).toBe(200);
+      expect(first.body.outcome).toBe('notified');
+
+      const second = await http
+        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(second.status).toBe(200);
+      expect(second.body).toEqual({
+        shipmentId,
+        outcome: 'skipped-not-generated',
+        source: 'absent',
+        destinations: [],
+      });
+
+      // No additional source/dest invocations from the second call.
+      expect(stubs.source.calls).toHaveLength(1);
+      expect(stubs.dest.calls).toHaveLength(1);
+    });
+
+    it('should return 404 when the shipment id does not exist', async () => {
+      const http = harness.getHttp();
+      const token = await loginAsAdmin(http, harness.getDataSource());
+
+      const response = await http
+        .post('/shipments/ol_shipment_nonexistent/notify-dispatched')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toMatch(/shipment not found/i);
+    });
   });
 });

@@ -44,9 +44,27 @@ const orderTotalsSchema = z.object({
   currency: z.string(),
 });
 
+const orderShippingSchema = z.object({
+  /** Source-side delivery-method id (routing-rule lookup key). */
+  methodId: z.string(),
+  /** Operator-facing label (e.g. "InPost Paczkomaty"). */
+  methodName: z.string().optional(),
+});
+
+const orderPickupPointSchema = z.object({
+  /** Bare locker code (e.g. `POZ08A`). */
+  id: z.string(),
+  /** Operator-facing label (e.g. `Paczkomat POZ08A`). */
+  name: z.string().optional(),
+  /** Locker-side description (e.g. `Stacja paliw BP`). */
+  description: z.string().optional(),
+});
+
 export type ParsedOrderItem = z.infer<typeof orderItemSchema>;
 export type ParsedAddress = z.infer<typeof addressSchema>;
 export type ParsedOrderTotals = z.infer<typeof orderTotalsSchema>;
+export type ParsedOrderShipping = z.infer<typeof orderShippingSchema>;
+export type ParsedOrderPickupPoint = z.infer<typeof orderPickupPointSchema>;
 
 export interface ParseWarning {
   field: string;
@@ -57,10 +75,30 @@ export interface ParsedOrderSnapshot {
   id?: string;
   orderNumber?: string;
   status?: string;
+  /**
+   * Buyer email from the source platform — adapters typically populate from
+   * `IncomingOrder.customerEmail`. Consumed by the Generate Label form
+   * (#769) to pre-fill the recipient.email field; absent for sources that
+   * don't expose it (in which case the operator types it).
+   */
+  customerEmail?: string;
   items: ParsedOrderItem[];
   totals?: ParsedOrderTotals;
   shippingAddress?: ParsedAddress;
   billingAddress?: ParsedAddress;
+  /**
+   * Source-side shipping reference (#769). When present, `methodId` is the
+   * routing-rule lookup key the dispatch seam consumes. Absent for sources
+   * that don't expose a delivery-method id.
+   */
+  shipping?: ParsedOrderShipping;
+  /**
+   * Pickup-point reference (#769). Present only for pickup-point orders
+   * (Allegro brokered paczkomats, InPost-direct locker orders). The
+   * Generate Label form pre-fills this as the `paczkomatId` for the
+   * Allegro Delivery flow — buyer-selected per AC-3.
+   */
+  pickupPoint?: ParsedOrderPickupPoint;
   parseWarnings: ParseWarning[];
 }
 
@@ -87,6 +125,10 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
   const orderNumber =
     typeof snapshot.orderNumber === 'string' ? snapshot.orderNumber : undefined;
   const status = typeof snapshot.status === 'string' ? snapshot.status : undefined;
+  const customerEmail =
+    typeof snapshot.customerEmail === 'string' && snapshot.customerEmail.length > 0
+      ? snapshot.customerEmail
+      : undefined;
 
   // Items — parse each element independently so one bad row doesn't drop the rest.
   const items: ParsedOrderItem[] = [];
@@ -148,14 +190,49 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     }
   }
 
+  // Shipping reference (routing-rule key) — optional.
+  let shipping: ParsedOrderShipping | undefined;
+  if (snapshot.shipping !== undefined) {
+    const candidate = asRecord(snapshot.shipping);
+    if (candidate === null) {
+      warnings.push({ field: 'shipping', message: 'expected an object' });
+    } else {
+      const result = orderShippingSchema.safeParse(candidate);
+      if (result.success) {
+        shipping = result.data;
+      } else {
+        warnings.push({ field: 'shipping', message: firstZodMessage(result.error) });
+      }
+    }
+  }
+
+  // Pickup-point — optional (paczkomat orders only).
+  let pickupPoint: ParsedOrderPickupPoint | undefined;
+  if (snapshot.pickupPoint !== undefined) {
+    const candidate = asRecord(snapshot.pickupPoint);
+    if (candidate === null) {
+      warnings.push({ field: 'pickupPoint', message: 'expected an object' });
+    } else {
+      const result = orderPickupPointSchema.safeParse(candidate);
+      if (result.success) {
+        pickupPoint = result.data;
+      } else {
+        warnings.push({ field: 'pickupPoint', message: firstZodMessage(result.error) });
+      }
+    }
+  }
+
   return {
     id,
     orderNumber,
     status,
+    customerEmail,
     items,
     totals,
     shippingAddress,
     billingAddress,
+    shipping,
+    pickupPoint,
     parseWarnings: warnings,
   };
 }

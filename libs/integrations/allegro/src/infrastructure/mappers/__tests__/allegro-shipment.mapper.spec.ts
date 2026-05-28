@@ -11,9 +11,11 @@ import {
   buildCreateShipmentInput,
   deriveCommandId,
   describeShipmentState,
+  extractCarrierId,
   extractCarrierWaybill,
   formatCommandErrors,
   mapShipmentStateToStatus,
+  normalizeAllegroCarrierId,
   toGenerateLabelResult,
 } from '../allegro-shipment.mapper';
 
@@ -208,5 +210,65 @@ describe('formatCommandErrors', () => {
   it('returns a fallback when there is no error detail', () => {
     expect(formatCommandErrors(undefined)).toBe('Allegro returned no error detail');
     expect(formatCommandErrors([])).toBe('Allegro returned no error detail');
+  });
+});
+
+describe('normalizeAllegroCarrierId (#769)', () => {
+  it.each([
+    ['INPOST', 'inpost'],
+    ['DPD', 'dpd'],
+    ['DHL', 'dhl'],
+    ['ORLEN', 'orlen'],
+    ['ORLEN_PACZKA', 'orlen'],
+    ['ALLEGRO_ONE_BOX', 'allegro-one-box'],
+    ['ALLEGRO_ONE_PUNKT', 'allegro-one-punkt'],
+    ['ALLEGRO_ONE_KURIER', 'allegro-one-kurier'],
+    ['POCZTA', 'poczta-polska'],
+    ['POCZTA_POLSKA', 'poczta-polska'],
+    ['UPS', 'ups'],
+    ['PACKETA', 'packeta'],
+  ])('should map %s to canonical %s', (raw, expected) => {
+    expect(normalizeAllegroCarrierId(raw)).toBe(expected);
+  });
+
+  it('should lowercase-passthrough an unknown value (graceful FE degradation — copy-text only)', () => {
+    expect(normalizeAllegroCarrierId('SHOPIFY_SHIPPING')).toBe('shopify_shipping');
+  });
+
+  it('should return undefined when input is undefined', () => {
+    expect(normalizeAllegroCarrierId(undefined)).toBeUndefined();
+  });
+});
+
+describe('extractCarrierId (#769)', () => {
+  it('should return undefined when there are no packages', () => {
+    expect(extractCarrierId({ id: 's1' })).toBeUndefined();
+  });
+
+  it('should return undefined when no transportingInfo carries a carrierId', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [{ transportingInfo: [{ carrierWaybill: '6800000001' }] }],
+    };
+    expect(extractCarrierId(resource)).toBeUndefined();
+  });
+
+  it('should return the canonical-form carrier from the first transportingInfo entry', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [{ transportingInfo: [{ carrierId: 'INPOST', carrierWaybill: '6800000001' }] }],
+    };
+    expect(extractCarrierId(resource)).toBe('inpost');
+  });
+
+  it('should walk packages in document order and return the first found', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [
+        { transportingInfo: [{ carrierId: 'DPD', carrierWaybill: 'first' }] },
+        { transportingInfo: [{ carrierId: 'INPOST', carrierWaybill: 'second' }] },
+      ],
+    };
+    expect(extractCarrierId(resource)).toBe('dpd');
   });
 });
