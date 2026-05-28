@@ -113,6 +113,29 @@ describe('ShipmentRepository', () => {
       expect(result.shippingMethod).toBe('kurier');
       expect(result.paczkomatId).toBeNull();
     });
+
+    it('should support the branch-1 atomic-terminal mode (#834) — initialStatus + terminal timestamps + trackingNumber at create time', async () => {
+      ormRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity as ShipmentOrmEntity),
+      );
+      const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+
+      const result = await repository.create({
+        orderId: 'ol_order_b1',
+        connectionId: '00000000-0000-0000-0000-000000000001',
+        shippingMethod: 'omp',
+        initialStatus: 'delivered',
+        trackingNumber: 'PS-TRK-9',
+        deliveredAt,
+      });
+
+      expect(result.status).toBe('delivered');
+      expect(result.providerShipmentId).toBeNull();
+      expect(result.trackingNumber).toBe('PS-TRK-9');
+      expect(result.deliveredAt).toEqual(deliveredAt);
+      expect(result.dispatchedAt).toBeNull();
+      expect(result.cancelledAt).toBeNull();
+    });
   });
 
   describe('findById', () => {
@@ -229,6 +252,41 @@ describe('ShipmentRepository', () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       const result = await repository.findByProviderShipmentId('UNKNOWN');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findBranchOneByOrderAndConnection (#834)', () => {
+    it('should match the partial-unique-index predicate', async () => {
+      ormRepository.findOne.mockResolvedValue(
+        buildOrm({ providerShipmentId: null, shippingMethod: 'omp', status: 'dispatched' }),
+      );
+
+      const result = await repository.findBranchOneByOrderAndConnection(
+        'ol_order_b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',
+        '00000000-0000-0000-0000-000000000001',
+      );
+
+      expect(result?.providerShipmentId).toBeNull();
+      const args = ormRepository.findOne.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        orderId: 'ol_order_b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',
+        connectionId: '00000000-0000-0000-0000-000000000001',
+      });
+      // providerShipmentId is filtered via TypeORM's IsNull() — verify the
+      // type-of marker rather than asserting the raw shape.
+      const where = args.where as { providerShipmentId: unknown };
+      expect(where.providerShipmentId).toBeDefined();
+    });
+
+    it('should return null when no branch-1 row exists', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+
+      const result = await repository.findBranchOneByOrderAndConnection(
+        'ol_order_none',
+        '00000000-0000-0000-0000-000000000001',
+      );
 
       expect(result).toBeNull();
     });

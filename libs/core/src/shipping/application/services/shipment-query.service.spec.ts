@@ -51,6 +51,7 @@ describe('ShipmentQueryService', () => {
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
+      findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn(),
     };
     service = new ShipmentQueryService(repository);

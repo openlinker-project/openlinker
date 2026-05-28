@@ -6,8 +6,19 @@
  * `OfferCreationRecord` discipline — entity-shape changes (added fields,
  * derived behavior) don't silently affect repository callers.
  *
- * Shipments always start at `'draft'`; the repository applies that
- * invariant at write time so the input type captures it.
+ * **Two creation modes** on `CreateShipmentInput`:
+ *
+ * - **Draft mode (default)**: omit `initialStatus`. The repository writes
+ *   the row at `'draft'`. The dispatch path (`ShipmentDispatchService`,
+ *   #835) uses this so a `generateLabel` failure leaves an observable
+ *   `failed` row in `/shipments`. Branches 2/3 follow this path.
+ * - **Atomic-terminal mode (#834)**: pass `initialStatus` (typically a
+ *   non-draft value) + the matching terminal-timestamp field +
+ *   optionally `trackingNumber`. The branch-1 projection path
+ *   (`FulfillmentStatusSyncService`) uses this so the row is born at its
+ *   correct status — no transient draft state to trip the partial-unique
+ *   `(orderId, connectionId) WHERE providerShipmentId IS NULL` index, no
+ *   `draft → terminal` two-write cycle.
  *
  * @module libs/core/src/shipping/domain/types
  */
@@ -18,7 +29,8 @@ import type { ShippingMethod } from './shipping-method.types';
 export interface CreateShipmentInput {
   /** Internal order id (`ol_order_*`). */
   orderId: string;
-  /** Shipping-provider connection that will issue the label. */
+  /** Shipping-provider connection that will issue the label, or the OMP
+   * connection for branch-1 projection rows. */
   connectionId: string;
   /** Which shipping shape this attempt produces. */
   shippingMethod: ShippingMethod;
@@ -29,6 +41,19 @@ export interface CreateShipmentInput {
    * produced the shipment) — distinct from the resolved provider
    * `deliveryMethodId` the adapter sends. */
   sourceDeliveryMethodId?: string;
+  /** Atomic-terminal mode (#834). Defaults to `'draft'` (the dispatch
+   * path's existing behaviour). Branch-1 projection sets this to the
+   * snapshot's status at create-time so the row is born correct. */
+  initialStatus?: ShipmentStatus;
+  /** Atomic-terminal mode (#834). Backfill the row's tracking number at
+   * create-time. */
+  trackingNumber?: string;
+  /** Atomic-terminal mode (#834). Set when `initialStatus === 'dispatched'`. */
+  dispatchedAt?: Date;
+  /** Atomic-terminal mode (#834). Set when `initialStatus === 'delivered'`. */
+  deliveredAt?: Date;
+  /** Atomic-terminal mode (#834). Set when `initialStatus === 'cancelled'`. */
+  cancelledAt?: Date;
 }
 
 /**

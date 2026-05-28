@@ -30,6 +30,13 @@ export interface ShipmentFilters {
   shippingMethod?: ShippingMethod;
   /** `true` → only shipments with a tracking number; `false` → only those without. */
   hasTracking?: boolean;
+  /**
+   * Branch discriminator at the row level (#834). `true` → only rows with a
+   * provider-issued id (branches 2/3); `false` → only branch-1 projection
+   * rows (no provider id). Used by the branch-1 sync service's find-existing
+   * lookup and by any future read API that wants to filter by branch.
+   */
+  hasProviderShipmentId?: boolean;
   /** Inclusive lower bound on `createdAt`. */
   createdFrom?: Date;
   /** Inclusive upper bound on `createdAt`. */
