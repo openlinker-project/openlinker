@@ -14,6 +14,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { ShippingModule } from '@openlinker/core/shipping';
 import { WorkerContentModule } from '../content/worker-content.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
@@ -27,6 +28,7 @@ import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-crea
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
+import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
@@ -43,6 +45,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
+    ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     WorkerContentModule, // Worker-side ContentModule for #737 — exposes CONTENT_SUGGESTION_SERVICE_TOKEN
   ],
   providers: [
@@ -58,6 +61,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPollCreationStatusHandler,
     MarketplaceOffersSyncHandler,
     MarketplaceOfferStatusSyncHandler,
+    MarketplaceShipmentStatusSyncHandler,
     MasterProductSyncHandler,
     MasterInventorySyncHandler,
     AutoMatchVariantsHandler,

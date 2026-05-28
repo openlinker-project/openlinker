@@ -47,6 +47,7 @@ import {
   buildCreateShipmentInput,
   deriveCommandId,
   describeShipmentState,
+  extractCarrierWaybill,
   formatCommandErrors,
   mapShipmentStateToStatus,
   toGenerateLabelResult,
@@ -122,9 +123,13 @@ export class AllegroDeliveryShippingAdapter
       `${SHIPMENTS_PATH}/${input.providerShipmentId}`,
     );
     const resource = response.data;
+    // Carrier waybill arrives asynchronously after `generateLabel` returns
+    // (#838); leaving `trackingNumber` undefined here is normal until the
+    // first poll that finds one in `transportingInfo[].carrierWaybill`.
     return {
       status: mapShipmentStateToStatus(resource),
       providerStatus: describeShipmentState(resource),
+      trackingNumber: extractCarrierWaybill(resource),
     };
   }
 

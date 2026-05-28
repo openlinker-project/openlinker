@@ -135,7 +135,13 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
   private buildWhere(filters: ShipmentFilters): FindOptionsWhere<ShipmentOrmEntity> {
     const where: FindOptionsWhere<ShipmentOrmEntity> = {};
     if (filters.orderId !== undefined) where.orderId = filters.orderId;
-    if (filters.status !== undefined) where.status = filters.status;
+    // `statuses` (multi-status IN) takes precedence over `status` when both
+    // are set (#838 — see ShipmentFilters jsdoc).
+    if (filters.statuses !== undefined && filters.statuses.length > 0) {
+      where.status = In([...filters.statuses]);
+    } else if (filters.status !== undefined) {
+      where.status = filters.status;
+    }
     if (filters.connectionId !== undefined) where.connectionId = filters.connectionId;
     if (filters.shippingMethod !== undefined) where.shippingMethod = filters.shippingMethod;
     if (filters.hasTracking !== undefined) {
