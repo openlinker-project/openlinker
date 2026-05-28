@@ -190,7 +190,25 @@ describe('AllegroDeliveryShippingAdapter', () => {
       await expect(adapter.getTracking({ providerShipmentId: 'allegro-ship-1' })).resolves.toEqual({
         status: 'dispatched',
         providerStatus: 'waybill-assigned',
+        trackingNumber: '6800000001',
       });
+    });
+
+    it('populates trackingNumber from transportingInfo.carrierWaybill (#838)', async () => {
+      http.get.mockResolvedValue(
+        ok<AllegroShipmentResource>({
+          id: 'allegro-ship-2',
+          packages: [{ transportingInfo: [{ carrierId: 'INPOST', carrierWaybill: 'NEW-WAYBILL' }] }],
+        }),
+      );
+      const snapshot = await adapter.getTracking({ providerShipmentId: 'allegro-ship-2' });
+      expect(snapshot.trackingNumber).toBe('NEW-WAYBILL');
+    });
+
+    it('leaves trackingNumber undefined when no carrier waybill has been assigned yet', async () => {
+      http.get.mockResolvedValue(ok<AllegroShipmentResource>({ id: 'allegro-ship-3', packages: [{}] }));
+      const snapshot = await adapter.getTracking({ providerShipmentId: 'allegro-ship-3' });
+      expect(snapshot.trackingNumber).toBeUndefined();
     });
 
     it('maps a canceled shipment to cancelled', async () => {

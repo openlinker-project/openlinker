@@ -118,3 +118,12 @@ export type {
   ShipmentDispatchNotificationInput,
   ShipmentDispatchNotificationResult,
 } from './application/types/shipment-dispatch-notification.types';
+
+// Application — shipment-status-sync seam (#838). Interface + result types only; the
+// service is injected via SHIPMENT_STATUS_SYNC_SERVICE_TOKEN. The cursor-based
+// worker handler drives it the same way OfferStatusSync (#816) drives its service.
+export type { IShipmentStatusSyncService } from './application/interfaces/shipment-status-sync.service.interface';
+export type {
+  ShipmentStatusSyncOptions,
+  ShipmentStatusSyncResult,
+} from './application/types/shipment-status-sync.types';

@@ -19,3 +19,4 @@ export const PICKUP_POINT_LOOKUP_SERVICE_TOKEN = Symbol('IPickupPointLookupServi
 export const SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN = Symbol(
   'IShipmentDispatchNotificationService',
 );
+export const SHIPMENT_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShipmentStatusSyncService');
