@@ -66,6 +66,7 @@ describe('ShipmentDispatchNotificationService', () => {
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
+      findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn(),
     };
     orderRecords = {
@@ -73,6 +74,7 @@ describe('ShipmentDispatchNotificationService', () => {
       updateSyncStatus: jest.fn(),
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(makeRecord()),
+      findMany: jest.fn(),
     };
     identifierMapping = {
       getInternalId: jest.fn(),

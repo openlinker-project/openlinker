@@ -15,6 +15,7 @@
  */
 import type { OnModuleInit } from '@nestjs/common';
 import { Module, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   IdentifierMappingModule,
   IDENTIFIER_MAPPING_PORT_TOKEN,
@@ -129,6 +130,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly mappingConfigService: IMappingConfigService,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly webhookSecretProvider: WebhookSecretProviderPort,
+    private readonly configService: ConfigService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort
   ) {}
@@ -144,6 +146,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       mappingConfigService: this.mappingConfigService,
       webhookSecretProvider: this.webhookSecretProvider,
       webhookProvisioningAdapter: this.webhookProvisioningAdapter,
+      configService: this.configService,
     });
 
     // Build the HostServices bag from injected host fields.
