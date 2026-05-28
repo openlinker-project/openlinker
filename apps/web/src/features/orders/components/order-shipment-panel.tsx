@@ -51,9 +51,18 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
   }, [connectionsQuery.data]);
 
   if (connectionsQuery.isLoading) {
-    // Connections are loaded once per session — usually warm. Don't render
-    // the heavy LoadingState here; just defer.
-    return null;
+    // Connections are loaded once per session — usually warm. On the cold
+    // first paint we render a single-row skeleton instead of `null` so the
+    // page doesn't reflow when the panel appears (tech-review SUGGESTION
+    // fix — avoids a CLS event on first order-detail navigation).
+    return (
+      <section className="detail-section order-shipment-panel order-shipment-panel--loading">
+        <header className="order-shipment-panel__header">
+          <h3 className="detail-section__title">Shipment</h3>
+        </header>
+        <div className="order-shipment-panel__skeleton" aria-hidden="true" />
+      </section>
+    );
   }
 
   if (hasShippingCapability === false) {

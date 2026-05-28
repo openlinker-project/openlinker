@@ -5,7 +5,7 @@
  * status matrix, empty-state CTA, tracking link, paczkomat caption keyed on
  * shipping connection's platformType.
  */
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { OrderShipmentPanel } from './order-shipment-panel';
@@ -105,10 +105,12 @@ describe('OrderShipmentPanel — capability gating (AC-8)', () => {
       apiClient,
     });
 
-    // Wait for the connections query to settle, then assert the panel never
-    // appears.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(container.querySelector('.order-shipment-panel')).toBeNull();
+    // The panel renders a loading-skeleton on first paint (a tech-review
+    // SUGGESTION fix to avoid CLS); once the connections query settles with
+    // no `ShippingProviderManager` capability, the panel unmounts entirely.
+    await waitFor(() => {
+      expect(container.querySelector('.order-shipment-panel')).toBeNull();
+    });
   });
 
   it('should render the panel when at least one connection declares ShippingProviderManager', async () => {
@@ -239,7 +241,10 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
 
     renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
 
-    await screen.findByRole('heading', { name: /Shipment/i });
+    // Wait for the populated state — the Cancel button only appears once
+    // both connections + shipments queries have settled (heading is shared
+    // with the skeleton state, so it's not a reliable settle-signal).
+    await screen.findByRole('button', { name: /^Cancel$/i });
 
     const generate = screen.getByRole('button', { name: /Generate label|Generate shipping label/i });
     const cancel = screen.getByRole('button', { name: /^Cancel$/i });

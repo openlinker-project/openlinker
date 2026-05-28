@@ -13,16 +13,9 @@
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { ordersQueryKeys } from '../../orders';
 import { shipmentsQueryKeys } from '../api/shipments.query-keys';
 import type { NotifyDispatchedResult } from '../api/shipments.types';
-
-// Bare prefix to avoid a cross-feature `orders` import (the orders feature
-// has no public barrel yet, and deep-importing its query-keys file would
-// require adding the slug to `.eslintrc.js`'s `no-restricted-imports` deny
-// pattern). Invalidating by the bare `['orders']` prefix matches every key
-// the orders feature emits (its factory uses the same prefix). When the
-// orders barrel lands, this becomes `ordersQueryKeys.all`.
-const ORDERS_QUERY_KEY_PREFIX = ['orders'] as const;
 
 export function useNotifyDispatchedMutation(): UseMutationResult<
   NotifyDispatchedResult,
@@ -37,7 +30,7 @@ export function useNotifyDispatchedMutation(): UseMutationResult<
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: shipmentsQueryKeys.all }),
-        queryClient.invalidateQueries({ queryKey: ORDERS_QUERY_KEY_PREFIX }),
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all }),
       ]);
     },
   });

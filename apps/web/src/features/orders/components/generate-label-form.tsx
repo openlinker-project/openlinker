@@ -6,6 +6,15 @@
  * from `ParsedOrderSnapshot` (AC-3 — Allegro buyer-selected pickup point
  * pre-filled); operator types parcel dimensions + weight.
  *
+ * **Pre-flight discipline (tech-review BLOCKING fix)** — the form has no
+ * editable recipient inputs in v1. If the snapshot is missing fields the BE
+ * requires, submit is disabled and an Alert lists what's missing so the
+ * operator can fix it at the source (re-poll the order, update the buyer in
+ * the source platform, etc.) instead of bouncing off a 400. The paczkomat
+ * flow doesn't need a shipping address (the parcel goes to the locker), so
+ * we skip the address block entirely for paczkomat regardless of snapshot
+ * completeness.
+ *
  * Async-pending UX per plan §3.6: whole form is `<fieldset disabled>` during
  * mutation; submit button advertises the ~30s wait; after 5s an inline
  * status note + `aria-live="polite"` announces "Allegro is still processing".
@@ -13,7 +22,7 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -24,7 +33,6 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useId } from 'react';
 
 import type { OrderRecord } from '../api/orders.types';
 import {
@@ -59,22 +67,39 @@ export function GenerateLabelForm({
   const recipient = buildRecipientPreview(snapshot);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   const shippingMethod: 'paczkomat' | 'kurier' = hasPickupPoint ? 'paczkomat' : 'kurier';
+  const missingFields = useMemo(
+    () => detectMissingFields(snapshot, shippingMethod),
+    [snapshot, shippingMethod],
+  );
 
   const mutation = useGenerateLabelMutation();
   const { showToast } = useToast();
 
   const form = useForm<GenerateLabelFormValues, undefined, GenerateLabelFormSubmission>({
     defaultValues: {
-      length: '' as unknown as number,
-      width: '' as unknown as number,
-      height: '' as unknown as number,
-      weightGrams: '' as unknown as number,
+      // Numeric fields bind to native `<input type="number">`, which RHF sees
+      // as strings; `z.coerce.number()` converts at submit. Initial `''` is
+      // assignable to `unknown` (the Zod input shape for coerce.number), so
+      // no cast is needed.
+      length: '',
+      width: '',
+      height: '',
+      weightGrams: '',
       // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
       // operator types (picker deferred per plan).
       paczkomatId: snapshot.pickupPoint?.id ?? '',
     },
     resolver: zodResolver(generateLabelSchema),
   });
+
+  // Cache the `register('length')` call so the spread and the explicit-ref
+  // callback share the same RHF ref function (don't create two parallel
+  // registrations against the same field — tech-review IMPORTANT fix).
+  const lengthRegister = form.register('length');
+  const widthRegister = form.register('width');
+  const heightRegister = form.register('height');
+  const weightRegister = form.register('weightGrams');
+  const paczkomatRegister = form.register('paczkomatId');
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -117,6 +142,8 @@ export function GenerateLabelForm({
   const paczkomatIsBuyerSelected =
     shippingMethod === 'paczkomat' && hasPickupPoint;
 
+  const submitDisabled = mutation.isPending || missingFields.length > 0;
+
   return (
     <form
       onSubmit={(e) => {
@@ -129,6 +156,22 @@ export function GenerateLabelForm({
       <h4 id="generate-label-form-heading" className="generate-label-form__heading">
         Generate label
       </h4>
+
+      {/* Pre-flight gate (tech-review BLOCKING fix) — missing snapshot fields
+          block submission so the operator can't fire a doomed BE call. */}
+      {missingFields.length > 0 ? (
+        <Alert tone="warning" className="generate-label-form__missing">
+          <strong>Missing recipient data — cannot generate label:</strong>
+          <ul className="generate-label-form__missing-list">
+            {missingFields.map((field) => (
+              <li key={field.id}>{field.message}</li>
+            ))}
+          </ul>
+          <p className="generate-label-form__missing-hint">
+            Open this order in the source platform to fix the buyer record, then re-poll.
+          </p>
+        </Alert>
+      ) : null}
 
       {/* API error at top */}
       {mutation.error ? (
@@ -160,7 +203,7 @@ export function GenerateLabelForm({
           <p className="form-field__description">Length × Width × Height</p>
           <div className="generate-label-form__dimensions">
             <Input
-              {...form.register('length')}
+              {...lengthRegister}
               id={`${dimsBaseId}-length`}
               type="number"
               inputMode="numeric"
@@ -168,13 +211,13 @@ export function GenerateLabelForm({
               placeholder="L"
               aria-label="Length in millimetres"
               ref={(el) => {
-                form.register('length').ref(el);
+                lengthRegister.ref(el);
                 firstInputRef.current = el;
               }}
               invalid={Boolean(form.formState.errors.length)}
             />
             <Input
-              {...form.register('width')}
+              {...widthRegister}
               id={`${dimsBaseId}-width`}
               type="number"
               inputMode="numeric"
@@ -184,7 +227,7 @@ export function GenerateLabelForm({
               invalid={Boolean(form.formState.errors.width)}
             />
             <Input
-              {...form.register('height')}
+              {...heightRegister}
               id={`${dimsBaseId}-height`}
               type="number"
               inputMode="numeric"
@@ -210,10 +253,10 @@ export function GenerateLabelForm({
           error={form.formState.errors.weightGrams?.message}
         >
           <Input
+            {...weightRegister}
             type="number"
             inputMode="numeric"
             min={1}
-            {...form.register('weightGrams')}
             invalid={Boolean(form.formState.errors.weightGrams)}
           />
         </FormField>
@@ -230,7 +273,7 @@ export function GenerateLabelForm({
             error={form.formState.errors.paczkomatId?.message}
           >
             <Input
-              {...form.register('paczkomatId')}
+              {...paczkomatRegister}
               readOnly={paczkomatIsBuyerSelected}
               aria-readonly={paczkomatIsBuyerSelected ? 'true' : undefined}
               placeholder={paczkomatIsBuyerSelected ? undefined : 'POZ08A'}
@@ -249,12 +292,63 @@ export function GenerateLabelForm({
         <Button type="button" tone="ghost" onClick={onCancel} disabled={mutation.isPending}>
           Cancel
         </Button>
-        <Button type="submit" tone="primary" disabled={mutation.isPending}>
+        <Button type="submit" tone="primary" disabled={submitDisabled}>
           {mutation.isPending ? 'Generating label… (~30s)' : 'Generate label'}
         </Button>
       </div>
     </form>
   );
+}
+
+interface MissingField {
+  id: string;
+  message: string;
+}
+
+/**
+ * Detect snapshot fields the BE `GenerateLabelDto` requires that the order
+ * snapshot didn't supply. For paczkomat shipments the address block is
+ * optional (parcel goes to the locker, not the buyer's home), so address-side
+ * misses don't count.
+ *
+ * The BE rules this mirrors (`apps/api/src/shipping/http/dto/generate-label.dto.ts`):
+ * - `recipient.email` — `@IsEmail()` (always required)
+ * - `recipient.phone` — `@IsNotEmpty()` (always required)
+ * - `recipient.address.{street,buildingNumber,city,postCode,countryCode}` —
+ *   all `@IsNotEmpty()` when the address block is sent. Country code must be
+ *   a valid ISO 3166-1 alpha-2 code (the BE just checks `IsString IsNotEmpty`,
+ *   but downstream carriers reject anything else).
+ */
+function detectMissingFields(
+  snapshot: ParsedOrderSnapshot,
+  shippingMethod: 'paczkomat' | 'kurier',
+): MissingField[] {
+  const missing: MissingField[] = [];
+  if (!snapshot.customerEmail) {
+    missing.push({ id: 'email', message: 'Buyer email is missing from the order snapshot.' });
+  }
+  const phone = snapshot.shippingAddress?.phone;
+  if (!phone || phone.trim().length === 0) {
+    missing.push({ id: 'phone', message: 'Buyer phone is missing from the shipping address.' });
+  }
+  // For courier shipments the full address is required by the carrier.
+  if (shippingMethod === 'kurier') {
+    const a = snapshot.shippingAddress;
+    if (!a?.address1) missing.push({ id: 'street', message: 'Shipping street is missing.' });
+    if (!a?.city) missing.push({ id: 'city', message: 'Shipping city is missing.' });
+    if (!a?.postalCode) missing.push({ id: 'postCode', message: 'Shipping postal code is missing.' });
+    if (!a?.country || !isIsoAlpha2(a.country)) {
+      missing.push({
+        id: 'country',
+        message: 'Shipping country must be a 2-letter ISO code (e.g. PL).',
+      });
+    }
+  }
+  return missing;
+}
+
+function isIsoAlpha2(code: string): boolean {
+  return /^[A-Za-z]{2}$/.test(code);
 }
 
 function buildRecipientPreview(snapshot: ParsedOrderSnapshot): KeyValueItem[] {
@@ -297,18 +391,26 @@ function buildGenerateLabelInput(args: {
   const { order, snapshot, values, shippingMethod } = args;
   const a = snapshot.shippingAddress;
 
-  // Address fields are required when the address sub-object is sent. Only
-  // include the address block when we have the bare minimum (street + city
-  // + country + postcode); otherwise the BE rejects it with class-validator
-  // errors and the operator gets an actionable Alert.
+  // Paczkomat shipments don't need a delivery address — the parcel goes to
+  // the locker. Skip the block entirely (tech-review BLOCKING fix — avoids
+  // sending the `'—'` building-number placeholder we used to send).
+  //
+  // For courier shipments, the pre-flight gate in `detectMissingFields`
+  // guarantees a, address1, city, postalCode, and an ISO-alpha-2 country are
+  // present by the time we reach here — submit is disabled otherwise. Still
+  // guard with `if` so a bug in the gate doesn't crash the form.
   const address =
-    a && a.address1 && a.city && a.postalCode && a.country
+    shippingMethod === 'kurier' && a && a.address1 && a.city && a.postalCode && a.country
       ? {
+          // BE requires both `street` AND `buildingNumber` to be non-empty.
+          // OL's address1 typically carries street + number combined; pass
+          // the same string to both so the BE validator accepts the call
+          // and the carrier system sees the full address in either slot.
           street: a.address1,
-          buildingNumber: '—', // BE requires non-empty; address1 typically carries the building number too
+          buildingNumber: a.address1,
           city: a.city,
           postCode: a.postalCode,
-          countryCode: a.country.length === 2 ? a.country : a.country.slice(0, 2).toUpperCase(),
+          countryCode: a.country.toUpperCase(),
         }
       : undefined;
 
@@ -321,6 +423,8 @@ function buildGenerateLabelInput(args: {
     recipient: {
       firstName: a?.firstName,
       lastName: a?.lastName,
+      // Gate guarantees customerEmail is present; the `??` only fires under
+      // the (impossible-by-invariant) "gate bypassed" branch.
       email: snapshot.customerEmail ?? '',
       phone: a?.phone ?? '',
       address,

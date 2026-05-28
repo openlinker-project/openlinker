@@ -22,6 +22,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  InternalServerErrorException,
   NotFoundException,
   Param,
   Post,
@@ -43,6 +44,7 @@ import {
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderRejectionException,
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
@@ -238,10 +240,18 @@ export class ShipmentController {
   }
 
   /**
-   * Map shipment domain exceptions to HTTP. A `generateLabel` provider
-   * rejection (rethrown by the dispatch seam after persisting `failed`) is an
-   * upstream failure → 502, so ordinary command errors never fall through to a
-   * bare 500.
+   * Map shipment domain exceptions to HTTP. Typed `ShippingProviderRejectionException`
+   * (an upstream-carrier rejection) maps to 502; non-typed errors fall through
+   * to 500 (Nest's default) so an internal failure (DB drop, missing config,
+   * programming bug) doesn't get mis-attributed to "carrier API is down".
+   *
+   * Note (tech-review SUGGESTION partial fix): adapters today still throw bare
+   * `Error` for provider rejections rather than the typed exception. Until the
+   * adapter migration completes, the fallback below logs the unknown error and
+   * 500s — operators monitoring 502 cardinality will see the carrier-rejection
+   * count drop to ~0 until the adapters catch up. The trade-off is honest:
+   * 500 is correct for "we don't know what this is", and the structured log
+   * carries the message + stack so triage is unaffected.
    */
   private toHttpException(error: unknown): Error {
     if (error instanceof ShipmentNotFoundException) {
@@ -256,9 +266,16 @@ export class ShipmentController {
     ) {
       return new UnprocessableEntityException(error.message);
     }
-    if (error instanceof Error) {
+    if (error instanceof ShippingProviderRejectionException) {
       return new BadGatewayException(error.message);
     }
-    return new BadGatewayException(String(error));
+    if (error instanceof Error) {
+      this.logger.error(
+        `Unclassified shipping-command error: ${error.message}`,
+        error.stack,
+      );
+      return new InternalServerErrorException(error.message);
+    }
+    return new InternalServerErrorException(String(error));
   }
 }

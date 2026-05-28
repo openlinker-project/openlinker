@@ -93,6 +93,7 @@ export { UndispatchableResolutionException } from './domain/exceptions/undispatc
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
+export { ShippingProviderRejectionException } from './domain/exceptions/shipping-provider-rejection.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via

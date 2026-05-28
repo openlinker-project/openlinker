@@ -212,9 +212,13 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
 
     // 2b. Tracking number — backfill on null → value transition. Carriers that
     //    deliver waybills asynchronously (Allegro Delivery #833) populate this
-    //    on a later poll.
+    //    on a later poll. Same `length > 0` normalization as 2a above — empty
+    //    string is semantically equivalent to "no waybill yet", so don't take
+    //    the irreversible null→empty step.
     const newTrackingNumber =
-      shipment.trackingNumber === null && typeof snapshot.trackingNumber === 'string'
+      shipment.trackingNumber === null &&
+      typeof snapshot.trackingNumber === 'string' &&
+      snapshot.trackingNumber.length > 0
         ? snapshot.trackingNumber
         : null;
 

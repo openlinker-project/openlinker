@@ -17,5 +17,8 @@ export const generateLabelSchema = z.object({
   paczkomatId: z.string().trim().optional(),
 });
 
+// Two derived types: `Values` is what RHF binds to (Zod's input type — for
+// `z.coerce.number()` that's `unknown`, so `string` defaults pass through);
+// `Submission` is the resolved post-coercion shape the submit handler sees.
 export type GenerateLabelFormValues = z.input<typeof generateLabelSchema>;
 export type GenerateLabelFormSubmission = z.output<typeof generateLabelSchema>;

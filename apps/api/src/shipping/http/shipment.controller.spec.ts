@@ -11,6 +11,7 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  InternalServerErrorException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import {
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderRejectionException,
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
 
@@ -229,10 +231,23 @@ describe('ShipmentController', () => {
       );
     });
 
-    it('should map a provider failure to 502', async () => {
-      dispatch.dispatch.mockRejectedValue(new Error('paczkomat unavailable'));
+    it('should map ShippingProviderRejectionException to 502', async () => {
+      dispatch.dispatch.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', 'PARCEL_TOO_LARGE', 'parcel exceeds size'),
+      );
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
         BadGatewayException,
+      );
+    });
+
+    it('should map an unclassified Error to 500', async () => {
+      // Until adapters opt in to ShippingProviderRejectionException, untyped
+      // errors fall through to 500 — correct for "we don't know what this is"
+      // (DB drop, programming bug, missing config). The controller logs them
+      // with stack so triage doesn't lose information.
+      dispatch.dispatch.mockRejectedValue(new Error('something broke'));
+      await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
+        InternalServerErrorException,
       );
     });
   });
