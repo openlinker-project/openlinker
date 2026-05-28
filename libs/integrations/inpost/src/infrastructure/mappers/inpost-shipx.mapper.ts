@@ -125,9 +125,13 @@ export function toGenerateLabelResult(shipment: ShipXShipment): GenerateLabelRes
  * code. v1 reads status from `GET /v1/shipments/:id`, which doesn't carry the
  * `tracking_details` timeline, so `dispatchedAt` / `deliveredAt` are left
  * unset (the tracking-number timeline endpoint is unavailable in sandbox).
+ *
+ * `carrier` is always `'inpost'` for this adapter (own-contract InPost
+ * shipments; no brokerage layer to disambiguate, unlike Allegro Delivery —
+ * see `KnownCarrierValues` in core).
  */
 export function toTrackingSnapshot(status: ShipmentStatus, providerStatus: string): TrackingSnapshot {
-  return { status, providerStatus };
+  return { status, providerStatus, carrier: 'inpost' };
 }
 
 /** Map a ShipX point to the neutral `PickupPoint`. */

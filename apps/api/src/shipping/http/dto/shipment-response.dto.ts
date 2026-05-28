@@ -50,6 +50,13 @@ export class ShipmentResponseDto {
   @ApiProperty({ nullable: true })
   trackingNumber!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Actual carrier-of-record — distinct from the dispatcher (`connectionId.platformType`). Lowercase-kebab canonical form: `inpost`, `dpd`, `dhl`, `orlen`, `allegro-one-box`, etc. (see `KnownCarrierValues` in core). For Allegro Delivery brokered shipments this is the underlying courier resolved from `transportingInfo[].carrierId`; for InPost own-contract always `inpost`. Plugin-registered values pass through as-is (open string set). Drives the FE public-tracker URL composition.',
+  })
+  carrier!: string | null;
+
   @ApiProperty({ nullable: true, description: 'Opaque adapter reference to the label PDF' })
   labelPdfRef!: string | null;
 
@@ -86,6 +93,7 @@ export class ShipmentResponseDto {
     dto.paczkomatId = shipment.paczkomatId;
     dto.sourceDeliveryMethodId = shipment.sourceDeliveryMethodId;
     dto.trackingNumber = shipment.trackingNumber;
+    dto.carrier = shipment.carrier;
     dto.labelPdfRef = shipment.labelPdfRef;
     dto.dispatchedAt = shipment.dispatchedAt?.toISOString() ?? null;
     dto.deliveredAt = shipment.deliveredAt?.toISOString() ?? null;
