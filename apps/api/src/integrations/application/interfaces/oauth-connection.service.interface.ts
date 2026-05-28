@@ -52,12 +52,6 @@ export interface IOAuthConnectionService {
   completeAuthorization(code: string, stateData: OAuthStateData): Promise<Connection>;
 
   /**
-   * Validate that a connection's configuration is correct. Currently retained
-   * verbatim with platform-aware checks pending the #587 cleanup (grill Q4).
-   */
-  validateConnection(connectionId: string): Promise<{ valid: boolean; errors: string[] }>;
-
-  /**
    * Persist a short-lived completed marker after a successful callback. Enables
    * idempotent replay of the callback within the TTL window.
    */
