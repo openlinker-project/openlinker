@@ -41,6 +41,14 @@ export interface UpdateShipmentInput {
   status?: ShipmentStatus;
   providerShipmentId?: string;
   trackingNumber?: string;
+  /**
+   * Carrier-of-record (#769). Backfilled by `ShipmentStatusSyncService` from
+   * `TrackingSnapshot.carrier` once the underlying carrier resolves
+   * (asynchronously for Allegro Delivery; synchronously `'inpost'` for InPost
+   * own-contract). Once-written-never-overwritten — the service skips the
+   * write when `Shipment.carrier !== null`.
+   */
+  carrier?: string;
   labelPdfRef?: string;
   dispatchedAt?: Date;
   deliveredAt?: Date;

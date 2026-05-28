@@ -32,6 +32,7 @@ import { ShippingMethod } from '../../../domain/types/shipping-method.types';
 @Index('IDX_shipments_orderId', ['orderId'])
 @Index('IDX_shipments_connectionId', ['connectionId'])
 @Index('IDX_shipments_status', ['status'])
+@Index('IDX_shipments_carrier', ['carrier'])
 @Index('UQ_shipments_providerShipmentId', ['providerShipmentId'], {
   unique: true,
   where: '"providerShipmentId" IS NOT NULL',
@@ -63,6 +64,12 @@ export class ShipmentOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   trackingNumber!: string | null;
+
+  // Actual carrier-of-record (#769) — distinct from the dispatcher
+  // (connectionId.platformType). Indexed for the future /shipments
+  // filter-by-carrier query (#839 AC-7 work, blocked on #834).
+  @Column({ type: 'text', nullable: true })
+  carrier!: string | null;
 
   @Column({ type: 'text', nullable: true })
   labelPdfRef!: string | null;

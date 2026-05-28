@@ -22,6 +22,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  InternalServerErrorException,
   NotFoundException,
   Param,
   Post,
@@ -31,16 +32,19 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   type IShipmentCancellationService,
+  type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
   type IShipmentQueryService,
   type ShipmentDispatchInput,
   type ShipmentFilters,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+  SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderRejectionException,
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
@@ -49,6 +53,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
+import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { ShipmentResponseDto } from './dto/shipment-response.dto';
 
@@ -66,6 +71,8 @@ export class ShipmentController {
     private readonly dispatch: IShipmentDispatchService,
     @Inject(SHIPMENT_CANCELLATION_SERVICE_TOKEN)
     private readonly cancellation: IShipmentCancellationService,
+    @Inject(SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN)
+    private readonly notification: IShipmentDispatchNotificationService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
   ) {}
@@ -171,6 +178,30 @@ export class ShipmentController {
     }
   }
 
+  @Post(':id/notify-dispatched')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Operator-fired #837 dispatch-notify orchestration: source mark-shipped + ' +
+      'destination OMP fulfillment-update + advance Shipment.status to dispatched.',
+    description:
+      'Manual override path for the dispatch-notify projection (#769). Normal flow ' +
+      'is automatic — InPost webhooks (deferred to #768) and Allegro Delivery status-' +
+      'sync (#838) fire this same service. The endpoint exists so operators can ' +
+      'unstick a `generated` shipment when the automatic path has stalled or the ' +
+      'projection needs to be replayed. Idempotent: re-firing on an already-dispatched ' +
+      'shipment returns 200 with `outcome=skipped-not-generated`, not 409.',
+  })
+  @ApiResponse({ status: 200, type: NotifyDispatchedResponseDto })
+  @ApiResponse({ status: 404, description: 'Shipment not found' })
+  async notifyDispatched(@Param('id') id: string): Promise<NotifyDispatchedResponseDto> {
+    const result = await this.notification.notifyDispatched({ shipmentId: id });
+    if (result.outcome === 'shipment-not-found') {
+      throw new NotFoundException(`Shipment not found: ${id}`);
+    }
+    return NotifyDispatchedResponseDto.fromResult(result);
+  }
+
   /**
    * Resolve an order's customer id (`Order.customerId`) for the customer column.
    * Returns null when the order is unknown or has no customer. Cross-context
@@ -209,10 +240,18 @@ export class ShipmentController {
   }
 
   /**
-   * Map shipment domain exceptions to HTTP. A `generateLabel` provider
-   * rejection (rethrown by the dispatch seam after persisting `failed`) is an
-   * upstream failure → 502, so ordinary command errors never fall through to a
-   * bare 500.
+   * Map shipment domain exceptions to HTTP. Typed `ShippingProviderRejectionException`
+   * (an upstream-carrier rejection) maps to 502; non-typed errors fall through
+   * to 500 (Nest's default) so an internal failure (DB drop, missing config,
+   * programming bug) doesn't get mis-attributed to "carrier API is down".
+   *
+   * Note (tech-review SUGGESTION partial fix): adapters today still throw bare
+   * `Error` for provider rejections rather than the typed exception. Until the
+   * adapter migration completes, the fallback below logs the unknown error and
+   * 500s — operators monitoring 502 cardinality will see the carrier-rejection
+   * count drop to ~0 until the adapters catch up. The trade-off is honest:
+   * 500 is correct for "we don't know what this is", and the structured log
+   * carries the message + stack so triage is unaffected.
    */
   private toHttpException(error: unknown): Error {
     if (error instanceof ShipmentNotFoundException) {
@@ -227,9 +266,16 @@ export class ShipmentController {
     ) {
       return new UnprocessableEntityException(error.message);
     }
-    if (error instanceof Error) {
+    if (error instanceof ShippingProviderRejectionException) {
       return new BadGatewayException(error.message);
     }
-    return new BadGatewayException(String(error));
+    if (error instanceof Error) {
+      this.logger.error(
+        `Unclassified shipping-command error: ${error.message}`,
+        error.stack,
+      );
+      return new InternalServerErrorException(error.message);
+    }
+    return new InternalServerErrorException(String(error));
   }
 }

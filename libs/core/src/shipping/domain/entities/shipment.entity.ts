@@ -54,5 +54,19 @@ export class Shipment {
     // Source marketplace delivery-method id this shipment was routed from
     // (audit/forensics; distinct from the resolved provider delivery method).
     public readonly sourceDeliveryMethodId: string | null,
+    // Actual carrier-of-record (#769) — distinct from the dispatcher
+    // (`connectionId.platformType`). For InPost own-contract always
+    // `'inpost'`; for Allegro Delivery brokered shipments the carrier is
+    // resolved from `transportingInfo[].carrierId` and arrives
+    // asynchronously alongside the carrier waybill. Drives the FE's
+    // public-tracker URL composition. Typed `string | null` to accept
+    // plugin-registered values beyond the closed `KnownCarrierValues`
+    // vocabulary (the FE gracefully degrades to copy-text for unknowns).
+    // Once written, never overwritten — same backfill discipline as
+    // `trackingNumber`. If a mid-flight carrier swap is ever needed
+    // (rare), the operator workflow is cancel + re-issue.
+    // Appended after `sourceDeliveryMethodId` for the same anti-collision
+    // rationale as that field.
+    public readonly carrier: string | null,
   ) {}
 }
