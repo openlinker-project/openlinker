@@ -38,3 +38,7 @@ Introduce a neutral **`OAuthCompletionPort`** in CORE with three methods — `bu
 - Related issues: #859, #546 (modularity epic), #820 (same-account guard), #819 (re-auth in place)
 - Related ADRs: [ADR-003](./003-plugin-sdk-trust-model.md), [ADR-008](./008-auth-failure-classifier-connection-reauth.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Plugin Manager / Integrations
+
+## Updates
+
+- **2026-05-28 (#864):** the deferred Allegro-coupling in `OAuthConnectionService.validateConnection` (first Cons line above) was resolved by dropping the redundant `GET /integrations/allegro/connections/:id/validate` endpoint and its backing service method. The host now value-imports zero plugin packages. The decision recorded in this ADR is unchanged; this is a pointer to the trade-off's closure.

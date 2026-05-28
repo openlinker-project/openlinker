@@ -22,7 +22,6 @@ import {
   BadRequestException,
   InternalServerErrorException,
   Inject,
-  NotFoundException,
 } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
@@ -40,12 +39,6 @@ import type {
   OAuthCredentialBlob,
   OAuthAccountIdentity,
 } from '@openlinker/core/integrations';
-// `validateConnection` retains platform-aware config checks pending the #587
-// cleanup (grill Q4); it is the one Allegro-coupled method in this otherwise
-// neutral service. Tracked for relocation behind the plugin's config-shape
-// validator.
-import type { AllegroConnectionConfig } from '@openlinker/integrations-allegro';
-import { AllegroEnvironmentValues } from '@openlinker/integrations-allegro';
 import { ConnectionService } from './connection.service';
 import type { IOAuthConnectionService } from '../interfaces/oauth-connection.service.interface';
 import type {
@@ -188,68 +181,6 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       );
     }
     return this.createConnection(credentialBlob, identity, stateData);
-  }
-
-  async validateConnection(connectionId: string): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-
-    try {
-      const connection = await this.connectionService.get(connectionId);
-
-      if (connection.platformType !== 'allegro') {
-        errors.push(
-          `Connection is not an Allegro connection (platformType: ${connection.platformType})`
-        );
-        return { valid: false, errors };
-      }
-
-      if (!connection.config) {
-        errors.push('Connection is missing config');
-        return { valid: false, errors };
-      }
-
-      const config = connection.config as unknown as AllegroConnectionConfig;
-
-      if (!config.environment) {
-        errors.push('Config is missing environment');
-      } else if (!AllegroEnvironmentValues.includes(config.environment)) {
-        errors.push(
-          `Invalid environment: ${config.environment}. Must be one of: ${AllegroEnvironmentValues.join(', ')}`
-        );
-      }
-
-      if (config.apiBaseUrl) {
-        try {
-          new URL(config.apiBaseUrl);
-        } catch {
-          errors.push(`Invalid apiBaseUrl format: ${config.apiBaseUrl}`);
-        }
-      }
-
-      if (!connection.credentialsRef) {
-        errors.push('Connection is missing credentialsRef');
-      }
-
-      const valid = errors.length === 0;
-      if (valid) {
-        this.logger.debug(`Connection ${connectionId} validation passed`);
-      } else {
-        this.logger.warn(`Connection ${connectionId} validation failed: ${errors.join(', ')}`);
-      }
-      return { valid, errors };
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        this.logger.warn(`Connection not found for validation: ${connectionId}`);
-        errors.push(`Connection not found: ${connectionId}`);
-        return { valid: false, errors };
-      }
-      this.logger.error(
-        `Error validating connection ${connectionId}: ${(error as Error).message}`,
-        error
-      );
-      errors.push(`Failed to validate connection: ${(error as Error).message}`);
-      return { valid: false, errors };
-    }
   }
 
   async markStateCompleted(
