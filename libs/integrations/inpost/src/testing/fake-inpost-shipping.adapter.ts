@@ -24,7 +24,7 @@ import type {
   PickupPoint,
   FindPickupPointsQuery,
 } from '@openlinker/core/shipping';
-import { InpostValidationException } from '../domain/exceptions/inpost-validation.exception';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 
@@ -51,12 +51,20 @@ export class FakeInpostShippingAdapter
     }
     if (cmd.shippingMethod === 'paczkomat' && !cmd.paczkomatId) {
       return Promise.reject(
-        new InpostValidationException('paczkomatId is required for a paczkomat shipment'),
+        new ShippingProviderRejectionException(
+          'inpost',
+          'preflight.missing-paczkomat-id',
+          'paczkomatId is required for a paczkomat shipment',
+        ),
       );
     }
     if (cmd.shippingMethod === 'kurier' && !cmd.recipient.address) {
       return Promise.reject(
-        new InpostValidationException('recipient.address is required for a courier shipment'),
+        new ShippingProviderRejectionException(
+          'inpost',
+          'preflight.missing-recipient-address',
+          'recipient.address is required for a courier shipment',
+        ),
       );
     }
     const providerShipmentId = `fake-${(this.counter += 1)}`;

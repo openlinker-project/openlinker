@@ -60,6 +60,8 @@ export type {
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
+export type { KnownProviderRejectionCode } from './domain/types/shipping-provider-rejection.types';
+export { KnownProviderRejectionCodeValues } from './domain/types/shipping-provider-rejection.types';
 
 export type {
   CreateShipmentInput,
