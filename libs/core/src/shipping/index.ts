@@ -89,6 +89,12 @@ export { isShipmentCanceller } from './domain/ports/capabilities/shipment-cancel
 export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 
+// `FulfillmentStatusReader` (#834) lives in `@openlinker/core/orders`
+// alongside `OrderFulfillmentUpdater` (#858) — both are sub-capabilities of
+// `OrderProcessorManagerPort` and follow the same placement convention.
+// The shipping context's `FulfillmentStatusSyncService` consumes it and
+// projects the OMP's view onto the shipping-owned `ShipmentStatus`.
+
 // Domain exceptions
 export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
@@ -131,3 +137,14 @@ export type {
   ShipmentStatusSyncOptions,
   ShipmentStatusSyncResult,
 } from './application/types/shipment-status-sync.types';
+
+// Application — branch-1 fulfillment-status-sync seam (#834). Interface +
+// result types only; the service is injected via
+// FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN. Sister-service to
+// ShipmentStatusSyncService; disjoint by branch (branch-1 vs branches 2/3).
+export type { IFulfillmentStatusSyncService } from './application/interfaces/fulfillment-status-sync.service.interface';
+export type {
+  FulfillmentStatusSyncOptions,
+  FulfillmentStatusSyncResult,
+} from './application/types/fulfillment-status-sync.types';
+export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
