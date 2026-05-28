@@ -91,6 +91,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere('rec.recordStatus = :recordStatus', { recordStatus: filters.recordStatus });
     }
 
+    if (filters.destinationConnectionId) {
+      // JSONB containment — match records whose `syncStatus[]` contains an
+      // entry with this destinationConnectionId (#834). Same idiom as the
+      // `syncStatus` enum filter above. No GIN index today — acceptable at
+      // v1 scale (≤30k rows in the typical 30-day window), file a follow-up
+      // if scan time creeps.
+      qb.andWhere(`rec."syncStatus" @> :destFilter::jsonb`, {
+        destFilter: JSON.stringify([
+          { destinationConnectionId: filters.destinationConnectionId },
+        ]),
+      });
+    }
+
+    if (filters.updatedSince) {
+      qb.andWhere('rec.updatedAt >= :updatedSince', { updatedSince: filters.updatedSince });
+    }
+
     const [entities, total] = await qb.getManyAndCount();
 
     return {
