@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Allegro contributes to the core
- * `SchedulerTaskRegistryService` (#584). Three tasks today:
+ * `SchedulerTaskRegistryService` (#584). Four tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
  *     every 5 minutes. Cursor key `allegro.orders.lastEventId`.
@@ -12,6 +12,14 @@
  *   - `allegro-offer-status-sync` (#816) — steady-state refresh of mapped
  *     offers' publication status into `offer_status_snapshots`, default
  *     hourly. Rolling scan-offset cursor key `allegro.offerStatus.scanOffset`.
+ *   - `allegro-shipment-status-sync` (#838) — steady-state refresh of
+ *     non-terminal `shipments` for Allegro Delivery shipments: re-reads each
+ *     shipment's `/shipment-management/shipments/{id}`, advances OL's
+ *     `Shipment` row toward carrier reality (terminal states + asynchronous
+ *     carrier-waybill backfill), and projects the backfilled tracking number
+ *     to the destination OMP (PrestaShop via capability B). Default every
+ *     15 minutes. Rolling scan-offset cursor key
+ *     `allegro.shipmentStatus.scanOffset`.
  *
  * Env-var gating is preserved verbatim from the previous core implementation
  * for deployer back-compat: when `OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false`
@@ -135,6 +143,32 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    });
+  }
+
+  if (isEnabled(configService, 'OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED')) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_SHIPMENT_STATUS_SYNC_INTERVAL_CRON',
+      '0 */15 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_SHIPMENT_STATUS_SYNC_PAGE_LIMIT', '50')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 50;
+
+    tasks.push({
+      taskId: 'allegro-shipment-status-sync',
+      platformType: 'allegro',
+      jobType: 'marketplace.shipment.statusSync',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: pageLimit,
+        cursorKey: 'allegro.shipmentStatus.scanOffset',
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:shipment:status:sync:${timestamp}`,
     });
   }
 

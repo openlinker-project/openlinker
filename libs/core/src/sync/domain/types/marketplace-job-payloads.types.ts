@@ -204,3 +204,30 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
    */
   cursorKey?: string;
 }
+
+/**
+ * Payload v1 — Marketplace Shipment Status Sync (#838)
+ *
+ * Cursor-paced refresh of non-terminal `Shipment` rows for one carrier
+ * (`ShippingProviderManager`) connection. The handler reads each shipment's
+ * current carrier state via the connection's `getTracking` and projects
+ * terminal status + carrier-waybill backfill onto OL's `Shipment` row,
+ * propagating any newly-arrived tracking number to the destination OMP via
+ * capability B (`OrderFulfillmentUpdater`).
+ *
+ * Mirrors `MarketplaceOfferStatusSyncPayloadV1` (#816): there's no carrier
+ * cursor, so the work-list is OL's own `Shipment` rows paged by a rolling
+ * scan offset persisted on `connection_cursors` (default
+ * `allegro.shipmentStatus.scanOffset`).
+ */
+export interface MarketplaceShipmentStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of non-terminal shipments to refresh per run. */
+  limit: number;
+  /**
+   * Connection-cursor key under which the rolling numeric scan offset is
+   * persisted. Omitted → the handler falls back to
+   * `allegro.shipmentStatus.scanOffset`.
+   */
+  cursorKey?: string;
+}
