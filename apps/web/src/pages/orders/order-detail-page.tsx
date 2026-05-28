@@ -20,6 +20,7 @@ import { OrderCustomerCard } from '../../features/orders/components/order-custom
 import { OrderLineItemsPanel } from '../../features/orders/components/order-line-items-panel';
 import { OrderTotalsPanel } from '../../features/orders/components/order-totals-panel';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
+import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import type { ParsedAddress } from '../../features/orders/api/order-snapshot.schema';
 
@@ -370,6 +371,11 @@ export function OrderDetailPage(): ReactElement {
           ) : null}
         </div>
       ) : null}
+
+      {/* Shipment panel (#769) — full-width Band-2 section, between Addresses
+          (where it's going) and Activity Timeline (what's happened). Renders
+          nothing when no ShippingProviderManager is configured. */}
+      <OrderShipmentPanel order={order} />
 
       {/* Activity timeline */}
       <section className="detail-section">

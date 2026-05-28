@@ -144,7 +144,7 @@ describe('InpostShippingAdapter', () => {
       const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
 
       expect(request).toHaveBeenCalledWith({ method: 'GET', path: '/v1/shipments/1' });
-      expect(snapshot).toEqual({ status: 'delivered', providerStatus: 'delivered' });
+      expect(snapshot).toEqual({ status: 'delivered', providerStatus: 'delivered', carrier: 'inpost' });
     });
 
     it('should fall back to in-transit for an unknown ShipX status', async () => {
@@ -153,7 +153,16 @@ describe('InpostShippingAdapter', () => {
 
       const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
 
-      expect(snapshot).toEqual({ status: 'in-transit', providerStatus: 'weird_code' });
+      expect(snapshot).toEqual({ status: 'in-transit', providerStatus: 'weird_code', carrier: 'inpost' });
+    });
+
+    it('should populate carrier as "inpost" for own-contract InPost shipments (#769)', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ id: 1, status: 'confirmed', tracking_number: 'X' });
+
+      const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
+
+      expect(snapshot.carrier).toBe('inpost');
     });
   });
 
