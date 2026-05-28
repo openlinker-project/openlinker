@@ -36,6 +36,17 @@ import { ShippingMethod } from '../../../domain/types/shipping-method.types';
   unique: true,
   where: '"providerShipmentId" IS NOT NULL',
 })
+// Branch-1 (#834) dedup guard. At most one branch-1 Shipment per
+// `(orderId, connectionId)` — `providerShipmentId IS NULL` selects the
+// branch-1 set; branches 2/3 carry a non-null provider id and are
+// disambiguated by the sibling `UQ_shipments_providerShipmentId` above.
+// The `FulfillmentStatusSyncService` find-then-create gate is not
+// atomic; this index is the DB-side backstop against concurrent ticks
+// racing on the same order.
+@Index('UQ_shipments_branch_one_per_order_conn', ['orderId', 'connectionId'], {
+  unique: true,
+  where: '"providerShipmentId" IS NULL',
+})
 export class ShipmentOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;

@@ -98,6 +98,23 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findBranchOneByOrderAndConnection(
+    orderId: string,
+    connectionId: string,
+  ): Promise<Shipment | null> {
+    // Matches the partial-unique-index predicate
+    // `UQ_shipments_branch_one_per_order_conn` so the lookup hits exactly
+    // the row the index protects against — at most one row by construction.
+    const entity = await this.repository.findOne({
+      where: {
+        orderId,
+        connectionId,
+        providerShipmentId: IsNull(),
+      },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async update(id: string, patch: UpdateShipmentInput): Promise<Shipment> {
     const result = await this.repository.update({ id }, this.buildUpdatePayload(patch));
     if (result.affected === 0) {
@@ -118,15 +135,19 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.orderId = input.orderId;
     entity.connectionId = input.connectionId;
     entity.shippingMethod = input.shippingMethod;
-    entity.status = 'draft';
+    // Atomic-terminal mode (#834): when `initialStatus` is supplied (the
+    // branch-1 projection path), the row is born at its correct status +
+    // terminal timestamps + tracking number. Default `'draft'` preserves
+    // the dispatch path's two-step `create(draft) → update(generated)` flow.
+    entity.status = input.initialStatus ?? 'draft';
     entity.providerShipmentId = null;
     entity.paczkomatId = input.paczkomatId ?? null;
     entity.sourceDeliveryMethodId = input.sourceDeliveryMethodId ?? null;
-    entity.trackingNumber = null;
+    entity.trackingNumber = input.trackingNumber ?? null;
     entity.labelPdfRef = null;
-    entity.dispatchedAt = null;
-    entity.deliveredAt = null;
-    entity.cancelledAt = null;
+    entity.dispatchedAt = input.dispatchedAt ?? null;
+    entity.deliveredAt = input.deliveredAt ?? null;
+    entity.cancelledAt = input.cancelledAt ?? null;
     entity.failedAt = null;
     entity.errorMessage = null;
     return entity;
@@ -146,6 +167,9 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     if (filters.shippingMethod !== undefined) where.shippingMethod = filters.shippingMethod;
     if (filters.hasTracking !== undefined) {
       where.trackingNumber = filters.hasTracking ? Not(IsNull()) : IsNull();
+    }
+    if (filters.hasProviderShipmentId !== undefined) {
+      where.providerShipmentId = filters.hasProviderShipmentId ? Not(IsNull()) : IsNull();
     }
     const { createdFrom, createdTo } = filters;
     if (createdFrom !== undefined && createdTo !== undefined) {

@@ -38,6 +38,21 @@ export interface OrderRecordFilters {
   createdFrom?: Date;
   createdTo?: Date;
   recordStatus?: OrderRecordStatus;
+  /**
+   * Match records whose `syncStatus[]` contains an entry for this destination
+   * connection (#834). JSONB containment — same idiom as the existing
+   * `syncStatus` enum filter. Consumed by the shipping context's branch-1
+   * status-sync service to enumerate "OL Orders mirrored to this destination".
+   */
+  destinationConnectionId?: string;
+  /**
+   * Inclusive lower bound on `updatedAt` (#834). Bounds the branch-1 scan
+   * window — records that haven't been re-touched in `updatedSince` aren't
+   * worth re-checking the destination OMP for. Note: `updatedAt` shifts on
+   * every `updateSyncStatus` call, so a record that re-syncs stays in the
+   * window even if it's been around for months.
+   */
+  updatedSince?: Date;
 }
 
 /**

@@ -24,6 +24,18 @@ export type { OrderDispatchNotifier } from './domain/ports/capabilities/order-di
 export { isOrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
 export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
+// Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
+// shipment-status projection from the OMP's view.
+export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
+export { isFulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
+export type {
+  FulfillmentStatus,
+  FulfillmentStatusSnapshot,
+} from './domain/types/fulfillment-status-snapshot.types';
+export {
+  FulfillmentStatusValues,
+  FULFILLMENT_STATUS,
+} from './domain/types/fulfillment-status-snapshot.types';
 export type { DispatchCarrierHint } from './domain/types/dispatch-carrier-hint.types';
 export type { MappingOption, MappingOptionKind } from './domain/types/mapping-option.types';
 export { MappingOptionKindValues } from './domain/types/mapping-option.types';

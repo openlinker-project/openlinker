@@ -96,6 +96,7 @@ describe('ShipmentDispatchService', () => {
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
+      findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn(),
     };
     routing = {

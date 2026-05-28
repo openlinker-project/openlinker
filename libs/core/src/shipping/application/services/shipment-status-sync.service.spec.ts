@@ -76,6 +76,7 @@ describe('ShipmentStatusSyncService', () => {
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
+      findBranchOneByOrderAndConnection: jest.fn(),
       update: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
@@ -84,6 +85,7 @@ describe('ShipmentStatusSyncService', () => {
       updateSyncStatus: jest.fn(),
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(makeRecord()),
+      findMany: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     getTracking = jest.fn();

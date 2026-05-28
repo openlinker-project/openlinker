@@ -50,10 +50,26 @@ export interface PrestashopCarrier {
 /**
  * `GET /order_states` row. `name` may be a flat string (single-lang PS
  * config) or the multi-lang shape (`{ language: [{ '#text': … }] }`).
+ *
+ * The three boolean discriminator columns (`delivered`, `shipped`, `paid`)
+ * are PS's own canonical "what does this state mean" flags — PrestaShop
+ * uses them internally to decide whether to render a tracking link, send
+ * a shipped-email, etc. The branch-1 fulfillment-status mapper (#834)
+ * reads them as the primary discriminator instead of name-matching the
+ * `name` field (which is brittle under multi-language configs and
+ * operator-renamed states). PS Webservice returns them as `'0'`/`'1'`
+ * string values.
  */
 export interface PrestashopOrderState {
   id: string;
   name: PrestashopLanguageField;
   deleted: string | number;
+  /** `'1'` ⇔ the state means "the customer has the package" (#834). */
+  delivered?: string | number;
+  /** `'1'` ⇔ the state means "handed off to carrier" (#834). */
+  shipped?: string | number;
+  /** `'1'` ⇔ the state means "payment captured" — informational; not used
+   * by the v1 fulfillment-status mapper (#834). */
+  paid?: string | number;
 }
 

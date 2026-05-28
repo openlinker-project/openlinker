@@ -85,6 +85,7 @@ describe('ShipmentController', () => {
       persistIncomingSnapshot: jest.fn(),
       // Default: order/customer unknown → customerId resolves to null.
       getOrderRecord: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(),
     };
     controller = new ShipmentController(query, dispatch, cancellation, orders);
   });
