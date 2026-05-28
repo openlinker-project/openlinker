@@ -191,6 +191,7 @@ describe('AllegroDeliveryShippingAdapter', () => {
         status: 'dispatched',
         providerStatus: 'waybill-assigned',
         trackingNumber: '6800000001',
+        carrier: 'inpost',
       });
     });
 
@@ -205,10 +206,22 @@ describe('AllegroDeliveryShippingAdapter', () => {
       expect(snapshot.trackingNumber).toBe('NEW-WAYBILL');
     });
 
-    it('leaves trackingNumber undefined when no carrier waybill has been assigned yet', async () => {
+    it('populates carrier from transportingInfo.carrierId in canonical-form (#769)', async () => {
+      http.get.mockResolvedValue(
+        ok<AllegroShipmentResource>({
+          id: 'allegro-ship-2b',
+          packages: [{ transportingInfo: [{ carrierId: 'DPD', carrierWaybill: 'NEW-WAYBILL' }] }],
+        }),
+      );
+      const snapshot = await adapter.getTracking({ providerShipmentId: 'allegro-ship-2b' });
+      expect(snapshot.carrier).toBe('dpd');
+    });
+
+    it('leaves trackingNumber + carrier undefined when no carrier waybill has been assigned yet', async () => {
       http.get.mockResolvedValue(ok<AllegroShipmentResource>({ id: 'allegro-ship-3', packages: [{}] }));
       const snapshot = await adapter.getTracking({ providerShipmentId: 'allegro-ship-3' });
       expect(snapshot.trackingNumber).toBeUndefined();
+      expect(snapshot.carrier).toBeUndefined();
     });
 
     it('maps a canceled shipment to cancelled', async () => {

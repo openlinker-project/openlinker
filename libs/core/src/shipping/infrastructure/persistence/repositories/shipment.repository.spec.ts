@@ -34,6 +34,7 @@ describe('ShipmentRepository', () => {
     paczkomatId: 'POZ08A',
     sourceDeliveryMethodId: null,
     trackingNumber: null,
+    carrier: null,
     labelPdfRef: null,
     dispatchedAt: null,
     deliveredAt: null,
@@ -310,6 +311,7 @@ describe('ShipmentRepository', () => {
       const fullyPopulated = buildOrm({
         providerShipmentId: 'INPOST-999',
         trackingNumber: 'TRK-X',
+        carrier: 'inpost',
         labelPdfRef: 'https://example/label.pdf',
         sourceDeliveryMethodId: 'allegro-courier',
         dispatchedAt: new Date('2026-05-20T08:00:00Z'),
@@ -333,6 +335,7 @@ describe('ShipmentRepository', () => {
         paczkomatId: fullyPopulated.paczkomatId,
         sourceDeliveryMethodId: fullyPopulated.sourceDeliveryMethodId,
         trackingNumber: fullyPopulated.trackingNumber,
+        carrier: fullyPopulated.carrier,
         labelPdfRef: fullyPopulated.labelPdfRef,
         dispatchedAt: fullyPopulated.dispatchedAt,
         deliveredAt: fullyPopulated.deliveredAt,
