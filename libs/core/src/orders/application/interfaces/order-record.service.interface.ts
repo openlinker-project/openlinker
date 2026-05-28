@@ -10,6 +10,11 @@
 import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
+import type {
+  OrderRecordFilters,
+  OrderRecordPagination,
+  PaginatedOrderRecords,
+} from '../../domain/types/order-record.types';
 
 export interface IOrderRecordService {
   /**
@@ -73,4 +78,17 @@ export interface IOrderRecordService {
    * @returns Order record or null if not found
    */
   getOrderRecord(internalOrderId: string): Promise<OrderRecord | null>;
+
+  /**
+   * Filtered, paginated list of order records (#834). The cross-context
+   * surface the shipping branch-1 sync service uses to enumerate
+   * destination-matched records — repository ports are forbidden across
+   * context boundaries per architecture-overview.md § "Cross-context
+   * dependencies in core", so callers go through this service method
+   * instead. Delegates to `OrderRecordRepositoryPort.findMany`.
+   */
+  findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<PaginatedOrderRecords>;
 }
