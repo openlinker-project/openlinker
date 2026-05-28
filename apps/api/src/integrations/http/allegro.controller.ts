@@ -2,8 +2,7 @@
  * Allegro Integration Controller
  *
  * HTTP REST API endpoints for Allegro integration operations. Handles OAuth
- * flow (connect, callback), connection validation, and Allegro-specific
- * connection management.
+ * flow (connect, callback) and Allegro-specific connection management.
  *
  * @module apps/api/src/integrations/http
  */
@@ -221,41 +220,6 @@ export class AllegroController {
       this.logger.error(`OAuth callback error: ${(error as Error).message}`, error);
       throw error;
     }
-  }
-
-  @ApiBearerAuth()
-  @Get('connections/:id/validate')
-  @ApiOperation({ summary: 'Validate Allegro connection configuration' })
-  @ApiParam({
-    name: 'id',
-    description: 'Connection ID (UUID)',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Connection validation result',
-    schema: {
-      type: 'object',
-      properties: {
-        valid: {
-          type: 'boolean',
-          example: true,
-        },
-        errors: {
-          type: 'array',
-          items: { type: 'string' },
-          example: [],
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 404, description: 'Connection not found' })
-  async validate(@Param('id') connectionId: string): Promise<{
-    valid: boolean;
-    errors: string[];
-  }> {
-    this.logger.log(`Validating Allegro connection: ${connectionId}`);
-    return this.oauthService.validateConnection(connectionId);
   }
 
   @ApiBearerAuth()
