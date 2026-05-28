@@ -24,6 +24,15 @@ export interface TrackingSnapshot {
   dispatchedAt?: Date;
   /** Time the parcel was delivered, if known. */
   deliveredAt?: Date;
+  /**
+   * Carrier waybill / tracking number when the snapshot carries one (#838).
+   * Carriers that issue tracking asynchronously (Allegro Delivery: after the
+   * `/shipment-management` create-command completes) populate this on a later
+   * poll; carriers that issue it synchronously at `generateLabel` (InPost) may
+   * leave it `undefined` here — the status-sync service is the consumer that
+   * backfills `Shipment.trackingNumber` when a new value appears.
+   */
+  trackingNumber?: string;
   /** Provider-native status code, for diagnostics. Not used by core
    * branching logic. */
   providerStatus?: string;
