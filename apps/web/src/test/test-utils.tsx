@@ -328,6 +328,17 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
+      cancel: vi.fn().mockResolvedValue({
+        id: 'ol_shipment_1',
+        status: 'cancelled',
+      }),
+      notifyDispatched: vi.fn().mockResolvedValue({
+        shipmentId: 'ol_shipment_1',
+        outcome: 'notified',
+        source: 'ok',
+        destinations: [],
+      }),
       ...overrides.shipments,
     } as ApiClient['shipments'],
     syncJobs: {
