@@ -27,9 +27,11 @@ describe('createAllegroPlugin → register(host)', () => {
     host: HostServices;
     configRegistry: { register: jest.Mock };
     credentialsRegistry: { register: jest.Mock };
+    oauthCompletionRegistry: { register: jest.Mock };
   } {
     const configRegistry = { register: jest.fn() };
     const credentialsRegistry = { register: jest.fn() };
+    const oauthCompletionRegistry = { register: jest.fn() };
     const host = {
       identifierMapping: {} as IdentifierMappingPort,
       credentialsResolver: {} as CredentialsResolverPort,
@@ -41,8 +43,9 @@ describe('createAllegroPlugin → register(host)', () => {
       schedulerTaskRegistry: { register: jest.fn() },
       connectionConfigShapeValidatorRegistry: configRegistry,
       connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
+      oauthCompletionRegistry,
     } as unknown as HostServices;
-    return { host, configRegistry, credentialsRegistry };
+    return { host, configRegistry, credentialsRegistry, oauthCompletionRegistry };
   }
 
   it('registers the config-shape validator at adapterKey allegro.publicapi.v1', () => {
@@ -62,5 +65,19 @@ describe('createAllegroPlugin → register(host)', () => {
     createAllegroPlugin({}).register?.(host);
 
     expect(credentialsRegistry.register).not.toHaveBeenCalled();
+  });
+
+  it('registers the OAuth-completion adapter at adapterKey allegro.publicapi.v1', () => {
+    const { host, oauthCompletionRegistry } = makeRegisterHost();
+    createAllegroPlugin({}).register?.(host);
+
+    expect(oauthCompletionRegistry.register).toHaveBeenCalledWith(
+      'allegro.publicapi.v1',
+      expect.objectContaining({
+        buildAuthorizationUrl: expect.any(Function),
+        exchangeCode: expect.any(Function),
+        fetchAccountIdentity: expect.any(Function),
+      }),
+    );
   });
 });

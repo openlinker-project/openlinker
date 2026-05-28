@@ -35,6 +35,8 @@ import {
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
+  INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+  OAuthCompletionRegistryService,
   CREDENTIALS_SERVICE_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
@@ -119,6 +121,8 @@ export class AllegroIntegrationModule implements OnModuleInit {
     private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
+    @Inject(INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN)
+    private readonly oauthCompletionRegistry: OAuthCompletionRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
     private readonly retryClassifierRegistry: RetryClassifierRegistryService,
     @Inject(AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN)
@@ -178,6 +182,7 @@ export class AllegroIntegrationModule implements OnModuleInit {
       webhookProvisioningRegistry: this.webhookProvisioningRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
       connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
+      oauthCompletionRegistry: this.oauthCompletionRegistry,
     };
 
     // The three registration lines.

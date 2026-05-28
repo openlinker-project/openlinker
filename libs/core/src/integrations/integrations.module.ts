@@ -21,6 +21,7 @@ import { WebhookProvisioningRegistryService } from './infrastructure/adapters/we
 import { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
 import { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 import { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
+import { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 import { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
 import { WebhookSecretService } from './application/services/webhook-secret.service';
 import { CryptoService } from '@openlinker/shared';
@@ -40,6 +41,7 @@ import {
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 // Re-export tokens for convenience
@@ -57,6 +59,7 @@ export {
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
 } from './integrations.tokens';
 
 @Module({
@@ -75,6 +78,7 @@ export {
     EmailNormalizerRegistryService,
     ConnectionConfigShapeValidatorRegistryService,
     ConnectionCredentialsShapeValidatorRegistryService,
+    OAuthCompletionRegistryService,
     CredentialsWebhookSecretAdapter,
     WebhookSecretService,
     CryptoService,
@@ -117,6 +121,10 @@ export {
       useExisting: ConnectionCredentialsShapeValidatorRegistryService,
     },
     {
+      provide: INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+      useExisting: OAuthCompletionRegistryService,
+    },
+    {
       provide: WEBHOOK_SECRET_PROVIDER_TOKEN,
       useExisting: CredentialsWebhookSecretAdapter,
     },
@@ -143,6 +151,7 @@ export {
     EMAIL_NORMALIZER_REGISTRY_TOKEN,
     CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
     CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+    INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
     WEBHOOK_SECRET_PROVIDER_TOKEN,
     WEBHOOK_SECRET_SERVICE_TOKEN,
     INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
@@ -155,6 +164,7 @@ export {
     EmailNormalizerRegistryService,
     ConnectionConfigShapeValidatorRegistryService,
     ConnectionCredentialsShapeValidatorRegistryService,
+    OAuthCompletionRegistryService,
     WebhookSecretService,
   ],
 })

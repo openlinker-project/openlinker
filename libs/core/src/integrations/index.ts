@@ -17,6 +17,7 @@ export { WebhookProvisioningRegistryService } from './infrastructure/adapters/we
 export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
 export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
+export { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 
 // Ports
 export { AdapterRegistryPort } from './domain/ports/adapter-registry.port';
@@ -27,6 +28,7 @@ export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.por
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
+export { OAuthCompletionPort } from './domain/ports/oauth-completion.port';
 export {
   WebhookSecretProviderPort,
   webhookSecretRef,
@@ -46,6 +48,13 @@ export {
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
+export {
+  OAuthCredentialBlob,
+  BuildAuthorizationUrlInput,
+  ExchangeCodeInput,
+  FetchAccountIdentityInput,
+  OAuthAccountIdentity,
+} from './domain/types/oauth-completion.types';
 export { MarketplaceCursor } from './domain/types/marketplace-cursor.types';
 
 // Domain Entities
@@ -60,6 +69,7 @@ export { DuplicateAdapterKeyException } from './domain/exceptions/duplicate-adap
 export { DuplicatePlatformDefaultException } from './domain/exceptions/duplicate-platform-default.exception';
 export { InvalidConnectionConfigException } from './domain/exceptions/invalid-connection-config.exception';
 export { InvalidCredentialsShapeException } from './domain/exceptions/invalid-credentials-shape.exception';
+export { OAuthCodeExchangeException } from './domain/exceptions/oauth-code-exchange.exception';
 export {
   flattenValidationErrors,
   ValidationErrorLike,

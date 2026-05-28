@@ -39,9 +39,12 @@ import {
 import { Public } from '../../auth/decorators/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
-  IAllegroOAuthService,
-  ALLEGRO_OAUTH_SERVICE_TOKEN,
-} from '../application/interfaces/allegro-oauth.service.interface';
+  IOAuthConnectionService,
+  OAUTH_CONNECTION_SERVICE_TOKEN,
+} from '../application/interfaces/oauth-connection.service.interface';
+
+/** adapterKey of the Allegro Public API plugin — the OAuth-completion registry key. */
+const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 import { AllegroOAuthConnectDto } from './dto/allegro-oauth-connect.dto';
 import { AllegroOAuthCallbackQueryDto } from './dto/allegro-oauth-callback-query.dto';
 import {
@@ -75,8 +78,8 @@ export class AllegroController {
   private readonly logger = new Logger(AllegroController.name);
 
   constructor(
-    @Inject(ALLEGRO_OAUTH_SERVICE_TOKEN)
-    private readonly oauthService: IAllegroOAuthService,
+    @Inject(OAUTH_CONNECTION_SERVICE_TOKEN)
+    private readonly oauthService: IOAuthConnectionService,
     @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
     @Inject(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN)
@@ -114,22 +117,30 @@ export class AllegroController {
     authorizationUrl: string;
     state: string;
   }> {
-    this.logger.log(
-      `Initiating OAuth flow for Allegro (environment: ${dto.environment || 'sandbox'})`
-    );
+    const environment = dto.environment || 'sandbox';
+    this.logger.log(`Initiating OAuth flow for Allegro (environment: ${environment})`);
 
-    // Store clientSecret in state temporarily during OAuth flow
-    // After OAuth completes, credentials are stored in the database
-    const result = await this.oauthService.generateAuthorizationUrl(
-      dto.clientId,
-      dto.clientSecret, // Used during OAuth flow, then stored in DB
-      dto.redirectUri,
-      dto.environment || 'sandbox',
-      dto.state,
-      dto.connectionName,
-      dto.masterCatalogConnectionId,
-      dto.connectionId // present when re-authenticating an existing connection in place (#819)
-    );
+    // The neutral OAuthConnectionService owns the flow; the Allegro controller
+    // supplies the platform binding (adapterKey + platformType), the
+    // platform-specific connection-config seed (environment, master-catalog
+    // link), and the Allegro-flavoured default connection name.
+    const result = await this.oauthService.generateAuthorizationUrl({
+      adapterKey: ALLEGRO_ADAPTER_KEY,
+      platformType: 'allegro',
+      clientId: dto.clientId,
+      clientSecret: dto.clientSecret, // held transiently during the flow, then persisted
+      redirectUri: dto.redirectUri,
+      state: dto.state,
+      connectionName:
+        dto.connectionName || `Allegro ${environment} (${new Date().toISOString()})`,
+      connectionId: dto.connectionId, // present when re-authenticating in place (#819)
+      initialConfig: {
+        environment,
+        ...(dto.masterCatalogConnectionId
+          ? { masterCatalogConnectionId: dto.masterCatalogConnectionId }
+          : {}),
+      },
+    });
 
     return result;
   }
@@ -194,20 +205,9 @@ export class AllegroController {
         });
       }
 
-      // Exchange code for token using credentials from validated state
-      const tokenResponse = await this.oauthService.exchangeCodeForToken(
-        query.code,
-        stateData.clientId,
-        stateData.clientSecret,
-        stateData.redirectUri,
-        stateData.environment
-      );
-
-      // Store credentials in database and create connection
-      const connection = await this.oauthService.storeCredentialsAndCreateConnection(
-        tokenResponse,
-        stateData
-      );
+      // Exchange code, verify identity, run the same-account guard, and persist
+      // the connection (create or re-auth-in-place) — all neutral orchestration.
+      const connection = await this.oauthService.completeAuthorization(query.code, stateData);
 
       // Persist completed marker so replayed callbacks within the TTL window get an idempotent 200
       await this.oauthService.markStateCompleted(query.state, connection.id, connection.name);

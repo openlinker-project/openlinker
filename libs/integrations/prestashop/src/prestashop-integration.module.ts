@@ -38,6 +38,8 @@ import {
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
+  INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+  OAuthCompletionRegistryService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
   WebhookSecretProviderPort,
   CREDENTIALS_RESOLVER_TOKEN,
@@ -106,6 +108,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
+    @Inject(INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN)
+    private readonly oauthCompletionRegistry: OAuthCompletionRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
     private readonly retryClassifierRegistry: RetryClassifierRegistryService,
     @Inject(AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN)
@@ -158,6 +162,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       webhookProvisioningRegistry: this.webhookProvisioningRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
       connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
+      oauthCompletionRegistry: this.oauthCompletionRegistry,
     };
 
     host.adapterRegistry.register(plugin.manifest);
