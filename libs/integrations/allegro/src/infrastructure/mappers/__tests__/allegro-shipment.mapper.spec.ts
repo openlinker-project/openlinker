@@ -11,6 +11,7 @@ import {
   buildCreateShipmentInput,
   deriveCommandId,
   describeShipmentState,
+  extractCarrierWaybill,
   formatCommandErrors,
   mapShipmentStateToStatus,
   toGenerateLabelResult,
@@ -145,6 +146,41 @@ describe('mapShipmentStateToStatus', () => {
     const resource: AllegroShipmentResource = { id: 's1', packages: [{}] };
     expect(mapShipmentStateToStatus(resource)).toBe('generated');
     expect(describeShipmentState(resource)).toBe('created');
+  });
+});
+
+describe('extractCarrierWaybill', () => {
+  it('returns undefined when there are no packages', () => {
+    expect(extractCarrierWaybill({ id: 's1' })).toBeUndefined();
+  });
+
+  it('returns undefined when no transportingInfo carries a waybill', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [{ transportingInfo: [{ carrierId: 'INPOST' }] }],
+    };
+    expect(extractCarrierWaybill(resource)).toBeUndefined();
+  });
+
+  it('returns the first non-empty carrierWaybill in document order', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [
+        { transportingInfo: [{ carrierId: 'INPOST', carrierWaybill: '6800000001' }] },
+        { transportingInfo: [{ carrierId: 'INPOST', carrierWaybill: '6800000002' }] },
+      ],
+    };
+    expect(extractCarrierWaybill(resource)).toBe('6800000001');
+  });
+
+  it('skips empty-string waybills and returns the next non-empty value', () => {
+    const resource: AllegroShipmentResource = {
+      id: 's1',
+      packages: [
+        { transportingInfo: [{ carrierWaybill: '' }, { carrierWaybill: '6800000003' }] },
+      ],
+    };
+    expect(extractCarrierWaybill(resource)).toBe('6800000003');
   });
 });
 

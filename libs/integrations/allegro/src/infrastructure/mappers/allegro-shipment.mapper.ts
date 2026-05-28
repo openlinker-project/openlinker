@@ -144,9 +144,30 @@ export function toGenerateLabelResult(shipmentId: string): GenerateLabelResult {
 }
 
 function hasCarrierWaybill(resource: AllegroShipmentResource): boolean {
-  return (resource.packages ?? []).some((pkg) =>
-    (pkg.transportingInfo ?? []).some((t) => Boolean(t.carrierWaybill)),
-  );
+  return extractCarrierWaybill(resource) !== undefined;
+}
+
+/**
+ * Pick the first non-empty `transportingInfo[].carrierWaybill` across packages,
+ * in document order — Allegro doesn't promise multi-package determinism, but
+ * iterating in array order is stable across polls of the same shipment and
+ * matches `hasCarrierWaybill`'s scan. Falls back to `undefined` when none is
+ * assigned yet.
+ *
+ * Consumed by `getTracking` (#838) to populate
+ * `TrackingSnapshot.trackingNumber`, which the core status-sync service
+ * backfills onto `Shipment.trackingNumber` and projects to the destination
+ * OMP.
+ */
+export function extractCarrierWaybill(resource: AllegroShipmentResource): string | undefined {
+  for (const pkg of resource.packages ?? []) {
+    for (const t of pkg.transportingInfo ?? []) {
+      if (t.carrierWaybill && t.carrierWaybill.length > 0) {
+        return t.carrierWaybill;
+      }
+    }
+  }
+  return undefined;
 }
 
 /**

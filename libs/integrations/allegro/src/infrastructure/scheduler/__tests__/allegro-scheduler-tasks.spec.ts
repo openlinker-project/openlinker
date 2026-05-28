@@ -35,12 +35,13 @@ const makeConnection = (overrides: Partial<{ config: Record<string, unknown> }> 
 
 describe('buildAllegroSchedulerTasks', () => {
   describe('enable gates', () => {
-    it('should return all three tasks by default (env-vars unset)', () => {
+    it('should return all four tasks by default (env-vars unset)', () => {
       const tasks = buildAllegroSchedulerTasks(makeConfig());
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
         'allegro-offers-sync',
         'allegro-offer-status-sync',
+        'allegro-shipment-status-sync',
       ]);
     });
 
@@ -51,6 +52,7 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-offers-sync',
         'allegro-offer-status-sync',
+        'allegro-shipment-status-sync',
       ]);
     });
 
@@ -61,6 +63,7 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
         'allegro-offer-status-sync',
+        'allegro-shipment-status-sync',
       ]);
     });
 
@@ -68,7 +71,22 @@ describe('buildAllegroSchedulerTasks', () => {
       const tasks = buildAllegroSchedulerTasks(
         makeConfig({ OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false' })
       );
-      expect(tasks.map((t) => t.taskId)).toEqual(['allegro-orders-poll', 'allegro-offers-sync']);
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-orders-poll',
+        'allegro-offers-sync',
+        'allegro-shipment-status-sync',
+      ]);
+    });
+
+    it('should omit shipment-status-sync when OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED=false', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false' })
+      );
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-orders-poll',
+        'allegro-offers-sync',
+        'allegro-offer-status-sync',
+      ]);
     });
 
     it('should return an empty array when all env-vars are false', () => {
@@ -77,6 +95,7 @@ describe('buildAllegroSchedulerTasks', () => {
           OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+          OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
         })
       );
       expect(tasks).toEqual([]);
@@ -224,6 +243,50 @@ describe('buildAllegroSchedulerTasks', () => {
       const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
       expect(statusSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
         'marketplace:conn-allegro-1:offer:status:sync:2026-05-11-12-34'
+      );
+    });
+  });
+
+  describe('shipment-status-sync task (#838)', () => {
+    it('should target platformType=allegro and jobType=marketplace.shipment.statusSync', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const shipSync = tasks.find((t) => t.taskId === 'allegro-shipment-status-sync');
+      expect(shipSync?.platformType).toBe('allegro');
+      expect(shipSync?.jobType).toBe('marketplace.shipment.statusSync');
+    });
+
+    it('should default to every-15-minute cron and emit the scan-offset cursor key + limit 50', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const shipSync = tasks.find((t) => t.taskId === 'allegro-shipment-status-sync');
+      expect(shipSync?.cronExpression).toBe('0 */15 * * * *');
+      expect(shipSync?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        limit: 50,
+        cursorKey: 'allegro.shipmentStatus.scanOffset',
+      });
+    });
+
+    it('should honour OL_ALLEGRO_SHIPMENT_STATUS_SYNC_INTERVAL_CRON override', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_SHIPMENT_STATUS_SYNC_INTERVAL_CRON: '*/5 * * * *' })
+      );
+      const shipSync = tasks.find((t) => t.taskId === 'allegro-shipment-status-sync');
+      expect(shipSync?.cronExpression).toBe('*/5 * * * *');
+    });
+
+    it('should fall back to limit=50 when OL_ALLEGRO_SHIPMENT_STATUS_SYNC_PAGE_LIMIT is non-numeric', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_SHIPMENT_STATUS_SYNC_PAGE_LIMIT: 'not-a-number' })
+      );
+      const shipSync = tasks.find((t) => t.taskId === 'allegro-shipment-status-sync');
+      expect(shipSync?.generatePayload(makeConnection())?.limit).toBe(50);
+    });
+
+    it('should generate a per-connection, per-minute idempotency key', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const shipSync = tasks.find((t) => t.taskId === 'allegro-shipment-status-sync');
+      expect(shipSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:shipment:status:sync:2026-05-11-12-34'
       );
     });
   });

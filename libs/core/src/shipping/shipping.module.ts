@@ -35,6 +35,7 @@ import { ShipmentQueryService } from './application/services/shipment-query.serv
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
+import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import {
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
@@ -43,6 +44,7 @@ import {
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
+  SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
 } from './shipping.tokens';
 
 @Module({
@@ -96,6 +98,11 @@ import {
       provide: SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
       useExisting: ShipmentDispatchNotificationService,
     },
+    ShipmentStatusSyncService,
+    {
+      provide: SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: ShipmentStatusSyncService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -105,6 +112,7 @@ import {
     PICKUP_POINT_CACHE_TOKEN,
     PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
+    SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}
