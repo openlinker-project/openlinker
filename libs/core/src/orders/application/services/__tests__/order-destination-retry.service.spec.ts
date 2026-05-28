@@ -63,6 +63,7 @@ describe('OrderDestinationRetryService', () => {
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn(),
+      findMany: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     identifierMapping = {

@@ -161,10 +161,20 @@ describe('createPrestashopPlugin → register(host)', () => {
       identifierMapping: {} as IdentifierMappingPort,
       credentialsResolver: {} as CredentialsResolverPort,
       cache: undefined,
+      // Minimal logger stub — `register()` may emit a `debug` line on the
+      // no-ConfigService path (#834). Return an object with the four
+      // LogLevel methods so any of them are safely callable.
+      logger: jest.fn().mockReturnValue({
+        log: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      }),
       connectionTesterRegistry: { register: jest.fn() },
       webhookProvisioningRegistry: { register: jest.fn() },
       connectionConfigShapeValidatorRegistry: configRegistry,
       connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
+      schedulerTaskRegistry: { register: jest.fn() },
     } as unknown as HostServices;
     return { host, configRegistry, credentialsRegistry };
   }
