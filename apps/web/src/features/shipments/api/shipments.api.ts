@@ -8,7 +8,11 @@
  * @module apps/web/src/features/shipments/api
  */
 import type {
+  DispatchResult,
+  GenerateLabelInput,
+  NotifyDispatchedResult,
   PaginatedShipments,
+  Shipment,
   ShipmentFilters,
   ShipmentPagination,
 } from './shipments.types';
@@ -21,11 +25,27 @@ export interface ShipmentsApi {
    * (100); higher values return HTTP 400. Page via `offset`.
    */
   list: (filters?: ShipmentFilters, pagination?: ShipmentPagination) => Promise<PaginatedShipments>;
+
+  /** `POST /shipments/generate-label` — kicks off the #835 dispatch seam.
+   *  Returns `kind: 'dispatched'` + `shipment` for OL-managed dispatches;
+   *  `kind: 'omp_fulfilled'` + no shipment when the routing rule resolves to
+   *  the OMP-fulfilled branch (no OL-side label). */
+  generateLabel: (input: GenerateLabelInput) => Promise<DispatchResult>;
+
+  /** `POST /shipments/:id/cancel` — voids a not-yet-dispatched shipment. */
+  cancel: (id: string) => Promise<Shipment>;
+
+  /** `POST /shipments/:id/notify-dispatched` (#769) — fires the #837 source
+   *  notify + destination OMP projection. Idempotent: re-firing on an
+   *  already-dispatched shipment returns `outcome: 'skipped-not-generated'`. */
+  notifyDispatched: (id: string) => Promise<NotifyDispatchedResult>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 
 function buildQuery(filters?: ShipmentFilters, pagination?: ShipmentPagination): string {
   const params = new URLSearchParams();
@@ -46,6 +66,28 @@ export function createShipmentsApi(request: ApiRequest): ShipmentsApi {
   return {
     list(filters, pagination): Promise<PaginatedShipments> {
       return request<PaginatedShipments>(`/shipments${buildQuery(filters, pagination)}`);
+    },
+    generateLabel(input): Promise<DispatchResult> {
+      return request<DispatchResult>('/shipments/generate-label', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
+    cancel(id): Promise<Shipment> {
+      return request<Shipment>(`/shipments/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+      });
+    },
+    notifyDispatched(id): Promise<NotifyDispatchedResult> {
+      return request<NotifyDispatchedResult>(
+        `/shipments/${encodeURIComponent(id)}/notify-dispatched`,
+        {
+          method: 'POST',
+          headers: JSON_HEADERS,
+        },
+      );
     },
   };
 }
