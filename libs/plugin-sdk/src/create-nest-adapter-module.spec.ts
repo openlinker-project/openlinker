@@ -24,6 +24,7 @@ import {
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
 } from '@openlinker/core/integrations';
 import {
@@ -58,6 +59,7 @@ describe('createNestAdapterModule', () => {
     webhookProvisioningRegistry: object;
     connectionConfigShapeValidatorRegistry: object;
     connectionCredentialsShapeValidatorRegistry: object;
+    oauthCompletionRegistry: object;
     retryClassifierRegistry: object;
     authFailureClassifierRegistry: object;
     schedulerTaskRegistry: object;
@@ -72,6 +74,7 @@ describe('createNestAdapterModule', () => {
       webhookProvisioningRegistry: {},
       connectionConfigShapeValidatorRegistry: {},
       connectionCredentialsShapeValidatorRegistry: {},
+      oauthCompletionRegistry: {},
       retryClassifierRegistry: {},
       authFailureClassifierRegistry: {},
       schedulerTaskRegistry: {},
@@ -104,6 +107,10 @@ describe('createNestAdapterModule', () => {
         {
           provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
           useValue: registries.connectionCredentialsShapeValidatorRegistry,
+        },
+        {
+          provide: INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
+          useValue: registries.oauthCompletionRegistry,
         },
         { provide: RETRY_CLASSIFIER_REGISTRY_TOKEN, useValue: registries.retryClassifierRegistry },
         {
@@ -168,6 +175,7 @@ describe('createNestAdapterModule', () => {
         connectionTesterRegistry: expect.any(Object),
         emailNormalizerRegistry: expect.any(Object),
         webhookProvisioningRegistry: expect.any(Object),
+        oauthCompletionRegistry: expect.any(Object),
         retryClassifierRegistry: expect.any(Object),
         authFailureClassifierRegistry: expect.any(Object),
         schedulerTaskRegistry: expect.any(Object),

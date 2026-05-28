@@ -102,5 +102,6 @@ One pointer per section, identical format every time.
 | [ADR-010](./010-variant-keyed-master-inventory.md) | Variant-keyed master inventory | Accepted | 2026-05-24 |
 | [ADR-011](./011-domain-entity-behavior.md) | Domain entity behavior — anemic-by-default with pure read-only derivations | Accepted | 2026-05-25 |
 | [ADR-012](./012-branch-1-fulfillment-modeling.md) | Branch-1 (OMP-fulfilled) fulfillment modeling — delegate-to-OMP, not a degenerate shipping adapter | Accepted | 2026-05-25 |
+| [ADR-013](./013-neutral-oauth-completion-port.md) | Neutral OAuth-completion port — relocate Allegro OAuth into the plugin | Accepted | 2026-05-28 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

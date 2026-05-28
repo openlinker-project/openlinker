@@ -18,14 +18,13 @@ import {
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { RedisConfigModule } from '@openlinker/shared/redis';
-import { AllegroAccountReader } from '@openlinker/integrations-allegro';
 import { apiPlugins } from '../plugins';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
 import { ConnectionService } from './application/services/connection.service';
-import { AllegroOAuthService } from './application/services/allegro-oauth.service';
-import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oauth.service.interface';
+import { OAuthConnectionService } from './application/services/oauth-connection.service';
+import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-connection.service.interface';
 
 @Module({
   imports: [
@@ -38,9 +37,12 @@ import { ALLEGRO_OAUTH_SERVICE_TOKEN } from './application/interfaces/allegro-oa
   controllers: [ConnectionController, AdapterController, AllegroController],
   providers: [
     ConnectionService,
-    AllegroAccountReader, // #820 — injected into AllegroOAuthService for the seller-identity check
-    AllegroOAuthService,
-    { provide: ALLEGRO_OAUTH_SERVICE_TOKEN, useExisting: AllegroOAuthService },
+    // Neutral OAuth orchestration (#859). Allegro's OAuth knowledge (URLs,
+    // token exchange, `/me`) now lives in the plugin behind OAuthCompletionPort,
+    // resolved at runtime via OAuthCompletionRegistryService — so the host no
+    // longer imports AllegroAccountReader or any Allegro OAuth service.
+    OAuthConnectionService,
+    { provide: OAUTH_CONNECTION_SERVICE_TOKEN, useExisting: OAuthConnectionService },
   ],
   exports: [PluginRegistryModule],
 })

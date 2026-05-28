@@ -10,8 +10,11 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
-import type { IAllegroOAuthService } from '../application/interfaces/allegro-oauth.service.interface';
-import { ALLEGRO_OAUTH_SERVICE_TOKEN } from '../application/interfaces/allegro-oauth.service.interface';
+import type {
+  IOAuthConnectionService,
+  OAuthStateData,
+} from '../application/interfaces/oauth-connection.service.interface';
+import { OAUTH_CONNECTION_SERVICE_TOKEN } from '../application/interfaces/oauth-connection.service.interface';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
@@ -27,7 +30,7 @@ import { Connection } from '@openlinker/core/identifier-mapping';
 
 describe('AllegroController', () => {
   let controller: AllegroController;
-  let oauthService: jest.Mocked<IAllegroOAuthService>;
+  let oauthService: jest.Mocked<IOAuthConnectionService>;
   let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
   let commandRepository: jest.Mocked<AllegroQuantityCommandRepositoryPort>;
 
@@ -49,13 +52,11 @@ describe('AllegroController', () => {
     const mockOAuthService = {
       generateAuthorizationUrl: jest.fn(),
       validateState: jest.fn(),
-      exchangeCodeForToken: jest.fn(),
-      storeCredentialsAndCreateConnection: jest.fn(),
+      completeAuthorization: jest.fn(),
       validateConnection: jest.fn(),
-      refreshToken: jest.fn(),
       markStateCompleted: jest.fn(),
       checkCompletedState: jest.fn(),
-    } as unknown as jest.Mocked<IAllegroOAuthService>;
+    } as unknown as jest.Mocked<IOAuthConnectionService>;
 
     const mockCursorRepository = {
       get: jest.fn(),
@@ -80,7 +81,7 @@ describe('AllegroController', () => {
       controllers: [AllegroController],
       providers: [
         {
-          provide: ALLEGRO_OAUTH_SERVICE_TOKEN,
+          provide: OAUTH_CONNECTION_SERVICE_TOKEN,
           useValue: mockOAuthService,
         },
         {
@@ -99,7 +100,7 @@ describe('AllegroController', () => {
     }).compile();
 
     controller = module.get<AllegroController>(AllegroController);
-    oauthService = module.get(ALLEGRO_OAUTH_SERVICE_TOKEN);
+    oauthService = module.get(OAUTH_CONNECTION_SERVICE_TOKEN);
     cursorRepository = module.get(CONNECTION_CURSOR_REPOSITORY_TOKEN);
     commandRepository = module.get(ALLEGRO_QUANTITY_COMMAND_REPOSITORY_TOKEN);
   });
@@ -129,15 +130,18 @@ describe('AllegroController', () => {
       const result = await controller.connect(dto);
 
       expect(result).toEqual(expectedResult);
+      // The controller supplies the Allegro platform binding + the neutral
+      // service consumes a single input object (#859).
       expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
-        'test-client-id',
-        'test-client-secret',
-        'https://example.com/callback',
-        'sandbox',
-        undefined,
-        'Test Connection',
-        undefined,
-        undefined
+        expect.objectContaining({
+          adapterKey: 'allegro.publicapi.v1',
+          platformType: 'allegro',
+          clientId: 'test-client-id',
+          clientSecret: 'test-client-secret',
+          redirectUri: 'https://example.com/callback',
+          connectionName: 'Test Connection',
+          initialConfig: { environment: 'sandbox' },
+        })
       );
     });
 
@@ -158,14 +162,37 @@ describe('AllegroController', () => {
       await controller.connect(dto);
 
       expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
-        'test-client-id',
-        'test-client-secret',
-        'https://example.com/callback',
-        'sandbox',
-        undefined,
-        undefined,
-        undefined,
-        undefined
+        expect.objectContaining({
+          adapterKey: 'allegro.publicapi.v1',
+          platformType: 'allegro',
+          initialConfig: { environment: 'sandbox' },
+          // Default name synthesised from the environment when none supplied.
+          connectionName: expect.stringContaining('Allegro sandbox'),
+        })
+      );
+    });
+
+    it('forwards the masterCatalogConnectionId into initialConfig and connectionId for re-auth', async () => {
+      const dto = {
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        environment: 'production',
+        masterCatalogConnectionId: 'mc-1',
+        connectionId: 'conn-existing',
+      };
+      oauthService.generateAuthorizationUrl.mockResolvedValue({
+        authorizationUrl: 'https://allegro.pl/auth/oauth/authorize?...',
+        state: 's',
+      });
+
+      await controller.connect(dto);
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-existing',
+          initialConfig: { environment: 'production', masterCatalogConnectionId: 'mc-1' },
+        })
       );
     });
   });
@@ -177,24 +204,18 @@ describe('AllegroController', () => {
         state: 'state-123',
       };
 
-      const stateData = {
+      const stateData: OAuthStateData = {
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
         redirectUri: 'https://example.com/callback',
-        environment: 'sandbox',
         connectionName: 'Test Connection',
-      };
-
-      const tokenResponse = {
-        access_token: 'access-token-123',
-        refresh_token: 'refresh-token-123',
-        expires_in: 3600,
-        token_type: 'Bearer',
+        initialConfig: { environment: 'sandbox' },
       };
 
       oauthService.validateState.mockResolvedValue(stateData);
-      oauthService.exchangeCodeForToken.mockResolvedValue(tokenResponse);
-      oauthService.storeCredentialsAndCreateConnection.mockResolvedValue(mockConnection);
+      oauthService.completeAuthorization.mockResolvedValue(mockConnection);
       oauthService.markStateCompleted.mockResolvedValue(undefined);
 
       const result = await controller.callback(query);
@@ -205,17 +226,7 @@ describe('AllegroController', () => {
         connectionName: 'Test Allegro Connection',
       });
       expect(oauthService.validateState).toHaveBeenCalledWith('state-123');
-      expect(oauthService.exchangeCodeForToken).toHaveBeenCalledWith(
-        'auth-code-123',
-        'test-client-id',
-        'test-client-secret',
-        'https://example.com/callback',
-        'sandbox'
-      );
-      expect(oauthService.storeCredentialsAndCreateConnection).toHaveBeenCalledWith(
-        tokenResponse,
-        stateData
-      );
+      expect(oauthService.completeAuthorization).toHaveBeenCalledWith('auth-code-123', stateData);
       expect(oauthService.markStateCompleted).toHaveBeenCalledWith(
         'state-123',
         'connection-123',
@@ -270,8 +281,7 @@ describe('AllegroController', () => {
         connectionId: 'connection-123',
         connectionName: 'Test Allegro Connection',
       });
-      expect(oauthService.exchangeCodeForToken).not.toHaveBeenCalled();
-      expect(oauthService.storeCredentialsAndCreateConnection).not.toHaveBeenCalled();
+      expect(oauthService.completeAuthorization).not.toHaveBeenCalled();
     });
 
     it('should handle OAuth service errors', async () => {
@@ -281,12 +291,14 @@ describe('AllegroController', () => {
       };
 
       oauthService.validateState.mockResolvedValue({
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
         clientId: 'test-client-id',
         clientSecret: 'test-client-secret',
         redirectUri: 'https://example.com/callback',
-        environment: 'sandbox',
+        initialConfig: { environment: 'sandbox' },
       });
-      oauthService.exchangeCodeForToken.mockRejectedValue(new Error('Token exchange failed'));
+      oauthService.completeAuthorization.mockRejectedValue(new Error('Token exchange failed'));
 
       await expect(controller.callback(query)).rejects.toThrow('Token exchange failed');
     });

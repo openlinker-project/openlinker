@@ -33,6 +33,7 @@ import { AllegroEmailNormalizerAdapter } from './infrastructure/adapters/allegro
 import { AllegroRetryClassifierAdapter } from './infrastructure/adapters/allegro-retry-classifier.adapter';
 import { AllegroAuthFailureClassifierAdapter } from './infrastructure/adapters/allegro-auth-failure-classifier.adapter';
 import { AllegroConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/allegro-connection-config-shape-validator.adapter';
+import { AllegroOAuthCompletionAdapter } from './infrastructure/adapters/allegro-oauth-completion.adapter';
 import { buildAllegroSchedulerTasks } from './infrastructure/scheduler/allegro-scheduler-tasks';
 import type { AllegroTokenRefreshService } from './infrastructure/token-refresh/allegro-token-refresh.service';
 import type { AllegroQuantityCommandRepositoryPort } from './domain/ports/allegro-quantity-command-repository.port';
@@ -122,6 +123,13 @@ export function createAllegroPlugin(deps: CreateAllegroPluginDeps): AdapterPlugi
       host.connectionConfigShapeValidatorRegistry.register(
         'allegro.publicapi.v1',
         new AllegroConnectionConfigShapeValidatorAdapter(ALLEGRO_BRAND)
+      );
+      // OAuth-completion adapter (#859): authorize-URL / code-exchange / `/me`
+      // identity. The host's neutral OAuthConnectionService resolves it by
+      // adapterKey, so the host never imports Allegro OAuth knowledge.
+      host.oauthCompletionRegistry.register(
+        'allegro.publicapi.v1',
+        new AllegroOAuthCompletionAdapter()
       );
       // Allegro does NOT register a credentials shape validator — token
       // shape is enforced by `AllegroAdapterFactory.resolveCredentials` at

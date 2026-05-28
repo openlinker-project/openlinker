@@ -40,6 +40,7 @@ import type {
   WebhookProvisioningRegistryService,
   ConnectionConfigShapeValidatorRegistryService,
   ConnectionCredentialsShapeValidatorRegistryService,
+  OAuthCompletionRegistryService,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type {
@@ -128,4 +129,14 @@ export interface HostServices {
    * `ConnectionTesterPort` against the live API.
    */
   readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
+
+  /**
+   * Per-plugin OAuth-completion registry (#859). A plugin whose platform uses
+   * an OAuth2 authorization-code flow registers an `OAuthCompletionPort` here
+   * at boot; the host's `OAuthConnectionService` resolves it by `adapterKey`
+   * to perform the authorize-URL / code-exchange / identity steps without the
+   * host importing the plugin. Absence is a deliberate skip — non-OAuth
+   * platforms need not register one.
+   */
+  readonly oauthCompletionRegistry: OAuthCompletionRegistryService;
 }
