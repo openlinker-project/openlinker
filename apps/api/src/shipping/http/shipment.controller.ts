@@ -31,11 +31,13 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   type IShipmentCancellationService,
+  type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
   type IShipmentQueryService,
   type ShipmentDispatchInput,
   type ShipmentFilters,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+  SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   ShipmentCancellationNotSupportedException,
@@ -49,6 +51,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
+import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { ShipmentResponseDto } from './dto/shipment-response.dto';
 
@@ -66,6 +69,8 @@ export class ShipmentController {
     private readonly dispatch: IShipmentDispatchService,
     @Inject(SHIPMENT_CANCELLATION_SERVICE_TOKEN)
     private readonly cancellation: IShipmentCancellationService,
+    @Inject(SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN)
+    private readonly notification: IShipmentDispatchNotificationService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
   ) {}
@@ -169,6 +174,30 @@ export class ShipmentController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+  }
+
+  @Post(':id/notify-dispatched')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Operator-fired #837 dispatch-notify orchestration: source mark-shipped + ' +
+      'destination OMP fulfillment-update + advance Shipment.status to dispatched.',
+    description:
+      'Manual override path for the dispatch-notify projection (#769). Normal flow ' +
+      'is automatic — InPost webhooks (deferred to #768) and Allegro Delivery status-' +
+      'sync (#838) fire this same service. The endpoint exists so operators can ' +
+      'unstick a `generated` shipment when the automatic path has stalled or the ' +
+      'projection needs to be replayed. Idempotent: re-firing on an already-dispatched ' +
+      'shipment returns 200 with `outcome=skipped-not-generated`, not 409.',
+  })
+  @ApiResponse({ status: 200, type: NotifyDispatchedResponseDto })
+  @ApiResponse({ status: 404, description: 'Shipment not found' })
+  async notifyDispatched(@Param('id') id: string): Promise<NotifyDispatchedResponseDto> {
+    const result = await this.notification.notifyDispatched({ shipmentId: id });
+    if (result.outcome === 'shipment-not-found') {
+      throw new NotFoundException(`Shipment not found: ${id}`);
+    }
+    return NotifyDispatchedResponseDto.fromResult(result);
   }
 
   /**

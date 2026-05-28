@@ -129,6 +129,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.cancelledAt = null;
     entity.failedAt = null;
     entity.errorMessage = null;
+    entity.carrier = null;
     return entity;
   }
 
@@ -171,6 +172,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     if (patch.cancelledAt !== undefined) payload.cancelledAt = patch.cancelledAt;
     if (patch.failedAt !== undefined) payload.failedAt = patch.failedAt;
     if (patch.errorMessage !== undefined) payload.errorMessage = patch.errorMessage;
+    if (patch.carrier !== undefined) payload.carrier = patch.carrier;
     return payload;
   }
 
@@ -193,6 +195,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.createdAt,
       entity.updatedAt,
       entity.sourceDeliveryMethodId,
+      entity.carrier,
     );
   }
 }

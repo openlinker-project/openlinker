@@ -41,6 +41,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.createdAt ?? new Date('2026-05-27T09:00:00.000Z'),
     overrides.updatedAt ?? new Date('2026-05-27T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? null,
+    overrides.carrier === undefined ? null : overrides.carrier,
   );
 }
 
@@ -321,6 +322,69 @@ describe('ShipmentStatusSyncService', () => {
       await service.sync(CARRIER, { limit: 50 });
       expect(updateFulfillment).not.toHaveBeenCalled();
       expect(shipments.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('carrier-of-record backfill (#769)', () => {
+    it('backfills carrier when shipment.carrier is null and snapshot carries one', async () => {
+      const s = makeShipment({ status: 'dispatched', carrier: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', carrier: 'inpost' }));
+      await service.sync(CARRIER, { limit: 50 });
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ carrier: 'inpost' }),
+      );
+    });
+
+    it('does not overwrite a previously-set carrier (once-written-never-overwritten)', async () => {
+      const s = makeShipment({ status: 'dispatched', carrier: 'inpost' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', carrier: 'dpd' }));
+      await service.sync(CARRIER, { limit: 50 });
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
+
+    it('writes carrier even when the trackingNumber push fails (carrier is independent of push-first workaround)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        makeRecord({
+          syncStatus: [
+            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
+          ],
+        } as Partial<OrderRecord>),
+      );
+      updateFulfillment.mockRejectedValueOnce(new Error('PS unreachable'));
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null, carrier: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'WAYBILL', carrier: 'inpost' }));
+      await service.sync(CARRIER, { limit: 50 });
+      // Push-first dropped trackingNumber from the patch (workaround #1), but carrier still lands.
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ carrier: 'inpost' }),
+      );
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.not.objectContaining({ trackingNumber: expect.any(String) }),
+      );
+    });
+
+    it('writes both carrier and trackingNumber together on the happy path', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        makeRecord({
+          syncStatus: [
+            { destinationConnectionId: PS1, status: 'synced', externalOrderId: 'ps1-100' },
+          ],
+        } as Partial<OrderRecord>),
+      );
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null, carrier: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'WAYBILL', carrier: 'inpost' }));
+      await service.sync(CARRIER, { limit: 50 });
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ trackingNumber: 'WAYBILL', carrier: 'inpost' }),
+      );
     });
   });
 });

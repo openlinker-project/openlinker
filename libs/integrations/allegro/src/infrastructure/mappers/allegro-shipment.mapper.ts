@@ -171,6 +171,61 @@ export function extractCarrierWaybill(resource: AllegroShipmentResource): string
 }
 
 /**
+ * Map Allegro's wire-shape `carrierId` enum (UPPER_SNAKE_CASE) to OL's
+ * canonical lowercase-kebab vocabulary (`KnownCarrier`, see
+ * `tracking-snapshot.types.ts`). Unknown values fall through unmapped — the
+ * FE gracefully renders no link for any value not in the static URL map, so a
+ * missing mapping here is a soft failure.
+ *
+ * Vocabulary sourced from product-spec #732 §3.2. If Allegro adds a new
+ * carrier id, the test in `allegro-shipment.mapper.spec.ts` catches the
+ * unknown-value passthrough; appending a new mapping entry + adding the
+ * corresponding `KnownCarrierValues` entry in core is a two-line edit.
+ */
+const ALLEGRO_CARRIER_ID_MAP: Record<string, string> = {
+  INPOST: 'inpost',
+  DPD: 'dpd',
+  DHL: 'dhl',
+  ORLEN: 'orlen',
+  ORLEN_PACZKA: 'orlen',
+  ALLEGRO_ONE_BOX: 'allegro-one-box',
+  ALLEGRO_ONE_PUNKT: 'allegro-one-punkt',
+  ALLEGRO_ONE_KURIER: 'allegro-one-kurier',
+  POCZTA: 'poczta-polska',
+  POCZTA_POLSKA: 'poczta-polska',
+  UPS: 'ups',
+  PACKETA: 'packeta',
+};
+
+export function normalizeAllegroCarrierId(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return ALLEGRO_CARRIER_ID_MAP[raw] ?? raw.toLowerCase();
+}
+
+/**
+ * Pick the first non-empty `transportingInfo[].carrierId` across packages, in
+ * document order (matches `extractCarrierWaybill`'s scan). Returns the
+ * normalized canonical-form value when found, `undefined` otherwise.
+ *
+ * Consumed by `getTracking` (#769) to populate `TrackingSnapshot.carrier` —
+ * the core status-sync service backfills it onto `Shipment.carrier` and the
+ * FE keys public-tracker URLs against it. Allegro Delivery's brokered
+ * carrier identity (InPost / DPD / ORLEN / …) arrives asynchronously
+ * alongside the carrier waybill, so this returns `undefined` until the first
+ * post-create poll surfaces it.
+ */
+export function extractCarrierId(resource: AllegroShipmentResource): string | undefined {
+  for (const pkg of resource.packages ?? []) {
+    for (const t of pkg.transportingInfo ?? []) {
+      if (t.carrierId) {
+        return normalizeAllegroCarrierId(t.carrierId);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
  * Coarse `ShipmentStatus` derivation from the shipment resource. The
  * shipment-management resource exposes no lifecycle enum, so #833 derives only
  * what's structurally knowable: `canceled` → `cancelled`; a carrier waybill

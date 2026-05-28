@@ -58,7 +58,8 @@ export type {
   ShipmentDimensions,
 } from './domain/types/shipment-parcel.types';
 
-export type { TrackingSnapshot } from './domain/types/tracking-snapshot.types';
+export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
+export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
 
 export type {
   CreateShipmentInput,
