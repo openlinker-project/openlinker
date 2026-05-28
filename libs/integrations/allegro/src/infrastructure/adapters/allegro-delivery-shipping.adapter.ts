@@ -47,6 +47,7 @@ import {
   buildCreateShipmentInput,
   deriveCommandId,
   describeShipmentState,
+  extractCarrierId,
   extractCarrierWaybill,
   formatCommandErrors,
   mapShipmentStateToStatus,
@@ -123,13 +124,17 @@ export class AllegroDeliveryShippingAdapter
       `${SHIPMENTS_PATH}/${input.providerShipmentId}`,
     );
     const resource = response.data;
-    // Carrier waybill arrives asynchronously after `generateLabel` returns
-    // (#838); leaving `trackingNumber` undefined here is normal until the
-    // first poll that finds one in `transportingInfo[].carrierWaybill`.
+    // Carrier waybill + carrier-id arrive asynchronously after `generateLabel`
+    // returns (#838 / #769); both undefined here is normal until the first
+    // poll surfaces them in `transportingInfo[].{carrierWaybill,carrierId}`.
+    // They typically appear together — Allegro brokers the carrier first,
+    // then the carrier issues the waybill — but the snapshot doesn't promise
+    // joint atomicity, so either may show up alone on intermediate polls.
     return {
       status: mapShipmentStateToStatus(resource),
       providerStatus: describeShipmentState(resource),
       trackingNumber: extractCarrierWaybill(resource),
+      carrier: extractCarrierId(resource),
     };
   }
 
