@@ -16,6 +16,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     providerShipmentId: 'shipx-1',
     paczkomatId: 'POZ08A',
     trackingNumber: '6800000001',
+    carrier: 'inpost',
     labelPdfRef: 'shipx:label:1',
     dispatchedAt: null,
     deliveredAt: null,

@@ -199,11 +199,26 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       }
     }
 
-    // 2. Tracking number — backfill on null → value transition. Carriers that
+    // 2a. Carrier-of-record — backfill on null → value transition (#769).
+    //    Same null→value discipline as `trackingNumber`. Once written, never
+    //    overwritten — cancel + re-issue is the operator workflow if a
+    //    mid-flight carrier swap is ever needed. Independent of the
+    //    push-first workaround on trackingNumber: the carrier field is
+    //    passive (no OMP projection depends on it directly) and lands
+    //    whenever the snapshot surfaces it.
+    if (shipment.carrier === null && typeof snapshot.carrier === 'string' && snapshot.carrier.length > 0) {
+      patch.carrier = snapshot.carrier;
+    }
+
+    // 2b. Tracking number — backfill on null → value transition. Carriers that
     //    deliver waybills asynchronously (Allegro Delivery #833) populate this
-    //    on a later poll.
+    //    on a later poll. Same `length > 0` normalization as 2a above — empty
+    //    string is semantically equivalent to "no waybill yet", so don't take
+    //    the irreversible null→empty step.
     const newTrackingNumber =
-      shipment.trackingNumber === null && typeof snapshot.trackingNumber === 'string'
+      shipment.trackingNumber === null &&
+      typeof snapshot.trackingNumber === 'string' &&
+      snapshot.trackingNumber.length > 0
         ? snapshot.trackingNumber
         : null;
 

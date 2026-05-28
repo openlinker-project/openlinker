@@ -11,17 +11,20 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  InternalServerErrorException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   type IShipmentCancellationService,
+  type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
   type IShipmentQueryService,
   Shipment,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderRejectionException,
   UndispatchableResolutionException,
 } from '@openlinker/core/shipping';
 
@@ -50,6 +53,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     new Date('2026-05-20T10:00:00.000Z'),
     new Date('2026-05-20T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? null,
+    overrides.carrier ?? null,
   );
 }
 
@@ -68,6 +72,7 @@ describe('ShipmentController', () => {
   let query: jest.Mocked<IShipmentQueryService>;
   let dispatch: jest.Mocked<IShipmentDispatchService>;
   let cancellation: jest.Mocked<IShipmentCancellationService>;
+  let notification: jest.Mocked<IShipmentDispatchNotificationService>;
   let orders: jest.Mocked<IOrderRecordService>;
   let controller: ShipmentController;
 
@@ -79,6 +84,7 @@ describe('ShipmentController', () => {
     };
     dispatch = { dispatch: jest.fn() };
     cancellation = { cancel: jest.fn() };
+    notification = { notifyDispatched: jest.fn() };
     orders = {
       persistOrder: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -86,7 +92,7 @@ describe('ShipmentController', () => {
       // Default: order/customer unknown → customerId resolves to null.
       getOrderRecord: jest.fn().mockResolvedValue(null),
     };
-    controller = new ShipmentController(query, dispatch, cancellation, orders);
+    controller = new ShipmentController(query, dispatch, cancellation, notification, orders);
   });
 
   describe('list', () => {
@@ -225,10 +231,23 @@ describe('ShipmentController', () => {
       );
     });
 
-    it('should map a provider failure to 502', async () => {
-      dispatch.dispatch.mockRejectedValue(new Error('paczkomat unavailable'));
+    it('should map ShippingProviderRejectionException to 502', async () => {
+      dispatch.dispatch.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', 'PARCEL_TOO_LARGE', 'parcel exceeds size'),
+      );
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
         BadGatewayException,
+      );
+    });
+
+    it('should map an unclassified Error to 500', async () => {
+      // Until adapters opt in to ShippingProviderRejectionException, untyped
+      // errors fall through to 500 — correct for "we don't know what this is"
+      // (DB drop, programming bug, missing config). The controller logs them
+      // with stack so triage doesn't lose information.
+      dispatch.dispatch.mockRejectedValue(new Error('something broke'));
+      await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
+        InternalServerErrorException,
       );
     });
   });
@@ -258,6 +277,59 @@ describe('ShipmentController', () => {
       );
       await expect(controller.cancel('ol_shipment_1')).rejects.toBeInstanceOf(
         UnprocessableEntityException,
+      );
+    });
+  });
+
+  describe('notifyDispatched (#769)', () => {
+    it('should delegate to the notification service and return the result DTO on the notified path', async () => {
+      notification.notifyDispatched.mockResolvedValue({
+        shipmentId: 'ol_shipment_1',
+        outcome: 'notified',
+        source: 'ok',
+        destinations: [
+          { connectionId: 'conn-ps', status: 'ok' },
+          { connectionId: 'conn-ps-2', status: 'failed' },
+        ],
+      });
+
+      const response = await controller.notifyDispatched('ol_shipment_1');
+
+      expect(notification.notifyDispatched).toHaveBeenCalledWith({ shipmentId: 'ol_shipment_1' });
+      expect(response.shipmentId).toBe('ol_shipment_1');
+      expect(response.outcome).toBe('notified');
+      expect(response.source).toBe('ok');
+      expect(response.destinations).toEqual([
+        { connectionId: 'conn-ps', status: 'ok' },
+        { connectionId: 'conn-ps-2', status: 'failed' },
+      ]);
+    });
+
+    it('should pass-through skipped-not-generated as a 200 (idempotent no-op, not an error)', async () => {
+      notification.notifyDispatched.mockResolvedValue({
+        shipmentId: 'ol_shipment_2',
+        outcome: 'skipped-not-generated',
+        source: 'absent',
+        destinations: [],
+      });
+
+      const response = await controller.notifyDispatched('ol_shipment_2');
+
+      expect(response.outcome).toBe('skipped-not-generated');
+      expect(response.source).toBe('absent');
+      expect(response.destinations).toEqual([]);
+    });
+
+    it('should map shipment-not-found to a 404 NotFoundException', async () => {
+      notification.notifyDispatched.mockResolvedValue({
+        shipmentId: 'missing',
+        outcome: 'shipment-not-found',
+        source: 'absent',
+        destinations: [],
+      });
+
+      await expect(controller.notifyDispatched('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
       );
     });
   });
