@@ -51,6 +51,7 @@ import {
   ShipmentStatusSyncTestStubs,
   STATUS_SYNC_CARRIER_ADAPTER_KEY,
   STATUS_SYNC_DEST_ADAPTER_KEY,
+  STATUS_SYNC_SOURCE_ADAPTER_KEY,
   installShipmentStatusSyncTestStubs,
 } from './helpers/shipment-status-sync-test-stubs.helper';
 import { getTestHarness, IntegrationTestHarness, resetTestHarness, teardownTestHarness } from './setup';
@@ -85,7 +86,7 @@ describe('Shipment Status Sync Integration (#838)', () => {
     stubs.dest.calls.length = 0;
     stubs.carrier.providerShipmentIds.length = 0;
     stubs.carrier.setNextSnapshot({ status: 'generated', providerStatus: 'pending' });
-    stubs.dest.setNextOutcome('ok');
+    // Outcome queue drains naturally; left empty here so each test stages what it needs.
   });
 
   afterEach(async () => {
@@ -120,16 +121,14 @@ describe('Shipment Status Sync Integration (#838)', () => {
     options: { advanceToDispatched?: boolean } = {},
   ): Promise<{ carrierConnectionId: string; destConnectionId: string; shipmentId: string }> {
     const dataSource = harness.getDataSource();
+    // Source connection — distinct adapter declaring `OrderSource` only.
+    // #838 never touches it, but the routing-rule + OrderRecord seam needs a
+    // source connection on the same platformType as the upstream marketplace.
     const source = await createTestConnection(dataSource, {
       platformType: 'allegro',
       name: 'Allegro source',
-      // The source isn't exercised by #838 — but the routing-rule keying needs
-      // a source connection to scope on. Reuse the carrier stub's allegro
-      // adapter-key here just to satisfy the adapter-registry lookup; this
-      // record never has #837 stubs attached, so any source-side resolution
-      // would surface clearly as a failure.
-      adapterKey: STATUS_SYNC_CARRIER_ADAPTER_KEY,
-      enabledCapabilities: ['ShippingProviderManager'],
+      adapterKey: STATUS_SYNC_SOURCE_ADAPTER_KEY,
+      enabledCapabilities: ['OrderSource'],
     });
     const dest = await createTestConnection(dataSource, {
       platformType: 'prestashop',
@@ -241,7 +240,7 @@ describe('Shipment Status Sync Integration (#838)', () => {
       providerStatus: 'waybill-assigned',
       trackingNumber: 'WOULD-LOSE-1',
     });
-    stubs.dest.setNextOutcome({ throw: new Error('PS unreachable') });
+    stubs.dest.enqueueOutcomes([{ throw: new Error('PS unreachable') }]);
 
     const result = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
 

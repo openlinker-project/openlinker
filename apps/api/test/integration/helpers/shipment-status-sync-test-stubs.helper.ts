@@ -30,8 +30,11 @@ import {
   AdapterRegistryPort,
 } from '@openlinker/core/integrations';
 import type {
+  OrderFeedInput,
+  OrderFeedOutput,
   OrderFulfillmentUpdater,
   OrderProcessorManagerPort,
+  OrderSourcePort,
   OrderStatus,
 } from '@openlinker/core/orders';
 import type {
@@ -47,12 +50,24 @@ export const STATUS_SYNC_CARRIER_ADAPTER_KEY = 'allegro.delivery.statussync.test
 export const STATUS_SYNC_CARRIER_PLATFORM_TYPE = 'allegro';
 export const STATUS_SYNC_DEST_ADAPTER_KEY = 'prestashop.fulfillmentupdate.statussync.test.v1';
 export const STATUS_SYNC_DEST_PLATFORM_TYPE = 'prestashop';
+/**
+ * No-op source adapter — declares `OrderSource` so the seed's source
+ * connection has a valid adapterKey, but its methods reject if invoked.
+ * #838 itself never touches the source, but the routing-rule + OrderRecord
+ * machinery requires a non-null source connection on the same `platformType`
+ * as the upstream marketplace; this stub lets us seed that without polluting
+ * the carrier or destination stubs with an unrelated capability.
+ */
+export const STATUS_SYNC_SOURCE_ADAPTER_KEY = 'allegro.source.statussync.test.v1';
+export const STATUS_SYNC_SOURCE_PLATFORM_TYPE = 'allegro';
 
 export interface DestFulfillmentCall {
   externalOrderId: string;
   status: OrderStatus;
   trackingNumber?: string;
 }
+
+export type DestFulfillmentOutcome = 'ok' | { throw: Error };
 
 export interface ShipmentStatusSyncTestStubs {
   readonly carrier: {
@@ -66,8 +81,13 @@ export interface ShipmentStatusSyncTestStubs {
   readonly dest: {
     readonly adapterKey: string;
     readonly platformType: string;
-    /** Override the next `updateFulfillment` call's behaviour (resolve / reject). */
-    setNextOutcome(outcome: 'ok' | { throw: Error }): void;
+    /**
+     * Push a FIFO queue of outcomes the next `updateFulfillment` calls will
+     * realise (oldest first). When the queue is drained the stub falls back to
+     * `'ok'`. Use `enqueueOutcomes(['ok', { throw: new Error('boom') }])` to
+     * stage multi-destination orderings.
+     */
+    enqueueOutcomes(outcomes: readonly DestFulfillmentOutcome[]): void;
     readonly calls: DestFulfillmentCall[];
   };
 }
@@ -105,9 +125,9 @@ export function installShipmentStatusSyncTestStubs(
     },
   };
 
-  // Destination — capability B (records calls + supports a one-shot throw).
+  // Destination — capability B (records calls + drains a FIFO outcome queue).
   const destCalls: DestFulfillmentCall[] = [];
-  let nextDestOutcome: 'ok' | { throw: Error } = 'ok';
+  const destOutcomeQueue: DestFulfillmentOutcome[] = [];
 
   const destStub: OrderProcessorManagerPort & OrderFulfillmentUpdater = {
     createOrder(): Promise<never> {
@@ -115,12 +135,23 @@ export function installShipmentStatusSyncTestStubs(
     },
     updateFulfillment(input): Promise<void> {
       destCalls.push({ ...input });
-      const outcome = nextDestOutcome;
-      nextDestOutcome = 'ok';
+      const outcome: DestFulfillmentOutcome = destOutcomeQueue.shift() ?? 'ok';
       if (typeof outcome === 'object' && outcome !== null && 'throw' in outcome) {
         return Promise.reject(outcome.throw);
       }
       return Promise.resolve();
+    },
+  };
+
+  // Source — declares OrderSource only so the seed's source connection has a
+  // valid adapterKey. The shipment-status-sync flow never reaches it; methods
+  // reject defensively in case they ever do.
+  const sourceStub: OrderSourcePort = {
+    listOrderFeed(_input: OrderFeedInput): Promise<OrderFeedOutput> {
+      return Promise.reject(new Error('status-sync stub: listOrderFeed is not exercised'));
+    },
+    getOrder(): Promise<never> {
+      return Promise.reject(new Error('status-sync stub: getOrder is not exercised'));
     },
   };
 
@@ -140,12 +171,23 @@ export function installShipmentStatusSyncTestStubs(
     version: '0.0.0-test',
     isDefault: false,
   });
+  adapterRegistry.register({
+    adapterKey: STATUS_SYNC_SOURCE_ADAPTER_KEY,
+    platformType: STATUS_SYNC_SOURCE_PLATFORM_TYPE,
+    supportedCapabilities: ['OrderSource'],
+    displayName: 'Allegro status-sync source (integration-test stub)',
+    version: '0.0.0-test',
+    isDefault: false,
+  });
 
   factoryResolver.registerFactory(STATUS_SYNC_CARRIER_ADAPTER_KEY, {
     createCapabilityAdapter: <T>(): Promise<T> => Promise.resolve(carrierStub as unknown as T),
   });
   factoryResolver.registerFactory(STATUS_SYNC_DEST_ADAPTER_KEY, {
     createCapabilityAdapter: <T>(): Promise<T> => Promise.resolve(destStub as unknown as T),
+  });
+  factoryResolver.registerFactory(STATUS_SYNC_SOURCE_ADAPTER_KEY, {
+    createCapabilityAdapter: <T>(): Promise<T> => Promise.resolve(sourceStub as unknown as T),
   });
 
   return {
@@ -160,8 +202,8 @@ export function installShipmentStatusSyncTestStubs(
     dest: {
       adapterKey: STATUS_SYNC_DEST_ADAPTER_KEY,
       platformType: STATUS_SYNC_DEST_PLATFORM_TYPE,
-      setNextOutcome(outcome: 'ok' | { throw: Error }): void {
-        nextDestOutcome = outcome;
+      enqueueOutcomes(outcomes: readonly DestFulfillmentOutcome[]): void {
+        destOutcomeQueue.push(...outcomes);
       },
       calls: destCalls,
     },

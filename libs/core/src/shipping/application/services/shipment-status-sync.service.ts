@@ -35,7 +35,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
-  IIntegrationsService,
+  type IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import {
@@ -117,7 +117,7 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     let propagated = 0;
     let failed = 0;
 
-    let carrierAdapter: (ShippingProviderManagerPort & object) | null = null;
+    let carrierAdapter: ShippingProviderManagerPort | null = null;
 
     for (const shipment of page.items) {
       if (!shipment.providerShipmentId) {
@@ -270,9 +270,17 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
           trackingNumber,
         });
       } catch (error) {
+        // Push-first workaround means we deliberately don't propagate this up
+        // to the worker — the poll job stays `succeeded` and the next tick
+        // retries the diff. Without that propagation, this log line is the
+        // only observable signal of an OMP outage, so log at `error` level
+        // (with stack) for triage visibility. Under #861, per-destination
+        // notify-state becomes the durable failure record and we can drop
+        // back to `warn` cadence here.
         allOk = false;
-        this.logger.warn(
+        this.logger.error(
           `OMP push failed for shipment ${shipment.id} dest ${entry.destinationConnectionId}: ${this.message(error)}`,
+          error instanceof Error ? error.stack : undefined,
         );
       }
     }

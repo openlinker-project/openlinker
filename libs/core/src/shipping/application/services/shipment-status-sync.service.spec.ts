@@ -21,15 +21,15 @@ const PS1 = 'conn-ps-1';
 const PS2 = 'conn-ps-2';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
-  // `?? 'prov-abc'` would mask an explicit `null` (the null-providerId test
-  // case needs to set this exact value). Use `'key' in overrides` instead.
+  // `?? 'prov-abc'` would mask an explicit `null`, but `=== undefined` keeps
+  // null pass-through clean without a non-null assertion.
   return new Shipment(
     overrides.id ?? 'ol_shipment_1',
     overrides.orderId ?? 'ol_order_1',
     overrides.connectionId ?? CARRIER,
     overrides.shippingMethod ?? 'paczkomat',
     overrides.status ?? 'dispatched',
-    'providerShipmentId' in overrides ? overrides.providerShipmentId! : 'prov-abc',
+    overrides.providerShipmentId === undefined ? 'prov-abc' : overrides.providerShipmentId,
     overrides.paczkomatId ?? null,
     overrides.trackingNumber ?? null,
     overrides.labelPdfRef ?? null,

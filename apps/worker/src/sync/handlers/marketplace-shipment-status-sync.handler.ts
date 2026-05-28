@@ -33,6 +33,15 @@ import { Logger } from '@openlinker/shared/logging';
 type SyncJob = SyncJobEntity;
 
 const DEFAULT_LIMIT = 50;
+/**
+ * Carrier-specific default for the unlikely case a job lands without an explicit
+ * `cursorKey` in its payload (the Allegro scheduler task always supplies one;
+ * this default fires only for hand-enqueued jobs). Mirrors `MarketplaceOfferStatusSync
+ * Handler`'s `allegro.offerStatus.scanOffset` default — the handler is
+ * carrier-generic, but the only carrier shipping today is Allegro Delivery.
+ * When a second carrier (e.g. InPost) adopts this job, parameterize the default
+ * by reading `connection.platformType` rather than hard-coding here.
+ */
 const DEFAULT_CURSOR_KEY = 'allegro.shipmentStatus.scanOffset';
 
 @Injectable()
