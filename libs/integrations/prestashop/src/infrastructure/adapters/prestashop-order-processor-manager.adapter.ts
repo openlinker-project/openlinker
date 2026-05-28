@@ -20,6 +20,15 @@ import type {
   OrderStatus,
   MappingOption,
 } from '@openlinker/core/orders';
+import type {
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
+} from '@openlinker/core/orders';
+import {
+  extractTrackingFromCarriers,
+  extractTrackingFromOrder,
+  mapToFulfillmentStatusSnapshot,
+} from '../mappers/prestashop-fulfillment-status.mapper';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { MappingAlreadyExistsError, DuplicateIdentifierMappingError, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
@@ -66,9 +75,33 @@ interface PrestashopCarrierRow {
  * Handles order creation in PrestaShop via WebService API.
  */
 export class PrestashopOrderProcessorManagerAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderFulfillmentUpdater
+  implements
+    OrderProcessorManagerPort,
+    DestinationOptionsReader,
+    OrderFulfillmentUpdater,
+    FulfillmentStatusReader
 {
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
+
+  /**
+   * Per-instance lazy cache of `GET /api/order_states` rows keyed by id —
+   * used by `getFulfillmentStatus` to look up the order's current state
+   * row by `current_state` (#834). One PS WS list call per adapter
+   * instance.
+   *
+   * Lifetime contract (verified against
+   * `libs/core/src/integrations/application/services/integrations.service.ts`):
+   * `IntegrationsService.getCapabilityAdapter` constructs a fresh adapter
+   * via the factory resolver on every call — no instance cache. The
+   * branch-1 sync service (#834) resolves this adapter once per page and
+   * reuses it for every record in the page, so this cache amortises one
+   * `order_states` WS call across the whole page and is discarded when
+   * the sync invocation returns. If a future refactor of
+   * `getCapabilityAdapter` introduces adapter-instance caching across
+   * ticks, revisit this cache — operator-added PS states would persist
+   * stale here.
+   */
+  private orderStatesById: Map<string, PrestashopOrderState> | null = null;
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -661,6 +694,81 @@ export class PrestashopOrderProcessorManagerAdapter
         this.connection.id
       );
     }
+  }
+
+  /**
+   * Branch-1 (#834) `FulfillmentStatusReader` implementation. Reads the PS
+   * order, looks up the matching `order_state` row via a per-instance lazy
+   * cache (one WS list call per adapter instance), reads the order's
+   * `order_carriers` for tracking fallback, and delegates to the pure
+   * mapper.
+   *
+   * Returns `{ status: null, ... }` when PS hasn't reached a shipping-
+   * related state (the projection-only "skip this record this pass"
+   * signal). Returns `{ status: 'delivered' | 'dispatched' | 'cancelled', ... }`
+   * once PS has acted, with tracking number and (for delivered) the
+   * `date_upd` timestamp threaded through.
+   */
+  async getFulfillmentStatus(input: {
+    externalOrderId: string;
+  }): Promise<FulfillmentStatusSnapshot> {
+    const { externalOrderId } = input;
+    try {
+      const order = await this.httpClient.getResource<PrestashopOrder>(
+        'orders',
+        externalOrderId,
+      );
+      const stateId = order.current_state !== undefined ? String(order.current_state) : null;
+      const state = stateId !== null ? await this.lookupOrderState(stateId) : null;
+      // Lazy carriers fetch: most PS configurations populate `shipping_number`
+      // directly on the order when the operator prints the label, so the
+      // carriers WS call is unnecessary for the majority of records. Skip
+      // it whenever we already have a value — halves PS API pressure at
+      // scale without changing observable behaviour.
+      const trackingFromOrder = extractTrackingFromOrder(order);
+      const trackingNumber =
+        trackingFromOrder ?? extractTrackingFromCarriers(
+          await this.httpClient.listResources<PrestashopOrderCarrier>('order_carriers', {
+            custom: { id_order: externalOrderId },
+          }),
+        );
+      return mapToFulfillmentStatusSnapshot(order, state, trackingNumber);
+    } catch (error) {
+      if (error instanceof PrestashopResourceNotFoundException) {
+        // Order was deleted PS-side after OL mirrored it. Treat as
+        // "OMP hasn't acted" — the sync service skips, the row stays
+        // visible in /orders, and operator action surfaces the missing
+        // order through the dispatch-notify failure path (#871) if any
+        // branch-2/3 sibling exists.
+        this.logger.warn(
+          `PrestaShop order ${externalOrderId} not found during fulfillment-status read (connection: ${this.connection.id})`,
+        );
+        return { status: null, trackingNumber: null, deliveredAt: null };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Look up an `order_state` row by id, lazy-loading the full map on first
+   * call. Returns `null` for unknown ids (orphaned `current_state` — treat
+   * as "not yet acted" per the mapper's `state === null` branch).
+   */
+  private async lookupOrderState(stateId: string): Promise<PrestashopOrderState | null> {
+    if (this.orderStatesById === null) {
+      const rows = await this.httpClient.listResources<PrestashopOrderState>(
+        'order_states',
+        { custom: { deleted: '0' } },
+        1000,
+        0,
+      );
+      const map = new Map<string, PrestashopOrderState>();
+      for (const row of rows) {
+        map.set(String(row.id), row);
+      }
+      this.orderStatesById = map;
+    }
+    return this.orderStatesById.get(stateId) ?? null;
   }
 
   /**
