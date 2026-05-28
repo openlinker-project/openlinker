@@ -46,6 +46,15 @@ export interface Shipment {
   providerShipmentId: string | null;
   paczkomatId: string | null;
   trackingNumber: string | null;
+  /**
+   * Actual carrier-of-record (#769) — distinct from the dispatcher
+   * (`connectionId.platformType`). Lowercase-kebab canonical form (see
+   * `KNOWN_CARRIER_VALUES`). Drives the public-tracker URL composition in
+   * `lib/carrier-tracking-url.ts`. Null until the carrier resolves
+   * asynchronously (Allegro Delivery) or always populated synchronously
+   * (`'inpost'` for own-contract InPost).
+   */
+  carrier: string | null;
   labelPdfRef: string | null;
   dispatchedAt: string | null;
   deliveredAt: string | null;
@@ -54,6 +63,77 @@ export interface Shipment {
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Known carrier-of-record vocabulary (#769) — mirrors `KnownCarrierValues` in
+ * `libs/core/src/shipping/domain/types/tracking-snapshot.types.ts`. Kept in
+ * sync manually under the FE-001 hand-written-contract strategy. The
+ * `carrier-tracking-url.ts` helper's unit test loops over this array, so
+ * adding a known carrier here forces a URL-map update on the same PR.
+ *
+ * The wire shape accepts any string — plugin adapters can register new
+ * carriers without a core PR — but the FE static URL map only deep-links
+ * carriers in this list; unknown values render copy-text-only.
+ */
+export const KNOWN_CARRIER_VALUES = [
+  'inpost',
+  'dpd',
+  'dhl',
+  'orlen',
+  'allegro-one-box',
+  'allegro-one-punkt',
+  'allegro-one-kurier',
+  'poczta-polska',
+  'ups',
+  'packeta',
+] as const;
+export type KnownCarrier = (typeof KNOWN_CARRIER_VALUES)[number];
+
+/** `POST /shipments/generate-label` request body. Mirrors the BE
+ * `GenerateLabelDto` shape verbatim. */
+export interface GenerateLabelInput {
+  sourceConnectionId: string;
+  sourceDeliveryMethodId?: string | null;
+  orderId: string;
+  shippingMethod: ShippingMethod;
+  paczkomatId?: string;
+  recipient: {
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    phone: string;
+    address?: {
+      street: string;
+      buildingNumber: string;
+      city: string;
+      postCode: string;
+      countryCode: string;
+    };
+  };
+  parcel: {
+    template?: string;
+    dimensions?: { length: number; width: number; height: number };
+    weightGrams?: number;
+  };
+}
+
+/** `POST /shipments/generate-label` response — mirrors `DispatchResultResponseDto`. */
+export interface DispatchResult {
+  kind: 'dispatched' | 'omp_fulfilled';
+  shipment?: Shipment;
+}
+
+/** `POST /shipments/:id/notify-dispatched` response (#769). */
+export interface NotifyDispatchedResult {
+  shipmentId: string;
+  outcome: 'notified' | 'skipped-not-generated';
+  source: 'ok' | 'failed' | 'absent';
+  destinations: ReadonlyArray<{
+    connectionId: string;
+    status: 'ok' | 'failed' | 'unsupported';
+  }>;
 }
 
 export interface ShipmentFilters {
