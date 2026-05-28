@@ -43,6 +43,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     new Date(),
     new Date(),
     overrides.sourceDeliveryMethodId ?? null,
+    overrides.carrier ?? null,
   );
 }
 

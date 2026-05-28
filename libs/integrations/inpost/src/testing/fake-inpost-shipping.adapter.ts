@@ -70,10 +70,10 @@ export class FakeInpostShippingAdapter
 
   getTracking(input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
     if (this.cancelled.has(input.providerShipmentId)) {
-      return Promise.resolve({ status: 'cancelled', providerStatus: 'canceled' });
+      return Promise.resolve({ status: 'cancelled', providerStatus: 'canceled', carrier: 'inpost' });
     }
     const status = this.statusByShipmentId.get(input.providerShipmentId) ?? 'generated';
-    return Promise.resolve({ status, providerStatus: status });
+    return Promise.resolve({ status, providerStatus: status, carrier: 'inpost' });
   }
 
   cancelShipment(input: { providerShipmentId: string }): Promise<void> {

@@ -13,6 +13,16 @@ export type {
   ShipmentStatus,
   ShippingMethod,
   PaginatedShipments,
+  DispatchResult,
+  GenerateLabelInput,
+  NotifyDispatchedResult,
+  KnownCarrier,
 } from './api/shipments.types';
+export { KNOWN_CARRIER_VALUES } from './api/shipments.types';
 export { useShipmentsQuery } from './hooks/use-shipments-query';
+export { useOrderShipmentsQuery } from './hooks/use-order-shipments-query';
+export { useGenerateLabelMutation } from './hooks/use-generate-label-mutation';
+export { useCancelShipmentMutation } from './hooks/use-cancel-shipment-mutation';
+export { useNotifyDispatchedMutation } from './hooks/use-notify-dispatched-mutation';
 export { ShipmentStatusBadge } from './components/shipment-status-badge';
+export { buildCarrierTrackingUrl, getCarrierDisplayName } from './lib/carrier-tracking-url';
