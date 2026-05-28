@@ -30,6 +30,19 @@ export interface PrestashopQueryFilters {
  *
  * HTTP client for PrestaShop WebService API operations.
  */
+/**
+ * Optional control flags for a PrestaShop WebService write (POST/PUT).
+ *
+ * `sendEmail` maps to the `?sendmail=1` *query* param PrestaShop reads to fire
+ * the order-state customer email on an `order_histories` write (#858). It is a
+ * PS-WS-protocol concern, so the client owns the wire mapping; callers express
+ * intent (`{ sendEmail: true }`). Opt-in per call — never a client default —
+ * so non-order writes (carts, customers, …) never email.
+ */
+export interface PrestashopWriteOptions {
+  sendEmail?: boolean;
+}
+
 export interface IPrestashopWebserviceClient {
   /**
    * Get a single resource by ID
@@ -70,7 +83,11 @@ export interface IPrestashopWebserviceClient {
    * @throws PrestashopAuthenticationException if authentication fails
    * @throws PrestashopApiException for other API errors
    */
-  createResource<T = unknown>(resource: string, data: Record<string, unknown>): Promise<T>;
+  createResource<T = unknown>(
+    resource: string,
+    data: Record<string, unknown>,
+    options?: PrestashopWriteOptions,
+  ): Promise<T>;
 
   /**
    * Update an existing resource (PUT).
@@ -93,6 +110,7 @@ export interface IPrestashopWebserviceClient {
     resource: string,
     id: string | number,
     data: Record<string, unknown>,
+    options?: PrestashopWriteOptions,
   ): Promise<T>;
 }
 

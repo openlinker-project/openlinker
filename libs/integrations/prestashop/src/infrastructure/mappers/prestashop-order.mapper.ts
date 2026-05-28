@@ -14,7 +14,7 @@ import type {
   PrestashopOrderRow,
 } from './prestashop.mapper.interface';
 import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
-import type { OrderCreate } from '@openlinker/core/orders';
+import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -172,7 +172,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     // Map order status to PrestaShop status ID
     // PrestaShop uses numeric status IDs. For MVP, we'll use common defaults:
     // 1 = pending, 2 = payment accepted, 3 = preparation in progress, etc.
-    const statusId = this.mapOrderStatusToPrestashop(orderCreate.status);
+    const statusId = this.mapStatusToPrestashopStateId(orderCreate.status);
 
     // Map order rows (line items)
     const orderRows = orderCreate.items.map((item, index) => {
@@ -409,15 +409,21 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   }
 
   /**
-   * Map OpenLinker order status to PrestaShop status ID
+   * Map OpenLinker `OrderStatus` to a PrestaShop order-state id.
    *
-   * PrestaShop uses numeric status IDs. This maps common OpenLinker statuses
-   * to PrestaShop defaults. In production, status IDs should be configurable
-   * or fetched from PrestaShop.
+   * **Assumes a default PrestaShop install** (state ids 1/2/4/5/6/7). Merchants
+   * who customize the order-state catalogue (rename/reorder/add states) would
+   * need a per-connection override — the resolution-chain follow-up tracked in
+   * #862. This is the fallback tier of that chain.
+   *
+   * The switch is **compile-time exhaustive over `OrderStatus`**: adding a new
+   * status to the union without mapping it here is a type error (the `never`
+   * guard), not a silent default-to-pending — which on the `updateFulfillment`
+   * projection path (with `sendmail`) would otherwise mis-transition + mis-email.
    */
-  private mapOrderStatusToPrestashop(status: string): number {
-    // Common PrestaShop order status IDs (default installation)
-    switch (status.toLowerCase()) {
+  mapStatusToPrestashopStateId(status: OrderStatus): number {
+    // Default-install PrestaShop order-state ids.
+    switch (status) {
       case 'pending':
         return 1; // Awaiting check payment
       case 'processing':
@@ -430,8 +436,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         return 6; // Canceled
       case 'refunded':
         return 7; // Refunded
-      default:
-        return 1; // Default to pending
+      default: {
+        const _exhaustive: never = status;
+        throw new Error(
+          `Unmapped OrderStatus → PrestaShop state id: ${String(_exhaustive)} (update the mapper / #862)`
+        );
+      }
     }
   }
 

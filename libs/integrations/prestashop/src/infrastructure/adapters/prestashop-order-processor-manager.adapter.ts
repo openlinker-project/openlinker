@@ -14,7 +14,12 @@
  * @implements {OrderProcessorManagerPort}
  */
 import type { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
-import type { DestinationOptionsReader, MappingOption } from '@openlinker/core/orders';
+import type {
+  DestinationOptionsReader,
+  OrderFulfillmentUpdater,
+  OrderStatus,
+  MappingOption,
+} from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { MappingAlreadyExistsError, DuplicateIdentifierMappingError, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
@@ -23,6 +28,7 @@ import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openl
 import type {
   IPrestashopOrderMapper,
   PrestashopOrder,
+  PrestashopOrderCarrier,
 } from '../mappers/prestashop.mapper.interface';
 import type {
   PrestashopCarrier,
@@ -60,7 +66,7 @@ interface PrestashopCarrierRow {
  * Handles order creation in PrestaShop via WebService API.
  */
 export class PrestashopOrderProcessorManagerAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader
+  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderFulfillmentUpdater
 {
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
 
@@ -571,6 +577,129 @@ export class PrestashopOrderProcessorManagerAdapter
         undefined
       );
     }
+  }
+
+  /**
+   * Update an already-created PrestaShop order's status + tracking (#858,
+   * capability `OrderFulfillmentUpdater`). Drives the destination half of the
+   * #837 mark-sent orchestration; `externalOrderId` is the PS order id,
+   * resolved upstream from the order's `syncStatus`.
+   *
+   * **Idempotent desired-state projector, not a state machine.** It projects the
+   * supplied status onto the order; it does NOT enforce PS lifecycle ordering —
+   * monotonicity/legality is the domain's concern (see #861/#827). Safe to
+   * re-apply: the state transition is skipped when already in the target state,
+   * and the tracking write is skipped when unchanged.
+   *
+   * **Ordering — tracking first, state last.** The single irreversible
+   * side-effect is the buyer email, fired by `POST /order_histories` +
+   * `sendmail=1` (the PS-intended primitive; never a `current_state`
+   * full-replace, which skips side-effects). Tracking is written on the
+   * `order_carriers` association *before* the transition so the "shipped" email
+   * renders the tracking link, and so any failure before the email leaves a
+   * clean, forward-recoverable state (no tracking-less email ever sent).
+   *
+   * **Non-atomic + forward-recoverable.** The two WS writes aren't transactional
+   * (PS has no cross-request transaction). On partial failure we throw (surfaces
+   * as a per-destination failure in the orchestration) and do NOT compensate —
+   * the partial state is benign and converges on idempotent re-invocation. The
+   * convergence guarantee (re-drive until reflected) belongs to the notify-state
+   * layer (#861), not this adapter.
+   */
+  async updateFulfillment(input: {
+    externalOrderId: string;
+    status: OrderStatus;
+    trackingNumber?: string;
+  }): Promise<void> {
+    const { externalOrderId, status, trackingNumber } = input;
+    try {
+      const order = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
+      const targetStateId = this.orderMapper.mapStatusToPrestashopStateId(status);
+
+      // B. Tracking FIRST (when supplied) — so the state-email below renders the
+      //    tracking link, and a failure here aborts before the irreversible email.
+      if (trackingNumber) {
+        await this.writeTracking(externalOrderId, trackingNumber);
+      }
+
+      // A. State transition LAST — the single irreversible side-effect.
+      //    `sendmail: true` → `?sendmail=1` fires PS's order-state customer email.
+      //    Skipped when already in the target state → idempotent (no duplicate
+      //    "shipped" email on re-notify).
+      if (Number(order.current_state) !== targetStateId) {
+        await this.httpClient.createResource(
+          'order_histories',
+          { id_order: externalOrderId, id_order_state: targetStateId },
+          { sendEmail: true }
+        );
+        this.logger.log(
+          `PrestaShop order ${externalOrderId} → state ${targetStateId} (status='${status}') ` +
+            `via order_histories+sendmail (connection: ${this.connection.id})`
+        );
+      } else {
+        this.logger.debug(
+          `PrestaShop order ${externalOrderId} already in state ${targetStateId} — ` +
+            `skipping order_histories (connection: ${this.connection.id})`
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof PrestashopResourceNotFoundException ||
+        error instanceof PrestashopApiException
+      ) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to update PrestaShop order ${externalOrderId} fulfillment: ${message}`,
+        error
+      );
+      throw new PrestashopApiException(
+        `Failed to update PrestaShop order ${externalOrderId} fulfillment: ${message}`,
+        undefined,
+        undefined,
+        this.connection.id
+      );
+    }
+  }
+
+  /**
+   * Set `tracking_number` on the order's **current** `order_carriers` row — the
+   * highest `id_order_carrier` (PrestaShop's notion of the active carrier;
+   * re-ships append new rows, `Order::getIdOrderCarrier` reads `DESC`). The WS
+   * PUT is full-replace, so we read-then-write the whole row. Idempotent: skips
+   * when the value is already set.
+   *
+   * If no `order_carriers` row exists (anomalous — PS auto-creates one for any
+   * carried order), we warn and skip rather than fabricate a PS-managed row;
+   * the state transition still applies and the anomaly surfaces in logs.
+   */
+  private async writeTracking(externalOrderId: string, trackingNumber: string): Promise<void> {
+    const rows = await this.httpClient.listResources<PrestashopOrderCarrier>('order_carriers', {
+      custom: { id_order: externalOrderId },
+    });
+    if (rows.length === 0) {
+      this.logger.warn(
+        `PrestaShop order ${externalOrderId} has no order_carriers row — cannot attach ` +
+          `tracking '${trackingNumber}' (connection: ${this.connection.id})`
+      );
+      return;
+    }
+    // PS's "current" carrier is the highest id_order_carrier; WS list ordering is
+    // unspecified, so pick max-id explicitly rather than trusting rows[0].
+    const row = rows.reduce((latest, r) => (Number(r.id) > Number(latest.id) ? r : latest));
+
+    if (String(row.tracking_number ?? '') === trackingNumber) {
+      this.logger.debug(
+        `PrestaShop order ${externalOrderId} tracking already '${trackingNumber}' — ` +
+          `skipping order_carriers write (connection: ${this.connection.id})`
+      );
+      return;
+    }
+    await this.httpClient.updateResource('order_carriers', row.id, {
+      ...row,
+      tracking_number: trackingNumber,
+    });
   }
 
   /**

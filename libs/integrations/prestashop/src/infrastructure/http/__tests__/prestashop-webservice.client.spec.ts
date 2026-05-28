@@ -466,6 +466,46 @@ describe('PrestashopWebserviceClient', () => {
     });
   });
 
+  describe('write options — sendmail (#858)', () => {
+    const mockOk = (): void => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify({ prestashop: { order_history: { id: '77' } } })),
+      });
+    };
+    const lastUrl = (): string =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- test mock: dynamic spy
+      String((global.fetch as jest.Mock).mock.calls[0][0]);
+
+    it('should append ?sendmail=1 (and singularize order_histories) when sendEmail is true', async () => {
+      mockOk();
+
+      await client.createResource(
+        'order_histories',
+        { id_order: '999', id_order_state: 4 },
+        { sendEmail: true }
+      );
+
+      expect(lastUrl()).toBe('https://shop.example.com/api/order_histories?sendmail=1');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- test mock: dynamic spy
+      const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+      expect(init.method).toBe('POST');
+      // Irregular plural: order_histories → <order_history> envelope.
+      expect(init.body as string).toContain('<order_history>');
+    });
+
+    it('should NOT append sendmail when the option is absent (no always-append regression)', async () => {
+      mockOk();
+
+      await client.createResource('order_histories', { id_order: '999', id_order_state: 4 });
+
+      expect(lastUrl()).toBe('https://shop.example.com/api/order_histories');
+      expect(lastUrl()).not.toContain('sendmail');
+    });
+  });
+
   describe('retry logic', () => {
     it('should retry on server errors (5xx)', async () => {
       const mockResponse = {
