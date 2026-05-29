@@ -32,7 +32,7 @@ import type {
   ShipXPoint,
   ShipXShipment,
 } from '../../domain/types/inpost-shipx.types';
-import { InpostValidationException } from '../../domain/exceptions/inpost-validation.exception';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 
 /**
  * Full ShipX status → OpenLinker bucket table (verified against the ShipX
@@ -108,7 +108,11 @@ export function buildCreateShipmentRequest(
   if (cmd.shippingMethod === 'kurier') {
     return buildCourierRequest(cmd, sender);
   }
-  throw new InpostValidationException(`Unsupported shipping method: ${String(cmd.shippingMethod)}`);
+  throw new ShippingProviderRejectionException(
+    'inpost',
+    'preflight.unsupported-method',
+    `Unsupported shipping method: ${String(cmd.shippingMethod)}`,
+  );
 }
 
 /** Map a ShipX shipment (create response / shipment-by-id) to the port result. */
@@ -162,10 +166,16 @@ export function buildPointsQuery(
 
 function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipXCreateShipmentRequest {
   if (!cmd.paczkomatId) {
-    throw new InpostValidationException('paczkomatId is required for a paczkomat shipment');
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-paczkomat-id',
+      'paczkomatId is required for a paczkomat shipment',
+    );
   }
   if (!cmd.parcel.template) {
-    throw new InpostValidationException(
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-parcel-template',
       'parcel.template (locker size) is required for a paczkomat shipment',
     );
   }
@@ -181,11 +191,17 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
 
 function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipXCreateShipmentRequest {
   if (!cmd.recipient.address) {
-    throw new InpostValidationException('recipient.address is required for a courier shipment');
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-recipient-address',
+      'recipient.address is required for a courier shipment',
+    );
   }
   const { dimensions, weightGrams } = cmd.parcel;
   if (!dimensions || weightGrams === undefined) {
-    throw new InpostValidationException(
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-dimensions-or-weight',
       'parcel.dimensions and parcel.weightGrams are required for a courier shipment',
     );
   }

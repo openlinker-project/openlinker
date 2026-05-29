@@ -10,7 +10,7 @@ import type {
   ShipXLockerParcel,
   ShipXPoint,
 } from '../../../domain/types/inpost-shipx.types';
-import { InpostValidationException } from '../../../domain/exceptions/inpost-validation.exception';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import {
   buildCreateShipmentRequest,
   buildPointsQuery,
@@ -93,31 +93,62 @@ describe('inpost-shipx.mapper', () => {
       expect(request.receiver.address?.post_code).toBe('02-677');
     });
 
-    it('should throw InpostValidationException when paczkomat shipment lacks paczkomatId', () => {
-      expect(() => buildCreateShipmentRequest({ ...paczkomatCmd, paczkomatId: undefined }, config)).toThrow(
-        InpostValidationException,
-      );
+    it('should throw a typed rejection (preflight.missing-paczkomat-id) when paczkomat shipment lacks paczkomatId (#885)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest({ ...paczkomatCmd, paczkomatId: undefined }, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-paczkomat-id',
+        });
+      }
     });
 
-    it('should throw InpostValidationException when paczkomat shipment lacks a parcel template', () => {
-      expect(() =>
-        buildCreateShipmentRequest({ ...paczkomatCmd, parcel: {} }, config),
-      ).toThrow(InpostValidationException);
+    it('should throw a typed rejection (preflight.missing-parcel-template) when paczkomat shipment lacks a parcel template (#885)', () => {
+      const call = (): unknown => buildCreateShipmentRequest({ ...paczkomatCmd, parcel: {} }, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-parcel-template',
+        });
+      }
     });
 
-    it('should throw InpostValidationException when courier shipment lacks a recipient address', () => {
-      expect(() =>
+    it('should throw a typed rejection (preflight.missing-recipient-address) when courier shipment lacks a recipient address (#885)', () => {
+      const call = (): unknown =>
         buildCreateShipmentRequest(
           { ...courierCmd, recipient: { ...courierCmd.recipient, address: undefined } },
           config,
-        ),
-      ).toThrow(InpostValidationException);
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-recipient-address',
+        });
+      }
     });
 
-    it('should throw InpostValidationException when courier shipment lacks dimensions or weight', () => {
-      expect(() =>
-        buildCreateShipmentRequest({ ...courierCmd, parcel: { template: 'small' } }, config),
-      ).toThrow(InpostValidationException);
+    it('should throw a typed rejection (preflight.missing-dimensions-or-weight) when courier shipment lacks dimensions or weight (#885)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest({ ...courierCmd, parcel: { template: 'small' } }, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-dimensions-or-weight',
+        });
+      }
     });
   });
 
