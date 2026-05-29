@@ -36,8 +36,19 @@ import { AllegroAccountReader } from '../http/allegro-account-reader';
 import type { AllegroOAuthTokenResponse } from '../../domain/types/allegro-oauth.types';
 
 const ALLEGRO_OAUTH_TIMEOUT_MS = 10_000;
-const SANDBOX_API_BASE_URL = 'https://allegro.pl.allegrosandbox.pl';
-const PRODUCTION_API_BASE_URL = 'https://allegro.pl';
+
+// OAuth / authorize site host — serves both the /auth/oauth/authorize
+// browser-facing UI and the /auth/oauth/token endpoint. Allegro hosts both
+// on the same origin.
+const SANDBOX_OAUTH_BASE_URL = 'https://allegro.pl.allegrosandbox.pl';
+const PRODUCTION_OAUTH_BASE_URL = 'https://allegro.pl';
+
+// REST API host — serves /me and every other REST call. Distinct `api.`
+// subdomain from the OAuth/site host above. Mirrors the values that
+// `allegro-adapter.factory.ts` and `allegro-connection-tester.adapter.ts`
+// use for their own REST clients.
+const SANDBOX_REST_API_BASE_URL = 'https://api.allegro.pl.allegrosandbox.pl';
+const PRODUCTION_REST_API_BASE_URL = 'https://api.allegro.pl';
 
 export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
   private readonly logger = new Logger(AllegroOAuthCompletionAdapter.name);
@@ -45,8 +56,8 @@ export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
   constructor(private readonly accountReader: AllegroAccountReader = new AllegroAccountReader()) {}
 
   buildAuthorizationUrl(input: BuildAuthorizationUrlInput): string {
-    const apiBaseUrl = this.getApiBaseUrl(this.readEnvironment(input.config));
-    const authorizationUrl = new URL('/auth/oauth/authorize', apiBaseUrl);
+    const oauthBaseUrl = this.getOAuthBaseUrl(this.readEnvironment(input.config));
+    const authorizationUrl = new URL('/auth/oauth/authorize', oauthBaseUrl);
     authorizationUrl.searchParams.set('client_id', input.clientId);
     authorizationUrl.searchParams.set('response_type', 'code');
     authorizationUrl.searchParams.set('redirect_uri', input.redirectUri);
@@ -56,7 +67,7 @@ export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
 
   async exchangeCode(input: ExchangeCodeInput): Promise<OAuthCredentialBlob> {
     const environment = this.readEnvironment(input.config);
-    const tokenUrl = new URL('/auth/oauth/token', this.getApiBaseUrl(environment)).toString();
+    const tokenUrl = new URL('/auth/oauth/token', this.getOAuthBaseUrl(environment)).toString();
     const basic = Buffer.from(`${input.clientId}:${input.clientSecret}`).toString('base64');
 
     let response: Response;
@@ -134,8 +145,8 @@ export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
         '/me'
       );
     }
-    const baseUrl = this.getApiBaseUrl(this.readEnvironment(input.config));
-    const identity = await this.accountReader.fetchSellerIdentity(baseUrl, accessToken);
+    const restApiBaseUrl = this.getRestApiBaseUrl(this.readEnvironment(input.config));
+    const identity = await this.accountReader.fetchSellerIdentity(restApiBaseUrl, accessToken);
     return { accountId: identity.sellerId, label: identity.login };
   }
 
@@ -144,15 +155,37 @@ export class AllegroOAuthCompletionAdapter implements OAuthCompletionPort {
     return typeof environment === 'string' && environment.length > 0 ? environment : 'sandbox';
   }
 
-  private getApiBaseUrl(environment: string): string {
+  private getOAuthBaseUrl(environment: string): string {
     switch (environment) {
       case 'sandbox':
-        return SANDBOX_API_BASE_URL;
+        return SANDBOX_OAUTH_BASE_URL;
       case 'production':
-        return PRODUCTION_API_BASE_URL;
+        return PRODUCTION_OAUTH_BASE_URL;
       default:
         this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
-        return SANDBOX_API_BASE_URL;
+        return SANDBOX_OAUTH_BASE_URL;
+    }
+  }
+
+  /**
+   * REST API host for `/me` and any other REST call we need at OAuth
+   * completion. The unknown-environment default MUST match
+   * `getOAuthBaseUrl`'s default — if the two helpers diverge on the
+   * fallback environment, a connection would exchange its authorization
+   * code on one Allegro environment but try to verify the resulting
+   * token's identity against a different one, and the identity check
+   * would 401/403 in a way that looks like a credentials bug. Keep the
+   * two switch tables aligned.
+   */
+  private getRestApiBaseUrl(environment: string): string {
+    switch (environment) {
+      case 'sandbox':
+        return SANDBOX_REST_API_BASE_URL;
+      case 'production':
+        return PRODUCTION_REST_API_BASE_URL;
+      default:
+        this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
+        return SANDBOX_REST_API_BASE_URL;
     }
   }
 
