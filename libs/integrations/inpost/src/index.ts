@@ -12,9 +12,11 @@
 // Domain exceptions
 export { InpostConfigException } from './domain/exceptions/inpost-config.exception';
 export { InpostUnauthorizedException } from './domain/exceptions/inpost-unauthorized.exception';
-export { InpostValidationException } from './domain/exceptions/inpost-validation.exception';
-export { PaczkomatUnavailableException } from './domain/exceptions/paczkomat-unavailable.exception';
 export { InpostNetworkException } from './domain/exceptions/inpost-network.exception';
+// Validation / paczkomat-unavailable rejections now throw the shared
+// `ShippingProviderRejectionException` from `@openlinker/core/shipping`
+// (#885) — `providerName: 'inpost'`, `providerCode: 'target_point'` /
+// `'preflight.*'`, structured details on `providerDetails`.
 
 // Config + credentials types
 export { InpostEnvironmentValues } from './domain/types/inpost-config.types';
