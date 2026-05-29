@@ -42,7 +42,11 @@ import {
   type ParsedOrderSnapshot,
 } from '../api/order-snapshot.schema';
 import { ordersQueryKeys } from '../api/orders.query-keys';
-import { useGenerateLabelMutation, type GenerateLabelInput } from '../../shipments';
+import {
+  useGenerateLabelMutation,
+  useLabelPdfDownload,
+  type GenerateLabelInput,
+} from '../../shipments';
 import {
   generateLabelSchema,
   type GenerateLabelFormSubmission,
@@ -92,6 +96,7 @@ export function GenerateLabelForm({
   );
 
   const mutation = useGenerateLabelMutation();
+  const labelDownload = useLabelPdfDownload();
   const { showToast } = useToast();
 
   // AC-3 retry hint (#839) — when the order is Allegro-sourced + the
@@ -170,12 +175,21 @@ export function GenerateLabelForm({
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
     const input = buildGenerateLabelInput({ order, snapshot, values, shippingMethod });
     try {
-      await mutation.mutateAsync(input);
+      const result = await mutation.mutateAsync(input);
       showToast({
         tone: 'success',
         title: 'Label generated',
         description: 'Tracking number will appear within ~5 minutes.',
       });
+      // Auto-download the freshly-issued label (AC: "download triggered
+      // immediately after successful generation"). Imperative + guarded on the
+      // returned result so it fires exactly once per issuance — NOT a reactive
+      // effect, which would re-fire on the post-success query invalidation.
+      // Only the OL-managed-dispatch branch issues a label; the omp_fulfilled
+      // branch carries no shipment.
+      if (result.kind === 'dispatched' && result.shipment?.labelPdfRef) {
+        void labelDownload.download(result.shipment.id);
+      }
       form.reset();
       onSuccess();
     } catch {

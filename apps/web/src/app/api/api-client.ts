@@ -68,6 +68,14 @@ interface ApiClientConfig {
 export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 /**
+ * Binary-response variant of {@link ApiRequest}. Reuses the same auth-header
+ * injection + 401-refresh + timeout machinery as `request`, but reads the
+ * success response as a `Blob` (e.g. a label PDF) instead of JSON/text. Errors
+ * still normalize to `ApiError`.
+ */
+export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
+
+/**
  * Plugin-augmentable surface. Empty by default; each plugin extends it
  * via `declare module '../../app/api/api-client'` (see the allegro plugin
  * for the canonical pattern). The empty form is the documented TS shape
@@ -94,6 +102,7 @@ export interface CoreApiClient {
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
+  requestBlob: ApiBlobRequest;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   webhookDeliveries: WebhookDeliveriesApi;
@@ -204,6 +213,52 @@ export function createApiClient({
     }
   };
 
+  const requestBlob: ApiBlobRequest = async (path: string, init: RequestInit = {}): Promise<Blob> => {
+    const accessToken = await sessionAdapter.getAccessToken();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, requestTimeoutMs);
+    const signal = init.signal
+      ? AbortSignal.any([controller.signal, init.signal])
+      : controller.signal;
+
+    try {
+      let response = await fetchWith(path, init, accessToken, signal);
+
+      if (response.status === 401 && sessionAdapter.refresh) {
+        const fresh = await sessionAdapter.refresh();
+        if (fresh) {
+          response = await fetchWith(path, init, fresh, signal);
+        }
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        // Error bodies are JSON/text — reuse the shared normaliser so the
+        // caller sees the same `ApiError` shape as every other request.
+        const payload = await readResponseBody(response);
+        throw ApiError.fromResponse(response, payload);
+      }
+
+      return await response.blob();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw ApiError.fromTimeout(path);
+      }
+
+      throw ApiError.fromNetworkFailure(error);
+    }
+  };
+
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
@@ -220,7 +275,8 @@ export function createApiClient({
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
-    shipments: createShipmentsApi(request),
+    requestBlob,
+    shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

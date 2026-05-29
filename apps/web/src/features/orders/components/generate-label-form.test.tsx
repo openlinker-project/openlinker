@@ -6,7 +6,7 @@
  * Plus the happy-path render: with a complete snapshot, the form mounts
  * focused on the first input and the submit is enabled.
  */
-import { cleanup, screen, fireEvent } from '@testing-library/react';
+import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
@@ -160,6 +160,63 @@ describe('GenerateLabelForm — happy path', () => {
 
     // Resolve the mutation so the test doesn't leak the unresolved promise.
     resolveRef.current?.({ kind: 'dispatched', shipment: null });
+  });
+
+  it('should auto-download the label after a successful dispatched generation (#884)', async () => {
+    const downloadLabel = vi.fn().mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])]));
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockResolvedValue({
+          kind: 'dispatched',
+          shipment: { id: 'ol_shipment_99', labelPdfRef: 'shipx:label:99' },
+        }),
+        downloadLabel,
+      },
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(downloadLabel).toHaveBeenCalledWith('ol_shipment_99'));
+    expect(downloadLabel).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+
+  it('should NOT auto-download when generation resolves omp_fulfilled (no label)', async () => {
+    const downloadLabel = vi.fn();
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
+        downloadLabel,
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    // Wait for the success toast path to settle, then assert no download fired.
+    await waitFor(() => expect(apiClient.shipments.generateLabel).toHaveBeenCalled());
+    expect(downloadLabel).not.toHaveBeenCalled();
   });
 });
 

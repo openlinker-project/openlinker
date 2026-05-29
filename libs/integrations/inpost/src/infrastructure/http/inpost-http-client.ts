@@ -17,7 +17,11 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { ShipXErrorBody } from '../../domain/types/inpost-shipx.types';
 import { InpostUnauthorizedException } from '../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../domain/exceptions/inpost-network.exception';
-import type { IInpostHttpClient, InpostRequestOptions } from './inpost-http-client.interface';
+import type {
+  IInpostHttpClient,
+  InpostBinaryResponse,
+  InpostRequestOptions,
+} from './inpost-http-client.interface';
 
 interface RetryConfig {
   maxRetries: number;
@@ -64,12 +68,28 @@ export class InpostHttpClient implements IInpostHttpClient {
   }
 
   async request<T>(options: InpostRequestOptions): Promise<T> {
+    return this.withRetry(options, (opts) => this.executeOnce<T>(opts));
+  }
+
+  async requestBinary(options: InpostRequestOptions): Promise<InpostBinaryResponse> {
+    return this.withRetry(options, (opts) => this.executeBinaryOnce(opts));
+  }
+
+  /**
+   * Shared retry loop: runs `exec` up to `maxRetries + 1` times, retrying only
+   * on the internal `RetryableHttpError` marker (429 / 5xx / network), honoring
+   * `Retry-After`, and converting an exhausted budget to `InpostNetworkException`.
+   */
+  private async withRetry<R>(
+    options: InpostRequestOptions,
+    exec: (options: InpostRequestOptions) => Promise<R>,
+  ): Promise<R> {
     const requestId = randomUUID();
     let delay = this.retryConfig.initialDelayMs;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeOnce<T>(options);
+        return await exec(options);
       } catch (error) {
         if (!(error instanceof RetryableHttpError)) {
           throw error;
@@ -91,13 +111,45 @@ export class InpostHttpClient implements IInpostHttpClient {
   }
 
   private async executeOnce<T>(options: InpostRequestOptions): Promise<T> {
+    const response = await this.fetchOnce(options);
+
+    // Error handling runs FIRST (throws on !ok) so a binary call never feeds
+    // bytes to the error parser and a JSON call never parses an error body as data.
+    await this.throwIfNotOk(response, options);
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+    const text = await response.text();
+    if (!text) {
+      return undefined as T;
+    }
+    try {
+      const data: unknown = JSON.parse(text);
+      return data as T;
+    } catch (error) {
+      throw new InpostNetworkException('ShipX returned an unparseable response body', error);
+    }
+  }
+
+  private async executeBinaryOnce(options: InpostRequestOptions): Promise<InpostBinaryResponse> {
+    const response = await this.fetchOnce(options);
+    await this.throwIfNotOk(response, options);
+
+    const body = new Uint8Array(await response.arrayBuffer());
+    return {
+      body,
+      contentType: response.headers.get('content-type')?.toLowerCase() ?? '',
+    };
+  }
+
+  private async fetchOnce(options: InpostRequestOptions): Promise<Response> {
     const url = this.buildUrl(options.path, options.query);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    let response: Response;
     try {
-      response = await fetch(url, {
+      return await fetch(url, {
         method: options.method,
         headers: {
           Authorization: `Bearer ${this.apiToken}`,
@@ -112,21 +164,12 @@ export class InpostHttpClient implements IInpostHttpClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
 
+  /** Map a non-ok ShipX response to the right domain exception. No-op on ok. */
+  private async throwIfNotOk(response: Response, options: InpostRequestOptions): Promise<void> {
     if (response.ok) {
-      if (response.status === 204) {
-        return undefined as T;
-      }
-      const text = await response.text();
-      if (!text) {
-        return undefined as T;
-      }
-      try {
-        const data: unknown = JSON.parse(text);
-        return data as T;
-      } catch (error) {
-        throw new InpostNetworkException('ShipX returned an unparseable response body', error);
-      }
+      return;
     }
 
     const errorBody = await this.safeParseError(response);

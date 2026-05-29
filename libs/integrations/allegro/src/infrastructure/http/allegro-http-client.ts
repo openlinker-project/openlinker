@@ -16,6 +16,7 @@
  */
 import type {
   IAllegroHttpClient,
+  AllegroBinaryResponse,
   AllegroHttpRequestOptions,
   AllegroHttpResponse,
   AllegroMultipartPart,
@@ -138,6 +139,30 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     return this.request<T>('POST', path, body, contentType, options);
   }
 
+  async postExpectingBinary(
+    path: string,
+    body?: Record<string, unknown> | string,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+  ): Promise<AllegroBinaryResponse> {
+    // Reuse the full retry + token-refresh machinery; only the success-branch
+    // body reading differs (arrayBuffer, not JSON). The response carries the
+    // bytes as `data` and the content-type in `headers['content-type']`.
+    const response = await this.request<Uint8Array>(
+      'POST',
+      path,
+      body,
+      undefined,
+      options,
+      true
+    );
+    return {
+      data: response.data,
+      contentType: response.headers['content-type'] ?? '',
+      status: response.status,
+      headers: response.headers,
+    };
+  }
+
   /**
    * Make HTTP request with retry logic
    *
@@ -155,14 +180,15 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     path: string,
     body?: Record<string, unknown> | string | Uint8Array,
     binaryContentType?: string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    expectBinary = false
   ): Promise<AllegroHttpResponse<T>> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeRequest<T>(method, path, body, binaryContentType, options);
+        return await this.executeRequest<T>(method, path, body, binaryContentType, options, expectBinary);
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -237,7 +263,8 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     path: string,
     body?: Record<string, unknown> | string | Uint8Array,
     binaryContentType?: string,
-    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+    expectBinary = false
   ): Promise<AllegroHttpResponse<T>> {
     const startTime = Date.now();
     const traceId = randomUUID();
@@ -332,18 +359,33 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         `[${traceId}] Response: ${response.status} (${duration}ms) - ${method} ${url.pathname}`
       );
 
-      const responseBody = await response.text();
-
-      // Handle errors
+      // Error handling runs FIRST and always reads the body as text, so the
+      // Allegro JSON error envelope (`userMessage`, structured `errors[]`) is
+      // parsed by `handleError` on every failed call — including binary ones.
+      // Only a SUCCESS response is read as bytes. Never feed error bytes to a
+      // binary consumer or success JSON to the error parser.
       if (!response.ok) {
+        const errorBody = await response.text();
         await this.handleError(
           response.status,
-          responseBody,
+          errorBody,
           url.toString(),
           responseHeaders,
           traceId
         );
       }
+
+      // Success + binary expected: read raw bytes, skip JSON parsing entirely.
+      if (expectBinary) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return {
+          data: bytes as unknown as T,
+          status: response.status,
+          headers: responseHeaders,
+        };
+      }
+
+      const responseBody = await response.text();
 
       // Parse JSON response
       let data: T;

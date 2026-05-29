@@ -13,11 +13,13 @@ import { useState, type ReactElement } from 'react';
 import {
   useCancelShipmentMutation,
   useNotifyDispatchedMutation,
+  useLabelPdfDownload,
   type Shipment,
   type ShipmentStatus,
 } from '../../shipments';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { useToast } from '../../../shared/ui/toast-provider';
 import { getCarrierDisplayName } from '../../shipments';
 
 interface ShipmentActionButtonsProps {
@@ -38,6 +40,14 @@ const CAN_GENERATE: ReadonlySet<ShipmentStatus | 'none'> = new Set([
 
 const CAN_CANCEL: ReadonlySet<ShipmentStatus> = new Set(['generated']);
 const CAN_NOTIFY_DISPATCHED: ReadonlySet<ShipmentStatus> = new Set(['generated']);
+// A label document exists once the shipment is generated and stays retrievable
+// through the carrier-tracked lifecycle; cancelled/failed/draft have none.
+const CAN_DOWNLOAD_LABEL: ReadonlySet<ShipmentStatus> = new Set([
+  'generated',
+  'dispatched',
+  'in-transit',
+  'delivered',
+]);
 
 export function ShipmentActionButtons({
   shipment,
@@ -45,6 +55,8 @@ export function ShipmentActionButtons({
 }: ShipmentActionButtonsProps): ReactElement {
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
+  const labelDownload = useLabelPdfDownload();
+  const { showToast } = useToast();
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
@@ -69,6 +81,21 @@ export function ShipmentActionButtons({
   const canGenerate = CAN_GENERATE.has(status);
   const canCancel = shipment !== null && CAN_CANCEL.has(shipment.status);
   const canNotify = shipment !== null && CAN_NOTIFY_DISPATCHED.has(shipment.status);
+  // Label download needs both a retrievable lifecycle state AND a persisted
+  // label ref (the "a label was generated" marker).
+  const canDownloadLabel =
+    shipment !== null &&
+    shipment.labelPdfRef !== null &&
+    CAN_DOWNLOAD_LABEL.has(shipment.status);
+
+  const handleDownloadLabel = (): void => {
+    if (!shipment) return;
+    void labelDownload.download(shipment.id).then((ok) => {
+      if (!ok) {
+        showToast({ tone: 'error', description: 'Could not download the label. Try again.' });
+      }
+    });
+  };
 
   const carrierName = getCarrierDisplayName(shipment?.carrier ?? null) ?? 'the carrier';
 
@@ -101,6 +128,19 @@ export function ShipmentActionButtons({
           disabled={!canNotify || notifyMutation.isPending}
         >
           Mark dispatched
+        </Button>
+        <Button
+          tone="secondary"
+          className="button--sm"
+          onClick={handleDownloadLabel}
+          disabled={!canDownloadLabel || labelDownload.isDownloading}
+          aria-label={
+            canDownloadLabel
+              ? 'Download shipping label'
+              : 'Download label not available in this state'
+          }
+        >
+          {labelDownload.isDownloading ? 'Downloading…' : 'Download label'}
         </Button>
       </div>
 
