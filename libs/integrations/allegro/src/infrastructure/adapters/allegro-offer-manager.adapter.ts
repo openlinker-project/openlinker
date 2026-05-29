@@ -264,9 +264,9 @@ export class AllegroOfferManagerAdapter
     private readonly sellerDefaults?: AllegroSellerDefaultsConfig,
     /**
      * Storefront base URL used to derive the public buyer-facing offer URL
-     * for `getOffer` (#464). Sandbox: `https://allegro.pl.allegrosandbox.pl`,
-     * production: `https://allegro.pl`. The factory passes the right value;
-     * when undefined, `getOffer` omits `marketplaceUrl` from its result.
+     * for `getOffer` (#464) — the Allegro web host, resolved per environment by
+     * `getAllegroWebBaseUrl` in the adapter factory. When undefined, `getOffer`
+     * omits `marketplaceUrl` from its result.
      */
     private readonly storefrontBaseUrl?: string
   ) {
