@@ -33,9 +33,9 @@ export interface AllegroConnectionConfig {
   environment: AllegroEnvironment;
 
   /**
-   * Allegro API base URL (optional, defaults based on environment)
-   * - Sandbox: https://api.allegro.pl.allegrosandbox.pl
-   * - Production: https://api.allegro.pl
+   * Allegro REST API base URL (optional). When omitted, the per-environment
+   * default is resolved by `getAllegroRestApiBaseUrl` (the `api.` host) in
+   * `infrastructure/http/allegro-hosts.ts`.
    */
   apiBaseUrl?: string;
 
