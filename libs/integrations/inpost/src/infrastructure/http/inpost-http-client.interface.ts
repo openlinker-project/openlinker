@@ -25,7 +25,7 @@ export interface IInpostHttpClient {
   /**
    * Issue a ShipX request. Resolves with the parsed JSON body (or `undefined`
    * for `204`). Throws a mapped domain exception on failure
-   * (`InpostUnauthorizedException` / `InpostValidationException` /
+   * (`InpostUnauthorizedException` / `ShippingProviderRejectionException` /
    * `InpostNetworkException`).
    */
   request<T>(options: InpostRequestOptions): Promise<T>;

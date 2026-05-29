@@ -5,7 +5,7 @@
  */
 import type { GenerateLabelCommand } from '@openlinker/core/shipping';
 
-import { AllegroShipmentRejectedException } from '../../../domain/exceptions/allegro-shipment-rejected.exception';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { AllegroShipmentResource } from '../../../domain/types/allegro-shipment.types';
 import {
   buildCreateShipmentInput,
@@ -107,24 +107,47 @@ describe('buildCreateShipmentInput', () => {
     expect(input.receiver.street).toBeUndefined();
   });
 
-  it('throws a readable rejection when the resolved deliveryMethodId is absent', () => {
-    expect(() => buildCreateShipmentInput(makeCommand({ deliveryMethodId: undefined }))).toThrow(
-      AllegroShipmentRejectedException,
-    );
+  it('throws a typed rejection (preflight.missing-delivery-method-id) when the resolved deliveryMethodId is absent (#885)', () => {
+    const call = (): unknown => buildCreateShipmentInput(makeCommand({ deliveryMethodId: undefined }));
+    expect(call).toThrow(ShippingProviderRejectionException);
+    try {
+      call();
+    } catch (error) {
+      expect(error).toMatchObject({
+        providerName: 'allegro',
+        providerCode: 'preflight.missing-delivery-method-id',
+      });
+    }
   });
 
-  it('throws when parcel dimensions are missing', () => {
-    expect(() =>
-      buildCreateShipmentInput(makeCommand({ parcel: { weightGrams: 1200 } })),
-    ).toThrow(AllegroShipmentRejectedException);
+  it('throws a typed rejection (preflight.missing-parcel-dimensions) when parcel dimensions are missing (#885)', () => {
+    const call = (): unknown =>
+      buildCreateShipmentInput(makeCommand({ parcel: { weightGrams: 1200 } }));
+    expect(call).toThrow(ShippingProviderRejectionException);
+    try {
+      call();
+    } catch (error) {
+      expect(error).toMatchObject({
+        providerName: 'allegro',
+        providerCode: 'preflight.missing-parcel-dimensions',
+      });
+    }
   });
 
-  it('throws when parcel weight is missing', () => {
-    expect(() =>
+  it('throws a typed rejection (preflight.missing-parcel-dimensions) when parcel weight is missing (#885)', () => {
+    const call = (): unknown =>
       buildCreateShipmentInput(
         makeCommand({ parcel: { dimensions: { length: 200, width: 150, height: 100 } } }),
-      ),
-    ).toThrow(AllegroShipmentRejectedException);
+      );
+    expect(call).toThrow(ShippingProviderRejectionException);
+    try {
+      call();
+    } catch (error) {
+      expect(error).toMatchObject({
+        providerName: 'allegro',
+        providerCode: 'preflight.missing-parcel-dimensions',
+      });
+    }
   });
 });
 
