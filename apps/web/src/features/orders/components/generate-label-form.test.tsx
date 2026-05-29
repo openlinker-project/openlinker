@@ -217,6 +217,9 @@ describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
     ).toBeInTheDocument();
   });
 
+  // PrestaShop omits the `pickupPointResolvesAsync` trait, so `usePlatform`
+  // resolves it falsy and the hint stays hidden — pins the trait path (#893),
+  // not the old literal `platformType === 'allegro'` compare.
   it('should NOT render the retry hint when the order source is not Allegro', async () => {
     const order = makeOrderWithoutPickupPoint({
       sourceConnectionId: 'conn-ps-1',
