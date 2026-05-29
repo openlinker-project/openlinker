@@ -162,4 +162,109 @@ describe('ShipmentsPage', () => {
     // parallel connections query resolves and the capability gate re-renders.
     expect(await screen.findByText('Method')).toBeInTheDocument();
   });
+
+  // ── #839 — processor column + filter, branch-1 ('omp') label ───────────
+
+  it('should render a Processor column with branch-1 row labelled "OMP-fulfilled"', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              id: 'ol_shipment_omp',
+              shippingMethod: 'omp',
+              providerShipmentId: null,
+              paczkomatId: null,
+              trackingNumber: null,
+              carrier: null,
+              labelPdfRef: null,
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    await screen.findByText('Processor');
+    // ProcessorBadge renders the friendly label, not the raw enum.
+    expect((await screen.findAllByText('OMP-fulfilled')).length).toBeGreaterThan(0);
+  });
+
+  it('should render the carrier-row Processor cell as "Carrier"', async () => {
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              shippingMethod: 'paczkomat',
+              providerShipmentId: 'shipx-9',
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('Carrier')).toBeInTheDocument();
+  });
+
+  it("should map ?processor=omp URL param to { shippingMethod: 'omp' } in the BE query", async () => {
+    const listMock = vi.fn().mockResolvedValue(page([]));
+    const mockApi = createMockApiClient({
+      shipments: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      route: '/shipments?processor=omp',
+    });
+
+    await screen.findByText('No shipments found');
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shippingMethod: 'omp' }),
+      expect.anything(),
+    );
+  });
+
+  it('should map ?processor=carrier URL param to { hasProviderShipmentId: true } in the BE query', async () => {
+    const listMock = vi.fn().mockResolvedValue(page([]));
+    const mockApi = createMockApiClient({
+      shipments: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      route: '/shipments?processor=carrier',
+    });
+
+    await screen.findByText('No shipments found');
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hasProviderShipmentId: true }),
+      expect.anything(),
+    );
+  });
+
+  it('should ignore unknown processor URL values (defensive narrowing)', async () => {
+    const listMock = vi.fn().mockResolvedValue(page([]));
+    const mockApi = createMockApiClient({
+      shipments: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      route: '/shipments?processor=garbage',
+    });
+
+    await screen.findByText('No shipments found');
+    const [filters] = listMock.mock.calls[0];
+    expect(filters.shippingMethod).toBeUndefined();
+    expect(filters.hasProviderShipmentId).toBeUndefined();
+  });
 });

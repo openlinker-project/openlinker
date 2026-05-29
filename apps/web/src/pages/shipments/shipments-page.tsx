@@ -11,6 +11,7 @@ import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { ShipmentStatusBadge } from '../../features/shipments/components/shipment-status-badge';
+import { ProcessorBadge } from '../../features/shipments/components/processor-badge';
 import { useShipmentsQuery } from '../../features/shipments/hooks/use-shipments-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
@@ -19,8 +20,16 @@ import type { Shipment, ShipmentFilters, ShipmentStatus, ShippingMethod } from '
 import {
   SHIPMENT_STATUS_VALUES,
   SHIPPING_METHOD_VALUES,
+  SHIPPING_METHOD_LABEL,
   SHIPMENTS_PAGE_SIZE,
 } from '../../features/shipments/api/shipments.types';
+import {
+  PROCESSOR_FILTER_VALUES,
+  PROCESSOR_KIND_LABEL,
+  deriveProcessor,
+  parseProcessorFilter,
+  toShipmentProcessorFilters,
+} from '../../features/shipments/lib/processor';
 
 const PAGE_SIZE = SHIPMENTS_PAGE_SIZE;
 
@@ -55,17 +64,27 @@ export function ShipmentsPage(): ReactElement {
   const shippingMethod = (searchParams.get('shippingMethod') as ShippingMethod | null) ?? undefined;
   const connectionId = searchParams.get('connectionId') ?? undefined;
   const hasTracking = parseHasTracking(searchParams.get('hasTracking'));
+  // Processor filter (#839) is independent URL state — when present it
+  // overrides the shippingMethod / hasProviderShipmentId slice via
+  // `toShipmentProcessorFilters` below. The two URL params are mutually
+  // exclusive at the toolbar level (the Method dropdown is hidden when a
+  // processor filter is set) so users can't put the BE filters in a
+  // contradictory state.
+  const processor = parseProcessorFilter(searchParams.get('processor'));
   const createdFrom = searchParams.get('createdFrom') ?? undefined;
   const createdTo = searchParams.get('createdTo') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
   const filters: ShipmentFilters = {
     status,
-    shippingMethod,
     connectionId,
     hasTracking,
     createdFrom,
     createdTo: createdTo ? inclusiveEndOfDay(createdTo) : undefined,
+    // Spread the processor filter LAST so it overrides any raw `shippingMethod`
+    // URL state when both are present — a defence against stale links where
+    // a previous toolbar layout left both params on the URL.
+    ...(processor === undefined ? { shippingMethod } : toShipmentProcessorFilters(processor)),
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -107,7 +126,16 @@ export function ShipmentsPage(): ReactElement {
   function clearFilters(): void {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      for (const key of ['status', 'shippingMethod', 'connectionId', 'hasTracking', 'createdFrom', 'createdTo', 'offset']) {
+      for (const key of [
+        'status',
+        'shippingMethod',
+        'processor',
+        'connectionId',
+        'hasTracking',
+        'createdFrom',
+        'createdTo',
+        'offset',
+      ]) {
         next.delete(key);
       }
       return next;
@@ -115,7 +143,13 @@ export function ShipmentsPage(): ReactElement {
   }
 
   const filtersActive = Boolean(
-    status || shippingMethod || connectionId || hasTracking !== undefined || createdFrom || createdTo,
+    status ||
+      shippingMethod ||
+      processor ||
+      connectionId ||
+      hasTracking !== undefined ||
+      createdFrom ||
+      createdTo,
   );
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
@@ -123,12 +157,15 @@ export function ShipmentsPage(): ReactElement {
 
   // Shipping-method-specific columns, gated on capability (#727 AC). Typed as
   // DataTableColumn<Shipment>[] so the `hideBelow` literals narrow correctly.
+  // Method renders the operator-readable label (`SHIPPING_METHOD_LABEL`) so
+  // branch-1 rows show "OMP-fulfilled" instead of the raw `'omp'` enum
+  // value the BE stores (#839).
   const methodColumns: DataTableColumn<Shipment>[] = showMethodColumns
     ? [
         {
           id: 'shippingMethod',
           header: 'Method',
-          cell: (s) => <span className="mono-text">{s.shippingMethod}</span>,
+          cell: (s) => <span className="mono-text">{SHIPPING_METHOD_LABEL[s.shippingMethod]}</span>,
           accessor: (s) => s.shippingMethod,
           sortable: true,
         },
@@ -152,6 +189,17 @@ export function ShipmentsPage(): ReactElement {
       header: 'Status',
       cell: (s) => <ShipmentStatusBadge status={s.status} />,
       accessor: (s) => s.status,
+      sortable: true,
+    },
+    {
+      id: 'processor',
+      header: 'Processor',
+      // FE-derived from (shippingMethod, providerShipmentId) — see
+      // `features/shipments/lib/processor.ts`. Branch-2 vs. branch-3
+      // disambiguation needs the order's source platformType and is deferred
+      // per #839 plan §5; this column is the two-bucket v1.
+      cell: (s) => <ProcessorBadge processor={deriveProcessor(s)} />,
+      accessor: (s) => deriveProcessor(s),
       sortable: true,
     },
     {
@@ -217,7 +265,33 @@ export function ShipmentsPage(): ReactElement {
           ))}
         </Select>
 
-        {showMethodColumns ? (
+        {/* Processor filter (#839 AC-7) — the cross-branch dimension. v1
+            exposes the two confidently-filterable buckets ('omp' /
+            'carrier'); pending is derived but not filterable. Mutually
+            exclusive with the Method dropdown below — when Processor is
+            set, the Method dropdown is hidden so the BE filter slice can't
+            contradict itself (the Processor selector implies a method
+            slice; the user picks one OR the other, not both). */}
+        <Select
+          aria-label="Filter by processor"
+          value={processor ?? ''}
+          onChange={(e) => {
+            setFilter('processor', e.target.value);
+            // Clearing the method dropdown when Processor takes over —
+            // belt-and-braces (the toolbar hides the Method Select when
+            // Processor is set, but a deep-link could carry both params).
+            if (e.target.value !== '') setFilter('shippingMethod', '');
+          }}
+        >
+          <option value="">All processors</option>
+          {PROCESSOR_FILTER_VALUES.map((p) => (
+            <option key={p} value={p}>
+              {PROCESSOR_KIND_LABEL[p]}
+            </option>
+          ))}
+        </Select>
+
+        {showMethodColumns && processor === undefined ? (
           <Select
             aria-label="Filter by shipping method"
             value={shippingMethod ?? ''}
@@ -226,7 +300,7 @@ export function ShipmentsPage(): ReactElement {
             <option value="">All methods</option>
             {SHIPPING_METHOD_VALUES.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {SHIPPING_METHOD_LABEL[m]}
               </option>
             ))}
           </Select>
