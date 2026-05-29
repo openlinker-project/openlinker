@@ -18,7 +18,22 @@ export type {
   NotifyDispatchedResult,
   KnownCarrier,
 } from './api/shipments.types';
-export { KNOWN_CARRIER_VALUES } from './api/shipments.types';
+export {
+  KNOWN_CARRIER_VALUES,
+  SHIPPING_METHOD_LABEL,
+  SHIPPING_METHOD_VALUES,
+  SHIPMENT_STATUS_VALUES,
+} from './api/shipments.types';
+export {
+  PROCESSOR_FILTER_VALUES,
+  PROCESSOR_KIND_VALUES,
+  PROCESSOR_KIND_LABEL,
+  deriveProcessor,
+  parseProcessorFilter,
+  toShipmentProcessorFilters,
+} from './lib/processor';
+export type { ProcessorFilter, ProcessorKind } from './lib/processor';
+export { ProcessorBadge } from './components/processor-badge';
 export { useShipmentsQuery } from './hooks/use-shipments-query';
 export { useOrderShipmentsQuery } from './hooks/use-order-shipments-query';
 export { useGenerateLabelMutation } from './hooks/use-generate-label-mutation';

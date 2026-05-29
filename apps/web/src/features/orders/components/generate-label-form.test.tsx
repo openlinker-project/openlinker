@@ -162,3 +162,133 @@ describe('GenerateLabelForm — happy path', () => {
     resolveRef.current?.({ kind: 'dispatched', shipment: null });
   });
 });
+
+// ── #839 AC-3 — pickup-point retry hint ─────────────────────────────────
+
+describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
+  function makeOrderWithoutPickupPoint(
+    overrides: Partial<OrderRecord> = {},
+  ): OrderRecord {
+    const base = makeOrder();
+    const baseSnapshot = base.orderSnapshot as Record<string, unknown>;
+    return {
+      ...base,
+      ...overrides,
+      orderSnapshot: {
+        ...baseSnapshot,
+        pickupPoint: undefined,
+      },
+    };
+  }
+
+  it('should render the retry hint when the order is Allegro-sourced + no pickup-point + recent', async () => {
+    const order = makeOrderWithoutPickupPoint({
+      sourceConnectionId: 'conn-allegro-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-allegro-1',
+            platformType: 'allegro',
+            name: 'Allegro Main',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Pickup point not yet available/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Retry pickup-point lookup/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('should NOT render the retry hint when the order source is not Allegro', async () => {
+    const order = makeOrderWithoutPickupPoint({
+      sourceConnectionId: 'conn-ps-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-ps-1',
+            platformType: 'prestashop',
+            name: 'PrestaShop',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    // Wait on a stable form element (the parcel-length input) — the
+    // "Generate label" string collides between the form heading and the
+    // submit button, so findByText is ambiguous here.
+    await screen.findByLabelText(/Length in millimetres/i);
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+
+  it('should NOT render the retry hint for an old Allegro order (outside the 24h window)', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const order = makeOrderWithoutPickupPoint({
+      sourceConnectionId: 'conn-allegro-1',
+      createdAt: twoDaysAgo,
+    });
+
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-allegro-1',
+            platformType: 'allegro',
+            name: 'Allegro Main',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    // Wait on a stable form element (the parcel-length input) — the
+    // "Generate label" string collides between the form heading and the
+    // submit button, so findByText is ambiguous here.
+    await screen.findByLabelText(/Length in millimetres/i);
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+});
