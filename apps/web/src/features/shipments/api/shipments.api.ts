@@ -54,6 +54,8 @@ function buildQuery(filters?: ShipmentFilters, pagination?: ShipmentPagination):
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.shippingMethod) params.set('shippingMethod', filters.shippingMethod);
   if (filters?.hasTracking !== undefined) params.set('hasTracking', String(filters.hasTracking));
+  if (filters?.hasProviderShipmentId !== undefined)
+    params.set('hasProviderShipmentId', String(filters.hasProviderShipmentId));
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
