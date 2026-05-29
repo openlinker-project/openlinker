@@ -515,6 +515,22 @@ module.exports = {
             message:
               "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlatform()/usePlatforms() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
           },
+          {
+            // Optional-chained member access (`conn?.platformType === '…'`) parses
+            // as a ChainExpression wrapping the MemberExpression, so the property
+            // lives one level deeper at `left.expression.property`. Without these
+            // two branches the rule misses the optional-chained form (#893).
+            selector:
+              "BinaryExpression[operator=/^(===|!==)$/][left.expression.property.name='platformType'][right.type='Literal']",
+            message:
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlatform()/usePlatforms() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+          },
+          {
+            selector:
+              "BinaryExpression[operator=/^(===|!==)$/][right.expression.property.name='platformType'][left.type='Literal']",
+            message:
+              "Literal-equality dispatch on platformType is forbidden outside apps/web/src/plugins/. Use usePlatform()/usePlatforms() from shared/plugins, or capability checks (supportedCapabilities.includes('…')). See #578/#579.",
+          },
         ],
       },
     },
