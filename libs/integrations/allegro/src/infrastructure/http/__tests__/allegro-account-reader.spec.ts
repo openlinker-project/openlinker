@@ -9,7 +9,10 @@ import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exce
 import { AllegroAuthenticationException } from '../../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../../domain/exceptions/allegro-network.exception';
 
-const BASE_URL = 'https://allegro.pl.allegrosandbox.pl';
+// REST API host — `/me` and other REST calls live on the `api.` subdomain;
+// the OAuth/site host (`allegro.pl.allegrosandbox.pl`) used to land here
+// historically and returned 403 because it doesn't serve the REST API.
+const BASE_URL = 'https://api.allegro.pl.allegrosandbox.pl';
 const TOKEN = 'access-tok';
 
 describe('AllegroAccountReader', () => {
