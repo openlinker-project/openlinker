@@ -27,6 +27,7 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
+import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FieldError } from '../../../shared/ui/field-error';
@@ -105,9 +106,14 @@ export function GenerateLabelForm({
   const sourceConnection = (connectionsQuery.data ?? []).find(
     (c) => c.id === order.sourceConnectionId,
   );
+  // Trait-driven, not a literal `platformType === 'allegro'` compare (#893):
+  // any platform whose pickup-point resolves asynchronously opts in via the
+  // `pickupPointResolvesAsync` PlatformContribution slot. `usePlatform` is a
+  // hook — keep this call unconditional at the top of the component.
+  const sourcePlatform = usePlatform(sourceConnection?.platformType);
   const showPickupRetryHint =
     !hasPickupPoint &&
-    sourceConnection?.platformType === 'allegro' &&
+    sourcePlatform?.pickupPointResolvesAsync === true &&
     isWithinPickupPointRetryWindow(order.createdAt);
   const [pickupRetryInFlight, setPickupRetryInFlight] = useState(false);
   const handlePickupRetry = async (): Promise<void> => {

@@ -214,6 +214,18 @@ export interface PlatformContribution {
   /** Listing-detail: gate the "Edit offer" button on `ListingDetailPage`. */
   supportsListingEdit?: boolean;
   /**
+   * `true` when the platform's order pickup-point payload resolves
+   * asynchronously after the order is received — the buyer selects the
+   * locker on the platform, but it arrives on a later platform poll.
+   * Drives:
+   *   - `OrderShipmentPanel`'s paczkomat-row caption ("buyer-selected via
+   *     {displayName}" vs. "operator-selected")
+   *   - `GenerateLabelForm`'s pickup-point retry hint (#839 AC-3)
+   * Omit for platforms where the pickup-point arrives synchronously with the
+   * order payload.
+   */
+  pickupPointResolvesAsync?: boolean;
+  /**
    * Content feature: optional platform-specific structured-error extractor
    * for content-publish failures (#613). Given an unknown error thrown by
    * the publish mutation, return a `StructuredError[]` for inline rendering
