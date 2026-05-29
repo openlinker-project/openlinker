@@ -49,6 +49,21 @@ export function ShipmentActionButtons({
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
 
+  // Branch-1 awareness (#839 AC-6) — `shippingMethod === 'omp'` rows are
+  // projection-only: the destination OMP ships externally, OL holds no
+  // provider id, and `ShipmentDispatchService.dispatch` would resolve to
+  // `{ kind: 'omp_fulfilled' }` (a no-op). None of the three actions
+  // (Generate label / Cancel / Mark dispatched) is meaningful here.
+  // Render a single read-only chip so the operator sees the row is
+  // handled externally, then early-return.
+  if (shipment !== null && shipment.shippingMethod === 'omp') {
+    return (
+      <div className="shipment-action-buttons">
+        <span className="text-muted">Fulfilled by destination</span>
+      </div>
+    );
+  }
+
   // Treat "no shipment row" as a synthetic 'none' status for the matrix.
   const status: ShipmentStatus | 'none' = shipment?.status ?? 'none';
   const canGenerate = CAN_GENERATE.has(status);
