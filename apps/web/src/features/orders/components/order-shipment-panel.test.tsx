@@ -254,4 +254,40 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     expect((cancel as HTMLButtonElement).disabled).toBe(!expected.cancel);
     expect((notify as HTMLButtonElement).disabled).toBe(!expected.notify);
   });
+
+  // ── #839 — branch-1 (shippingMethod='omp') awareness ─────────────────
+
+  it('should hide the action row and render "Fulfilled by destination" for branch-1 (omp) shipments', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [
+            makeShipment({
+              shippingMethod: 'omp',
+              status: 'dispatched',
+              providerShipmentId: null,
+              paczkomatId: null,
+              trackingNumber: null,
+              carrier: null,
+              labelPdfRef: null,
+            }),
+          ],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    // The read-only affordance replaces the action buttons.
+    await screen.findByText('Fulfilled by destination');
+    expect(
+      screen.queryByRole('button', { name: /Generate label|Generate shipping label/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Cancel$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mark dispatched/i })).not.toBeInTheDocument();
+  });
 });
