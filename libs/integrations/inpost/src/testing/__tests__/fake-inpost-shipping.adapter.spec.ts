@@ -3,8 +3,11 @@
  *
  * @module libs/integrations/inpost/src/testing
  */
-import type { GenerateLabelCommand, PickupPoint } from '@openlinker/core/shipping';
-import { InpostValidationException } from '../../domain/exceptions/inpost-validation.exception';
+import {
+  ShippingProviderRejectionException,
+  type GenerateLabelCommand,
+  type PickupPoint,
+} from '@openlinker/core/shipping';
 import { FakeInpostShippingAdapter } from '../fake-inpost-shipping.adapter';
 
 const paczkomatCmd: GenerateLabelCommand = {
@@ -35,10 +38,14 @@ describe('FakeInpostShippingAdapter', () => {
     expect(result.trackingNumber).toBeNull();
   });
 
-  it('should validate a missing paczkomatId like the real adapter', async () => {
-    await expect(fake.generateLabel({ ...paczkomatCmd, paczkomatId: undefined })).rejects.toBeInstanceOf(
-      InpostValidationException,
-    );
+  it('should validate a missing paczkomatId like the real adapter (#885)', async () => {
+    await expect(
+      fake.generateLabel({ ...paczkomatCmd, paczkomatId: undefined }),
+    ).rejects.toMatchObject({
+      name: 'ShippingProviderRejectionException',
+      providerName: 'inpost',
+      providerCode: 'preflight.missing-paczkomat-id',
+    });
   });
 
   it('should report cancelled tracking after cancelShipment', async () => {
@@ -49,7 +56,9 @@ describe('FakeInpostShippingAdapter', () => {
   });
 
   it('should throw the seeded failure from generateLabel', async () => {
-    fake.seedFailure(new InpostValidationException('seeded'));
+    fake.seedFailure(
+      new ShippingProviderRejectionException('inpost', 'preflight.unsupported-method', 'seeded'),
+    );
     await expect(fake.generateLabel(paczkomatCmd)).rejects.toThrow('seeded');
   });
 
