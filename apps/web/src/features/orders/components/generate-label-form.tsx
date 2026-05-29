@@ -24,7 +24,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
 
+import { useConnectionsQuery } from '../../connections';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FieldError } from '../../../shared/ui/field-error';
@@ -39,6 +41,7 @@ import {
   parseOrderSnapshot,
   type ParsedOrderSnapshot,
 } from '../api/order-snapshot.schema';
+import { ordersQueryKeys } from '../api/orders.query-keys';
 import { useGenerateLabelMutation, type GenerateLabelInput } from '../../shipments';
 import {
   generateLabelSchema,
@@ -58,6 +61,22 @@ interface GenerateLabelFormProps {
 
 const SLOW_NOTICE_DELAY_MS = 5_000;
 
+/**
+ * Window during which a missing Allegro pickup-point is considered "still
+ * arriving" rather than "absent" (#839 AC-3). Allegro Delivery resolves the
+ * buyer's locker asynchronously — the order arrives before the
+ * pickup-point payload — so for Allegro-source orders younger than this
+ * window we render a retry hint instead of silently falling through to
+ * the kurier flow.
+ */
+const PICKUP_POINT_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function isWithinPickupPointRetryWindow(createdAtIso: string): boolean {
+  const createdAt = new Date(createdAtIso).getTime();
+  if (Number.isNaN(createdAt)) return false;
+  return Date.now() - createdAt < PICKUP_POINT_RETRY_WINDOW_MS;
+}
+
 export function GenerateLabelForm({
   order,
   onSuccess,
@@ -74,6 +93,35 @@ export function GenerateLabelForm({
 
   const mutation = useGenerateLabelMutation();
   const { showToast } = useToast();
+
+  // AC-3 retry hint (#839) — when the order is Allegro-sourced + the
+  // buyer's pickup-point hasn't been resolved yet + the order is young
+  // enough that it could still arrive on a later poll, surface a
+  // non-blocking Alert offering refetch. Doesn't gate submission — the
+  // operator can proceed with the kurier fallback if they're confident
+  // the pickup-point will never resolve.
+  const connectionsQuery = useConnectionsQuery();
+  const queryClient = useQueryClient();
+  const sourceConnection = (connectionsQuery.data ?? []).find(
+    (c) => c.id === order.sourceConnectionId,
+  );
+  const showPickupRetryHint =
+    !hasPickupPoint &&
+    sourceConnection?.platformType === 'allegro' &&
+    isWithinPickupPointRetryWindow(order.createdAt);
+  const [pickupRetryInFlight, setPickupRetryInFlight] = useState(false);
+  const handlePickupRetry = async (): Promise<void> => {
+    setPickupRetryInFlight(true);
+    try {
+      // Re-pull the order detail; the order-detail page rerenders this
+      // form with the fresh `order` prop and the snapshot re-parses.
+      await queryClient.invalidateQueries({
+        queryKey: ordersQueryKeys.detail(order.internalOrderId),
+      });
+    } finally {
+      setPickupRetryInFlight(false);
+    }
+  };
 
   const form = useForm<GenerateLabelFormValues, undefined, GenerateLabelFormSubmission>({
     defaultValues: {
@@ -156,6 +204,31 @@ export function GenerateLabelForm({
       <h4 id="generate-label-form-heading" className="generate-label-form__heading">
         Generate label
       </h4>
+
+      {/* AC-3 retry hint (#839) — Allegro-source order whose pickup-point
+          hasn't arrived yet. Non-blocking: operator can still proceed with
+          the kurier fallback, or refetch to see if Allegro has caught up. */}
+      {showPickupRetryHint ? (
+        <Alert tone="info" className="generate-label-form__pickup-retry">
+          <strong>Pickup point not yet available</strong>
+          <p>
+            Allegro hasn&apos;t returned the buyer&apos;s pickup point for this order yet. It
+            usually arrives within a few hours of the order — the next poll will populate it.
+            You can retry now, or proceed with a courier shipment.
+          </p>
+          <Button
+            type="button"
+            tone="secondary"
+            className="button--sm"
+            onClick={() => {
+              void handlePickupRetry();
+            }}
+            disabled={pickupRetryInFlight}
+          >
+            {pickupRetryInFlight ? 'Retrying…' : 'Retry pickup-point lookup'}
+          </Button>
+        </Alert>
+      ) : null}
 
       {/* Pre-flight gate (tech-review BLOCKING fix) — missing snapshot fields
           block submission so the operator can't fire a doomed BE call. */}
