@@ -7,8 +7,8 @@
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
-import { InpostValidationException } from '../../../domain/exceptions/inpost-validation.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
 import { InpostHttpClient } from '../inpost-http-client';
 
@@ -85,7 +85,7 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should map other 4xx to InpostValidationException with details, no retry', async () => {
+  it('should map other 4xx to ShippingProviderRejectionException with fieldErrors, no retry (#885)', async () => {
     fetchMock.mockResolvedValue(
       fakeResponse({
         ok: false,
@@ -99,8 +99,12 @@ describe('InpostHttpClient', () => {
       .then(() => null)
       .catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(InpostValidationException);
-    expect((error as InpostValidationException).details).toEqual({ name: ['required'] });
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerCode: 'name',
+      providerDetails: { fieldErrors: { name: ['required'] } },
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

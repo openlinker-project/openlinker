@@ -21,22 +21,23 @@
  * @implements {ShippingProviderManagerPort}
  */
 import { Logger } from '@openlinker/shared/logging';
-import type {
-  GenerateLabelCommand,
-  GenerateLabelResult,
-  ShipmentCanceller,
-  ShippingMethod,
-  ShippingProviderManagerPort,
-  TrackingSnapshot,
+import {
+  ShippingProviderRejectionException,
+  type GenerateLabelCommand,
+  type GenerateLabelResult,
+  type ShipmentCanceller,
+  type ShippingMethod,
+  type ShippingProviderManagerPort,
+  type TrackingSnapshot,
 } from '@openlinker/core/shipping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroShipmentPendingException } from '../../domain/exceptions/allegro-shipment-pending.exception';
-import { AllegroShipmentRejectedException } from '../../domain/exceptions/allegro-shipment-rejected.exception';
 import type {
   AllegroCancelShipmentCommandRequest,
   AllegroCreateShipmentCommandRequest,
+  AllegroShipmentCommandError,
   AllegroShipmentCommandResult,
   AllegroShipmentPollConfig,
   AllegroShipmentResource,
@@ -82,7 +83,9 @@ export class AllegroDeliveryShippingAdapter
 
   async generateLabel(cmd: GenerateLabelCommand): Promise<GenerateLabelResult> {
     if (!SUPPORTED_METHODS.includes(cmd.shippingMethod)) {
-      throw new AllegroShipmentRejectedException(
+      throw new ShippingProviderRejectionException(
+        'allegro',
+        'preflight.unsupported-method',
         `Allegro Delivery does not support shipping method '${cmd.shippingMethod}'`,
       );
     }
@@ -108,7 +111,9 @@ export class AllegroDeliveryShippingAdapter
 
     const result = await this.pollUntilTerminal(CREATE_COMMANDS_PATH, commandId);
     if (!result.shipmentId) {
-      throw new AllegroShipmentRejectedException(
+      throw new ShippingProviderRejectionException(
+        'allegro',
+        'command.success-without-shipment-id',
         `Allegro create-command ${commandId} succeeded without a shipmentId`,
       );
     }
@@ -178,9 +183,11 @@ export class AllegroDeliveryShippingAdapter
         return result;
       }
       if (result.status === 'ERROR') {
-        throw new AllegroShipmentRejectedException(
+        throw new ShippingProviderRejectionException(
+          'allegro',
+          firstAllegroErrorCode(result.errors),
           `Allegro command ${commandId} failed: ${formatCommandErrors(result.errors)}`,
-          result.errors,
+          result.errors ? { errors: result.errors } : undefined,
         );
       }
 
@@ -193,14 +200,23 @@ export class AllegroDeliveryShippingAdapter
   }
 
   /**
-   * Wrap an Allegro HTTP failure into a readable shipment-rejected error.
+   * Wrap an Allegro HTTP failure into the typed rejection seam (#885).
    * `AllegroApiException.message` already carries the parsed Allegro error
    * summary (built by the HTTP client); non-API errors (auth, network, rate
    * limit) propagate unchanged so the worker's retry classifier can act on them.
+   *
+   * `providerCode` carries the HTTP status (`api.http-400`, `api.http-500`,
+   * `api.http-unknown`) so structured logs / operator UI can distinguish
+   * carrier-rejected payloads (4xx) from upstream availability issues (5xx)
+   * at the discriminator level — the full message stays operator-readable.
    */
   private toRejected(error: unknown, context: string): Error {
     if (error instanceof AllegroApiException) {
-      return new AllegroShipmentRejectedException(`Failed to ${context}: ${error.message}`);
+      return new ShippingProviderRejectionException(
+        'allegro',
+        `api.http-${error.statusCode ?? 'unknown'}`,
+        `Failed to ${context}: ${error.message}`,
+      );
     }
     return error instanceof Error ? error : new Error(String(error));
   }
@@ -217,4 +233,25 @@ export class AllegroDeliveryShippingAdapter
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * Pick the first Allegro command error code to use as the rejection's
+ * `providerCode`. Allegro's structured `errors[]` carries actionable codes
+ * like `DELIVERY_METHOD_NOT_AVAILABLE` or `INVALID_PARCEL_DIMENSIONS`;
+ * returns `null` when no errors are surfaced.
+ *
+ * **Multi-error semantics**: when Allegro returns more than one error, only
+ * the first surfaces as the discriminator. The full array is preserved on
+ * `providerDetails.errors` so operators / structured logs see every error
+ * the carrier reported. The first-error discriminator is sufficient for
+ * status-histogram aggregation; consumers that need to act on the full set
+ * read `providerDetails.errors`.
+ */
+function firstAllegroErrorCode(
+  errors: readonly AllegroShipmentCommandError[] | undefined,
+): string | null {
+  if (!errors || errors.length === 0) return null;
+  const code = errors[0]?.code;
+  return typeof code === 'string' && code.length > 0 ? code : null;
 }

@@ -50,7 +50,10 @@ export { AllegroApiException } from './domain/exceptions/allegro-api.exception';
 export { AllegroAuthenticationException } from './domain/exceptions/allegro-authentication.exception';
 export { AllegroRateLimitException } from './domain/exceptions/allegro-rate-limit.exception';
 export { AllegroNetworkException } from './domain/exceptions/allegro-network.exception';
-export { AllegroShipmentRejectedException } from './domain/exceptions/allegro-shipment-rejected.exception';
+// Shipment rejections now throw the shared `ShippingProviderRejectionException`
+// from `@openlinker/core/shipping` (#885) — `providerName: 'allegro'`,
+// `providerCode` carries the carrier code verbatim (e.g.
+// `'DELIVERY_METHOD_NOT_AVAILABLE'`), structured errors on `providerDetails.errors`.
 export { AllegroShipmentPendingException } from './domain/exceptions/allegro-shipment-pending.exception';
 export { DuplicateAllegroQuantityCommandError } from './domain/exceptions/duplicate-allegro-quantity-command.error';
 export { AllegroQuantityCommandNotFoundException } from './domain/exceptions/allegro-quantity-command-not-found.error';
