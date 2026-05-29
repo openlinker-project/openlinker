@@ -155,6 +155,24 @@ describe('AllegroOAuthCompletionAdapter', () => {
 
       await expect(adapter.exchangeCode(input)).rejects.toBeInstanceOf(AllegroNetworkException);
     });
+
+    it('uses the OAuth host (not the REST api. host) for the token endpoint', async () => {
+      // Negative regression guard for the symmetrical inverse of the /me
+      // host bug: the token endpoint must never inherit the `api.` REST
+      // host. Token exchange lives on Allegro's OAuth/site origin.
+      const fetchMock = mockFetchResolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({ access_token: 'at', refresh_token: 'rt', token_type: 'bearer' }),
+      });
+      const adapter = new AllegroOAuthCompletionAdapter();
+
+      await adapter.exchangeCode(input);
+
+      const [url] = fetchMock.mock.calls[0] as [string];
+      expect(url).not.toMatch(/^https:\/\/api\./);
+    });
   });
 
   describe('fetchAccountIdentity', () => {
@@ -170,7 +188,26 @@ describe('AllegroOAuthCompletionAdapter', () => {
       });
 
       expect(identity).toEqual({ accountId: '12345', label: 'my_shop' });
-      expect(reader.fetchSellerIdentity).toHaveBeenCalledWith('https://allegro.pl', 'at-1');
+      // `/me` lives on Allegro's REST API host (`api.` subdomain), not the
+      // OAuth/site host the authorize + token endpoints use.
+      expect(reader.fetchSellerIdentity).toHaveBeenCalledWith('https://api.allegro.pl', 'at-1');
+    });
+
+    it('passes the sandbox REST API host (api. subdomain) when environment is sandbox', async () => {
+      const reader = {
+        fetchSellerIdentity: jest.fn().mockResolvedValue({ sellerId: '999', login: 'sb_shop' }),
+      } as unknown as AllegroAccountReader;
+      const adapter = new AllegroOAuthCompletionAdapter(reader);
+
+      await adapter.fetchAccountIdentity({
+        credentials: { accessToken: 'at-2' },
+        config: { environment: 'sandbox' },
+      });
+
+      expect(reader.fetchSellerIdentity).toHaveBeenCalledWith(
+        'https://api.allegro.pl.allegrosandbox.pl',
+        'at-2',
+      );
     });
 
     it('propagates the reader failure (host treats it as fatal to completion)', async () => {
