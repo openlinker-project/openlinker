@@ -6,16 +6,16 @@
  * API token, applies a jittered retry loop for `429` / `5xx` / network errors
  * (respecting `Retry-After`), enforces a request timeout, and maps ShipX error
  * bodies to domain exceptions. Non-retryable `4xx` (401/403 → unauthorized,
- * other → validation) throw immediately; retryable failures that exhaust the
- * budget surface as `InpostNetworkException`.
+ * other → `ShippingProviderRejectionException`) throw immediately; retryable
+ * failures that exhaust the budget surface as `InpostNetworkException`.
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { ShipXErrorBody } from '../../domain/types/inpost-shipx.types';
 import { InpostUnauthorizedException } from '../../domain/exceptions/inpost-unauthorized.exception';
-import { InpostValidationException } from '../../domain/exceptions/inpost-validation.exception';
 import { InpostNetworkException } from '../../domain/exceptions/inpost-network.exception';
 import type { IInpostHttpClient, InpostRequestOptions } from './inpost-http-client.interface';
 
@@ -146,7 +146,12 @@ export class InpostHttpClient implements IInpostHttpClient {
     if (response.status >= 500) {
       throw new RetryableHttpError(message, response.status);
     }
-    throw new InpostValidationException(message, errorBody?.details);
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      firstDetailKey(errorBody?.details),
+      message,
+      errorBody?.details ? { fieldErrors: errorBody.details } : undefined,
+    );
   }
 
   private buildUrl(path: string, query?: InpostRequestOptions['query']): string {
@@ -189,4 +194,18 @@ function parseRetryAfterMs(header: string | null): number | undefined {
   }
   const seconds = Number(header);
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+/**
+ * Pick the first field key from a ShipX per-field error map to use as the
+ * rejection's `providerCode`. The closest thing ShipX surfaces to a typed
+ * error code is the field that triggered the rejection (e.g. `'target_point'`,
+ * `'sender'`, `'parcels'`). Returns `null` when no details are available.
+ */
+function firstDetailKey(
+  details: Record<string, readonly string[]> | undefined,
+): string | null {
+  if (!details) return null;
+  const keys = Object.keys(details);
+  return keys.length > 0 ? keys[0] : null;
 }

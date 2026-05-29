@@ -16,7 +16,7 @@ import type {
   ShipmentStatus,
 } from '@openlinker/core/shipping';
 
-import { AllegroShipmentRejectedException } from '../../domain/exceptions/allegro-shipment-rejected.exception';
+import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type {
   AllegroCreateShipmentInput,
   AllegroShipmentCommandError,
@@ -76,8 +76,8 @@ function gramsToKg(grams: number): number {
 
 /**
  * Build the `input` for `POST /shipment-management/shipments/create-commands`.
- * Throws `AllegroShipmentRejectedException` (readable) on pre-flight gaps the
- * Allegro create requires: the resolved provider delivery-method id, and
+ * Throws `ShippingProviderRejectionException` (readable) on pre-flight gaps
+ * the Allegro create requires: the resolved provider delivery-method id, and
  * parcel dimensions + weight (Allegro has no locker size-template abstraction,
  * so dimensions are mandatory — see #833 Q7). `sender` is intentionally omitted
  * — Allegro brokers "Wysyłam z Allegro" and defaults the sender from the seller
@@ -85,7 +85,9 @@ function gramsToKg(grams: number): number {
  */
 export function buildCreateShipmentInput(cmd: GenerateLabelCommand): AllegroCreateShipmentInput {
   if (!cmd.deliveryMethodId) {
-    throw new AllegroShipmentRejectedException(
+    throw new ShippingProviderRejectionException(
+      'allegro',
+      'preflight.missing-delivery-method-id',
       `No Allegro delivery-method id resolved for shipment ${cmd.shipmentId}; ` +
         `route the order method to an Allegro Delivery service before generating a label`,
     );
@@ -93,7 +95,9 @@ export function buildCreateShipmentInput(cmd: GenerateLabelCommand): AllegroCrea
 
   const { dimensions, weightGrams } = cmd.parcel;
   if (!dimensions || weightGrams === undefined || weightGrams === null) {
-    throw new AllegroShipmentRejectedException(
+    throw new ShippingProviderRejectionException(
+      'allegro',
+      'preflight.missing-parcel-dimensions',
       `Allegro Delivery requires parcel dimensions (length/width/height) and weight ` +
         `for shipment ${cmd.shipmentId}`,
     );
