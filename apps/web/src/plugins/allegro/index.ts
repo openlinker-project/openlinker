@@ -49,6 +49,9 @@ export const allegroPlugin: OpenLinkerPlugin = definePlugin({
     requiresExternalAuthRedirect: true,
     ExtraConfigSection: AllegroExtraSection,
     supportsListingEdit: true,
+    // Allegro Delivery resolves the buyer's locker asynchronously — the order
+    // arrives before the pickup-point payload (#839 AC-3, #893).
+    pickupPointResolvesAsync: true,
     extractContentPublishErrors: extractAllegroContentPublishErrors,
   },
 });
