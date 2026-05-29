@@ -18,6 +18,7 @@ import {
   useOrderShipmentsQuery,
   type Shipment,
 } from '../../shipments';
+import { usePlatform, type Platform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
@@ -144,7 +145,11 @@ function OrderShipmentPanelBody({
   shippingPlatformType: string | null;
   mutationError: string | null;
 }): ReactElement {
-  const items = buildShipmentFieldItems(shipment, shippingPlatformType);
+  // Resolve the shipping platform's contribution here (a component) rather than
+  // in the parent, which has early returns above its `shippingConnection`
+  // computation — a `usePlatform` call there would be conditional (#893).
+  const shippingPlatform = usePlatform(shippingPlatformType ?? undefined);
+  const items = buildShipmentFieldItems(shipment, shippingPlatform);
   return (
     <div className="order-shipment-panel__body">
       <KeyValueList items={items} />
@@ -159,7 +164,7 @@ function OrderShipmentPanelBody({
 
 function buildShipmentFieldItems(
   shipment: Shipment,
-  shippingPlatformType: string | null,
+  shippingPlatform: Platform | undefined,
 ): KeyValueItem[] {
   const items: KeyValueItem[] = [];
 
@@ -184,13 +189,15 @@ function buildShipmentFieldItems(
     value: carrierName ?? <span className="text-muted">— (awaiting)</span>,
   });
 
-  // Paczkomat row — caption keyed on shipping-connection platformType, NOT
-  // the shipment's `paczkomatId === null` (a null is "kurier shipment", a
-  // value is "paczkomat shipment"; caption tells operator who selected it).
+  // Paczkomat row — caption keyed on the shipping platform's
+  // `pickupPointResolvesAsync` trait (#893), NOT the shipment's
+  // `paczkomatId === null` (a null is "kurier shipment", a value is "paczkomat
+  // shipment"; caption tells operator who selected it). Platforms whose locker
+  // is buyer-selected on-platform set the trait; everything else is operator-set.
   if (shipment.paczkomatId !== null) {
     const caption =
-      shippingPlatformType === 'allegro'
-        ? '(buyer-selected via Allegro)'
+      shippingPlatform?.pickupPointResolvesAsync === true
+        ? `(buyer-selected via ${shippingPlatform.displayName})`
         : '(operator-selected)';
     items.push({
       id: 'paczkomat',
