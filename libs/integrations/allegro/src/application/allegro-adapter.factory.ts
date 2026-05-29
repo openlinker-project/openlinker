@@ -20,6 +20,10 @@ import type { AllegroCredentials } from '../domain/types/allegro-credentials.typ
 import { AllegroConfigException } from '../domain/exceptions/allegro-config.exception';
 import { AllegroHttpClient } from '../infrastructure/http/allegro-http-client';
 import { AllegroConnectionTokenState } from '../infrastructure/http/allegro-connection-token-state';
+import {
+  getAllegroWebBaseUrl,
+  getAllegroRestApiBaseUrl,
+} from '../infrastructure/http/allegro-hosts';
 import type { QuantityPollConfig } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOfferManagerAdapter } from '../infrastructure/adapters/allegro-offer-manager.adapter';
 import { AllegroOrderSourceAdapter } from '../infrastructure/adapters/allegro-order-source.adapter';
@@ -68,11 +72,12 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
 
     // Determine API + upload base URLs
-    const apiBaseUrl = config.apiBaseUrl || this.getDefaultApiBaseUrl(config.environment);
+    const apiBaseUrl = config.apiBaseUrl || getAllegroRestApiBaseUrl(config.environment);
     const uploadBaseUrl = config.uploadBaseUrl || this.getDefaultUploadBaseUrl(config.environment);
     // #464 — public buyer-facing storefront, used by `OfferReader.getOffer` to
-    // synthesise a marketplace-side URL the operator can open in a new tab.
-    const storefrontBaseUrl = this.getDefaultStorefrontBaseUrl(config.environment);
+    // synthesise a marketplace-side URL the operator can open in a new tab. The
+    // storefront lives on the same `allegro.pl` web host as the OAuth surface.
+    const storefrontBaseUrl = getAllegroWebBaseUrl(config.environment);
 
     // Create token refresh callback if token refresh service is available.
     // We forward both accessToken and expiresAt so the HTTP client can update
@@ -145,38 +150,6 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       orderSource: orderSourceAdapter,
       shippingManager: shippingAdapter,
     };
-  }
-
-  /**
-   * Get default API base URL for environment
-   */
-  private getDefaultApiBaseUrl(environment: string): string {
-    switch (environment) {
-      case 'sandbox':
-        return 'https://api.allegro.pl.allegrosandbox.pl';
-      case 'production':
-        return 'https://api.allegro.pl';
-      default:
-        this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
-        return 'https://api.allegro.pl.allegrosandbox.pl';
-    }
-  }
-
-  /**
-   * Public storefront base URL for the offer-detail link surfaced on the
-   * listing-detail page (#464). Same `*.allegrosandbox.pl` naming pattern as
-   * the api/upload hosts.
-   */
-  private getDefaultStorefrontBaseUrl(environment: string): string {
-    switch (environment) {
-      case 'sandbox':
-        return 'https://allegro.pl.allegrosandbox.pl';
-      case 'production':
-        return 'https://allegro.pl';
-      default:
-        this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox storefront`);
-        return 'https://allegro.pl.allegrosandbox.pl';
-    }
   }
 
   /**
