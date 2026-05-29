@@ -198,9 +198,13 @@ export function ShipmentsPage(): ReactElement {
       // `features/shipments/lib/processor.ts`. Branch-2 vs. branch-3
       // disambiguation needs the order's source platformType and is deferred
       // per #839 plan §5; this column is the two-bucket v1.
+      //
+      // Not sortable — alphabetical sort over ('carrier' / 'omp' / 'pending')
+      // isn't a meaningful operator axis. If a sort comparator becomes
+      // useful (e.g. branch-priority), set `sortable: true` and define an
+      // explicit comparator at that point. Consistent with the existing
+      // Connection / Tracking columns (also non-sortable).
       cell: (s) => <ProcessorBadge processor={deriveProcessor(s)} />,
-      accessor: (s) => deriveProcessor(s),
-      sortable: true,
     },
     {
       id: 'createdAt',
@@ -276,11 +280,24 @@ export function ShipmentsPage(): ReactElement {
           aria-label="Filter by processor"
           value={processor ?? ''}
           onChange={(e) => {
-            setFilter('processor', e.target.value);
-            // Clearing the method dropdown when Processor takes over —
-            // belt-and-braces (the toolbar hides the Method Select when
-            // Processor is set, but a deep-link could carry both params).
-            if (e.target.value !== '') setFilter('shippingMethod', '');
+            // Batch the processor + shippingMethod + offset reset in one
+            // setSearchParams transaction so the URL never enters an
+            // intermediate state (processor set but stale shippingMethod
+            // still present). Tech-review SUGGESTION fix.
+            const value = e.target.value;
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              if (value) {
+                next.set('processor', value);
+                // Deep-links could carry both params; clear the method when
+                // Processor takes over.
+                next.delete('shippingMethod');
+              } else {
+                next.delete('processor');
+              }
+              next.delete('offset');
+              return next;
+            });
           }}
         >
           <option value="">All processors</option>

@@ -59,9 +59,7 @@ export function ShipmentActionButtons({
   if (shipment !== null && shipment.shippingMethod === 'omp') {
     return (
       <div className="shipment-action-buttons">
-        <span className="text-muted" role="note">
-          Fulfilled by destination
-        </span>
+        <span className="text-muted">Fulfilled by destination</span>
       </div>
     );
   }

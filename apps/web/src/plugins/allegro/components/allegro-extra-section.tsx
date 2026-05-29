@@ -16,7 +16,6 @@
 import type { ReactElement } from 'react';
 
 import { AllegroSellerDefaultsSection } from '../../../features/connections';
-import { Alert } from '../../../shared/ui/alert';
 import type { ExtraConfigSectionProps } from '../../../shared/plugins';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -43,17 +42,23 @@ export function AllegroExtraSection({
       />
 
       {showAllegroDelivery ? (
-        <section className="allegro-delivery-info" aria-labelledby="allegro-delivery-info-heading">
+        <section aria-labelledby="allegro-delivery-info-heading">
           <h3 id="allegro-delivery-info-heading" className="detail-section__title">
             Allegro Delivery
           </h3>
-          <Alert tone="info">
+          {/* Collapsible details — keeps the toolbar visually tight on the
+              connection page, expands when the operator wants context.
+              Native <details> per shared-UI policy (use native HTML when it
+              covers the use case). */}
+          <details>
+            <summary>
+              <strong>No configuration needed</strong> — how shipment tracking works
+            </summary>
             <p>
-              <strong>No configuration needed.</strong> Allegro Delivery (&ldquo;Wysyłam z
-              Allegro&rdquo;) labels are issued via Allegro&apos;s shipment-management API and
-              tracked automatically:
+              Allegro Delivery (&ldquo;Wysyłam z Allegro&rdquo;) labels are issued via
+              Allegro&apos;s shipment-management API and tracked automatically:
             </p>
-            <ul className="allegro-delivery-info__list">
+            <ul>
               <li>
                 <strong>Label creation</strong> is synchronous from OL&apos;s side — operators
                 generate a label from the order detail panel; OL waits for Allegro&apos;s
@@ -69,11 +74,11 @@ export function AllegroExtraSection({
                 kurier) are pre-filled on the label form from the order snapshot.
               </li>
             </ul>
-            <p className="allegro-delivery-info__meta">
+            <p>
               Cursor key: <code className="mono-text">allegro.shipmentStatus.scanOffset</code>{' '}
               · Job type: <code className="mono-text">marketplace.shipment.statusSync</code>
             </p>
-          </Alert>
+          </details>
         </section>
       ) : null}
     </>

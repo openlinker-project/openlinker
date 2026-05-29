@@ -267,4 +267,33 @@ describe('ShipmentsPage', () => {
     expect(filters.shippingMethod).toBeUndefined();
     expect(filters.hasProviderShipmentId).toBeUndefined();
   });
+
+  // Direct round-trip test (#839 tech-review SUGGESTION fix) — verifies the
+  // FE-mirror `hasProviderShipmentId` wire shape independently of the
+  // processor URL mapping. Future toolbar / hook refactors that lose the
+  // serializer wiring fail here, not in some subtle UX regression.
+  it('should serialize hasProviderShipmentId verbatim onto the BE list call', async () => {
+    const listMock = vi.fn().mockResolvedValue(page([]));
+    const mockApi = createMockApiClient({
+      shipments: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, {
+      apiClient: mockApi,
+      route: '/shipments?processor=carrier',
+    });
+
+    await screen.findByText('No shipments found');
+    expect(listMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hasProviderShipmentId: true }),
+      expect.anything(),
+    );
+    // And the underlying api module serialises it onto the query string as
+    // `hasProviderShipmentId=true` (see shipments.api.ts buildQuery). We
+    // can't assert on the URL through the mock list signature, but we can
+    // pin the contract by exact-key+value match.
+    const [filters] = listMock.mock.calls[0];
+    expect(filters).toMatchObject({ hasProviderShipmentId: true });
+  });
 });

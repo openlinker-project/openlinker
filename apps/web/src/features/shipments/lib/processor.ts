@@ -39,9 +39,14 @@ export type ProcessorKind = (typeof PROCESSOR_KIND_VALUES)[number];
 
 /**
  * Operator-readable label per processor kind. Used by the `/shipments`
- * Processor column and the processor-filter dropdown. Keyed by
+ * Processor column for **every** row (including pending). Keyed by
  * `Record<ProcessorKind, string>` so a new processor addition fails
  * type-check until the label is supplied.
+ *
+ * Note the asymmetry: `'pending'` is **renderable** in the column (so
+ * draft rows display as "Pending" rather than "Carrier" / "OMP-fulfilled")
+ * but **not filterable** — the processor-filter dropdown iterates the
+ * narrower `PROCESSOR_FILTER_VALUES` set instead.
  */
 export const PROCESSOR_KIND_LABEL: Record<ProcessorKind, string> = {
   omp: 'OMP-fulfilled',
