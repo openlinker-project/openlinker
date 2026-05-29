@@ -11,7 +11,6 @@ import type { GenerateLabelCommand, ShippingMethod } from '@openlinker/core/ship
 
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import { AllegroShipmentPendingException } from '../../../domain/exceptions/allegro-shipment-pending.exception';
-import { AllegroShipmentRejectedException } from '../../../domain/exceptions/allegro-shipment-rejected.exception';
 import type {
   AllegroShipmentCommandResult,
   AllegroShipmentResource,
@@ -132,13 +131,21 @@ describe('AllegroDeliveryShippingAdapter', () => {
         ok<AllegroShipmentCommandResult>({
           commandId: 'c1',
           status: 'ERROR',
-          errors: [{ userMessage: 'Sender zip outside the Allegro One service area' }],
+          errors: [
+            {
+              code: 'ALLEGRO_ONE_OUT_OF_AREA',
+              userMessage: 'Sender zip outside the Allegro One service area',
+            },
+          ],
         }),
       );
 
       await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
-        name: 'AllegroShipmentRejectedException',
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'ALLEGRO_ONE_OUT_OF_AREA',
         message: expect.stringContaining('Sender zip outside the Allegro One service area'),
+        providerDetails: expect.objectContaining({ errors: expect.any(Array) }),
       });
     });
 
@@ -152,28 +159,60 @@ describe('AllegroDeliveryShippingAdapter', () => {
       expect(http.get).toHaveBeenCalledTimes(3); // maxAttempts
     });
 
-    it('rejects an unsupported shipping method without calling the API', async () => {
+    it('rejects an unsupported shipping method without calling the API (#885)', async () => {
       await expect(
         adapter.generateLabel(makeCommand({ shippingMethod: 'air-freight' as ShippingMethod })),
-      ).rejects.toBeInstanceOf(AllegroShipmentRejectedException);
+      ).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'preflight.unsupported-method',
+      });
       expect(http.post).not.toHaveBeenCalled();
     });
 
-    it('wraps an Allegro API failure on create into a readable rejection', async () => {
+    it('wraps an Allegro 4xx API failure on create as api.http-400 (#885)', async () => {
       http.post.mockRejectedValue(
         new AllegroApiException('DELIVERY_METHOD_NOT_AVAILABLE', 400),
       );
 
       await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
-        name: 'AllegroShipmentRejectedException',
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'api.http-400',
         message: expect.stringContaining('DELIVERY_METHOD_NOT_AVAILABLE'),
       });
     });
 
-    it('rejects (before any API call) when no provider deliveryMethodId was resolved', async () => {
+    it('wraps an Allegro 5xx API failure on create as api.http-500 (#885)', async () => {
+      http.post.mockRejectedValue(
+        new AllegroApiException('Service Unavailable', 503),
+      );
+
+      await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'api.http-503',
+      });
+    });
+
+    it('falls back to api.http-unknown when status is undefined (#885)', async () => {
+      http.post.mockRejectedValue(new AllegroApiException('timeout'));
+
+      await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'api.http-unknown',
+      });
+    });
+
+    it('rejects (before any API call) when no provider deliveryMethodId was resolved (#885)', async () => {
       await expect(
         adapter.generateLabel(makeCommand({ deliveryMethodId: undefined })),
-      ).rejects.toBeInstanceOf(AllegroShipmentRejectedException);
+      ).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'preflight.missing-delivery-method-id',
+      });
       expect(http.post).not.toHaveBeenCalled();
     });
   });
@@ -255,19 +294,23 @@ describe('AllegroDeliveryShippingAdapter', () => {
       );
     });
 
-    it('throws a readable rejection when the cancel command resolves ERROR', async () => {
+    it('throws a typed rejection when the cancel command resolves ERROR (#885)', async () => {
       http.post.mockResolvedValue(ok({}));
       http.get.mockResolvedValue(
         ok<AllegroShipmentCommandResult>({
           commandId: 'c1',
           status: 'ERROR',
-          errors: [{ message: 'Shipment already dispatched' }],
+          errors: [{ code: 'SHIPMENT_ALREADY_DISPATCHED', message: 'Shipment already dispatched' }],
         }),
       );
 
       await expect(
         adapter.cancelShipment({ providerShipmentId: 'allegro-ship-1' }),
-      ).rejects.toBeInstanceOf(AllegroShipmentRejectedException);
+      ).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'SHIPMENT_ALREADY_DISPATCHED',
+      });
     });
   });
 });

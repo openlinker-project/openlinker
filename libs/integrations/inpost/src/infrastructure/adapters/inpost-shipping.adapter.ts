@@ -14,21 +14,20 @@
  * @module libs/integrations/inpost/src/infrastructure/adapters
  */
 import { Logger } from '@openlinker/shared/logging';
-import type {
-  ShippingProviderManagerPort,
-  ShipmentCanceller,
-  PickupPointFinder,
-  GenerateLabelCommand,
-  GenerateLabelResult,
-  TrackingSnapshot,
-  ShippingMethod,
-  PickupPoint,
-  FindPickupPointsQuery,
+import {
+  ShippingProviderRejectionException,
+  type ShippingProviderManagerPort,
+  type ShipmentCanceller,
+  type PickupPointFinder,
+  type GenerateLabelCommand,
+  type GenerateLabelResult,
+  type TrackingSnapshot,
+  type ShippingMethod,
+  type PickupPoint,
+  type FindPickupPointsQuery,
 } from '@openlinker/core/shipping';
 import type { InpostConnectionConfig } from '../../domain/types/inpost-config.types';
 import type { ShipXPointsResponse, ShipXShipment } from '../../domain/types/inpost-shipx.types';
-import { InpostValidationException } from '../../domain/exceptions/inpost-validation.exception';
-import { PaczkomatUnavailableException } from '../../domain/exceptions/paczkomat-unavailable.exception';
 import type { IInpostHttpClient } from '../http/inpost-http-client.interface';
 import {
   buildCreateShipmentRequest,
@@ -66,13 +65,23 @@ export class InpostShippingAdapter
       });
     } catch (error) {
       // ShipX rejecting the chosen locker surfaces as a generic validation
-      // error; re-tag it so callers can offer "pick another locker".
+      // error; re-tag it with the stable `target_point` `providerCode` so
+      // callers can offer "pick another locker" (#885).
       if (
-        error instanceof InpostValidationException &&
+        error instanceof ShippingProviderRejectionException &&
+        error.providerName === 'inpost' &&
         cmd.paczkomatId &&
         mentionsTargetPoint(error)
       ) {
-        throw new PaczkomatUnavailableException(error.message, cmd.paczkomatId);
+        throw new ShippingProviderRejectionException(
+          'inpost',
+          'target_point',
+          error.message,
+          {
+            paczkomatId: cmd.paczkomatId,
+            ...(error.providerDetails ?? {}),
+          },
+        );
       }
       throw error;
     }
@@ -114,8 +123,14 @@ export class InpostShippingAdapter
   }
 }
 
-function mentionsTargetPoint(error: InpostValidationException): boolean {
-  if (error.details && Object.keys(error.details).includes('target_point')) {
+function mentionsTargetPoint(error: ShippingProviderRejectionException): boolean {
+  const fieldErrors = error.providerDetails?.fieldErrors;
+  if (
+    fieldErrors !== null &&
+    typeof fieldErrors === 'object' &&
+    !Array.isArray(fieldErrors) &&
+    Object.keys(fieldErrors as Record<string, unknown>).includes('target_point')
+  ) {
     return true;
   }
   return /target_point|paczkomat/i.test(error.message);

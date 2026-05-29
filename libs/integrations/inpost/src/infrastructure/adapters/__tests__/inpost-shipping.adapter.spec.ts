@@ -7,12 +7,13 @@
  *
  * @module libs/integrations/inpost/src/infrastructure/adapters
  */
-import type { GenerateLabelCommand } from '@openlinker/core/shipping';
+import {
+  ShippingProviderRejectionException,
+  type GenerateLabelCommand,
+} from '@openlinker/core/shipping';
 import type { InpostConnectionConfig } from '../../../domain/types/inpost-config.types';
 import type { IInpostHttpClient } from '../../http/inpost-http-client.interface';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
-import { InpostValidationException } from '../../../domain/exceptions/inpost-validation.exception';
-import { PaczkomatUnavailableException } from '../../../domain/exceptions/paczkomat-unavailable.exception';
 import { InpostShippingAdapter } from '../inpost-shipping.adapter';
 
 const config: InpostConnectionConfig = {
@@ -115,15 +116,27 @@ describe('InpostShippingAdapter', () => {
       );
     });
 
-    it('should re-tag a target_point validation error as PaczkomatUnavailableException', async () => {
+    it('should re-tag a target_point validation error with providerCode=target_point + paczkomatId (#885)', async () => {
       const { adapter, request } = makeAdapter();
       request.mockRejectedValueOnce(
-        new InpostValidationException('invalid target_point', { target_point: ['invalid'] }),
+        new ShippingProviderRejectionException(
+          'inpost',
+          'target_point',
+          'invalid target_point',
+          { fieldErrors: { target_point: ['invalid'] } },
+        ),
       );
 
-      await expect(adapter.generateLabel(paczkomatCmd)).rejects.toBeInstanceOf(
-        PaczkomatUnavailableException,
-      );
+      await expect(adapter.generateLabel(paczkomatCmd)).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'inpost',
+        providerCode: 'target_point',
+        message: 'invalid target_point',
+        providerDetails: expect.objectContaining({
+          paczkomatId: 'POZ08A',
+          fieldErrors: { target_point: ['invalid'] },
+        }),
+      });
     });
 
     it('should rethrow non-paczkomat errors unchanged', async () => {
