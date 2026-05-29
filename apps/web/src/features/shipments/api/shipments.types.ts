@@ -30,8 +30,36 @@ export const SHIPMENT_STATUS_VALUES = [
 ] as const;
 export type ShipmentStatus = (typeof SHIPMENT_STATUS_VALUES)[number];
 
-export const SHIPPING_METHOD_VALUES = ['paczkomat', 'kurier'] as const;
+/**
+ * FE mirror of the BE `ShippingMethodValues`
+ * (`libs/core/src/shipping/domain/types/shipping-method.types.ts`).
+ *
+ * - `'paczkomat'` / `'kurier'` — provider-issued shipments (branches 2/3:
+ *   InPost own-contract, Allegro Delivery source-brokered).
+ * - `'omp'` — **projection-only** rows (branch-1, #834): the destination OMP
+ *   ships externally and OL holds no provider id / label.
+ *   `FulfillmentStatusSyncService` is the sole writer. No
+ *   `ShippingProviderManagerPort` ever advertises `omp`.
+ *
+ * Adding a new BE method requires widening this array AND
+ * `SHIPPING_METHOD_LABEL` below — `Record<ShippingMethod, string>` makes the
+ * compiler fail loudly on omission (intentional: stops the kind of FE↔BE
+ * value-level drift that bit us in #886).
+ */
+export const SHIPPING_METHOD_VALUES = ['paczkomat', 'kurier', 'omp'] as const;
 export type ShippingMethod = (typeof SHIPPING_METHOD_VALUES)[number];
+
+/**
+ * Operator-readable label per shipping method. Used by the `/shipments`
+ * Method column and the method-filter dropdown so the UI doesn't surface raw
+ * enum values. `Record<ShippingMethod, string>` (not `Partial<>`) so a new
+ * method addition fails type-check until the label is supplied.
+ */
+export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = {
+  paczkomat: 'Paczkomat',
+  kurier: 'Kurier',
+  omp: 'OMP-fulfilled',
+};
 
 export interface Shipment {
   id: string;
@@ -142,6 +170,15 @@ export interface ShipmentFilters {
   connectionId?: string;
   shippingMethod?: ShippingMethod;
   hasTracking?: boolean;
+  /**
+   * Branch discriminator at the row level (#882). `true` → only rows with a
+   * provider-issued id (branches 2/3 — carrier-issued shipments);
+   * `false` → only branch-1 projection rows (no provider id). Backed by
+   * the BE `ShipmentFilters.hasProviderShipmentId` field shipped in #882.
+   * Used by the `/shipments` processor filter to slice "Carrier" vs.
+   * "OMP-fulfilled" rows.
+   */
+  hasProviderShipmentId?: boolean;
   /** Inclusive lower bound on createdAt (ISO 8601 / `YYYY-MM-DD`). */
   createdFrom?: string;
   /** Inclusive upper bound on createdAt (ISO 8601 / `YYYY-MM-DD`). */
