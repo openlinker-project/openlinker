@@ -19,13 +19,9 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { AllegroHttpClient } from '../http/allegro-http-client';
 import { AllegroConnectionTokenState } from '../http/allegro-connection-token-state';
+import { getAllegroRestApiBaseUrl } from '../http/allegro-hosts';
 import type { AllegroCredentials } from '../../domain/types/allegro-credentials.types';
 import type { AllegroConnectionConfig } from '../../domain/types/allegro-config.types';
-
-const DEFAULT_API_BASE_URLS: Record<string, string> = {
-  sandbox: 'https://api.allegro.pl.allegrosandbox.pl',
-  production: 'https://api.allegro.pl',
-};
 
 export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
   async test(
@@ -36,8 +32,7 @@ export class AllegroConnectionTesterAdapter implements ConnectionTesterPort {
     try {
       const config = (connection.config ?? {}) as Partial<AllegroConnectionConfig>;
       const environment = config.environment ?? 'sandbox';
-      const apiBaseUrl =
-        config.apiBaseUrl ?? DEFAULT_API_BASE_URLS[environment] ?? DEFAULT_API_BASE_URLS.sandbox;
+      const apiBaseUrl = config.apiBaseUrl ?? getAllegroRestApiBaseUrl(environment);
 
       const credentials = await credentialsResolver.get<AllegroCredentials>(
         connection.credentialsRef
