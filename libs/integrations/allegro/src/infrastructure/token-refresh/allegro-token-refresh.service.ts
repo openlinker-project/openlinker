@@ -20,6 +20,7 @@ import type { AllegroCredentials } from '../../domain/types/allegro-credentials.
 import { AllegroConfigException } from '../../domain/exceptions/allegro-config.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
+import { getAllegroWebBaseUrl } from '../http/allegro-hosts';
 import { RedisClientType } from 'redis';
 
 /**
@@ -134,14 +135,15 @@ export class AllegroTokenRefreshService {
       }
 
       const environment = config.environment || 'sandbox';
-      const apiBaseUrl = this.getApiBaseUrl(environment);
+      // `/auth/oauth/token` is served from the Allegro web host, not the REST host.
+      const webBaseUrl = getAllegroWebBaseUrl(environment);
 
       // Call Allegro token refresh endpoint
       const tokenResponse = await this.callRefreshEndpoint(
         credentials.refreshToken,
         credentials.clientId,
         credentials.clientSecret,
-        apiBaseUrl
+        webBaseUrl
       );
 
       // Prepare updated credentials
@@ -192,21 +194,21 @@ export class AllegroTokenRefreshService {
    * @param refreshToken - OAuth refresh token
    * @param clientId - OAuth client ID
    * @param clientSecret - OAuth client secret
-   * @param apiBaseUrl - Allegro API base URL
+   * @param webBaseUrl - Allegro web host (serves `/auth/oauth/token`)
    * @returns Token response from Allegro
    */
   private async callRefreshEndpoint(
     refreshToken: string,
     clientId: string,
     clientSecret: string,
-    apiBaseUrl: string
+    webBaseUrl: string
   ): Promise<{
     access_token: string;
     refresh_token?: string;
     expires_in?: number;
     token_type: string;
   }> {
-    const tokenUrl = new URL('/auth/oauth/token', apiBaseUrl);
+    const tokenUrl = new URL('/auth/oauth/token', webBaseUrl);
 
     // Prepare token refresh request
     const tokenRequest = {
@@ -310,21 +312,6 @@ export class AllegroTokenRefreshService {
     } catch (error) {
       this.logger.error(`Failed to release lock ${lockKey}: ${(error as Error).message}`, error);
       // Non-critical error, continue
-    }
-  }
-
-  /**
-   * Get API base URL for environment
-   */
-  private getApiBaseUrl(environment: string): string {
-    switch (environment) {
-      case 'sandbox':
-        return 'https://allegro.pl.allegrosandbox.pl';
-      case 'production':
-        return 'https://allegro.pl';
-      default:
-        this.logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
-        return 'https://allegro.pl.allegrosandbox.pl';
     }
   }
 
