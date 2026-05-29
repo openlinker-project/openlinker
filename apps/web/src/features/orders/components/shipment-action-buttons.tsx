@@ -13,7 +13,7 @@ import { useState, type ReactElement } from 'react';
 import {
   useCancelShipmentMutation,
   useNotifyDispatchedMutation,
-  useLabelPdfDownload,
+  useLabelDownload,
   type Shipment,
   type ShipmentStatus,
 } from '../../shipments';
@@ -55,7 +55,7 @@ export function ShipmentActionButtons({
 }: ShipmentActionButtonsProps): ReactElement {
   const cancelMutation = useCancelShipmentMutation();
   const notifyMutation = useNotifyDispatchedMutation();
-  const labelDownload = useLabelPdfDownload();
+  const labelDownload = useLabelDownload();
   const { showToast } = useToast();
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);

@@ -1,5 +1,5 @@
 /**
- * useLabelPdfDownload
+ * useLabelDownload
  *
  * One-shot action (NOT a TanStack mutation) that fetches a shipment's label
  * document via `apiClient.shipments.downloadLabel(id)` and triggers a browser
@@ -39,7 +39,7 @@ function extensionForBlob(blob: Blob): string {
   return EXTENSION_BY_MIME[mime] ?? 'bin';
 }
 
-interface UseLabelPdfDownload {
+interface UseLabelDownload {
   /** Fetch + trigger the browser download. Resolves `true` on success, `false`
    *  when the fetch failed (the error is also exposed via `error`). */
   download: (shipmentId: string) => Promise<boolean>;
@@ -47,7 +47,7 @@ interface UseLabelPdfDownload {
   error: Error | null;
 }
 
-export function useLabelPdfDownload(): UseLabelPdfDownload {
+export function useLabelDownload(): UseLabelDownload {
   const apiClient = useApiClient();
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<Error | null>(null);

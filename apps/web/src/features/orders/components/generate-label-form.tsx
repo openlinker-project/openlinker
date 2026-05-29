@@ -44,7 +44,7 @@ import {
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import {
   useGenerateLabelMutation,
-  useLabelPdfDownload,
+  useLabelDownload,
   type GenerateLabelInput,
 } from '../../shipments';
 import {
@@ -96,7 +96,7 @@ export function GenerateLabelForm({
   );
 
   const mutation = useGenerateLabelMutation();
-  const labelDownload = useLabelPdfDownload();
+  const labelDownload = useLabelDownload();
   const { showToast } = useToast();
 
   // AC-3 retry hint (#839) — when the order is Allegro-sourced + the
