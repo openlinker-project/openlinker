@@ -32,6 +32,14 @@ export interface CarrierMappingFixtureOpts {
   shippingTotal?: number;
   /** Optional SKU for the line; defaults to `SEEDED-SKU-${externalOrderId}`. */
   sku?: string;
+  /**
+   * OL order status. Defaults to `'pending'` (an *unpaid* order → PS state 1).
+   * Pass `'processing'` to model a PAID marketplace order (the real Allegro
+   * case — `payment.finishedAt` set → `'processing'`), which maps to PS state 2
+   * ("Payment accepted") so `validateOrder` records the payment and
+   * `total_paid_real == total`.
+   */
+  status?: IncomingOrder['status'];
 }
 
 /**
@@ -53,7 +61,7 @@ export function createIncomingOrderForCarrierMapping(
   return {
     externalOrderId: opts.externalOrderId,
     orderNumber: opts.externalOrderId,
-    status: 'pending',
+    status: opts.status ?? 'pending',
     customerExternalId: `ALG-BUYER-${opts.externalOrderId}`,
     customerEmail: `buyer-${opts.externalOrderId.toLowerCase()}@allegromail.pl`,
     items: [

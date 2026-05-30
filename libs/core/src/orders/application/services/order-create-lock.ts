@@ -13,10 +13,11 @@
 
 /**
  * Lock TTL (ms). Must comfortably exceed the worst-case `createOrder` duration
- * (PrestaShop: customer provisioning + cart + price-pin + POST /orders is
+ * (PrestaShop: customer provisioning + cart + price-pin + order create is
  * multi-second). The lock is single-shot (no heartbeat), so it guarantees
  * exactly-once only up to this TTL; beyond it, correctness falls back to the
- * adapter's own duplicate-key recovery (PrestaShop keeps one).
+ * adapter's own create-or-skip dedup (PrestaShop keeps one — its order create
+ * is idempotent per cart, and the adapter also dedups by order reference; ADR-016).
  *
  * Operator-tunable via `OL_ORDER_CREATE_LOCK_TTL_MS` (clamped to [10s, 600s]),
  * mirroring `OL_WEBHOOK_SKEW_WINDOW_MS`. Tune up for slow destinations.
