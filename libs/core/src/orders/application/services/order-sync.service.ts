@@ -18,13 +18,21 @@ import type {
   OrderSyncResult,
 } from '../interfaces/order-sync.service.interface';
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
-import type { OrderCreate } from '../../domain/types/order-processor.types';
+import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
+import { SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
+import { OrderCreateContendedException } from '../../domain/exceptions/order-create-contended.exception';
+import { ORDER_CREATE_LOCK_TTL_MS, orderCreateLockKey } from './order-create-lock';
 
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
@@ -34,7 +42,11 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
-    private readonly mappingConfigService: IMappingConfigService
+    private readonly mappingConfigService: IMappingConfigService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -92,12 +104,36 @@ export class OrderSyncService implements IOrderSyncService {
       },
     };
 
-    // Dispatch in parallel with per-destination error isolation
+    // Dispatch in parallel with per-destination error isolation. Each create is
+    // serialized per (order, destination) by a lock so converging triggers
+    // (webhook + poll, or a job retry) on multiple workers can't double-create.
     const settled = await Promise.allSettled(
       destinations.map(({ connectionId, adapter }) =>
-        adapter.createOrder(orderCreate).then((orderRef) => ({ connectionId, orderRef }))
+        this.createOrderIdempotently(adapter, connectionId, order.id, orderCreate).then(
+          (orderRef) => ({ connectionId, orderRef })
+        )
       )
     );
+
+    // Lock contention (a concurrent create is in-flight for the same order) is a
+    // retryable condition, not a per-destination failure: rethrow so the sync
+    // job retries (mirrors MissingOrderItemMappingError). By the retry the peer
+    // worker has finished and the create is skipped.
+    //
+    // Note: the whole-job retry re-dispatches every destination, including ones
+    // that already succeeded this run (they hit the adapter's skip path) and a
+    // sibling that genuinely failed (re-attempted as a side effect). Both are
+    // safe because create is idempotent; the already-succeeded skip currently
+    // returns the internal id in the OrderRef — fixed when the mapping write +
+    // OrderRef external-id contract move into core (#909).
+    const contended = settled.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === 'rejected' && outcome.reason instanceof OrderCreateContendedException
+    );
+    if (contended) {
+      this.logger.warn(`Order ${order.id} create contended on a destination; retrying sync job`);
+      throw contended.reason;
+    }
 
     return settled.map((outcome, index): OrderSyncResult => {
       const destinationConnectionId = destinations[index].connectionId;
@@ -126,6 +162,56 @@ export class OrderSyncService implements IOrderSyncService {
         error: { message },
       };
     });
+  }
+
+  /**
+   * Create one order at one destination under a per-(order, destination) lock.
+   *
+   * The lock removes the multi-worker race in the adapter's own check-then-act
+   * create-or-skip (`sync-job.runner` locks per-job, not per-order). On
+   * contention (lock held by a concurrent worker) we re-read the destination
+   * mapping: if the peer already created the order we skip and synthesize the
+   * ref from the mapping; otherwise we throw a retryable
+   * `OrderCreateContendedException` so the sync job retries.
+   */
+  private async createOrderIdempotently(
+    adapter: OrderProcessorManagerPort,
+    destinationConnectionId: string,
+    internalOrderId: string,
+    orderCreate: OrderCreate
+  ): Promise<OrderRef> {
+    const lockKey = orderCreateLockKey(destinationConnectionId, internalOrderId);
+    const token = await this.syncLock.acquire(lockKey, ORDER_CREATE_LOCK_TTL_MS);
+
+    if (!token) {
+      const mappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Order,
+        internalOrderId
+      );
+      const existing = mappings.find((m) => m.connectionId === destinationConnectionId);
+      if (existing) {
+        this.logger.log(
+          `Order ${internalOrderId} already present at destination ${destinationConnectionId} ` +
+            `(concurrent create resolved); skipping create`
+        );
+        return { orderId: existing.externalId };
+      }
+      throw new OrderCreateContendedException(internalOrderId, destinationConnectionId);
+    }
+
+    try {
+      return await adapter.createOrder(orderCreate);
+    } finally {
+      // Best-effort release — never let a release failure mask the create result.
+      try {
+        await this.syncLock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release order-create lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
+        );
+      }
+    }
   }
 
   private async resolveDestinations(
