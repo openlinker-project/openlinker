@@ -27,6 +27,7 @@ import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-map
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
+import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopCustomerProvisioner } from '../../provisioners/prestashop-customer-provisioner';
 import type { PrestashopAddressProvisioner } from '../../provisioners/prestashop-address-provisioner';
@@ -46,6 +47,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
   let mockIdentifierMapping: jest.Mocked<IdentifierMappingPort>;
   let mockOrderMapper: jest.Mocked<IPrestashopOrderMapper>;
   let mockCurrencyResolver: jest.Mocked<PrestashopCurrencyResolver>;
+  let mockTaxRateResolver: PrestashopTaxRateResolver;
   let mockCustomerProjectionRepository: jest.Mocked<CustomerProjectionRepositoryPort>;
   let mockCustomerProvisioner: jest.Mocked<PrestashopCustomerProvisioner>;
   let mockAddressProvisioner: jest.Mocked<PrestashopAddressProvisioner>;
@@ -110,6 +112,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       clearCache: jest.fn(),
     } as unknown as jest.Mocked<PrestashopCurrencyResolver>;
 
+    mockTaxRateResolver = {
+      // Default: untaxed (net == gross) so existing assertions are unaffected.
+      resolveProductTaxRate: jest.fn().mockResolvedValue(0),
+    } as unknown as PrestashopTaxRateResolver;
+
     mockCustomerProjectionRepository = {
       findById: jest.fn(),
       findByEmailHash: jest.fn(),
@@ -153,9 +160,28 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       mockAddressProvisioner,
       mockCurrencyResolver,
       mockCustomerProjectionRepository,
-      mockOpenLinkerModuleClient
+      mockOpenLinkerModuleClient,
+      mockTaxRateResolver
     );
   });
+
+  /**
+   * Dispatch `createResource` by resource name so the order-creation flow's
+   * intermediate `specific_prices` pins (#895) don't consume the cart/order
+   * slots the way sequential `mockResolvedValueOnce` did.
+   */
+  function setCreateResourceDispatch(cart: unknown, order: unknown): void {
+    mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+      if (resource === 'orders') {
+        return Promise.resolve(order);
+      }
+      if (resource === 'specific_prices') {
+        return Promise.resolve({ id: 'sp_test' });
+      }
+      // 'carts' (and any other resource hit during create) → cart payload.
+      return Promise.resolve(cart);
+    });
+  }
 
   describe('createOrder', () => {
     it('should create order successfully with all IDs resolved', async () => {
@@ -227,10 +253,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         id: '999',
         reference: order.orderNumber,
       };
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce(createdCart) // First call: cart creation
-        .mockResolvedValueOnce(createdOrder); // Second call: order creation
+      setCreateResourceDispatch(createdCart, createdOrder);
 
       // Mock identifier mapping creation
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
@@ -732,14 +755,13 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       const createdCart = { id: '123' };
       const createdOrder: PrestashopOrder = { id: externalPsOrderId, reference: order.orderNumber };
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce(createdCart)
-        .mockResolvedValueOnce(createdOrder);
+      setCreateResourceDispatch(createdCart, createdOrder);
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       await adapter.createOrder(order);
-      expect(mockHttpClient.createResource).toHaveBeenCalledTimes(2); // cart + order
+      // PS create happened on the first call (cart + specific_price pins + order).
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.anything());
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', expect.anything());
 
       // Second call: Step 0 finds the mapping → early-return.
       mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation(resolveExternalIds);
@@ -751,6 +773,106 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       expect(result).toEqual({
         orderId: METADATA_INTERNAL_ORDER_ID,
         orderNumber: expect.any(String),
+      });
+    });
+
+    describe('source-authoritative line pricing (#895)', () => {
+      type CreateCall = [string, Record<string, unknown>];
+      const createCalls = (): CreateCall[] =>
+        (mockHttpClient.createResource as jest.Mock).mock.calls as CreateCall[];
+      const specificPriceFor = (productId: string): Record<string, unknown> | undefined =>
+        createCalls()
+          .filter((c) => c[0] === 'specific_prices')
+          .find((c) => c[1].id_product === productId)?.[1];
+
+      const resolveIds = (
+        entityType: string,
+        internalId: string
+      ): Promise<Array<{ connectionId: string; externalId: string; entityType: string }>> => {
+        const map: Record<string, Record<string, string>> = {
+          Customer: { 'internal-customer-123': '42' },
+          Product: { 'internal-product-456': '100', 'internal-product-789': '200' },
+          ProductVariant: { 'internal-variant-789': '300' },
+        };
+        const externalId = map[entityType]?.[internalId];
+        return Promise.resolve(
+          externalId ? [{ connectionId: connection.id, externalId, entityType }] : []
+        );
+      };
+
+      const arrange = (): void => {
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockImplementation((entityType: string, internalId: string) =>
+            entityType === 'Order' ? Promise.resolve([]) : resolveIds(entityType, internalId)
+          );
+        mockOrderMapper.mapOrderCreate.mockReturnValue({
+          id_customer: '42',
+          current_state: 1,
+          associations: { order_rows: { order_row: [] } },
+        });
+        setCreateResourceDispatch(
+          { id: '123' },
+          { id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder
+        );
+        mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+      };
+
+      it('pins each line net via cart-scoped specific_prices before POST /orders, then cleans up', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue(0.23);
+
+        await adapter.createOrder(
+          createTestOrder({
+            totals: {
+              subtotal: 109.97,
+              tax: 0,
+              shipping: 5.0,
+              total: 114.97,
+              currency: 'EUR',
+              taxTreatment: 'inclusive',
+            },
+          })
+        );
+
+        const calls = createCalls();
+        expect(calls.filter((c) => c[0] === 'specific_prices')).toHaveLength(2);
+
+        // Line 1: gross 29.99 → net 29.99 / 1.23.
+        const line1 = specificPriceFor('100');
+        expect(line1?.price).toBe((29.99 / 1.23).toFixed(6));
+        expect(line1?.id_cart).toBe('123');
+        expect(line1?.id_customer).toBe('42');
+        expect(line1?.from_quantity).toBe(1);
+
+        // specific_prices must be written BEFORE the order POST.
+        const firstOrderIdx = calls.findIndex((c) => c[0] === 'orders');
+        const lastSpecificIdx = calls.map((c) => c[0]).lastIndexOf('specific_prices');
+        expect(lastSpecificIdx).toBeLessThan(firstOrderIdx);
+
+        // Pins are cleaned up after the order is created.
+        expect(mockHttpClient.deleteResource).toHaveBeenCalledWith('specific_prices', 'sp_test');
+      });
+
+      it('pins the price as-is (no tax conversion) when the source reports net prices', async () => {
+        arrange();
+
+        await adapter.createOrder(
+          createTestOrder({
+            totals: {
+              subtotal: 109.97,
+              tax: 0,
+              shipping: 5.0,
+              total: 114.97,
+              currency: 'EUR',
+              taxTreatment: 'exclusive',
+            },
+          })
+        );
+
+        // Net source → no rate lookup, price pinned verbatim.
+        expect(mockTaxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+        expect(specificPriceFor('100')?.price).toBe((29.99).toFixed(6));
       });
     });
 
@@ -809,10 +931,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       const createdCart = { id: '123' };
       const createdOrder: PrestashopOrder = { id: '999', reference: order.orderNumber };
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce(createdCart)
-        .mockResolvedValueOnce(createdOrder);
+      setCreateResourceDispatch(createdCart, createdOrder);
 
       // Simulate concurrent-insert race: createMapping throws DuplicateIdentifierMappingError
       mockIdentifierMapping.createMapping = jest
@@ -902,10 +1021,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         associations: { order_rows: { order_row: [] } },
       });
 
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce({ id: '123' })
-        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+      setCreateResourceDispatch({ id: '123' }, {
+        id: '999',
+        reference: 'TEST-ORDER-001',
+      } as PrestashopOrder);
 
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
     };
@@ -924,6 +1043,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -976,6 +1096,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1017,6 +1138,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1061,6 +1183,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1124,10 +1247,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         associations: { order_rows: { order_row: [] } },
       });
 
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce({ id: '123' }) // cart
-        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+      setCreateResourceDispatch({ id: '123' }, {
+        id: '999',
+        reference: 'TEST-ORDER-001',
+      } as PrestashopOrder);
 
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
     };
@@ -1148,6 +1271,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1179,6 +1303,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1205,6 +1330,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         mockCurrencyResolver,
         mockCustomerProjectionRepository,
         mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
         mockMappingConfig
       );
 
@@ -1379,10 +1505,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         current_state: 1,
         associations: { order_rows: { order_row: [] } },
       });
-      mockHttpClient.createResource = jest
-        .fn()
-        .mockResolvedValueOnce({ id: '123' })
-        .mockResolvedValueOnce({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+      setCreateResourceDispatch({ id: '123' }, {
+        id: '999',
+        reference: 'TEST-ORDER-001',
+      } as PrestashopOrder);
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       await adapter.createOrder(order);
@@ -1545,7 +1671,8 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           mockAddressProvisioner,
           mockCurrencyResolver,
           mockCustomerProjectionRepository,
-          mockOpenLinkerModuleClient
+          mockOpenLinkerModuleClient,
+          mockTaxRateResolver
         );
       }
 

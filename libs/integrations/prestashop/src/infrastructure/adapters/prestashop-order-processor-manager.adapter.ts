@@ -53,6 +53,8 @@ import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import type { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
 import type { PrestashopAddressProvisioner } from '../provisioners/prestashop-address-provisioner';
 import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
+import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import { allocateByLargestRemainder } from '@openlinker/shared/money';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
@@ -68,6 +70,14 @@ interface PrestashopCarrierRow {
   active?: string | number;
   deleted?: string | number;
 }
+
+/**
+ * Active-window length for a pinned `specific_prices` row's `to` field — a
+ * crash fail-safe so an un-deleted pin self-expires rather than lingering. A
+ * full day is generous against shop-timezone skew (the order is created seconds
+ * after the pin) while still bounding any orphan's active life (#895).
+ */
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * PrestaShop Order Processor Manager Adapter
@@ -114,6 +124,9 @@ export class PrestashopOrderProcessorManagerAdapter
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
     // OL PrestaShop module client for HMAC-signed sidecar writes (#516).
     private readonly openlinkerModuleClient: IPrestashopOpenLinkerModuleClient,
+    // Resolves the destination product's tax rate so buyer-paid gross line
+    // prices can be pinned net via `specific_prices` (#895 / ADR-014).
+    private readonly taxRateResolver: PrestashopTaxRateResolver,
     private readonly mappingConfigService?: IMappingConfigService
   ) {}
 
@@ -124,6 +137,13 @@ export class PrestashopOrderProcessorManagerAdapter
     );
 
     this.logger.debug(`order: ${JSON.stringify(order)}`);
+
+    // Cart-scoped `specific_prices` rows created to pin line prices (#895).
+    // Declared outside the try so the success path and the catch can both
+    // best-effort clean them up. They're transient (the price is materialised
+    // into `order_detail` at POST /orders); cart-scoped so they never affect
+    // another cart, and carry a short `to`-expiry as a crash fail-safe.
+    const pinnedPriceIds: Array<string | number> = [];
 
     try {
       // Step 0: Check if order already exists (idempotency check)
@@ -409,6 +429,23 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
 
+      // Step 6.6: Pin line prices to the buyer-paid (source-authoritative)
+      // amount via cart-scoped `specific_prices` BEFORE POST /orders (#895 /
+      // ADR-014). PS prices the order's `order_detail` from the cart; without
+      // this it would use the catalog price and land the order in
+      // `Payment error`. Best-effort failures are swallowed inside the helper —
+      // a missing pin must not abort an otherwise-valid order (the int-spec is
+      // the correctness lock).
+      const created = await this.pinLinePrices(
+        order,
+        externalCartId,
+        externalCustomerId,
+        externalCurrencyId,
+        externalProductIds,
+        externalVariantIds
+      );
+      pinnedPriceIds.push(...created);
+
       // Step 7: Map OrderCreate to PrestaShop format (including cart ID, currency ID, language ID, carrier ID)
       const prestashopOrderData = this.orderMapper.mapOrderCreate(
         order,
@@ -588,12 +625,19 @@ export class PrestashopOrderProcessorManagerAdapter
       // its sidecar row at Step 6.5; static carriers price from PS's own
       // zone tables.
 
+      // The line prices are now materialised into `order_detail`; the pin rows
+      // have served their purpose. Best-effort cleanup (never throws).
+      await this.cleanupPinnedPrices(pinnedPriceIds);
+
       // Step 7: Return order reference
       return {
         orderId: internalOrderId,
         orderNumber: createdOrder.reference || order.orderNumber || externalOrderId,
       };
     } catch (error) {
+      // Best-effort cleanup on the failure path too — the short `to`-expiry
+      // bounds the harm of any pin row we can't delete here.
+      await this.cleanupPinnedPrices(pinnedPriceIds);
       if (
         error instanceof PrestashopResourceNotFoundException ||
         error instanceof PrestashopApiException ||
@@ -610,6 +654,141 @@ export class PrestashopOrderProcessorManagerAdapter
         undefined
       );
     }
+  }
+
+  /**
+   * Pin each order line to its buyer-paid (source-authoritative) price via a
+   * cart-scoped `specific_prices` row, so PrestaShop values the order's
+   * `order_detail` at the marketplace price instead of the catalog price
+   * (#895 / ADR-014).
+   *
+   * `specific_prices.price` is tax-EXCLUDED. When the source reports GROSS
+   * prices (`taxTreatment` `inclusive`, or unset — the marketplace default) the
+   * gross is converted to net using the destination product's own tax rate, so
+   * PS re-grosses it back to the buyer-paid amount. When the source reports NET
+   * (`exclusive`) the price is pinned as-is. The buyer-paid product subtotal is
+   * apportioned across lines with a largest-remainder allocation so the pinned
+   * lines sum exactly to the authoritative total under rounding.
+   *
+   * Returns the created `specific_prices` ids for cleanup. Best-effort: a
+   * failure to pin a line is logged and skipped rather than aborting the order.
+   */
+  private async pinLinePrices(
+    order: OrderCreate,
+    externalCartId: string | number,
+    externalCustomerId: string | number,
+    externalCurrencyId: number | undefined,
+    externalProductIds: Map<string, string | number>,
+    externalVariantIds: Map<string, string | number>
+  ): Promise<Array<string | number>> {
+    const createdIds: Array<string | number> = [];
+    if (order.items.length === 0) {
+      return createdIds;
+    }
+
+    // `exclusive` → already net; everything else (`inclusive`/unset) → gross,
+    // convert to net. Marketplace orders are gross, so unset defaults to gross.
+    const convertGrossToNet = order.totals.taxTreatment !== 'exclusive';
+    const deliveryCountryIso = order.shippingAddress?.country;
+    const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
+
+    // Apportion the gross product subtotal across lines (minor units) so the
+    // pinned lines sum exactly to the authoritative total.
+    const subtotalMinor = Math.round(order.totals.subtotal * 100);
+    const weightsMinor = order.items.map((item) => Math.round(item.price * item.quantity * 100));
+    const lineGrossMinor = allocateByLargestRemainder(subtotalMinor, weightsMinor);
+
+    for (let index = 0; index < order.items.length; index++) {
+      const item = order.items[index];
+      if (item.quantity <= 0) {
+        continue;
+      }
+      const externalProductId = externalProductIds.get(item.productId);
+      if (externalProductId === undefined) {
+        continue; // resolution already guaranteed this in Step 2
+      }
+      const externalVariantId = item.variantId
+        ? (externalVariantIds.get(item.variantId) ?? 0)
+        : 0;
+
+      const grossUnit = lineGrossMinor[index] / 100 / item.quantity;
+      let rate = 0;
+      if (convertGrossToNet) {
+        rate = await this.taxRateResolver.resolveProductTaxRate(
+          externalProductId,
+          deliveryCountryIso,
+          this.connection.id,
+          this.httpClient
+        );
+      }
+      const netUnit = grossUnit / (1 + rate);
+
+      try {
+        const createdPrice = await this.httpClient.createResource<{ id: string | number }>(
+          'specific_prices',
+          {
+            id_product: externalProductId,
+            id_product_attribute: externalVariantId,
+            id_shop: 0,
+            id_shop_group: 0,
+            id_cart: externalCartId,
+            id_currency: externalCurrencyId ?? 0,
+            id_country: 0,
+            id_group: 0,
+            id_customer: externalCustomerId,
+            from_quantity: 1,
+            price: netUnit.toFixed(6),
+            reduction: '0',
+            reduction_type: 'amount',
+            reduction_tax: '0',
+            from: '0000-00-00 00:00:00',
+            to: toExpiry,
+          }
+        );
+        if (createdPrice?.id !== undefined) {
+          createdIds.push(createdPrice.id);
+        }
+        this.logger.debug(
+          `Pinned line price: product=${externalProductId} variant=${externalVariantId} ` +
+            `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to pin specific_price for product ${externalProductId}: ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    return createdIds;
+  }
+
+  /**
+   * Best-effort deletion of the cart-scoped `specific_prices` rows created by
+   * {@link pinLinePrices}. Never throws — the rows are cart-scoped (harmless to
+   * other carts) and carry a short `to`-expiry, so a failed delete degrades to
+   * a short-lived orphan, not a correctness problem.
+   */
+  private async cleanupPinnedPrices(ids: Array<string | number>): Promise<void> {
+    for (const id of ids) {
+      try {
+        await this.httpClient.deleteResource('specific_prices', id);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete pinned specific_price ${id} (will self-expire): ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  }
+
+  /** Format a `Date` as PrestaShop's `YYYY-MM-DD HH:MM:SS` (UTC). */
+  private formatPsDateTime(date: Date): string {
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    return (
+      `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+      `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
+    );
   }
 
   /**
