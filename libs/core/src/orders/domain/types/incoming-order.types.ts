@@ -10,7 +10,7 @@
  * @module libs/core/src/orders/domain/types
  */
 
-import type { OrderShipping, OrderPickupPoint } from './order.types';
+import type { OrderShipping, OrderPickupPoint, PriceTaxTreatment } from './order.types';
 
 export interface IncomingOrder {
   /**
@@ -138,6 +138,13 @@ export interface IncomingOrderTotals {
   shipping: number;
   total: number;
   currency: string;
+
+  /**
+   * How the source expresses tax on its amounts (gross vs net). See
+   * {@link OrderTotals.taxTreatment}. Optional — absent when the source does
+   * not assert it.
+   */
+  taxTreatment?: PriceTaxTreatment;
 }
 
 export interface IncomingOrderAddress {
