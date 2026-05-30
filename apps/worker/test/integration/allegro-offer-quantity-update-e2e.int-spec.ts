@@ -109,7 +109,7 @@ describe('Allegro Offer Quantity Update End-to-End Integration', () => {
       await handler.execute(persistedJob);
 
       // Mark job as succeeded
-      await jobRepository.markSucceeded(persistedJob.id);
+      await jobRepository.markSucceeded(persistedJob.id, 'ok');
 
       // 5. Verify command was called on adapter
       expect(mockMarketplaceAdapter.updateOfferQuantity).toHaveBeenCalledWith({
