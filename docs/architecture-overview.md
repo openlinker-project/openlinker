@@ -1626,6 +1626,7 @@ Future: Worker processes jobs
 - **Idempotent job enqueue**: Job-level deduplication prevents duplicate sync jobs.
 - **Webhook payload is not source of truth**: Triggers "pull" jobs that fetch full data via adapters.
 - **Failure-recovery (#711)**: A row inserted by the Postgres gate is DELETED if downstream publishing fails, so the source's retry can re-enter the gate. The unique constraint never permanently blocks a legitimate retry.
+- **Event routing (#900, in progress)**: `WebhookToJobHandler` currently picks the job by string-matching `provider === 'prestashop'` with a hardcoded objectType allow-list. [ADR-015](./architecture/adrs/015-inbound-event-routing-capability-translated.md) records the move to per-plugin `WebhookEventTranslator`s + a capability-gated core routing policy. PrestaShop order events route to `marketplace.order.sync` (#902); the central provider switch is removed in #903.
 
 **Security**:
 - HMAC SHA256 signature verification using raw body bytes.
