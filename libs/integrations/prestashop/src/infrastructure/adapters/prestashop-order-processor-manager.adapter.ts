@@ -5,10 +5,11 @@
  * order creation in PrestaShop by mapping unified Order schema to PrestaShop
  * format and using IdentifierMappingService to resolve external IDs.
  *
- * Idempotency contract: callers must pass the source-side internal order id in
- * `order.metadata.internalOrderId`. Step 0 uses it to short-circuit on retry,
- * and Step 6 writes the destination mapping under the same id so future retries
- * find it.
+ * Idempotency contract (#909): create-or-skip and the external↔internal order
+ * mapping write are owned by `OrderSyncService` under a per-(order, destination)
+ * lock — this adapter creates unconditionally and returns the destination-native
+ * external order id. PS-side duplicate-key recovery (recover the existing order
+ * id by reference) is retained as defense-in-depth.
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderProcessorManagerPort}
@@ -30,7 +31,7 @@ import {
   mapToFulfillmentStatusSnapshot,
 } from '../mappers/prestashop-fulfillment-status.mapper';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
-import { MappingAlreadyExistsError, DuplicateIdentifierMappingError, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
@@ -146,34 +147,6 @@ export class PrestashopOrderProcessorManagerAdapter
     const pinnedPriceIds: Array<string | number> = [];
 
     try {
-      // Step 0: Check if order already exists (idempotency check)
-      // If we have an internal order ID in metadata, check if we've already created this order
-      const metadataInternalOrderId = order.metadata?.internalOrderId as string | undefined;
-      if (metadataInternalOrderId) {
-        const existingExternalIds = await this.identifierMapping.getExternalIds(
-          CORE_ENTITY_TYPE.Order,
-          metadataInternalOrderId
-        );
-        const existingPrestashopOrder = existingExternalIds.find(
-          (e: { connectionId: string }) => e.connectionId === this.connection.id
-        );
-
-        if (existingPrestashopOrder) {
-          this.logger.log(
-            `Order already exists in PrestaShop: internalOrderId=${metadataInternalOrderId}, externalOrderId=${existingPrestashopOrder.externalId}`
-          );
-          // No reconcile here post-#516 — totals are correct on first POST
-          // via the OL Dynamic carrier sidecar path (#515). Orders that
-          // landed under the pre-#516 reconcile-PUT path stay at their
-          // original totals (current_state may be 8); see epic #513
-          // out-of-scope: backfill SQL.
-          return {
-            orderId: metadataInternalOrderId,
-            orderNumber: order.orderNumber || String(existingPrestashopOrder.externalId),
-          };
-        }
-      }
-
       // Step 1: Resolve or provision customer in PrestaShop
       let externalCustomerId: string | number;
       if (order.customerId) {
@@ -563,76 +536,19 @@ export class PrestashopOrderProcessorManagerAdapter
         }
       }
 
-      // Step 6: Write identifier mapping using the source-side internal id so that
-      // Step 0's getExternalIds('Order', metadataInternalOrderId) finds this row on retry.
-      let internalOrderId: string;
-      if (metadataInternalOrderId) {
-        try {
-          await this.identifierMapping.createMapping(
-            CORE_ENTITY_TYPE.Order,
-            externalOrderId,
-            this.connection.id,
-            metadataInternalOrderId,
-            {
-              metadata: {
-                orderNumber: order.orderNumber || createdOrder.reference,
-                createdAt: new Date().toISOString(),
-              },
-            }
-          );
-        } catch (error) {
-          if (error instanceof MappingAlreadyExistsError) {
-            // Mapping was read before write (single-worker retry after a
-            // prior successful createMapping).
-            this.logger.debug(
-              `Destination order mapping already present (read-before-write) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`
-            );
-          } else if (error instanceof DuplicateIdentifierMappingError) {
-            // Unique-constraint race: concurrent worker inserted the same
-            // mapping between our read and our insert.
-            this.logger.debug(
-              `Destination order mapping race resolved (concurrent insert) for internalOrderId=${metadataInternalOrderId} externalOrderId=${externalOrderId}`
-            );
-          } else {
-            throw error;
-          }
-        }
-        internalOrderId = metadataInternalOrderId;
-      } else {
-        // Defensive fallback: no source id in metadata, mint one (old behavior).
-        // This path should not be reached in production — warn so drift is detectable.
-        this.logger.warn(
-          `createOrder invoked without metadata.internalOrderId for externalOrderId=${externalOrderId} connection=${this.connection.id} — idempotency check will be bypassed`
-        );
-        internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-          CORE_ENTITY_TYPE.Order,
-          externalOrderId,
-          this.connection.id,
-          {
-            metadata: {
-              orderNumber: order.orderNumber || createdOrder.reference,
-              createdAt: new Date().toISOString(),
-            },
-          }
-        );
-      }
-
-      this.logger.log(
-        `Order mapping created: externalOrderId=${externalOrderId}, internalOrderId=${internalOrderId}`
-      );
-
       // Order created; PS computed shipping totals via the resolved carrier
       // — no reconcile needed post-#516. The OL Dynamic carrier path wrote
       // its sidecar row at Step 6.5; static carriers price from PS's own
-      // zone tables.
+      // zone tables. The external↔internal order mapping is persisted by
+      // OrderSyncService under the per-(order, destination) lock (#909).
 
       // The line prices are now materialised into `order_detail`; the pin rows
       // have served their purpose. Best-effort cleanup (never throws).
       await this.cleanupPinnedPrices(pinnedPriceIds);
 
-      // Step 7: Return order reference
+      // Step 9: Return the destination-native external order id (#909).
       return {
-        orderId: internalOrderId,
+        orderId: externalOrderId,
         orderNumber: createdOrder.reference || order.orderNumber || externalOrderId,
       };
     } catch (error) {
