@@ -73,7 +73,13 @@ jobs:
     runs-on: self-hosted
     # Run on push to main (after merge) and on PRs to catch issues early
     if: github.event_name == 'push' || github.event_name == 'pull_request'
-    needs: [test] # Only run if unit tests pass
+    # No `needs:` — this job re-installs deps + rebuilds libs itself, so it has
+    # no artifact dependency on `test`. Gating on `test` previously serialized
+    # the two longest jobs (unit ~6min, then integration ~10min), so integration
+    # only started after unit finished. Running them in parallel cuts the
+    # critical path by ~6min. Trade-off: integration spends compute even when
+    # unit tests fail on a PR — acceptable for the wall-clock win; both still
+    # gate the merge via branch protection.
     env:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
     steps:
