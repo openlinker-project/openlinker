@@ -277,6 +277,11 @@ export class AllegroOrderSourceAdapter
           shipping: roundCurrency(shipping),
           total: roundCurrency(total),
           currency: checkoutForm.summary.totalToPay.currency,
+          // Allegro reports buyer-paid GROSS prices (line `price.amount` and
+          // `summary.totalToPay` include tax); it does not decompose tax.
+          // Destinations that price net use this to convert before pinning
+          // (#895 / ADR-014).
+          taxTreatment: 'inclusive',
         },
         shippingAddress: this.resolveShippingAddress(checkoutForm),
         billingAddress: undefined,

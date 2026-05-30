@@ -215,6 +215,11 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         product_id: externalProductId,
         product_attribute_id: externalVariantId,
         product_quantity: item.quantity,
+        // NOTE: PrestaShop derives `order_detail` line prices from the cart
+        // (the order is created with `id_cart`), so this `product_price` is NOT
+        // authoritative — the cart-scoped `specific_prices` the order processor
+        // writes before POST /orders pin the buyer-paid price (#895 / ADR-014).
+        // Kept for parity with the PS order body shape.
         product_price: item.price.toFixed(6), // PrestaShop expects string with 6 decimals
         product_reference: item.sku || '',
       };
