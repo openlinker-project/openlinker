@@ -16,8 +16,10 @@ import type {
   ShippingProviderManagerPort,
   ShipmentCanceller,
   PickupPointFinder,
+  LabelDocumentReader,
   GenerateLabelCommand,
   GenerateLabelResult,
+  LabelDocument,
   TrackingSnapshot,
   ShipmentStatus,
   ShippingMethod,
@@ -29,7 +31,11 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 
 export class FakeInpostShippingAdapter
-  implements ShippingProviderManagerPort, ShipmentCanceller, PickupPointFinder
+  implements
+    ShippingProviderManagerPort,
+    ShipmentCanceller,
+    PickupPointFinder,
+    LabelDocumentReader
 {
   private counter = 0;
   private seededFailure: Error | null = null;
@@ -92,6 +98,16 @@ export class FakeInpostShippingAdapter
 
   findPickupPoints(_query: FindPickupPointsQuery): Promise<PickupPoint[]> {
     return Promise.resolve([...this.seededPoints]);
+  }
+
+  fetchLabel(_input: { providerShipmentId: string }): Promise<LabelDocument> {
+    if (this.seededFailure) {
+      return Promise.reject(this.seededFailure);
+    }
+    return Promise.resolve({
+      contentType: 'application/pdf',
+      body: new Uint8Array([0x25, 0x50, 0x44, 0x46]), // %PDF
+    });
   }
 
   // --- test helpers ----------------------------------------------------------
