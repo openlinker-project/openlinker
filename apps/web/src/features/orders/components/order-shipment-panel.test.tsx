@@ -5,7 +5,7 @@
  * status matrix, empty-state CTA, tracking link, paczkomat caption keyed on
  * shipping connection's platformType.
  */
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { OrderShipmentPanel } from './order-shipment-panel';
@@ -226,20 +226,25 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
   it.each([
     // Plan §3.4 status-matrix coverage.
     // `draft` → generate-as-retry per the spec ("enabled (retry)").
-    ['draft', { generate: true, cancel: false, notify: false }],
-    ['generated', { generate: false, cancel: true, notify: true }],
-    ['dispatched', { generate: false, cancel: false, notify: false }],
-    ['in-transit', { generate: false, cancel: false, notify: false }],
-    ['delivered', { generate: true, cancel: false, notify: false }],
-    ['failed', { generate: true, cancel: false, notify: false }],
-    ['cancelled', { generate: true, cancel: false, notify: false }],
+    // `download` column assumes a non-null labelPdfRef (set below) so it
+    // isolates the lifecycle-state gate; the ref-absent case is covered separately.
+    ['draft', { generate: true, cancel: false, notify: false, download: false }],
+    ['generated', { generate: false, cancel: true, notify: true, download: true }],
+    ['dispatched', { generate: false, cancel: false, notify: false, download: true }],
+    ['in-transit', { generate: false, cancel: false, notify: false, download: true }],
+    ['delivered', { generate: true, cancel: false, notify: false, download: true }],
+    ['failed', { generate: true, cancel: false, notify: false, download: false }],
+    ['cancelled', { generate: true, cancel: false, notify: false, download: false }],
   ] as const)('should compute enablement for status %s', async (status, expected) => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
       shipments: {
-        list: vi
-          .fn()
-          .mockResolvedValue({ items: [makeShipment({ status })], total: 1, limit: 20, offset: 0 }),
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status, labelPdfRef: 'shipx:label:1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
       },
     });
 
@@ -253,10 +258,33 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     const generate = screen.getByRole('button', { name: /Generate label|Generate shipping label/i });
     const cancel = screen.getByRole('button', { name: /^Cancel$/i });
     const notify = screen.getByRole('button', { name: /Mark dispatched/i });
+    const download = screen.getByRole('button', { name: /Download label|Download shipping label/i });
 
     expect((generate as HTMLButtonElement).disabled).toBe(!expected.generate);
     expect((cancel as HTMLButtonElement).disabled).toBe(!expected.cancel);
     expect((notify as HTMLButtonElement).disabled).toBe(!expected.notify);
+    expect((download as HTMLButtonElement).disabled).toBe(!expected.download);
+  });
+
+  it('should disable Download label when the shipment has no labelPdfRef even if dispatched', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'dispatched', labelPdfRef: null })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    const download = await screen.findByRole('button', {
+      name: /Download label|Download shipping label/i,
+    });
+    expect((download as HTMLButtonElement).disabled).toBe(true);
   });
 
   // ── #839 — branch-1 (shippingMethod='omp') awareness ─────────────────
@@ -293,5 +321,45 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Cancel$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Mark dispatched/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Download label|Download shipping label/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should call the download API + name the file by the blob content type when clicked', async () => {
+    const downloadLabel = vi
+      .fn()
+      .mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])], { type: 'application/pdf' }));
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({
+          items: [makeShipment({ status: 'dispatched', labelPdfRef: 'shipx:label:1' })],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+        downloadLabel,
+      },
+    });
+    // jsdom lacks createObjectURL/revokeObjectURL — stub so the hook runs.
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    // Capture the click target's download attribute (filename + extension).
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
+
+    const button = await screen.findByRole('button', {
+      name: /Download label|Download shipping label/i,
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(downloadLabel).toHaveBeenCalledWith('ol_shipment_1'));
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download).toBe('ol-shipment-ol_shipment_1.pdf');
+    vi.restoreAllMocks();
   });
 });
