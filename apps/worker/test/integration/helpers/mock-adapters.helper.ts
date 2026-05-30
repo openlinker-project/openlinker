@@ -24,6 +24,7 @@ export function createMockPrestashopProductAdapter(): ProductMasterPort {
         name: 'Test Product',
         sku: 'TEST-SKU-001',
         price: 19.99,
+        currency: null,
         description: 'Test Product Description',
         images: ['http://example.com/image1.jpg', 'http://example.com/image2.jpg'],
         createdAt: new Date(),
