@@ -14,7 +14,11 @@ import { createClient } from 'redis';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
-import { SyncModule } from '@openlinker/core/sync';
+import {
+  SyncModule,
+  InboundRoutingPolicyService,
+  INBOUND_ROUTING_POLICY_TOKEN,
+} from '@openlinker/core/sync';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { WebhookController } from './http/webhook.controller';
 import { WebhookDeliveryController } from './http/webhook-delivery.controller';
@@ -50,6 +54,10 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
     WebhookEventPublisher,
     WebhookDeliveryQueryService,
     { provide: WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN, useExisting: WebhookDeliveryQueryService },
+    // Inbound routing policy (ADR-015 / #903) — core class bound here, where its
+    // deps (IIntegrationsService, JobEnqueuePort) are already imported.
+    InboundRoutingPolicyService,
+    { provide: INBOUND_ROUTING_POLICY_TOKEN, useExisting: InboundRoutingPolicyService },
     WebhookToJobHandler,
     {
       // Dedicated client for blocking xReadGroup loop — must not share with health check client
