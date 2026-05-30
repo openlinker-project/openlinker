@@ -109,6 +109,7 @@ export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
+export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
