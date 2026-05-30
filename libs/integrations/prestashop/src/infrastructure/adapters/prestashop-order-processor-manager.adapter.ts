@@ -447,118 +447,88 @@ export class PrestashopOrderProcessorManagerAdapter
         pinnedPriceIds
       );
 
-      // Step 7: Map OrderCreate to PrestaShop format (including cart ID, currency ID, language ID, carrier ID)
-      const prestashopOrderData = this.orderMapper.mapOrderCreate(
-        order,
-        externalCustomerId,
-        externalProductIds,
-        externalVariantIds,
-        externalShippingAddressId,
-        externalBillingAddressId,
-        externalCurrencyId,
-        externalLangId,
-        externalCarrierId
-      );
-      // Add cart ID to order data (required by PrestaShop)
-      prestashopOrderData.id_cart = externalCartId;
-
-      // Step 8: Create order in PrestaShop
-      this.logger.debug(`Submitting order creation request to PrestaShop`);
-      let createdOrder: PrestashopOrder;
+      // Step 7+8: Create the order through PrestaShop's canonical flow —
+      // PaymentModule::validateOrder via the OL module's `importorder` endpoint
+      // (ADR-016 / #905), NOT the raw WS POST /orders, which bypasses
+      // validateOrder and silently drops the carrier + recomputes shipping
+      // (root of #503/#467/#513/#898). The cart (carrier + delivery address),
+      // the OL sidecar (#516), and the cart-scoped specific_prices (#895) are
+      // already in place; the module sets the cart's delivery_option then calls
+      // validateOrder with $dont_touch_amount so OL's total is authoritative.
+      const stateId = this.orderMapper.mapStatusToPrestashopStateId(order.status);
       let externalOrderId: string;
+      let resolvedReference: string;
 
-      try {
-        createdOrder = await this.httpClient.createResource<PrestashopOrder>(
-          'orders',
-          prestashopOrderData
+      // Reconciliation sanity-check (ADR-016): `amountPaid` is sent with
+      // `$dont_touch_amount=true`, so PS records it verbatim as `total_paid_real`
+      // while `total_paid` is recomputed from the cart (pinned lines + sidecar
+      // shipping). If the two diverge, validateOrder re-raises the exact
+      // "X paid instead of Y" Payment-error banner #898 set out to kill. We
+      // can't see the PS-side cart total without a round-trip, but we CAN catch
+      // the common cause — an order-level discount/adjustment not represented in
+      // `subtotal + shipping` — from OrderCreate's own totals. Warn (not throw):
+      // this is observability, the int-spec is the hard gate.
+      const expectedCartTotal = order.totals.subtotal + order.totals.shipping;
+      if (Math.abs(expectedCartTotal - order.totals.total) > 0.01) {
+        this.logger.warn(
+          `Order total reconciliation drift for orderNumber=${order.orderNumber ?? 'N/A'}: ` +
+            `subtotal(${order.totals.subtotal}) + shipping(${order.totals.shipping}) = ${expectedCartTotal} ` +
+            `≠ total(${order.totals.total}). validateOrder may flag a payment mismatch — ` +
+            `an order-level discount/adjustment is likely not reflected in the rebuilt cart.`
         );
-        externalOrderId = String(createdOrder.id);
+      }
+
+      // Dedup net beyond Step 0's identifier-mapping guard: if an order with
+      // this reference already exists — e.g. a retry after the order was
+      // created but the mapping write failed — reuse it rather than create a
+      // duplicate (validateOrder can't dedup a rebuilt cart, since a retry
+      // builds a fresh cart with a new id_cart the endpoint can't key on).
+      const preexistingOrder = order.orderNumber
+        ? await this.findExistingOrderByReference(order.orderNumber)
+        : null;
+
+      // Without an orderNumber the reference dedup net above is disabled AND
+      // validateOrder mints its own random reference, so a retry that lands
+      // after the order was created but before the mapping write would create a
+      // duplicate. Source orders always carry an orderNumber (e.g. Allegro
+      // checkoutFormId), so this is a should-not-happen guard — warn loudly so
+      // the drift is detectable rather than silently double-creating. Step 0's
+      // identifier-mapping guard remains the primary protection.
+      if (!order.orderNumber) {
+        this.logger.warn(
+          `createOrder invoked without order.orderNumber for externalCartId=${externalCartId} ` +
+            `connection=${this.connection.id} — reference-based dedup net is disabled; ` +
+            `relying on Step 0 identifier-mapping idempotency only.`
+        );
+      }
+
+      if (preexistingOrder) {
+        externalOrderId = String(preexistingOrder.id);
+        resolvedReference = preexistingOrder.reference || order.orderNumber || externalOrderId;
         this.logger.log(
-          `PrestaShop order created successfully: externalOrderId=${externalOrderId}`
+          `Reusing existing PrestaShop order by reference=${order.orderNumber}: externalOrderId=${externalOrderId}`
         );
-      } catch (createError) {
-        // Check if this is a duplicate key error (order already exists)
-        // PrestaShop returns database errors in the response body when there's a 500 error
-        // The error might be a QueryFailedError (TypeORM) if PrestaShop returns a database error
-        let errorMessage = createError instanceof Error ? createError.message : String(createError);
-        let responseBody = '';
-
-        // Log error details for debugging (use warn level so it shows up)
-        this.logger.warn(
-          `Order creation error type: ${createError?.constructor?.name || 'unknown'}, message: ${formatBodyForLog(errorMessage)}`
-        );
-
-        // Check if it's a PrestashopApiException and has responseBody
-        if (createError instanceof PrestashopApiException) {
-          if (createError.responseBody) {
-            responseBody = createError.responseBody;
-            // Also check the response body for duplicate key errors
-            errorMessage = `${errorMessage} ${responseBody}`;
-            this.logger.warn(
-              `PrestaShop API error response body: ${formatBodyForLog(responseBody)}`
-            );
-          }
-          this.logger.warn(
-            `PrestaShop API error status code: ${createError.statusCode || 'unknown'}`
+      } else {
+        this.logger.debug(`Submitting order import (validateOrder) request to PrestaShop`);
+        try {
+          const imported = await this.openlinkerModuleClient.importOrder({
+            idCart: Number.parseInt(String(externalCartId), 10),
+            idOrderState: stateId,
+            amountPaid: order.totals.total,
+            // Matches the payment provenance the WS path recorded — the module
+            // delegates to ps_checkpayment::validateOrder.
+            paymentMethod: 'Check payment',
+            orderReference: order.orderNumber ?? '',
+          });
+          externalOrderId = String(imported.idOrder);
+          resolvedReference = imported.reference;
+          this.logger.log(
+            `PrestaShop order created via validateOrder: externalOrderId=${externalOrderId} ` +
+              `reference=${resolvedReference} alreadyExisted=${imported.alreadyExisted}`
           );
-        }
-
-        // Check error message for duplicate key indicators (works for any error type)
-        const isDuplicateKeyError =
-          errorMessage.includes('duplicate key') || errorMessage.includes('unique constraint');
-
-        this.logger.warn(
-          `Is duplicate key error: ${isDuplicateKeyError}, has order number: ${!!order.orderNumber}`
-        );
-
-        if (isDuplicateKeyError && order.orderNumber) {
-          // Order might already exist - try to find it by reference
-          this.logger.warn(
-            `Duplicate key error when creating order, attempting to find existing order by reference: ${order.orderNumber}`
-          );
-
-          try {
-            // Query PrestaShop for the order by reference
-            this.logger.warn(
-              `Querying PrestaShop for existing order by reference: ${order.orderNumber}`
-            );
-            const existingOrders = await this.httpClient.listResources<PrestashopOrder>(
-              'orders',
-              {
-                custom: {
-                  reference: order.orderNumber,
-                },
-              },
-              1,
-              0
-            );
-
-            this.logger.warn(
-              `Found ${existingOrders.length} existing order(s) by reference: ${order.orderNumber}`
-            );
-
-            if (existingOrders.length > 0) {
-              // Found existing order
-              createdOrder = existingOrders[0];
-              externalOrderId = String(createdOrder.id);
-              this.logger.log(
-                `Found existing PrestaShop order by reference: externalOrderId=${externalOrderId}, reference=${order.orderNumber}`
-              );
-            } else {
-              // Order not found by reference, re-throw original error
-              this.logger.warn(`Order not found by reference, re-throwing original error`);
-              throw createError;
-            }
-          } catch (queryError) {
-            // Query failed, re-throw original error
-            this.logger.error(
-              `Failed to query PrestaShop for existing order by reference: ${queryError instanceof Error ? queryError.message : String(queryError)}`
-            );
-            // Re-throw the original create error, not the query error
-            throw createError;
-          }
-        } else {
-          // Not a duplicate key error or no order number, re-throw
+        } catch (createError) {
+          const msg = createError instanceof Error ? createError.message : String(createError);
+          this.logger.error(`Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`);
           throw createError;
         }
       }
@@ -575,7 +545,7 @@ export class PrestashopOrderProcessorManagerAdapter
             metadataInternalOrderId,
             {
               metadata: {
-                orderNumber: order.orderNumber || createdOrder.reference,
+                orderNumber: order.orderNumber || resolvedReference,
                 createdAt: new Date().toISOString(),
               },
             }
@@ -610,7 +580,7 @@ export class PrestashopOrderProcessorManagerAdapter
           this.connection.id,
           {
             metadata: {
-              orderNumber: order.orderNumber || createdOrder.reference,
+              orderNumber: order.orderNumber || resolvedReference,
               createdAt: new Date().toISOString(),
             },
           }
@@ -633,7 +603,7 @@ export class PrestashopOrderProcessorManagerAdapter
       // Step 7: Return order reference
       return {
         orderId: internalOrderId,
-        orderNumber: createdOrder.reference || order.orderNumber || externalOrderId,
+        orderNumber: resolvedReference || order.orderNumber || externalOrderId,
       };
     } catch (error) {
       // Best-effort cleanup on the failure path too — the short `to`-expiry
@@ -1058,6 +1028,33 @@ export class PrestashopOrderProcessorManagerAdapter
       `Resolved OL Dynamic carrier on connection ${this.connection.id}: id_carrier=${id}`
     );
     return id;
+  }
+
+  /**
+   * Best-effort lookup of an existing PrestaShop order by its `reference`
+   * (the OL order number). Returns the first match, or null when none / on
+   * error. Dedup net on the validateOrder create path (ADR-016 / #905): a job
+   * retry that rebuilds the cart gets a new `id_cart`, so the endpoint's
+   * cart-keyed idempotency can't see the prior order — this reference check
+   * (plus Step 0's identifier-mapping guard) prevents a duplicate. Never
+   * throws: a lookup failure falls through to create.
+   */
+  private async findExistingOrderByReference(reference: string): Promise<PrestashopOrder | null> {
+    try {
+      const rows = await this.httpClient.listResources<PrestashopOrder>(
+        'orders',
+        { custom: { reference } },
+        1,
+        0
+      );
+      return rows.length > 0 ? rows[0] : null;
+    } catch (err) {
+      this.logger.warn(
+        `Order reference lookup failed for reference=${reference}: ` +
+          `${err instanceof Error ? err.message : String(err)}`
+      );
+      return null;
+    }
   }
 
   /**
