@@ -101,13 +101,17 @@ export interface OrderCreate {
 /**
  * Order reference
  *
- * Represents a reference to a created order. Contains the order ID
- * (which may be internal or external depending on the adapter's return value)
- * and optional order number.
+ * Represents a reference to a created order at the destination. Contains the
+ * destination-native external order id and optional order number.
  */
 export interface OrderRef {
   /**
-   * Order identifier (may be internal OpenLinker ID or external platform ID)
+   * Destination-native external order id (e.g. the PrestaShop order id).
+   *
+   * Adapters return the id assigned by the destination platform — never an
+   * internal OpenLinker id. Idempotency (skip-if-exists) and the
+   * external↔internal mapping write are owned by `OrderSyncService` under a
+   * per-(order, destination) lock, not by the adapter (#909).
    */
   orderId: string;
 

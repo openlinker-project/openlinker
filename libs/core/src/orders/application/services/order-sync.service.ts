@@ -28,6 +28,8 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
+  DuplicateIdentifierMappingError,
+  MappingAlreadyExistsError,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
@@ -100,7 +102,6 @@ export class OrderSyncService implements IOrderSyncService {
         // Stamped once and shared across destinations: marks when OL started
         // dispatching this order, not per-destination completion time.
         syncedAt: new Date().toISOString(),
-        internalOrderId: order.id,
       },
     };
 
@@ -121,11 +122,10 @@ export class OrderSyncService implements IOrderSyncService {
     // worker has finished and the create is skipped.
     //
     // Note: the whole-job retry re-dispatches every destination, including ones
-    // that already succeeded this run (they hit the adapter's skip path) and a
+    // that already succeeded this run (they hit the core skip path) and a
     // sibling that genuinely failed (re-attempted as a side effect). Both are
-    // safe because create is idempotent; the already-succeeded skip currently
-    // returns the internal id in the OrderRef — fixed when the mapping write +
-    // OrderRef external-id contract move into core (#909).
+    // safe because create is idempotent: the skip path returns the
+    // destination-native external id from the persisted mapping (#909).
     const contended = settled.find(
       (outcome): outcome is PromiseRejectedResult =>
         outcome.status === 'rejected' && outcome.reason instanceof OrderCreateContendedException
@@ -165,14 +165,21 @@ export class OrderSyncService implements IOrderSyncService {
   }
 
   /**
-   * Create one order at one destination under a per-(order, destination) lock.
+   * Create one order at one destination, idempotently, under a per-(order,
+   * destination) lock — platform-agnostically, with no per-adapter create-or-skip
+   * code (#909).
    *
-   * The lock removes the multi-worker race in the adapter's own check-then-act
-   * create-or-skip (`sync-job.runner` locks per-job, not per-order). On
-   * contention (lock held by a concurrent worker) we re-read the destination
-   * mapping: if the peer already created the order we skip and synthesize the
-   * ref from the mapping; otherwise we throw a retryable
-   * `OrderCreateContendedException` so the sync job retries.
+   * The lock removes the multi-worker race the adapter could not (`sync-job.runner`
+   * locks per-job, not per-order). Two skip paths read the destination mapping:
+   * - **Lock held by a peer (contention):** re-read the mapping; if the peer
+   *   already created the order, synthesize the ref from it; otherwise throw a
+   *   retryable `OrderCreateContendedException` so the sync job retries.
+   * - **Lock acquired:** re-read the mapping first (a *prior, completed* run may
+   *   already have created+mapped this order before the lock was released); skip
+   *   if present, else create via the adapter and persist the external↔internal
+   *   mapping. The adapter returns the destination-native external id, which is
+   *   what every consumer of `OrderRef.orderId` / `syncStatus.externalOrderId`
+   *   expects.
    */
   private async createOrderIdempotently(
     adapter: OrderProcessorManagerPort,
@@ -184,23 +191,37 @@ export class OrderSyncService implements IOrderSyncService {
     const token = await this.syncLock.acquire(lockKey, ORDER_CREATE_LOCK_TTL_MS);
 
     if (!token) {
-      const mappings = await this.identifierMapping.getExternalIds(
-        CORE_ENTITY_TYPE.Order,
-        internalOrderId
-      );
-      const existing = mappings.find((m) => m.connectionId === destinationConnectionId);
+      const existing = await this.findDestinationMapping(internalOrderId, destinationConnectionId);
       if (existing) {
         this.logger.log(
           `Order ${internalOrderId} already present at destination ${destinationConnectionId} ` +
             `(concurrent create resolved); skipping create`
         );
-        return { orderId: existing.externalId };
+        return { orderId: existing };
       }
       throw new OrderCreateContendedException(internalOrderId, destinationConnectionId);
     }
 
     try {
-      return await adapter.createOrder(orderCreate);
+      // A prior completed run may already have created + mapped this order
+      // (lock since released). Skip rather than POST a duplicate.
+      const existing = await this.findDestinationMapping(internalOrderId, destinationConnectionId);
+      if (existing) {
+        this.logger.log(
+          `Order ${internalOrderId} already present at destination ${destinationConnectionId}; ` +
+            `skipping create`
+        );
+        return { orderId: existing };
+      }
+
+      const orderRef = await adapter.createOrder(orderCreate);
+      await this.persistDestinationMapping(
+        internalOrderId,
+        destinationConnectionId,
+        orderRef,
+        orderCreate.orderNumber
+      );
+      return orderRef;
     } finally {
       // Best-effort release — never let a release failure mask the create result.
       try {
@@ -211,6 +232,62 @@ export class OrderSyncService implements IOrderSyncService {
             `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
         );
       }
+    }
+  }
+
+  /**
+   * Return the destination-native external order id mapped to this internal
+   * order at the given destination connection, or null if no mapping exists.
+   */
+  private async findDestinationMapping(
+    internalOrderId: string,
+    destinationConnectionId: string
+  ): Promise<string | null> {
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Order,
+      internalOrderId
+    );
+    return mappings.find((m) => m.connectionId === destinationConnectionId)?.externalId ?? null;
+  }
+
+  /**
+   * Persist the external↔internal order mapping after a successful create. A
+   * concurrent worker may have inserted the same mapping between our skip-read
+   * and this write (the lock bounds same-process contention, not cross-process
+   * unique-constraint races), so a duplicate is the expected idempotent outcome
+   * and is swallowed.
+   */
+  private async persistDestinationMapping(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    orderRef: OrderRef,
+    orderNumber?: string
+  ): Promise<void> {
+    try {
+      await this.identifierMapping.createMapping(
+        CORE_ENTITY_TYPE.Order,
+        orderRef.orderId,
+        destinationConnectionId,
+        internalOrderId,
+        {
+          metadata: {
+            orderNumber: orderRef.orderNumber ?? orderNumber,
+            createdAt: new Date().toISOString(),
+          },
+        }
+      );
+    } catch (error) {
+      if (
+        error instanceof DuplicateIdentifierMappingError ||
+        error instanceof MappingAlreadyExistsError
+      ) {
+        this.logger.debug(
+          `Destination order mapping already present for internalOrderId=${internalOrderId} ` +
+            `externalOrderId=${orderRef.orderId} (idempotent create resolved)`
+        );
+        return;
+      }
+      throw error;
     }
   }
 
