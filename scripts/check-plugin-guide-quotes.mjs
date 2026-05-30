@@ -18,7 +18,7 @@
  *      110; the link still resolves but lands on the wrong content.
  *
  *   3. **Boundary check** for the `HostServices` interface at
- *      `libs/plugin-sdk/src/host-services.ts:52-142`. Same shape.
+ *      `libs/plugin-sdk/src/host-services.ts:53-152`. Same shape.
  *
  * Both checks are deliberately strict: when they fire on a benign
  * refactor (e.g., new import above the interface), the human updates
@@ -68,9 +68,9 @@ const BOUNDARY_REFS = [
   {
     label: 'HostServices',
     sourceFile: 'libs/plugin-sdk/src/host-services.ts',
-    sourceStart: 52,
-    sourceEnd: 142,
-    guideLinkSubstring: 'host-services.ts:52-142',
+    sourceStart: 53,
+    sourceEnd: 152,
+    guideLinkSubstring: 'host-services.ts:53-152',
     expectedStart: /^export interface HostServices \{$/,
     expectedEnd: /^\}\s*$/,
   },
