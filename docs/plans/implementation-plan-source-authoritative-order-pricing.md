@@ -203,6 +203,13 @@ compute net unit prices + penny-allocate + `POST /specific_prices` (cart-scoped)
 
 ## 5. Open risks (tracked, not blocking)
 
+0. **Shipping reconciliation is out of scope (scope boundary).** This fix pins the
+   **line** price. `Payment error` also fires on shipping mismatch: for a **static**
+   (non-OL-Dynamic) carrier PS computes shipping from its own zone tables, which may
+   differ from `totals.shipping`. So `Payment error` is fully resolved only when
+   shipping also reconciles (the OL Dynamic carrier sidecar path, #516). Not a
+   regression — separate concern.
+
 1. **PS rounding modes** (`PS_ROUND_TYPE`/precision) can still leave a logged sub-cent tolerance —
    int-spec asserts within tolerance, not bit-exact.
 2. **Cross-border / OSS rates** — delivery-country resolution covers the common case; exotic

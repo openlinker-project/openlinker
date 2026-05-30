@@ -433,18 +433,19 @@ export class PrestashopOrderProcessorManagerAdapter
       // amount via cart-scoped `specific_prices` BEFORE POST /orders (#895 /
       // ADR-014). PS prices the order's `order_detail` from the cart; without
       // this it would use the catalog price and land the order in
-      // `Payment error`. Best-effort failures are swallowed inside the helper —
-      // a missing pin must not abort an otherwise-valid order (the int-spec is
-      // the correctness lock).
-      const created = await this.pinLinePrices(
+      // `Payment error`. Per the createOrder invariant, a line we cannot pin
+      // MUST fail (throw) rather than silently mis-price — `pinLinePrices`
+      // records created ids into `pinnedPriceIds` as it goes, so the outer
+      // catch cleans up any partial pins before the error propagates.
+      await this.pinLinePrices(
         order,
         externalCartId,
         externalCustomerId,
         externalCurrencyId,
         externalProductIds,
-        externalVariantIds
+        externalVariantIds,
+        pinnedPriceIds
       );
-      pinnedPriceIds.push(...created);
 
       // Step 7: Map OrderCreate to PrestaShop format (including cart ID, currency ID, language ID, carrier ID)
       const prestashopOrderData = this.orderMapper.mapOrderCreate(
@@ -670,8 +671,10 @@ export class PrestashopOrderProcessorManagerAdapter
    * apportioned across lines with a largest-remainder allocation so the pinned
    * lines sum exactly to the authoritative total under rounding.
    *
-   * Returns the created `specific_prices` ids for cleanup. Best-effort: a
-   * failure to pin a line is logged and skipped rather than aborting the order.
+   * Records created `specific_prices` ids into `createdIds` (for caller-side
+   * cleanup). Per the createOrder invariant (ADR-014), a line that cannot be
+   * pinned throws — a silently-unpinned line would be priced from the catalog
+   * and land the order in `Payment error`, which is the bug this fixes.
    */
   private async pinLinePrices(
     order: OrderCreate,
@@ -679,21 +682,27 @@ export class PrestashopOrderProcessorManagerAdapter
     externalCustomerId: string | number,
     externalCurrencyId: number | undefined,
     externalProductIds: Map<string, string | number>,
-    externalVariantIds: Map<string, string | number>
-  ): Promise<Array<string | number>> {
-    const createdIds: Array<string | number> = [];
+    externalVariantIds: Map<string, string | number>,
+    createdIds: Array<string | number>
+  ): Promise<void> {
     if (order.items.length === 0) {
-      return createdIds;
+      return;
     }
 
     // `exclusive` → already net; everything else (`inclusive`/unset) → gross,
     // convert to net. Marketplace orders are gross, so unset defaults to gross.
+    // A future NET source that omits `taxTreatment` would be mis-converted —
+    // tracked as the deferred `tax?`/treatment hardening in ADR-014.
     const convertGrossToNet = order.totals.taxTreatment !== 'exclusive';
     const deliveryCountryIso = order.shippingAddress?.country;
     const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
 
     // Apportion the gross product subtotal across lines (minor units) so the
-    // pinned lines sum exactly to the authoritative total.
+    // pinned lines sum exactly to the authoritative total. NOTE: the pinned
+    // price is per-UNIT, so for a multi-quantity line a 1-cent line residual
+    // becomes sub-cent per unit and PS may round it away when it re-grosses
+    // unit × qty — the order total can still differ by a per-line rounding cent
+    // (asserted within tolerance by the int-spec, not bit-exact).
     const subtotalMinor = Math.round(order.totals.subtotal * 100);
     const weightsMinor = order.items.map((item) => Math.round(item.price * item.quantity * 100));
     const lineGrossMinor = allocateByLargestRemainder(subtotalMinor, weightsMinor);
@@ -753,14 +762,17 @@ export class PrestashopOrderProcessorManagerAdapter
             `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
         );
       } catch (error) {
-        this.logger.warn(
-          `Failed to pin specific_price for product ${externalProductId}: ` +
-            `${error instanceof Error ? error.message : String(error)}`
+        // Fail loudly (createOrder invariant, ADR-014): do NOT let the order be
+        // created at the catalog price. Throw so the idempotency-guarded retry
+        // re-attempts; the caller's catch cleans up any pins created so far.
+        throw new PrestashopApiException(
+          `Failed to pin source-authoritative price for product ${externalProductId}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+          undefined,
+          undefined
         );
       }
     }
-
-    return createdIds;
   }
 
   /**

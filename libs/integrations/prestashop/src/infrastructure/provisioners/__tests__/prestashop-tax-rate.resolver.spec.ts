@@ -61,6 +61,22 @@ describe('PrestashopTaxRateResolver', () => {
     expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '9');
   });
 
+  it('should prefer the country-level (id_state=0) rule over a state-specific row', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '23.000' }); // taxes/7 (the id_state=0 row)
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_tax: '8', id_country: '6', id_state: '12' }, // state-specific row first
+      { id_tax: '7', id_country: '6', id_state: '0' }, // country-level row
+    ]);
+
+    const rate = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+
+    expect(rate).toBeCloseTo(0.23, 5);
+    expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '7');
+  });
+
   it('should return 0 when the product read fails', async () => {
     httpClient.getResource.mockRejectedValueOnce(new Error('boom'));
 

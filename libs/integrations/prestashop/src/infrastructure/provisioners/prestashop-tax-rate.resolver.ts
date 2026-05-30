@@ -122,7 +122,9 @@ export class PrestashopTaxRateResolver {
 
   /**
    * Pick the tax rule for the delivery country, falling back to the catch-all
-   * (`id_country = 0`) rule and finally the first rule.
+   * (`id_country = 0`) rule and finally the first rule. Among rows matching the
+   * country, prefer the country-level rule (`id_state = 0`) over state-specific
+   * rows so a multi-state group (e.g. US) doesn't return an arbitrary state rate.
    */
   private selectRule(
     rules: PrestashopTaxRuleRow[],
@@ -132,9 +134,9 @@ export class PrestashopTaxRateResolver {
       return undefined;
     }
     if (countryId !== undefined) {
-      const countryMatch = rules.find((r) => this.toInt(r.id_country) === countryId);
-      if (countryMatch) {
-        return countryMatch;
+      const countryMatches = rules.filter((r) => this.toInt(r.id_country) === countryId);
+      if (countryMatches.length > 0) {
+        return countryMatches.find((r) => this.toInt(r.id_state) === 0) ?? countryMatches[0];
       }
     }
     const catchAll = rules.find((r) => this.toInt(r.id_country) === 0);

@@ -520,6 +520,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         if (resource === 'carts') {
           return Promise.resolve(createdCart);
         }
+        if (resource === 'specific_prices') {
+          // Pins succeed; this test exercises the order-POST failure path.
+          return Promise.resolve({ id: 'sp_test' });
+        }
         if (resource === 'orders') {
           return Promise.reject(apiError);
         }
@@ -873,6 +877,39 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         // Net source → no rate lookup, price pinned verbatim.
         expect(mockTaxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
         expect(specificPriceFor('100')?.price).toBe((29.99).toFixed(6));
+      });
+
+      it('fails loudly (does not create the order) when a line price cannot be pinned', async () => {
+        arrange();
+        // PS rejects the specific_price write → must abort before POST /orders
+        // rather than silently create a catalog-priced order (ADR-014 invariant).
+        mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'specific_prices') {
+            return Promise.reject(new Error('PS rejected specific_price'));
+          }
+          if (resource === 'orders') {
+            return Promise.resolve({ id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+          }
+          return Promise.resolve({ id: '123' });
+        });
+
+        await expect(
+          adapter.createOrder(
+            createTestOrder({
+              totals: {
+                subtotal: 109.97,
+                tax: 0,
+                shipping: 5.0,
+                total: 114.97,
+                currency: 'EUR',
+                taxTreatment: 'inclusive',
+              },
+            })
+          )
+        ).rejects.toThrow(/pin source-authoritative price/);
+
+        // The order POST must NOT have happened.
+        expect(createCalls().map((c) => c[0])).not.toContain('orders');
       });
     });
 
