@@ -203,6 +203,15 @@ compute net unit prices + penny-allocate + `POST /specific_prices` (cart-scoped)
 
 ## 5. Open risks (tracked, not blocking)
 
+0a. **New PrestaShop WS-key permission requirement (operator-facing).** The order
+    processor now writes `specific_prices` and the tax resolver reads `tax_rules` /
+    `taxes`. An existing PS connection whose WS key lacks these permissions will now
+    **fail order creation loudly** (by design — the alternative is silent
+    mis-pricing). Surfaced in the int-test fixture grant; **operators must grant
+    `specific_prices` (CRUD) + `tax_rules` / `taxes` (read)** on the PS WebService key.
+    Follow-up: have the PrestaShop connection-tester verify these grants and/or
+    document them in the connection setup guide.
+
 0. **Shipping reconciliation is out of scope (scope boundary).** This fix pins the
    **line** price. `Payment error` also fires on shipping mismatch: for a **static**
    (non-OL-Dynamic) carrier PS computes shipping from its own zone tables, which may
