@@ -112,6 +112,21 @@ export interface IPrestashopWebserviceClient {
     data: Record<string, unknown>,
     options?: PrestashopWriteOptions,
   ): Promise<T>;
+
+  /**
+   * Delete a resource by ID (DELETE).
+   *
+   * Used for transient resources OpenLinker creates as a means to an end and
+   * cleans up afterwards (e.g. cart-scoped `specific_prices` used to pin a
+   * marketplace order's line price — #895 / ADR-014).
+   *
+   * @param resource - Resource name (e.g., 'specific_prices')
+   * @param id - Resource ID to delete
+   * @throws PrestashopResourceNotFoundException if resource not found
+   * @throws PrestashopAuthenticationException if authentication fails
+   * @throws PrestashopApiException for other API errors
+   */
+  deleteResource(resource: string, id: string | number): Promise<void>;
 }
 
 

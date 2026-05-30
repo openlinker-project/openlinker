@@ -48,6 +48,8 @@ export {
   Order,
   OrderItem,
   OrderTotals,
+  PriceTaxTreatment,
+  PriceTaxTreatmentValues,
   Address,
   OrderShipping,
   OrderPickupPoint,
