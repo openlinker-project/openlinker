@@ -39,5 +39,6 @@ export { useOrderShipmentsQuery } from './hooks/use-order-shipments-query';
 export { useGenerateLabelMutation } from './hooks/use-generate-label-mutation';
 export { useCancelShipmentMutation } from './hooks/use-cancel-shipment-mutation';
 export { useNotifyDispatchedMutation } from './hooks/use-notify-dispatched-mutation';
+export { useLabelDownload } from './hooks/use-label-download';
 export { ShipmentStatusBadge } from './components/shipment-status-badge';
 export { buildCarrierTrackingUrl, getCarrierDisplayName } from './lib/carrier-tracking-url';

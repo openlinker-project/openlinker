@@ -64,10 +64,15 @@ const courierCmd: GenerateLabelCommand = {
   parcel: { dimensions: { length: 80, width: 360, height: 640 }, weightGrams: 2500 },
 };
 
-function makeAdapter(): { adapter: InpostShippingAdapter; request: jest.Mock } {
+function makeAdapter(): {
+  adapter: InpostShippingAdapter;
+  request: jest.Mock;
+  requestBinary: jest.Mock;
+} {
   const request = jest.fn();
-  const http = { request } as unknown as IInpostHttpClient;
-  return { adapter: new InpostShippingAdapter(http, config), request };
+  const requestBinary = jest.fn();
+  const http = { request, requestBinary } as unknown as IInpostHttpClient;
+  return { adapter: new InpostShippingAdapter(http, config), request, requestBinary };
 }
 
 describe('InpostShippingAdapter', () => {
@@ -204,6 +209,44 @@ describe('InpostShippingAdapter', () => {
       );
       expect(points).toHaveLength(1);
       expect(points[0].providerId).toBe('POZ08A');
+    });
+  });
+
+  describe('fetchLabel', () => {
+    it('should GET the label endpoint with format=pdf and return the bytes', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+      requestBinary.mockResolvedValueOnce({ body: bytes, contentType: 'application/pdf' });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: '1234' });
+
+      expect(requestBinary).toHaveBeenCalledWith({
+        method: 'GET',
+        path: '/v1/shipments/1234/label',
+        query: { format: 'pdf' },
+      });
+      expect(result).toEqual({ contentType: 'application/pdf', body: bytes });
+    });
+
+    it('should pass a non-PDF content type (e.g. PNG) through unchanged', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      requestBinary.mockResolvedValueOnce({
+        body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        contentType: 'image/png',
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: '1234' });
+
+      expect(result.contentType).toBe('image/png');
+    });
+
+    it('should default to application/pdf when the response carries no content type', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      requestBinary.mockResolvedValueOnce({ body: new Uint8Array([1]), contentType: '' });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: '1234' });
+
+      expect(result.contentType).toBe('application/pdf');
     });
   });
 });
