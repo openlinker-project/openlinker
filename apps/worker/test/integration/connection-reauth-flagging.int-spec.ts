@@ -15,7 +15,7 @@ import { WorkerIntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { createTestSyncJob, getSyncJobById } from './helpers/test-sync-job.helper';
 import { SyncJobRunner } from '../../src/sync/sync-job.runner';
-import { SyncJobEntity as SyncJob, SyncJobExecutionError } from '@openlinker/core/sync';
+import { SyncJobEntity as SyncJob, SyncJobExecutionError, type JobType } from '@openlinker/core/sync';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import {
@@ -42,7 +42,7 @@ describe('Connection Re-auth Flagging Integration (#819)', () => {
     await teardownTestHarness();
   });
 
-  async function runFailure(connectionId: string, cause: unknown): Promise<string> {
+  async function runFailure(connectionId: string, cause: Error): Promise<string> {
     const ormJob = await createTestSyncJob(harness.getDataSource(), {
       jobType: 'marketplace.orders.poll',
       connectionId,
@@ -52,7 +52,7 @@ describe('Connection Re-auth Flagging Integration (#819)', () => {
     });
     const job = new SyncJob(
       ormJob.id,
-      ormJob.jobType,
+      ormJob.jobType as JobType,
       connectionId,
       ormJob.payloadJson,
       'running',
