@@ -88,6 +88,9 @@ export type { ShipmentCanceller } from './domain/ports/capabilities/shipment-can
 export { isShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
 export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
+export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
+export { isLabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
+export type { LabelDocument } from './domain/types/label-document.types';
 
 // `FulfillmentStatusReader` (#834) lives in `@openlinker/core/orders`
 // alongside `OrderFulfillmentUpdater` (#858) — both are sub-capabilities of
@@ -102,6 +105,8 @@ export { ShipmentNotCancellableException } from './domain/exceptions/shipment-no
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
 export { ShippingProviderRejectionException } from './domain/exceptions/shipping-provider-rejection.exception';
+export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
+export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
@@ -116,6 +121,10 @@ export type {
 // injected via SHIPMENT_QUERY_SERVICE_TOKEN / SHIPMENT_CANCELLATION_SERVICE_TOKEN.
 export type { IShipmentQueryService } from './application/interfaces/shipment-query.service.interface';
 export type { IShipmentCancellationService } from './application/interfaces/shipment-cancellation.service.interface';
+
+// Application — label-document fetch seam (#884). Interface only; the service
+// is injected via SHIPMENT_LABEL_SERVICE_TOKEN.
+export type { IShipmentLabelService } from './application/interfaces/shipment-label.service.interface';
 
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
