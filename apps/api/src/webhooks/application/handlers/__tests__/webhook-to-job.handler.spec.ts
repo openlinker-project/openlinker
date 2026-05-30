@@ -11,6 +11,7 @@ import { Test } from '@nestjs/testing';
 import { WebhookToJobHandler } from '../webhook-to-job.handler';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { InboundWebhookEvent } from '@openlinker/core/events';
+import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { WEBHOOK_DELIVERY_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
 import { REDIS_CLIENT_BLOCKING_TOKEN } from '../../../webhooks.tokens';
@@ -127,16 +128,6 @@ describe('WebhookToJobHandler', () => {
       expect(job.payload.objectType).toBe('Product');
     });
 
-    it('should throw error for unsupported PrestaShop "order" master objectType', () => {
-      const event = createInboundEvent('prestashop', 'order');
-      event.eventType = 'order.created';
-
-      expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- test mock: explicit any narrows the dynamic spy / fixture shape
-        (handler as any).mapToSyncJob(event);
-      }).toThrow(/Unsupported master objectType: order/i);
-    });
-
     it('should throw error for unmapped objectType that results in invalid job type', () => {
       const event = createInboundEvent('prestashop', 'unknown_type');
 
@@ -165,6 +156,74 @@ describe('WebhookToJobHandler', () => {
       expect(job.jobType).toBe('master.inventory.syncByExternalId');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(job.payload.objectType).toBe('Inventory');
+    });
+  });
+
+  describe('order routing to marketplace.order.sync (#902)', () => {
+    const createOrderEvent = (eventType: string): InboundWebhookEvent => ({
+      eventId: 'evt-order-1',
+      provider: 'prestashop',
+      connectionId: '59f4129e-a827-4650-b69b-fc2302b9ecb7',
+      eventType,
+      occurredAt: '2025-01-01T12:00:00.000Z',
+      receivedAt: '2025-01-01T12:00:01.000Z',
+      objectType: 'order',
+      externalId: '4242',
+      payload: {},
+    });
+
+    const mapToJob = (event: InboundWebhookEvent): SyncJobRequest =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- test: invoke private mapToSyncJob
+      (handler as any).mapToSyncJob(event) as SyncJobRequest;
+
+    it('should route order.created to marketplace.order.sync with the externalOrderId payload shape', () => {
+      const job = mapToJob(createOrderEvent('order.created'));
+
+      expect(job).toMatchObject({
+        jobType: 'marketplace.order.sync',
+        connectionId: '59f4129e-a827-4650-b69b-fc2302b9ecb7',
+        payload: {
+          schemaVersion: 1,
+          externalOrderId: '4242',
+          sourceEventId: 'evt-order-1',
+          eventType: 'created',
+        },
+        // idempotency key shape pinned so a future payload refactor can't drift it
+        idempotencyKey: 'prestashop:59f4129e-a827-4650-b69b-fc2302b9ecb7:evt-order-1',
+      });
+      expect(JobTypeValues).toContain(job.jobType);
+    });
+
+    it('should map order.status_changed to the "updated" feed event type', () => {
+      const job = mapToJob(createOrderEvent('order.status_changed'));
+
+      expect(job.jobType).toBe('marketplace.order.sync');
+      expect(job.payload.eventType).toBe('updated');
+    });
+
+    it('should default an unrecognized order event type to "updated"', () => {
+      const job = mapToJob(createOrderEvent('order.refunded'));
+
+      expect(job.payload.eventType).toBe('updated');
+    });
+
+    it('should not emit the generic master payload shape (externalId/objectType) for orders', () => {
+      const job = mapToJob(createOrderEvent('order.created'));
+
+      expect(job.payload.externalOrderId).toBe('4242');
+      expect(job.payload.externalId).toBeUndefined();
+      expect(job.payload.objectType).toBeUndefined();
+    });
+
+    it('should route orders provider-agnostically (objectType=order regardless of provider)', () => {
+      const event = createOrderEvent('order.created');
+      event.provider = 'shopify';
+      const job = mapToJob(event);
+
+      expect(job.jobType).toBe('marketplace.order.sync');
+      expect(job.idempotencyKey).toBe(
+        'shopify:59f4129e-a827-4650-b69b-fc2302b9ecb7:evt-order-1'
+      );
     });
   });
 

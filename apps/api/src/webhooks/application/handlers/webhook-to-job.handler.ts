@@ -14,8 +14,13 @@ import { RedisClientType } from 'redis';
 import { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
-import type { SyncJobRequest, JobType } from '@openlinker/core/sync';
+import type {
+  SyncJobRequest,
+  JobType,
+  MarketplaceOrderSyncPayloadV1,
+} from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
+import type { OrderFeedEventType } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
@@ -350,6 +355,31 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     // rather than provider-specific terminology (e.g., "stock" -> "Stock")
     const normalizedCanonicalObjectType = this.normalizeObjectType(canonicalObjectType);
 
+    // Order events route onto the same `marketplace.order.sync` job the poller
+    // uses — push and poll converge on one pull path (idempotent on the internal
+    // order id; concurrent triggers are serialized by the per-order create lock).
+    //
+    // Provider-agnostic by design: keyed on objectType, not provider, so any
+    // marketplace emitting an `order` webhook routes here (today only PrestaShop
+    // does). The payload intentionally uses the poller's `externalOrderId` shape
+    // (MarketplaceOrderSyncPayloadV1), not the generic `externalId` master shape.
+    if (canonicalObjectType.toLowerCase() === 'order') {
+      return {
+        jobType: this.validateJobType('marketplace.order.sync'),
+        connectionId: event.connectionId,
+        // Inline literal (not a typed const) so it stays assignable to the
+        // payload's `Record<string, unknown>`; `satisfies` still shape-checks it.
+        payload: {
+          schemaVersion: 1,
+          externalOrderId: event.externalId,
+          sourceEventId: event.eventId,
+          eventType: this.mapOrderFeedEventType(event.eventType),
+          occurredAt: event.occurredAt,
+        } satisfies MarketplaceOrderSyncPayloadV1,
+        idempotencyKey: `${event.provider}:${event.connectionId}:${event.eventId}`,
+      };
+    }
+
     // Build job type: master.{canonicalObjectType}.syncByExternalId for master systems (e.g., PrestaShop)
     // (Option B: job taxonomy is integration-agnostic.)
     const normalizedProvider = event.provider.toLowerCase();
@@ -386,6 +416,28 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       },
       idempotencyKey,
     };
+  }
+
+  /**
+   * Map an inbound webhook event type to the poller's `OrderFeedEventType`
+   * vocabulary, so push and poll express order events in one language.
+   *
+   * Webhook event types arrive in dotted form (e.g. PrestaShop emits
+   * `order.created` / `order.status_changed`). `OrderFeedEventType` has no
+   * `status_changed` token, so a status change maps to `updated`. Any
+   * unrecognized order event falls back to `updated` — a safe re-pull; the
+   * field is an advisory hint, not a routing key (every order event routes to
+   * the same `marketplace.order.sync` job).
+   */
+  private mapOrderFeedEventType(webhookEventType: string): OrderFeedEventType {
+    switch (webhookEventType) {
+      case 'order.created':
+        return 'created';
+      case 'order.status_changed':
+        return 'updated';
+      default:
+        return 'updated';
+    }
   }
 
   /**
