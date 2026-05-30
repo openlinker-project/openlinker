@@ -144,7 +144,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
     const handler = harness.get(MasterInventorySyncAllHandler);
 
-    await expect(handler.execute(outerJob)).resolves.toBeUndefined();
+    await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
       ([req]) => req.jobType === 'master.inventory.syncByExternalId'
