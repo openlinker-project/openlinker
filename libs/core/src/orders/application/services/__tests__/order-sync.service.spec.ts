@@ -14,11 +14,16 @@ import type { Order } from '../../../domain/types/order.types';
 import type { OrderRef } from '../../../domain/types/order-processor.types';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
+import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
+import type { SyncLockPort } from '@openlinker/core/sync';
+import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let mappingConfigService: jest.Mocked<IMappingConfigService>;
+  let syncLock: jest.Mocked<SyncLockPort>;
+  let identifierMapping: jest.Mocked<IIdentifierMappingService>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -86,7 +91,25 @@ describe('OrderSyncService', () => {
       resolveAllegroCategory: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;
 
-    service = new OrderSyncService(integrationsService, mappingConfigService);
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+    } as jest.Mocked<SyncLockPort>;
+
+    identifierMapping = {
+      getOrCreateInternalId: jest.fn(),
+      getInternalId: jest.fn(),
+      getExternalIds: jest.fn().mockResolvedValue([]),
+      createMapping: jest.fn(),
+      batchGetOrCreateInternalIds: jest.fn(),
+    } as unknown as jest.Mocked<IIdentifierMappingService>;
+
+    service = new OrderSyncService(
+      integrationsService,
+      mappingConfigService,
+      syncLock,
+      identifierMapping
+    );
   });
 
   afterEach(() => {
@@ -309,6 +332,117 @@ describe('OrderSyncService', () => {
       await expect(
         service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
       ).rejects.toThrow('Mapping service unavailable');
+    });
+  });
+
+  describe('createOrder idempotency (lock)', () => {
+    it('should acquire the per-(order, destination) lock and release it after create', async () => {
+      const adapter = makeAdapter({ orderId: 'dest-1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(syncLock.acquire).toHaveBeenCalledWith('order:create:dest-a:ol_order_123', 120000);
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+      expect(syncLock.release).toHaveBeenCalledWith(
+        'order:create:dest-a:ol_order_123',
+        'lock-token'
+      );
+    });
+
+    it('should skip create and synthesize the ref from the mapping when the lock is held but the order already exists', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      syncLock.acquire.mockResolvedValue(null);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'PS-EXISTING-42',
+          connectionId: 'dest-a',
+          platformType: 'prestashop',
+          entityType: 'Order',
+        },
+      ]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(results).toEqual([
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'success',
+          orderRef: { orderId: 'PS-EXISTING-42' },
+        },
+      ]);
+    });
+
+    it('should throw OrderCreateContendedException (retryable) when the lock is held and no mapping exists yet', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      syncLock.acquire.mockResolvedValue(null);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toBeInstanceOf(OrderCreateContendedException);
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('should not mask a successful create when releasing the lock fails', async () => {
+      const adapter = makeAdapter({ orderId: 'dest-1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      syncLock.release.mockRejectedValue(new Error('redis down'));
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([
+        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' } },
+      ]);
+    });
+
+    it('should rethrow contention (aborting the whole job) even when another destination succeeds', async () => {
+      const ok = makeAdapter({ orderId: 'ok-1' });
+      const contended = makeAdapter({ orderId: 'never' });
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: ok },
+        { connectionId: 'dest-contended', adapter: contended },
+      ]);
+      // dest-contended cannot acquire the lock and no mapping exists yet → contended
+      syncLock.acquire.mockImplementation((key: string) =>
+        Promise.resolve(key.includes('dest-contended') ? null : 'lock-token')
+      );
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toBeInstanceOf(OrderCreateContendedException);
+      // the uncontended destination still attempted its create under its own lock
+      expect(ok.createOrder).toHaveBeenCalledTimes(1);
+      expect(contended.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('should rethrow contention rather than a sibling genuine failure', async () => {
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(new Error('destination down')),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      const contended = makeAdapter({ orderId: 'never' });
+      registerDestinations([
+        { connectionId: 'dest-fail', adapter: failing },
+        { connectionId: 'dest-contended', adapter: contended },
+      ]);
+      syncLock.acquire.mockImplementation((key: string) =>
+        Promise.resolve(key.includes('dest-contended') ? null : 'lock-token')
+      );
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toBeInstanceOf(OrderCreateContendedException);
     });
   });
 });
