@@ -22,6 +22,7 @@ import {
   teardownTestHarness,
 } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
+import type { TestHttpClient } from './helpers/http-client';
 import { createTestConnection } from './helpers/test-connection.helper';
 import {
   INPOST_TEST_ADAPTER_KEY,
@@ -86,9 +87,14 @@ describe('Shipment Label Download API Integration', () => {
     return { sourceId: source.id, carrierId: carrier.id };
   }
 
-  async function seedShipment(orderId: string): Promise<string> {
-    const http = harness.getHttp();
-    const token = await loginAsAdmin(http, harness.getDataSource());
+  // Takes the caller's token + http rather than logging in itself —
+  // `loginAsAdmin` does a plain INSERT of a fixed admin user (no upsert), so a
+  // second login in the same test would violate the users unique constraint.
+  async function seedShipment(
+    http: TestHttpClient,
+    token: string,
+    orderId: string,
+  ): Promise<string> {
     const { sourceId } = await seedRoute();
     const created = await http
       .post('/shipments/generate-label')
