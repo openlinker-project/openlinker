@@ -98,7 +98,7 @@ describe('Allegro Cursor Persistence Integration', () => {
       const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
       const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedJob);
-      await jobRepository.markSucceeded(persistedJob.id);
+      await jobRepository.markSucceeded(persistedJob.id, 'ok');
 
       // Verify cursor was set
       const firstCursor = await cursorRepository.get(connection.id, cursorKey);
@@ -126,7 +126,7 @@ describe('Allegro Cursor Persistence Integration', () => {
       });
 
       await pollHandler.execute(persistedJob2);
-      await jobRepository.markSucceeded(persistedJob2.id);
+      await jobRepository.markSucceeded(persistedJob2.id, 'ok');
 
       // Verify cursor advanced
       const secondCursor = await cursorRepository.get(connection.id, cursorKey);
@@ -190,7 +190,7 @@ describe('Allegro Cursor Persistence Integration', () => {
       const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
       const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedJob1);
-      await jobRepository.markSucceeded(persistedJob1.id);
+      await jobRepository.markSucceeded(persistedJob1.id, 'ok');
 
       const cursor1 = await cursorRepository.get(connection1.id, cursorKey);
 
@@ -203,7 +203,7 @@ describe('Allegro Cursor Persistence Integration', () => {
       });
 
       await pollHandler.execute(persistedJob2);
-      await jobRepository.markSucceeded(persistedJob2.id);
+      await jobRepository.markSucceeded(persistedJob2.id, 'ok');
 
       const cursor2 = await cursorRepository.get(connection2.id, cursorKey);
 
