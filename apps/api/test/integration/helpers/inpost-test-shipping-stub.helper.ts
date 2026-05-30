@@ -26,6 +26,8 @@ import {
 import type {
   GenerateLabelCommand,
   GenerateLabelResult,
+  LabelDocument,
+  LabelDocumentReader,
   ShipmentCanceller,
   ShippingMethod,
   ShippingProviderManagerPort,
@@ -35,6 +37,9 @@ import type { IntegrationTestHarness } from '../setup';
 
 export const INPOST_TEST_ADAPTER_KEY = 'inpost.test.v1';
 export const INPOST_TEST_PLATFORM_TYPE = 'inpost';
+
+/** Canned label bytes the stub returns from `fetchLabel` (`%PDF` magic). */
+export const STUB_LABEL_BYTES = Uint8Array.from([0x25, 0x50, 0x44, 0x46, 0x2d]);
 
 export function installInpostTestShippingStub(harness: IntegrationTestHarness): {
   readonly adapterKey: string;
@@ -46,10 +51,13 @@ export function installInpostTestShippingStub(harness: IntegrationTestHarness): 
     .get<AdapterFactoryResolverService>(ADAPTER_FACTORY_RESOLVER_TOKEN);
 
   let counter = 0;
-  // Implements ShipmentCanceller too (#846): the cancel command resolves this
-  // adapter and narrows via `isShipmentCanceller`. #835's dispatch spec ignores
-  // the extra method, so adding it is backward-compatible.
-  const shippingStub: ShippingProviderManagerPort & ShipmentCanceller = {
+  // Implements ShipmentCanceller + LabelDocumentReader too (#846 / #884): the
+  // cancel + label endpoints resolve this adapter and narrow via the
+  // co-located guards. #835's dispatch spec ignores the extra methods, so
+  // adding them is backward-compatible.
+  const shippingStub: ShippingProviderManagerPort &
+    ShipmentCanceller &
+    LabelDocumentReader = {
     getSupportedMethods(): readonly ShippingMethod[] {
       return ['paczkomat', 'kurier'];
     },
@@ -66,6 +74,9 @@ export function installInpostTestShippingStub(harness: IntegrationTestHarness): 
     },
     cancelShipment(_input: { providerShipmentId: string }): Promise<void> {
       return Promise.resolve();
+    },
+    fetchLabel(_input: { providerShipmentId: string }): Promise<LabelDocument> {
+      return Promise.resolve({ contentType: 'application/pdf', body: STUB_LABEL_BYTES });
     },
   };
 
