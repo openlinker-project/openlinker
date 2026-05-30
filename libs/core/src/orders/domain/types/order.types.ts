@@ -159,12 +159,33 @@ export interface OrderItem {
   imageUrl?: string;
 }
 
+/**
+ * How monetary amounts express tax.
+ *
+ * `inclusive` (gross) — `OrderItem.price`, `subtotal`, and `total` INCLUDE tax;
+ * marketplaces (e.g. Allegro) report buyer-paid gross prices this way.
+ * `exclusive` (net) — those amounts EXCLUDE tax.
+ */
+export const PriceTaxTreatmentValues = ['inclusive', 'exclusive'] as const;
+export type PriceTaxTreatment = (typeof PriceTaxTreatmentValues)[number];
+
 export interface OrderTotals {
   subtotal: number;
   tax: number;
   shipping: number;
   total: number;
   currency: string;
+
+  /**
+   * Whether `subtotal` / `total` and the per-line `OrderItem.price` include tax
+   * (`inclusive`/gross) or exclude it (`exclusive`/net). Optional and
+   * source-uniform: absent means "not asserted by the source", and a
+   * destination falls back to its prior assumption. Destinations that price
+   * net (e.g. PrestaShop `specific_price`) use this to decide whether the
+   * buyer-paid amount must be converted to net before pinning — the tax *rate*
+   * itself stays destination-side, never on the order contract.
+   */
+  taxTreatment?: PriceTaxTreatment;
 }
 
 export interface Address {
