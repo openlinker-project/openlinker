@@ -63,6 +63,14 @@ const WS_RESOURCES = [
   'languages',
   'countries',
   'states',
+  // #895: source-authoritative line pricing. The order processor writes
+  // cart-scoped `specific_prices` to pin the buyer-paid price, and
+  // `PrestashopTaxRateResolver` reads `tax_rules` + `taxes` to convert
+  // gross→net. Without these grants the WS key is rejected on those
+  // resources and order creation fails (the fail-loud pricing invariant).
+  'specific_prices',
+  'tax_rules',
+  'taxes',
   // Used by PrestashopWebhookProvisioningAdapter to write OPENLINKER_*
   // rows (#168 / #541). Carrier-mapping smoke spec doesn't touch this
   // resource, so adding it here is purely additive.
