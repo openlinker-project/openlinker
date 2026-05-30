@@ -112,7 +112,7 @@ describe('Product Sync End-to-End Integration', () => {
       await handler.execute(persistedJob);
 
       // 5. Manually mark job as succeeded (handler doesn't update status, runner does)
-      await jobRepository.markSucceeded(persistedJob.id);
+      await jobRepository.markSucceeded(persistedJob.id, 'ok');
 
       // Verify job status updated to succeeded
       const updatedJob = await getSyncJobById(dataSource, persistedJob.id);
@@ -275,7 +275,7 @@ describe('Product Sync End-to-End Integration', () => {
       await handler.execute(persistedJob);
 
       // Manually mark job as succeeded (handler doesn't update status, runner does)
-      await jobRepository.markSucceeded(persistedJob.id);
+      await jobRepository.markSucceeded(persistedJob.id, 'ok');
 
       // Verify all fields are preserved
       const productRepository = dataSource.getRepository(ProductOrmEntity);
