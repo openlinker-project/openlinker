@@ -33,6 +33,7 @@ import type { PrestashopCustomerProvisioner } from '../infrastructure/provisione
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
+import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -119,6 +120,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       // Create provisioners (if not provided, create new instances)
       const countryResolver = new PrestashopCountryResolver();
       const currencyResolver = new PrestashopCurrencyResolver();
+      const taxRateResolver = new PrestashopTaxRateResolver(countryResolver);
       const addressProvisioner =
         this.addressProvisioner || new PrestashopAddressProvisioner(null, countryResolver);
 
@@ -144,6 +146,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
         currencyResolver,
         this.customerProjectionRepository,
         openlinkerModuleClient,
+        taxRateResolver,
         this.mappingConfigService
       );
     } else {

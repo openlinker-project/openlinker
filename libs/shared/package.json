@@ -48,6 +48,10 @@
     "./cache/testing": {
       "types": "./dist/cache/testing/index.d.ts",
       "require": "./dist/cache/testing/index.js"
+    },
+    "./money": {
+      "types": "./dist/money/index.d.ts",
+      "require": "./dist/money/index.js"
     }
   },
   "files": [
