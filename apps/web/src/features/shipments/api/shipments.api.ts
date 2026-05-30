@@ -39,10 +39,19 @@ export interface ShipmentsApi {
    *  notify + destination OMP projection. Idempotent: re-firing on an
    *  already-dispatched shipment returns `outcome: 'skipped-not-generated'`. */
   notifyDispatched: (id: string) => Promise<NotifyDispatchedResult>;
+
+  /** `GET /shipments/:id/label` (#884) — fetch the label document bytes as a
+   *  Blob. Content type is provider-dependent (PDF / ZPL / PNG); the browser
+   *  filename comes from the server's `Content-Disposition` header. */
+  downloadLabel: (id: string) => Promise<Blob>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+interface ApiBlobRequest {
+  (path: string, init?: RequestInit): Promise<Blob>;
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
@@ -64,7 +73,10 @@ function buildQuery(filters?: ShipmentFilters, pagination?: ShipmentPagination):
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createShipmentsApi(request: ApiRequest): ShipmentsApi {
+export function createShipmentsApi(
+  request: ApiRequest,
+  requestBlob: ApiBlobRequest,
+): ShipmentsApi {
   return {
     list(filters, pagination): Promise<PaginatedShipments> {
       return request<PaginatedShipments>(`/shipments${buildQuery(filters, pagination)}`);
@@ -90,6 +102,9 @@ export function createShipmentsApi(request: ApiRequest): ShipmentsApi {
           headers: JSON_HEADERS,
         },
       );
+    },
+    downloadLabel(id): Promise<Blob> {
+      return requestBlob(`/shipments/${encodeURIComponent(id)}/label`);
     },
   };
 }
