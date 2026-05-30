@@ -172,6 +172,7 @@ describe('createPrestashopPlugin → register(host)', () => {
       }),
       connectionTesterRegistry: { register: jest.fn() },
       webhookProvisioningRegistry: { register: jest.fn() },
+      webhookEventTranslatorRegistry: { register: jest.fn() },
       connectionConfigShapeValidatorRegistry: configRegistry,
       connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
       schedulerTaskRegistry: { register: jest.fn() },

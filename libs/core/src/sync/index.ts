@@ -101,6 +101,12 @@ export type { ISyncJobsService } from './application/services/sync-jobs.service.
 export type { ScheduleJobInput } from './application/services/sync-jobs.types';
 export type { ISyncCursorsService } from './application/services/sync-cursors.service.interface';
 
+// Inbound routing policy (ADR-015) — class is value-exported so the API webhooks
+// module can bind it; deps (IIntegrationsService, JobEnqueuePort) resolve there.
+export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
+export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
+export type { RoutingOutcome } from './application/types/inbound-routing-policy.types';
+
 // Module and tokens
 export { SyncModule } from './sync.module';
 export * from './sync.tokens';
