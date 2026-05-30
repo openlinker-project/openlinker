@@ -212,17 +212,21 @@ const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
 
 /**
  * Whether to install the real OL PrestaShop module into the container — gates
- * S-3 (which exercises the `cartshipping.php` HMAC round-trip).
+ * **all** scenarios. Since ADR-016 (#905) destination order creation goes
+ * through the module's HMAC-authed `importorder` → `validateOrder` endpoint, so
+ * S-1…S-4 every one require the module installed AND the webhook secret wired
+ * (below). The old WS `POST /orders` path that let S-1/S-2 run module-free is
+ * gone.
  *
  * Local default: `true` — full coverage, ~5-10s install overhead on the
  * already-paid PS container boot.
  *
  * CI override (`CI=true`): `false` — the self-hosted Linux runner currently
  * fails the post-install `verifyApacheUp` probe with HTTP 500 from
- * /api/carriers (works on macOS Docker-Desktop). Root cause TBD; tracked
- * as a follow-up so #513's locally-proven round-trip doesn't block this PR.
- * In this mode S-3 is reported as skipped rather than failed; S-1 + S-2
- * still run (they don't need the module).
+ * /api/carriers (works on macOS Docker-Desktop). Root cause TBD; tracked by the
+ * #716 module-install-in-CI follow-up. In this mode **the whole suite is
+ * reported as skipped** rather than failed (carrier-mapping has no module-free
+ * scenario left); CI PS-order coverage returns once #716 lands.
  *
  * Explicit overrides:
  *   - `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (used by
@@ -377,7 +381,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     }
   });
 
-  it('S-1: mapped carrier lands on order + cart with positive id_carrier', async () => {
+  itWhenOlModuleInstalled('S-1: mapped carrier lands on order + cart with positive id_carrier', async () => {
     const incoming = createIncomingOrderForCarrierMapping({
       externalOrderId: 'ALG-S1',
       // Paid Allegro order (payment.finishedAt set → 'processing') → PS state 2
@@ -417,7 +421,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     expect(Number(psCart.id_carrier)).toBeGreaterThan(0);
   });
 
-  it('S-2: defaultCarrierId fallback lands on order with config carrier', async () => {
+  itWhenOlModuleInstalled('S-2: defaultCarrierId fallback lands on order with config carrier', async () => {
     const incoming = createIncomingOrderForCarrierMapping({
       externalOrderId: 'ALG-S2',
       status: 'processing',
