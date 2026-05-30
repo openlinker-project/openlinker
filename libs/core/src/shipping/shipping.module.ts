@@ -37,6 +37,7 @@ import { PickupPointLookupService } from './application/services/pickup-point-lo
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
+import { ShipmentLabelService } from './application/services/shipment-label.service';
 import {
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
@@ -44,6 +45,7 @@ import {
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
+  SHIPMENT_LABEL_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
   SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
@@ -112,6 +114,13 @@ import {
       provide: FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
       useExisting: FulfillmentStatusSyncService,
     },
+    // #884 label-document fetch seam: resolves the shipment's provider adapter
+    // and narrows the LabelDocumentReader sub-capability. Read-only.
+    ShipmentLabelService,
+    {
+      provide: SHIPMENT_LABEL_SERVICE_TOKEN,
+      useExisting: ShipmentLabelService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -123,6 +132,7 @@ import {
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
     FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+    SHIPMENT_LABEL_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}
