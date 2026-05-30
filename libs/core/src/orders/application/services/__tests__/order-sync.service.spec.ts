@@ -17,6 +17,7 @@ import { NoOrderDestinationsAvailableException } from '../../../domain/exception
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -133,9 +134,6 @@ describe('OrderSyncService', () => {
         expect.objectContaining({
           orderNumber: 'ORDER-001',
           source: { connectionId: 'source-1', eventId: 'event-456' },
-          metadata: expect.objectContaining({
-            internalOrderId: 'ol_order_123',
-          }),
         })
       );
       expect(results).toEqual([
@@ -166,7 +164,7 @@ describe('OrderSyncService', () => {
       expect(results.every((r) => r.status === 'success')).toBe(true);
     });
 
-    it('should propagate internalOrderId metadata to every destination', async () => {
+    it('should persist the destination external↔internal mapping for every destination', async () => {
       const a = makeAdapter({ orderId: 'a-1' });
       const b = makeAdapter({ orderId: 'b-1' });
       registerDestinations([
@@ -179,13 +177,22 @@ describe('OrderSyncService', () => {
         sourceConnectionId: 'source-1',
       });
 
-      for (const adapter of [a, b]) {
-        expect(adapter.createOrder).toHaveBeenCalledWith(
-          expect.objectContaining({
-            metadata: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
-          })
-        );
-      }
+      // Core owns the mapping write (#909): one per destination, keyed by the
+      // adapter-returned external id → the internal order id.
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'Order',
+        'a-1',
+        'dest-a',
+        'ol_order_123',
+        expect.any(Object)
+      );
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'Order',
+        'b-1',
+        'dest-b',
+        'ol_order_123',
+        expect.any(Object)
+      );
     });
 
     it('should isolate partial failures and still report successful destinations', async () => {
@@ -443,6 +450,81 @@ describe('OrderSyncService', () => {
       await expect(
         service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
       ).rejects.toBeInstanceOf(OrderCreateContendedException);
+    });
+
+    it('should create then persist the mapping with the external id when the lock is acquired and no prior mapping exists', async () => {
+      const adapter = makeAdapter({ orderId: 'PS-999', orderNumber: 'DEST-1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith(
+        'Order',
+        'PS-999',
+        'dest-a',
+        'ol_order_123',
+        expect.any(Object)
+      );
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        orderRef: { orderId: 'PS-999', orderNumber: 'DEST-1' },
+      });
+    });
+
+    it('should skip create when the lock is acquired but a prior run already mapped the order', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      // Lock acquired (default 'lock-token'), but the destination mapping
+      // already exists from a prior completed run.
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'PS-EXISTING-7',
+          connectionId: 'dest-a',
+          platformType: 'prestashop',
+          entityType: 'Order',
+        },
+      ]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        orderRef: { orderId: 'PS-EXISTING-7' },
+      });
+      // Lock must still be released on the skip path.
+      expect(syncLock.release).toHaveBeenCalledWith(
+        'order:create:dest-a:ol_order_123',
+        'lock-token'
+      );
+    });
+
+    it('should swallow DuplicateIdentifierMappingError from createMapping (concurrent create resolved)', async () => {
+      const adapter = makeAdapter({ orderId: 'PS-555' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      identifierMapping.createMapping.mockRejectedValue(
+        new DuplicateIdentifierMappingError('Order', 'PS-555', 'prestashop', 'dest-a')
+      );
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        orderRef: { orderId: 'PS-555' },
+      });
     });
   });
 });

@@ -29,6 +29,15 @@ export interface OrderProcessorManagerPort {
    * OpenLinker IDs; the adapter must map these to external IDs before
    * submitting to the destination platform.
    *
+   * **Returns the destination-native external order id (#909).** The returned
+   * `OrderRef.orderId` MUST be the id assigned by the destination platform,
+   * never an internal OpenLinker id. Implementations create unconditionally —
+   * idempotency (skip-if-already-created) and the external↔internal identifier
+   * mapping write are owned by `OrderSyncService` under a per-(order,
+   * destination) lock, so an adapter carries no create-or-skip guard of its
+   * own. Adapters MAY keep platform-side duplicate recovery (e.g. recover the
+   * existing order id on a unique-constraint error) as defense-in-depth.
+   *
    * **Source-authoritative pricing invariant (#895, ADR-014):** implementations
    * MUST create destination order lines priced at the supplied
    * `order.items[].price` (the buyer-paid source price), honouring
@@ -39,7 +48,7 @@ export interface OrderProcessorManagerPort {
    * processor, not an optional capability.
    *
    * @param order - Order creation request with internal IDs
-   * @returns Order reference (orderId and optional orderNumber)
+   * @returns Order reference (destination-native orderId and optional orderNumber)
    * @throws Error if order creation fails
    */
   createOrder(order: OrderCreate): Promise<OrderRef>;
