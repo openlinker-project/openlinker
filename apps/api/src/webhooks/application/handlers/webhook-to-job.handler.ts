@@ -11,16 +11,20 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { RedisClientType } from 'redis';
-import { JobEnqueuePort } from '@openlinker/core/sync';
-import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events';
-import type {
-  SyncJobRequest,
-  JobType,
-  MarketplaceOrderSyncPayloadV1,
-} from '@openlinker/core/sync';
-import { JobTypeValues } from '@openlinker/core/sync';
-import type { OrderFeedEventType } from '@openlinker/core/orders';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN,
+  WebhookEventTranslatorRegistryService,
+ IIntegrationsService} from '@openlinker/core/integrations';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
+import { INBOUND_ROUTING_POLICY_TOKEN } from '@openlinker/core/sync';
+import { IInboundRoutingPolicyService } from '@openlinker/core/sync';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionNotFoundException,
+  ConnectionDisabledException,
+} from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
@@ -46,8 +50,12 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CLIENT_BLOCKING_TOKEN)
     private readonly redisClient: RedisClientType,
-    @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
+    @Inject(WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN)
+    private readonly translatorRegistry: WebhookEventTranslatorRegistryService,
+    @Inject(INBOUND_ROUTING_POLICY_TOKEN)
+    private readonly routingPolicy: IInboundRoutingPolicyService,
     @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
     private readonly deliveryRepository: WebhookDeliveryRepositoryPort
   ) {}
@@ -240,46 +248,84 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Map to sync job (may throw if unmappable)
-      let job: SyncJobRequest;
+      // Resolve the connection + its adapter metadata. A *permanent* config
+      // fault (connection not found / disabled) dead-letters; any other
+      // (transient) error rethrows to the outer catch (no ACK → redelivery), so
+      // a brief DB/infra blip never silently drops a webhook (ADR-015 invariant 3).
+      let connection: Connection;
+      let metadata: AdapterMetadata;
       try {
-        job = this.mapToSyncJob(event);
-      } catch (mappingError) {
-        // Mapping failed (invalid job type, unmappable objectType, etc.)
-        // ACK the webhook message and send to DLQ to prevent infinite retries
-        const errorMessage =
-          mappingError instanceof Error ? mappingError.message : String(mappingError);
-        this.logger.warn(
-          `Failed to map webhook event to job: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, error=${errorMessage}`
-        );
-        await this.sendToDeadLetterQueue(event, errorMessage, fields);
-        await this.recordDelivery({
-          eventId: event.eventId,
-          provider: event.provider,
-          connectionId: event.connectionId,
-          status: 'deadlettered',
-          dlqReason: errorMessage.slice(0, 500),
-        });
-        await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
+        ({ connection, metadata } = await this.integrationsService.getAdapter(event.connectionId));
+      } catch (resolveError) {
+        if (
+          resolveError instanceof ConnectionNotFoundException ||
+          resolveError instanceof ConnectionDisabledException
+        ) {
+          await this.deadLetter(
+            messageId,
+            event,
+            fields,
+            `connection-unavailable: ${resolveError.message}`
+          );
+          return;
+        }
+        throw resolveError;
+      }
+
+      // Resolve the plugin's webhook-event translator by adapterKey. No
+      // translator → this plugin doesn't decode webhooks (poll-only) → DLQ.
+      const translator = this.translatorRegistry.get(metadata.adapterKey);
+      if (!translator) {
+        await this.deadLetter(messageId, event, fields, `no-translator: ${metadata.adapterKey}`);
         return;
       }
 
-      // Enqueue job (idempotency enforced at JobEnqueuePort level)
-      const { jobId } = await this.jobEnqueue.enqueueJob(job);
+      // Decode the native event into a neutral canonical event (null = undecodable).
+      const canonical = translator.translate(event);
+      if (!canonical) {
+        await this.deadLetter(
+          messageId,
+          event,
+          fields,
+          `undecodable: objectType=${event.objectType}, eventType=${event.eventType}`
+        );
+        return;
+      }
+
+      // Route via the core policy (capability-gated; enqueues on a passed gate).
+      // Pass the already-resolved supportedCapabilities so the policy stays a
+      // pure function (no second metadata resolve).
+      const outcome = await this.routingPolicy.route(
+        canonical,
+        connection,
+        metadata.supportedCapabilities,
+        event.eventId
+      );
+      if (outcome.status === 'ungated') {
+        await this.deadLetter(
+          messageId,
+          event,
+          fields,
+          `ungated: ${canonical.domain} requires ${outcome.requiredCapability}`
+        );
+        return;
+      }
 
       await this.recordDelivery({
         eventId: event.eventId,
         provider: event.provider,
         connectionId: event.connectionId,
         status: 'job_enqueued',
-        downstreamJobId: jobId,
-        downstreamJobType: job.jobType,
+        downstreamJobId: outcome.jobId,
+        downstreamJobType: outcome.jobType,
       });
 
       // ACK message only after successful enqueue
       await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
 
-      this.logger.debug(`Processed webhook event ${event.eventId} and enqueued job ${job.jobType}`);
+      this.logger.debug(
+        `Processed webhook event ${event.eventId} and enqueued job ${outcome.jobType}`
+      );
     } catch (error) {
       // Unexpected error (network, Redis, etc.) - don't ACK, allow retry
       this.logger.error(
@@ -337,191 +383,29 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Map inbound webhook event to sync job
-   *
-   * Maps webhook events to sync job requests based on event type and provider.
-   * Acts as a translation layer: provider-specific terminology → canonical job types.
-   * Normalizes objectType to PascalCase to match the well-known core entity types.
-   *
-   * @throws Error if job type cannot be constructed or validated
+   * Dead-letter an unroutable webhook event: publish to the DLQ stream, record
+   * the delivery as `deadlettered`, and ACK so it isn't redelivered. Reasons
+   * are tagged (`connection-unavailable` / `no-translator` / `undecodable` /
+   * `ungated`) to distinguish expected poll-only noise from misconfiguration.
    */
-  private mapToSyncJob(event: InboundWebhookEvent): SyncJobRequest {
-    // Map provider-specific objectType to canonical objectType for job type construction
-    // Example: PrestaShop uses "stock" but OpenLinker uses "inventory" in job types
-    const canonicalObjectType = this.mapObjectType(event.provider, event.objectType);
-
-    // Normalize canonical objectType to PascalCase for payload
-    // This ensures payload uses canonical terminology (e.g., "inventory" -> "Inventory")
-    // rather than provider-specific terminology (e.g., "stock" -> "Stock")
-    const normalizedCanonicalObjectType = this.normalizeObjectType(canonicalObjectType);
-
-    // Order events route onto the same `marketplace.order.sync` job the poller
-    // uses — push and poll converge on one pull path (idempotent on the internal
-    // order id; concurrent triggers are serialized by the per-order create lock).
-    //
-    // Provider-agnostic by design: keyed on objectType, not provider, so any
-    // marketplace emitting an `order` webhook routes here (today only PrestaShop
-    // does). The payload intentionally uses the poller's `externalOrderId` shape
-    // (MarketplaceOrderSyncPayloadV1), not the generic `externalId` master shape.
-    if (canonicalObjectType.toLowerCase() === 'order') {
-      return {
-        jobType: this.validateJobType('marketplace.order.sync'),
-        connectionId: event.connectionId,
-        // Inline literal (not a typed const) so it stays assignable to the
-        // payload's `Record<string, unknown>`; `satisfies` still shape-checks it.
-        payload: {
-          schemaVersion: 1,
-          externalOrderId: event.externalId,
-          sourceEventId: event.eventId,
-          eventType: this.mapOrderFeedEventType(event.eventType),
-          occurredAt: event.occurredAt,
-        } satisfies MarketplaceOrderSyncPayloadV1,
-        idempotencyKey: `${event.provider}:${event.connectionId}:${event.eventId}`,
-      };
-    }
-
-    // Build job type: master.{canonicalObjectType}.syncByExternalId for master systems (e.g., PrestaShop)
-    // (Option B: job taxonomy is integration-agnostic.)
-    const normalizedProvider = event.provider.toLowerCase();
-    const isMasterProvider = normalizedProvider === 'prestashop';
-
-    if (isMasterProvider) {
-      const supported = ['product', 'inventory'];
-      if (!supported.includes(canonicalObjectType.toLowerCase())) {
-        throw new Error(
-          `Unsupported master objectType: ${canonicalObjectType}. Supported: ${supported.join(', ')}`
-        );
-      }
-    }
-
-    const jobTypeString = isMasterProvider
-      ? `master.${canonicalObjectType.toLowerCase()}.syncByExternalId`
-      : `${normalizedProvider}.${canonicalObjectType.toLowerCase()}.syncByExternalId`;
-
-    // Validate that the constructed job type is a valid JobType
-    // Type assertion is safe here because we validate against JobTypeValues
-    const jobType = this.validateJobType(jobTypeString);
-
-    // Build idempotency key: {provider}:{connectionId}:{eventId}
-    const idempotencyKey = `${event.provider}:${event.connectionId}:${event.eventId}`;
-
-    return {
-      jobType,
+  private async deadLetter(
+    messageId: string,
+    event: InboundWebhookEvent,
+    fields: Record<string, string>,
+    reason: string
+  ): Promise<void> {
+    this.logger.warn(
+      `Dead-lettering webhook event: eventId=${event.eventId}, provider=${event.provider}, objectType=${event.objectType}, reason=${reason}`
+    );
+    await this.sendToDeadLetterQueue(event, reason, fields);
+    await this.recordDelivery({
+      eventId: event.eventId,
+      provider: event.provider,
       connectionId: event.connectionId,
-      payload: {
-        schemaVersion: 1,
-        externalId: event.externalId,
-        objectType: normalizedCanonicalObjectType, // Use normalized canonical objectType (PascalCase) in payload
-        eventType: event.eventType,
-      },
-      idempotencyKey,
-    };
-  }
-
-  /**
-   * Map an inbound webhook event type to the poller's `OrderFeedEventType`
-   * vocabulary, so push and poll express order events in one language.
-   *
-   * Webhook event types arrive in dotted form (e.g. PrestaShop emits
-   * `order.created` / `order.status_changed`). `OrderFeedEventType` has no
-   * `status_changed` token, so a status change maps to `updated`. Any
-   * unrecognized order event falls back to `updated` — a safe re-pull; the
-   * field is an advisory hint, not a routing key (every order event routes to
-   * the same `marketplace.order.sync` job).
-   */
-  private mapOrderFeedEventType(webhookEventType: string): OrderFeedEventType {
-    switch (webhookEventType) {
-      case 'order.created':
-        return 'created';
-      case 'order.status_changed':
-        return 'updated';
-      default:
-        return 'updated';
-    }
-  }
-
-  /**
-   * Map provider-specific objectType to canonical objectType
-   *
-   * Acts as a translation layer between provider terminology and OpenLinker's canonical terminology.
-   * This allows providers to use their own terminology (e.g., PrestaShop uses "stock") while
-   * OpenLinker uses canonical terms in job types (e.g., "inventory").
-   *
-   * Structure is designed to be extensible: can be extracted to provider-specific mappers later.
-   *
-   * @param provider - Provider identifier (e.g., 'prestashop', 'shopify')
-   * @param objectType - Provider-specific object type (e.g., 'stock', 'product')
-   * @returns Canonical object type for job type construction (e.g., 'inventory', 'product')
-   */
-  private mapObjectType(provider: string, objectType: string): string {
-    const p = provider.toLowerCase();
-    const o = objectType.toLowerCase();
-
-    // Provider-specific objectType mappings
-    // Structure: { provider: { providerObjectType: canonicalObjectType } }
-    const mapping: Record<string, Record<string, string>> = {
-      prestashop: {
-        stock: 'inventory', // PrestaShop uses "stock", OpenLinker uses "inventory"
-        // product: 'product', // No mapping needed (pass-through)
-        // order: 'order', // No mapping needed (pass-through)
-      },
-      // Future providers can be added here:
-      // shopify: {
-      //   inventory_level: 'inventory',
-      //   product: 'product',
-      // },
-    };
-
-    // Return mapped value if exists, otherwise pass through unchanged
-    return mapping[p]?.[o] ?? o;
-  }
-
-  /**
-   * Normalize objectType to PascalCase
-   *
-   * Converts lowercase/snake_case object types to PascalCase to match the well-known core entity types.
-   * Examples:
-   * - "product" -> "Product"
-   * - "product_variant" -> "ProductVariant"
-   * - "Product" -> "Product" (already normalized)
-   * - "PRODUCT" -> "Product"
-   *
-   * @param objectType - Raw object type from webhook (any case)
-   * @returns Normalized object type in PascalCase
-   */
-  private normalizeObjectType(objectType: string): string {
-    if (!objectType) {
-      return objectType;
-    }
-
-    // Convert to lowercase first, then split by underscore
-    const parts = objectType.toLowerCase().split('_');
-
-    // Capitalize first letter of each part and join
-    return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-  }
-
-  /**
-   * Validate and return a JobType
-   *
-   * Ensures the job type string is a valid JobType value.
-   * Throws an error if the job type is not recognized.
-   *
-   * @throws Error if job type is not in JobTypeValues
-   */
-  private validateJobType(jobTypeString: string): JobType {
-    // Type guard: check if jobTypeString is in the JobTypeValues array
-    const isValidJobType = (value: string): value is JobType => {
-      return (JobTypeValues as readonly string[]).includes(value);
-    };
-
-    if (isValidJobType(jobTypeString)) {
-      return jobTypeString;
-    }
-
-    const errorMessage = `Invalid job type: ${jobTypeString}. Valid types: ${JobTypeValues.join(', ')}`;
-    this.logger.error(errorMessage);
-    throw new Error(errorMessage);
+      status: 'deadlettered',
+      dlqReason: reason.slice(0, 500),
+    });
+    await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
   }
 
   /**
