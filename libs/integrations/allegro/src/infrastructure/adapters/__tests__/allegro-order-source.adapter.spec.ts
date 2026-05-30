@@ -299,6 +299,7 @@ describe('AllegroOrderSourceAdapter', () => {
         shipping: 0,
         total: 39.98,
         currency: 'PLN',
+        taxTreatment: 'inclusive',
       });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
     });
@@ -358,6 +359,7 @@ describe('AllegroOrderSourceAdapter', () => {
           shipping: 12.49,
           total: 22.49,
           currency: 'PLN',
+          taxTreatment: 'inclusive',
         });
       });
 
@@ -409,6 +411,7 @@ describe('AllegroOrderSourceAdapter', () => {
           shipping: 0,
           total: 10,
           currency: 'PLN',
+          taxTreatment: 'inclusive',
         });
       });
     });

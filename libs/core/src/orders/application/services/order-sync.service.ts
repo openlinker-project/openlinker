@@ -77,6 +77,7 @@ export class OrderSyncService implements IOrderSyncService {
         shipping: order.totals.shipping,
         total: order.totals.total,
         currency: order.totals.currency,
+        taxTreatment: order.totals.taxTreatment,
       },
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,
