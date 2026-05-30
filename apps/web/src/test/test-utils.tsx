@@ -87,6 +87,7 @@ export function createMockApiClient(
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
+    requestBlob: overrides.requestBlob ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
@@ -339,6 +340,7 @@ export function createMockApiClient(
         source: 'ok',
         destinations: [],
       }),
+      downloadLabel: vi.fn().mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])])),
       ...overrides.shipments,
     } as ApiClient['shipments'],
     syncJobs: {
