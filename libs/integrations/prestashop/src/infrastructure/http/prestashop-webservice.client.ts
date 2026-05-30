@@ -213,6 +213,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return this.writeResource<T>(resource, id, data, options);
   }
 
+  async deleteResource(resource: string, id: string | number): Promise<void> {
+    const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
+    const url = `${this.baseUrl}${path}`;
+    this.logger.debug(`Deleting resource: ${resource}/${id}`);
+    await this.requestWithRetry(url, { method: 'DELETE' });
+  }
+
   /**
    * Shared POST/PUT writer.
    *
