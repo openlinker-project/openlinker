@@ -221,7 +221,7 @@ describe('Job Intake → Execution Integration', () => {
         status: 'running',
       });
 
-      await jobRepository.markSucceeded(job.id);
+      await jobRepository.markSucceeded(job.id, 'ok');
 
       const updatedJob = await getSyncJobById(harness.getDataSource(), job.id);
       expect(updatedJob?.status).toBe('succeeded');
@@ -282,7 +282,7 @@ describe('Job Intake → Execution Integration', () => {
 // Helper function to get all sync jobs (for assertions)
 async function getAllSyncJobs(dataSource: any): Promise<any[]> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- dynamic require() needed: path computed at runtime
-  const { SyncJobOrmEntity } = require('@openlinker/core/sync');
+  const { SyncJobOrmEntity } = require('@openlinker/core/sync/orm-entities');
   return dataSource.getRepository(SyncJobOrmEntity).find({
     order: { createdAt: 'DESC' },
   });
