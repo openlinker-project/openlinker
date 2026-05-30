@@ -25,6 +25,8 @@ import {
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
   type GenerateLabelResult,
+  type LabelDocument,
+  type LabelDocumentReader,
   type ShipmentCanceller,
   type ShippingMethod,
   type ShippingProviderManagerPort,
@@ -60,9 +62,19 @@ const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 const CREATE_COMMANDS_PATH = '/shipment-management/shipments/create-commands';
 const CANCEL_COMMANDS_PATH = '/shipment-management/shipments/cancel-commands';
 const SHIPMENTS_PATH = '/shipment-management/shipments';
+const LABEL_PATH = '/shipment-management/label';
+
+/**
+ * Page geometry for the label request. NOT a format selector — the returned
+ * document format (PDF / ZPL / EPL) is governed by the seller's "Ship with
+ * Allegro" account setting, so the adapter reads the actual format from the
+ * response `Content-Type` rather than assuming it here. `A6` is the
+ * thermal-label default.
+ */
+const LABEL_PAGE_SIZE = 'A6';
 
 export class AllegroDeliveryShippingAdapter
-  implements ShippingProviderManagerPort, ShipmentCanceller
+  implements ShippingProviderManagerPort, ShipmentCanceller, LabelDocumentReader
 {
   private readonly logger = new Logger(AllegroDeliveryShippingAdapter.name);
   private readonly pollConfig: AllegroShipmentPollConfig;
@@ -160,6 +172,26 @@ export class AllegroDeliveryShippingAdapter
     }
 
     await this.pollUntilTerminal(CANCEL_COMMANDS_PATH, commandId);
+  }
+
+  async fetchLabel(input: { providerShipmentId: string }): Promise<LabelDocument> {
+    // `POST /shipment-management/label` returns the label document bytes
+    // directly. `pageSize` is page geometry, not a format selector — the
+    // format (PDF/ZPL/EPL) follows the seller's account setting, so we forward
+    // whatever `Content-Type` Allegro reports and default to PDF only when the
+    // header is absent (never overwrite a real one).
+    try {
+      const response = await this.httpClient.postExpectingBinary(LABEL_PATH, {
+        shipmentIds: [input.providerShipmentId],
+        pageSize: LABEL_PAGE_SIZE,
+      });
+      return {
+        contentType: response.contentType || 'application/pdf',
+        body: response.data,
+      };
+    } catch (error) {
+      throw this.toRejected(error, `fetch label for ${input.providerShipmentId}`);
+    }
   }
 
   /**
