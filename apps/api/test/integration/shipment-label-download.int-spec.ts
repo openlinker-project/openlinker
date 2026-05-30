@@ -10,7 +10,6 @@
  *
  * @module apps/api/test/integration
  */
-import request from 'supertest';
 import {
   FULFILLMENT_PROCESSOR_KIND,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
