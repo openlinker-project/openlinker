@@ -501,6 +501,7 @@ Every slot is optional. A plugin contributes only the affordances its platform a
 | `CredentialsPanel` | `ComponentType<{ connection }>` | `EditConnectionForm` | Full credentials panel including the rotate-key UI shape that fits the platform's credential model. When absent, the form renders a read-only "Stored securely (managed by integration)" / "Environment variable" affordance. |
 | `ConnectionActions` | `ComponentType<{ connection }>` | `ConnectionActionsPanel` | Extra platform-specific actions on the connection-detail page (PS: "Configure webhooks"). |
 | `supportsListingEdit` | `boolean` | `ListingDetailPage` | Gates the "Edit offer" button on the listing-detail page. |
+| `pickupPointResolvesAsync` | `boolean` | `OrderShipmentPanel`, `GenerateLabelForm` | `true` when the platform's order pickup-point (locker) resolves asynchronously after the order is received — the buyer selects it on-platform and it arrives on a later poll. Drives the paczkomat-row caption ("buyer-selected via {displayName}" vs "operator-selected") and the pickup-point retry hint (#839 AC-3 / #893). |
 | `extractContentPublishErrors` | `(err: unknown) => StructuredError[] \| null` | `extractPlatformErrors` | Optional platform-specific structured-error extractor for content-publish failures (#613). |
 
 Module-load validation in `apps/web/src/plugins/index.ts` rejects duplicate plugin `id`s and duplicate `platformType`s before any provider mounts. `PluginRegistryProvider` re-runs the same check at mount time as belt-and-suspenders for test fixtures.

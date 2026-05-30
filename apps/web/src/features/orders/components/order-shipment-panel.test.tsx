@@ -198,6 +198,10 @@ describe('OrderShipmentPanel — populated state', () => {
 
     renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
 
+    // Driven by the Allegro plugin's `pickupPointResolvesAsync` trait (#893),
+    // resolved via `usePlatform` against the real registry — not a literal
+    // `platformType === 'allegro'` compare. The "via Allegro" suffix is the
+    // platform's `displayName`.
     expect(await screen.findByText(/buyer-selected via Allegro/i)).toBeInTheDocument();
   });
 
