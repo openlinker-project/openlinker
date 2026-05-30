@@ -32,6 +32,7 @@ import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -90,6 +91,24 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         }
         throw new Error(`Unsupported capability: ${capability}`);
       });
+
+    // Order routing resolves destinations via listCapabilityAdapters (one
+    // OrderProcessorManager destination, distinct from the Allegro source).
+    jest
+      .spyOn(integrationsService, 'listCapabilityAdapters')
+      .mockImplementation(async (filters: { capability: string }) => {
+        if (filters.capability === 'OrderProcessorManager') {
+          return [
+            {
+              connectionId: 'dest-prestashop-1',
+              connection: {} as any,
+              adapter: mockOrderProcessor as any,
+              metadata: {} as any,
+            },
+          ];
+        }
+        return [];
+      });
   });
 
   afterEach(async () => {
@@ -110,8 +129,20 @@ describe('Allegro Order Sync End-to-End Integration', () => {
         adapterKey: 'allegro.publicapi.v1',
       });
 
-      // Seed offer mapping required by IncomingOrderItemRef(type='offer') resolution
-      await identifierMapping.createMapping('Offer', 'offer-1', connection.id, 'ol_product_test_1');
+      // Seed a product + variant and the offer→variant mapping required by
+      // IncomingOrderItemRef(type='offer') resolution. OrderItemRefResolver maps
+      // the offer external id to an internal *variant* id, then loads that variant.
+      const product = new ProductOrmEntity();
+      product.id = 'ol_product_test_1';
+      product.name = 'Test Product';
+      await dataSource.getRepository(ProductOrmEntity).save(product);
+
+      const variant = new ProductVariantOrmEntity();
+      variant.id = 'ol_variant_test_1';
+      variant.productId = product.id;
+      await dataSource.getRepository(ProductVariantOrmEntity).save(variant);
+
+      await identifierMapping.createMapping('Offer', 'offer-1', connection.id, variant.id);
 
       // 2. Enqueue poll job to Redis Stream
       const pollJobRequest: SyncJobRequest = {
@@ -147,7 +178,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       await pollHandler.execute(persistedPollJob);
 
       // Mark poll job as succeeded
-      await jobRepository.markSucceeded(persistedPollJob.id);
+      await jobRepository.markSucceeded(persistedPollJob.id, 'ok');
 
       // 5. Verify order sync jobs were enqueued to the queue (published)
       // Note: the poll handler enqueues via SyncJobQueueService -> JobEnqueuePort.
@@ -180,7 +211,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       await orderSyncHandler.execute(orderSyncPersisted);
 
       // Mark order sync job as succeeded
-      await jobRepository.markSucceeded(orderSyncPersisted.id);
+      await jobRepository.markSucceeded(orderSyncPersisted.id, 'ok');
 
       // 7. Verify order was routed to OrderProcessorManager
       expect(mockOrderProcessor.createOrder).toHaveBeenCalled();
@@ -225,7 +256,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
       const pollHandler = harness.get(OrdersPollHandler);
       await pollHandler.execute(persistedPollJob);
-      await jobRepository.markSucceeded(persistedPollJob.id);
+      await jobRepository.markSucceeded(persistedPollJob.id, 'ok');
 
       // Get first cursor
       const firstCursor = await cursorRepository.get(connection.id, 'allegro.orders.lastEventId');
@@ -252,7 +283,7 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       });
 
       await pollHandler.execute(persistedPollJob2);
-      await jobRepository.markSucceeded(persistedPollJob2.id);
+      await jobRepository.markSucceeded(persistedPollJob2.id, 'ok');
 
       // Verify cursor advanced
       const secondCursor = await cursorRepository.get(connection.id, 'allegro.orders.lastEventId');
