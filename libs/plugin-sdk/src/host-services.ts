@@ -38,6 +38,7 @@ import type {
   ConnectionTesterRegistryService,
   EmailNormalizerRegistryService,
   WebhookProvisioningRegistryService,
+  WebhookEventTranslatorRegistryService,
   ConnectionConfigShapeValidatorRegistryService,
   ConnectionCredentialsShapeValidatorRegistryService,
   OAuthCompletionRegistryService,
@@ -111,6 +112,15 @@ export interface HostServices {
 
   /** Webhook-provisioning registry — adapter-installable webhook flows (#583). */
   readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService;
+
+  /**
+   * Webhook-event-translator registry (ADR-015 / #903). A plugin registers a
+   * `WebhookEventTranslatorPort` here to decode its native inbound webhook
+   * events into neutral `CanonicalInboundEvent`s. Pure, payload-in transform —
+   * the core routing policy then maps domain → job. Absence degrades to
+   * poll-only (a stray webhook dead-letters as "no translator").
+   */
+  readonly webhookEventTranslatorRegistry: WebhookEventTranslatorRegistryService;
 
   /**
    * Per-plugin `Connection.config` shape-validator registry (#587). A plugin

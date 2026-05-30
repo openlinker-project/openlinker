@@ -42,6 +42,8 @@ import {
   EmailNormalizerRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   WebhookProvisioningRegistryService,
+  WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN,
+  WebhookEventTranslatorRegistryService,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
@@ -106,6 +108,8 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
       private readonly emailNormalizerRegistry: EmailNormalizerRegistryService,
       @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
       private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
+      @Inject(WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN)
+      private readonly webhookEventTranslatorRegistry: WebhookEventTranslatorRegistryService,
       @Inject(CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN)
       private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
       @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
@@ -145,6 +149,7 @@ export function createNestAdapterModule(options: CreateNestAdapterModuleOptions)
         authFailureClassifierRegistry: this.authFailureClassifierRegistry,
         schedulerTaskRegistry: this.schedulerTaskRegistry,
         webhookProvisioningRegistry: this.webhookProvisioningRegistry,
+        webhookEventTranslatorRegistry: this.webhookEventTranslatorRegistry,
         connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
         connectionCredentialsShapeValidatorRegistry:
           this.connectionCredentialsShapeValidatorRegistry,
