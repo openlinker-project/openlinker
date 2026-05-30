@@ -21,6 +21,13 @@ export interface InpostRequestOptions {
   body?: unknown;
 }
 
+/** Raw-bytes response — the document bytes plus the reported content type. */
+export interface InpostBinaryResponse {
+  body: Uint8Array;
+  /** Lowercased `content-type` response header; '' when absent. */
+  contentType: string;
+}
+
 export interface IInpostHttpClient {
   /**
    * Issue a ShipX request. Resolves with the parsed JSON body (or `undefined`
@@ -29,4 +36,14 @@ export interface IInpostHttpClient {
    * `InpostNetworkException`).
    */
   request<T>(options: InpostRequestOptions): Promise<T>;
+
+  /**
+   * Issue a ShipX request and read the **response** as raw bytes (not JSON) —
+   * for document endpoints like `GET /v1/shipments/{id}/label?format=pdf`.
+   * Shares the same retry + error-mapping machinery as `request`: error
+   * responses are still parsed as the JSON ShipX error envelope; only a
+   * SUCCESS body is read via `arrayBuffer()`. Returns the bytes + the
+   * `content-type` header so the caller can label the document correctly.
+   */
+  requestBinary(options: InpostRequestOptions): Promise<InpostBinaryResponse>;
 }

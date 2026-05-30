@@ -19,8 +19,10 @@ import {
   type ShippingProviderManagerPort,
   type ShipmentCanceller,
   type PickupPointFinder,
+  type LabelDocumentReader,
   type GenerateLabelCommand,
   type GenerateLabelResult,
+  type LabelDocument,
   type TrackingSnapshot,
   type ShippingMethod,
   type PickupPoint,
@@ -41,7 +43,7 @@ import {
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 
 export class InpostShippingAdapter
-  implements ShippingProviderManagerPort, ShipmentCanceller, PickupPointFinder
+  implements ShippingProviderManagerPort, ShipmentCanceller, PickupPointFinder, LabelDocumentReader
 {
   private readonly logger = new Logger(InpostShippingAdapter.name);
 
@@ -120,6 +122,18 @@ export class InpostShippingAdapter
       query: buildPointsQuery(query),
     });
     return (response.items ?? []).map(toPickupPoint);
+  }
+
+  async fetchLabel(input: { providerShipmentId: string }): Promise<LabelDocument> {
+    // ShipX returns the label document bytes directly. We request PDF; the
+    // adapter forwards whatever `Content-Type` ShipX reports (it can answer
+    // PNG for some carriers) and defaults to PDF only when the header is absent.
+    const { body, contentType } = await this.http.requestBinary({
+      method: 'GET',
+      path: `/v1/shipments/${input.providerShipmentId}/label`,
+      query: { format: 'pdf' },
+    });
+    return { contentType: contentType || 'application/pdf', body };
   }
 }
 

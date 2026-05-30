@@ -68,6 +68,14 @@ interface ApiClientConfig {
 export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 /**
+ * Binary-response variant of {@link ApiRequest}. Reuses the same auth-header
+ * injection + 401-refresh + timeout machinery as `request`, but reads the
+ * success response as a `Blob` (e.g. a label PDF) instead of JSON/text. Errors
+ * still normalize to `ApiError`.
+ */
+export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
+
+/**
  * Plugin-augmentable surface. Empty by default; each plugin extends it
  * via `declare module '../../app/api/api-client'` (see the allegro plugin
  * for the canonical pattern). The empty form is the documented TS shape
@@ -94,6 +102,7 @@ export interface CoreApiClient {
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
+  requestBlob: ApiBlobRequest;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   webhookDeliveries: WebhookDeliveriesApi;
@@ -155,7 +164,14 @@ export function createApiClient({
     });
   }
 
-  const request: ApiRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  /**
+   * Shared transport: token fetch → fetch → timeout → single 401-refresh-retry
+   * → error normalisation. Returns the raw OK `Response` for the caller to read
+   * however it needs (JSON/text vs blob). `request` and `requestBlob` differ
+   * ONLY in how they consume that body — all auth/refresh/timeout/error
+   * machinery lives here so the two paths can't drift.
+   */
+  async function execute(path: string, init: RequestInit): Promise<Response> {
     const accessToken = await sessionAdapter.getAccessToken();
 
     const controller = new AbortController();
@@ -182,13 +198,15 @@ export function createApiClient({
 
       clearTimeout(timeoutId);
 
-      const payload = await readResponseBody(response);
-
       if (!response.ok) {
+        // Error bodies are JSON/text on every endpoint (even binary ones) —
+        // normalise to the shared `ApiError` shape before the caller reads
+        // the success body.
+        const payload = await readResponseBody(response);
         throw ApiError.fromResponse(response, payload);
       }
 
-      return payload as T;
+      return response;
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -202,6 +220,16 @@ export function createApiClient({
 
       throw ApiError.fromNetworkFailure(error);
     }
+  }
+
+  const request: ApiRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+    const response = await execute(path, init);
+    return (await readResponseBody(response)) as T;
+  };
+
+  const requestBlob: ApiBlobRequest = async (path: string, init: RequestInit = {}): Promise<Blob> => {
+    const response = await execute(path, init);
+    return response.blob();
   };
 
   const core: CoreApiClient = {
@@ -220,7 +248,8 @@ export function createApiClient({
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
-    shipments: createShipmentsApi(request),
+    requestBlob,
+    shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };
