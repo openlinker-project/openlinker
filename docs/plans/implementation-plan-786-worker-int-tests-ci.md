@@ -76,3 +76,35 @@ the existing job.
 - **Testing:** local re-run of the worker int suite is the pre-merge proxy; the authoritative
   check is the PR's own CI run.
 - **Security:** none. No secrets added (`OL_PII_HASH_SALT` already set at job level).
+
+## 6. CI-run finding — worker harness never started its Testcontainers
+
+The first CI run (the authoritative check) surfaced a **real, deterministic** failure — exactly
+what #786 exists to catch:
+
+```
+ERROR [ExceptionHandler] connect ECONNREFUSED 127.0.0.1:6379
+  at WorkerIntegrationTestHarness.setup (test/integration/setup.ts:39) → NestFactory.createApplicationContext(AppModule)
+```
+
+**Root cause:** `apps/worker/test/jest-integration.cjs` was missing `globalSetup` /
+`globalTeardown`. The worker harness is designed around them — `setup-global.ts` (globalSetup)
+calls `startHarness()` in `harness.ts`, which starts the Postgres + Redis Testcontainers and
+exports `DB_*` / `REDIS_*` env; `setup.ts` then boots `AppModule` against that env. With the
+hooks unregistered, `startHarness()` never ran, so `AppModule` fell back to localhost defaults
+(`127.0.0.1:6379` / `:5432`). That is **green locally** (the dev stack listens there) but
+`ECONNREFUSED` in CI — the classic "passes on my machine" masking. The suite had therefore never
+actually exercised its own Testcontainers.
+
+**Fix (`apps/worker/test/jest-integration.cjs`):**
+- Register `globalSetup: '<rootDir>/test/integration/setup-global.ts'` +
+  `globalTeardown: '<rootDir>/test/integration/teardown.ts'` so the containers start once per run
+  and the env is set before any suite boots `AppModule`.
+- Add `forceExit: true` (mirrors `apps/api`) — the worker `AppModule` holds long-lived handles
+  (scheduler crons, JobIntake consumption loops) that could otherwise hang the CI step until its
+  timeout after tests pass.
+
+**Verification:** ran the suite with bogus defaults
+`DB_HOST=10.255.255.1 DB_PORT=6399 REDIS_HOST=10.255.255.1 REDIS_PORT=6399` — removing the
+dev-stack fallback so only a working `globalSetup` (which overwrites the env to the container)
+can pass. Result: **9/9 suites, 23/23 tests green**, proving the containers are now actually used.
