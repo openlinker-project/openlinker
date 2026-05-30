@@ -440,7 +440,7 @@ authoring your plugin). Its four fields:
 
 The `HostServices` bag passed into `register` and `createCapabilityAdapter`
 is defined at
-[`libs/plugin-sdk/src/host-services.ts:52-142`](../libs/plugin-sdk/src/host-services.ts#L52-L142).
+[`libs/plugin-sdk/src/host-services.ts:53-152`](../libs/plugin-sdk/src/host-services.ts#L53-L152).
 It splits into two blocks:
 
 - **Read inputs** (use): `logger`, `identifierMapping`,
@@ -1022,7 +1022,7 @@ If you're proposing a new "bulk" capability on a port, that's almost certainly a
   vertical-slice patterns, the PrestaShop opt-in helper.
 - [`libs/plugin-sdk/src/adapter-plugin.ts:42-110`](../libs/plugin-sdk/src/adapter-plugin.ts#L42-L110)
   — the `AdapterPlugin` contract spec, header-comment form.
-- [`libs/plugin-sdk/src/host-services.ts:52-142`](../libs/plugin-sdk/src/host-services.ts#L52-L142)
+- [`libs/plugin-sdk/src/host-services.ts:53-152`](../libs/plugin-sdk/src/host-services.ts#L53-L152)
   — the `HostServices` bag, fields split into read-inputs vs side
   registries.
 

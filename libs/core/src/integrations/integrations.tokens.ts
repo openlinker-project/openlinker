@@ -19,6 +19,9 @@ export const INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN = Symbol('IntegrationCreden
 export const CREDENTIALS_SERVICE_TOKEN = Symbol('ICredentialsService');
 export const CONNECTION_TESTER_REGISTRY_TOKEN = Symbol('ConnectionTesterRegistryService');
 export const WEBHOOK_PROVISIONING_REGISTRY_TOKEN = Symbol('WebhookProvisioningRegistryService');
+export const WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN = Symbol(
+  'WebhookEventTranslatorRegistryService',
+);
 export const PLUGIN_REGISTRY_OPTIONS_TOKEN = Symbol('PluginRegistryOptions');
 export const EMAIL_NORMALIZER_REGISTRY_TOKEN = Symbol('EmailNormalizerRegistryService');
 export const CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN = Symbol(
