@@ -17,6 +17,8 @@ interface FakeResponseInit {
   status: number;
   body?: string;
   retryAfter?: string;
+  contentType?: string;
+  bytes?: Uint8Array;
 }
 
 function fakeResponse(init: FakeResponseInit): Response {
@@ -24,10 +26,21 @@ function fakeResponse(init: FakeResponseInit): Response {
     ok: init.ok,
     status: init.status,
     headers: {
-      get: (name: string): string | null =>
-        name.toLowerCase() === 'retry-after' ? (init.retryAfter ?? null) : null,
+      get: (name: string): string | null => {
+        const n = name.toLowerCase();
+        if (n === 'retry-after') return init.retryAfter ?? null;
+        if (n === 'content-type') return init.contentType ?? null;
+        return null;
+      },
     },
     text: (): Promise<string> => Promise.resolve(init.body ?? ''),
+    arrayBuffer: (): Promise<ArrayBuffer> => {
+      const bytes = init.bytes ?? new Uint8Array();
+      // Return a standalone ArrayBuffer copy (the Uint8Array's buffer may be a
+      // shared/pooled SharedArrayBuffer slice in some runtimes).
+      const copy = new Uint8Array(bytes);
+      return Promise.resolve(copy.buffer);
+    },
   } as unknown as Response;
 }
 
@@ -144,5 +157,44 @@ describe('InpostHttpClient', () => {
       InpostNetworkException,
     );
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  describe('requestBinary', () => {
+    it('should read a 2xx response as raw bytes and surface the content type', async () => {
+      const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+      fetchMock.mockResolvedValueOnce(
+        fakeResponse({ ok: true, status: 200, contentType: 'application/pdf', bytes }),
+      );
+
+      const result = await client.requestBinary({ method: 'GET', path: '/v1/shipments/1/label' });
+
+      expect(result.contentType).toBe('application/pdf');
+      expect(Array.from(result.body)).toEqual([0x25, 0x50, 0x44, 0x46]);
+    });
+
+    it('should parse the JSON error envelope (NOT bytes) on a non-ok response', async () => {
+      // The error body must still go through the text/JSON error path — never
+      // read as bytes. A 4xx maps to ShippingProviderRejectionException.
+      fetchMock.mockResolvedValueOnce(
+        fakeResponse({
+          ok: false,
+          status: 400,
+          body: '{"message":"bad label request","details":{"shipment":["invalid"]}}',
+        }),
+      );
+
+      await expect(
+        client.requestBinary({ method: 'GET', path: '/v1/shipments/1/label' }),
+      ).rejects.toBeInstanceOf(ShippingProviderRejectionException);
+    });
+
+    it('should retry binary requests on 5xx and eventually surface InpostNetworkException', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 503 }));
+
+      await expect(
+        client.requestBinary({ method: 'GET', path: '/v1/shipments/1/label' }),
+      ).rejects.toBeInstanceOf(InpostNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
+    });
   });
 });

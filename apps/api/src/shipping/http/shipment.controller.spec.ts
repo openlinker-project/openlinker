@@ -19,7 +19,11 @@ import {
   type IShipmentCancellationService,
   type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
+  type IShipmentLabelService,
   type IShipmentQueryService,
+  type LabelDocument,
+  LabelDocumentNotSupportedException,
+  LabelNotAvailableException,
   Shipment,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
@@ -29,8 +33,9 @@ import {
 } from '@openlinker/core/shipping';
 
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type { Response } from 'express';
 
-import { ShipmentController } from './shipment.controller';
+import { ShipmentController, extensionForContentType } from './shipment.controller';
 import type { GenerateLabelDto } from './dto/generate-label.dto';
 import type { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 
@@ -73,6 +78,7 @@ describe('ShipmentController', () => {
   let dispatch: jest.Mocked<IShipmentDispatchService>;
   let cancellation: jest.Mocked<IShipmentCancellationService>;
   let notification: jest.Mocked<IShipmentDispatchNotificationService>;
+  let labelService: jest.Mocked<IShipmentLabelService>;
   let orders: jest.Mocked<IOrderRecordService>;
   let controller: ShipmentController;
 
@@ -85,6 +91,7 @@ describe('ShipmentController', () => {
     dispatch = { dispatch: jest.fn() };
     cancellation = { cancel: jest.fn() };
     notification = { notifyDispatched: jest.fn() };
+    labelService = { fetchLabel: jest.fn() };
     orders = {
       persistOrder: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -93,7 +100,14 @@ describe('ShipmentController', () => {
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
     };
-    controller = new ShipmentController(query, dispatch, cancellation, notification, orders);
+    controller = new ShipmentController(
+      query,
+      dispatch,
+      cancellation,
+      notification,
+      labelService,
+      orders,
+    );
   });
 
   describe('list', () => {
@@ -332,6 +346,108 @@ describe('ShipmentController', () => {
       await expect(controller.notifyDispatched('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('downloadLabel', () => {
+    function makeRes(): {
+      res: Response;
+      setHeader: jest.Mock;
+      send: jest.Mock;
+    } {
+      const setHeader = jest.fn();
+      const send = jest.fn();
+      const res = { setHeader, send } as unknown as Response;
+      return { res, setHeader, send };
+    }
+
+    it('should stream the bytes with content-type + attachment disposition', async () => {
+      const doc: LabelDocument = {
+        contentType: 'application/pdf',
+        body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      };
+      labelService.fetchLabel.mockResolvedValue(doc);
+      const { res, setHeader, send } = makeRes();
+
+      await controller.downloadLabel('ol_shipment_1', res);
+
+      expect(labelService.fetchLabel).toHaveBeenCalledWith('ol_shipment_1');
+      expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="ol-shipment-ol_shipment_1.pdf"',
+      );
+      expect(send).toHaveBeenCalledWith(Buffer.from(doc.body));
+    });
+
+    it('should use the content-type-derived extension for a non-PDF document', async () => {
+      labelService.fetchLabel.mockResolvedValue({
+        contentType: 'application/zpl',
+        body: new Uint8Array([0x5e, 0x58, 0x41]),
+      });
+      const { res, setHeader } = makeRes();
+
+      await controller.downloadLabel('ol_shipment_1', res);
+
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="ol-shipment-ol_shipment_1.zpl"',
+      );
+    });
+
+    it('should map ShipmentNotFoundException to 404', async () => {
+      labelService.fetchLabel.mockRejectedValue(new ShipmentNotFoundException('missing'));
+      const { res } = makeRes();
+
+      await expect(controller.downloadLabel('missing', res)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('should map LabelNotAvailableException to 422', async () => {
+      labelService.fetchLabel.mockRejectedValue(new LabelNotAvailableException('ol_shipment_1'));
+      const { res } = makeRes();
+
+      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should map LabelDocumentNotSupportedException to 422', async () => {
+      labelService.fetchLabel.mockRejectedValue(
+        new LabelDocumentNotSupportedException('ol_shipment_1', 'conn-1'),
+      );
+      const { res } = makeRes();
+
+      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should map ShippingProviderRejectionException to 502', async () => {
+      labelService.fetchLabel.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', 'api.http-500', 'boom'),
+      );
+      const { res } = makeRes();
+
+      await expect(controller.downloadLabel('ol_shipment_1', res)).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+    });
+  });
+
+  describe('extensionForContentType', () => {
+    it.each([
+      ['application/pdf', 'pdf'],
+      ['application/pdf; charset=binary', 'pdf'],
+      ['image/png', 'png'],
+      ['application/zpl', 'zpl'],
+      ['application/x-zpl', 'zpl'],
+      ['application/epl', 'epl'],
+      ['', 'bin'],
+      ['application/octet-stream', 'bin'],
+    ])('maps %s → %s', (ct, ext) => {
+      expect(extensionForContentType(ct)).toBe(ext);
     });
   });
 });

@@ -27,20 +27,33 @@ import {
   Param,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiProduces,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   type IShipmentCancellationService,
   type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
+  type IShipmentLabelService,
   type IShipmentQueryService,
   type ShipmentDispatchInput,
   type ShipmentFilters,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
+  SHIPMENT_LABEL_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
+  LabelDocumentNotSupportedException,
+  LabelNotAvailableException,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
@@ -73,6 +86,8 @@ export class ShipmentController {
     private readonly cancellation: IShipmentCancellationService,
     @Inject(SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN)
     private readonly notification: IShipmentDispatchNotificationService,
+    @Inject(SHIPMENT_LABEL_SERVICE_TOKEN)
+    private readonly label: IShipmentLabelService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
   ) {}
@@ -134,6 +149,34 @@ export class ShipmentController {
       throw new NotFoundException(`Shipment not found: ${id}`);
     }
     return ShipmentResponseDto.fromDomain(shipment, await this.resolveCustomerId(shipment.orderId));
+  }
+
+  @Get(':id/label')
+  @ApiOperation({
+    summary: "Download a shipment's label document (PDF/ZPL/PNG, provider-dependent)",
+  })
+  @ApiProduces('application/pdf')
+  @ApiResponse({ status: 200, description: 'Label document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 404, description: 'Shipment not found' })
+  @ApiResponse({
+    status: 422,
+    description: 'No label generated yet, or provider cannot return label documents',
+  })
+  @ApiResponse({ status: 502, description: 'Shipping provider rejected the label fetch' })
+  async downloadLabel(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    // `@Res()` disables Nest's global serializer for this handler — intended,
+    // since the response is binary, not JSON. The service call runs FIRST so a
+    // thrown domain exception still routes through Nest's exception layer
+    // before any header/byte is written; `res.*` only ever runs on success.
+    try {
+      const { contentType, body } = await this.label.fetchLabel(id);
+      const ext = extensionForContentType(contentType);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="ol-shipment-${id}.${ext}"`);
+      res.send(Buffer.from(body));
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
   }
 
   @Post('generate-label')
@@ -262,7 +305,9 @@ export class ShipmentController {
     }
     if (
       error instanceof ShipmentCancellationNotSupportedException ||
-      error instanceof UndispatchableResolutionException
+      error instanceof UndispatchableResolutionException ||
+      error instanceof LabelDocumentNotSupportedException ||
+      error instanceof LabelNotAvailableException
     ) {
       return new UnprocessableEntityException(error.message);
     }
@@ -277,5 +322,32 @@ export class ShipmentController {
       return new InternalServerErrorException(error.message);
     }
     return new InternalServerErrorException(String(error));
+  }
+}
+
+/**
+ * Map a label document's MIME type to a download-filename extension. The label
+ * bytes are NOT always PDF — Allegro returns ZPL/EPL per the seller's "Ship
+ * with Allegro" setting and InPost ShipX can return PNG — so the saved file
+ * must be labelled by its actual content type, never hardcoded to `.pdf`.
+ * Falls back to `bin` for anything unrecognised so the download never claims a
+ * format it isn't.
+ */
+export function extensionForContentType(contentType: string): string {
+  const ct = contentType.toLowerCase().split(';', 1)[0].trim();
+  switch (ct) {
+    case 'application/pdf':
+      return 'pdf';
+    case 'image/png':
+      return 'png';
+    case 'application/zpl':
+    case 'application/x-zpl':
+    case 'text/zpl':
+      return 'zpl';
+    case 'application/epl':
+    case 'application/x-epl':
+      return 'epl';
+    default:
+      return 'bin';
   }
 }
