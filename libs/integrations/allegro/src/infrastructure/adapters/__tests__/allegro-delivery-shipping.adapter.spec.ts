@@ -36,6 +36,7 @@ function makeHttp(): jest.Mocked<IAllegroHttpClient> {
     patch: jest.fn(),
     postBinary: jest.fn(),
     postMultipart: jest.fn(),
+    postExpectingBinary: jest.fn(),
   } as unknown as jest.Mocked<IAllegroHttpClient>;
 }
 
@@ -310,6 +311,66 @@ describe('AllegroDeliveryShippingAdapter', () => {
         name: 'ShippingProviderRejectionException',
         providerName: 'allegro',
         providerCode: 'SHIPMENT_ALREADY_DISPATCHED',
+      });
+    });
+  });
+
+  describe('fetchLabel', () => {
+    it('POSTs the label request with the shipment id + page size and returns the bytes', async () => {
+      const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+      http.postExpectingBinary.mockResolvedValue({
+        data: bytes,
+        contentType: 'application/pdf',
+        status: 200,
+        headers: { 'content-type': 'application/pdf' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(http.postExpectingBinary).toHaveBeenCalledWith('/shipment-management/label', {
+        shipmentIds: ['allegro-ship-1'],
+        pageSize: 'A6',
+      });
+      expect(result).toEqual({ contentType: 'application/pdf', body: bytes });
+    });
+
+    it('passes a non-PDF content type through unchanged (ZPL per seller setting)', async () => {
+      http.postExpectingBinary.mockResolvedValue({
+        data: new Uint8Array([0x5e, 0x58, 0x41]), // ^XA (ZPL)
+        contentType: 'application/zpl',
+        status: 200,
+        headers: { 'content-type': 'application/zpl' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/zpl');
+    });
+
+    it('defaults to application/pdf only when the response carries no content type', async () => {
+      http.postExpectingBinary.mockResolvedValue({
+        data: new Uint8Array([1, 2]),
+        contentType: '',
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/pdf');
+    });
+
+    it('wraps an Allegro API failure into a typed ShippingProviderRejectionException', async () => {
+      http.postExpectingBinary.mockRejectedValue(
+        new AllegroApiException('Label not found', 404, 'body', 'url'),
+      );
+
+      await expect(
+        adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' }),
+      ).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'allegro',
+        providerCode: 'api.http-404',
       });
     });
   });
