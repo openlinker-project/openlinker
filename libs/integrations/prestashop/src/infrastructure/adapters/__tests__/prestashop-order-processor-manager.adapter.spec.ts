@@ -40,6 +40,13 @@ import type { PrestashopAddressProvisioner } from '../../provisioners/prestashop
  */
 const OL_DYNAMIC_CARRIER_ID = 99;
 
+/**
+ * The PrestaShop order-state id the order mapper maps `order.status` onto for
+ * the `importOrder` (validateOrder) call (ADR-016 / #905). Asserted explicitly
+ * on the happy path against the `idOrderState` field of the importOrder input.
+ */
+const IMPORT_ORDER_STATE_ID = 2;
+
 describe('PrestashopOrderProcessorManagerAdapter', () => {
   let adapter: PrestashopOrderProcessorManagerAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
@@ -104,6 +111,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
           },
         },
       }),
+      mapStatusToPrestashopStateId: jest.fn().mockReturnValue(IMPORT_ORDER_STATE_ID),
     } as unknown as jest.Mocked<IPrestashopOrderMapper>;
 
     mockCurrencyResolver = {
@@ -132,6 +140,9 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
     mockOpenLinkerModuleClient = {
       writeCartShipping: jest.fn().mockResolvedValue(undefined),
+      importOrder: jest
+        .fn()
+        .mockResolvedValue({ idOrder: 999, reference: 'TEST-ORDER-001', alreadyExisted: false }),
     } as unknown as jest.Mocked<IPrestashopOpenLinkerModuleClient>;
 
     // Default OL Dynamic carrier discovery: every createOrder call invokes
@@ -168,17 +179,25 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
    * Dispatch `createResource` by resource name so the order-creation flow's
    * intermediate `specific_prices` pins (#895) don't consume the cart/order
    * slots the way sequential `mockResolvedValueOnce` did.
+   *
+   * The order INSERT no longer goes through `createResource('orders')` —
+   * it's the OL module's `importOrder` (validateOrder, ADR-016 / #905). The
+   * `order` argument drives `importOrder`'s resolved `{ idOrder, reference }`
+   * so existing happy-path assertions (createdOrder.id → idOrder,
+   * createdOrder.reference → reference) keep their meaning.
    */
   function setCreateResourceDispatch(cart: unknown, order: unknown): void {
     mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
-      if (resource === 'orders') {
-        return Promise.resolve(order);
-      }
       if (resource === 'specific_prices') {
         return Promise.resolve({ id: 'sp_test' });
       }
       // 'carts' (and any other resource hit during create) → cart payload.
       return Promise.resolve(cart);
+    });
+    mockOpenLinkerModuleClient.importOrder = jest.fn().mockResolvedValue({
+      idOrder: Number((order as { id?: unknown }).id ?? 999),
+      reference: (order as { reference?: string }).reference ?? 'TEST-ORDER-001',
+      alreadyExisted: false,
     });
   }
 
@@ -289,22 +308,20 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         1, // langId
         OL_DYNAMIC_CARRIER_ID // #516: no mapping/default → OL Dynamic carrier fallback
       );
-      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
-        order,
-        externalCustomerId,
-        expect.any(Map),
-        expect.any(Map),
-        undefined,
-        undefined,
-        1, // currencyId
-        1, // langId
-        OL_DYNAMIC_CARRIER_ID // #516: no mapping/default → OL Dynamic carrier fallback
-      );
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.any(Object));
-      expect(mockHttpClient.createResource).toHaveBeenCalledWith('orders', prestashopOrderData);
+      // Order INSERT is the OL module's validateOrder import (ADR-016 / #905),
+      // NOT the raw WS POST /orders. cart id '123' → idCart 123; the mapped
+      // order-state, authoritative total, and order reference flow through.
+      expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalledWith({
+        idCart: 123,
+        idOrderState: IMPORT_ORDER_STATE_ID,
+        amountPaid: order.totals.total,
+        paymentMethod: 'Check payment',
+        orderReference: order.orderNumber,
+      });
       // #909: the adapter no longer writes the order mapping — OrderSyncService owns it.
       expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
-      // Returns the destination-native PS order id, not the internal id.
+      // Returns the destination-native PS order id (#909), not the internal id.
       expect(result).toEqual({
         orderId: '999',
         orderNumber: order.orderNumber,
@@ -564,32 +581,27 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       };
       mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
-      // Mock cart creation to succeed
+      // Mock cart + specific_prices to succeed; the order INSERT
+      // (importOrder / validateOrder) fails.
       const createdCart = { id: '123' };
-      // Mock order creation to fail
-      const apiError = new PrestashopApiException(
-        'Order creation failed',
-        400,
-        'Invalid order data'
-      );
       mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
         if (resource === 'carts') {
           return Promise.resolve(createdCart);
         }
         if (resource === 'specific_prices') {
-          // Pins succeed; this test exercises the order-POST failure path.
           return Promise.resolve({ id: 'sp_test' });
-        }
-        if (resource === 'orders') {
-          return Promise.reject(apiError);
         }
         return Promise.reject(new Error(`Unexpected resource: ${resource}`));
       });
+      // The OL module import fails — a plain Error is wrapped by the outer
+      // catch into PrestashopApiException ("Failed to create PrestaShop order").
+      mockOpenLinkerModuleClient.importOrder = jest
+        .fn()
+        .mockRejectedValue(new Error('Order creation failed'));
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
-      await expect(adapter.createOrder(order)).rejects.toThrow('Order creation failed');
+      await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
     });
-
 
     it('should use created order reference if order number not provided', async () => {
       const order = createTestOrder({ orderNumber: undefined });
@@ -655,7 +667,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         id: '999',
         reference: 'PS-ORDER-999',
       };
-      mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
+      setCreateResourceDispatch({ id: '999' }, createdOrder);
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
       const result = await adapter.createOrder(order);
@@ -664,7 +676,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       // #909: mapping write is owned by OrderSyncService, not the adapter.
       expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
     });
-
 
     describe('source-authoritative line pricing (#895)', () => {
       type CreateCall = [string, Record<string, unknown>];
@@ -735,10 +746,15 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         expect(line1?.id_customer).toBe('42');
         expect(line1?.from_quantity).toBe(1);
 
-        // specific_prices must be written BEFORE the order POST.
-        const firstOrderIdx = calls.findIndex((c) => c[0] === 'orders');
-        const lastSpecificIdx = calls.map((c) => c[0]).lastIndexOf('specific_prices');
-        expect(lastSpecificIdx).toBeLessThan(firstOrderIdx);
+        // specific_prices must be written BEFORE the order INSERT
+        // (importOrder / validateOrder). Compare global invocation order:
+        // the last specific_prices createResource call must precede importOrder.
+        const lastSpecificOrder = (mockHttpClient.createResource as jest.Mock).mock.invocationCallOrder
+          .filter((_v, i) => createCalls()[i][0] === 'specific_prices')
+          .at(-1) as number;
+        const importOrderInvocation = (mockOpenLinkerModuleClient.importOrder as jest.Mock).mock
+          .invocationCallOrder[0];
+        expect(lastSpecificOrder).toBeLessThan(importOrderInvocation);
 
         // Pins are cleaned up after the order is created.
         expect(mockHttpClient.deleteResource).toHaveBeenCalledWith('specific_prices', 'sp_test');
@@ -822,6 +838,171 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
       await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
+    });
+
+    describe('validateOrder import path (ADR-016 / #905)', () => {
+      // Wires customer/product/variant id resolution for a clean create path.
+      // `orderExternalIds` overrides the Step-0 'Order' lookup so a test can
+      // exercise the identifier-mapping idempotency guard.
+      const wireResolution = (
+        orderExternalIds: Array<{ connectionId: string; externalId: string; entityType: string }> = []
+      ): void => {
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockImplementation((entityType: string, internalId: string) => {
+            if (entityType === 'Order') return Promise.resolve(orderExternalIds);
+            if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+              return Promise.resolve([
+                { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
+              ]);
+            }
+            if (entityType === 'Product' && internalId === 'internal-product-456') {
+              return Promise.resolve([
+                { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+              ]);
+            }
+            if (entityType === 'Product' && internalId === 'internal-product-789') {
+              return Promise.resolve([
+                { connectionId: connection.id, externalId: '200', entityType: 'Product' },
+              ]);
+            }
+            if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+              return Promise.resolve([
+                { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+              ]);
+            }
+            return Promise.resolve([]);
+          });
+        mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+      };
+
+      it('should call importOrder with the resolved cart id, mapped order-state, authoritative total and reference', async () => {
+        const order = createTestOrder();
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: order.orderNumber,
+        } as PrestashopOrder);
+
+        await adapter.createOrder(order);
+
+        expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalledWith({
+          idCart: 123,
+          idOrderState: IMPORT_ORDER_STATE_ID,
+          amountPaid: order.totals.total,
+          paymentMethod: 'Check payment',
+          orderReference: order.orderNumber,
+        });
+      });
+
+      it('should reuse an existing PrestaShop order found by reference without calling importOrder', async () => {
+        // No Step-0 mapping (orderExternalIds empty) but orderNumber is set, so
+        // the reference dedup net fires: listResources('orders', …) returns a
+        // pre-existing row and importOrder must be skipped.
+        const order = createTestOrder();
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: order.orderNumber,
+        } as PrestashopOrder);
+        mockHttpClient.listResources = jest
+          .fn()
+          .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+            if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+              return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+            }
+            if (resource === 'orders') {
+              return Promise.resolve([{ id: '777', reference: 'TEST-ORDER-001' }]);
+            }
+            return Promise.resolve([]);
+          });
+
+        const result = await adapter.createOrder(order);
+
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+        // #909: the reused order's destination-native id (777) is returned; the
+        // external↔internal mapping write is OrderSyncService's, not the adapter's.
+        expect(result.orderId).toBe('777');
+        expect(result.orderNumber).toBe('TEST-ORDER-001');
+        expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
+      });
+
+      it('should propagate an importOrder failure as PrestashopApiException', async () => {
+        const order = createTestOrder();
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: order.orderNumber,
+        } as PrestashopOrder);
+        mockOpenLinkerModuleClient.importOrder = jest
+          .fn()
+          .mockRejectedValueOnce(new Error('boom'));
+
+        await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
+      });
+
+      it('should handle alreadyExisted=true from importOrder', async () => {
+        const order = createTestOrder();
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: order.orderNumber,
+        } as PrestashopOrder);
+        mockOpenLinkerModuleClient.importOrder = jest
+          .fn()
+          .mockResolvedValue({ idOrder: 555, reference: 'R-555', alreadyExisted: true });
+
+        const result = await adapter.createOrder(order);
+
+        // #909: external id 555 is returned; no adapter-side mapping write.
+        expect(result.orderId).toBe('555');
+        expect(result.orderNumber).toBe('R-555');
+        expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
+      });
+
+      it('should warn on order-total reconciliation drift', async () => {
+        // subtotal(100) + shipping(5) = 105 ≠ total(90) → drift > 0.01.
+        const order = createTestOrder({
+          totals: { subtotal: 100, tax: 0, shipping: 5, total: 90, currency: 'EUR' },
+        });
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: order.orderNumber,
+        } as PrestashopOrder);
+        const warnSpy = jest
+          .spyOn((adapter as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+          .mockImplementation(() => undefined);
+
+        await adapter.createOrder(order);
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('reconciliation drift')
+        );
+        warnSpy.mockRestore();
+      });
+
+      it("should warn when orderNumber is absent (dedup net disabled) and still import with empty reference", async () => {
+        const order = createTestOrder({ orderNumber: undefined });
+        wireResolution();
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: 'PS-ORDER-999',
+        } as PrestashopOrder);
+        const warnSpy = jest
+          .spyOn((adapter as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+          .mockImplementation(() => undefined);
+
+        await adapter.createOrder(order);
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('reference-based duplicate recovery is unavailable')
+        );
+        expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalledWith(
+          expect.objectContaining({ orderReference: '' })
+        );
+        warnSpy.mockRestore();
+      });
     });
   });
 
@@ -914,17 +1095,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         1,
         4
       );
-      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.any(Map),
-        expect.any(Map),
-        undefined,
-        undefined,
-        1,
-        1,
-        4
-      );
       expect(resolveCarrierMapping).toHaveBeenCalledWith(ALLEGRO_CONNECTION_ID, ALLEGRO_METHOD_ID);
     });
 
@@ -953,7 +1123,9 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
 
-      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+      // Carrier flows onto the CART (#503): PS resolves the order's id_carrier
+      // from the cart, ignoring any order-body value.
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.any(Map),
@@ -1006,17 +1178,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         1,
         OL_DYNAMIC_CARRIER_ID
       );
-      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.any(Map),
-        expect.any(Map),
-        undefined,
-        undefined,
-        1,
-        1,
-        OL_DYNAMIC_CARRIER_ID
-      );
     });
 
     it('falls back to OL Dynamic carrier when neither mapping nor defaultCarrierId is set (#516)', async () => {
@@ -1040,7 +1201,8 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
 
-      expect(mockOrderMapper.mapOrderCreate).toHaveBeenCalledWith(
+      // Carrier flows onto the CART (#503).
+      expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.any(Map),
@@ -1224,9 +1386,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         PrestashopApiException
       );
 
-      // createResource was called once (cart), never twice (cart + order).
+      // createResource was called once (cart); the order import never ran.
       expect(mockHttpClient.createResource).toHaveBeenCalledTimes(1);
       expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.anything());
+      expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
     });
 
     it('warns and uses the first live row when multiple OL Dynamic carriers exist', async () => {
