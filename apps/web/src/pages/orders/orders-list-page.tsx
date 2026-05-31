@@ -1,16 +1,21 @@
 /**
  * Orders List Page
  *
- * Cockpit-style operator surface for the orders backbone (#778). Composes:
- * — KPI strip (4 MetricCards backed by cheap count-only `useOrdersQuery`
- *   calls; cached per filter via TanStack query keys),
- * — chip-based status filter (`Chip` + `DropdownMenu`, URL-state),
- * — dense `DataTable` with `EntityLabel` identity, channel-pill (resolved
- *   via `useConnectionsQuery`), pulse-on-syncing `StatusBadge`, and
- *   mono+tabular totals formatted through the i18n seam (#612).
+ * Operator triage queue for the orders backbone (#778, redesigned #929).
+ * Composes:
+ * — status segments (5 clickable `MetricCard`s backed by the single
+ *   `/orders/status-summary` count endpoint) that **partition** the order set,
+ *   so the counts sum to the total and double as the `health` URL-state filter;
+ * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`),
+ *   surface customer + contents (parsed from `orderSnapshot`), the source→
+ *   destination channel, one reconciled health `StatusBadge` (`deriveOrderHealth`,
+ *   replacing the per-destination list and the blank "—"), an honest "Created"
+ *   time, ghost Ship-by / Payment columns (capture-gap epic #925), and an inline
+ *   Retry for failed rows;
+ * — loading / error / empty (incl. all-clear) states via shared feedback prims.
  *
- * Pure presentation — all data flows through feature query hooks; no
- * transport logic at this layer.
+ * Pure presentation — all data flows through feature query hooks; no transport
+ * logic at this layer.
  *
  * @module pages/orders
  */
@@ -22,44 +27,28 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
-import { Chip } from '../../shared/ui/chip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../shared/ui/dropdown-menu';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
-import { MetricCard } from '../../shared/ui/metric-card';
+import { StatusBadge } from '../../shared/ui/status-badge';
+import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { EntityLabel } from '../../shared/ui/entity-label';
+import { useToast } from '../../shared/ui/toast-provider';
 import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
+import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
+import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
+import { deriveOrderHealth } from '../../features/orders/lib/order-health';
 import type {
   OrderRecord,
   OrderFilters,
-  OrderSyncStatusValue,
+  OrderHealthValue,
+  OrderHealthSummary,
 } from '../../features/orders/api/orders.types';
-import { OrderSyncStatusValues } from '../../features/orders/api/orders.types';
+import { OrderHealthValues } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 
 const PAGE_SIZE = 20;
-
-const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
-  pending: 'info',
-  syncing: 'warning',
-  synced: 'success',
-  failed: 'error',
-};
-
-const STATUS_FILTER_LABELS: Record<OrderSyncStatusValue, string> = {
-  pending: 'Pending',
-  syncing: 'Syncing',
-  synced: 'Synced',
-  failed: 'Failed',
-};
 
 const CHANNEL_LABELS: Record<string, string> = {
   allegro: 'Allegro',
@@ -69,19 +58,35 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 /**
- * Type-guard for the syncStatus URL param. `OrderSyncStatusValues.includes`
- * widens the haystack to `readonly string[]` so the predicate accepts any
- * string and narrows cleanly to `OrderSyncStatusValue` without a cast.
+ * Status segments — partition the order set (#929). The "All" card carries the
+ * total; the four health cards map 1:1 to the `health` URL filter and their
+ * counts sum to that total. Tone communicates operational alarm at a glance.
  */
-function isOrderSyncStatus(value: string | null): value is OrderSyncStatusValue {
-  return value !== null && (OrderSyncStatusValues as readonly string[]).includes(value);
+interface HealthSegment {
+  key: OrderHealthValue;
+  label: string;
+  tone: MetricCardTone;
+  countKey: keyof Omit<OrderHealthSummary, 'total'>;
+}
+
+const HEALTH_SEGMENTS: readonly HealthSegment[] = [
+  { key: 'needs_attention', label: 'Needs attention', tone: 'error', countKey: 'needsAttention' },
+  { key: 'awaiting_mapping', label: 'Awaiting mapping', tone: 'warning', countKey: 'awaitingMapping' },
+  { key: 'awaiting_dispatch', label: 'Awaiting dispatch', tone: 'info', countKey: 'awaitingDispatch' },
+  { key: 'synced', label: 'Synced', tone: 'success', countKey: 'synced' },
+];
+
+/**
+ * Type-guard for the `health` URL param. `includes` widens the haystack to
+ * `readonly string[]` so the predicate narrows cleanly without a cast.
+ */
+function isOrderHealth(value: string | null): value is OrderHealthValue {
+  return value !== null && (OrderHealthValues as readonly string[]).includes(value);
 }
 
 /**
  * Resolve the per-row total via the i18n seam (#612). Currency varies per row
- * so we instantiate per call — locale comes from the LocaleProvider rather
- * than being pinned to en-US. Locale resolution goes through the shared
- * `getBcp47Locale` helper so the seam stays single-source-of-truth (#783).
+ * so we instantiate per call; locale comes from the LocaleProvider.
  */
 function formatCurrency(amount: number, currency: string, locale: LocaleCode): string {
   return new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(
@@ -89,11 +94,18 @@ function formatCurrency(amount: number, currency: string, locale: LocaleCode): s
   );
 }
 
+/** Buyer name from the snapshot's shipping address — null when absent. */
+function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | null {
+  const a = parsed.shippingAddress;
+  if (!a) return null;
+  const name = [a.firstName, a.lastName].filter(Boolean).join(' ').trim();
+  return name.length > 0 ? name : null;
+}
+
 /**
- * Cockpit-style "data freshness" line — the freshest `updatedAt` across
- * visible rows, rendered as a locale-aware HH:MM. The temporal eyebrow is
- * the operator's "how stale is this view" signal; same locale-resolution
- * path as `formatCurrency` so the i18n seam stays single-source-of-truth.
+ * Cockpit "data freshness" line — freshest `updatedAt` across visible rows,
+ * rendered as a locale-aware HH:MM. Same locale-resolution path as
+ * `formatCurrency` so the i18n seam stays single-source-of-truth.
  */
 function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): string | null {
   if (items.length === 0) return null;
@@ -114,30 +126,34 @@ export function OrdersListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
   const { locale } = useTranslation();
+  const { showToast } = useToast();
 
-  const rawSyncStatus = searchParams.get('syncStatus');
-  const syncStatus = isOrderSyncStatus(rawSyncStatus) ? rawSyncStatus : undefined;
+  const rawHealth = searchParams.get('health');
+  const health = isOrderHealth(rawHealth) ? rawHealth : undefined;
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
   const filters: OrderFilters = {
-    syncStatus,
+    health,
     sourceConnectionId: sourceConnectionId || undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
   const query = useOrdersQuery(filters, pagination);
 
-  // KPI strip — four cheap count-only queries. limit:1 ships ~empty results;
-  // we only read `.total`. Each call has its own queryKey so TanStack caches
-  // them independently across the app session.
-  const allOrdersKpi = useOrdersQuery(undefined, { limit: 1 });
-  const syncedKpi = useOrdersQuery({ syncStatus: 'synced' }, { limit: 1 });
-  const pendingKpi = useOrdersQuery({ syncStatus: 'pending' }, { limit: 1 });
-  const failedKpi = useOrdersQuery({ syncStatus: 'failed' }, { limit: 1 });
+  // Single count endpoint — partitions the set, so segment counts sum to total.
+  // Scoped by source only (the table's other axis); `health` is intentionally
+  // never part of the summary scope.
+  const summaryScope = useMemo(
+    () => ({ sourceConnectionId: sourceConnectionId || undefined }),
+    [sourceConnectionId],
+  );
+  const summaryQuery = useOrderStatusSummaryQuery(summaryScope);
+  const summary = summaryQuery.data;
 
-  // Channel lookup: build connectionId → platformType once per
-  // connections-query data change. Already cached app-wide via TanStack.
+  const retryMutation = useRetryOrderDestinationMutation();
+
+  // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
   const platformByConnection = useMemo(() => {
     const map = new Map<string, string>();
@@ -147,15 +163,11 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  const channelLabel = (platform: string | undefined): string | undefined =>
+    platform ? (CHANNEL_LABELS[platform] ?? platform) : undefined;
+
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
     () => [
-      {
-        id: 'createdAt',
-        header: 'Created',
-        cell: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
-        accessor: (order) => order.createdAt,
-        sortable: true,
-      },
       {
         id: 'order',
         header: 'Order',
@@ -170,44 +182,97 @@ export function OrdersListPage(): ReactElement {
         },
       },
       {
-        id: 'channel',
-        header: 'Channel',
+        id: 'customer',
+        header: 'Customer',
         cell: (order) => {
-          const platform = platformByConnection.get(order.sourceConnectionId);
-          if (!platform) {
-            return <span className="text-muted">—</span>;
-          }
+          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const name = customerName(parsed);
+          if (!name) return <span className="text-muted">—</span>;
+          const city = parsed.shippingAddress?.city;
           return (
-            <span className="channel-pill" data-channel={platform}>
-              {CHANNEL_LABELS[platform] ?? platform}
+            <span className="orders-cell-stack">
+              <span>{name}</span>
+              {city ? <span className="text-muted orders-cell-sub">{city}</span> : null}
             </span>
           );
         },
         hideBelow: 768,
       },
       {
-        id: 'syncStatus',
-        header: 'Sync Status',
+        id: 'items',
+        header: 'Items',
         cell: (order) => {
-          if (order.syncStatus.length === 0) {
-            return <span className="text-muted">—</span>;
-          }
+          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const count = parsed.items.length;
+          if (count === 0) return <span className="text-muted">—</span>;
+          const first = parsed.items[0]?.name;
           return (
-            <span className="data-table__badge-row">
-              {order.syncStatus.map((s) => (
-                <StatusBadge
-                  key={s.destinationConnectionId}
-                  tone={SYNC_STATUS_TONES[s.status]}
-                  pulse={s.status === 'syncing'}
-                  withDot={s.status !== 'syncing'}
-                  compact
-                >
-                  {s.status}
-                </StatusBadge>
-              ))}
+            <span className="orders-cell-stack">
+              <span>
+                {count} {count === 1 ? 'item' : 'items'}
+              </span>
+              {first ? <span className="text-muted orders-cell-sub">{first}</span> : null}
             </span>
           );
         },
+        hideBelow: 1024,
+      },
+      {
+        id: 'channel',
+        header: 'Channel',
+        cell: (order) => {
+          const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+          const destPlatform = order.syncStatus[0]
+            ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+            : undefined;
+          const dest = channelLabel(destPlatform);
+          if (!source) return <span className="text-muted">—</span>;
+          return (
+            <span className="orders-cell-stack">
+              <span className="channel-pill" data-channel={platformByConnection.get(order.sourceConnectionId)}>
+                {source}
+              </span>
+              {dest ? <span className="text-muted orders-cell-sub">→ {dest}</span> : null}
+            </span>
+          );
+        },
+        hideBelow: 768,
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (order) => {
+          const h = deriveOrderHealth(order);
+          return (
+            <span className="orders-cell-stack">
+              <StatusBadge tone={h.tone} withDot compact>
+                {h.label}
+              </StatusBadge>
+              {h.reason ? (
+                <span className="orders-status-reason">{h.reason}</span>
+              ) : null}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'shipBy',
+        header: 'Ship-by',
+        cell: () => <span className="orders-ghost" title="Dispatch SLA — arrives with #927">soon</span>,
+        hideBelow: 1024,
+      },
+      {
+        id: 'createdAt',
+        header: 'Created',
+        cell: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
+        accessor: (order) => order.createdAt,
+        sortable: true,
+      },
+      {
+        id: 'payment',
+        header: 'Payment',
+        cell: () => <span className="orders-ghost" title="Payment status — arrives with #928">soon</span>,
+        hideBelow: 1024,
       },
       {
         id: 'total',
@@ -215,9 +280,7 @@ export function OrdersListPage(): ReactElement {
         align: 'right',
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
-          if (!parsed.totals) {
-            return <span className="text-muted">—</span>;
-          }
+          if (!parsed.totals) return <span className="text-muted">—</span>;
           return (
             <span className="mono tabular">
               {formatCurrency(parsed.totals.total, parsed.totals.currency, locale)}
@@ -225,17 +288,57 @@ export function OrdersListPage(): ReactElement {
           );
         },
       },
+      {
+        id: 'actions',
+        header: '',
+        align: 'right',
+        cell: (order) => {
+          const failed = order.syncStatus.find((s) => s.status === 'failed');
+          if (order.recordStatus === 'awaiting_mapping' || !failed) return null;
+          const isRetrying =
+            retryMutation.isPending &&
+            retryMutation.variables?.internalOrderId === order.internalOrderId;
+          return (
+            <Button
+              tone="ghost"
+              className="button--sm"
+              disabled={isRetrying}
+              onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+            >
+              {isRetrying ? 'Retrying…' : 'Retry'}
+            </Button>
+          );
+        },
+      },
     ],
-    [locale, platformByConnection],
+    // Deps: columns rebuild when locale, the channel lookup, or the retry
+    // mutation's pending/variables change — the last two so the inline Retry
+    // reflects its in-flight state. `handleRetry` closes over the stable
+    // `mutate` handle, so it doesn't need to be a dep.
+    [locale, platformByConnection, retryMutation.isPending, retryMutation.variables],
   );
 
-  function handleStatusFilterChange(next: OrderSyncStatusValue | ''): void {
+  function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
+    retryMutation.mutate(
+      { internalOrderId, destinationConnectionId },
+      {
+        onSuccess: () => {
+          showToast({ tone: 'success', title: 'Retry queued', description: 'Sync re-enqueued.' });
+        },
+        onError: (error) => {
+          showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+        },
+      },
+    );
+  }
+
+  function setHealthFilter(next: OrderHealthValue | null): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
       if (next) {
-        p.set('syncStatus', next);
+        p.set('health', next);
       } else {
-        p.delete('syncStatus');
+        p.delete('health');
       }
       p.delete('offset');
       return p;
@@ -254,40 +357,21 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
-  function clearFilters(): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('syncStatus');
-      next.delete('sourceConnectionId');
-      next.delete('offset');
-      return next;
-    });
-  }
-
-  const filtersActive = Boolean(syncStatus || sourceConnectionId);
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  // Temporal eyebrow — freshest `updatedAt` across the visible page. Falls
-  // back to the static "Operations" label when nothing has loaded yet, so the
-  // header layout is stable on first paint.
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
     [query.data?.items, locale],
   );
 
-  // `R` keyboard shortcut — operator-cockpit affordance for "refresh
-  // everything visible." Skips when modifier keys are pressed (Cmd+R is
-  // browser reload) and when a text input has focus.
   function refreshAll(): void {
     void query.refetch();
-    void allOrdersKpi.refetch();
-    void syncedKpi.refetch();
-    void pendingKpi.refetch();
-    void failedKpi.refetch();
+    void summaryQuery.refetch();
   }
 
+  // `R` keyboard shortcut — operator-cockpit "refresh everything visible".
   useEffect(() => {
     function onKeydown(e: KeyboardEvent): void {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -306,89 +390,53 @@ export function OrdersListPage(): ReactElement {
     }
     document.addEventListener('keydown', onKeydown);
     return () => { document.removeEventListener('keydown', onKeydown); };
-    // Empty deps: `refreshAll` closes over the five React-Query refetch
-    // handles, whose identities are stable per query instance — the
-    // listener doesn't need to rebind on every render. The handler will
-    // see fresh refetch handles at fire-time via the closure.
+    // Empty deps: the listener fires `refreshAll`, which closes over the two
+    // React-Query refetch handles (stable per query instance) — no rebind
+    // needed; the handler reads fresh state at fire-time via the closure.
   }, []);
+
+  const segmentCount = (segment: HealthSegment): string =>
+    summary ? String(summary[segment.countKey]) : '—';
 
   return (
     <PageLayout
       eyebrow={freshness ?? 'Operations'}
       title="Orders"
       actions={
-        <>
-          <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-            Refresh
-            <span className="button__shortcut">R</span>
-          </Button>
-          <Link to="/orders/failed" className="button button--ghost">
-            Failed Orders
-          </Link>
-        </>
+        <Button tone="ghost" className="button--sm" onClick={refreshAll}>
+          Refresh
+          <span className="button__shortcut">R</span>
+        </Button>
       }
     >
-      {/* KPI strip — counts by sync status. Tone-tinted; '—' placeholders
-          while queries resolve so the layout stays stable. */}
-      <div className="ds-grid ds-grid--4">
-        <MetricCard
-          label="All orders"
-          value={allOrdersKpi.data ? allOrdersKpi.data.total : '—'}
-        />
-        <MetricCard
-          label="Synced"
-          tone="success"
-          value={syncedKpi.data ? syncedKpi.data.total : '—'}
-        />
-        <MetricCard
-          label="Pending"
-          tone="warning"
-          value={pendingKpi.data ? pendingKpi.data.total : '—'}
-        />
-        <MetricCard
-          label="Failed"
-          tone="error"
-          value={failedKpi.data ? failedKpi.data.total : '—'}
-        />
+      {/* Status segments — partition the set; click to filter by `health`. */}
+      <div className="ds-grid ds-grid--5 orders-segments">
+        <button
+          type="button"
+          className={['orders-segment', health === undefined ? 'orders-segment--active' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={health === undefined}
+          onClick={() => { setHealthFilter(null); }}
+        >
+          <MetricCard label="All orders" value={summary ? String(summary.total) : '—'} />
+        </button>
+        {HEALTH_SEGMENTS.map((segment) => (
+          <button
+            key={segment.key}
+            type="button"
+            className={['orders-segment', health === segment.key ? 'orders-segment--active' : '']
+              .filter(Boolean)
+              .join(' ')}
+            aria-pressed={health === segment.key}
+            onClick={() => { setHealthFilter(segment.key); }}
+          >
+            <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
+          </button>
+        ))}
       </div>
 
-      {/* Chip filter row — Status filter (active when set). Status chip
-          serves as both indicator and trigger via DropdownMenu. */}
       <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Chip active={Boolean(syncStatus)} aria-label="Filter by sync status">
-              Status: {syncStatus ? STATUS_FILTER_LABELS[syncStatus] : 'All'}
-            </Chip>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => { handleStatusFilterChange(''); }}>
-              All
-            </DropdownMenuItem>
-            {OrderSyncStatusValues.map((status) => (
-              <DropdownMenuItem
-                key={status}
-                onSelect={() => { handleStatusFilterChange(status); }}
-              >
-                {STATUS_FILTER_LABELS[status]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {filtersActive && (
-          <Button
-            tone="ghost"
-            className="button--sm"
-            onClick={clearFilters}
-          >
-            Clear filters
-          </Button>
-        )}
-
-        {/* Right-aligned results-count signal. Surfaces the total above
-            the table — operators don't need to scan to the paginator to
-            tell whether the filter is doing anything. */}
         {query.data && (
           <span
             className="text-muted mono tabular"
@@ -405,29 +453,35 @@ export function OrdersListPage(): ReactElement {
         <ErrorState
           title="Unable to load orders"
           message={query.error.message}
-          action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
-          }
+          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
-        <EmptyState
-          liveRegion="off"
-          title="No orders found"
-          message={
-            filtersActive
-              ? 'No orders match the current filters.'
-              : 'No order records have been synced yet.'
-          }
-          action={
-            filtersActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
-            ) : (
+        health === 'needs_attention' ? (
+          <EmptyState
+            liveRegion="off"
+            title="All clear — nothing needs your attention"
+            message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
+            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+          />
+        ) : health !== undefined ? (
+          <EmptyState
+            liveRegion="off"
+            title="No orders in this view"
+            message="No orders match the current filter."
+            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+          />
+        ) : (
+          <EmptyState
+            liveRegion="off"
+            title="No orders found"
+            message="No order records have been synced yet."
+            action={
               <Link className="button button--primary" to="/connections">
                 Manage connections
               </Link>
-            )
-          }
-        />
+            }
+          />
+        )
       ) : (
         <>
           <DataTable
@@ -448,27 +502,37 @@ export function OrdersListPage(): ReactElement {
                   />
                 );
               },
-              subtitle: (order) => <TimeDisplay iso={order.createdAt} format="date" />,
+              subtitle: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
               meta: (order) => {
-                const platform = platformByConnection.get(order.sourceConnectionId);
-                const primary = order.syncStatus[0];
+                const h = deriveOrderHealth(order);
+                const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+                const failed = order.syncStatus.find((s) => s.status === 'failed');
+                const isRetrying =
+                  retryMutation.isPending &&
+                  retryMutation.variables?.internalOrderId === order.internalOrderId;
                 return (
                   <span className="data-table__badge-row">
-                    {platform && (
-                      <span className="channel-pill" data-channel={platform}>
-                        {CHANNEL_LABELS[platform] ?? platform}
+                    {source && (
+                      <span
+                        className="channel-pill"
+                        data-channel={platformByConnection.get(order.sourceConnectionId)}
+                      >
+                        {source}
                       </span>
                     )}
-                    {primary && (
-                      <StatusBadge
-                        tone={SYNC_STATUS_TONES[primary.status]}
-                        pulse={primary.status === 'syncing'}
-                        withDot={primary.status !== 'syncing'}
-                        compact
+                    <StatusBadge tone={h.tone} withDot compact>
+                      {h.label}
+                    </StatusBadge>
+                    {failed && order.recordStatus !== 'awaiting_mapping' ? (
+                      <Button
+                        tone="ghost"
+                        className="button--sm"
+                        disabled={isRetrying}
+                        onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
                       >
-                        {primary.status}
-                      </StatusBadge>
-                    )}
+                        {isRetrying ? 'Retrying…' : 'Retry'}
+                      </Button>
+                    ) : null}
                   </span>
                 );
               },
@@ -480,16 +544,10 @@ export function OrdersListPage(): ReactElement {
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
             <div className="pagination__actions">
-              <Button
-                disabled={!hasPrev}
-                onClick={() => { setOffset(offset - PAGE_SIZE); }}
-              >
+              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
                 Previous
               </Button>
-              <Button
-                disabled={!hasNext}
-                onClick={() => { setOffset(offset + PAGE_SIZE); }}
-              >
+              <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
                 Next
               </Button>
             </div>

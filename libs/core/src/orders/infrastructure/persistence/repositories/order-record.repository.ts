@@ -24,6 +24,9 @@ import type {
   OrderRecordPagination,
   PaginatedOrderRecords,
   OrderRecordStatus,
+  OrderHealth,
+  OrderHealthSummary,
+  OrderHealthSummaryFilters,
 } from '../../../domain/types/order-record.types';
 
 @Injectable()
@@ -108,12 +111,120 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere('rec.updatedAt >= :updatedSince', { updatedSince: filters.updatedSince });
     }
 
+    if (filters.health) {
+      this.applyHealthFilter(qb, filters.health);
+    }
+
     const [entities, total] = await qb.getManyAndCount();
 
     return {
       items: entities.map((e) => this.toDomain(e)),
       total,
     };
+  }
+
+  /**
+   * Derived-health count summary (#929).
+   *
+   * One aggregate query partitioning every in-scope record into exactly one
+   * bucket via `COUNT(*) FILTER (...)`. The bucket predicates encode the
+   * canonical precedence documented on `OrderHealthValues` — and are the SQL
+   * twin of the FE `deriveOrderHealth` helper; keep both in lockstep.
+   *
+   * No GIN index on `syncStatus` today — full scan is acceptable at v1 scale
+   * (same trade-off noted on the `findMany` JSONB filters); revisit with an
+   * index if scan time creeps.
+   */
+  async countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'awaiting_mapping')`,
+        'awaiting_mapping'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND ${OrderRecordRepository.HAS_FAILED})`,
+        'needs_attention'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
+        'synced'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
+        'awaiting_dispatch'
+      );
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const raw = await qb.getRawOne<{
+      total: string;
+      awaiting_mapping: string;
+      needs_attention: string;
+      synced: string;
+      awaiting_dispatch: string;
+    }>();
+
+    return {
+      total: Number(raw?.total ?? 0),
+      awaitingMapping: Number(raw?.awaiting_mapping ?? 0),
+      needsAttention: Number(raw?.needs_attention ?? 0),
+      synced: Number(raw?.synced ?? 0),
+      awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
+    };
+  }
+
+  /**
+   * JSONB-containment fragments shared by `applyHealthFilter` and
+   * `countByHealth`. Constant SQL (no user input) — `@>` matches when the
+   * `syncStatus[]` array contains an entry with the given status. Mirrors the
+   * idiom already used for the `syncStatus` enum filter in `findMany`.
+   */
+  private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
+  private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+
+  /**
+   * Narrow a `findMany` query to a single derived-health bucket (#929).
+   * Encodes the canonical precedence from `OrderHealthValues` — the buckets are
+   * mutually exclusive because every non-`awaiting_mapping` bucket requires
+   * `recordStatus = 'ready'`, and `recordStatus` is a closed two-value set.
+   */
+  private applyHealthFilter(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    health: OrderHealth
+  ): void {
+    switch (health) {
+      case 'awaiting_mapping':
+        qb.andWhere(`rec."recordStatus" = 'awaiting_mapping'`);
+        break;
+      case 'needs_attention':
+        qb.andWhere(`rec."recordStatus" = 'ready' AND ${OrderRecordRepository.HAS_FAILED}`);
+        break;
+      case 'synced':
+        qb.andWhere(
+          `rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
+        );
+        break;
+      case 'awaiting_dispatch':
+        qb.andWhere(
+          `rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
+        );
+        break;
+    }
   }
 
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
