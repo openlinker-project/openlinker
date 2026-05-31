@@ -1,18 +1,23 @@
 /**
  * OrdersListPage tests
  *
- * Covers the cockpit redesign (#778): KPI strip wiring, filter-chip
- * behaviour, channel-pill resolution via `useConnectionsQuery`,
- * EntityLabel rendering on the Order column, pulse-on-syncing badge
- * state. Preserves the four canonical async states
- * (loading / error / empty / data) from the original page.
+ * Covers the triage-queue redesign (#929): status segments backed by the
+ * partitioning `/orders/status-summary` count endpoint, the `health` URL
+ * filter, the single reconciled health badge (`deriveOrderHealth`) replacing
+ * the per-destination list, customer + contents columns parsed from the
+ * snapshot, the all-clear empty state, and the inline per-row Retry. Preserves
+ * the canonical async states (loading / error / empty / data).
  */
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
-import type { PaginatedOrders, OrderRecord } from '../../features/orders/api/orders.types';
+import type {
+  PaginatedOrders,
+  OrderRecord,
+  OrderHealthSummary,
+} from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
 
 const sampleConnection: Connection = {
@@ -28,14 +33,23 @@ const sampleConnection: Connection = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const sampleOrder: OrderRecord = {
-  internalOrderId: 'ol_order_abc123',
+const syncedOrder: OrderRecord = {
+  internalOrderId: 'ol_order_synced',
   customerId: 'ol_customer_xyz',
   sourceConnectionId: 'conn_allegro_1',
   sourceEventId: null,
   orderSnapshot: {
     orderNumber: 'ALG-882414',
+    items: [{ id: 'i1', quantity: 1, price: 84.2, name: 'Filtr kubełkowy AquaPro' }],
     totals: { subtotal: 80, tax: 4.2, shipping: 0, total: 84.2, currency: 'EUR' },
+    shippingAddress: {
+      firstName: 'Anna',
+      lastName: 'Kowalska',
+      address1: 'ul. Testowa 1',
+      city: 'Warszawa',
+      postalCode: '00-001',
+      country: 'PL',
+    },
   },
   syncStatus: [
     {
@@ -53,11 +67,32 @@ const sampleOrder: OrderRecord = {
   updatedAt: '2026-01-15T10:00:00.000Z',
 };
 
-const sampleOrders: PaginatedOrders = {
-  items: [sampleOrder],
-  total: 1,
-  limit: 20,
-  offset: 0,
+const failedOrder: OrderRecord = {
+  ...syncedOrder,
+  internalOrderId: 'ol_order_failed',
+  orderSnapshot: { ...syncedOrder.orderSnapshot, orderNumber: 'ALG-FAIL' },
+  syncStatus: [
+    {
+      destinationConnectionId: 'conn_ps_1',
+      status: 'failed',
+      syncedAt: null,
+      externalOrderId: null,
+      externalOrderNumber: null,
+      error: 'Carrier not mapped in OMP',
+    },
+  ],
+};
+
+function paginated(items: OrderRecord[]): PaginatedOrders {
+  return { items, total: items.length, limit: 20, offset: 0 };
+}
+
+const emptySummary: OrderHealthSummary = {
+  total: 0,
+  awaitingMapping: 0,
+  needsAttention: 0,
+  synced: 0,
+  awaitingDispatch: 0,
 };
 
 describe('OrdersListPage', () => {
@@ -84,179 +119,215 @@ describe('OrdersListPage', () => {
     expect(screen.getByText('Network error')).toBeInTheDocument();
   });
 
-  it('should show empty state with a Manage connections CTA when no orders exist and no filters are active', async () => {
+  it('should show empty state with a Manage connections CTA when no orders exist and no filter is active', async () => {
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      orders: { list: vi.fn().mockResolvedValue(paginated([])) },
     });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('No orders found')).toBeInTheDocument();
-    const cta = screen.getByRole('link', { name: 'Manage connections' });
-    expect(cta).toHaveAttribute('href', '/connections');
+    expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute(
+      'href',
+      '/connections',
+    );
   });
 
-  it('should show a Clear filters button that clears syncStatus from the URL when a filter is active', async () => {
-    const user = userEvent.setup();
+  it('should show the all-clear empty state when the needs-attention filter is empty', async () => {
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      orders: { list: vi.fn().mockResolvedValue(paginated([])) },
     });
 
     renderWithProviders(<OrdersListPage />, {
       apiClient: mockApi,
-      route: '/orders?syncStatus=failed',
+      route: '/orders?health=needs_attention',
     });
 
-    expect(await screen.findByText('No orders match the current filters.')).toBeInTheDocument();
-    // Two "Clear filters" affordances now exist: the chip-row button
-    // and the empty-state CTA. Either path clears the URL filter; pick
-    // the empty-state CTA (last) so the test mirrors the operator flow
-    // when the filter strips the result set.
-    const clearButtons = screen.getAllByRole('button', { name: 'Clear filters' });
-    await user.click(clearButtons[clearButtons.length - 1]);
-
-    expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
+    expect(
+      await screen.findByText('All clear — nothing needs your attention'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
   });
 
-  it('should render the KPI strip with four status counts wired to the orders query (#778)', async () => {
-    // Each MetricCard reads `.total` from its own filtered useOrdersQuery
-    // call (limit:1). Mocking `orders.list` so the count varies by filter
-    // arg exercises the four wires independently.
-    const list = vi.fn().mockImplementation(async (filters?: { syncStatus?: string }) => {
-      if (filters?.syncStatus === 'synced') return { items: [], total: 7, limit: 1, offset: 0 };
-      if (filters?.syncStatus === 'pending') return { items: [], total: 3, limit: 1, offset: 0 };
-      if (filters?.syncStatus === 'failed') return { items: [], total: 1, limit: 1, offset: 0 };
-      return sampleOrders;
-    });
-    const mockApi = createMockApiClient({ orders: { list } });
-
-    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
-
-    // Labels are rendered by MetricCard.
-    expect(await screen.findByText('All orders')).toBeInTheDocument();
-    expect(screen.getByText('Synced')).toBeInTheDocument();
-    expect(screen.getByText('Pending')).toBeInTheDocument();
-    expect(screen.getByText('Failed')).toBeInTheDocument();
-
-    // Values flow through once each query resolves. Scope to the
-    // MetricCard value slot — bare digit text would collide with the
-    // paginator's "Showing 1–1 of 1" line.
-    await screen.findByText('All orders');
-    const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
-      (el) => el.textContent,
-    );
-    expect(values).toContain('7'); // Synced
-    expect(values).toContain('3'); // Pending
-    expect(values).toContain('1'); // Failed
-  });
-
-  it('should render a channel-pill resolved from the connection platformType (#778)', async () => {
+  it('should render status segments with counts from the summary endpoint (#929)', async () => {
+    const statusSummary = vi.fn().mockResolvedValue({
+      total: 11,
+      needsAttention: 1,
+      awaitingMapping: 0,
+      awaitingDispatch: 9,
+      synced: 1,
+    } satisfies OrderHealthSummary);
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])), statusSummary },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    // Wait for the data row to mount.
-    await screen.findByText('ALG-882414');
+    expect(await screen.findByText('All orders')).toBeInTheDocument();
+    expect(screen.getByText('Needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting mapping')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting dispatch')).toBeInTheDocument();
 
+    await vi.waitFor(() => {
+      const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
+        (el) => el.textContent,
+      );
+      expect(values).toContain('11'); // total
+      expect(values).toContain('9'); // awaiting dispatch
+    });
+  });
+
+  it('should filter the list by health when a status segment is clicked (#929)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /Needs attention/ }));
+
+    await vi.waitFor(() => {
+      const calledWithHealth = list.mock.calls.some(
+        ([filters]) => (filters as { health?: string } | undefined)?.health === 'needs_attention',
+      );
+      expect(calledWithHealth).toBe(true);
+    });
+  });
+
+  it('should render one reconciled health badge with a plain-language reason for a failed order (#929)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-FAIL');
+    const row = container.querySelector('.data-table__row');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText('Sync failed')).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText('Carrier not mapped in OMP')).toBeInTheDocument();
+  });
+
+  it('should render Awaiting dispatch for an order with an empty syncStatus (#929)', async () => {
+    const dispatchOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_dispatch',
+      orderSnapshot: { ...syncedOrder.orderSnapshot, orderNumber: 'ALG-DISPATCH' },
+      syncStatus: [],
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([dispatchOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-DISPATCH');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('Awaiting dispatch')).toBeInTheDocument();
+  });
+
+  it('should render customer and item-count columns parsed from the snapshot (#929)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('Anna Kowalska')).toBeInTheDocument();
+    expect(within(row).getByText('Warszawa')).toBeInTheDocument();
+    expect(within(row).getByText('1 item')).toBeInTheDocument();
+  });
+
+  it('should render a channel-pill resolved from the connection platformType', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
     const pill = container.querySelector('.channel-pill[data-channel="allegro"]');
-    expect(pill).not.toBeNull();
     expect(pill?.textContent).toBe('Allegro');
   });
 
-  it('should render the EntityLabel name from the parsed orderNumber, falling back to the internalOrderId when absent (#778)', async () => {
+  it('should fall back to the internalOrderId when the snapshot has no orderNumber', async () => {
     const orderWithoutNumber: OrderRecord = {
-      ...sampleOrder,
+      ...syncedOrder,
       internalOrderId: 'ol_order_no_number',
-      orderSnapshot: {}, // No orderNumber.
+      orderSnapshot: {},
     };
     const mockApi = createMockApiClient({
-      orders: {
-        list: vi.fn().mockResolvedValue({
-          items: [sampleOrder, orderWithoutNumber],
-          total: 2,
-          limit: 20,
-          offset: 0,
-        }),
-      },
+      orders: { list: vi.fn().mockResolvedValue(paginated([orderWithoutNumber])) },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    // Parsed orderNumber wins as the human-facing label.
-    expect(await screen.findByText('ALG-882414')).toBeInTheDocument();
-    // Fallback: when no orderNumber, the EntityLabel renders the
-    // internalOrderId.
     expect(await screen.findByText('ol_order_no_number')).toBeInTheDocument();
   });
 
-  it('should render a temporal "Synced HH:MM" eyebrow derived from the freshest updatedAt (#778)', async () => {
+  it('should call retryDestination with the failed destination when the row Retry is clicked (#929)', async () => {
+    const user = userEvent.setup();
+    const retryDestination = vi.fn().mockResolvedValue({
+      internalOrderId: 'ol_order_failed',
+      destinationConnectionId: 'conn_ps_1',
+      jobId: 'job_1',
+      jobType: 'marketplace.order.sync',
+    });
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue(sampleOrders) },
+      orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])), retryDestination },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    // Eyebrow is locale-formatted (HH:MM) — assert the "Synced …" prefix
-    // and the digits without pinning the exact time zone the test runner
-    // happens to be in.
-    const eyebrow = await screen.findByText(/^Synced \d{1,2}:\d{2}/);
-    expect(eyebrow).toBeInTheDocument();
+    await screen.findByText('ALG-FAIL');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await vi.waitFor(() => {
+      expect(retryDestination).toHaveBeenCalledWith('ol_order_failed', 'conn_ps_1');
+    });
   });
 
-  it('should refetch all queries when the R keyboard shortcut fires (#778)', async () => {
-    const user = userEvent.setup();
-    const list = vi.fn().mockResolvedValue(sampleOrders);
-    const mockApi = createMockApiClient({ orders: { list } });
+  it('should render a temporal "Synced HH:MM" eyebrow derived from the freshest updatedAt', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    // Wait for the page to settle — main + 4 KPI queries each fire once.
-    await screen.findByText('ALG-882414');
-    const baselineCalls = list.mock.calls.length;
+    expect(await screen.findByText(/^Synced \d{1,2}:\d{2}/)).toBeInTheDocument();
+  });
 
-    // Press R outside any focused input.
+  it('should refetch the list and summary when the R shortcut fires', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const statusSummary = vi.fn().mockResolvedValue(emptySummary);
+    const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const listBaseline = list.mock.calls.length;
+    const summaryBaseline = statusSummary.mock.calls.length;
+
     await user.keyboard('r');
 
-    // R should refetch the main query at minimum. The KPI queries also
-    // refetch via the same handler — assert the main one strictly and
-    // the total grows by at least 1.
     await vi.waitFor(() => {
-      expect(list.mock.calls.length).toBeGreaterThan(baselineCalls);
+      expect(list.mock.calls.length).toBeGreaterThan(listBaseline);
+      expect(statusSummary.mock.calls.length).toBeGreaterThan(summaryBaseline);
     });
-  });
-
-  it('should add the pulse class to the StatusBadge when a destination is syncing (#778)', async () => {
-    const orderSyncing: OrderRecord = {
-      ...sampleOrder,
-      syncStatus: [
-        {
-          destinationConnectionId: 'conn_ps_1',
-          status: 'syncing',
-          syncedAt: null,
-          externalOrderId: null,
-          externalOrderNumber: null,
-          error: null,
-        },
-      ],
-    };
-    const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue({ items: [orderSyncing], total: 1, limit: 20, offset: 0 }) },
-      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
-    });
-
-    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
-
-    await screen.findByText('syncing');
-
-    // StatusBadge applies `status-badge--pulse` when pulse=true. Pinning the
-    // exact class (vs `[class*="pulse"]`) keeps the assertion contracted to
-    // the StatusBadge primitive's actual API.
-    const pulsed = container.querySelector('.status-badge--pulse');
-    expect(pulsed).not.toBeNull();
   });
 });
