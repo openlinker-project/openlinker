@@ -76,6 +76,8 @@ export class OrdersController {
       createdTo,
       recordStatus,
       health,
+      sort,
+      dueBefore,
       limit = 20,
       offset = 0,
     } = query;
@@ -89,6 +91,8 @@ export class OrdersController {
         createdTo: createdTo ? new Date(createdTo) : undefined,
         recordStatus,
         health,
+        sort,
+        dueBefore: dueBefore ? new Date(dueBefore) : undefined,
       },
       { limit, offset }
     );
@@ -201,6 +205,7 @@ export class OrdersController {
       recordStatus: order.recordStatus,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
+      dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
     };
   }
 

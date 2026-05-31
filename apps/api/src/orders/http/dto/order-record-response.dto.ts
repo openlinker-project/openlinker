@@ -56,4 +56,13 @@ export class OrderRecordResponseDto {
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Marketplace dispatch (ship-by) deadline (ISO 8601), derived from the source dispatch window (#927). ' +
+      'null when the source exposes no dispatch SLA. Surfaced top-level so the list SLA column / sort / filter ' +
+      'and the detail countdown read it without parsing the snapshot.',
+  })
+  dispatchByAt!: string | null;
 }
