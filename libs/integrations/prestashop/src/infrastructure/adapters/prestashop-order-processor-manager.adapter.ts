@@ -429,7 +429,7 @@ export class PrestashopOrderProcessorManagerAdapter
       // the OL sidecar (#516), and the cart-scoped specific_prices (#895) are
       // already in place; the module sets the cart's delivery_option then calls
       // validateOrder with $dont_touch_amount so OL's total is authoritative.
-      const stateId = this.orderMapper.mapStatusToPrestashopStateId(order.status);
+      const stateId = await this.resolveStateId(order.status);
       let externalOrderId: string;
       let resolvedReference: string;
 
@@ -736,7 +736,7 @@ export class PrestashopOrderProcessorManagerAdapter
     const { externalOrderId, status, trackingNumber } = input;
     try {
       const order = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
-      const targetStateId = this.orderMapper.mapStatusToPrestashopStateId(status);
+      const targetStateId = await this.resolveStateId(status);
 
       // B. Tracking FIRST (when supplied) — so the state-email below renders the
       //    tracking link, and a failure here aborts before the irreversible email.
@@ -1055,6 +1055,45 @@ export class PrestashopOrderProcessorManagerAdapter
         `and no defaultCarrierId on connection config. Falling back to OL Dynamic carrier id_carrier=${olDynamicCarrierId}.`
     );
     return olDynamicCarrierId;
+  }
+
+  /**
+   * Resolve the PrestaShop `id_order_state` for an OL `OrderStatus` (#862).
+   *
+   * Resolution chain (mirrors `resolveExternalCarrierId`):
+   *   1. `MappingConfigService.resolveOrderStateMapping(this.connection.id, status)`
+   *      — operator override for THIS destination connection.
+   *   2. `orderMapper.mapStatusToPrestashopStateId(status)` — the hardcoded
+   *      default-install map (#858 tier); vanilla shops need no config.
+   *
+   * Destination-scoped: the override belongs to this PrestaShop connection's
+   * customised state catalogue (`this.connection.id`), NOT the source — unlike
+   * the source-scoped carrier/status mappings. Consumed by both `createOrder`
+   * (initial state on import) and `updateFulfillment` (the `sendmail` transition
+   * whose wrong-id blast radius motivated this).
+   */
+  private async resolveStateId(status: OrderStatus): Promise<number> {
+    if (this.mappingConfigService) {
+      const mapped = await this.mappingConfigService.resolveOrderStateMapping(
+        this.connection.id,
+        status
+      );
+      if (mapped !== null) {
+        const parsed = Number.parseInt(mapped, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          this.logger.debug(
+            `Resolved order-state mapping: status='${status}' → id_order_state=${parsed} ` +
+              `(destinationConnectionId=${this.connection.id})`
+          );
+          return parsed;
+        }
+        this.logger.warn(
+          `Order-state mapping resolved to non-positive "${mapped}" for status='${status}' ` +
+            `(connection ${this.connection.id}) — ignoring; falling back to default-install map.`
+        );
+      }
+    }
+    return this.orderMapper.mapStatusToPrestashopStateId(status);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
