@@ -74,6 +74,15 @@ export interface IncomingOrder {
   deliverySmart?: boolean;
 
   /**
+   * When the buyer placed the order on the source marketplace, as an ISO string
+   * (#926). For Allegro this is the earliest `lineItems[].boughtAt`; for
+   * PrestaShop it is `date_add`. Distinct from `createdAt`/`updatedAt` (OL
+   * ingestion clocks). Optional — adapters omit it when the source has no
+   * placed time. Adapters MUST only emit a valid ISO date string here.
+   */
+  placedAt?: string;
+
+  /**
    * ISO timestamps (strings) to keep DTO stable across runtimes.
    */
   createdAt: string;
