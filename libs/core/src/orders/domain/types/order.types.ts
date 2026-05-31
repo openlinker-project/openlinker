@@ -111,6 +111,14 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * When the buyer placed the order on the source marketplace (#926). Distinct
+   * from `createdAt`/`updatedAt`, which are OpenLinker's ingestion clocks — this
+   * is the operationally meaningful date for SLA and "how old is this order"
+   * judgments. Optional: absent for sources that don't expose a placed time and
+   * for records ingested before this field existed.
+   */
+  placedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
