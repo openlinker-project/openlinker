@@ -42,6 +42,20 @@ describe('parseOrderSnapshot', () => {
     expect(parsed.parseWarnings).toHaveLength(0);
   });
 
+  it('surfaces totals.taxTreatment when present and leaves it undefined when absent', () => {
+    const withTreatment = parseOrderSnapshot({
+      totals: { subtotal: 10, tax: 2.3, shipping: 0, total: 12.3, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+    expect(withTreatment.totals?.taxTreatment).toBe('inclusive');
+    expect(withTreatment.parseWarnings).toHaveLength(0);
+
+    const withoutTreatment = parseOrderSnapshot({
+      totals: { subtotal: 10, tax: 2.3, shipping: 0, total: 12.3, currency: 'PLN' },
+    });
+    expect(withoutTreatment.totals?.taxTreatment).toBeUndefined();
+    expect(withoutTreatment.parseWarnings).toHaveLength(0);
+  });
+
   it('returns a ParsedOrderSnapshot (never null) even when the top-level `id` is missing', () => {
     const parsed = parseOrderSnapshot({ orderNumber: '1024' });
 
