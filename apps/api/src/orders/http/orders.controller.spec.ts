@@ -52,6 +52,7 @@ describe('OrdersController', () => {
       upsert: jest.fn(),
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),
+      countByHealth: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
@@ -207,6 +208,57 @@ describe('OrdersController', () => {
       const result = await controller.listOrders({ limit: 20, offset: 0 });
 
       expect(result.items[0].syncAttempts).toEqual([]);
+    });
+
+    it('should pass the health filter through to the repository (#929)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ health: 'needs_attention', limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ health: 'needs_attention' }),
+        { limit: 20, offset: 0 }
+      );
+    });
+  });
+
+  describe('statusSummary', () => {
+    it('should return per-health-bucket counts from the repository (#929)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 11,
+        awaitingMapping: 0,
+        needsAttention: 1,
+        synced: 1,
+        awaitingDispatch: 9,
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(result.total).toBe(11);
+      expect(result.needsAttention).toBe(1);
+      expect(result.awaitingDispatch).toBe(9);
+    });
+
+    it('should forward only the scope subset (source/date) to the repository (#929)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+      });
+
+      await controller.statusSummary({
+        sourceConnectionId: 'conn-001',
+        createdFrom: '2026-01-01T00:00:00Z',
+      });
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceConnectionId: 'conn-001',
+          createdFrom: new Date('2026-01-01T00:00:00Z'),
+        })
+      );
     });
   });
 

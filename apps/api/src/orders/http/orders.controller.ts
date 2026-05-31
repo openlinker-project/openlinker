@@ -34,6 +34,8 @@ import {
 } from '@openlinker/core/orders';
 import type { OrderRecord, OrderSyncStatus, SyncAttempt } from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
+import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
@@ -73,6 +75,7 @@ export class OrdersController {
       createdFrom,
       createdTo,
       recordStatus,
+      health,
       limit = 20,
       offset = 0,
     } = query;
@@ -85,6 +88,7 @@ export class OrdersController {
         createdFrom: createdFrom ? new Date(createdFrom) : undefined,
         createdTo: createdTo ? new Date(createdTo) : undefined,
         recordStatus,
+        health,
       },
       { limit, offset }
     );
@@ -95,6 +99,31 @@ export class OrdersController {
       limit,
       offset,
     };
+  }
+
+  @Get('status-summary')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Order health summary counts',
+    description:
+      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The four buckets partition the set, so `total` equals their sum — backs the list-page status segments.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-health-bucket counts',
+    type: OrderHealthSummaryResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async statusSummary(
+    @Query() query: OrderHealthSummaryQueryDto
+  ): Promise<OrderHealthSummaryResponseDto> {
+    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    return this.orderRecordRepository.countByHealth({
+      sourceConnectionId,
+      customerId,
+      createdFrom: createdFrom ? new Date(createdFrom) : undefined,
+      createdTo: createdTo ? new Date(createdTo) : undefined,
+    });
   }
 
   @Get(':internalOrderId')
