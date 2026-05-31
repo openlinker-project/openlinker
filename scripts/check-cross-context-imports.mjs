@@ -337,6 +337,10 @@ const ALLOW_LIST = new Map([
     'apps/api/test/integration/order-record-attempts.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
+  [
+    'apps/api/test/integration/order-health-summary.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
 
   // apps → products.{ProductRepositoryPort, ProductVariantRepositoryPort} — rewire via IProductsService
   ['apps/api/test/integration/products-read.int-spec.ts', new Set(['ProductRepositoryPort'])],
