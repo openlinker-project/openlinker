@@ -1,11 +1,21 @@
-import { useCallback, useMemo, type ReactElement } from 'react';
+/**
+ * Order Detail Page
+ *
+ * Operator cockpit for a single order (#924): derived health header + strip,
+ * plain-language failure banner with a scoped Retry, pricing/tax breakdown,
+ * delivery + shipment + customer rail, and an audit-trail activity timeline.
+ * Display-only — every value comes from the `OrderRecord` / parsed snapshot /
+ * shipments query that already exist; the page composes features and performs
+ * no raw API calls.
+ *
+ * @module apps/web/src/pages/orders
+ */
+import { useCallback, type ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
-import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
-import { EmptyValue } from '../../shared/ui/empty-value';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -13,18 +23,22 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useOrderQuery } from '../../features/orders/hooks/use-order-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
-import type { OrderSyncStatus, OrderSyncStatusValue } from '../../features/orders/api/orders.types';
+import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
-import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
+import { useConnectionsQuery } from '../../features/connections';
+import { useOrderShipmentsQuery } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
-import { OrderLineItemsPanel } from '../../features/orders/components/order-line-items-panel';
-import { OrderTotalsPanel } from '../../features/orders/components/order-totals-panel';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
+import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
+import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
+import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
+import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
+import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
-import type { ParsedAddress } from '../../features/orders/api/order-snapshot.schema';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
+const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 
 const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   pending: 'info',
@@ -33,103 +47,11 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   failed: 'error',
 };
 
-function buildSyncColumns(
-  onRetry: (destinationConnectionId: string) => void,
-  isRetrying: (destinationConnectionId: string) => boolean,
-): DataTableColumn<OrderSyncStatus>[] {
-  return [
-    {
-      id: 'destinationConnectionId',
-      header: 'Destination',
-      cell: (s) => <ConnectionEntityLabel connectionId={s.destinationConnectionId} showId={false} />,
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      cell: (s) => (
-        <StatusBadge tone={SYNC_STATUS_TONES[s.status]} compact>
-          {s.status}
-        </StatusBadge>
-      ),
-    },
-    {
-      id: 'externalOrderId',
-      header: 'External Order ID',
-      cell: (s) =>
-        s.externalOrderId ? (
-          <span className="mono-text">{s.externalOrderId}</span>
-        ) : (
-          <EmptyValue />
-        ),
-      hideBelow: 768,
-    },
-    {
-      id: 'externalOrderNumber',
-      header: 'External Order #',
-      cell: (s) =>
-        s.externalOrderNumber ? (
-          <span className="mono-text">{s.externalOrderNumber}</span>
-        ) : (
-          <EmptyValue />
-        ),
-    },
-    {
-      id: 'syncedAt',
-      header: 'Synced At',
-      cell: (s) => (s.syncedAt ? <TimeDisplay iso={s.syncedAt} /> : <EmptyValue />),
-      hideBelow: 768,
-    },
-    {
-      id: 'error',
-      header: 'Error',
-      cell: (s) =>
-        s.error ? (
-          <span className="text-muted" title={s.error}>
-            {s.error.length > 80 ? `${s.error.slice(0, 80)}…` : s.error}
-          </span>
-        ) : (
-          <EmptyValue />
-        ),
-      hideBelow: 1024,
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      cell: (s) => {
-        if (s.status !== 'failed') {
-          return <EmptyValue />;
-        }
-        const pending = isRetrying(s.destinationConnectionId);
-        return (
-          <Button
-            tone="secondary"
-            onClick={() => onRetry(s.destinationConnectionId)}
-            disabled={pending}
-          >
-            {pending ? 'Retrying…' : 'Retry'}
-          </Button>
-        );
-      },
-    },
-  ];
-}
-
-function buildAddressItems(address: ParsedAddress, label: string): KeyValueItem[] {
-  const fullName = [address.firstName, address.lastName].filter(Boolean).join(' ');
-  return [
-    ...(fullName ? [{ id: 'name', label: 'Name', value: fullName }] : []),
-    ...(address.company ? [{ id: 'company', label: 'Company', value: address.company }] : []),
-    { id: 'address1', label: label, value: address.address1 },
-    ...(address.address2 ? [{ id: 'address2', label: '', value: address.address2 }] : []),
-    { id: 'city', label: 'City', value: `${address.city}, ${address.postalCode}` },
-    { id: 'country', label: 'Country', value: address.country },
-    ...(address.phone ? [{ id: 'phone', label: 'Phone', value: address.phone }] : []),
-  ];
-}
-
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const query = useOrderQuery(internalOrderId);
+  const connectionsQuery = useConnectionsQuery();
+  const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
 
@@ -155,15 +77,6 @@ export function OrderDetailPage(): ReactElement {
       );
     },
     [retry, internalOrderId, showToast],
-  );
-
-  const syncColumns = useMemo(
-    () =>
-      buildSyncColumns(
-        handleRetry,
-        (destinationConnectionId) => pendingDestinationId === destinationConnectionId,
-      ),
-    [handleRetry, pendingDestinationId],
   );
 
   if (query.isLoading) {
@@ -195,27 +108,20 @@ export function OrderDetailPage(): ReactElement {
   }
 
   const order = query.data;
-  const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
-  const hasAnyAddress = Boolean(snapshot.shippingAddress ?? snapshot.billingAddress);
+  const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
-  const shippingLine = snapshot.shippingAddress
-    ? [
-        snapshot.shippingAddress.address1,
-        snapshot.shippingAddress.city,
-        snapshot.shippingAddress.country,
-      ]
-        .filter(Boolean)
-        .join(', ')
-    : null;
+  const connections = connectionsQuery.data ?? [];
+  const hasShippingCapability = connections.some((c) =>
+    c.supportedCapabilities.includes(SHIPPING_CAPABILITY),
+  );
+  const shipmentStatuses = shipmentsQuery.data?.items.map((s) => s.status) ?? null;
+  const fulfillment = deriveFulfillment(shipmentStatuses, hasShippingCapability);
+  const sourcePlatformType =
+    connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
+  // Internal ID is the header copy-chip; not duplicated here.
   const summaryItems: KeyValueItem[] = [
-    {
-      id: 'orderId',
-      label: 'Internal ID',
-      value: order.internalOrderId,
-      mono: true,
-    },
     ...(snapshot.orderNumber
       ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
       : []),
@@ -225,35 +131,26 @@ export function OrderDetailPage(): ReactElement {
       label: 'Source',
       value: <ConnectionEntityLabel connectionId={order.sourceConnectionId} />,
     },
-    {
-      id: 'customer',
-      label: 'Customer',
-      value: order.customerId ? (
-        <CustomerEntityLabel customerId={order.customerId} />
-      ) : (
-        <EmptyValue />
-      ),
-    },
-    ...(shippingLine
-      ? [{ id: 'shippingTo', label: 'Shipping to', value: shippingLine }]
-      : []),
-    { id: 'createdAt', label: 'Received', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
     ...(order.sourceEventId
       ? [{ id: 'sourceEvent', label: 'Source Event ID', value: order.sourceEventId, mono: true }]
       : []),
+    { id: 'createdAt', label: 'Received', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
+    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
   ];
 
   return (
-    <PageLayout
-      backTo={{ to: '/orders', label: 'Orders' }}
-      eyebrow="Orders"
-      title={
-        snapshot.orderNumber
-          ? `Order #${snapshot.orderNumber}`
-          : `Order — ${order.internalOrderId}`
-      }
-    >
+    <PageLayout backTo={{ to: '/orders', label: 'Orders' }} eyebrow="Orders" title="Order detail">
+      <OrderDetailHeader order={order} snapshot={snapshot} />
+
+      <OrderHealthSummary
+        syncStatus={order.syncStatus}
+        fulfillment={fulfillment}
+        totals={snapshot.totals}
+        itemCount={snapshot.items.length}
+        failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
+        fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
+      />
+
       {failedDestinations.length > 0 ? (
         <Alert
           tone="error"
@@ -263,7 +160,7 @@ export function OrderDetailPage(): ReactElement {
           action={
             <Link
               to={`/orders/failed?connectionId=${encodeURIComponent(order.sourceConnectionId)}`}
-              className="button button--primary button--compact"
+              className="button button--secondary button--sm"
             >
               View failed orders
             </Link>
@@ -271,56 +168,91 @@ export function OrderDetailPage(): ReactElement {
         >
           <ul className="order-detail__failed-list">
             {failedDestinations.map((status) => (
-              <li key={status.destinationConnectionId}>
-                <ConnectionEntityLabel
-                  connectionId={status.destinationConnectionId}
-                  showId={false}
-                />
-                {status.error ? (
-                  <span className="order-detail__failed-error">
-                    {status.error.length > 120
-                      ? `${status.error.slice(0, 120)}…`
-                      : status.error}
-                  </span>
-                ) : null}
+              <li key={status.destinationConnectionId} className="order-detail__failed-row">
+                <div className="order-detail__failed-main">
+                  <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
+                  {status.error ? (
+                    <span className="order-detail__failed-error mono-text">
+                      {status.error.length > 160 ? `${status.error.slice(0, 160)}…` : status.error}
+                    </span>
+                  ) : null}
+                  <a className="order-detail__failed-raw" href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}>
+                    view raw ▸
+                  </a>
+                </div>
+                <Button
+                  tone="primary"
+                  className="button--sm"
+                  onClick={() => handleRetry(status.destinationConnectionId)}
+                  disabled={pendingDestinationId === status.destinationConnectionId}
+                >
+                  {pendingDestinationId === status.destinationConnectionId ? 'Retrying…' : 'Retry'}
+                </Button>
               </li>
             ))}
           </ul>
         </Alert>
       ) : null}
 
-      {/* Primary grid: Summary | Sync Status | Customer (three columns on wide viewports) */}
-      <div className="order-detail__primary-grid order-detail__primary-grid--three">
+      {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
-          <h3 className="detail-section__title">Summary</h3>
-          <KeyValueList items={summaryItems} />
+          <h3 className="detail-section__title">Pricing &amp; tax</h3>
+          <OrderPricingPanel items={snapshot.items} totals={snapshot.totals} />
         </section>
+      ) : null}
 
-        <section className="detail-section">
-          <h3 className="detail-section__title">
-            Sync Status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
-          </h3>
-          {order.syncStatus.length > 0 ? (
-            <DataTable
-              caption="Order sync status"
-              columns={syncColumns}
-              rows={order.syncStatus}
-              rowKey={(s) => s.destinationConnectionId}
-            />
-          ) : (
-            <p className="text-muted">No sync destinations configured.</p>
-          )}
-        </section>
+      {/* Detail grid: left = summary + sync status, right = delivery + shipment + customer */}
+      <div className="order-detail__primary-grid order-detail__primary-grid--split">
+        <div className="order-detail__stack">
+          <section className="detail-section">
+            <h3 className="detail-section__title">Summary</h3>
+            <KeyValueList items={summaryItems} />
+          </section>
 
-        <OrderCustomerCard
-          customerId={order.customerId}
-          sourceConnectionId={order.sourceConnectionId}
-        />
+          <section className="detail-section">
+            <h3 className="detail-section__title">
+              Sync status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
+            </h3>
+            {order.syncStatus.length > 0 ? (
+              <ul className="order-sync-list">
+                {order.syncStatus.map((status) => (
+                  <li key={status.destinationConnectionId} className="order-sync-row">
+                    <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
+                    <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
+                      {status.status}
+                    </StatusBadge>
+                    <span className="order-sync-row__ext">
+                      {status.externalOrderId ? (
+                        <span className="mono-text">#{status.externalOrderId}</span>
+                      ) : (
+                        <span className="text-muted">no destination order id yet</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted">No sync destinations configured.</p>
+            )}
+            <p className="order-sync-list__note text-muted">
+              Idempotent create (#909) — a retry won&rsquo;t double-create; a synced row shows its destination
+              order id.
+            </p>
+          </section>
+        </div>
+
+        <div className="order-detail__stack">
+          <OrderDeliveryPanel
+            shippingAddress={snapshot.shippingAddress}
+            shipping={snapshot.shipping}
+            pickupPoint={snapshot.pickupPoint}
+            sourcePlatformType={sourcePlatformType}
+          />
+          <OrderShipmentPanel order={order} />
+          <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
+        </div>
       </div>
 
-      {/* Parse-warnings breadcrumb — quiet, diagnostic, links to the raw snapshot.
-          Stays page-level so it remains visible even when every enriched section
-          below is empty because everything failed to parse. */}
       {snapshot.parseWarnings.length > 0 ? (
         <p className="order-detail__parse-warning-row">
           <a
@@ -334,50 +266,6 @@ export function OrderDetailPage(): ReactElement {
         </p>
       ) : null}
 
-      {/* Line items + totals — each renders independently so one failure doesn't blank both.
-          When items are empty but totals exist, skip the Line Items column entirely rather
-          than showing a "Line Items" heading over an explanatory paragraph. */}
-      {snapshot.items.length > 0 || snapshot.totals ? (
-        <div className="order-detail__items-grid">
-          {snapshot.items.length > 0 ? (
-            <section className="detail-section">
-              <h3 className="detail-section__title">Line Items ({snapshot.items.length})</h3>
-              <OrderLineItemsPanel items={snapshot.items} totals={snapshot.totals} />
-            </section>
-          ) : null}
-          {snapshot.totals ? (
-            <section className="detail-section order-detail__totals-section">
-              <h3 className="detail-section__title">Totals</h3>
-              <OrderTotalsPanel totals={snapshot.totals} />
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Addresses — render each independently whenever its own sub-tree parsed */}
-      {hasAnyAddress ? (
-        <div className="order-detail__address-grid">
-          {snapshot.shippingAddress ? (
-            <section className="detail-section">
-              <h3 className="detail-section__title">Shipping Address</h3>
-              <KeyValueList items={buildAddressItems(snapshot.shippingAddress, 'Address')} />
-            </section>
-          ) : null}
-          {snapshot.billingAddress ? (
-            <section className="detail-section">
-              <h3 className="detail-section__title">Billing Address</h3>
-              <KeyValueList items={buildAddressItems(snapshot.billingAddress, 'Address')} />
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Shipment panel (#769) — full-width Band-2 section, between Addresses
-          (where it's going) and Activity Timeline (what's happened). Renders
-          nothing when no ShippingProviderManager is configured. */}
-      <OrderShipmentPanel order={order} />
-
-      {/* Activity timeline */}
       <section className="detail-section">
         <h3 className="detail-section__title">Activity</h3>
         <OrderActivityTimeline
@@ -388,7 +276,6 @@ export function OrderDetailPage(): ReactElement {
         />
       </section>
 
-      {/* Raw snapshot — collapsed by default; warning chip above links here */}
       <section className="detail-section" id={RAW_SNAPSHOT_ANCHOR_ID}>
         <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} />
       </section>
