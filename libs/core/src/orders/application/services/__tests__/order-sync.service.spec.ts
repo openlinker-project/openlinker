@@ -17,7 +17,10 @@ import { NoOrderDestinationsAvailableException } from '../../../domain/exception
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
+import {
+  DuplicateIdentifierMappingError,
+  MappingAlreadyExistsError,
+} from '@openlinker/core/identifier-mapping';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -508,13 +511,18 @@ describe('OrderSyncService', () => {
       );
     });
 
-    it('should swallow DuplicateIdentifierMappingError from createMapping (concurrent create resolved)', async () => {
+    // Both arms of persistDestinationMapping's catch are exercised: the
+    // unique-constraint race (DuplicateIdentifierMappingError) and the
+    // read-before-write race (MappingAlreadyExistsError). Either resolves to an
+    // idempotent success returning the adapter's external id.
+    it.each([
+      ['DuplicateIdentifierMappingError', new DuplicateIdentifierMappingError('Order', 'PS-555', 'prestashop', 'dest-a')],
+      ['MappingAlreadyExistsError', new MappingAlreadyExistsError('Order', 'PS-555', 'dest-a', 'ol_order_123')],
+    ])('should swallow %s from createMapping (concurrent create resolved)', async (_label, error) => {
       const adapter = makeAdapter({ orderId: 'PS-555' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
       identifierMapping.getExternalIds.mockResolvedValue([]);
-      identifierMapping.createMapping.mockRejectedValue(
-        new DuplicateIdentifierMappingError('Order', 'PS-555', 'prestashop', 'dest-a')
-      );
+      identifierMapping.createMapping.mockRejectedValue(error);
 
       const results = await service.syncOrder({
         order: createOrder(),
