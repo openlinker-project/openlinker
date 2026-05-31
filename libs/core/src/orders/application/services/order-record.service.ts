@@ -9,7 +9,7 @@
  * @implements {IOrderRecordService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import type { Order } from '../../domain/types/order.types';
+import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
@@ -82,6 +82,9 @@ export class OrderRecordService implements IOrderRecordService {
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
+      // Dispatch (ship-by) window carried through for fidelity; the scalar
+      // deadline is denormalized to the `dispatchByAt` column below (#927).
+      ...(order.dispatchTime !== undefined && { dispatchTime: order.dispatchTime }),
       // Buyer-placed-on-marketplace time (#926) — absent when the source didn't
       // expose one. Conditional spread keeps the key off the snapshot rather
       // than emitting `undefined`.
@@ -102,7 +105,9 @@ export class OrderRecordService implements IOrderRecordService {
       syncStatus,
       'ready',
       now,
-      now
+      now,
+      [],
+      this.deriveDispatchByAt(order.dispatchTime)
     );
 
     return this.repository.upsert(orderRecord);
@@ -142,6 +147,7 @@ export class OrderRecordService implements IOrderRecordService {
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
+      ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),
       // Buyer-placed-on-marketplace time (#926) — ISO string passed through verbatim.
       ...(incoming.placedAt !== undefined && { placedAt: incoming.placedAt }),
     };
@@ -155,10 +161,28 @@ export class OrderRecordService implements IOrderRecordService {
       [],
       'awaiting_mapping',
       now,
-      now
+      now,
+      [],
+      this.deriveDispatchByAt(incoming.dispatchTime)
     );
 
     return this.repository.upsert(orderRecord);
+  }
+
+  /**
+   * Derive the scalar ship-by deadline (`dispatchByAt`) from a dispatch window
+   * (#927) — the `.to` bound. Returns `null` when absent or unparseable, so the
+   * column and SLA surfaces degrade gracefully. Re-run on every persist (both
+   * the `awaiting_mapping` and `ready` paths) so a re-pulled order with a
+   * changed window updates the column.
+   */
+  private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
+    const to = window?.to;
+    if (!to) {
+      return null;
+    }
+    const parsed = new Date(to);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   /**

@@ -330,4 +330,54 @@ describe('OrdersListPage', () => {
       expect(statusSummary.mock.calls.length).toBeGreaterThan(summaryBaseline);
     });
   });
+
+  it('should default the list query to the dispatchBy (ship-by) sort (#927)', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: 'dispatchBy' }),
+      expect.anything(),
+    );
+  });
+
+  it('should render a Ship-by countdown for an order with a deadline, and "—" without (#927)', async () => {
+    const withDeadline: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_sla',
+      orderSnapshot: { ...syncedOrder.orderSnapshot, orderNumber: 'ALG-SLA' },
+      dispatchByAt: '2030-01-01T00:00:00.000Z', // far future → deterministic "Nd left"
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([withDeadline])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-SLA');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText(/left$/)).toBeInTheDocument();
+  });
+
+  it('should set the dueBefore filter when the breaching/overdue chip is clicked (#927)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /Ship-by/i }));
+
+    await vi.waitFor(() => {
+      const calledWithDue = list.mock.calls.some(
+        ([filters]) => typeof (filters as { dueBefore?: string } | undefined)?.dueBefore === 'string',
+      );
+      expect(calledWithDue).toBe(true);
+    });
+  });
 });

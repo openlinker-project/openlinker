@@ -54,7 +54,6 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ): Promise<PaginatedOrderRecords> {
     const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
       .createQueryBuilder('rec')
-      .orderBy('rec.createdAt', 'DESC')
       .take(pagination.limit)
       .skip(pagination.offset);
 
@@ -111,8 +110,24 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere('rec.updatedAt >= :updatedSince', { updatedSince: filters.updatedSince });
     }
 
+    if (filters.dueBefore) {
+      // SLA "breaching / overdue" filter (#927) — only records with a known
+      // ship-by deadline at or before the cutoff. NULL deadlines are excluded.
+      qb.andWhere('rec.dispatchByAt IS NOT NULL AND rec.dispatchByAt <= :dueBefore', {
+        dueBefore: filters.dueBefore,
+      });
+    }
+
     if (filters.health) {
       this.applyHealthFilter(qb, filters.health);
+    }
+
+    // Ordering (#927). `dispatchBy` is the triage default on the list: soonest
+    // ship-by first, NULLs last, with createdAt as a stable tiebreaker.
+    if (filters.sort === 'dispatchBy') {
+      qb.orderBy('rec.dispatchByAt', 'ASC', 'NULLS LAST').addOrderBy('rec.createdAt', 'DESC');
+    } else {
+      qb.orderBy('rec.createdAt', 'DESC');
     }
 
     const [entities, total] = await qb.getManyAndCount();
@@ -359,7 +374,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
       entity.updatedAt,
-      syncAttempts
+      syncAttempts,
+      entity.dispatchByAt
     );
   }
 
@@ -390,6 +406,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderNumber: a.externalOrderNumber,
     }));
     entity.recordStatus = orderRecord.recordStatus;
+    entity.dispatchByAt = orderRecord.dispatchByAt;
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;
