@@ -24,6 +24,8 @@ interface TimelineEvent {
   id: string;
   timestamp: string | null;
   title: ReactElement | string;
+  /** Actor eyebrow (e.g. "system · ingest", "system · attempt 2"). */
+  by?: string;
   description?: ReactElement | string;
   tone: 'default' | 'success' | 'error' | 'warning';
   /**
@@ -76,6 +78,7 @@ function buildEvents(
     id: 'ingested',
     timestamp: createdAt,
     title: 'Order received',
+    by: 'system · ingest',
     description:
       recordStatus === 'awaiting_mapping'
         ? 'Awaiting product mapping — some item references could not be resolved yet.'
@@ -109,15 +112,19 @@ function buildEvents(
     lastIndexByDestination.set(a.destinationConnectionId, i);
   });
 
+  const attemptNumberByDestination = new Map<string, number>();
   sortedAttempts.forEach((attempt, i) => {
     const verb = STATUS_PAST_TENSE[attempt.status] ?? attempt.status;
     const isLastForDestination = lastIndexByDestination.get(attempt.destinationConnectionId) === i;
     const showCapLink =
       isLastForDestination && cappedDestinations.has(attempt.destinationConnectionId);
+    const attemptNumber = (attemptNumberByDestination.get(attempt.destinationConnectionId) ?? 0) + 1;
+    attemptNumberByDestination.set(attempt.destinationConnectionId, attemptNumber);
 
     events.push({
       id: `attempt-${attempt.destinationConnectionId}-${i}`,
       timestamp: attempt.attemptedAt,
+      by: `system · attempt ${attemptNumber}`,
       title: (
         <>
           Order {verb}{' '}
@@ -181,12 +188,16 @@ export function OrderActivityTimeline({
   }
 
   return (
+    <>
     <ol className="order-activity" aria-label="Order activity timeline">
       {events.map((event) => (
         <li key={event.id} className="order-activity__item">
           <span className={`order-activity__dot ${TONE_CLASS[event.tone]}`} aria-hidden="true" />
           <div className="order-activity__body">
-            <p className="order-activity__title">{event.title}</p>
+            <p className="order-activity__title">
+              {event.title}
+              {event.by ? <span className="order-activity__by">{event.by}</span> : null}
+            </p>
             {event.description ? (
               <p className="order-activity__description">{event.description}</p>
             ) : null}
@@ -202,5 +213,10 @@ export function OrderActivityTimeline({
         </li>
       ))}
     </ol>
+    <p className="order-activity__caption">
+      Showing {events.length} of {events.length} event{events.length === 1 ? '' : 's'} · attempts capped at{' '}
+      {SYNC_ATTEMPTS_PER_DESTINATION_CAP} per destination.
+    </p>
+    </>
   );
 }
