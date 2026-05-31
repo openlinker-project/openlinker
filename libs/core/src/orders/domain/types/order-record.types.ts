@@ -29,6 +29,66 @@ export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
 export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
 
 /**
+ * Derived order-health buckets (#929).
+ *
+ * A single operator-facing classification reconciling `recordStatus` with the
+ * per-destination `syncStatus[]`. The four buckets **partition** the order set
+ * (every record maps to exactly one) so the list KPI cards sum to the total —
+ * fixing the prior bug where empty-`syncStatus[]` and `awaiting_mapping` orders
+ * fell into no bucket.
+ *
+ * CANONICAL PRECEDENCE (highest wins) — this comment is the single source of
+ * truth; the FE `deriveOrderHealth` helper and the SQL in
+ * `OrderRecordRepository.countByHealth` / `applyHealthFilter` must both encode
+ * exactly this order:
+ *   1. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
+ *   2. `needs_attention`   — not awaiting_mapping AND any destination `failed`
+ *   3. `synced`            — not awaiting_mapping, no failed, AND any `synced`
+ *   4. `awaiting_dispatch` — the residual: everything else (no failed, no
+ *                            synced: empty `syncStatus[]` / pending / syncing)
+ *
+ * Buckets 2–4 gate on `NOT awaiting_mapping` (not `recordStatus = 'ready'`) so
+ * the four remain a complete partition for ANY `recordStatus` value — a future
+ * status can't silently leave rows uncounted and break the cards' sum-to-total.
+ */
+export const OrderHealthValues = [
+  'awaiting_mapping',
+  'needs_attention',
+  'synced',
+  'awaiting_dispatch',
+] as const;
+
+/**
+ * Derived order-health type
+ */
+export type OrderHealth = (typeof OrderHealthValues)[number];
+
+/**
+ * Aggregate count of order records per derived health bucket (#929).
+ * `total` equals the sum of the four buckets for the same filter scope.
+ */
+export interface OrderHealthSummary {
+  total: number;
+  awaitingMapping: number;
+  needsAttention: number;
+  synced: number;
+  awaitingDispatch: number;
+}
+
+/**
+ * Filter scope for the health-summary count (#929). A deliberate subset of
+ * `OrderRecordFilters` — it intentionally omits `health` (and the sync-status /
+ * destination JSONB filters) so the aggregate can't be self-filtered into a
+ * contradiction (counting all buckets while filtering to one).
+ */
+export interface OrderHealthSummaryFilters {
+  sourceConnectionId?: string;
+  customerId?: string;
+  createdFrom?: Date;
+  createdTo?: Date;
+}
+
+/**
  * Order record filters for list queries
  */
 export interface OrderRecordFilters {
@@ -38,6 +98,13 @@ export interface OrderRecordFilters {
   createdFrom?: Date;
   createdTo?: Date;
   recordStatus?: OrderRecordStatus;
+  /**
+   * Filter to a single derived health bucket (#929). Translated to a SQL
+   * predicate by `OrderRecordRepository.applyHealthFilter` using the canonical
+   * precedence documented on {@link OrderHealthValues}. Used by the list page's
+   * clickable status segments.
+   */
+  health?: OrderHealth;
   /**
    * Match records whose `syncStatus[]` contains an entry for this destination
    * connection (#834). JSONB containment — same idiom as the existing

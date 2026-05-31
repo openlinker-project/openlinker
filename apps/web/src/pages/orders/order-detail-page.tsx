@@ -134,8 +134,13 @@ export function OrderDetailPage(): ReactElement {
     ...(order.sourceEventId
       ? [{ id: 'sourceEvent', label: 'Source Event ID', value: order.sourceEventId, mono: true }]
       : []),
-    { id: 'createdAt', label: 'Received', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
-    { id: 'updatedAt', label: 'Updated', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
+    // Buyer-placed-on-marketplace time leads (#926); the OL ingestion clocks
+    // (Received / Updated) are demoted to "OpenLinker processing" below it.
+    ...(snapshot.placedAt
+      ? [{ id: 'placedAt', label: 'Placed', value: <TimeDisplay iso={snapshot.placedAt} format="datetime" /> }]
+      : []),
+    { id: 'createdAt', label: 'Received (OL)', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
+    { id: 'updatedAt', label: 'Updated (OL)', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
   ];
 
   return (

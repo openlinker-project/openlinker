@@ -8,7 +8,6 @@
  *
  * @module libs/core/src/orders/domain/types
  */
-
 import type { PaymentStatus } from './payment-status.types';
 
 /**
@@ -113,13 +112,16 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
-  /**
-   * Source-reported payment status (#928). Carried through from the source
-   * `IncomingOrder`; drives the FE payment chip and the dispatch (label) gate.
-   * Absent (`undefined`) for sources that don't expose payment (e.g. PrestaShop
-   * `OrderSourcePort`) and for records predating this field.
-   */
+  /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * When the buyer placed the order on the source marketplace (#926). Distinct
+   * from `createdAt`/`updatedAt`, which are OpenLinker's ingestion clocks — this
+   * is the operationally meaningful date for SLA and "how old is this order"
+   * judgments. Optional: absent for sources that don't expose a placed time and
+   * for records ingested before this field existed.
+   */
+  placedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

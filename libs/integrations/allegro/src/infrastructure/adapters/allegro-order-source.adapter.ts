@@ -38,7 +38,6 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
-import { deriveAllegroPaymentStatus } from './allegro-payment-status';
 import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
@@ -46,6 +45,7 @@ import {
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
+import { deriveAllegroPaymentStatus } from './allegro-payment-status';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -239,8 +239,12 @@ export class AllegroOrderSourceAdapter
       const checkoutForm = response.data;
 
       const status = checkoutForm.payment.finishedAt ? 'processing' : 'pending';
-      const createdAt = checkoutForm.createdAt ?? new Date().toISOString();
+      // Allegro's checkout-form carries no order-level created timestamp, so
+      // `createdAt` is OpenLinker's ingestion time. The buyer-placed time lives
+      // on `lineItems[].boughtAt` and is surfaced separately as `placedAt` (#926).
+      const createdAt = new Date().toISOString();
       const updatedAt = checkoutForm.updatedAt ?? createdAt;
+      const placedAt = this.resolvePlacedAt(checkoutForm.lineItems);
 
       // #454 — split totals: derive subtotal from line items, shipping from
       // delivery.cost (or fallback). Previously we used `totalToPay` as both
@@ -289,11 +293,8 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
-        // #928 — neutral payment status for the FE chip + dispatch gate. The
-        // existing `status` line above keys only off finishedAt (order
-        // lifecycle); this is the orthogonal payment axis (COD vs prepaid vs
-        // awaiting), which must key off `payment.type` to tell COD from paid.
         paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
+        placedAt,
         createdAt,
         updatedAt,
         metadata: {
@@ -399,6 +400,35 @@ export class AllegroOrderSourceAdapter
       return undefined;
     }
     return { methodId: method.id, methodName: method.name };
+  }
+
+  /**
+   * Resolve the buyer-placed timestamp (#926) from the earliest valid
+   * `lineItems[].boughtAt` ("ISO date when offer was bought" — the field
+   * Allegro itself sorts orders by). The line items of one checkout form are
+   * bought together, so the earliest present value is the order-placed time.
+   *
+   * Unparseable / missing values are skipped so a malformed source value
+   * degrades to `undefined` rather than producing an Invalid Date that would
+   * throw downstream when the snapshot serializes it.
+   */
+  private resolvePlacedAt(lineItems: AllegroCheckoutForm['lineItems']): string | undefined {
+    let earliestMs: number | undefined;
+    let earliestIso: string | undefined;
+    for (const item of lineItems) {
+      if (typeof item.boughtAt !== 'string') {
+        continue;
+      }
+      const ms = Date.parse(item.boughtAt);
+      if (Number.isNaN(ms)) {
+        continue;
+      }
+      if (earliestMs === undefined || ms < earliestMs) {
+        earliestMs = ms;
+        earliestIso = item.boughtAt;
+      }
+    }
+    return earliestIso;
   }
 
   /**

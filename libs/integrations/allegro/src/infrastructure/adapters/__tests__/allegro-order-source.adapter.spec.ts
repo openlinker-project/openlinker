@@ -249,7 +249,6 @@ describe('AllegroOrderSourceAdapter', () => {
     it('should hydrate a full IncomingOrder from the checkout-form endpoint', async () => {
       const checkoutForm: AllegroCheckoutForm = {
         id: 'checkout-form-1',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T01:00:00Z',
         buyer: {
           id: 'buyer-1',
@@ -309,7 +308,6 @@ describe('AllegroOrderSourceAdapter', () => {
     it('should report pending status when the buyer has not yet completed payment', async () => {
       const checkoutForm: AllegroCheckoutForm = {
         id: 'checkout-2',
-        createdAt: '2024-01-02T00:00:00Z',
         updatedAt: '2024-01-02T00:00:00Z',
         buyer: { id: 'b2', email: 'b2@example.com', login: 'b2' },
         lineItems: [
@@ -336,7 +334,6 @@ describe('AllegroOrderSourceAdapter', () => {
     describe('totals — shipping cost (#454)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
         buyer: { id: 'b', email: 'b@e.com', login: 'b' },
         lineItems: [
@@ -421,10 +418,90 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
+    describe('placedAt — buyer-placed time from lineItems[].boughtAt (#926)', () => {
+      const formWithBoughtAt = (boughtAts: Array<string | undefined>): AllegroCheckoutForm => ({
+        id: 'cf',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: { id: 'b', email: 'b@e.com', login: 'b' },
+        lineItems: boughtAts.map((boughtAt, i) => ({
+          id: `l${i}`,
+          offer: { id: `o${i}`, name: `O${i}` },
+          quantity: 1,
+          price: { amount: '10.00', currency: 'PLN' },
+          ...(boughtAt !== undefined && { boughtAt }),
+        })),
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      });
+
+      it('should surface a single boughtAt as placedAt', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithBoughtAt(['2026-05-31T16:00:00.000Z']),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.placedAt).toBe('2026-05-31T16:00:00.000Z');
+      });
+
+      it('should pick the earliest boughtAt across line items', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithBoughtAt([
+            '2026-05-31T18:00:00.000Z',
+            '2026-05-31T16:00:00.000Z',
+            '2026-05-31T17:00:00.000Z',
+          ]),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.placedAt).toBe('2026-05-31T16:00:00.000Z');
+      });
+
+      it('should leave placedAt undefined when no line item carries boughtAt', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithBoughtAt([undefined, undefined]),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.placedAt).toBeUndefined();
+      });
+
+      it('should skip an unparseable boughtAt and use the earliest valid one', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithBoughtAt(['not-a-date', '2026-05-31T16:00:00.000Z']),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.placedAt).toBe('2026-05-31T16:00:00.000Z');
+      });
+
+      it('should leave placedAt undefined when every boughtAt is unparseable (no ingestion throw)', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithBoughtAt(['not-a-date', 'also-bad']),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.placedAt).toBeUndefined();
+      });
+    });
+
     describe('shippingAddress — delivery.address preference (#457)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
         buyer: {
           id: 'b',
@@ -538,7 +615,6 @@ describe('AllegroOrderSourceAdapter', () => {
     describe('shipping (#455)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
         buyer: {
           id: 'b',
@@ -586,7 +662,6 @@ describe('AllegroOrderSourceAdapter', () => {
     describe('pickupPoint (#458)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
         buyer: {
           id: 'b',
@@ -692,7 +767,6 @@ describe('AllegroOrderSourceAdapter', () => {
     describe('deliverySmart (#738)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
-        createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
         buyer: {
           id: 'b',

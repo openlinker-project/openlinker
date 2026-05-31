@@ -73,16 +73,17 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+  /** Source-reported payment status (#928); absent when the source did not report it. */
+  paymentStatus?: PaymentStatus;
 
   /**
-   * Source-reported payment status (#928), normalized to the neutral
-   * `PaymentStatus` union. Adapters that can read the source's payment
-   * representation populate this; sources that don't expose payment (e.g.
-   * PrestaShop's `OrderSourcePort`) leave it `undefined`. Core threads it into
-   * the order snapshot; the FE renders a payment chip and gates label
-   * generation on it.
+   * When the buyer placed the order on the source marketplace, as an ISO string
+   * (#926). For Allegro this is the earliest `lineItems[].boughtAt`; for
+   * PrestaShop it is `date_add`. Distinct from `createdAt`/`updatedAt` (OL
+   * ingestion clocks). Optional — adapters omit it when the source has no
+   * placed time. Adapters MUST only emit a valid ISO date string here.
    */
-  paymentStatus?: PaymentStatus;
+  placedAt?: string;
 
   /**
    * ISO timestamps (strings) to keep DTO stable across runtimes.

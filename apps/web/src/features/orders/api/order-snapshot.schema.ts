@@ -104,6 +104,13 @@ export interface ParsedOrderSnapshot {
    * don't expose it (in which case the operator types it).
    */
   customerEmail?: string;
+  /**
+   * When the buyer placed the order on the source marketplace (#926) — ISO
+   * string. The operationally meaningful order date; the detail/list surfaces
+   * lead with it and fall back to the record's ingestion `createdAt` when
+   * absent (older records, sources that don't expose a placed time).
+   */
+  placedAt?: string;
   items: ParsedOrderItem[];
   totals?: ParsedOrderTotals;
   shippingAddress?: ParsedAddress;
@@ -172,6 +179,10 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
   const customerEmail =
     typeof snapshot.customerEmail === 'string' && snapshot.customerEmail.length > 0
       ? snapshot.customerEmail
+      : undefined;
+  const placedAt =
+    typeof snapshot.placedAt === 'string' && snapshot.placedAt.length > 0
+      ? snapshot.placedAt
       : undefined;
 
   // Items — parse each element independently so one bad row doesn't drop the rest.
@@ -271,6 +282,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     orderNumber,
     status,
     customerEmail,
+    placedAt,
     items,
     totals,
     shippingAddress,

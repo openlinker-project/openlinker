@@ -146,6 +146,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.customerExternalId).toBe('7');
       expect(incoming.createdAt).toBe('2024-01-01 10:00:00');
       expect(incoming.updatedAt).toBe('2024-01-01 12:00:00');
+      // Buyer-placed time (#926) is PrestaShop `date_add`.
+      expect(incoming.placedAt).toBe('2024-01-01 10:00:00');
       expect(incoming.items).toHaveLength(1);
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
