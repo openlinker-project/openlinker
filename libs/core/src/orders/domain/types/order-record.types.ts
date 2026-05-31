@@ -120,10 +120,29 @@ export interface OrderRecordFilters {
    * window even if it's been around for months.
    */
   updatedSince?: Date;
+  /**
+   * Dispatch-SLA "breaching / overdue" filter (#927): keep only records with a
+   * known ship-by deadline at or before this instant (`dispatchByAt IS NOT NULL
+   * AND dispatchByAt <= dueBefore`). The list passes `now` (overdue) or
+   * `now + window` (breaching soon); records without a deadline are excluded.
+   */
+  dueBefore?: Date;
+  /**
+   * Result ordering (#927). Default (`createdAt`) is newest-first. `dispatchBy`
+   * orders by the ship-by deadline ascending with NULLs last — the triage
+   * default on the orders list (soonest deadline first).
+   */
+  sort?: OrderRecordSort;
 }
 
 /**
- * Pagination parameters for order record queries
+ * Sort fields for order-record list queries (#927).
+ */
+export const OrderRecordSortValues = ['createdAt', 'dispatchBy'] as const;
+export type OrderRecordSort = (typeof OrderRecordSortValues)[number];
+
+/**
+ * Pagination parameters for order record queries.
  */
 export interface OrderRecordPagination {
   limit: number;

@@ -122,6 +122,14 @@ export interface Order {
    * for records ingested before this field existed.
    */
   placedAt?: Date;
+  /**
+   * Marketplace dispatch (ship-by) commitment window, carried through from the
+   * source `IncomingOrder` (#927). The SLA deadline is `dispatchTime.to`. A
+   * platform-agnostic concept — Allegro maps its `delivery.time.dispatch` here,
+   * future sources map their own handling-time/ship-by. Absent for sources that
+   * don't express a dispatch SLA (e.g. PrestaShop shop orders).
+   */
+  dispatchTime?: OrderDispatchWindow;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -135,6 +143,19 @@ export interface Order {
 export interface OrderShipping {
   methodId: string;
   methodName?: string;
+}
+
+/**
+ * Marketplace dispatch (ship-by) commitment window (#927). Both bounds are ISO
+ * 8601 timestamp strings. `from` is when dispatch may begin; `to` is the
+ * **ship-by deadline** the SLA surfaces (the latest acceptable dispatch). A
+ * neutral concept: every order-source maps its platform-native dispatch
+ * commitment onto this shape (Allegro `delivery.time.dispatch`). Either bound
+ * may be absent.
+ */
+export interface OrderDispatchWindow {
+  from?: string;
+  to?: string;
 }
 
 /**
