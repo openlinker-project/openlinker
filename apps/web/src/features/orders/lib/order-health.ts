@@ -2,13 +2,74 @@
  * Order Health Derivations
  *
  * Pure, framework-free view-model helpers that derive an order's operator-facing
- * health from data already on the `OrderRecord` (per-destination `syncStatus`)
- * and the shipments query. Kept out of the page/components so the rules are
- * unit-testable in isolation (#924).
+ * health from data already on the `OrderRecord`. Kept out of the page/components
+ * so the rules are unit-testable in isolation.
+ *
+ * Two complementary models live here:
+ * — The **list-row classification** (`deriveOrderHealth`, #929): one reconciled
+ *   bucket per order, the FE twin of the SQL in `OrderRecordRepository`.
+ * — The **detail-header rollup** (`rollupSyncStatus` / `deriveHealthLevel` /
+ *   `deriveFulfillment` …, #924/#930): per-destination counts + fulfillment
+ *   state for the single-order header.
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { OrderSyncStatus } from '../api/orders.types';
+import type { OrderRecord, OrderHealthValue, OrderSyncStatus } from '../api/orders.types';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+
+// ── List-row health classification (#929) ──────────────────────────────────
+// CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
+// of the SQL in `OrderRecordRepository.countByHealth` / `applyHealthFilter`;
+// keep both in lockstep:
+//   1. awaiting_mapping  — recordStatus = 'awaiting_mapping' (can't sync yet)
+//   2. needs_attention   — not awaiting_mapping AND any destination failed
+//   3. synced            — not awaiting_mapping, no failed, AND any synced
+//   4. awaiting_dispatch — the residual (no failed, no synced)
+
+export interface OrderHealthView {
+  key: OrderHealthValue;
+  tone: StatusBadgeTone;
+  /** Row-badge label. */
+  label: string;
+  /** Plain-language cause, present only for `needs_attention`. */
+  reason?: string;
+}
+
+/** Static label + tone per bucket. Shared by the row badge and the KPI segments. */
+export const ORDER_HEALTH_META: Record<OrderHealthValue, { label: string; tone: StatusBadgeTone }> =
+  {
+    awaiting_mapping: { label: 'Awaiting mapping', tone: 'warning' },
+    needs_attention: { label: 'Sync failed', tone: 'error' },
+    synced: { label: 'Synced', tone: 'success' },
+    awaiting_dispatch: { label: 'Awaiting dispatch', tone: 'info' },
+  };
+
+/**
+ * Classify an order into exactly one health bucket. Pure function of the
+ * record's own already-loaded fields — no I/O.
+ */
+export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
+  if (order.recordStatus === 'awaiting_mapping') {
+    return { key: 'awaiting_mapping', ...ORDER_HEALTH_META.awaiting_mapping };
+  }
+
+  const failed = order.syncStatus.find((s) => s.status === 'failed');
+  if (failed) {
+    return {
+      key: 'needs_attention',
+      ...ORDER_HEALTH_META.needs_attention,
+      reason: failed.error ?? undefined,
+    };
+  }
+
+  if (order.syncStatus.some((s) => s.status === 'synced')) {
+    return { key: 'synced', ...ORDER_HEALTH_META.synced };
+  }
+
+  return { key: 'awaiting_dispatch', ...ORDER_HEALTH_META.awaiting_dispatch };
+}
+
+// ── Detail-header rollup + fulfillment (#924/#930) ──────────────────────────
 
 export interface SyncRollup {
   total: number;
