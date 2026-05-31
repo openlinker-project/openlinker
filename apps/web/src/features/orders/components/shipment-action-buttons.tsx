@@ -21,10 +21,17 @@ import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { getCarrierDisplayName } from '../../shipments';
+import type { PaymentStatus } from '../api/order-snapshot.schema';
 
 interface ShipmentActionButtonsProps {
   /** Current active shipment row; `null` when the order has no shipment yet. */
   shipment: Shipment | null;
+  /**
+   * Source-reported payment status (#928). Blocks Generate-label when the order
+   * isn't dispatchable yet (awaiting/refunded). Absent ⇒ payment unknown
+   * (PrestaShop / legacy orders) ⇒ does not block.
+   */
+  paymentStatus?: PaymentStatus;
   /** Fired when operator clicks Generate Label. Parent toggles the inline
    * expansion of `<GenerateLabelForm>`. */
   onGenerateLabelClick: () => void;
@@ -37,6 +44,15 @@ const CAN_GENERATE: ReadonlySet<ShipmentStatus | 'none'> = new Set([
   'failed',
   'cancelled',
 ]);
+
+/**
+ * Payment statuses that BLOCK dispatch (#928). Block-list polarity, not
+ * allow-list: only these explicitly block. `paid`, `cod`, `undefined` (payment
+ * unknown — PrestaShop / legacy orders), and any future union member the FE
+ * doesn't yet handle all permit dispatch, so a new backend value never silently
+ * blocks shipping until the FE consciously adds it here.
+ */
+const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
 
 const CAN_CANCEL: ReadonlySet<ShipmentStatus> = new Set(['generated']);
 const CAN_NOTIFY_DISPATCHED: ReadonlySet<ShipmentStatus> = new Set(['generated']);
@@ -51,6 +67,7 @@ const CAN_DOWNLOAD_LABEL: ReadonlySet<ShipmentStatus> = new Set([
 
 export function ShipmentActionButtons({
   shipment,
+  paymentStatus,
   onGenerateLabelClick,
 }: ShipmentActionButtonsProps): ReactElement {
   const cancelMutation = useCancelShipmentMutation();
@@ -78,7 +95,10 @@ export function ShipmentActionButtons({
 
   // Treat "no shipment row" as a synthetic 'none' status for the matrix.
   const status: ShipmentStatus | 'none' = shipment?.status ?? 'none';
-  const canGenerate = CAN_GENERATE.has(status);
+  // #928 — payment gate (block-list): only awaiting/refunded block dispatch.
+  const paymentBlocksDispatch =
+    paymentStatus !== undefined && PAYMENT_BLOCKS_DISPATCH.has(paymentStatus);
+  const canGenerate = CAN_GENERATE.has(status) && !paymentBlocksDispatch;
   const canCancel = shipment !== null && CAN_CANCEL.has(shipment.status);
   const canNotify = shipment !== null && CAN_NOTIFY_DISPATCHED.has(shipment.status);
   // Label download needs both a retrievable lifecycle state AND a persisted
@@ -108,7 +128,11 @@ export function ShipmentActionButtons({
           onClick={onGenerateLabelClick}
           disabled={!canGenerate}
           aria-label={
-            canGenerate ? 'Generate shipping label' : 'Generate label not available in this state'
+            canGenerate
+              ? 'Generate shipping label'
+              : paymentBlocksDispatch
+                ? "Awaiting payment — can't dispatch yet"
+                : 'Generate label not available in this state'
           }
         >
           Generate label
