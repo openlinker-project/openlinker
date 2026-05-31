@@ -7,15 +7,18 @@
  * @module libs/core/src/mappings/application/interfaces
  */
 
+import type { OrderStatus } from '@openlinker/core/orders';
 import type { StatusMapping } from '../../domain/entities/status-mapping.entity';
 import type { CarrierMapping } from '../../domain/entities/carrier-mapping.entity';
 import type { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
 import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
+import type { OrderStateMapping } from '../../domain/entities/order-state-mapping.entity';
 import type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  OrderStateMappingInput,
 } from '../../domain/types/mapping.types';
 
 export interface IMappingConfigService {
@@ -53,6 +56,23 @@ export interface IMappingConfigService {
     connectionId: string,
     allegroDeliveryMethodId: string
   ): Promise<string | null>;
+
+  getOrderStateMappings(connectionId: string): Promise<OrderStateMapping[]>;
+  upsertOrderStateMappings(
+    connectionId: string,
+    items: OrderStateMappingInput[]
+  ): Promise<OrderStateMapping[]>;
+
+  /**
+   * Resolve the configured destination order-state id for a given OL status (#862).
+   *
+   * `connectionId` is the **destination** connection (the shop whose state
+   * catalogue is customised) — unlike `resolveStatusMapping` /
+   * `resolveCarrierMapping`, which are source-scoped. Returns null when no
+   * override is configured; the adapter then falls back to its hardcoded
+   * default-install map.
+   */
+  resolveOrderStateMapping(connectionId: string, olStatus: OrderStatus): Promise<string | null>;
 
   getCategoryMappings(connectionId: string): Promise<CategoryMapping[]>;
   upsertCategoryMapping(

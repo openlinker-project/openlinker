@@ -19,6 +19,7 @@ import type {
   StatusMapping,
   CarrierMapping,
   PaymentMapping,
+  OrderStateMapping,
   CategoryMapping,
   AllegroCategory,
   PrestashopCategory,
@@ -28,6 +29,7 @@ import type {
   UpsertStatusMappingsPayload,
   UpsertCarrierMappingsPayload,
   UpsertPaymentMappingsPayload,
+  UpsertOrderStateMappingsPayload,
   UpsertCategoryMappingPayload,
   RoutingRule,
   CandidateProcessor,
@@ -43,6 +45,9 @@ export interface MappingsApi {
 
   getPaymentMappings: (connectionId: string) => Promise<PaymentMapping[]>;
   upsertPaymentMappings: (connectionId: string, payload: UpsertPaymentMappingsPayload) => Promise<PaymentMapping[]>;
+
+  getOrderStateMappings: (connectionId: string) => Promise<OrderStateMapping[]>;
+  upsertOrderStateMappings: (connectionId: string, payload: UpsertOrderStateMappingsPayload) => Promise<OrderStateMapping[]>;
 
   /**
    * Fetch a dropdown option list from the resolved capability adapter.
@@ -100,6 +105,15 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
 
     upsertPaymentMappings: (connectionId, payload) =>
       request<PaymentMapping[]>(`/connections/${connectionId}/mappings/payments`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    getOrderStateMappings: (connectionId) =>
+      request<OrderStateMapping[]>(`/connections/${connectionId}/mappings/order-states`),
+
+    upsertOrderStateMappings: (connectionId, payload) =>
+      request<OrderStateMapping[]>(`/connections/${connectionId}/mappings/order-states`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       }),

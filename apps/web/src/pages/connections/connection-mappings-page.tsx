@@ -17,14 +17,18 @@ import { RoutingRulesPanel } from '../../features/mappings/components/routing-ru
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
 import { usePaymentMappingsQuery, useUpsertPaymentMappings } from '../../features/mappings/hooks/use-payment-mappings';
+import {
+  useOrderStateMappingsQuery,
+  useUpsertOrderStateMappings,
+} from '../../features/mappings/hooks/use-order-state-mappings';
 import { useRoutingRulesQuery } from '../../features/mappings/hooks/use-routing-rules';
 import { useMappingOptions } from '../../features/mappings/hooks/use-mapping-options';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
-import type { MappingOption } from '../../features/mappings/api/mappings.types';
+import { OL_ORDER_STATUS_OPTIONS, type MappingOption } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { DesktopOnlyBanner } from '../../shared/ui/desktop-only-banner';
 
-type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments';
+type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states';
 
 interface FallbackBannerSpec {
   tone: 'info' | 'warning';
@@ -110,6 +114,7 @@ export function ConnectionMappingsPage(): ReactElement {
   const statusQuery = useStatusMappingsQuery(connectionId);
   const carrierQuery = useCarrierMappingsQuery(connectionId);
   const paymentQuery = usePaymentMappingsQuery(connectionId);
+  const orderStateQuery = useOrderStateMappingsQuery(connectionId);
   const { options, isLoading: optionsLoading, errors: optionsErrors } = useMappingOptions(connectionId);
   // Connection config carries `defaultCarrierId` which the carrier
   // fallback-banner copy depends on (#517). Errors are tolerated — if we
@@ -122,6 +127,14 @@ export function ConnectionMappingsPage(): ReactElement {
   // not platformType-gated, so any future OrderSource adapter inherits it.
   const supportsOrderSource =
     connectionQuery.data?.supportedCapabilities.includes('OrderSource') ?? false;
+
+  // The Order-States tab is the OUTBOUND OL→destination override (#862) — it
+  // belongs to a destination (OrderProcessorManager) connection's own state
+  // catalogue, so it's capability-gated to those connections (PrestaShop today),
+  // mirroring how Fulfillment is gated to OrderSource. Capability-based, never
+  // platformType-based.
+  const supportsOrderProcessor =
+    connectionQuery.data?.supportedCapabilities.includes('OrderProcessorManager') ?? false;
 
   // Routing rules feed two things: the Fulfillment tab and the routing-aware
   // carrier-banner count (#836). Gated to OrderSource connections (no rules
@@ -141,6 +154,12 @@ export function ConnectionMappingsPage(): ReactElement {
   const upsertStatus = useUpsertStatusMappings(connectionId);
   const upsertCarrier = useUpsertCarrierMappings(connectionId);
   const upsertPayment = useUpsertPaymentMappings(connectionId);
+  const upsertOrderState = useUpsertOrderStateMappings(connectionId);
+
+  // Outbound OL→PS order-state panel (#862): only the destination dropdown
+  // (prestashopOrderStatuses) loads from the bundle — the source axis is the
+  // fixed OL OrderStatus list. So its options-readiness tracks only that key.
+  const orderStateOptionsError = optionsErrors.prestashopOrderStatuses ?? null;
 
   // Wait for the connection too so the capability-gated Fulfillment tab doesn't
   // pop in after load. A connection *error* is still tolerated below (the tab
@@ -149,14 +168,17 @@ export function ConnectionMappingsPage(): ReactElement {
     statusQuery.isLoading ||
     carrierQuery.isLoading ||
     paymentQuery.isLoading ||
+    orderStateQuery.isLoading ||
     connectionQuery.isLoading;
-  const loadError = statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? null;
+  const loadError =
+    statusQuery.error ?? carrierQuery.error ?? paymentQuery.error ?? orderStateQuery.error ?? null;
 
   const tabs: { id: TabId; label: string }[] = [
     ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
     { id: 'status' as const, label: 'Order Statuses' },
     { id: 'carriers' as const, label: 'Carriers' },
     { id: 'payments' as const, label: 'Payments' },
+    ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
   ];
   const defaultTab = tabs[0].id;
 
@@ -244,6 +266,17 @@ export function ConnectionMappingsPage(): ReactElement {
   function handleSavePayments(rows: MappingRow[]): void {
     upsertPayment.mutate({
       items: rows.map((r) => ({ allegroPaymentProvider: r.sourceValue, prestashopPaymentModule: r.targetValue })),
+    });
+  }
+
+  const orderStateRows: MappingRow[] = (orderStateQuery.data ?? []).map((m) => ({
+    sourceValue: m.olStatus,
+    targetValue: m.externalStateId,
+  }));
+
+  function handleSaveOrderStates(rows: MappingRow[]): void {
+    upsertOrderState.mutate({
+      items: rows.map((r) => ({ olStatus: r.sourceValue, externalStateId: r.targetValue })),
     });
   }
 
@@ -337,6 +370,25 @@ export function ConnectionMappingsPage(): ReactElement {
             optionsError={paymentOptionsError}
           />
         </TabsContent>
+
+        {supportsOrderProcessor && (
+          <TabsContent value="order-states">
+            <MappingPanel
+              title="Order-State Mappings"
+              description="Override which PrestaShop order state each OpenLinker status transitions to. Customised shops (renamed/added states) map here; unmapped statuses use the default-install state."
+              sourceLabel="OpenLinker status"
+              targetLabel="PrestaShop order state"
+              sourceOptions={OL_ORDER_STATUS_OPTIONS}
+              targetOptions={options.prestashopOrderStatuses}
+              savedRows={orderStateRows}
+              onSave={handleSaveOrderStates}
+              isSaving={upsertOrderState.isPending}
+              saveError={upsertOrderState.error}
+              optionsLoading={optionsLoading}
+              optionsError={orderStateOptionsError}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </PageLayout>
   );
