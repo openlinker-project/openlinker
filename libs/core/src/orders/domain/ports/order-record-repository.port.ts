@@ -12,6 +12,8 @@ import type {
   OrderRecordFilters,
   OrderRecordPagination,
   PaginatedOrderRecords,
+  OrderHealthSummary,
+  OrderHealthSummaryFilters,
 } from '../types/order-record.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 
@@ -51,4 +53,14 @@ export interface OrderRecordRepositoryPort {
     filters: OrderRecordFilters,
     pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords>;
+
+  /**
+   * Count order records per derived health bucket (#929).
+   *
+   * Single aggregate query partitioning every record in scope into exactly one
+   * bucket using the canonical precedence on `OrderHealthValues`. The returned
+   * `total` equals the sum of the four buckets. Scope is the source/customer/
+   * date subset only — `health` itself is intentionally not a valid input.
+   */
+  countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary>;
 }

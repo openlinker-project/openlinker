@@ -1,9 +1,10 @@
 /**
  * Retry Order Destination Mutation Hook
  *
- * Provides a mutation for retrying a failed destination sync from the order
- * detail page. Invalidates the order detail query on success so the row
- * reflects its new `pending` status without a manual refresh.
+ * Provides a mutation for retrying a failed destination sync. Invalidates the
+ * whole orders domain on success so both the detail view and the list (row
+ * badge + status-summary counts) reflect the new `pending` status without a
+ * manual refresh — the list page added an inline per-row Retry in #929.
  *
  * @module apps/web/src/features/orders/hooks
  */
@@ -28,8 +29,8 @@ export function useRetryOrderDestinationMutation(): UseMutationResult<
   return useMutation({
     mutationFn: ({ internalOrderId, destinationConnectionId }) =>
       apiClient.orders.retryDestination(internalOrderId, destinationConnectionId),
-    onSuccess: async (_, { internalOrderId }) => {
-      await queryClient.invalidateQueries({ queryKey: ordersQueryKeys.detail(internalOrderId) });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
     },
   });
 }

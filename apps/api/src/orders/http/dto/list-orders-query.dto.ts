@@ -17,8 +17,12 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderSyncStatusFilterValues, OrderRecordStatusValues } from '@openlinker/core/orders';
-import { OrderSyncStatusFilter, OrderRecordStatus } from '@openlinker/core/orders';
+import {
+  OrderSyncStatusFilterValues,
+  OrderRecordStatusValues,
+  OrderHealthValues,
+} from '@openlinker/core/orders';
+import { OrderSyncStatusFilter, OrderRecordStatus, OrderHealth } from '@openlinker/core/orders';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -65,6 +69,15 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(OrderRecordStatusValues)
   recordStatus?: OrderRecordStatus;
+
+  @ApiPropertyOptional({
+    enum: OrderHealthValues,
+    description:
+      'Filter by derived health bucket (#929) — partitions the set: awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+  })
+  @IsOptional()
+  @IsEnum(OrderHealthValues)
+  health?: OrderHealth;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
