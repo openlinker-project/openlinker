@@ -84,6 +84,15 @@ export interface ParseWarning {
   message: string;
 }
 
+/**
+ * Payment status (#928) — hand-mirrored from the backend `PaymentStatus` union
+ * (`@openlinker/core/orders`) per the FE-001 contract strategy (the web app
+ * mirrors backend contracts rather than importing core). Drives the payment
+ * chip and the dispatch (Generate-label) gate. Keep in sync with the core union.
+ */
+export const PaymentStatusValues = ['paid', 'cod', 'awaiting', 'refunded'] as const;
+export type PaymentStatus = (typeof PaymentStatusValues)[number];
+
 export interface ParsedOrderSnapshot {
   id?: string;
   orderNumber?: string;
@@ -112,6 +121,8 @@ export interface ParsedOrderSnapshot {
    * Allegro Delivery flow — buyer-selected per AC-3.
    */
   pickupPoint?: ParsedOrderPickupPoint;
+  /** Source-reported payment status (#928); absent when the source didn't report it. */
+  paymentStatus?: PaymentStatus;
   parseWarnings: ParseWarning[];
 }
 
@@ -119,6 +130,26 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+/**
+ * Read the optional payment status (#928), validating against the known value
+ * set. An unrecognised non-empty value is captured as a warning and treated as
+ * absent so a future backend value never crashes render or silently gates
+ * dispatch — the chip just doesn't show until the FE learns the value.
+ */
+function readPaymentStatus(value: unknown, warnings: ParseWarning[]): PaymentStatus | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value)) {
+    return value as PaymentStatus;
+  }
+  warnings.push({
+    field: 'paymentStatus',
+    message: `unrecognised payment status: ${String(value)}`,
+  });
+  return undefined;
 }
 
 function firstZodMessage(error: z.ZodError): string {
@@ -246,6 +277,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     billingAddress,
     shipping,
     pickupPoint,
+    paymentStatus: readPaymentStatus(snapshot.paymentStatus, warnings),
     parseWarnings: warnings,
   };
 }

@@ -38,6 +38,7 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
+import { deriveAllegroPaymentStatus } from './allegro-payment-status';
 import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
@@ -288,6 +289,11 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
+        // #928 — neutral payment status for the FE chip + dispatch gate. The
+        // existing `status` line above keys only off finishedAt (order
+        // lifecycle); this is the orthogonal payment axis (COD vs prepaid vs
+        // awaiting), which must key off `payment.type` to tell COD from paid.
+        paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
         createdAt,
         updatedAt,
         metadata: {

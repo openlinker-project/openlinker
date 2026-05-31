@@ -354,6 +354,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
+      paymentStatus: incoming.paymentStatus,
       createdAt: new Date(incoming.createdAt),
       updatedAt: new Date(incoming.updatedAt),
     };

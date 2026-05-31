@@ -302,6 +302,8 @@ describe('AllegroOrderSourceAdapter', () => {
         taxTreatment: 'inclusive',
       });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
+      // #928 — prepaid ONLINE order with finishedAt → paid (dispatch permitted).
+      expect(incoming.paymentStatus).toBe('paid');
     });
 
     it('should report pending status when the buyer has not yet completed payment', async () => {
@@ -326,6 +328,9 @@ describe('AllegroOrderSourceAdapter', () => {
       const incoming = await adapter.getOrder({ externalOrderId: 'checkout-2' });
 
       expect(incoming.status).toBe('pending');
+      // #928 — CASH_ON_DELIVERY → cod regardless of order-lifecycle status
+      // (dispatch is permitted for COD; the order ships and is paid on receipt).
+      expect(incoming.paymentStatus).toBe('cod');
     });
 
     describe('totals — shipping cost (#454)', () => {

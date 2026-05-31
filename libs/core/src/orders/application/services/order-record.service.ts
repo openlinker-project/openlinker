@@ -81,6 +81,11 @@ export class OrderRecordService implements IOrderRecordService {
       // did not supply the flag, so consumers can distinguish "Smart not
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
+      // Present-only (#928): keep the key absent when the source didn't report
+      // payment, so the FE distinguishes "payment unknown" (no chip, no gate)
+      // from a concrete status. Matches the deliverySmart precedent above. This
+      // is the FE-facing snapshot, so the key MUST be enumerated here.
+      ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
@@ -136,6 +141,8 @@ export class OrderRecordService implements IOrderRecordService {
       metadata: incoming.metadata,
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
+      // Present-only payment status (#928) — same rationale as deliverySmart.
+      ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
     };
 
     const orderRecord = new OrderRecord(

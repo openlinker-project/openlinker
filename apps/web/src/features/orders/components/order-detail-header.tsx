@@ -20,7 +20,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { OrderRecord } from '../api/orders.types';
-import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
+import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 
 interface OrderDetailHeaderProps {
@@ -33,6 +33,21 @@ const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
   pending: 'warning',
   healthy: 'success',
   unknown: 'neutral',
+};
+
+/** Payment-status chip tone + label (#928). Colour is reinforcement, not the only signal. */
+const PAYMENT_TONE: Record<PaymentStatus, StatusBadgeTone> = {
+  paid: 'success',
+  cod: 'info',
+  awaiting: 'warning',
+  refunded: 'neutral',
+};
+
+const PAYMENT_LABEL: Record<PaymentStatus, string> = {
+  paid: 'Paid',
+  cod: 'Cash on delivery',
+  awaiting: 'Awaiting payment',
+  refunded: 'Refunded',
 };
 
 export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): ReactElement {
@@ -56,6 +71,11 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
         {snapshot.status ? (
           <StatusBadge tone="neutral" withDot>
             {snapshot.status}
+          </StatusBadge>
+        ) : null}
+        {snapshot.paymentStatus ? (
+          <StatusBadge tone={PAYMENT_TONE[snapshot.paymentStatus]} withDot>
+            {PAYMENT_LABEL[snapshot.paymentStatus]}
           </StatusBadge>
         ) : null}
       </div>

@@ -9,6 +9,8 @@
  * @module libs/core/src/orders/domain/types
  */
 
+import type { PaymentStatus } from './payment-status.types';
+
 /**
  * Order status values
  *
@@ -111,6 +113,13 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * Source-reported payment status (#928). Carried through from the source
+   * `IncomingOrder`; drives the FE payment chip and the dispatch (label) gate.
+   * Absent (`undefined`) for sources that don't expose payment (e.g. PrestaShop
+   * `OrderSourcePort`) and for records predating this field.
+   */
+  paymentStatus?: PaymentStatus;
   createdAt: Date;
   updatedAt: Date;
 }

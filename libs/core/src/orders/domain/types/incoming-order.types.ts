@@ -11,6 +11,7 @@
  */
 
 import type { OrderShipping, OrderPickupPoint, PriceTaxTreatment } from './order.types';
+import type { PaymentStatus } from './payment-status.types';
 
 export interface IncomingOrder {
   /**
@@ -72,6 +73,16 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+
+  /**
+   * Source-reported payment status (#928), normalized to the neutral
+   * `PaymentStatus` union. Adapters that can read the source's payment
+   * representation populate this; sources that don't expose payment (e.g.
+   * PrestaShop's `OrderSourcePort`) leave it `undefined`. Core threads it into
+   * the order snapshot; the FE renders a payment chip and gates label
+   * generation on it.
+   */
+  paymentStatus?: PaymentStatus;
 
   /**
    * ISO timestamps (strings) to keep DTO stable across runtimes.
