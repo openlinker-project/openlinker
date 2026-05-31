@@ -29,6 +29,17 @@ export interface PaymentMapping {
 }
 
 /**
+ * Outbound OL→destination order-state override (#862). `externalStateId` is
+ * the destination platform's native state id (PrestaShop: numeric, as a string).
+ */
+export interface OrderStateMapping {
+  id: string;
+  connectionId: string;
+  olStatus: string;
+  externalStateId: string;
+}
+
+/**
  * Behaviour discriminator for a single `MappingOption` (#517). Mirrors the
  * BE `MappingOption.kind` field. `'dynamic'` means the option's shipping
  * cost (or analogous behaviour) is computed at runtime by an external
@@ -90,6 +101,24 @@ export interface UpsertCarrierMappingsPayload {
 export interface UpsertPaymentMappingsPayload {
   items: { allegroPaymentProvider: string; prestashopPaymentModule: string }[];
 }
+
+export interface UpsertOrderStateMappingsPayload {
+  items: { olStatus: string; externalStateId: string }[];
+}
+
+/**
+ * Canonical OpenLinker order statuses (#862) — the fixed source axis for the
+ * OL→destination order-state mapping panel. Mirrors the BE `OrderStatusValues`
+ * union; hand-kept in sync under the FE-001 hand-written-contract strategy.
+ */
+export const OL_ORDER_STATUS_OPTIONS: MappingOption[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'refunded', label: 'Refunded' },
+];
 
 // ── Category mapping types ────────────────────────────────────────────────
 

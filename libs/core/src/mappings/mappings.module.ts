@@ -18,11 +18,13 @@ import { StatusMappingOrmEntity } from './infrastructure/persistence/entities/st
 import { CarrierMappingOrmEntity } from './infrastructure/persistence/entities/carrier-mapping.orm-entity';
 import { PaymentMappingOrmEntity } from './infrastructure/persistence/entities/payment-mapping.orm-entity';
 import { CategoryMappingOrmEntity } from './infrastructure/persistence/entities/category-mapping.orm-entity';
+import { OrderStateMappingOrmEntity } from './infrastructure/persistence/entities/order-state-mapping.orm-entity';
 import { FulfillmentRoutingRuleOrmEntity } from './infrastructure/persistence/entities/fulfillment-routing-rule.orm-entity';
 import { StatusMappingRepository } from './infrastructure/persistence/repositories/status-mapping.repository';
 import { CarrierMappingRepository } from './infrastructure/persistence/repositories/carrier-mapping.repository';
 import { PaymentMappingRepository } from './infrastructure/persistence/repositories/payment-mapping.repository';
 import { CategoryMappingRepository } from './infrastructure/persistence/repositories/category-mapping.repository';
+import { OrderStateMappingRepository } from './infrastructure/persistence/repositories/order-state-mapping.repository';
 import { FulfillmentRoutingRepository } from './infrastructure/persistence/repositories/fulfillment-routing.repository';
 import { MappingConfigService } from './application/services/mapping-config.service';
 import { FulfillmentRoutingService } from './application/services/fulfillment-routing.service';
@@ -32,6 +34,7 @@ import {
   CARRIER_MAPPING_REPOSITORY_TOKEN,
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
+  ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
   FULFILLMENT_ROUTING_REPOSITORY_TOKEN,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
 } from './mappings.tokens';
@@ -43,6 +46,7 @@ import {
       CarrierMappingOrmEntity,
       PaymentMappingOrmEntity,
       CategoryMappingOrmEntity,
+      OrderStateMappingOrmEntity,
       FulfillmentRoutingRuleOrmEntity,
     ]),
     IntegrationsModule,
@@ -56,6 +60,7 @@ import {
     CarrierMappingRepository,
     PaymentMappingRepository,
     CategoryMappingRepository,
+    OrderStateMappingRepository,
     FulfillmentRoutingRepository,
     MappingConfigService,
     FulfillmentRoutingService,
@@ -74,6 +79,10 @@ import {
     {
       provide: CATEGORY_MAPPING_REPOSITORY_TOKEN,
       useExisting: CategoryMappingRepository,
+    },
+    {
+      provide: ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
+      useExisting: OrderStateMappingRepository,
     },
     {
       provide: FULFILLMENT_ROUTING_REPOSITORY_TOKEN,

@@ -340,6 +340,73 @@ describe('ConnectionMappingsPage', () => {
     });
   });
 
+  describe('order-state mappings tab (#862)', () => {
+    function renderAt(apiClient: ReturnType<typeof createMockApiClient>): void {
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId/mappings" element={<ConnectionMappingsPage />} />
+        </Routes>,
+        { apiClient, route: '/connections/conn_1/mappings' },
+      );
+    }
+
+    it('shows the Order States tab for an OrderProcessorManager connection and renders the OL→PS panel', async () => {
+      const user = userEvent.setup();
+      renderAt(buildApiClient());
+
+      await user.click(await screen.findByRole('tab', { name: 'Order States' }));
+
+      expect(await screen.findByText('Order-State Mappings')).toBeInTheDocument();
+      // Source axis is the fixed OL status list; target is the live PS state catalogue.
+      expect(
+        screen.getByRole('combobox', { name: /Select OpenLinker status/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: /Select PrestaShop order state/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('hides the Order States tab for a connection without OrderProcessorManager', async () => {
+      const apiClient = buildApiClient();
+      apiClient.connections.getById = vi.fn().mockResolvedValue({
+        ...sampleConnection,
+        supportedCapabilities: ['OrderSource'],
+      });
+      renderAt(apiClient);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mapping Configuration')).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('tab', { name: 'Order States' })).toBeNull();
+    });
+
+    it('saves OL→PS order-state overrides with olStatus + externalStateId', async () => {
+      const user = userEvent.setup();
+      const upsertFn = vi.fn().mockResolvedValue([]);
+      const apiClient = buildApiClient();
+      apiClient.mappings.upsertOrderStateMappings = upsertFn;
+      renderAt(apiClient);
+
+      await user.click(await screen.findByRole('tab', { name: 'Order States' }));
+      await screen.findByText('Order-State Mappings');
+
+      fireEvent.change(screen.getByRole('combobox', { name: /Select OpenLinker status/i }), {
+        target: { value: 'shipped' },
+      });
+      fireEvent.change(screen.getByRole('combobox', { name: /Select PrestaShop order state/i }), {
+        target: { value: '2' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save mappings' }));
+
+      await waitFor(() => {
+        expect(upsertFn).toHaveBeenCalledWith('conn_1', {
+          items: [{ olStatus: 'shipped', externalStateId: '2' }],
+        });
+      });
+    });
+  });
+
   it('switches between tabs', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConnectionMappingsPage />, { apiClient: buildApiClient() });
