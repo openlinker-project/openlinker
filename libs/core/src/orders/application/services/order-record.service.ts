@@ -81,6 +81,7 @@ export class OrderRecordService implements IOrderRecordService {
       // did not supply the flag, so consumers can distinguish "Smart not
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
+      ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
       // Buyer-placed-on-marketplace time (#926) — absent when the source didn't
       // expose one. Conditional spread keeps the key off the snapshot rather
       // than emitting `undefined`.
@@ -140,6 +141,7 @@ export class OrderRecordService implements IOrderRecordService {
       metadata: incoming.metadata,
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
+      ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
       // Buyer-placed-on-marketplace time (#926) — ISO string passed through verbatim.
       ...(incoming.placedAt !== undefined && { placedAt: incoming.placedAt }),
     };
