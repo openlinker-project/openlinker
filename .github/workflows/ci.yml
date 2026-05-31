@@ -68,7 +68,8 @@ jobs:
 
   test-integration:
     name: Integration Tests
-    timeout-minutes: 30
+    # Budget covers two sequential suites (API + worker) plus install + libs build.
+    timeout-minutes: 45
     # runs-on: ubuntu-latest
     runs-on: self-hosted
     # Run on push to main (after merge) and on PRs to catch issues early
@@ -106,6 +107,12 @@ jobs:
         run: pnpm --filter @openlinker/api test:integration
         timeout-minutes: 15 # Integration tests can take longer due to container startup
         # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
+      - name: Run worker integration tests
+        # Runs even if the API suite failed (!cancelled) so a worker-specific
+        # AppModule DI regression is reported independently — the point of #786.
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @openlinker/worker test:integration
+        timeout-minutes: 10 # Worker suite runs ~80s locally; cap guards a hung container boot
 
   test-php:
     name: PHP Unit Tests
