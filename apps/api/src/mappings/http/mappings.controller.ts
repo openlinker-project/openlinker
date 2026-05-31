@@ -25,9 +25,11 @@ import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker
 import { UpsertStatusMappingsDto } from './dto/upsert-status-mappings.dto';
 import { UpsertCarrierMappingsDto } from './dto/upsert-carrier-mappings.dto';
 import { UpsertPaymentMappingsDto } from './dto/upsert-payment-mappings.dto';
+import { UpsertOrderStateMappingsDto } from './dto/upsert-order-state-mappings.dto';
 import { StatusMappingResponseDto } from './dto/status-mapping-response.dto';
 import { CarrierMappingResponseDto } from './dto/carrier-mapping-response.dto';
 import { PaymentMappingResponseDto } from './dto/payment-mapping-response.dto';
+import { OrderStateMappingResponseDto } from './dto/order-state-mapping-response.dto';
 import { CategoryMappingInputDto } from './dto/category-mapping-input.dto';
 import { CategoryMappingResponseDto } from './dto/category-mapping-response.dto';
 
@@ -97,6 +99,38 @@ export class MappingsController {
   ): Promise<CarrierMappingResponseDto[]> {
     const mappings = await this.mappingConfigService.upsertCarrierMappings(connectionId, dto.items);
     return mappings.map((m) => CarrierMappingResponseDto.fromDomain(m));
+  }
+
+  // ── Order-state mappings (outbound OL→destination, #862) ──────────────────
+
+  @Get('order-states')
+  @ApiOperation({ summary: 'Get OL→destination order-state mappings for a connection' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiResponse({ status: 200, type: [OrderStateMappingResponseDto] })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getOrderStateMappings(
+    @Param('connectionId') connectionId: string
+  ): Promise<OrderStateMappingResponseDto[]> {
+    const mappings = await this.mappingConfigService.getOrderStateMappings(connectionId);
+    return mappings.map((m) => OrderStateMappingResponseDto.fromDomain(m));
+  }
+
+  @Put('order-states')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Replace all OL→destination order-state mappings for a connection' })
+  @ApiParam({ name: 'connectionId', type: String })
+  @ApiResponse({ status: 200, type: [OrderStateMappingResponseDto] })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async upsertOrderStateMappings(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: UpsertOrderStateMappingsDto
+  ): Promise<OrderStateMappingResponseDto[]> {
+    const mappings = await this.mappingConfigService.upsertOrderStateMappings(
+      connectionId,
+      dto.items
+    );
+    return mappings.map((m) => OrderStateMappingResponseDto.fromDomain(m));
   }
 
   // ── Payment mappings ─────────────────────────────────────────────────────
