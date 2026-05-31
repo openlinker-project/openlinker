@@ -316,6 +316,8 @@ export function createMockApiClient(
       upsertCarrierMappings: vi.fn().mockResolvedValue([]),
       getPaymentMappings: vi.fn().mockResolvedValue([]),
       upsertPaymentMappings: vi.fn().mockResolvedValue([]),
+      getOrderStateMappings: vi.fn().mockResolvedValue([]),
+      upsertOrderStateMappings: vi.fn().mockResolvedValue([]),
       getMappingOptions: vi.fn().mockResolvedValue([]),
       getRoutingRules: vi.fn().mockResolvedValue([]),
       replaceRoutingRules: vi.fn().mockResolvedValue([]),
