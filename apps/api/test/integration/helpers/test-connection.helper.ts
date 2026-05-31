@@ -183,15 +183,44 @@ async function seedIntegrationCredential(
   );
 }
 
+/** A single carrier-mapping entry: Allegro delivery-method id → PS carrier id (as text). */
+export interface CarrierMappingSeed {
+  allegroDeliveryMethodId: string;
+  prestashopCarrierId: string;
+}
+
 /**
- * Seed a carrier mapping via the public `MappingConfigService.upsertCarrierMappings`
- * API — same code path the FE config screen uses, so contract drift surfaces here.
+ * Seed the FULL set of carrier mappings for a connection in one call, via the
+ * public `MappingConfigService.upsertCarrierMappings` API — the same code path
+ * the FE config screen uses, so contract drift surfaces here.
+ *
+ * IMPORTANT: `upsertCarrierMappings` is *replace-for-connection*, not additive —
+ * it overwrites every mapping for the connection with the array passed. Seed all
+ * of a connection's mappings in a SINGLE call; calling the singular
+ * {@link seedCarrierMapping} more than once for the same connection keeps only
+ * the last entry.
  *
  * `prestashopCarrierId` is passed as a string (the mapping table stores it as text);
  * the PS order-processor adapter parses it back to an int and writes it directly
- * as `id_carrier` on the cart/order. On a fresh PS install default carriers have
+ * as `id_carrier` on the cart. On a fresh PS install default carriers have
  * `id_carrier == id_reference`, so the int-spec passes whichever value the test
  * fixture exposes.
+ */
+export async function seedCarrierMappings(
+  harness: IntegrationTestHarness,
+  sourceConnectionId: string,
+  mappings: CarrierMappingSeed[],
+): Promise<void> {
+  const mappingConfig = harness.getApp().get<IMappingConfigService>(MAPPING_CONFIG_SERVICE_TOKEN);
+  await mappingConfig.upsertCarrierMappings(sourceConnectionId, mappings);
+}
+
+/**
+ * Seed a single carrier mapping. Convenience wrapper over {@link seedCarrierMappings}.
+ *
+ * Use {@link seedCarrierMappings} when a connection needs more than one mapping —
+ * the underlying API replaces the whole set per call, so successive singular calls
+ * for the same connection would drop all but the last (see that function's note).
  */
 export async function seedCarrierMapping(
   harness: IntegrationTestHarness,
@@ -199,11 +228,7 @@ export async function seedCarrierMapping(
   allegroDeliveryMethodId: string,
   prestashopCarrierId: string,
 ): Promise<void> {
-  const mappingConfig = harness.getApp().get<IMappingConfigService>(MAPPING_CONFIG_SERVICE_TOKEN);
-  await mappingConfig.upsertCarrierMappings(sourceConnectionId, [
-    {
-      allegroDeliveryMethodId,
-      prestashopCarrierId,
-    },
+  await seedCarrierMappings(harness, sourceConnectionId, [
+    { allegroDeliveryMethodId, prestashopCarrierId },
   ]);
 }
