@@ -815,6 +815,112 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       });
     });
 
+    describe('synthetic-variant id coercion in pinLinePrices (#923)', () => {
+      type CreateCall = [string, Record<string, unknown>];
+      const createCalls = (): CreateCall[] =>
+        (mockHttpClient.createResource as jest.Mock).mock.calls as CreateCall[];
+      const specificPriceFor = (productId: string): Record<string, unknown> | undefined =>
+        createCalls()
+          .filter((c) => c[0] === 'specific_prices')
+          .find((c) => c[1].id_product === productId)?.[1];
+
+      // Resolve a single-line order whose one line carries `variantExternalId`
+      // as the ProductVariant external id (Product → '100'). Drives the
+      // `id_product_attribute` the pin path sends to PrestaShop.
+      const arrangeSingleLine = (variantExternalId: string): void => {
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockImplementation((entityType: string, internalId: string) => {
+            if (entityType === 'Order') return Promise.resolve([]);
+            const map: Record<string, Record<string, string>> = {
+              Customer: { 'internal-customer-123': '42' },
+              Product: { 'internal-product-456': '100' },
+              ProductVariant: { 'internal-variant-789': variantExternalId },
+            };
+            const externalId = map[entityType]?.[internalId];
+            return Promise.resolve(
+              externalId ? [{ connectionId: connection.id, externalId, entityType }] : []
+            );
+          });
+        mockOrderMapper.mapOrderCreate.mockReturnValue({
+          id_customer: '42',
+          current_state: 1,
+          associations: { order_rows: { order_row: [] } },
+        });
+        setCreateResourceDispatch(
+          { id: '123' },
+          { id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder
+        );
+        mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+      };
+
+      const singleLineOrder = (): OrderCreate =>
+        createTestOrder({
+          items: [
+            {
+              id: 'item-1',
+              productId: 'internal-product-456',
+              variantId: 'internal-variant-789',
+              quantity: 1,
+              price: 29.99,
+              sku: 'PROD-001-VAR-001',
+            },
+          ],
+          totals: {
+            subtotal: 29.99,
+            tax: 0,
+            shipping: 5.0,
+            total: 34.99,
+            currency: 'EUR',
+            taxTreatment: 'inclusive',
+          },
+        });
+
+      it('should pin id_product_attribute=0 when the variant is a synthetic marker (product:<n>)', async () => {
+        // Simple products map to a synthetic-variant marker, not a numeric
+        // combination id. PrestaShop 400-rejects a non-numeric
+        // id_product_attribute, so it must collapse to 0 ("no combination").
+        arrangeSingleLine('product:25');
+
+        await adapter.createOrder(singleLineOrder());
+
+        expect(specificPriceFor('100')?.id_product_attribute).toBe(0);
+      });
+
+      it('should pin the numeric combination id when the variant maps to a real PS combination', async () => {
+        arrangeSingleLine('300');
+
+        await adapter.createOrder(singleLineOrder());
+
+        expect(specificPriceFor('100')?.id_product_attribute).toBe(300);
+      });
+
+      it('should surface the upstream PrestaShop responseBody in the pin-failure error', async () => {
+        // The real validation reason lives in PrestashopApiException.responseBody,
+        // not message — the thrown error must carry it so the failure is
+        // diagnosable (the original #923 symptom was an opaque "400" with no body).
+        arrangeSingleLine('product:25');
+        const psErrorBody =
+          '<errors><error><message>Property SpecificPrice->id_product_attribute is not valid</message></error></errors>';
+        mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'specific_prices') {
+            return Promise.reject(
+              new PrestashopApiException(
+                'PrestaShop API error (400): /api/specific_prices',
+                400,
+                psErrorBody
+              )
+            );
+          }
+          return Promise.resolve({ id: '123' });
+        });
+
+        await expect(adapter.createOrder(singleLineOrder())).rejects.toThrow(
+          /Property SpecificPrice->id_product_attribute is not valid/
+        );
+      });
+    });
+
 
     it('should handle generic errors and wrap in PrestashopApiException', async () => {
       const order = createTestOrder();
