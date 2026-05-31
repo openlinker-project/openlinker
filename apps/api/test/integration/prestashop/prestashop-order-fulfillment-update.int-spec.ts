@@ -43,6 +43,7 @@ import {
   isOrderFulfillmentUpdater,
 } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import { destinationOrderIdFromRef } from '../helpers/order-ref.helper';
 import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PrestashopTestContainer,
@@ -118,15 +119,6 @@ async function fetchPsListByOrder<T>(
   const data = json[resource];
   if (Array.isArray(data)) return data as T[];
   return data ? [data as T] : [];
-}
-
-/** Parse the destination-native PS order id from an `OrderRef` (#909). */
-function destinationOrderIdFromRef(orderRef: { orderId: string }): number {
-  const parsed = Number(orderRef.orderId);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`PS-side order id not a positive integer: '${orderRef.orderId}'`);
-  }
-  return parsed;
 }
 
 /**
