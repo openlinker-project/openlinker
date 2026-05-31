@@ -56,6 +56,16 @@ describe('parseOrderSnapshot', () => {
     expect(withoutTreatment.parseWarnings).toHaveLength(0);
   });
 
+  it('surfaces a buyer-placed timestamp when present and leaves it undefined otherwise (#926)', () => {
+    const withPlaced = parseOrderSnapshot({ placedAt: '2026-05-31T16:00:00.000Z' });
+    expect(withPlaced.placedAt).toBe('2026-05-31T16:00:00.000Z');
+    expect(withPlaced.parseWarnings).toHaveLength(0);
+
+    expect(parseOrderSnapshot({}).placedAt).toBeUndefined();
+    // Wrong-typed value is tolerated silently (no warning), like other scalars.
+    expect(parseOrderSnapshot({ placedAt: 12345 }).placedAt).toBeUndefined();
+  });
+
   it('returns a ParsedOrderSnapshot (never null) even when the top-level `id` is missing', () => {
     const parsed = parseOrderSnapshot({ orderNumber: '1024' });
 
