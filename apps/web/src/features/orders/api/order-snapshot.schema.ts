@@ -36,12 +36,25 @@ const orderItemSchema = z.object({
   imageUrl: z.string().optional(),
 });
 
+/**
+ * Tax-treatment values — hand-mirrored from `PriceTaxTreatmentValues` in
+ * `libs/core/src/orders/domain/types/order.types.ts` per the FE-001 contract
+ * strategy. The backend already pins `totals.taxTreatment` into the persisted
+ * snapshot (#895/ADR-014); surfacing it here is a read-only extension, not a
+ * new field. Keep in sync with the core constant if the vocabulary changes.
+ */
+export const ParsedOrderTaxTreatmentValues = ['inclusive', 'exclusive'] as const;
+export type ParsedOrderTaxTreatment = (typeof ParsedOrderTaxTreatmentValues)[number];
+
 const orderTotalsSchema = z.object({
   subtotal: z.number(),
   tax: z.number(),
   shipping: z.number(),
   total: z.number(),
   currency: z.string(),
+  /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
+   *  absent for sources that don't report it. */
+  taxTreatment: z.enum(ParsedOrderTaxTreatmentValues).optional(),
 });
 
 const orderShippingSchema = z.object({
